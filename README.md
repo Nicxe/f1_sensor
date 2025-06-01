@@ -15,8 +15,25 @@ This integration **does not provide any UI components**. Instead, it creates:
 - `sensor.f1_driver_standings` — Current driver championship standings.
 - `sensor.f1_constructor_standings` — Current constructor championship standings.
 - `sensor.f1_weather`: Current weather and race-time forecast at the next race location.
-- `sensor.f1_latest_race_results`: Results from the most recent Formula 1 race. *(new)*
-- `sensor.f1_season_results`: All race results for the ongoing season. *(new)*
+- `sensor.f1_latest_race_results`: Results from the most recent Formula 1 race.
+- `sensor.f1_season_results`: All race results for the ongoing season.
+- `sensor.f1_race_week`: A native binary sensor that returns `on` if it's currently race week. *(new)*
+
+
+
+### New Features
+- Added `race_week` sensor: A native **binary sensor** that returns `on` if it's currently race week.
+  - Includes attributes:
+    - `days_until_next_race`
+    - `next_race_name`
+  - Useful for dynamically updating dashboards or automations around race weekends!
+
+
+### How to Enable
+
+To use these new sensor:
+1. Go to **Settings > Devices & Services**, find the F1 integration.
+2. Click the **three dots** → **Reconfigure**, and enable the new sensors by checking the boxes.
 
 During installation, you can choose exactly which sensors you want to include in your setup.  
 This gives you control over which data points to load — for example, only the next race and weather, without standings or calendar.
