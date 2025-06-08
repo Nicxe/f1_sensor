@@ -91,3 +91,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=data_schema,
             errors=errors,
         )
+
+    def _get_reconfigure_entry(self):
+        """Return the config entry for this domain."""
+        entries = self.hass.config_entries.async_entries(DOMAIN)
+        return entries[0] if entries else None
