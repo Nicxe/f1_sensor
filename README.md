@@ -19,7 +19,7 @@ This integration **does not provide any UI components**. Instead, it creates:
 - `sensor.f1_driver_standings` — Current driver championship standings.
 - `sensor.f1_constructor_standings` — Current constructor championship standings.
 - `sensor.f1_weather`: Current weather and race-time forecast at the next race location.
-- `sensor.f1_latest_race_results`: Results from the most recent Formula 1 race.
+- `sensor.f1_last_race_results`: Results from the most recent Formula 1 race.
 - `sensor.f1_season_results`: All race results for the ongoing season.
 - `sensor.f1_race_week`: A native binary sensor that returns `on` if it's currently race week. *(new)*
 
