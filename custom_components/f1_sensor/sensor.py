@@ -68,7 +68,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         "weather": (F1WeatherSensor, data["race_coordinator"]),
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
-        # "last_qualifying": (F1LastQualifyingSensor, data["last_qualifying_coordinator"]),
         "race_week": (F1RaceWeekSensor, data["race_coordinator"]),
     }
 
