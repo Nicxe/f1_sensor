@@ -6,6 +6,7 @@ import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.const import EVENT_HOMEASSISTANT_CLOSE
 
 from .const import (
     DOMAIN,
@@ -47,7 +48,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        data = hass.data[DOMAIN].pop(entry.entry_id)
+        for coordinator in data.values():
+            await coordinator.async_close()
     return unload_ok
 
 class F1DataCoordinator(DataUpdateCoordinator):
@@ -62,6 +65,16 @@ class F1DataCoordinator(DataUpdateCoordinator):
         )
         self._session = aiohttp.ClientSession()
         self._url = url
+        self._unsub_close = hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_CLOSE, self.async_close
+        )
+
+    async def async_close(self, *_):
+        """Close the aiohttp session."""
+        if self._unsub_close:
+            self._unsub_close()
+            self._unsub_close = None
+        await self._session.close()
 
     async def _async_update_data(self):
         """Fetch data from the F1 API."""
