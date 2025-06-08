@@ -35,7 +35,7 @@ This integration **does not provide any UI components**. Instead, it creates:
 
 ### How to Enable
 
-To use these new sensor:
+To use these new sensors:
 1. Go to **Settings > Devices & Services**, find the F1 integration.
 2. Click the **three dots** → **Reconfigure**, and enable the new sensors by checking the boxes.
 
