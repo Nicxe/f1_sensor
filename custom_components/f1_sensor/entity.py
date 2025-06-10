@@ -17,7 +17,7 @@ class F1BaseEntity(CoordinatorEntity):
         return {
             "identifiers": {(DOMAIN, self._entry_id)},
             "name": self._device_name,
-            "manufacturer": "Jolpica",
+            "manufacturer": "Nicxe",
             "model": "F1 Sensor",
         }
 
