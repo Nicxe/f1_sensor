@@ -6,5 +6,5 @@
     "documentation": "https://github.com/Nicxe/f1_sensor",
     "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/Nicxe/f1_sensor/issues",
-    "version": "0.1.5"
+    "version": "1.0.0"
   }
