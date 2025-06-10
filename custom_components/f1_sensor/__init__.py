@@ -1,11 +1,11 @@
 import logging
 from datetime import timedelta
-import aiohttp
 import async_timeout
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     DOMAIN,
@@ -47,7 +47,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        data = hass.data[DOMAIN].pop(entry.entry_id)
+        for coordinator in data.values():
+            await coordinator.async_close()
     return unload_ok
 
 class F1DataCoordinator(DataUpdateCoordinator):
@@ -60,8 +62,12 @@ class F1DataCoordinator(DataUpdateCoordinator):
             name=name,
             update_interval=timedelta(hours=1),
         )
-        self._session = aiohttp.ClientSession()
+        self._session = async_get_clientsession(hass)
         self._url = url
+
+    async def async_close(self, *_):
+        """Placeholder for future cleanup."""
+        return
 
     async def _async_update_data(self):
         """Fetch data from the F1 API."""
@@ -73,3 +79,4 @@ class F1DataCoordinator(DataUpdateCoordinator):
                     return await response.json()
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}") from err
+
