@@ -95,7 +95,11 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
-        self._tf = TimezoneFinder()
+        self._tf = None
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self._tf = await self.hass.async_add_executor_job(TimezoneFinder)
 
     def _get_next_race(self):
         data = self.coordinator.data
@@ -130,7 +134,7 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
             return None
 
     def _timezone_from_location(self, lat, lon):
-        if lat is None or lon is None:
+        if lat is None or lon is None or self._tf is None:
             return None
         try:
             return self._tf.timezone_at(lat=float(lat), lng=float(lon))
