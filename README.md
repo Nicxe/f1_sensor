@@ -14,7 +14,7 @@ This is a custom integration for Home Assistant that creates sensors using data 
 > If your goal is to visually display upcoming race information, current standings, and more in your Home Assistant dashboard, the [FormulaOne Card](https://github.com/marcokreeft87/formulaone-card) is the better choice for that purpose.
 
 This integration **does not provide any UI components**. Instead, it creates:
-- `sensor.f1_next_race` — Attributes include detailed information about the next race, such as when and where it takes place.
+- `sensor.f1_next_race` — Attributes include detailed information about the next race, such as when and where it takes place. All start times are provided both in UTC and converted to the circuit's local timezone.
 - `sensor.f1_season_calendar` — A list of all races in the current F1 season.
 - `sensor.f1_driver_standings` — Current driver championship standings.
 - `sensor.f1_constructor_standings` — Current constructor championship standings.
@@ -22,6 +22,8 @@ This integration **does not provide any UI components**. Instead, it creates:
 - `sensor.f1_last_race_results`: Results from the most recent Formula 1 race.
 - `sensor.f1_season_results`: All race results for the ongoing season.
 - `binary_sensor.f1_race_week`: A native binary sensor that returns `on` if it's currently race week.
+
+Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In addition, a `_local` variant such as `race_start_local` is available. These values use the circuit's timezone so you can easily create automations at the correct local time.
 
 
 During installation, you can choose exactly which sensors you want to include in your setup.  
@@ -135,7 +137,7 @@ data:
   entity_id: media_player.living_room_speaker
   message: >
     {% set next_race = state_attr('sensor.f1_next_race', 'race_name') %}
-    {% set race_date = as_datetime(state_attr('sensor.f1_next_race', 'race_start')) %}
+    {% set race_date = as_datetime(state_attr('sensor.f1_next_race', 'race_start_local')) %}
     {% set race_location = state_attr('sensor.f1_next_race', 'circuit_locality') %}
     {% set race_country = state_attr('sensor.f1_next_race', 'circuit_country') %}
     {% set days_left = (race_date.date() - now().date()).days %}
@@ -164,7 +166,7 @@ data:
     {% set race = state_attr('sensor.f1_next_race', 'race_name') %}
     {% set city = state_attr('sensor.f1_next_race', 'circuit_locality') %}
     {% set country = state_attr('sensor.f1_next_race', 'circuit_country') %}
-    {% set race_time = as_datetime(state_attr('sensor.f1_next_race', 'race_start')) %}
+    {% set race_time = as_datetime(state_attr('sensor.f1_next_race', 'race_start_local')) %}
     {% set days = (race_time.date() - now().date()).days %}
     {% set drivers = state_attr('sensor.f1_driver_standings', 'driver_standings') %}
     {% set constructors = state_attr('sensor.f1_constructor_standings', 'constructor_standings') %}
