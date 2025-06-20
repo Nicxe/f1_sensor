@@ -5,13 +5,15 @@
 <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/f1_sensor">
 
 
-
 ## What is F1 Sensor?
 
 This is a custom integration for Home Assistant that creates sensors using data from the [Jolpica-F1 API](https://github.com/jolpica/jolpica-f1). It is designed for users who want to build automations, scripts, notifications, TTS messages, or more advanced use cases such as generating dynamic dashboards, triggering race-day routines, syncing events to calendars, or integrating with external services based on upcoming Formula 1 events.
 
 > [!TIP]
-> If your goal is to visually display upcoming race information, current standings, and more in your Home Assistant dashboard, the [FormulaOne Card](https://github.com/marcokreeft87/formulaone-card) is the better choice for that purpose.
+Visit the [F1 Sensor Community at Home Assistant Community Forum](https://community.home-assistant.io/t/formula-1-racing-sensor/) to share your project and get help and inspiration.
+
+Visit  to share you procejt and get help and inspiration
+
 
 This integration **does not provide any UI components**. Instead, it creates:
 - `sensor.f1_next_race` — Attributes include detailed information about the next race, such as when and where it takes place. All start times are provided both in UTC and converted to the circuit's local timezone.
@@ -34,6 +36,10 @@ You can always change this selection later by reconfiguring the integration via 
 The integration fetches fresh data from the Jolpica-F1 API every 1 hours.
 
 I personally use this integration to display the next race and the following three races on an e-ink display. You can read more about that setup [here](https://github.com/Nicxe/esphome).
+
+
+> [!NOTE]
+> If your goal is to visually display upcoming race information, current standings, and more in your Home Assistant dashboard, the [FormulaOne Card](https://github.com/marcokreeft87/formulaone-card) is the better choice for that purpose.
 
 ---
 
