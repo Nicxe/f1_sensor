@@ -22,6 +22,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 base,
             )
         )
+    if "safety_car" in enabled and data.get("race_control_coordinator"):
+        sensors.append(
+            F1SafetyCarSensor(
+                data["race_control_coordinator"],
+                f"{base}_safety_car",
+                f"{entry.entry_id}_safety_car",
+                entry.entry_id,
+                base,
+            )
+        )
     async_add_entities(sensors, True)
 
 
@@ -81,3 +91,20 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
             "days_until_next_race": days,
             "next_race_name": race_name,
         }
+
+
+class F1SafetyCarSensor(F1BaseEntity, BinarySensorEntity):
+    """Binary sensor indicating if Safety Car or VSC is active."""
+
+    def __init__(self, coordinator, name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:car"
+        self._attr_device_class = BinarySensorDeviceClass.SAFETY
+
+    @property
+    def is_on(self):
+        return (self.coordinator.data or {}).get("sc_active")
+
+    @property
+    def state(self):
+        return self.is_on
