@@ -39,11 +39,17 @@
       },
       "season_results": {
         "name": "Season results"
+      },
+      "flag_status": {
+        "name": "Flag status"
       }
     },
     "binary_sensor": {
       "race_week": {
         "name": "Race week"
+      },
+      "safety_car": {
+        "name": "Safety car"
       }
     }
   }

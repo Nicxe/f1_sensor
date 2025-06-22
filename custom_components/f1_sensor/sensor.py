@@ -70,6 +70,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         "weather": (F1WeatherSensor, data["race_coordinator"]),
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
+        "flag_status": (F1FlagStatusSensor, data.get("race_control_coordinator")),
     }
 
     sensors = []
@@ -513,6 +514,18 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
                 "results": results
             })
         return {"races": cleaned}
+
+
+class F1FlagStatusSensor(F1BaseEntity, SensorEntity):
+    """Sensor showing current track flag status."""
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:flag"
+
+    @property
+    def state(self):
+        return (self.coordinator.data or {}).get("flag_status")
 
 
 
