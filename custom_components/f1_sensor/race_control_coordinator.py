@@ -7,7 +7,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Tuple
 
-import aiohttp
 import async_timeout
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -44,7 +43,12 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._vsc_active = False
         self._red_flag = False
         self._finished = False
-        self._last = {"flag_status": None, "sc_active": False}
+        self._last = {
+            "flag_status": None,
+            "sc_active": False,
+            "vsc_active": False,
+            "yellow_sectors": [],
+        }
         self._url: str | None = None
         self._last_byte = 0
         self._last_new: datetime | None = None
@@ -60,16 +64,16 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]] | Tuple[None, None, None]
     ):
         now = datetime.utcnow()
-        async with aiohttp.ClientSession() as session:
-            year_index = await _get_year_index(session, now.year)
-            for meeting in year_index.get("Meetings", []):
-                for sess in meeting.get("Sessions", []):
-                    path = sess.get("Path")
-                    if not path:
-                        continue
-                    index = await _get_session_index(session, path)
-                    if await _is_session_active(index):
-                        return meeting, sess, index
+        session = self._session
+        year_index = await _get_year_index(session, now.year)
+        for meeting in year_index.get("Meetings", []):
+            for sess in meeting.get("Sessions", []):
+                path = sess.get("Path")
+                if not path:
+                    continue
+                index = await _get_session_index(session, path)
+                if await _is_session_active(index):
+                    return meeting, sess, index
         return None, None, None
 
     def _handle_message(self, msg: Dict[str, Any]) -> None:
@@ -118,6 +122,19 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         if "CHEQUERED" in text or "SESSION FINISHED" in text:
             self._finished = True
 
+    def _reset_state(self) -> None:
+        """Clear stored flag and safety car information."""
+        self._yellow_sectors.clear()
+        self._sc_active = False
+        self._vsc_active = False
+        self._red_flag = False
+        self._last = {
+            "flag_status": None,
+            "sc_active": False,
+            "vsc_active": False,
+            "yellow_sectors": [],
+        }
+
     def _derive(self) -> str:
         if self._red_flag:
             return "RED"
@@ -131,14 +148,17 @@ class RaceControlCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> Dict[str, Any]:
         if self._finished:
+            self._reset_state()
             return self._last
 
         if not self._url or not self._session_index:
             meeting, sess, index = await self._current_session()
             if not meeting or not sess:
+                self._reset_state()
                 return self._last
             try:
                 self._url, self._session_index = await resolve_racecontrol_url(
+                    self._session,
                     int(meeting.get("Year", datetime.utcnow().year)),
                     meeting.get("Name", ""),
                     sess.get("Name", ""),
@@ -171,6 +191,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 if resp.status == 404:
                     try:
                         self._url, self._session_index = await resolve_racecontrol_url(
+                            self._session,
                             int(meeting.get("Year", datetime.utcnow().year)),
                             meeting.get("Name", ""),
                             sess.get("Name", ""),
@@ -202,6 +223,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 self._finished = True
                 if self._track:
                     self._track._finished = True
+                self._reset_state()
             return self._last
 
         self._last_new = datetime.now(timezone.utc)
@@ -241,5 +263,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._last = {
             "flag_status": flag,
             "sc_active": self._sc_active or self._vsc_active,
+            "vsc_active": self._vsc_active,
+            "yellow_sectors": sorted(self._yellow_sectors),
         }
         return self._last

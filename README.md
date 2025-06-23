@@ -24,6 +24,8 @@ This integration **does not provide any UI components**. Instead, it creates:
 - `sensor.f1_last_race_results`: Results from the most recent Formula 1 race.
 - `sensor.f1_season_results`: All race results for the ongoing season.
 - `binary_sensor.f1_race_week`: A native binary sensor that returns `on` if it's currently race week.
+- `sensor.f1_flag_status`: Current track flag. Attributes include `yellow_sectors` and `vsc_active`.
+- `binary_sensor.f1_safety_car`: Indicates if the safety car or virtual safety car is active.
 
 Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In addition, a `_local` variant such as `race_start_local` is available. These values use the circuit's timezone so you can easily create automations at the correct local time.
 

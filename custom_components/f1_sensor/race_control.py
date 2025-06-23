@@ -79,50 +79,53 @@ async def _get_year_index(session: aiohttp.ClientSession, year: int) -> Dict[str
 
 
 async def resolve_racecontrol_url(
-    year: int, grand_prix: str, session_type: str
+    session: aiohttp.ClientSession, year: int, grand_prix: str, session_type: str
 ) -> Tuple[str, Dict[str, Any]]:
-    """Resolve RaceControlMessages stream URL from F1 index files and return the session index."""
-    async with aiohttp.ClientSession() as session:
-        year_index = await _get_year_index(session, year)
+    """Resolve RaceControlMessages stream URL from F1 index files.
 
-        gp = grand_prix.lower()
-        meeting = None
-        for m in year_index.get("Meetings", []):
-            name = str(m.get("Name", "")).lower()
-            off = str(m.get("OfficialName", "")).lower()
-            if gp in (name, off):
-                meeting = m
-                break
-        if not meeting:
-            raise ValueError("Meeting not found")
+    The caller provides an ``aiohttp.ClientSession`` so the integration can reuse
+    Home Assistant's shared session.
+    """
+    year_index = await _get_year_index(session, year)
 
-        session_obj = None
-        for s in meeting.get("Sessions", []):
-            if str(s.get("Name", "")).lower() == session_type.lower():
-                session_obj = s
-                break
-        if not session_obj:
-            raise ValueError("Session not found")
+    gp = grand_prix.lower()
+    meeting = None
+    for m in year_index.get("Meetings", []):
+        name = str(m.get("Name", "")).lower()
+        off = str(m.get("OfficialName", "")).lower()
+        if gp in (name, off):
+            meeting = m
+            break
+    if not meeting:
+        raise ValueError("Meeting not found")
 
-        session_path = session_obj.get("Path", "")
-        fallback = f"https://livetiming.formula1.com/static/{session_path}RaceControlMessages.jsonStream"
+    session_obj = None
+    for s in meeting.get("Sessions", []):
+        if str(s.get("Name", "")).lower() == session_type.lower():
+            session_obj = s
+            break
+    if not session_obj:
+        raise ValueError("Session not found")
 
-        delay = 30
-        for attempt in range(10):
-            data = await _get_session_index(session, session_path)
-            stream_path = (
-                data.get("Feeds", {}).get("RaceControlMessages", {}).get("StreamPath")
+    session_path = session_obj.get("Path", "")
+    fallback = f"https://livetiming.formula1.com/static/{session_path}RaceControlMessages.jsonStream"
+
+    delay = 30
+    for attempt in range(10):
+        data = await _get_session_index(session, session_path)
+        stream_path = (
+            data.get("Feeds", {}).get("RaceControlMessages", {}).get("StreamPath")
+        )
+        if stream_path:
+            return f"https://livetiming.formula1.com/{stream_path}", data
+        if attempt >= 2:
+            level = _LOGGER.warning if attempt < 9 else _LOGGER.error
+            level(
+                "Race control stream for %s %s not ready (attempt %d)",
+                grand_prix,
+                session_type,
+                attempt + 1,
             )
-            if stream_path:
-                return f"https://livetiming.formula1.com/{stream_path}", data
-            if attempt >= 2:
-                level = _LOGGER.warning if attempt < 9 else _LOGGER.error
-                level(
-                    "Race control stream for %s %s not ready (attempt %d)",
-                    grand_prix,
-                    session_type,
-                    attempt + 1,
-                )
-            await asyncio.sleep(delay)
-            delay *= 2
-        return fallback, data
+        await asyncio.sleep(delay)
+        delay *= 2
+    return fallback, data
