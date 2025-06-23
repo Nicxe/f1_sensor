@@ -8,6 +8,11 @@ from urllib.parse import urlencode, quote_plus
 import aiohttp
 from signalrcore_async.hub_connection_builder import HubConnectionBuilder
 
+# Home Assistant requires that any potentially blocking operation is moved
+# out of the event loop. ``ssl.SSLContext.load_default_certs`` performs disk
+# I/O which triggers a warning if executed directly. ``get_ssl_context``
+# builds the context in a background thread so the loop never blocks.
+
 
 async def get_ssl_context() -> ssl.SSLContext:
     """Create SSL context without blocking the event loop."""
@@ -124,7 +129,10 @@ class F1SignalRClient:
                     self._callback(t, args[0] if args else {})
                 ),
             )
-        await self._hub.start()
+        # ``start`` internally sets up SSL certificates which may trigger
+        # synchronous disk access. Running it in a thread avoids blocking the
+        # Home Assistant event loop.
+        await asyncio.to_thread(lambda: asyncio.run(self._hub.start()))
 
     async def _on_open(self) -> None:
         self.connected = True
