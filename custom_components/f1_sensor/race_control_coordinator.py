@@ -62,16 +62,26 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._client: F1SignalRClient | None = None
 
     async def async_setup_entry(self) -> None:
-        self._client = F1SignalRClient(self._session, self.async_handle_signalr)
-        self._client.on_open = self._on_open
-        self._client.on_close = self._on_close
+        self._client = F1SignalRClient(self.hass, self._session)
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_FLAG_UPDATE,
+                lambda data: asyncio.create_task(
+                    self.async_handle_signalr("TrackStatus", data)
+                ),
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_SC_UPDATE,
+                lambda data: asyncio.create_task(
+                    self.async_handle_signalr("RaceControlMessages", data)
+                ),
+            )
+        )
         await self._client.start()
-
-    async def _on_open(self) -> None:
-        LOGGER.debug("SignalR connection opened")
-
-    async def _on_close(self) -> None:
-        LOGGER.debug("SignalR connection closed")
 
     async def async_close(self, *_: Any) -> None:  # pragma: no cover - placeholder
         if self._client:
