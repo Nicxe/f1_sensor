@@ -1,6 +1,10 @@
 """Coordinator for RaceControlMessages with TrackStatus integration."""
 
 from __future__ import annotations
+from homeassistant.helpers.dispatcher import (
+    async_dispatcher_connect,   
+    async_dispatcher_send,      
+)
 
 import json
 import logging
