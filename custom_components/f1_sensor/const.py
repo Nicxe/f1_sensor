@@ -5,8 +5,19 @@ PLATFORMS = ["sensor", "binary_sensor"]
 SIGNAL_FLAG_UPDATE = "f1sensor_flag_update"
 SIGNAL_SC_UPDATE = "f1sensor_safety_car_update"
 
+SUBSCRIBE_FEEDS = [
+    "TrackStatus",
+    "RaceControlMessages",
+    "SessionStatus",
+    "Heartbeat",
+]
+
+NEGOTIATE_URL = "https://livetiming.formula1.com/signalr/negotiate"
+
 API_URL = "https://api.jolpi.ca/ergast/f1/current.json"
 DRIVER_STANDINGS_URL = "https://api.jolpi.ca/ergast/f1/current/driverstandings.json"
-CONSTRUCTOR_STANDINGS_URL = "https://api.jolpi.ca/ergast/f1/current/constructorstandings.json"
+CONSTRUCTOR_STANDINGS_URL = (
+    "https://api.jolpi.ca/ergast/f1/current/constructorstandings.json"
+)
 LAST_RACE_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/last/results.json"
 SEASON_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/results.json?limit=100"

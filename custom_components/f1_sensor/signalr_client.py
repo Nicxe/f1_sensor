@@ -1,166 +1,134 @@
 import asyncio
+import contextlib
 import json
 import logging
 import ssl
-from typing import Awaitable, Callable, Dict
-from urllib.parse import urlencode, quote_plus
+from urllib.parse import quote_plus, urlencode
+from typing import List
 
-import aiohttp
+from aiohttp import ClientSession, ClientWebSocketResponse, WSMsgType
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
-# ---- Monkey-patch: gör Subject synlig för signalrcore_async ----
-from rx.subjects import Subject  # RxPY v1.x
-import signalrcore_async.hub.base_hub_connection as _base
-_base.Subject = Subject          # injicera symbolen i bibliotekets modul
-# ----------------------------------------------------------------
-
-from signalrcore_async.hub_connection_builder import HubConnectionBuilder
-
-# Home Assistant requires that any potentially blocking operation is moved
-# out of the event loop. ``ssl.SSLContext.load_default_certs`` performs disk
-# I/O which triggers a warning if executed directly. ``get_ssl_context``
-# builds the context in a background thread so the loop never blocks.
-
-
-async def get_ssl_context() -> ssl.SSLContext:
-    """Create SSL context without blocking the event loop."""
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, ctx.load_default_certs)
-    return ctx
-
-# The signalrcore-async library still relies on the legacy ``websockets`` API
-# which exposes ``extra_headers``. In newer versions of ``websockets`` the
-# default ``connect`` helper dropped this argument in favour of
-# ``additional_headers``. This results in ``create_connection`` receiving an
-# unexpected ``extra_headers`` keyword argument when a proxy is configured. To
-# stay compatible with both old and new ``websockets`` releases we patch
-# ``websockets.connect`` to point at the legacy implementation if needed.
-try:  # pragma: no cover - only runs on newer websockets versions
-    import inspect
-    import websockets
-
-    if "additional_headers" in inspect.signature(websockets.connect).parameters:
-        from websockets.legacy.client import connect as legacy_connect
-
-        websockets.connect = legacy_connect  # type: ignore[assignment]
-except Exception:  # pragma: no cover - fail silently if patching is impossible
-    pass
+from .const import (
+    SIGNAL_FLAG_UPDATE,
+    SIGNAL_SC_UPDATE,
+    SUBSCRIBE_FEEDS,
+    NEGOTIATE_URL,
+)
 
 LOGGER = logging.getLogger(__name__)
 
 
 class F1SignalRClient:
+    """Minimal SignalR client using aiohttp/websocket."""
+
     def __init__(
         self,
-        session: aiohttp.ClientSession,
-        callback: Callable[[str, Dict], Awaitable[None]],
+        hass: HomeAssistant,
+        session: ClientSession,
+        feeds: List[str] = SUBSCRIBE_FEEDS,
     ) -> None:
-        self._session = session
-        self._callback = callback
-        self._hub = None
-        self.connected = False
-        self.failed = False
-        self._stopped = False
+        self.hass = hass
+        self.session = session
+        self.feeds = feeds
+        self._ws: ClientWebSocketResponse | None = None
+        self._task: asyncio.Task | None = None
+        self._buf: str = ""
         self._attempts = 0
-        self.on_open: Callable[[], Awaitable[None]] | None = None
-        self.on_close: Callable[[], Awaitable[None]] | None = None
 
     async def start(self) -> None:
-        self._stopped = False
-        self.failed = False
-        self._attempts = 0
-        await self._connect()
+        """Start background task to maintain the websocket."""
+        if not self._task:
+            self._task = asyncio.create_task(self._run_forever())
 
     async def stop(self) -> None:
-        self._stopped = True
-        if self._hub:
-            await self._hub.stop()
-            self._hub = None
-        self.connected = False
+        """Stop background task and close websocket."""
+        if self._task:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+        if self._ws:
+            await self._ws.close()
+            self._ws = None
 
-    async def _connect(self) -> None:
-        while not self._stopped:
+    async def _run_forever(self) -> None:
+        backoff = 1
+        while True:
             try:
-                await self._start_once()
-                return
+                await self._connect_once()
+                await self._listen()
+                backoff = 1
+            except asyncio.CancelledError:
+                break
             except Exception as err:  # pragma: no cover - network errors
-                LOGGER.warning("SignalR connect failed: %s", err)
-                self._attempts += 1
-                if self._attempts >= 3:
-                    self.failed = True
-                    if self.on_close:
-                        await self.on_close()
-                    return
-                await asyncio.sleep(min(2**self._attempts, 30))
+                LOGGER.warning("SignalR connection error: %s", err)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 300)
 
-    async def _start_once(self) -> None:
-        url = "https://livetiming.formula1.com/signalr/negotiate?clientProtocol=1.5"
-        async with self._session.get(url) as resp:
+    async def _connect_once(self) -> None:
+        params = {"clientProtocol": "1.5"}
+        async with self.session.get(NEGOTIATE_URL, params=params) as resp:
             resp.raise_for_status()
             data = await resp.json()
             token = data.get("ConnectionToken")
             cookie = resp.headers.get("Set-Cookie", "")
-        params = {
+
+        ws_params = {
             "transport": "webSockets",
             "clientProtocol": "1.5",
             "connectionToken": token,
             "connectionData": json.dumps([{"name": "streaming"}]),
         }
         ws_url = "wss://livetiming.formula1.com/signalr/connect?" + urlencode(
-            params, quote_via=quote_plus
+            ws_params, quote_via=quote_plus
         )
-        builder = HubConnectionBuilder()
-        ssl_context = await get_ssl_context()
-        self._hub = (
-            builder.with_url(
-                ws_url,
-                options={
-                    "headers": {"Cookie": cookie},
-                    "skip_negotiation": True,
-                    "ssl": ssl_context,
-                },
-            )
-            .build()
+
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, ctx.load_default_certs)
+
+        self._ws = await self.session.ws_connect(
+            ws_url, heartbeat=30, ssl=ctx, headers={"Cookie": cookie}
         )
-        self._hub.on_open(lambda: asyncio.create_task(self._on_open()))
-        self._hub.on_close(lambda: asyncio.create_task(self._on_close()))
-        for topic in [
-            "TrackStatus",
-            "RaceControlMessages",
-            "SessionStatus",
-            "Heartbeat",
-        ]:
-            self._hub.on(
-                topic,
-                lambda args, t=topic: asyncio.create_task(
-                    self._callback(t, args[0] if args else {})
-                ),
-            )
-        # ``start`` internally sets up SSL certificates which may trigger
-        # synchronous disk access. Running it in a thread avoids blocking the
-        # Home Assistant event loop.
-        await asyncio.to_thread(lambda: asyncio.run(self._hub.start()))
 
-    async def _on_open(self) -> None:
-        self.connected = True
-        self._attempts = 0
-        if self.on_open:
-            await self.on_open()
-        if self._hub:
-            self._hub.send(
-                "Subscribe",
-                [[
-                    "TrackStatus",
-                    "RaceControlMessages",
-                    "SessionStatus",
-                    "Heartbeat",
-                ]],
-            )
+        payload = {"H": "Streaming", "M": "Subscribe", "A": [self.feeds], "I": 1}
+        await self._ws.send_str(json.dumps(payload) + "\x1e")
+        self._buf = ""
 
-    async def _on_close(self) -> None:
-        if self.connected:
-            self.connected = False
-            if self.on_close:
-                await self.on_close()
-        if not self._stopped:
-            await self._connect()
+    async def _listen(self) -> None:
+        assert self._ws is not None
+        async for msg in self._ws:
+            if msg.type == WSMsgType.TEXT:
+                await self._process_text(msg.data)
+            elif msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSED, WSMsgType.ERROR):
+                break
+
+    async def _process_text(self, text: str) -> None:
+        self._buf += text
+        if "\x1e" not in self._buf:
+            return
+        frames = self._buf.split("\x1e")
+        self._buf = frames.pop()
+        for frame in frames:
+            if not frame:
+                continue
+            try:
+                data = json.loads(frame)
+            except Exception:
+                continue
+            await self._handle_frame(data)
+
+    async def _handle_frame(self, data: dict) -> None:
+        if data.get("C") or data.get("S"):
+            return
+        for item in data.get("M", []):
+            args = item.get("A", [])
+            if len(args) < 2:
+                continue
+            topic, payload = args[0], args[1]
+            if topic == "TrackStatus":
+                async_dispatcher_send(self.hass, SIGNAL_FLAG_UPDATE, payload)
+            elif topic == "RaceControlMessages":
+                async_dispatcher_send(self.hass, SIGNAL_SC_UPDATE, payload)
