@@ -71,9 +71,13 @@ class F1SignalRClient:
             params, quote_via=quote_plus
         )
         builder = HubConnectionBuilder()
-        self._hub = builder.with_url(
-            ws_url, options={"headers": {"Cookie": cookie}}
-        ).build()
+        self._hub = (
+            builder.with_url(
+                ws_url,
+                options={"headers": {"Cookie": cookie}, "skip_negotiation": True},
+            )
+            .build()
+        )
         self._hub.on_open(lambda: asyncio.create_task(self._on_open()))
         self._hub.on_close(lambda: asyncio.create_task(self._on_close()))
         for topic in [
