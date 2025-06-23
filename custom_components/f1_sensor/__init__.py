@@ -2,6 +2,8 @@ import logging
 from datetime import timedelta
 import async_timeout
 
+__version__ = "1.2.0"
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -50,6 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         from .race_control_coordinator import RaceControlCoordinator
 
         race_control_coordinator = RaceControlCoordinator(hass, race_coordinator)
+        await race_control_coordinator.async_setup_entry()
         await race_control_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
