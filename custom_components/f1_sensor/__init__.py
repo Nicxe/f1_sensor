@@ -9,6 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .race_control import resolve_racecontrol_url
+
 from .const import (
     DOMAIN,
     PLATFORMS,
@@ -21,13 +23,22 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up integration via config flow."""
     race_coordinator = F1DataCoordinator(hass, API_URL, "F1 Race Data Coordinator")
-    driver_coordinator = F1DataCoordinator(hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator")
-    constructor_coordinator = F1DataCoordinator(hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator")
-    last_race_coordinator = F1DataCoordinator(hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator")
-    season_results_coordinator = F1DataCoordinator(hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator")
+    driver_coordinator = F1DataCoordinator(
+        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator"
+    )
+    constructor_coordinator = F1DataCoordinator(
+        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator"
+    )
+    last_race_coordinator = F1DataCoordinator(
+        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator"
+    )
+    season_results_coordinator = F1DataCoordinator(
+        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator"
+    )
 
     await race_coordinator.async_config_entry_first_refresh()
     await driver_coordinator.async_config_entry_first_refresh()
@@ -53,6 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
@@ -61,6 +73,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if coordinator:
                 await coordinator.async_close()
     return unload_ok
+
 
 class F1DataCoordinator(DataUpdateCoordinator):
     """Handles updates from a given F1 endpoint."""
@@ -109,6 +122,9 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._red_flag = False
         self._finished = False
         self._last = {"flag_status": None, "sc_active": False}
+        self._url: str | None = None
+        self._last_byte = 0
+        self._last_new: datetime | None = None
 
     async def async_close(self, *_):
         return
@@ -131,9 +147,13 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             race_dt = self._combine_dt(race.get("date"), race.get("time"))
             qual = race.get("Qualifying", {})
             qual_dt = self._combine_dt(qual.get("date"), qual.get("time"))
-            if race_dt and race_dt - timedelta(minutes=30) <= now <= race_dt + timedelta(hours=3):
+            if race_dt and race_dt - timedelta(
+                minutes=30
+            ) <= now <= race_dt + timedelta(hours=3):
                 return race, "Race", race_dt
-            if qual_dt and qual_dt - timedelta(minutes=30) <= now <= qual_dt + timedelta(hours=2):
+            if qual_dt and qual_dt - timedelta(
+                minutes=30
+            ) <= now <= qual_dt + timedelta(hours=2):
                 return race, "Qualifying", qual_dt
         return None, None, None
 
@@ -146,9 +166,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         else:
             session_date = race.get("Qualifying", {}).get("date")
         session_path = f"{session_date}_{session_name}"
-        return (
-            f"https://livetiming.formula1.com/static/{year}/{event_path}/{session_path}/RaceControlMessages.jsonStream"
-        )
+        return f"https://livetiming.formula1.com/static/{year}/{event_path}/{session_path}/RaceControlMessages.jsonStream"
 
     def _handle_message(self, msg: dict):
         flag = str(msg.get("Flag", "")).upper()
@@ -172,13 +190,23 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             self._red_flag = True
 
         if "VIRTUAL SAFETY CAR" in text or status.startswith("VSC"):
-            if "END" in text or "ENDING" in text or status.endswith("ENDING") or status.endswith("WITHDRAWN"):
+            if (
+                "END" in text
+                or "ENDING" in text
+                or status.endswith("ENDING")
+                or status.endswith("WITHDRAWN")
+            ):
                 self._vsc_active = False
             elif "DEPLOYED" in text or "DEPLOYED" in status:
                 self._vsc_active = True
 
         if "SAFETY CAR" in text and "VIRTUAL" not in text:
-            if "END" in text or "IN THIS LAP" in text or "ENDING" in text or status.endswith("ENDING"):
+            if (
+                "END" in text
+                or "IN THIS LAP" in text
+                or "ENDING" in text
+                or status.endswith("ENDING")
+            ):
                 self._sc_active = False
             elif "DEPLOYED" in text or status.endswith("DEPLOYED"):
                 self._sc_active = True
@@ -202,17 +230,52 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         if not race or not session_name or self._finished:
             return self._last
 
-        url = self._build_url(race, session_name)
+        if not self._url:
+            try:
+                self._url = await resolve_racecontrol_url(
+                    int(race.get("season")), race.get("raceName", ""), session_name
+                )
+            except Exception as err:
+                _LOGGER.warning("Failed resolving race control URL: %s", err)
+                self._url = self._build_url(race, session_name)
+
         try:
             async with async_timeout.timeout(10):
-                resp = await self._session.get(url)
+                resp = await self._session.get(
+                    self._url, headers={"Range": f"bytes={self._last_byte}-"}
+                )
                 if resp.status == 404:
-                    return self._last
-                if resp.status != 200:
+                    try:
+                        self._url = await resolve_racecontrol_url(
+                            int(race.get("season")),
+                            race.get("raceName", ""),
+                            session_name,
+                        )
+                    except Exception as err:
+                        _LOGGER.warning("Failed resolving race control URL: %s", err)
+                        self._url = self._build_url(race, session_name)
+                    self._last_byte = 0
+                    resp = await self._session.get(
+                        self._url, headers={"Range": f"bytes={self._last_byte}-"}
+                    )
+                    if resp.status == 404:
+                        return self._last
+                if resp.status not in (200, 206):
                     raise UpdateFailed(f"Race control fetch failed: {resp.status}")
-                text = await resp.text()
+                data_bytes = await resp.read()
         except Exception as err:
             raise UpdateFailed(f"Error fetching race control data: {err}") from err
+
+        if not data_bytes:
+            now = datetime.now(timezone.utc)
+            if self._last_new and (now - self._last_new).total_seconds() > 60:
+                _LOGGER.debug("No new race control bytes for 60s, stopping updates")
+                self._finished = True
+            return self._last
+
+        self._last_new = datetime.now(timezone.utc)
+        self._last_byte += len(data_bytes)
+        text = data_bytes.decode(errors="ignore")
 
         for line in text.splitlines():
             if not line:
@@ -238,5 +301,3 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             "sc_active": self._sc_active or self._vsc_active,
         }
         return self._last
-
-
