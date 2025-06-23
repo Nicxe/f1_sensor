@@ -7,6 +7,24 @@ from urllib.parse import urlencode, quote_plus
 import aiohttp
 from signalrcore_async.hub_connection_builder import HubConnectionBuilder
 
+# The signalrcore-async library still relies on the legacy ``websockets`` API
+# which exposes ``extra_headers``. In newer versions of ``websockets`` the
+# default ``connect`` helper dropped this argument in favour of
+# ``additional_headers``. This results in ``create_connection`` receiving an
+# unexpected ``extra_headers`` keyword argument when a proxy is configured. To
+# stay compatible with both old and new ``websockets`` releases we patch
+# ``websockets.connect`` to point at the legacy implementation if needed.
+try:  # pragma: no cover - only runs on newer websockets versions
+    import inspect
+    import websockets
+
+    if "additional_headers" in inspect.signature(websockets.connect).parameters:
+        from websockets.legacy.client import connect as legacy_connect
+
+        websockets.connect = legacy_connect  # type: ignore[assignment]
+except Exception:  # pragma: no cover - fail silently if patching is impossible
+    pass
+
 LOGGER = logging.getLogger(__name__)
 
 
