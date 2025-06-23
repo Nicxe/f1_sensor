@@ -13,6 +13,7 @@ import async_timeout
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .race_control import (
     _get_year_index,
@@ -22,6 +23,7 @@ from .race_control import (
 )
 from .track_status_coordinator import TrackStatusCoordinator
 from .signalr_client import F1SignalRClient
+from .const import SIGNAL_FLAG_UPDATE, SIGNAL_SC_UPDATE
 from .__init__ import F1DataCoordinator
 
 LOGGER = logging.getLogger(__name__)
@@ -210,6 +212,12 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             "yellow_sectors": sorted(self._yellow_sectors),
         }
         self.async_set_updated_data(self._last)
+        async_dispatcher_send(self.hass, SIGNAL_FLAG_UPDATE, self._last)
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_SC_UPDATE,
+            self._last.get("sc_active", False),
+        )
 
     async def _async_update_data(self) -> Dict[str, Any]:
         if self._client and self._client.connected and not self._client.failed:
@@ -334,4 +342,10 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             "vsc_active": self._vsc_active,
             "yellow_sectors": sorted(self._yellow_sectors),
         }
+        async_dispatcher_send(self.hass, SIGNAL_FLAG_UPDATE, self._last)
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_SC_UPDATE,
+            self._last.get("sc_active", False),
+        )
         return self._last
