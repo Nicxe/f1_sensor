@@ -8,9 +8,13 @@ from urllib.parse import urlencode, quote_plus
 import aiohttp
 from signalrcore_async.hub_connection_builder import HubConnectionBuilder
 
-# Pre-create SSL context outside the event loop to avoid blocking calls when
-# establishing the websocket connection.
-SSL_CONTEXT = ssl.create_default_context()
+
+async def get_ssl_context() -> ssl.SSLContext:
+    """Create SSL context without blocking the event loop."""
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, ctx.load_default_certs)
+    return ctx
 
 # The signalrcore-async library still relies on the legacy ``websockets`` API
 # which exposes ``extra_headers``. In newer versions of ``websockets`` the
@@ -94,13 +98,14 @@ class F1SignalRClient:
             params, quote_via=quote_plus
         )
         builder = HubConnectionBuilder()
+        ssl_context = await get_ssl_context()
         self._hub = (
             builder.with_url(
                 ws_url,
                 options={
                     "headers": {"Cookie": cookie},
                     "skip_negotiation": True,
-                    "ssl": SSL_CONTEXT,
+                    "ssl": ssl_context,
                 },
             )
             .build()

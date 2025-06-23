@@ -3,6 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .entity import F1BaseEntity
 import async_timeout
 import datetime
@@ -10,7 +11,7 @@ from timezonefinder import TimezoneFinder
 from zoneinfo import ZoneInfo
 
 
-from .const import DOMAIN
+from .const import DOMAIN, SIGNAL_FLAG_UPDATE, SIGNAL_SC_UPDATE
 
 
 SYMBOL_CODE_TO_MDI = {
@@ -522,10 +523,21 @@ class F1FlagStatusSensor(F1BaseEntity, SensorEntity):
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag"
+        self._flag_state = None
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_FLAG_UPDATE, self._handle_flag_update)
+        )
+
+    def _handle_flag_update(self, data: dict):
+        self._flag_state = data.get("flag_status") if isinstance(data, dict) else data
+        self.async_write_ha_state()
 
     @property
     def state(self):
-        return (self.coordinator.data or {}).get("flag_status")
+        return self._flag_state or (self.coordinator.data or {}).get("flag_status")
 
     @property
     def extra_state_attributes(self):

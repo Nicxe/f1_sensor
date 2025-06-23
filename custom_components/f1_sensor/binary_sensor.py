@@ -1,9 +1,13 @@
-from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
+from homeassistant.components.binary_sensor import (
+    BinarySensorEntity,
+    BinarySensorDeviceClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 import datetime
 
-from .const import DOMAIN
+from .const import DOMAIN, SIGNAL_FLAG_UPDATE, SIGNAL_SC_UPDATE
 from .entity import F1BaseEntity
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
@@ -100,10 +104,21 @@ class F1SafetyCarSensor(F1BaseEntity, BinarySensorEntity):
         super().__init__(coordinator, name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:car"
         self._attr_device_class = BinarySensorDeviceClass.SAFETY
+        self._sc_state = False
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_SC_UPDATE, self._handle_sc_update)
+        )
+
+    def _handle_sc_update(self, sc_active: bool):
+        self._sc_state = sc_active
+        self.async_write_ha_state()
 
     @property
     def is_on(self):
-        return (self.coordinator.data or {}).get("sc_active")
+        return self._sc_state or (self.coordinator.data or {}).get("sc_active")
 
     @property
     def state(self):
