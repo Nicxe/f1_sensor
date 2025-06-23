@@ -6,6 +6,13 @@ from typing import Awaitable, Callable, Dict
 from urllib.parse import urlencode, quote_plus
 
 import aiohttp
+
+# ---- Monkey-patch: gör Subject synlig för signalrcore_async ----
+from rx.subjects import Subject  # RxPY v1.x
+import signalrcore_async.hub.base_hub_connection as _base
+_base.Subject = Subject          # injicera symbolen i bibliotekets modul
+# ----------------------------------------------------------------
+
 from signalrcore_async.hub_connection_builder import HubConnectionBuilder
 
 # Home Assistant requires that any potentially blocking operation is moved
