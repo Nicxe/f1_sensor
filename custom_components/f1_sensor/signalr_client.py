@@ -36,6 +36,8 @@ class F1SignalRClient:
         self._task: asyncio.Task | None = None
         self._buf: str = ""
         self._attempts = 0
+        self.connected = False
+        self.failed = False
 
     async def start(self) -> None:
         """Start background task to maintain the websocket."""
@@ -52,20 +54,31 @@ class F1SignalRClient:
         if self._ws:
             await self._ws.close()
             self._ws = None
+        self.connected = False
 
     async def _run_forever(self) -> None:
         backoff = 1
         while True:
             try:
                 await self._connect_once()
+                self.connected = True
+                self._attempts = 0
                 await self._listen()
                 backoff = 1
             except asyncio.CancelledError:
                 break
             except Exception as err:  # pragma: no cover - network errors
                 LOGGER.warning("SignalR connection error: %s", err)
+                self.connected = False
+                self._attempts += 1
+                if self._attempts >= 3:
+                    self.failed = True
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 300)
+            finally:
+                if self._ws:
+                    await self._ws.close()
+                    self._ws = None
 
     async def _connect_once(self) -> None:
         params = {"clientProtocol": "1.5"}
@@ -92,6 +105,7 @@ class F1SignalRClient:
         self._ws = await self.session.ws_connect(
             ws_url, heartbeat=30, ssl=ctx, headers={"Cookie": cookie}
         )
+        self.failed = False
 
         payload = {"H": "Streaming", "M": "Subscribe", "A": [self.feeds], "I": 1}
         await self._ws.send_str(json.dumps(payload) + "\x1e")
@@ -104,6 +118,7 @@ class F1SignalRClient:
                 await self._process_text(msg.data)
             elif msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSED, WSMsgType.ERROR):
                 break
+        self.connected = False
 
     async def _process_text(self, text: str) -> None:
         self._buf += text
