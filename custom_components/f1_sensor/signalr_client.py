@@ -5,7 +5,7 @@ from typing import Awaitable, Callable, Dict
 from urllib.parse import urlencode, quote_plus
 
 import aiohttp
-from signalrcore.async_signalr_core import HubConnectionBuilder
+from signalrcore_async.hub_connection_builder import HubConnectionBuilder
 
 LOGGER = logging.getLogger(__name__)
 
