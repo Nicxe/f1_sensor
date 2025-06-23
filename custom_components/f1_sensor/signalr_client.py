@@ -1,11 +1,16 @@
 import asyncio
 import json
 import logging
+import ssl
 from typing import Awaitable, Callable, Dict
 from urllib.parse import urlencode, quote_plus
 
 import aiohttp
 from signalrcore_async.hub_connection_builder import HubConnectionBuilder
+
+# Pre-create SSL context outside the event loop to avoid blocking calls when
+# establishing the websocket connection.
+SSL_CONTEXT = ssl.create_default_context()
 
 # The signalrcore-async library still relies on the legacy ``websockets`` API
 # which exposes ``extra_headers``. In newer versions of ``websockets`` the
@@ -92,7 +97,11 @@ class F1SignalRClient:
         self._hub = (
             builder.with_url(
                 ws_url,
-                options={"headers": {"Cookie": cookie}, "skip_negotiation": True},
+                options={
+                    "headers": {"Cookie": cookie},
+                    "skip_negotiation": True,
+                    "ssl": SSL_CONTEXT,
+                },
             )
             .build()
         )
@@ -119,9 +128,13 @@ class F1SignalRClient:
             await self.on_open()
         if self._hub:
             self._hub.send(
-                "Streaming",
                 "Subscribe",
-                [["TrackStatus", "RaceControlMessages", "SessionStatus", "Heartbeat"]],
+                [[
+                    "TrackStatus",
+                    "RaceControlMessages",
+                    "SessionStatus",
+                    "Heartbeat",
+                ]],
             )
 
     async def _on_close(self) -> None:
