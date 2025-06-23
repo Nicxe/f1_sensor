@@ -60,30 +60,34 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._session_index: Dict[str, Any] | None = None
         self._track: TrackStatusCoordinator | None = None
         self._client: F1SignalRClient | None = None
+        self._remove_callbacks: list[callable] = []
 
     async def async_setup_entry(self) -> None:
         self._client = F1SignalRClient(self.hass, self._session)
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                SIGNAL_FLAG_UPDATE,
-                lambda data: asyncio.create_task(
-                    self.async_handle_signalr("TrackStatus", data)
-                ),
-            )
+        unsub_flag = async_dispatcher_connect(
+            self.hass,
+            SIGNAL_FLAG_UPDATE,
+            lambda data: asyncio.create_task(
+                self.async_handle_signalr("TrackStatus", data)
+            ),
         )
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                SIGNAL_SC_UPDATE,
-                lambda data: asyncio.create_task(
-                    self.async_handle_signalr("RaceControlMessages", data)
-                ),
-            )
+        self._remove_callbacks.append(unsub_flag)
+
+        unsub_sc = async_dispatcher_connect(
+            self.hass,
+            SIGNAL_SC_UPDATE,
+            lambda data: asyncio.create_task(
+                self.async_handle_signalr("RaceControlMessages", data)
+            ),
         )
+        self._remove_callbacks.append(unsub_sc)
+
         await self._client.start()
 
     async def async_close(self, *_: Any) -> None:  # pragma: no cover - placeholder
+        for unsub in self._remove_callbacks:
+            unsub()
+        self._remove_callbacks.clear()
         if self._client:
             await self._client.stop()
         if self._track:
