@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Optional
+
+import asyncio
 
 import async_timeout
 from homeassistant.core import HomeAssistant
@@ -19,6 +21,7 @@ from .race_control import (
     resolve_racecontrol_url,
 )
 from .track_status_coordinator import TrackStatusCoordinator
+from .signalr_client import F1SignalRClient
 from .__init__ import F1DataCoordinator
 
 LOGGER = logging.getLogger(__name__)
@@ -54,9 +57,25 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._last_new: datetime | None = None
         self._session_index: Dict[str, Any] | None = None
         self._track: TrackStatusCoordinator | None = None
+        self._client: F1SignalRClient | None = None
+
+    async def async_setup_entry(self) -> None:
+        self._client = F1SignalRClient(self._session, self.async_handle_signalr)
+        self._client.on_open = self._on_open
+        self._client.on_close = self._on_close
+        await self._client.start()
+
+    async def _on_open(self) -> None:
+        LOGGER.debug("SignalR connection opened")
+
+    async def _on_close(self) -> None:
+        LOGGER.debug("SignalR connection closed")
 
     async def async_close(self, *_: Any) -> None:  # pragma: no cover - placeholder
-        return
+        if self._client:
+            await self._client.stop()
+        if self._track:
+            await self._track.async_close()
 
     async def _current_session(
         self,
@@ -146,7 +165,56 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             return "YELLOW"
         return "GREEN"
 
+    async def async_handle_signalr(self, topic: str, payload: Dict[str, Any]) -> None:
+        if topic == "TrackStatus":
+            code = payload.get("Status")
+            if isinstance(code, str) and code.isdigit():
+                code = int(code)
+            mapping = {
+                1: "GREEN",
+                2: "YELLOW",
+                3: "DOUBLE_YELLOW",
+                4: "SC",
+                5: "VSC",
+                6: "RED",
+            }
+            status = mapping.get(code)
+            if status == "GREEN":
+                self._yellow_sectors.clear()
+                self._sc_active = False
+                self._vsc_active = False
+                self._red_flag = False
+            elif status in ("YELLOW", "DOUBLE_YELLOW"):
+                self._yellow_sectors.add("track")
+            elif status == "SC":
+                self._sc_active = True
+            elif status == "VSC":
+                self._vsc_active = True
+            elif status == "RED":
+                self._red_flag = True
+        elif topic == "RaceControlMessages":
+            msgs = payload.get("Messages")
+            iterable = msgs.values() if isinstance(msgs, dict) else msgs or []
+            for msg in iterable:
+                self._handle_message(msg)
+        elif topic == "SessionStatus":
+            status = str(payload.get("Status", "")).upper()
+            if status in {"FINISHED", "STOPPED", "CHEQUERED", "CLOSED"}:
+                self._finished = True
+                if self._client:
+                    await self._client.stop()
+        self._last = {
+            "flag_status": self._derive(),
+            "sc_active": self._sc_active or self._vsc_active,
+            "vsc_active": self._vsc_active,
+            "yellow_sectors": sorted(self._yellow_sectors),
+        }
+        self.async_set_updated_data(self._last)
+
     async def _async_update_data(self) -> Dict[str, Any]:
+        if self._client and self._client.connected and not self._client.failed:
+            return self._last
+
         if self._finished:
             self._reset_state()
             return self._last
