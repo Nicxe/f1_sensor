@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import random
 from datetime import datetime, timedelta
@@ -28,7 +29,8 @@ async def _get_session_index(
             data: Dict[str, Any] = {}
         else:
             resp.raise_for_status()
-            data = await resp.json()
+            text = await resp.text()
+            data = json.loads(text.lstrip("\ufeff"))
 
     async with _CACHE_LOCK:
         ttl = timedelta(minutes=5) + timedelta(seconds=random.randint(-60, 60))
@@ -66,7 +68,8 @@ async def _get_year_index(session: aiohttp.ClientSession, year: int) -> Dict[str
     url = f"https://livetiming.formula1.com/static/{year}/Index.json"
     async with session.get(url) as resp:
         resp.raise_for_status()
-        data = await resp.json()
+        text = await resp.text()
+        data = json.loads(text.lstrip("\ufeff"))
 
     async with _CACHE_LOCK:
         ttl = timedelta(minutes=30) + timedelta(seconds=random.randint(-300, 300))
