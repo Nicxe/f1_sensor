@@ -527,5 +527,15 @@ class F1FlagStatusSensor(F1BaseEntity, SensorEntity):
     def state(self):
         return (self.coordinator.data or {}).get("flag_status")
 
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data or {}
+        attrs = {
+            "vsc_active": data.get("vsc_active"),
+        }
+        if data.get("yellow_sectors"):
+            attrs["yellow_sectors"] = data.get("yellow_sectors")
+        return attrs
+
 
 
