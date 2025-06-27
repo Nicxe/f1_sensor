@@ -119,7 +119,10 @@ class F1SafetyCarSensor(F1BaseEntity, BinarySensorEntity):
 
     def _handle_sc_update(self, sc_active: bool):
         self._sc_state = sc_active
-        self.async_write_ha_state()
+        if self.hass:
+            self.hass.add_job(self.async_write_ha_state)
+        else:
+            self.async_write_ha_state()
 
     @property
     def is_on(self):

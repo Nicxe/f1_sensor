@@ -547,17 +547,27 @@ class F1FlagStatusSensor(F1BaseEntity, SensorEntity):
         """WS ansluten men inga TrackStatus än → idle."""
         if self._state is None:
             self._state = "idle"
-            self.async_write_ha_state()
+            # Ensure state updates are executed on Home Assistant's event loop
+            if self.hass:
+                self.hass.add_job(self.async_write_ha_state)
+            else:
+                self.async_write_ha_state()
 
     def _handle_unavailable(self):
         """WS bortkopplad → unavailable."""
         self._state = None
-        self.async_write_ha_state()
+        if self.hass:
+            self.hass.add_job(self.async_write_ha_state)
+        else:
+            self.async_write_ha_state()
 
     def _handle_flag(self, data: dict):
         flag = data.get("flag_status") if isinstance(data, dict) else data
         self._state = str(flag).lower() if flag else None
-        self.async_write_ha_state()
+        if self.hass:
+            self.hass.add_job(self.async_write_ha_state)
+        else:
+            self.async_write_ha_state()
 
     @property
     def state(self):
