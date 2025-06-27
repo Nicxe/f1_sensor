@@ -6,6 +6,10 @@
     "documentation": "https://github.com/Nicxe/f1_sensor",
     "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/Nicxe/f1_sensor/issues",
-    "requirements": ["timezonefinder==5.2.0"],
+    "requirements": [
+        "timezonefinder==5.2.0",
+        "aiohttp>=3.9.0",
+        "yarl>=1.9.4"
+    ],
     "version": "1.3.0"
 }
