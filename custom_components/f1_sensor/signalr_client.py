@@ -243,7 +243,6 @@ class F1SignalRClient:
             if topic == "TrackStatus":
                 async_dispatcher_send(self.hass, SIGNAL_FLAG_UPDATE, payload)
             elif topic == "RaceControlMessages":
-                _LOGGER.debug("RaceControlMessages raw payload: %s", payload)
                 async_dispatcher_send(self.hass, SIGNAL_SC_UPDATE, payload)
 
     async def _heartbeat(self, ws: ClientWebSocketResponse) -> None:
