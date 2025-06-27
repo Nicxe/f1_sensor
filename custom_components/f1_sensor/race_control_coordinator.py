@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 from homeassistant.helpers.dispatcher import (
-    async_dispatcher_connect,   
-    async_dispatcher_send,      
+    async_dispatcher_connect,
+    async_dispatcher_send,
 )
+
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 
 import json
 import logging
@@ -86,7 +88,13 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         )
         self._remove_callbacks.append(unsub_sc)
 
-        await self._client.start()
+        async def _launch_signalr(_):
+            LOGGER.debug("SignalR: calling start()")
+            asyncio.create_task(self._client.start())
+
+        self.hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STARTED, _launch_signalr
+        )
 
     async def async_close(self, *_: Any) -> None:  # pragma: no cover - placeholder
         for unsub in self._remove_callbacks:

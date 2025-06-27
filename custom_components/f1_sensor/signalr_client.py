@@ -2,11 +2,11 @@ import asyncio
 import contextlib
 import json
 import logging
-import ssl
-from urllib.parse import quote_plus, urlencode
+import random
+import urllib.parse
 from typing import List
 
-from aiohttp import ClientSession, ClientWebSocketResponse, WSMsgType
+from aiohttp import ClientSession, ClientWebSocketResponse, WSMsgType, ClientError
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
@@ -17,7 +17,14 @@ from .const import (
     NEGOTIATE_URL,
 )
 
-LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger(__name__)
+
+
+HEADERS = {
+    "User-Agent": "BestHTTP",
+    "Accept-Encoding": "gzip, identity",
+    "Accept": "application/json",
+}
 
 
 class F1SignalRClient:
@@ -57,68 +64,80 @@ class F1SignalRClient:
         self.connected = False
 
     async def _run_forever(self) -> None:
-        backoff = 1
+        await self._listen()
+
+    async def _connect_once(self) -> None:
+        params = {
+            "clientProtocol": "1.5",
+            "connectionData": '[{"name":"Streaming"}]',
+            "tid": random.randint(0, 9),
+        }
+        _LOGGER.debug("GET negotiate %s", params)
+        async with self.session.get(
+            NEGOTIATE_URL, params=params, headers=HEADERS
+        ) as resp:
+            resp.raise_for_status()
+            nego = await resp.json()
+            _LOGGER.debug("Negotiate response: %s", nego)
+            t0_cookie = resp.cookies.get("t0")
+            t0_cookie = t0_cookie.value if t0_cookie else ""
+
+        params.update(
+            {
+                "transport": "webSockets",
+                "connectionToken": nego.get("ConnectionToken"),
+            }
+        )
+
+        ws_url = (
+            "wss://livetiming.formula1.com" + nego.get("Url", "") + "/connect?" +
+            urllib.parse.urlencode(params)
+        )
+        _LOGGER.debug("WebSocket connecting to %s", ws_url)
+        headers = HEADERS | {"Cookie": f"t0={t0_cookie}"}
+        self._ws = await self.session.ws_connect(
+            ws_url, headers=headers, heartbeat=30, ssl=False
+        )
+        self.failed = False
+
+        payload = {
+            "H": "Streaming",
+            "M": "Subscribe",
+            "A": [self.feeds],
+            "I": 1,
+        }
+        await self._ws.send_str(json.dumps(payload) + "\x1e")
+        _LOGGER.debug("Sent Subscribe")
+        self._buf = ""
+
+    async def _listen(self) -> None:
+        retry_delay = 1
         while True:
             try:
                 await self._connect_once()
                 self.connected = True
-                self._attempts = 0
-                await self._listen()
-                backoff = 1
-            except asyncio.CancelledError:
-                break
-            except Exception as err:  # pragma: no cover - network errors
-                LOGGER.warning("SignalR connection error: %s", err)
+                async for msg in self._ws:
+                    if msg.type == WSMsgType.TEXT:
+                        await self._process_text(msg.data)
+                    elif msg.type in (
+                        WSMsgType.CLOSE,
+                        WSMsgType.CLOSED,
+                        WSMsgType.ERROR,
+                    ):
+                        break
                 self.connected = False
-                self._attempts += 1
-                if self._attempts >= 3:
-                    self.failed = True
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 300)
+                retry_delay = 1
+            except asyncio.CancelledError:
+                raise
+            except ClientError:
+                _LOGGER.exception("SignalR error")
+                self.connected = False
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 300)
             finally:
                 if self._ws:
                     await self._ws.close()
                     self._ws = None
-
-    async def _connect_once(self) -> None:
-        params = {"clientProtocol": "1.5"}
-        async with self.session.get(NEGOTIATE_URL, params=params) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
-            token = data.get("ConnectionToken")
-            cookie = resp.headers.get("Set-Cookie", "")
-
-        ws_params = {
-            "transport": "webSockets",
-            "clientProtocol": "1.5",
-            "connectionToken": token,
-            "connectionData": json.dumps([{"name": "streaming"}]),
-        }
-        ws_url = "wss://livetiming.formula1.com/signalr/connect?" + urlencode(
-            ws_params, quote_via=quote_plus
-        )
-
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, ctx.load_default_certs)
-
-        self._ws = await self.session.ws_connect(
-            ws_url, heartbeat=30, ssl=ctx, headers={"Cookie": cookie}
-        )
-        self.failed = False
-
-        payload = {"H": "Streaming", "M": "Subscribe", "A": [self.feeds], "I": 1}
-        await self._ws.send_str(json.dumps(payload) + "\x1e")
-        self._buf = ""
-
-    async def _listen(self) -> None:
-        assert self._ws is not None
-        async for msg in self._ws:
-            if msg.type == WSMsgType.TEXT:
-                await self._process_text(msg.data)
-            elif msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSED, WSMsgType.ERROR):
-                break
-        self.connected = False
 
     async def _process_text(self, text: str) -> None:
         self._buf += text
