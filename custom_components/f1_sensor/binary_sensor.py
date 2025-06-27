@@ -9,6 +9,7 @@ import datetime
 
 from .const import DOMAIN, SIGNAL_FLAG_UPDATE, SIGNAL_SC_UPDATE
 from .entity import F1BaseEntity
+from .signalr_client import F1SignalRClient
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     data = hass.data[DOMAIN][entry.entry_id]
@@ -36,6 +37,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 base,
             )
         )
+    rc_coord = data.get("race_control_coordinator")
+    client = getattr(rc_coord, "_client", None) if rc_coord else None
+    if client:
+        sensors.append(F1SignalRBinary(client))
     async_add_entities(sensors, True)
 
 
@@ -123,3 +128,28 @@ class F1SafetyCarSensor(F1BaseEntity, BinarySensorEntity):
     @property
     def state(self):
         return self.is_on
+
+
+class F1SignalRBinary(BinarySensorEntity):
+    """Shows if SignalR connection is alive."""
+
+    _attr_name = "F1 SignalR"
+    _attr_icon = "mdi:web"
+
+    def __init__(self, client: F1SignalRClient) -> None:
+        self._client = client
+        self._attr_unique_id = "f1_signalr_status"
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, "f1_signalr_state", self.async_write_ha_state
+            )
+        )
+
+    @property
+    def is_on(self) -> bool:
+        return self._client.connected and not self._client.failed
+
+    async def async_update(self):
+        return

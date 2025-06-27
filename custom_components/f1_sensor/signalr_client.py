@@ -63,6 +63,11 @@ class F1SignalRClient:
             EVENT_HOMEASSISTANT_STOP, self._handle_ha_stop
         )
 
+    def _set_connected(self, value: bool) -> None:
+        if self.connected != value:
+            self.connected = value
+            async_dispatcher_send(self.hass, "f1_signalr_state")
+
     async def _handle_ha_stop(self, _event):
         await self.stop()
 
@@ -81,7 +86,7 @@ class F1SignalRClient:
         if self._ws:
             await self._ws.close()
             self._ws = None
-        self.connected = False
+        self._set_connected(False)
 
     # --------------------------------------------------------------------- #
     # Low-level connection helpers
@@ -162,7 +167,8 @@ class F1SignalRClient:
             hb_task: asyncio.Task | None = None
             try:
                 self._ws = await self._connect_once()
-                self.connected = True
+                self.failed = False
+                self._set_connected(True)
                 await self._handshake_and_subscribe()
 
                 hb_task = asyncio.create_task(self._heartbeat(self._ws))
@@ -180,11 +186,13 @@ class F1SignalRClient:
             except asyncio.CancelledError:
                 raise
             except ClientError:
+                self.failed = True
                 _LOGGER.exception("SignalR client error")
             except Exception:  # pylint: disable=broad-except
+                self.failed = True
                 _LOGGER.exception("Unhandled SignalR client exception")
             finally:
-                self.connected = False
+                self._set_connected(False)
                 if hb_task:
                     hb_task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
