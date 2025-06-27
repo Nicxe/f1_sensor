@@ -9,6 +9,7 @@ import async_timeout
 import datetime
 from timezonefinder import TimezoneFinder
 from zoneinfo import ZoneInfo
+import json
 
 
 from .const import (
@@ -93,6 +94,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                     base,
                 )
             )
+    sensors.append(RaceControlLogSensor(hass))
     async_add_entities(sensors, True)
 
 
@@ -577,6 +579,27 @@ class F1FlagStatusSensor(F1BaseEntity, SensorEntity):
         if data.get("yellow_sectors"):
             attrs["yellow_sectors"] = data.get("yellow_sectors")
         return attrs
+
+
+class RaceControlLogSensor(SensorEntity):
+    """Visar det råa RaceControlMessages-meddelandet."""
+
+    _attr_name = "F1 Race Control Last"
+    _attr_icon = "mdi:alert-circle-outline"
+    _attr_unique_id = "f1_race_control_last"
+
+    def __init__(self, hass):
+        self._state = ""
+        async_dispatcher_connect(hass, SIGNAL_SC_UPDATE, self._handle_payload)
+
+    def _handle_payload(self, payload: dict):
+        # Spara hela payload som JSON-sträng
+        self._state = json.dumps(payload, ensure_ascii=False)
+        self.async_write_ha_state()
+
+    @property
+    def state(self):
+        return self._state
 
 
 
