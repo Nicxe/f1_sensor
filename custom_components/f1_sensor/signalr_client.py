@@ -6,7 +6,12 @@ import random
 import urllib.parse
 from typing import List
 
-from aiohttp import ClientSession, ClientWebSocketResponse, WSMsgType, ClientError
+from aiohttp import (
+    ClientSession,
+    ClientWebSocketResponse,
+    WSMsgType,
+    ClientError,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
@@ -25,6 +30,16 @@ HEADERS = {
     "Accept-Encoding": "gzip, identity",
     "Accept": "application/json",
 }
+
+# SignalR record separator used to terminate frames
+RS = "\x1e"
+
+
+def _frame(obj: str | dict) -> str:
+    """Return websocket-ready frame string."""
+    if isinstance(obj, dict):
+        obj = json.dumps(obj, separators=(",", ":"))
+    return f"{obj}{RS}"
 
 
 class F1SignalRClient:
@@ -96,9 +111,16 @@ class F1SignalRClient:
         _LOGGER.debug("WebSocket connecting to %s", ws_url)
         headers = HEADERS | {"Cookie": f"t0={t0_cookie}"}
         self._ws = await self.session.ws_connect(
-            ws_url, headers=headers, heartbeat=30, ssl=False
+            ws_url, headers=headers, autoping=False, heartbeat=30, ssl=False
         )
         self.failed = False
+
+        # Wait for init frame from server before subscribing
+        init = await self._ws.receive()
+        if init.type is WSMsgType.TEXT and init.data.endswith(RS):
+            _LOGGER.debug("Init from server: %s", init.data.rstrip(RS))
+        else:
+            _LOGGER.warning("Unexpected init frame: %s", init)
 
         payload = {
             "H": "Streaming",
@@ -106,16 +128,18 @@ class F1SignalRClient:
             "A": [self.feeds],
             "I": 1,
         }
-        await self._ws.send_str(json.dumps(payload) + "\x1e")
+        await self._ws.send_str(_frame(payload))
         _LOGGER.debug("Sent Subscribe")
         self._buf = ""
 
     async def _listen(self) -> None:
         retry_delay = 1
         while True:
+            hb_task = None
             try:
                 await self._connect_once()
                 self.connected = True
+                hb_task = asyncio.create_task(self._heartbeat(self._ws))
                 async for msg in self._ws:
                     if msg.type == WSMsgType.TEXT:
                         await self._process_text(msg.data)
@@ -135,6 +159,10 @@ class F1SignalRClient:
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, 300)
             finally:
+                if hb_task:
+                    hb_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await hb_task
                 if self._ws:
                     await self._ws.close()
                     self._ws = None
@@ -166,3 +194,9 @@ class F1SignalRClient:
                 async_dispatcher_send(self.hass, SIGNAL_FLAG_UPDATE, payload)
             elif topic == "RaceControlMessages":
                 async_dispatcher_send(self.hass, SIGNAL_SC_UPDATE, payload)
+
+    async def _heartbeat(self, ws: ClientWebSocketResponse) -> None:
+        """Send ping replies to keep the websocket alive."""
+        while True:
+            await asyncio.sleep(5)
+            await ws.send_str(_frame("6::"))
