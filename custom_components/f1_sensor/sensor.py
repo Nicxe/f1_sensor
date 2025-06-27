@@ -11,7 +11,13 @@ from timezonefinder import TimezoneFinder
 from zoneinfo import ZoneInfo
 
 
-from .const import DOMAIN, SIGNAL_FLAG_UPDATE, SIGNAL_SC_UPDATE
+from .const import (
+    DOMAIN,
+    SIGNAL_FLAG_UPDATE,
+    SIGNAL_SC_UPDATE,
+    SIGNAL_CONNECTED,
+    SIGNAL_DISCONNECTED,
+)
 
 
 SYMBOL_CODE_TO_MDI = {
@@ -523,21 +529,44 @@ class F1FlagStatusSensor(F1BaseEntity, SensorEntity):
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag"
-        self._flag_state = None
+        self._state: str | None = None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         self.async_on_remove(
-            async_dispatcher_connect(self.hass, SIGNAL_FLAG_UPDATE, self._handle_flag_update)
+            async_dispatcher_connect(self.hass, SIGNAL_CONNECTED, self._handle_idle)
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_FLAG_UPDATE, self._handle_flag)
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_DISCONNECTED, self._handle_unavailable)
         )
 
-    def _handle_flag_update(self, data: dict):
-        self._flag_state = data.get("flag_status") if isinstance(data, dict) else data
+    def _handle_idle(self):
+        """WS ansluten men inga TrackStatus än → idle."""
+        if self._state is None:
+            self._state = "idle"
+            self.async_write_ha_state()
+
+    def _handle_unavailable(self):
+        """WS bortkopplad → unavailable."""
+        self._state = None
+        self.async_write_ha_state()
+
+    def _handle_flag(self, data: dict):
+        flag = data.get("flag_status") if isinstance(data, dict) else data
+        self._state = str(flag).lower() if flag else None
         self.async_write_ha_state()
 
     @property
     def state(self):
-        return self._flag_state or (self.coordinator.data or {}).get("flag_status")
+        return self._state
+
+    @property
+    def available(self) -> bool:
+        # unavailable när self._state är None
+        return self._state is not None
 
     @property
     def extra_state_attributes(self):

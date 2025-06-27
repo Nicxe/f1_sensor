@@ -21,6 +21,8 @@ from .const import (
     SIGNAL_SC_UPDATE,
     SUBSCRIBE_FEEDS,
     NEGOTIATE_URL,
+    SIGNAL_CONNECTED,
+    SIGNAL_DISCONNECTED,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,6 +69,10 @@ class F1SignalRClient:
         if self.connected != value:
             self.connected = value
             async_dispatcher_send(self.hass, "f1_signalr_state")
+            if value:
+                async_dispatcher_send(self.hass, SIGNAL_CONNECTED)
+            else:
+                async_dispatcher_send(self.hass, SIGNAL_DISCONNECTED)
 
     async def _handle_ha_stop(self, _event):
         await self.stop()
