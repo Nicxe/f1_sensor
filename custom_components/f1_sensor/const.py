@@ -4,8 +4,6 @@ PLATFORMS = ["sensor", "binary_sensor"]
 # Dispatcher signals for real-time updates
 SIGNAL_FLAG_UPDATE = "f1sensor_flag_update"
 SIGNAL_SC_UPDATE = "f1sensor_safety_car_update"
-SIGNAL_CONNECTED = "f1_signalr_connected"
-SIGNAL_DISCONNECTED = "f1_signalr_disconnected"
 
 SUBSCRIBE_FEEDS = [
     "TrackStatus",
