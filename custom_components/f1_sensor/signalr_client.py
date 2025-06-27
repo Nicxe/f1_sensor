@@ -19,6 +19,8 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from .const import (
     SIGNAL_FLAG_UPDATE,
     SIGNAL_SC_UPDATE,
+    SIGNAL_CONNECTED,
+    SIGNAL_DISCONNECTED,
     SUBSCRIBE_FEEDS,
     NEGOTIATE_URL,
 )
@@ -168,6 +170,7 @@ class F1SignalRClient:
             try:
                 self._ws = await self._connect_once()
                 self.failed = False
+                async_dispatcher_send(self.hass, SIGNAL_CONNECTED)
                 self._set_connected(True)
                 await self._handshake_and_subscribe()
 
@@ -199,6 +202,7 @@ class F1SignalRClient:
                         await hb_task
                 if self._ws:
                     await self._ws.close()
+                    async_dispatcher_send(self.hass, SIGNAL_DISCONNECTED)
                     self._ws = None
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, 300)
