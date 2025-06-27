@@ -14,6 +14,7 @@ from aiohttp import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 
 from .const import (
     SIGNAL_FLAG_UPDATE,
@@ -24,19 +25,18 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-
 HEADERS = {
     "User-Agent": "BestHTTP",
     "Accept-Encoding": "gzip, identity",
     "Accept": "application/json",
 }
 
-# SignalR record separator used to terminate frames
+# SignalR record separator
 RS = "\x1e"
 
 
 def _frame(obj: str | dict) -> str:
-    """Return websocket-ready frame string."""
+    """Return websocket-ready frame string with RS suffix."""
     if isinstance(obj, dict):
         obj = json.dumps(obj, separators=(",", ":"))
     return f"{obj}{RS}"
@@ -57,14 +57,19 @@ class F1SignalRClient:
         self._ws: ClientWebSocketResponse | None = None
         self._task: asyncio.Task | None = None
         self._buf: str = ""
-        self._attempts = 0
         self.connected = False
         self.failed = False
+        self._stop_unsub = hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STOP, self._handle_ha_stop
+        )
+
+    async def _handle_ha_stop(self, _event):
+        await self.stop()
 
     async def start(self) -> None:
         """Start background task to maintain the websocket."""
         if not self._task:
-            self._task = asyncio.create_task(self._run_forever())
+            self._task = asyncio.create_task(self._listen())
 
     async def stop(self) -> None:
         """Stop background task and close websocket."""
@@ -78,24 +83,26 @@ class F1SignalRClient:
             self._ws = None
         self.connected = False
 
-    async def _run_forever(self) -> None:
-        await self._listen()
+    # --------------------------------------------------------------------- #
+    # Low-level connection helpers
+    # --------------------------------------------------------------------- #
 
-    async def _connect_once(self) -> None:
+    async def _connect_once(self) -> ClientWebSocketResponse:
+        """Do negotiate + WebSocket connect, return open WS object."""
         params = {
             "clientProtocol": "1.5",
             "connectionData": '[{"name":"Streaming"}]',
             "tid": random.randint(0, 9),
         }
-        _LOGGER.debug("GET negotiate %s", params)
+        _LOGGER.debug("Negotiate params: %s", params)
         async with self.session.get(
             NEGOTIATE_URL, params=params, headers=HEADERS
         ) as resp:
             resp.raise_for_status()
             nego = await resp.json()
-            _LOGGER.debug("Negotiate response: %s", nego)
+            _LOGGER.debug("Negotiate OK: %s", nego)
             t0_cookie = resp.cookies.get("t0")
-            t0_cookie = t0_cookie.value if t0_cookie else ""
+            cookie_val = t0_cookie.value if t0_cookie else ""
 
         params.update(
             {
@@ -103,24 +110,38 @@ class F1SignalRClient:
                 "connectionToken": nego.get("ConnectionToken"),
             }
         )
-
         ws_url = (
-            "wss://livetiming.formula1.com" + nego.get("Url", "") + "/connect?" +
-            urllib.parse.urlencode(params)
+            "wss://livetiming.formula1.com"
+            + nego.get("Url", "")
+            + "/connect?"
+            + urllib.parse.urlencode(params)
         )
-        _LOGGER.debug("WebSocket connecting to %s", ws_url)
-        headers = HEADERS | {"Cookie": f"t0={t0_cookie}"}
-        self._ws = await self.session.ws_connect(
-            ws_url, headers=headers, autoping=False, heartbeat=30, ssl=False
-        )
-        self.failed = False
+        _LOGGER.debug("WebSocket URL: %s", ws_url)
 
-        # Wait for init frame from server before subscribing
-        init = await self._ws.receive()
-        if init.type is WSMsgType.TEXT and init.data.endswith(RS):
-            _LOGGER.debug("Init from server: %s", init.data.rstrip(RS))
-        else:
-            _LOGGER.warning("Unexpected init frame: %s", init)
+        headers = HEADERS | {"Cookie": f"t0={cookie_val}"}
+        return await self.session.ws_connect(
+            ws_url,
+            headers=headers,
+            autoping=False,  # F1 använder egen ping
+            heartbeat=30,
+            ssl=False,
+        )
+
+    async def _handshake_and_subscribe(self) -> None:
+        """Run the initial server handshake and send Subscribe."""
+        init_msg = await self._ws.receive()
+        if init_msg.type is not WSMsgType.TEXT:
+            raise RuntimeError(f"Unexpected init frame type: {init_msg}")
+
+        raw = init_msg.data.rstrip(RS)
+        try:
+            init_obj = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Init JSON invalid: {raw}") from exc
+
+        if init_obj.get("S") != 1:
+            _LOGGER.warning("Init frame utan S=1: %s", init_obj)
+        _LOGGER.debug("Init OK: C=%s", init_obj.get("C"))
 
         payload = {
             "H": "Streaming",
@@ -129,17 +150,23 @@ class F1SignalRClient:
             "I": 1,
         }
         await self._ws.send_str(_frame(payload))
-        _LOGGER.debug("Sent Subscribe")
-        self._buf = ""
+        _LOGGER.debug("Subscribe sent")
+
+    # --------------------------------------------------------------------- #
+    # Main listen loop
+    # --------------------------------------------------------------------- #
 
     async def _listen(self) -> None:
         retry_delay = 1
         while True:
-            hb_task = None
+            hb_task: asyncio.Task | None = None
             try:
-                await self._connect_once()
+                self._ws = await self._connect_once()
                 self.connected = True
+                await self._handshake_and_subscribe()
+
                 hb_task = asyncio.create_task(self._heartbeat(self._ws))
+
                 async for msg in self._ws:
                     if msg.type == WSMsgType.TEXT:
                         await self._process_text(msg.data)
@@ -149,16 +176,15 @@ class F1SignalRClient:
                         WSMsgType.ERROR,
                     ):
                         break
-                self.connected = False
-                retry_delay = 1
+
             except asyncio.CancelledError:
                 raise
             except ClientError:
-                _LOGGER.exception("SignalR error")
-                self.connected = False
-                await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay * 2, 300)
+                _LOGGER.exception("SignalR client error")
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unhandled SignalR client exception")
             finally:
+                self.connected = False
                 if hb_task:
                     hb_task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
@@ -166,25 +192,35 @@ class F1SignalRClient:
                 if self._ws:
                     await self._ws.close()
                     self._ws = None
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 300)
+
+    # --------------------------------------------------------------------- #
+    # Helpers
+    # --------------------------------------------------------------------- #
 
     async def _process_text(self, text: str) -> None:
+        """Buffer until RS, then parse each frame."""
         self._buf += text
-        if "\x1e" not in self._buf:
+        if RS not in self._buf:
             return
-        frames = self._buf.split("\x1e")
-        self._buf = frames.pop()
+        frames = self._buf.split(RS)
+        self._buf = frames.pop()  # leftover
         for frame in frames:
             if not frame:
                 continue
             try:
                 data = json.loads(frame)
-            except Exception:
+            except json.JSONDecodeError:
+                _LOGGER.debug("Skip non-JSON frame: %s", frame[:50])
                 continue
             await self._handle_frame(data)
 
     async def _handle_frame(self, data: dict) -> None:
+        # Server cursors / keepalives
         if data.get("C") or data.get("S"):
             return
+
         for item in data.get("M", []):
             args = item.get("A", [])
             if len(args) < 2:
