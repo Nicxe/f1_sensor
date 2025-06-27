@@ -7,13 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 import datetime
 
-from .const import (
-    DOMAIN,
-    SIGNAL_FLAG_UPDATE,
-    SIGNAL_SC_UPDATE,
-    SIGNAL_CONNECTED,
-    SIGNAL_DISCONNECTED,
-)
+from .const import DOMAIN, SIGNAL_FLAG_UPDATE, SIGNAL_SC_UPDATE
 from .entity import F1BaseEntity
 from .signalr_client import F1SignalRClient
 
@@ -47,7 +41,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     client = getattr(rc_coord, "_client", None) if rc_coord else None
     if client:
         sensors.append(F1SignalRBinary(client))
-    sensors.append(F1SignalRStatus(hass))
     async_add_entities(sensors, True)
 
 
@@ -160,21 +153,3 @@ class F1SignalRBinary(BinarySensorEntity):
 
     async def async_update(self):
         return
-
-
-class F1SignalRStatus(BinarySensorEntity):
-    _attr_name = "F1 SignalR connected"
-    _attr_icon = "mdi:web"
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._attr_is_on = False
-        async_dispatcher_connect(hass, SIGNAL_CONNECTED, self._set_on)
-        async_dispatcher_connect(hass, SIGNAL_DISCONNECTED, self._set_off)
-
-    def _set_on(self) -> None:
-        self._attr_is_on = True
-        self.async_write_ha_state()
-
-    def _set_off(self) -> None:
-        self._attr_is_on = False
-        self.async_write_ha_state()
