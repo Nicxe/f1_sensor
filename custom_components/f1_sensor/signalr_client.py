@@ -19,10 +19,12 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from .const import (
     SIGNAL_FLAG_UPDATE,
     SIGNAL_SC_UPDATE,
+    SIGNAL_SESSION_UPDATE,
     SUBSCRIBE_FEEDS,
     NEGOTIATE_URL,
     SIGNAL_CONNECTED,
     SIGNAL_DISCONNECTED,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,10 +54,12 @@ class F1SignalRClient:
         hass: HomeAssistant,
         session: ClientSession,
         feeds: List[str] = SUBSCRIBE_FEEDS,
+        entry_id: str | None = None,
     ) -> None:
         self.hass = hass
         self.session = session
         self.feeds = feeds
+        self.entry_id = entry_id
         self._ws: ClientWebSocketResponse | None = None
         self._task: asyncio.Task | None = None
         self._buf: str = ""
@@ -250,8 +254,24 @@ class F1SignalRClient:
             topic, payload = args[0], args[1]
             if topic == "TrackStatus":
                 async_dispatcher_send(self.hass, SIGNAL_FLAG_UPDATE, payload)
+                coord = (
+                    self.hass.data.get(DOMAIN, {})
+                    .get(self.entry_id, {})
+                    .get("track_ws_coordinator")
+                )
+                if coord:
+                    await coord.async_set_updated_data(payload)
             elif topic == "RaceControlMessages":
                 async_dispatcher_send(self.hass, SIGNAL_SC_UPDATE, payload)
+            elif topic == "SessionStatus":
+                async_dispatcher_send(self.hass, SIGNAL_SESSION_UPDATE, payload)
+                coord = (
+                    self.hass.data.get(DOMAIN, {})
+                    .get(self.entry_id, {})
+                    .get("session_status_coordinator")
+                )
+                if coord:
+                    await coord.async_set_updated_data(payload)
 
     async def _heartbeat(self, ws: ClientWebSocketResponse) -> None:
         """Send ping replies to keep the websocket alive."""

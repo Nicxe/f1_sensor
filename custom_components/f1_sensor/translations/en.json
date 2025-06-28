@@ -42,6 +42,9 @@
       },
       "flag_status": {
         "name": "Flag status"
+      },
+      "track_status": {
+        "name": "Track status"
       }
     },
     "binary_sensor": {
@@ -50,6 +53,9 @@
       },
       "safety_car": {
         "name": "Safety car"
+      },
+      "session_active": {
+        "name": "Session active"
       }
     }
   }

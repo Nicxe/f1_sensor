@@ -37,6 +37,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 base,
             )
         )
+    if "session_active" in enabled:
+        sensors.append(
+            F1SessionActiveBinary(
+                data.get("session_status_coordinator"),
+                f"{base}_session_active",
+                f"{entry.entry_id}_session_active",
+                entry.entry_id,
+                base,
+            )
+        )
     rc_coord = data.get("race_control_coordinator")
     client = getattr(rc_coord, "_client", None) if rc_coord else None
     if client:
@@ -131,6 +141,31 @@ class F1SafetyCarSensor(F1BaseEntity, BinarySensorEntity):
     @property
     def state(self):
         return self.is_on
+
+
+class F1SessionActiveBinary(F1BaseEntity, BinarySensorEntity):
+    """Binary sensor that is on when session phase is Green."""
+
+    def __init__(self, coordinator, name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:timer-play"
+
+    @property
+    def is_on(self):
+        phase = str((self.coordinator.data or {}).get("SessionPhase", "")).lower()
+        return phase == "green"
+
+    @property
+    def state(self):
+        return self.is_on
+
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data or {}
+        attrs = {"phase": data.get("SessionPhase")}
+        if "SessionKey" in data:
+            attrs["session_key"] = data.get("SessionKey")
+        return attrs
 
 
 class F1SignalRBinary(BinarySensorEntity):

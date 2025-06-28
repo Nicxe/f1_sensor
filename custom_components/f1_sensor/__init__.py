@@ -2,7 +2,7 @@ import logging
 from datetime import timedelta
 import async_timeout
 
-__version__ = "1.2.0"
+__version__ = "1.4.0"
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -51,9 +51,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if "flag_status" in enabled or "safety_car" in enabled:
         from .race_control_coordinator import RaceControlCoordinator
 
-        race_control_coordinator = RaceControlCoordinator(hass, race_coordinator)
+        race_control_coordinator = RaceControlCoordinator(
+            hass, race_coordinator, entry.entry_id
+        )
         await race_control_coordinator.async_setup_entry()
         await race_control_coordinator.async_config_entry_first_refresh()
+
+    from .realtime_coordinators import (
+        TrackStatusWSCoordinator,
+        SessionStatusCoordinator,
+    )
+
+    track_ws_coordinator = TrackStatusWSCoordinator(hass)
+    session_status_coordinator = SessionStatusCoordinator(hass)
+    await track_ws_coordinator.async_config_entry_first_refresh()
+    await session_status_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "race_coordinator": race_coordinator,
@@ -62,6 +74,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "last_race_coordinator": last_race_coordinator,
         "season_results_coordinator": season_results_coordinator,
         "race_control_coordinator": race_control_coordinator,
+        "track_ws_coordinator": track_ws_coordinator,
+        "session_status_coordinator": session_status_coordinator,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
