@@ -29,7 +29,11 @@ from .race_control import (
 )
 from .track_status_coordinator import TrackStatusCoordinator
 from .signalr_client import F1SignalRClient
-from .const import SIGNAL_FLAG_UPDATE, SIGNAL_SC_UPDATE
+from .const import (
+    SIGNAL_FLAG_UPDATE,
+    SIGNAL_SC_UPDATE,
+    SIGNAL_SESSION_UPDATE,
+)
 from .__init__ import F1DataCoordinator
 
 LOGGER = logging.getLogger(__name__)
