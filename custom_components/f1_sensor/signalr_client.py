@@ -66,13 +66,21 @@ class F1SignalRClient:
         )
 
     def _set_connected(self, value: bool) -> None:
-        if self.connected != value:
-            self.connected = value
-            async_dispatcher_send(self.hass, "f1_signalr_state")
-            if value:
-                async_dispatcher_send(self.hass, SIGNAL_CONNECTED)
-            else:
-                async_dispatcher_send(self.hass, SIGNAL_DISCONNECTED)
+        """Trådsäkert skicka status-signal på huvud-event-loopen."""
+        if self.connected == value:
+            return
+        self.connected = value
+
+        # Skicka f1_signalr_state
+        self.hass.loop.call_soon_threadsafe(
+            async_dispatcher_send, self.hass, "f1_signalr_state"
+        )
+
+        # Skicka connected/disconnected
+        signal = SIGNAL_CONNECTED if value else SIGNAL_DISCONNECTED
+        self.hass.loop.call_soon_threadsafe(
+            async_dispatcher_send, self.hass, signal
+        )
 
     async def _handle_ha_stop(self, _event):
         await self.stop()
