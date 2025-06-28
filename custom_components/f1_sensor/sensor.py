@@ -1,3 +1,4 @@
+import logging
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -18,6 +19,8 @@ from .const import (
     SIGNAL_CONNECTED,
     SIGNAL_DISCONNECTED,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 SYMBOL_CODE_TO_MDI = {
@@ -68,6 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
     enabled = entry.data.get("enabled_sensors", [])
+    _LOGGER.debug("Setting up sensors for entry %s: %s", entry.entry_id, enabled)
 
     mapping = {
         "next_race": (F1NextRaceSensor, data["race_coordinator"]),
@@ -94,6 +98,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                     base,
                 )
             )
+            _LOGGER.debug("Added sensor %s", key)
     async_add_entities(sensors, True)
 
 
@@ -127,6 +132,7 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
             except ValueError:
                 continue
             if dt > now:
+                _LOGGER.debug("Next race found: %s at %s", race.get('raceName'), dt)
                 return race
         return None
 
@@ -344,6 +350,7 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
 
     async def _update_weather(self):
         race = self._get_next_race()
+        _LOGGER.debug("Updating weather for race: %s", race.get('raceName') if race else 'n/a')
         loc = race.get("Circuit", {}).get("Location", {}) if race else {}
         lat, lon = loc.get("lat"), loc.get("long")
         if lat is None or lon is None:
@@ -355,7 +362,8 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
             async with async_timeout.timeout(10):
                 resp = await session.get(url, headers=headers)
                 data = await resp.json()
-        except Exception:
+        except Exception as err:
+            _LOGGER.debug("Weather fetch failed: %s", err)
             return
         times = data.get("properties", {}).get("timeseries", [])
         if not times:
@@ -391,6 +399,7 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
                 race_icon = SYMBOL_CODE_TO_MDI.get(race_symbol, self._attr_icon)
                 self._race["weather_icon"] = race_icon
         self.async_write_ha_state()
+        _LOGGER.debug("Weather updated")
 
     def _extract(self, d):
         wd = d.get("wind_from_direction")
@@ -564,6 +573,7 @@ class F1FlagStatusSensor(F1BaseEntity, SensorEntity):
 
     def _handle_flag(self, data: dict):
         flag = data.get("flag_status") if isinstance(data, dict) else data
+        _LOGGER.debug("Flag status update: %s", flag)
         self._state = str(flag).lower() if flag else None
         if self.hass:
             self.hass.add_job(self.async_write_ha_state)

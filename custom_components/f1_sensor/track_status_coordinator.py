@@ -53,6 +53,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         return
 
     async def _async_update_data(self) -> Dict[str, Any]:
+        LOGGER.debug("Polling TrackStatus stream")
         if self._finished:
             return {"track_status": self._status, "timestamp": self._last_new}
 

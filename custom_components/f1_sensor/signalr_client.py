@@ -74,6 +74,7 @@ class F1SignalRClient:
         if self.connected == value:
             return
         self.connected = value
+        _LOGGER.debug("SignalR connected=%s", value)
 
         # Skicka f1_signalr_state
         self.hass.loop.call_soon_threadsafe(
@@ -252,6 +253,7 @@ class F1SignalRClient:
             if len(args) < 2:
                 continue
             topic, payload = args[0], args[1]
+            _LOGGER.debug("WS frame topic: %s", topic)
             if topic == "TrackStatus":
                 async_dispatcher_send(self.hass, SIGNAL_FLAG_UPDATE, payload)
                 coord = (
@@ -272,6 +274,8 @@ class F1SignalRClient:
                 )
                 if coord:
                     await coord.async_set_updated_data(payload)
+            else:
+                _LOGGER.debug("Unhandled WS topic: %s", topic)
 
     async def _heartbeat(self, ws: ClientWebSocketResponse) -> None:
         """Send ping replies to keep the websocket alive."""

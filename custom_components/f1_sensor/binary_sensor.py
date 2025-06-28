@@ -1,3 +1,4 @@
+import logging
 from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorDeviceClass,
@@ -11,10 +12,13 @@ from .const import DOMAIN, SIGNAL_FLAG_UPDATE, SIGNAL_SC_UPDATE
 from .entity import F1BaseEntity
 from .signalr_client import F1SignalRClient
 
+_LOGGER = logging.getLogger(__name__)
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
     enabled = entry.data.get("enabled_sensors", [])
+    _LOGGER.debug("Setting up binary sensors for entry %s: %s", entry.entry_id, enabled)
 
     sensors = []
     if "race_week" in enabled:
@@ -27,6 +31,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 base,
             )
         )
+        _LOGGER.debug("Added RaceWeek binary sensor")
     if "safety_car" in enabled and data.get("race_control_coordinator"):
         sensors.append(
             F1SafetyCarSensor(
@@ -37,6 +42,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 base,
             )
         )
+        _LOGGER.debug("Added SafetyCar binary sensor")
     if "session_active" in enabled:
         sensors.append(
             F1SessionActiveBinary(
@@ -47,10 +53,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 base,
             )
         )
+        _LOGGER.debug("Added SessionActive binary sensor")
     rc_coord = data.get("race_control_coordinator")
     client = getattr(rc_coord, "_client", None) if rc_coord else None
     if client:
         sensors.append(F1SignalRBinary(client))
+        _LOGGER.debug("Added SignalR status binary sensor")
     async_add_entities(sensors, True)
 
 
@@ -79,6 +87,7 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
             except ValueError:
                 continue
             if dt > now:
+                _LOGGER.debug("Next race found: %s at %s", race.get('raceName'), dt)
                 return dt, race
         return None, None
 
@@ -128,6 +137,7 @@ class F1SafetyCarSensor(F1BaseEntity, BinarySensorEntity):
         )
 
     def _handle_sc_update(self, sc_active: bool):
+        _LOGGER.debug("Safety car update: %s", sc_active)
         self._sc_state = sc_active
         if self.hass:
             self.hass.add_job(self.async_write_ha_state)
@@ -153,6 +163,7 @@ class F1SessionActiveBinary(F1BaseEntity, BinarySensorEntity):
     @property
     def is_on(self):
         phase = str((self.coordinator.data or {}).get("SessionPhase", "")).lower()
+        _LOGGER.debug("Session phase: %s", phase)
         return phase == "green"
 
     @property
@@ -187,7 +198,9 @@ class F1SignalRBinary(BinarySensorEntity):
 
     @property
     def is_on(self) -> bool:
-        return self._client.connected and not self._client.failed
+        state = self._client.connected and not self._client.failed
+        _LOGGER.debug("SignalR connection state: %s", state)
+        return state
 
     async def async_update(self):
         return

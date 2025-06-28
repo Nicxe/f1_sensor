@@ -185,6 +185,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
 
     def _reset_state(self) -> None:
         """Clear stored flag and safety car information."""
+        LOGGER.debug("Resetting race control state")
         self._yellow_sectors.clear()
         self._sc_active = False
         self._vsc_active = False
