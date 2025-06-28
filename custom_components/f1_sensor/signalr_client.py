@@ -170,7 +170,7 @@ class F1SignalRClient:
         payload = {
             "H": "Streaming",
             "M": "Subscribe",
-            "A": [self.feeds],
+            "A": self.feeds,
             "I": 1,
         }
         await self._ws.send_str(_frame(payload))
@@ -181,7 +181,7 @@ class F1SignalRClient:
     # --------------------------------------------------------------------- #
 
     async def _listen(self) -> None:
-        retry_delay = 1
+        retry_delay = 5
         while True:
             hb_task: asyncio.Task | None = None
             try:
@@ -254,6 +254,7 @@ class F1SignalRClient:
             if len(args) < 2:
                 continue
             topic, payload = args[0], args[1]
+            _LOGGER.debug("Mottog topic: %s | Innehåll: %s", topic, payload)
             if isinstance(payload, dict):
                 _LOGGER.debug(
                     "WS frame topic: %s keys: %s", topic, list(payload.keys())

@@ -15,7 +15,6 @@ SUBSCRIBE_FEEDS = [
     "TrackStatus",
     "RaceControlMessages",
     "SessionStatus",
-    "Heartbeat",
 ]
 
 NEGOTIATE_URL = "https://livetiming.formula1.com/signalr/negotiate"

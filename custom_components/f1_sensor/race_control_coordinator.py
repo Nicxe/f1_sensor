@@ -210,6 +210,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         return "GREEN"
 
     async def async_handle_signalr(self, topic: str, payload: Dict[str, Any]) -> None:
+        LOGGER.debug("Mottog topic: %s | Innehåll: %s", topic, payload)
         if topic == "TrackStatus":
             code = payload.get("Status")
             if isinstance(code, str) and code.isdigit():
@@ -228,19 +229,38 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 self._sc_active = False
                 self._vsc_active = False
                 self._red_flag = False
+                self.hass.states.async_set("binary_sensor.f1_safety_car", False)
+                LOGGER.debug("Uppdaterar f1_safety_car till False")
+                self.hass.states.async_set("sensor.f1_flag_status", "Green")
+                LOGGER.debug("Uppdaterar f1_flag_status till Green")
             elif status in ("YELLOW", "DOUBLE_YELLOW"):
                 self._yellow_sectors.add("track")
+                self.hass.states.async_set("sensor.f1_flag_status", "Yellow")
+                LOGGER.debug("Uppdaterar f1_flag_status till Yellow")
             elif status == "SC":
                 self._sc_active = True
+                self.hass.states.async_set("binary_sensor.f1_safety_car", True)
+                LOGGER.debug("Uppdaterar f1_safety_car till True")
+                self.hass.states.async_set("sensor.f1_flag_status", "Safety Car")
+                LOGGER.debug("Uppdaterar f1_flag_status till Safety Car")
             elif status == "VSC":
                 self._vsc_active = True
             elif status == "RED":
                 self._red_flag = True
+                self.hass.states.async_set("sensor.f1_flag_status", "Red")
+                LOGGER.debug("Uppdaterar f1_flag_status till Red")
         elif topic == "RaceControlMessages":
             msgs = payload.get("Messages")
             iterable = msgs.values() if isinstance(msgs, dict) else msgs or []
             for msg in iterable:
                 self._handle_message(msg)
+                text = str(msg.get("Text", "") or msg.get("Message", ""))
+                if "SAFETY CAR DEPLOYED" in text:
+                    self.hass.states.async_set("binary_sensor.f1_safety_car", True)
+                    LOGGER.debug("Uppdaterar f1_safety_car till True")
+                if "SAFETY CAR IN THIS LAP" in text:
+                    self.hass.states.async_set("binary_sensor.f1_safety_car", False)
+                    LOGGER.debug("Uppdaterar f1_safety_car till False")
         elif topic == "SessionStatus":
             status = str(payload.get("Status", "")).upper()
             if status in {"FINISHED", "STOPPED", "CHEQUERED", "CLOSED"}:

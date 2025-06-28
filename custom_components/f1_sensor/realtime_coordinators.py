@@ -22,6 +22,7 @@ class TrackStatusWSCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             update_interval=None,
         )
         self.data: Dict[str, Any] | None = None
+        self._client = None
 
     async def _async_update_data(self) -> Dict[str, Any] | None:
         return self.data
@@ -30,6 +31,8 @@ class TrackStatusWSCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         """Cleanup when integration entry is unloaded."""
         self._async_unsub_refresh()
         self._async_unsub_shutdown()
+        if self._client:
+            await self._client.stop()
 
 
 class SessionStatusCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
@@ -43,6 +46,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             update_interval=None,
         )
         self.data: Dict[str, Any] | None = None
+        self._client = None
 
     async def _async_update_data(self) -> Dict[str, Any] | None:
         return self.data
@@ -51,3 +55,5 @@ class SessionStatusCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         """Cleanup when integration entry is unloaded."""
         self._async_unsub_refresh()
         self._async_unsub_shutdown()
+        if self._client:
+            await self._client.stop()
