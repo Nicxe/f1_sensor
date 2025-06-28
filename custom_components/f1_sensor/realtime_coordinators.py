@@ -28,7 +28,8 @@ class TrackStatusWSCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
     async def async_close(self, *_: Any) -> None:  # pragma: no cover - placeholder
         """Cleanup when integration entry is unloaded."""
-        return
+        self._async_unsub_refresh()
+        self._async_unsub_shutdown()
 
 
 class SessionStatusCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
@@ -48,4 +49,5 @@ class SessionStatusCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
     async def async_close(self, *_: Any) -> None:  # pragma: no cover - placeholder
         """Cleanup when integration entry is unloaded."""
-        return
+        self._async_unsub_refresh()
+        self._async_unsub_shutdown()

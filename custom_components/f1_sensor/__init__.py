@@ -115,8 +115,9 @@ class F1DataCoordinator(DataUpdateCoordinator):
         self._url = url
 
     async def async_close(self, *_):
-        """Placeholder for future cleanup."""
-        return
+        """Cancel pending refresh operations when unloading."""
+        self._async_unsub_refresh()
+        self._async_unsub_shutdown()
 
     async def _async_update_data(self):
         """Fetch data from the F1 API."""

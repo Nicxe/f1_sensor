@@ -113,6 +113,8 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         for unsub in self._remove_callbacks:
             unsub()
         self._remove_callbacks.clear()
+        self._async_unsub_refresh()
+        self._async_unsub_shutdown()
         if self._client:
             await self._client.stop()
         if self._track:

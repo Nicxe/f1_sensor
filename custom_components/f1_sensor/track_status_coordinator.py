@@ -50,7 +50,9 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
     }
 
     async def async_close(self, *_: Any) -> None:  # pragma: no cover - placeholder
-        return
+        """Cancel pending refreshes when unloading."""
+        self._async_unsub_refresh()
+        self._async_unsub_shutdown()
 
     async def _async_update_data(self) -> Dict[str, Any]:
         LOGGER.debug("Polling TrackStatus stream")
