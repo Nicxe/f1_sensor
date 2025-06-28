@@ -7,3 +7,4 @@
 - SignalR live-feed + fallback.
 - Fix incorrect signalrcore-async version in manifest.
 - Avoid blocking call in SignalR client by skipping negotiation.
+- Add SignalR coordinators and sensors for track status and session activity.

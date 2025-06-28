@@ -31,6 +31,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     "race_week",
                     "flag_status",
                     "safety_car",
+                    "track_status",
+                    "session_active",
                 ]
             ): cv.multi_select({
                 "next_race": "Next race",
@@ -43,6 +45,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 "race_week": "Race week",
                 "flag_status": "Flag status",
                 "safety_car": "Safety car",
+                "track_status": "Track status",
+                "session_active": "Session active",
             }),
         })
 
@@ -79,6 +83,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     "race_week",
                     "flag_status",
                     "safety_car",
+                    "track_status",
+                    "session_active",
                 ])
             ): cv.multi_select({
                 "next_race": "Next race",
@@ -91,6 +97,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 "race_week": "Race week",
                 "flag_status": "Flag status",
                 "safety_car": "Safety car",
+                "track_status": "Track status",
+                "session_active": "Session active",
             }),
         })
 

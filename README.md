@@ -26,6 +26,8 @@ This integration **does not provide any UI components**. Instead, it creates:
 - `binary_sensor.f1_race_week`: A native binary sensor that returns `on` if it's currently race week.
 - `sensor.f1_flag_status`: Current track flag. Attributes include `yellow_sectors` and `vsc_active`.
 - `binary_sensor.f1_safety_car`: Indicates if the safety car or virtual safety car is active.
+- `sensor.f1_track_status`: Raw TrackStatus code with per-sector flags.
+- `binary_sensor.f1_session_active`: Becomes `on` when the session phase is Green.
 
 Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In addition, a `_local` variant such as `race_start_local` is available. These values use the circuit's timezone so you can easily create automations at the correct local time.
 

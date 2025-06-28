@@ -6,6 +6,10 @@ SIGNAL_FLAG_UPDATE = "f1sensor_flag_update"
 SIGNAL_SC_UPDATE = "f1sensor_safety_car_update"
 SIGNAL_CONNECTED = "f1sensor_connected"
 SIGNAL_DISCONNECTED = "f1sensor_disconnected"
+SIGNAL_SESSION_UPDATE = "f1sensor_session_update"
+
+DOMAIN_TRACK_STATUS = "f1_track_status"
+DOMAIN_SESSION_ACTIVE = "f1_session_active"
 
 SUBSCRIBE_FEEDS = [
     "TrackStatus",

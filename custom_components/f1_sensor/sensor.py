@@ -78,6 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
         "flag_status": (F1FlagStatusSensor, data.get("race_control_coordinator")),
+        "track_status": (F1TrackStatusSensor, data.get("track_ws_coordinator")),
     }
 
     sensors = []
@@ -587,6 +588,38 @@ class F1FlagStatusSensor(F1BaseEntity, SensorEntity):
         if data.get("yellow_sectors"):
             attrs["yellow_sectors"] = data.get("yellow_sectors")
         return attrs
+
+
+class F1TrackStatusSensor(F1BaseEntity, SensorEntity):
+    """Raw TrackStatus feed with sector flags."""
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:flag-outline"
+
+    @property
+    def state(self):
+        data = self.coordinator.data or {}
+        code = data.get("Status")
+        if isinstance(code, str) and code.isdigit():
+            code = int(code)
+        return code
+
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data or {}
+        sectors = data.get("Sectors") or data.get("Segments") or {}
+        attr = {
+            "sector_flags": {
+                "sector1": sectors.get("1") or sectors.get("Sector1"),
+                "sector2": sectors.get("2") or sectors.get("Sector2"),
+                "sector3": sectors.get("3") or sectors.get("Sector3"),
+            },
+        }
+        ts = data.get("Utc") or data.get("UtcTime") or data.get("Timestamp")
+        if ts:
+            attr["timestamp"] = ts
+        return attr
 
 
 

@@ -39,7 +39,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     """Coordinator for F1 Race Control messages and TrackStatus."""
 
     def __init__(
-        self, hass: HomeAssistant, race_coordinator: F1DataCoordinator
+        self, hass: HomeAssistant, race_coordinator: F1DataCoordinator, entry_id: str
     ) -> None:
         super().__init__(
             hass,
@@ -48,6 +48,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=5),
         )
         self._session = async_get_clientsession(hass)
+        self._entry_id = entry_id
         self._race_coordinator = race_coordinator
         self._yellow_sectors: set[str] = set()
         self._sc_active = False
@@ -69,7 +70,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._remove_callbacks: list[callable] = []
 
     async def async_setup_entry(self) -> None:
-        self._client = F1SignalRClient(self.hass, self._session)
+        self._client = F1SignalRClient(self.hass, self._session, entry_id=self._entry_id)
         unsub_flag = async_dispatcher_connect(
             self.hass,
             SIGNAL_FLAG_UPDATE,
@@ -87,6 +88,15 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             ),
         )
         self._remove_callbacks.append(unsub_sc)
+
+        unsub_sess = async_dispatcher_connect(
+            self.hass,
+            SIGNAL_SESSION_UPDATE,
+            lambda data: asyncio.create_task(
+                self.async_handle_signalr("SessionStatus", data)
+            ),
+        )
+        self._remove_callbacks.append(unsub_sess)
 
         async def _launch_signalr(_):
             LOGGER.debug("SignalR: calling start()")
