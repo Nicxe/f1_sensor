@@ -241,6 +241,7 @@ class F1SignalRClient:
             except json.JSONDecodeError:
                 _LOGGER.debug("Skip non-JSON frame: %s", frame[:50])
                 continue
+            _LOGGER.debug("Received update for topics: %s", list(data.keys()))
             await self._handle_frame(data)
 
     async def _handle_frame(self, data: dict) -> None:
@@ -253,7 +254,12 @@ class F1SignalRClient:
             if len(args) < 2:
                 continue
             topic, payload = args[0], args[1]
-            _LOGGER.debug("WS frame topic: %s", topic)
+            if isinstance(payload, dict):
+                _LOGGER.debug(
+                    "WS frame topic: %s keys: %s", topic, list(payload.keys())
+                )
+            else:
+                _LOGGER.debug("WS frame topic: %s", topic)
             if topic == "TrackStatus":
                 async_dispatcher_send(self.hass, SIGNAL_FLAG_UPDATE, payload)
                 coord = (
@@ -262,7 +268,7 @@ class F1SignalRClient:
                     .get("track_ws_coordinator")
                 )
                 if coord:
-                    await coord.async_set_updated_data(payload)
+                    coord.async_set_updated_data(payload)
             elif topic == "RaceControlMessages":
                 async_dispatcher_send(self.hass, SIGNAL_SC_UPDATE, payload)
             elif topic == "SessionStatus":
@@ -273,7 +279,7 @@ class F1SignalRClient:
                     .get("session_status_coordinator")
                 )
                 if coord:
-                    await coord.async_set_updated_data(payload)
+                    coord.async_set_updated_data(payload)
             else:
                 _LOGGER.debug("Unhandled WS topic: %s", topic)
 
