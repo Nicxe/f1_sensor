@@ -19,7 +19,6 @@ import async_timeout
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .race_control import (
     _get_year_index,
@@ -29,7 +28,11 @@ from .race_control import (
 )
 from .track_status_coordinator import TrackStatusCoordinator
 from .signalr_client import F1SignalRClient
-from .const import SIGNAL_FLAG_UPDATE, SIGNAL_SC_UPDATE
+from .const import (
+    SIGNAL_FLAG_UPDATE,
+    SIGNAL_SC_UPDATE,
+    SIGNAL_SESSION_UPDATE,
+)
 from .__init__ import F1DataCoordinator
 
 LOGGER = logging.getLogger(__name__)
@@ -181,6 +184,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
 
     def _reset_state(self) -> None:
         """Clear stored flag and safety car information."""
+        LOGGER.debug("Resetting race control state")
         self._yellow_sectors.clear()
         self._sc_active = False
         self._vsc_active = False

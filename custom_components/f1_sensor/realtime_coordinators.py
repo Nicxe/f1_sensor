@@ -26,6 +26,10 @@ class TrackStatusWSCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     async def _async_update_data(self) -> Dict[str, Any] | None:
         return self.data
 
+    async def async_close(self, *_: Any) -> None:  # pragma: no cover - placeholder
+        """Cleanup when integration entry is unloaded."""
+        return
+
 
 class SessionStatusCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     """Expose the latest SessionStatus payload from SignalR."""
@@ -41,3 +45,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
     async def _async_update_data(self) -> Dict[str, Any] | None:
         return self.data
+
+    async def async_close(self, *_: Any) -> None:  # pragma: no cover - placeholder
+        """Cleanup when integration entry is unloaded."""
+        return
