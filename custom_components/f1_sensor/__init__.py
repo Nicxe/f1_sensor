@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta, datetime, timezone
+import json
 import async_timeout
 
 from homeassistant.config_entries import ConfigEntry
@@ -91,7 +92,8 @@ class F1DataCoordinator(DataUpdateCoordinator):
                 async with self._session.get(self._url) as response:
                     if response.status != 200:
                         raise UpdateFailed(f"Error fetching data: {response.status}")
-                    return await response.json()
+                    text = await response.text()
+                    return json.loads(text.lstrip("\ufeff"))
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}") from err
 
@@ -122,7 +124,8 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
                         return self.data
                     if response.status != 200:
                         raise UpdateFailed(f"Error fetching data: {response.status}")
-                    return await response.json()
+                    text = await response.text()
+                    return json.loads(text.lstrip("\ufeff"))
         except Exception as err:
             _LOGGER.warning("Error fetching index: %s", err)
             return self.data
