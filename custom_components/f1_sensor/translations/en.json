@@ -40,6 +40,13 @@
       "season_results": {
         "name": "Season results"
       }
+      ,
+      "next_session": {
+        "name": "Next session"
+      },
+      "race_control": {
+        "name": "Race control"
+      }
     },
     "binary_sensor": {
       "race_week": {
