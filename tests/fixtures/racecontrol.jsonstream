@@ -1,0 +1,2 @@
+00: 13: 07.973{"Messages": [{"Utc": "2025-06-29T12:20:01", "Lap": 1, "Category": "Flag", "Flag": "GREEN", "Scope": "Track", "Message": "GREEN LIGHT - PIT EXIT OPEN"}]}
+00: 13: 42.880{"Messages": {"3": {"Utc": "2025-06-29T12:20:36", "Lap": 1, "Category": "Flag", "Flag": "CLEAR", "Scope": "Sector", "Sector": 3, "Message": "CLEAR IN TRACK SECTOR 3"}}}

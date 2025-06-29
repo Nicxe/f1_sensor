@@ -29,6 +29,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     "last_race_results",
                     "season_results",
                     "race_week",
+                    "next_session",
+                    "race_control",
                 ]
             ): cv.multi_select({
                 "next_race": "Next race",
@@ -39,7 +41,11 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 "last_race_results": "Last race results",
                 "season_results": "Season results",
                 "race_week": "Race week",
+                "next_session": "Next session",
+                "race_control": "Race control",
             }),
+            vol.Optional("enable_race_control", default=True): cv.boolean,
+            vol.Optional("fast_poll_seconds", default=5): cv.positive_int,
         })
 
         return self.async_show_form(
@@ -73,6 +79,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     "last_race_results",
                     "season_results",
                     "race_week",
+                    "next_session",
+                    "race_control",
                 ])
             ): cv.multi_select({
                 "next_race": "Next race",
@@ -83,7 +91,11 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 "last_race_results": "Last race results",
                 "season_results": "Season results",
                 "race_week": "Race week",
+                "next_session": "Next session",
+                "race_control": "Race control",
             }),
+            vol.Optional("enable_race_control", default=current.get("enable_race_control", True)): cv.boolean,
+            vol.Optional("fast_poll_seconds", default=current.get("fast_poll_seconds", 5)): cv.positive_int,
         })
 
         return self.async_show_form(
