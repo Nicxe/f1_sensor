@@ -1,0 +1,5 @@
+[
+  {"Category": "SafetyCar", "Mode": "SAFETY CAR", "Status": "DEPLOYED"},
+  {"Category": "SafetyCar", "Mode": "SAFETY CAR", "Status": "ENDING"},
+  {"Category": "SafetyCar", "Mode": "SAFETY CAR", "Status": "ENDED"}
+]

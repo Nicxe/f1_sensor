@@ -1,8 +1,9 @@
+import importlib.util
+import json
 import sys
 import types
-import json
 from pathlib import Path
-import importlib.util
+
 import pytest
 
 
@@ -59,13 +60,17 @@ def load_module(text):
     helpers.aiohttp_client = aiohttp_client
     homeassistant.helpers = helpers
     config_entries = types.ModuleType("homeassistant.config_entries")
+
     class ConfigEntry:
         pass
+
     config_entries.ConfigEntry = ConfigEntry
     homeassistant.config_entries = config_entries
     core = types.ModuleType("homeassistant.core")
+
     class HomeAssistant:
         pass
+
     core.HomeAssistant = HomeAssistant
     homeassistant.core = core
 
@@ -94,4 +99,3 @@ async def test_index_with_bom():
     coord = module.LiveSessionCoordinator(object(), 2025)
     result = await coord._async_update_data()
     assert result == json.loads(text.lstrip("\ufeff"))
-
