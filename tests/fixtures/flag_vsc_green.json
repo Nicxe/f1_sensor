@@ -1,0 +1,5 @@
+[
+  {"Category": "Flag", "Flag": "YELLOW", "Scope": "Sector", "Sector": 1},
+  {"Category": "SafetyCar", "Mode": "VIRTUAL SAFETY CAR", "Status": "DEPLOYED"},
+  {"Category": "Flag", "Flag": "GREEN", "Scope": "Track"}
+]

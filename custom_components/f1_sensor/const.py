@@ -3,9 +3,13 @@ PLATFORMS = ["sensor", "binary_sensor"]
 
 API_URL = "https://api.jolpi.ca/ergast/f1/current.json"
 DRIVER_STANDINGS_URL = "https://api.jolpi.ca/ergast/f1/current/driverstandings.json"
-CONSTRUCTOR_STANDINGS_URL = "https://api.jolpi.ca/ergast/f1/current/constructorstandings.json"
+CONSTRUCTOR_STANDINGS_URL = (
+    "https://api.jolpi.ca/ergast/f1/current/constructorstandings.json"
+)
 LAST_RACE_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/last/results.json"
 SEASON_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/results.json?limit=100"
 
 LIVETIMING_INDEX_URL = "https://livetiming.formula1.com/static/{year}/Index.json"
-RACE_CONTROL_URL = "https://livetiming.formula1.com/static/{path}RaceControlMessages.jsonStream"
+RACE_CONTROL_URL = (
+    "https://livetiming.formula1.com/static/{path}RaceControlMessages.jsonStream"
+)

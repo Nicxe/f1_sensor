@@ -1,42 +1,53 @@
-import logging
-from datetime import timedelta, datetime, timezone
 import json
-import async_timeout
+import logging
+from datetime import datetime, timedelta, timezone
 
+import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
-    DOMAIN,
-    PLATFORMS,
     API_URL,
-    DRIVER_STANDINGS_URL,
     CONSTRUCTOR_STANDINGS_URL,
+    DOMAIN,
+    DRIVER_STANDINGS_URL,
     LAST_RACE_RESULTS_URL,
-    SEASON_RESULTS_URL,
     LIVETIMING_INDEX_URL,
+    PLATFORMS,
     RACE_CONTROL_URL,
+    SEASON_RESULTS_URL,
 )
-from .helpers import find_next_session, to_utc, parse_racecontrol
+from .helpers import find_next_session, parse_racecontrol, to_utc
 
 _LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up integration via config flow."""
     race_coordinator = F1DataCoordinator(hass, API_URL, "F1 Race Data Coordinator")
-    driver_coordinator = F1DataCoordinator(hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator")
-    constructor_coordinator = F1DataCoordinator(hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator")
-    last_race_coordinator = F1DataCoordinator(hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator")
-    season_results_coordinator = F1DataCoordinator(hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator")
+    driver_coordinator = F1DataCoordinator(
+        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator"
+    )
+    constructor_coordinator = F1DataCoordinator(
+        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator"
+    )
+    last_race_coordinator = F1DataCoordinator(
+        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator"
+    )
+    season_results_coordinator = F1DataCoordinator(
+        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator"
+    )
     year = datetime.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year)
     enable_rc = entry.data.get("enable_race_control", True)
     fast_seconds = entry.data.get("fast_poll_seconds", 5)
     race_control_coordinator = None
     if enable_rc:
-        race_control_coordinator = RaceControlCoordinator(hass, session_coordinator, fast_seconds)
+        race_control_coordinator = RaceControlCoordinator(
+            hass, session_coordinator, fast_seconds
+        )
 
     await race_coordinator.async_config_entry_first_refresh()
     await driver_coordinator.async_config_entry_first_refresh()
@@ -60,6 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
@@ -67,6 +79,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for coordinator in data.values():
             await coordinator.async_close()
     return unload_ok
+
 
 class F1DataCoordinator(DataUpdateCoordinator):
     """Handles updates from a given F1 endpoint."""
@@ -134,7 +147,12 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
 class RaceControlCoordinator(DataUpdateCoordinator):
     """Coordinator for race control messages."""
 
-    def __init__(self, hass: HomeAssistant, session_coord: LiveSessionCoordinator, fast_seconds: int = 5):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: LiveSessionCoordinator,
+        fast_seconds: int = 5,
+    ):
         super().__init__(
             hass,
             _LOGGER,
@@ -154,7 +172,11 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         start = to_utc(session.get("StartDate"), session.get("GmtOffset"))
         end = to_utc(session.get("EndDate"), session.get("GmtOffset"))
         now = datetime.utcnow().replace(tzinfo=timezone.utc)
-        if start and end and start - timedelta(hours=1) <= now <= end + timedelta(hours=2):
+        if (
+            start
+            and end
+            and start - timedelta(hours=1) <= now <= end + timedelta(hours=2)
+        ):
             if self.update_interval != self._fast:
                 self.update_interval = self._fast
         elif self._last_message:
@@ -195,4 +217,3 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         if msg:
             self._last_message = msg
         return self._last_message
-
