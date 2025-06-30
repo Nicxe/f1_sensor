@@ -1,58 +1,36 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "F1 Sensor setup",
-        "data": {
-          "sensor_name": "Device name",
-          "enabled_sensors": "Enabled sensors"
+    "config": {
+        "step": {
+            "user": {
+                "title": "F1 Sensor setup",
+                "data": {
+                    "sensor_name": "Device name",
+                    "enabled_sensors": "Enabled sensors",
+                },
+            },
+            "reconfigure": {
+                "title": "Reconfigure F1 Sensor",
+                "data": {
+                    "sensor_name": "Device name",
+                    "enabled_sensors": "Enabled sensors",
+                },
+            },
         }
-      },
-      "reconfigure": {
-        "title": "Reconfigure F1 Sensor",
-        "data": {
-          "sensor_name": "Device name",
-          "enabled_sensors": "Enabled sensors"
-        }
-      }
-    }
-  },
-  "entity": {
-    "sensor": {
-      "next_race": {
-        "name": "Next race"
-      },
-      "current_season": {
-        "name": "Current season"
-      },
-      "driver_standings": {
-        "name": "Driver standings"
-      },
-      "constructor_standings": {
-        "name": "Constructor standings"
-      },
-      "weather": {
-        "name": "Weather"
-      },
-      "last_race_results": {
-        "name": "Last race results"
-      },
-      "season_results": {
-        "name": "Season results"
-      }
-      ,
-      "next_session": {
-        "name": "Next session"
-      },
-      "race_control": {
-        "name": "Race control"
-      }
     },
-    "binary_sensor": {
-      "race_week": {
-        "name": "Race week"
-      }
-    }
-  }
+    "entity": {
+        "sensor": {
+            "next_race": {"name": "Next race"},
+            "current_season": {"name": "Current season"},
+            "driver_standings": {"name": "Driver standings"},
+            "constructor_standings": {"name": "Constructor standings"},
+            "weather": {"name": "Weather"},
+            "last_race_results": {"name": "Last race results"},
+            "season_results": {"name": "Season results"},
+            "next_session": {"name": "Next session"},
+            "race_control": {"name": "Race control"},
+            "flag": {"name": "Flag"},
+            "safety_car": {"name": "Safety car"},
+        },
+        "binary_sensor": {"race_week": {"name": "Race week"}},
+    },
 }
-

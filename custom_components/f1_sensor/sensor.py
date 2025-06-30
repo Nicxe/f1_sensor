@@ -1,21 +1,16 @@
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from .entity import F1BaseEntity
-import async_timeout
 import datetime
-import json
-from dateutil import parser as dtparser
-from homeassistant.util import dt as dt_util
-from timezonefinder import TimezoneFinder
 from zoneinfo import ZoneInfo
 
+import async_timeout
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from timezonefinder import TimezoneFinder
 
 from .const import DOMAIN
-from .helpers import find_next_session, parse_racecontrol
-
+from .entity import F1BaseEntity
+from .helpers import find_next_session
 
 SYMBOL_CODE_TO_MDI = {
     "clearsky_day": "mdi:weather-sunny",
@@ -60,7 +55,10 @@ SYMBOL_CODE_TO_MDI = {
     "lightssnowshowersandthunder_night": "mdi:weather-lightning-snowy",
 }
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
+):
     """Create sensors when integration is added."""
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
@@ -70,12 +68,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         "next_race": (F1NextRaceSensor, data["race_coordinator"]),
         "current_season": (F1CurrentSeasonSensor, data["race_coordinator"]),
         "driver_standings": (F1DriverStandingsSensor, data["driver_coordinator"]),
-        "constructor_standings": (F1ConstructorStandingsSensor, data["constructor_coordinator"]),
+        "constructor_standings": (
+            F1ConstructorStandingsSensor,
+            data["constructor_coordinator"],
+        ),
         "weather": (F1WeatherSensor, data["race_coordinator"]),
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
         "next_session": (F1NextSessionSensor, data.get("session_coordinator")),
         "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
+        "flag": (F1FlagSensor, data.get("race_control_coordinator")),
     }
 
     sensors = []
@@ -181,11 +183,21 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
         sprint = race.get("Sprint", {})
 
         race_start = self.combine_date_time(race.get("date"), race.get("time"))
-        first_start = self.combine_date_time(first_practice.get("date"), first_practice.get("time"))
-        second_start = self.combine_date_time(second_practice.get("date"), second_practice.get("time"))
-        third_start = self.combine_date_time(third_practice.get("date"), third_practice.get("time"))
-        qual_start = self.combine_date_time(qualifying.get("date"), qualifying.get("time"))
-        sprint_quali_start = self.combine_date_time(sprint_qualifying.get("date"), sprint_qualifying.get("time"))
+        first_start = self.combine_date_time(
+            first_practice.get("date"), first_practice.get("time")
+        )
+        second_start = self.combine_date_time(
+            second_practice.get("date"), second_practice.get("time")
+        )
+        third_start = self.combine_date_time(
+            third_practice.get("date"), third_practice.get("time")
+        )
+        qual_start = self.combine_date_time(
+            qualifying.get("date"), qualifying.get("time")
+        )
+        sprint_quali_start = self.combine_date_time(
+            sprint_qualifying.get("date"), sprint_qualifying.get("time")
+        )
         sprint_start = self.combine_date_time(sprint.get("date"), sprint.get("time"))
 
         return {
@@ -193,7 +205,6 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
             "round": race.get("round"),
             "race_name": race.get("raceName"),
             "race_url": race.get("url"),
-
             "circuit_id": circuit.get("circuitId"),
             "circuit_name": circuit.get("circuitName"),
             "circuit_url": circuit.get("url"),
@@ -202,7 +213,6 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
             "circuit_locality": loc.get("locality"),
             "circuit_country": loc.get("country"),
             "circuit_timezone": timezone,
-
             "race_start": race_start,
             "race_start_local": self._to_local(race_start, timezone),
             "first_practice_start": first_start,
@@ -214,7 +224,9 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
             "qualifying_start": qual_start,
             "qualifying_start_local": self._to_local(qual_start, timezone),
             "sprint_qualifying_start": sprint_quali_start,
-            "sprint_qualifying_start_local": self._to_local(sprint_quali_start, timezone),
+            "sprint_qualifying_start_local": self._to_local(
+                sprint_quali_start, timezone
+            ),
             "sprint_start": sprint_start,
             "sprint_start_local": self._to_local(sprint_start, timezone),
         }
@@ -236,10 +248,7 @@ class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         table = (self.coordinator.data or {}).get("MRData", {}).get("RaceTable", {})
-        return {
-            "season": table.get("season"),
-            "races": table.get("Races", [])
-        }
+        return {"season": table.get("season"), "races": table.get("Races", [])}
 
 
 class F1DriverStandingsSensor(F1BaseEntity, SensorEntity):
@@ -251,19 +260,29 @@ class F1DriverStandingsSensor(F1BaseEntity, SensorEntity):
 
     @property
     def state(self):
-        lists = (self.coordinator.data or {}).get("MRData", {}).get("StandingsTable", {}).get("StandingsLists", [])
+        lists = (
+            (self.coordinator.data or {})
+            .get("MRData", {})
+            .get("StandingsTable", {})
+            .get("StandingsLists", [])
+        )
         return len(lists[0].get("DriverStandings", [])) if lists else 0
 
     @property
     def extra_state_attributes(self):
-        lists = (self.coordinator.data or {}).get("MRData", {}).get("StandingsTable", {}).get("StandingsLists", [])
+        lists = (
+            (self.coordinator.data or {})
+            .get("MRData", {})
+            .get("StandingsTable", {})
+            .get("StandingsLists", [])
+        )
         if not lists:
             return {}
         first = lists[0]
         return {
             "season": first.get("season"),
             "round": first.get("round"),
-            "driver_standings": first.get("DriverStandings", [])
+            "driver_standings": first.get("DriverStandings", []),
         }
 
 
@@ -276,19 +295,29 @@ class F1ConstructorStandingsSensor(F1BaseEntity, SensorEntity):
 
     @property
     def state(self):
-        lists = (self.coordinator.data or {}).get("MRData", {}).get("StandingsTable", {}).get("StandingsLists", [])
+        lists = (
+            (self.coordinator.data or {})
+            .get("MRData", {})
+            .get("StandingsTable", {})
+            .get("StandingsLists", [])
+        )
         return len(lists[0].get("ConstructorStandings", [])) if lists else 0
 
     @property
     def extra_state_attributes(self):
-        lists = (self.coordinator.data or {}).get("MRData", {}).get("StandingsTable", {}).get("StandingsLists", [])
+        lists = (
+            (self.coordinator.data or {})
+            .get("MRData", {})
+            .get("StandingsTable", {})
+            .get("StandingsLists", [])
+        )
         if not lists:
             return {}
         first = lists[0]
         return {
             "season": first.get("season"),
             "round": first.get("round"),
-            "constructor_standings": first.get("ConstructorStandings", [])
+            "constructor_standings": first.get("ConstructorStandings", []),
         }
 
 
@@ -303,7 +332,9 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(lambda: self.hass.async_create_task(self._update_weather()))
+        removal = self.coordinator.async_add_listener(
+            lambda: self.hass.async_create_task(self._update_weather())
+        )
         self.async_on_remove(removal)
         await self._update_weather()
 
@@ -359,23 +390,42 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
             return
         curr = times[0].get("data", {}).get("instant", {}).get("details", {})
         self._current = self._extract(curr)
-        current_symbol = times[0] \
-            .get("data", {}) \
-            .get("next_1_hours", {}) \
-            .get("summary", {}) \
+        current_symbol = (
+            times[0]
+            .get("data", {})
+            .get("next_1_hours", {})
+            .get("summary", {})
             .get("symbol_code")
+        )
         current_icon = SYMBOL_CODE_TO_MDI.get(current_symbol, self._attr_icon)
         self._attr_icon = current_icon
-        start_iso = self._combine_date_time(race.get("date"), race.get("time")) if race else None
+        start_iso = (
+            self._combine_date_time(race.get("date"), race.get("time"))
+            if race
+            else None
+        )
         self._race = {k: None for k in self._current}
         if start_iso:
             start_dt = datetime.datetime.fromisoformat(start_iso)
-            same_day = [t for t in times if datetime.datetime.fromisoformat(t["time"]).date() == start_dt.date()]
+            same_day = [
+                t
+                for t in times
+                if datetime.datetime.fromisoformat(t["time"]).date() == start_dt.date()
+            ]
             if same_day:
-                closest = min(same_day, key=lambda t: abs(datetime.datetime.fromisoformat(t["time"]) - start_dt))
+                closest = min(
+                    same_day,
+                    key=lambda t: abs(
+                        datetime.datetime.fromisoformat(t["time"]) - start_dt
+                    ),
+                )
                 data_entry = closest.get("data", {})
                 instant_details = data_entry.get("instant", {}).get("details", {})
-                precip_1h = data_entry.get("next_1_hours", {}).get("details", {}).get("precipitation_amount", 0)
+                precip_1h = (
+                    data_entry.get("next_1_hours", {})
+                    .get("details", {})
+                    .get("precipitation_amount", 0)
+                )
                 rd = dict(instant_details)
                 rd["precipitation_amount"] = precip_1h
                 self._race = self._extract(rd)
@@ -404,16 +454,36 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
             "wind_speed_unit": "m/s",
             "wind_direction": self._abbr(wd),
             "wind_from_direction_degrees": wd,
-            "wind_from_direction_unit": "degrees"
+            "wind_from_direction_unit": "degrees",
         }
 
     def _abbr(self, deg):
         if deg is None:
             return None
-        dirs = [(i*22.5, d) for i, d in enumerate([
-            "N","NNE","NE","ENE","E","ESE","SE","SSE",
-            "S","SSW","SW","WSW","W","WNW","NW","NNW","N"
-        ])]
+        dirs = [
+            (i * 22.5, d)
+            for i, d in enumerate(
+                [
+                    "N",
+                    "NNE",
+                    "NE",
+                    "ENE",
+                    "E",
+                    "ESE",
+                    "SE",
+                    "SSE",
+                    "S",
+                    "SSW",
+                    "SW",
+                    "WSW",
+                    "W",
+                    "WNW",
+                    "NW",
+                    "NNW",
+                    "N",
+                ]
+            )
+        ]
         return min(dirs, key=lambda x: abs(deg - x[0]))[1]
 
     @property
@@ -436,7 +506,11 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
 
     @property
     def state(self):
-        races = self.coordinator.data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+        races = (
+            self.coordinator.data.get("MRData", {})
+            .get("RaceTable", {})
+            .get("Races", [])
+        )
         if not races:
             return None
         results = races[0].get("Results", [])
@@ -445,7 +519,11 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        races = self.coordinator.data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+        races = (
+            self.coordinator.data.get("MRData", {})
+            .get("RaceTable", {})
+            .get("Races", [])
+        )
         if not races:
             return {}
         race = races[0]
@@ -465,14 +543,14 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
                 "constructor": {
                     "constructorId": r.get("Constructor", {}).get("constructorId"),
                     "name": r.get("Constructor", {}).get("name"),
-                }
+                },
             }
 
         results = [_clean_result(r) for r in race.get("Results", [])]
         return {
             "round": race.get("round"),
             "race_name": race.get("raceName"),
-            "results": results
+            "results": results,
         }
 
 
@@ -485,12 +563,20 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
 
     @property
     def state(self):
-        races = self.coordinator.data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+        races = (
+            self.coordinator.data.get("MRData", {})
+            .get("RaceTable", {})
+            .get("Races", [])
+        )
         return len(races)
 
     @property
     def extra_state_attributes(self):
-        races = self.coordinator.data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+        races = (
+            self.coordinator.data.get("MRData", {})
+            .get("RaceTable", {})
+            .get("Races", [])
+        )
 
         def _clean_result(r):
             return {
@@ -507,17 +593,19 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
                 "constructor": {
                     "constructorId": r.get("Constructor", {}).get("constructorId"),
                     "name": r.get("Constructor", {}).get("name"),
-                }
+                },
             }
 
         cleaned = []
         for race in races:
             results = [_clean_result(r) for r in race.get("Results", [])]
-            cleaned.append({
-                "round": race.get("round"),
-                "race_name": race.get("raceName"),
-                "results": results
-            })
+            cleaned.append(
+                {
+                    "round": race.get("round"),
+                    "race_name": race.get("raceName"),
+                    "results": results,
+                }
+            )
         return {"races": cleaned}
 
 
@@ -579,7 +667,9 @@ class F1RaceControlSensor(F1BaseEntity, SensorEntity):
         return getattr(self.coordinator, "available", True)
 
     def _get_session_keys(self):
-        meeting, session = find_next_session(self.hass.data[DOMAIN][self._entry_id]["session_coordinator"].data or {})
+        meeting, session = find_next_session(
+            self.hass.data[DOMAIN][self._entry_id]["session_coordinator"].data or {}
+        )
         if meeting and session:
             return meeting.get("Key"), session.get("Key")
         return None, None
@@ -601,4 +691,100 @@ class F1RaceControlSensor(F1BaseEntity, SensorEntity):
         return self.coordinator.data or {}
 
 
+class FlagStateMachine:
+    """Helper class aggregating flag status messages."""
 
+    def __init__(self) -> None:
+        self.track_red: bool = False
+        self.vsc_active: bool = False
+        self.active_yellow_sectors: set[int] = set()
+        self.state: str = "green"
+
+    def handle_message(self, msg: dict) -> str:
+        """Update state based on a race control message."""
+        cat = msg.get("Category")
+
+        if cat == "Flag" and msg.get("Flag") == "RED" and msg.get("Scope") == "Track":
+            self.track_red = True
+            self.vsc_active = False
+            self.active_yellow_sectors.clear()
+            self.state = "red"
+
+        elif cat == "SafetyCar" and msg.get("Mode") == "VIRTUAL SAFETY CAR":
+            if msg.get("Status") == "DEPLOYED":
+                self.vsc_active = True
+                self.state = "vsc"
+            elif msg.get("Status") in ("ENDED",):
+                self.vsc_active = False
+                if not self.track_red and not self.active_yellow_sectors:
+                    self.state = "green"
+
+        elif (
+            cat == "Flag"
+            and msg.get("Flag") in ("YELLOW", "DOUBLE YELLOW")
+            and msg.get("Scope") == "Sector"
+        ):
+            if not self.track_red and not self.vsc_active:
+                sector = msg.get("Sector")
+                if sector is not None:
+                    self.active_yellow_sectors.add(int(sector))
+                self.state = "yellow"
+
+        elif (
+            cat == "Flag"
+            and msg.get("Flag") == "CLEAR"
+            and msg.get("Scope") == "Sector"
+        ):
+            sector = msg.get("Sector")
+            if sector is not None:
+                self.active_yellow_sectors.discard(int(sector))
+            if (
+                not self.track_red
+                and not self.vsc_active
+                and not self.active_yellow_sectors
+            ):
+                self.state = "green"
+
+        elif (
+            cat == "Flag"
+            and msg.get("Flag") in ("CLEAR", "GREEN")
+            and msg.get("Scope") == "Track"
+        ):
+            self.track_red = False
+            self.vsc_active = False
+            self.active_yellow_sectors.clear()
+            self.state = "green"
+
+        return self.state
+
+
+class F1FlagSensor(F1BaseEntity, SensorEntity):
+    """Aggregated flag status for the entire track."""
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:flag"
+        self._machine = FlagStateMachine()
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.coordinator.async_add_listener(self._handle_coordinator_update)
+        if self.coordinator.data:
+            self._machine.handle_message(self.coordinator.data)
+
+    def _handle_coordinator_update(self) -> None:
+        if self.coordinator.data:
+            self._machine.handle_message(self.coordinator.data)
+        self.async_write_ha_state()
+
+    @property
+    def state(self):
+        return self._machine.state
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "track_red": self._machine.track_red,
+            "vsc_active": self._machine.vsc_active,
+            "active_yellow_sectors": sorted(self._machine.active_yellow_sectors),
+        }

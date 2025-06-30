@@ -1,0 +1,5 @@
+[
+  {"Category": "Flag", "Flag": "YELLOW", "Scope": "Sector", "Sector": 1},
+  {"Category": "Flag", "Flag": "YELLOW", "Scope": "Sector", "Sector": 2},
+  {"Category": "Flag", "Flag": "CLEAR", "Scope": "Sector", "Sector": 1}
+]
