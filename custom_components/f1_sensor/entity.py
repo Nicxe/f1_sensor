@@ -13,6 +13,11 @@ class F1BaseEntity(CoordinatorEntity):
         self._device_name = device_name
 
     @property
+    def should_poll(self) -> bool:
+        """Entities should not poll; updates come from coordinator."""
+        return False
+
+    @property
     def device_info(self):
         return {
             "identifiers": {(DOMAIN, self._entry_id)},
