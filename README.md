@@ -53,7 +53,7 @@ Select which sensors to enable during setup. You can always change this selectio
 
 
 ### UPDATING DATA
-Automatic hourly updates via Jolpica–F1 API and real-time updates on flag status and Safety Car conditions throughout each race weekend.
+Automatic hourly updates via Jolpica–F1 API and real-time updates on flag status and Safety Car conditions throughout each race weekend. Race control messages are streamed directly via Formula 1's SignalR service for immediate notifications.
 
 
 
@@ -73,7 +73,7 @@ Automatic hourly updates via Jolpica–F1 API and real-time updates on flag stat
 | sensor.f1_last_race_results       | Most recent race results    | 
 | sensor.f1_season_results       | All season race results    | 
 | binary_sensor.f1_race_week       | `on` during race week    |
-| binary_sensor.f1_race_week       | Track flag status (yellow sectors, VSC)    | 
+| sensor.f1_flag       | Track flag status (yellow sectors, VSC)    | 
 | binary_sensor.f1_safety_car       | `on` when Safety Car or VSC is active    |
 
 <br>
@@ -185,6 +185,14 @@ data:
     3. {{ constructors[2].Constructor.name }} ({{ constructors[2].points }} pts)
 ```
 
+
+### DEVELOPMENT AND TESTING
+To run the unit tests, install the development requirements and execute `pytest`:
+
+```bash
+pip install -r requirements_dev.txt
+pytest -q
+```
 
 <br>
 <br>

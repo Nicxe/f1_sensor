@@ -1,5 +1,7 @@
 import json
 import logging
+import asyncio
+import contextlib
 from datetime import datetime, timedelta, timezone
 
 import async_timeout
@@ -16,10 +18,9 @@ from .const import (
     LAST_RACE_RESULTS_URL,
     LIVETIMING_INDEX_URL,
     PLATFORMS,
-    RACE_CONTROL_URL,
     SEASON_RESULTS_URL,
 )
-from .helpers import find_next_session, parse_racecontrol, to_utc
+from .helpers import find_next_session, to_utc
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -145,7 +146,7 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
 
 
 class RaceControlCoordinator(DataUpdateCoordinator):
-    """Coordinator for race control messages."""
+    """Coordinator for race control messages using SignalR."""
 
     def __init__(
         self,
@@ -157,63 +158,66 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name="F1 Race Control Coordinator",
-            update_interval=timedelta(hours=1),
+            update_interval=None,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
-        self._fast = timedelta(seconds=fast_seconds)
+        self._fast = fast_seconds
         self.available = True
         self._last_message = None
+        self._task = None
+        self._client = None
 
     async def async_close(self, *_):
-        return
-
-    def _adjust_interval(self, session):
-        start = to_utc(session.get("StartDate"), session.get("GmtOffset"))
-        end = to_utc(session.get("EndDate"), session.get("GmtOffset"))
-        now = datetime.utcnow().replace(tzinfo=timezone.utc)
-        if (
-            start
-            and end
-            and start - timedelta(hours=1) <= now <= end + timedelta(hours=2)
-        ):
-            if self.update_interval != self._fast:
-                self.update_interval = self._fast
-        elif self._last_message:
-            try:
-                msg_dt = to_utc(self._last_message.get("Utc"), "+00:00")
-            except Exception:
-                msg_dt = None
-            if msg_dt and end and msg_dt > end + timedelta(hours=2):
-                if self.update_interval != timedelta(hours=1):
-                    self.update_interval = timedelta(hours=1)
+        if self._task:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+        if self._client:
+            await self._client.close()
 
     async def _async_update_data(self):
-        if not self._session_coord.data:
-            return self._last_message
-        meeting, session = find_next_session(self._session_coord.data)
-        if not session:
-            return self._last_message
-
-        self._adjust_interval(session)
-
-        url = RACE_CONTROL_URL.format(path=session.get("Path"))
-        try:
-            async with async_timeout.timeout(10):
-                async with self._session.get(url) as response:
-                    if response.status in (403, 404):
-                        self.available = False
-                        _LOGGER.warning("Race control unavailable: %s", response.status)
-                        return self._last_message
-                    if response.status != 200:
-                        raise UpdateFailed(f"Error fetching data: {response.status}")
-                    text = await response.text()
-        except Exception as err:
-            _LOGGER.warning("Error fetching race control: %s", err)
-            return self._last_message
-
-        self.available = True
-        msg = parse_racecontrol(text)
-        if msg:
-            self._last_message = msg
         return self._last_message
+
+    async def _listen(self):
+        from .signalr import SignalRClient
+
+        self._client = SignalRClient(self._session)
+        while True:
+            try:
+                await self._client.connect()
+                async for payload in self._client.messages():
+                    msg = self._parse_message(payload)
+                    if msg:
+                        self.available = True
+                        self._last_message = msg
+                        self.async_set_updated_data(msg)
+            except Exception as err:  # pragma: no cover - network errors
+                self.available = False
+                _LOGGER.warning("Race control websocket error: %s", err)
+                await asyncio.sleep(self._fast)
+            finally:
+                if self._client:
+                    await self._client.close()
+
+    @staticmethod
+    def _parse_message(data):
+        messages = data.get("M") if isinstance(data, dict) else None
+        if not messages:
+            return None
+        for update in messages:
+            args = update.get("A", [])
+            if len(args) < 2:
+                continue
+            if args[0] == "RaceControlMessages":
+                content = args[1]
+                if isinstance(content, list) and content:
+                    return content[-1]
+                if isinstance(content, dict) and content:
+                    key = max(content.keys(), key=lambda x: int(x))
+                    return content[key]
+        return None
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        self._task = self.hass.loop.create_task(self._listen())
