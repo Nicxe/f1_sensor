@@ -53,7 +53,7 @@ Select which sensors to enable during setup. You can always change this selectio
 
 
 ### UPDATING DATA
-Automatic hourly updates via Jolpica–F1 API and real-time updates on flag status and Safety Car conditions throughout each race weekend.
+Automatic hourly updates via Jolpica–F1 API and real-time updates on flag status and Safety Car conditions throughout each race weekend. Race control messages are streamed directly via Formula 1's SignalR service for immediate notifications.
 
 
 
