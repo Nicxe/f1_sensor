@@ -10,6 +10,3 @@ LAST_RACE_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/last/results.jso
 SEASON_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/results.json?limit=100"
 
 LIVETIMING_INDEX_URL = "https://livetiming.formula1.com/static/{year}/Index.json"
-RACE_CONTROL_URL = (
-    "https://livetiming.formula1.com/static/{path}RaceControlMessages.jsonStream"
-)
