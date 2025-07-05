@@ -62,6 +62,23 @@ class SignalRClient:
         _LOGGER.debug("SignalR connection established")
         _LOGGER.debug("Subscribed to RaceControlMessages")
 
+    async def _ensure_connection(self) -> None:
+        """Try to (re)connect using exponential back-off."""
+        import asyncio
+        from .const import FAST_RETRY_SEC, MAX_RETRY_SEC, BACK_OFF_FACTOR
+
+        delay = FAST_RETRY_SEC
+        while True:
+            try:
+                await self.connect()
+                return
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning(
+                    "SignalR reconnect failed (%s). Retrying in %s s …", err, delay
+                )
+                await asyncio.sleep(delay)
+                delay = min(delay * BACK_OFF_FACTOR, MAX_RETRY_SEC)
+
     async def messages(self) -> AsyncGenerator[dict, None]:
         if not self._ws:
             return
