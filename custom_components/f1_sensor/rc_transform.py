@@ -65,13 +65,22 @@ def clean_rc(data, t0: dt.datetime):
     flag_val = data.get("f", data.get("Flag"))
     scope_val = data.get("s", data.get("Scope"))
 
+    category = CATEGORY_MAP.get(category_val, category_val)
+    flag_raw = FLAG_MAP.get(flag_val, flag_val)
+    if isinstance(flag_raw, str):
+        flag = flag_raw.upper()
+    else:
+        flag = flag_raw
+    scope = SCOPE_MAP.get(scope_val, scope_val)
+    sector = data.get("sc", data.get("Sector"))
+    message = data.get("mes", data.get("Message"))
+    utc = _parse_date(data.get("utc", data.get("Utc")), t0)
+
     return {
-        "category": CATEGORY_MAP.get(category_val, category_val),
-        "flag": FLAG_MAP.get(flag_val, flag_val),
-        "scope": SCOPE_MAP.get(scope_val, scope_val),
-        "sector": data.get("sc", data.get("Sector")),
-        "lap_number": data.get("lap", data.get("Lap")),
-        "driver_number": data.get("drv", data.get("RacingNumber")),
-        "message": data.get("mes", data.get("Message")),
-        "date": _parse_date(data.get("utc", data.get("Utc")), t0),
+        "category": category,
+        "flag": flag,
+        "scope": scope,
+        "sector": sector,
+        "message": message,
+        "utc": utc,
     }

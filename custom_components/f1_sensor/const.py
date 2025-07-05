@@ -1,6 +1,9 @@
 DOMAIN = "f1_sensor"
 PLATFORMS = ["sensor", "binary_sensor"]
 
+# Global key for the shared flag state machine
+FLAG_MACHINE = "f1_flag_state"
+
 API_URL = "https://api.jolpi.ca/ergast/f1/current.json"
 DRIVER_STANDINGS_URL = "https://api.jolpi.ca/ergast/f1/current/driverstandings.json"
 CONSTRUCTOR_STANDINGS_URL = (

@@ -2,7 +2,7 @@ import json
 import logging
 import asyncio
 import contextlib
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -19,8 +19,9 @@ from .const import (
     LIVETIMING_INDEX_URL,
     PLATFORMS,
     SEASON_RESULTS_URL,
+    FLAG_MACHINE,
 )
-from .helpers import find_next_session, to_utc
+from .flag_state import FlagState
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     enable_rc = entry.data.get("enable_race_control", True)
     fast_seconds = entry.data.get("fast_poll_seconds", 5)
     race_control_coordinator = None
+    hass.data[FLAG_MACHINE] = FlagState()
     if enable_rc:
         race_control_coordinator = RaceControlCoordinator(
             hass, session_coordinator, fast_seconds
@@ -79,6 +81,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data = hass.data[DOMAIN].pop(entry.entry_id)
         for coordinator in data.values():
             await coordinator.async_close()
+        hass.data.pop(FLAG_MACHINE, None)
     return unload_ok
 
 
@@ -165,6 +168,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._fast = fast_seconds
         self.available = True
         self._last_message = None
+        self.data_list: list[dict] = []
         self._task = None
         self._client = None
 
@@ -192,6 +196,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                         _LOGGER.debug("Race control message: %s", msg)
                         self.available = True
                         self._last_message = msg
+                        self.data_list = [msg]
                         self.async_set_updated_data(msg)
             except Exception as err:  # pragma: no cover - network errors
                 self.available = False
@@ -220,7 +225,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                         key = max(numeric_keys, key=lambda x: int(x))
                         return content[key]
                     try:
-                        category = content.get("m", content.get("Category"))
+                        content.get("m", content.get("Category"))
                     except KeyError as exc:
                         _LOGGER.warning(
                             "Race control websocket error: %s", exc

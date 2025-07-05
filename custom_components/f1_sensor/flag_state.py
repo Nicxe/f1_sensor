@@ -37,7 +37,6 @@ class FlagState:
                 if scope == "Sector":
                     self.active_yellows.discard(rc["sector"])
                 elif scope == "Track":
-                    self.active_yellows.clear()
                     self.track_red = False
 
             elif flag == "GREEN" and scope == "Track":

@@ -1,12 +1,12 @@
 import json
 import logging
 import datetime as dt
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator
 
 from aiohttp import ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
 
-from .flag_state import FlagState
+from .const import FLAG_MACHINE
 
 from . import rc_transform
 
@@ -31,7 +31,6 @@ class SignalRClient:
         self._session = session
         self._ws = None
         self._t0 = dt.datetime.utcnow()
-        self._flag_state = FlagState()
 
     async def connect(self) -> None:
         _LOGGER.debug("Connecting to F1 SignalR service")
@@ -80,7 +79,7 @@ class SignalRClient:
                             hub_msg.get("M") == "feed"
                             and hub_msg["A"][0] == "RaceControlMessages"
                         ):
-                            for msg in hub_msg["A"][1]["Messages"]:
+                            for msg in hub_msg["A"][1]["Messages"].values():
                                 await self._handle_rc(msg)
                 elif "R" in payload and "RaceControlMessages" in payload["R"]:
                     for update in payload["R"]["RaceControlMessages"]["Messages"]:
@@ -101,21 +100,25 @@ class SignalRClient:
             if not clean:
                 return
 
-            new_state = self._flag_state.apply(clean)
-            if new_state:
-                self._hass.states.async_set(
-                    "sensor.f1_flag",
-                    new_state,
-                    {
-                        **clean,
-                        "track_red": self._flag_state.track_red,
-                        "vsc_active": self._flag_state.vsc_active,
-                        "active_yellow_sectors": sorted(
-                            self._flag_state.active_yellows
-                        ),
-                    },
-                )
+            hass = self._hass
+            machine = hass.data.get(FLAG_MACHINE)
+            if machine and (new := machine.apply(clean)):
+                self._async_update_flag_sensor(new)
         except Exception as exc:  # pragma: no cover - defensive
             _LOGGER.warning(
                 "Race control transform failed: %s", exc, exc_info=True
             )
+
+    def _async_update_flag_sensor(self, state: str) -> None:
+        machine = self._hass.data.get(FLAG_MACHINE)
+        if not machine:
+            return
+        self._hass.states.async_set(
+            "sensor.f1_flag",
+            state,
+            {
+                "track_red": machine.track_red,
+                "vsc_active": machine.vsc_active,
+                "active_yellow_sectors": sorted(machine.active_yellows),
+            },
+        )
