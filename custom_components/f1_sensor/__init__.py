@@ -219,6 +219,14 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                     if numeric_keys:
                         key = max(numeric_keys, key=lambda x: int(x))
                         return content[key]
+                    try:
+                        category = content.get("m", content.get("Category"))
+                    except KeyError as exc:
+                        _LOGGER.warning(
+                            "Race control websocket error: %s", exc
+                        )
+                        return None
+                    return content
         return None
 
     async def async_config_entry_first_refresh(self):

@@ -2,8 +2,16 @@
 import gzip
 import json
 import datetime as dt
-import dateutil.parser as dparse
+from dateutil import parser as dparse
 
+CATEGORY_MAP = {
+    0: "CarEvent",
+    1: "SafetyCar",
+    2: "Flag",
+    3: "Session",
+    4: "Message",
+    5: "Other",
+}
 FLAG_MAP = {
     0: None,
     1: "GREEN",
@@ -14,38 +22,41 @@ FLAG_MAP = {
     6: "WHITE",
     7: "BLACK",
     8: "CHEQUERED",
+    "CLEAR": "CLEAR",
 }
-CATEGORY_MAP = {
-    0: "CarEvent",
-    1: "SafetyCar",
-    2: "Flag",
-    3: "Session",
-    4: "Message",
-    5: "Other",
+SCOPE_MAP = {
+    0: "Track",
+    1: "Sector",
+    2: "Driver",
+    "Track": "Track",
+    "Sector": "Sector",
+    "Driver": "Driver",
 }
-SCOPE_MAP = {0: "Track", 1: "Sector", 2: "Driver"}
 
 
 def _parse_date(raw, t0: dt.datetime) -> str:
-    """Return ISO timestamp from UTC ms offset or ISO string."""
+    """Return ISO-8601 oavsett om raw är ms eller ISO-sträng."""
     if isinstance(raw, (int, float)):
         return (t0 + dt.timedelta(milliseconds=raw)).isoformat() + "Z"
-    return dparse.parse(str(raw)).isoformat()
+    return dparse.parse(raw).isoformat()
 
 
-def clean_rc(data_or_bytes, t0: dt.datetime) -> dict:
-    """Return a readable dict from RaceControl payload."""
-    if isinstance(data_or_bytes, (bytes, bytearray)):
-        data = json.loads(gzip.decompress(data_or_bytes))
-    else:
-        data = data_or_bytes
+def clean_rc(data: dict, t0: dt.datetime) -> dict:
+    """Normalisera RaceControl-rad oavsett nyckeltyp."""
+    if isinstance(data, (bytes, bytearray)):
+        data = json.loads(gzip.decompress(data))
+
+    category_val = data.get("m", data.get("Category"))
+    flag_val = data.get("f", data.get("Flag"))
+    scope_val = data.get("s", data.get("Scope"))
+
     return {
-        "category": CATEGORY_MAP.get(data["m"]),
-        "flag": FLAG_MAP.get(data.get("f")),
-        "scope": SCOPE_MAP.get(data["s"]),
-        "sector": data.get("sc"),
-        "lap_number": data.get("lap"),
-        "driver_number": data.get("drv"),
-        "message": data.get("mes"),
-        "date": _parse_date(data["utc"], t0),
+        "category": CATEGORY_MAP.get(category_val, category_val),
+        "flag": FLAG_MAP.get(flag_val, flag_val),
+        "scope": SCOPE_MAP.get(scope_val, scope_val),
+        "sector": data.get("sc", data.get("Sector")),
+        "lap_number": data.get("lap", data.get("Lap")),
+        "driver_number": data.get("drv", data.get("RacingNumber")),
+        "message": data.get("mes", data.get("Message")),
+        "date": _parse_date(data.get("utc", data.get("Utc")), t0),
     }
