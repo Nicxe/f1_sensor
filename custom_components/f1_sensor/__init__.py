@@ -182,7 +182,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     async def _listen(self):
         from .signalr import SignalRClient
 
-        self._client = SignalRClient(self._session)
+        self._client = SignalRClient(self.hass, self._session)
         while True:
             try:
                 await self._client.connect()
