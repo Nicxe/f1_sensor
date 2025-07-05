@@ -44,12 +44,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     year = datetime.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year)
     enable_rc = entry.data.get("enable_race_control", True)
-    fast_seconds = entry.data.get("fast_poll_seconds", 5)
     race_control_coordinator = None
     hass.data[FLAG_MACHINE] = FlagState()
     if enable_rc:
         race_control_coordinator = RaceControlCoordinator(
-            hass, session_coordinator, fast_seconds
+            hass, session_coordinator
         )
 
     await race_coordinator.async_config_entry_first_refresh()
@@ -155,7 +154,6 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         session_coord: LiveSessionCoordinator,
-        fast_seconds: int = 5,
     ):
         super().__init__(
             hass,
@@ -165,7 +163,6 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
-        self._fast = fast_seconds
         self.available = True
         self._last_message = None
         self.data_list: list[dict] = []
@@ -189,7 +186,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._client = SignalRClient(self.hass, self._session)
         while True:
             try:
-                await self._client.connect()
+                await self._client._ensure_connection()
                 async for payload in self._client.messages():
                     msg = self._parse_message(payload)
                     if msg:
@@ -201,7 +198,6 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             except Exception as err:  # pragma: no cover - network errors
                 self.available = False
                 _LOGGER.warning("Race control websocket error: %s", err)
-                await asyncio.sleep(self._fast)
             finally:
                 if self._client:
                     await self._client.close()

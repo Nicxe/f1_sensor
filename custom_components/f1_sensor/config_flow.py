@@ -52,7 +52,6 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     }
                 ),
                 vol.Optional("enable_race_control", default=True): cv.boolean,
-                vol.Optional("fast_poll_seconds", default=5): cv.positive_int,
             }
         )
 
@@ -116,9 +115,6 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     "enable_race_control",
                     default=current.get("enable_race_control", True),
                 ): cv.boolean,
-                vol.Optional(
-                    "fast_poll_seconds", default=current.get("fast_poll_seconds", 5)
-                ): cv.positive_int,
             }
         )
 
