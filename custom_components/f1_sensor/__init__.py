@@ -218,12 +218,16 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             if args[0] == "RaceControlMessages":
                 content = args[1]
                 if isinstance(content, list) and content:
-                    return content[-1]
+                    msg = content[-1]
+                    return msg
                 if isinstance(content, dict) and content:
                     numeric_keys = [k for k in content.keys() if str(k).isdigit()]
                     if numeric_keys:
                         key = max(numeric_keys, key=lambda x: int(x))
-                        return content[key]
+                        msg = content[key]
+                        if isinstance(msg, dict):
+                            msg.setdefault("id", int(key))
+                        return msg
                     try:
                         content.get("m", content.get("Category"))
                     except KeyError as exc:
