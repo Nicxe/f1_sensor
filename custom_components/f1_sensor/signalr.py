@@ -1,8 +1,6 @@
-import base64
 import json
 import logging
 import datetime as dt
-import gzip
 from typing import AsyncGenerator, Optional
 
 from aiohttp import ClientSession, WSMsgType
@@ -74,13 +72,12 @@ class SignalRClient:
                 _LOGGER.debug("Stream payload: %s", payload)
 
                 if "M" in payload:
-                    for update in payload["M"]:
-                        args = update.get("A", [])
-                        if args:
-                            await self._on_rc(args[0])
+                    for hub_msg in payload["M"]:
+                        if hub_msg.get("A"):
+                            await self._handle_rc(hub_msg["A"][0])
                 elif "R" in payload and "RaceControlMessages" in payload["R"]:
                     for update in payload["R"]["RaceControlMessages"]["Messages"]:
-                        await self._on_rc(json.dumps(update).encode())
+                        await self._handle_rc(update)
 
                 yield payload
             elif msg.type in (WSMsgType.CLOSED, WSMsgType.ERROR):
@@ -91,17 +88,13 @@ class SignalRClient:
             await self._ws.close()
             self._ws = None
 
-    async def _on_rc(self, compressed_or_json) -> None:
-        """Handle RaceControlMessages by updating sensor state."""
-        if isinstance(compressed_or_json, (bytes, bytearray)):
-            try:
-                json_bytes = gzip.decompress(compressed_or_json)
-            except OSError:
-                json_bytes = compressed_or_json
-            data = json.loads(json_bytes)
-        else:
-            data = json.loads(compressed_or_json)
-
-        clean = rc_transform.clean_rc(data, self._t0)
-        _LOGGER.debug("Race control message: %s", clean)
-        self._hass.states.async_set("sensor.f1_flag", clean.get("flag"), clean)
+    async def _handle_rc(self, rc_raw) -> None:
+        try:
+            clean = rc_transform.clean_rc(rc_raw, self._t0)
+            self._hass.states.async_set(
+                "sensor.f1_flag", clean.get("flag", "UNKNOWN"), clean
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            _LOGGER.warning(
+                "Race control transform failed: %s", exc, exc_info=True
+            )
