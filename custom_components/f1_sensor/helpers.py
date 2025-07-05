@@ -51,6 +51,8 @@ def parse_racecontrol(text: str):
         if isinstance(msgs, list) and msgs:
             last = msgs[-1]
         elif isinstance(msgs, dict) and msgs:
-            key = max(msgs.keys(), key=lambda x: int(x))
-            last = msgs[key]
+            numeric_keys = [k for k in msgs.keys() if str(k).isdigit()]
+            if numeric_keys:
+                key = max(numeric_keys, key=lambda x: int(x))
+                last = msgs[key]
     return last
