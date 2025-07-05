@@ -24,6 +24,17 @@ FLAG_MAP = {
     8: "CHEQUERED",
     "CLEAR": "CLEAR",
 }
+
+FLAG_MAP.update({
+    "GREEN": "GREEN",
+    "CLEAR": "CLEAR",
+    "BLACK AND WHITE": "BLACK AND WHITE",
+})
+
+CATEGORY_MAP.update({
+    "Flag": "Flag",
+    "Other": "Other",
+})
 SCOPE_MAP = {
     0: "Track",
     1: "Sector",
@@ -41,8 +52,10 @@ def _parse_date(raw, t0: dt.datetime) -> str:
     return dparse.parse(raw).isoformat()
 
 
-def clean_rc(data: dict, t0: dt.datetime) -> dict:
+def clean_rc(data, t0: dt.datetime):
     """Normalisera RaceControl-rad oavsett nyckeltyp."""
+    if not isinstance(data, (dict, bytes, bytearray)):
+        return None
     if isinstance(data, (bytes, bytearray)):
         data = json.loads(gzip.decompress(data))
 

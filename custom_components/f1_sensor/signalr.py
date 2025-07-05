@@ -73,8 +73,12 @@ class SignalRClient:
 
                 if "M" in payload:
                     for hub_msg in payload["M"]:
-                        if hub_msg.get("A"):
-                            await self._handle_rc(hub_msg["A"][0])
+                        if (
+                            hub_msg.get("M") == "feed"
+                            and hub_msg["A"][0] == "RaceControlMessages"
+                        ):
+                            for msg in hub_msg["A"][1]["Messages"]:
+                                await self._handle_rc(msg)
                 elif "R" in payload and "RaceControlMessages" in payload["R"]:
                     for update in payload["R"]["RaceControlMessages"]["Messages"]:
                         await self._handle_rc(update)
@@ -91,6 +95,8 @@ class SignalRClient:
     async def _handle_rc(self, rc_raw) -> None:
         try:
             clean = rc_transform.clean_rc(rc_raw, self._t0)
+            if not clean:
+                return
             self._hass.states.async_set(
                 "sensor.f1_flag", clean.get("flag", "UNKNOWN"), clean
             )
