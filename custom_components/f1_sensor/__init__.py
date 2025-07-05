@@ -80,3 +80,12 @@ class F1DataCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}") from err
 
+
+def _safe_category(data: dict):
+    """Return category value from a race control payload."""
+    try:
+        return data.get("m", data.get("Category"))
+    except Exception as exc:  # pragma: no cover - defensive
+        _LOGGER.warning("Race control websocket error: %s", exc)
+        return None
+
