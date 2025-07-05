@@ -684,7 +684,11 @@ class F1RaceControlSensor(F1BaseEntity, SensorEntity):
     @property
     def state(self):
         data = self.coordinator.data or {}
-        return data.get("Message") if isinstance(data, dict) else None
+        if isinstance(data, dict):
+            if "id" in data:
+                return data["id"]
+            return data.get("Message")
+        return None
 
     @property
     def extra_state_attributes(self):
