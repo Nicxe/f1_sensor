@@ -765,17 +765,21 @@ class F1FlagSensor(F1BaseEntity, SensorEntity):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag"
         self._machine = FlagStateMachine()
+        self._attr_native_value = self._machine.state
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         self.coordinator.async_add_listener(self._handle_coordinator_update)
-        if self.coordinator.data:
-            self._machine.handle_message(self.coordinator.data)
+        if self.coordinator.data_list:
+            for msg in self.coordinator.data_list:
+                if state := self._machine.handle_message(msg):
+                    self._attr_native_value = state
 
     def _handle_coordinator_update(self) -> None:
-        if self.coordinator.data:
-            self._machine.handle_message(self.coordinator.data)
-        self.async_write_ha_state()
+        for msg in self.coordinator.data_list:
+            if state := self._machine.handle_message(msg):
+                self._attr_native_value = state
+                self.async_write_ha_state()
 
     @property
     def state(self):

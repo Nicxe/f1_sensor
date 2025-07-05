@@ -115,6 +115,31 @@ logger:
     custom_components.f1_sensor: debug
 ```
 
+#### Race Control message flow
+
+```mermaid
+sequenceDiagram
+    participant RC as SignalR
+    participant T as rc_transform
+    participant F as FlagState
+    participant S as sensor.f1_flag
+    RC->>T: raw message
+    T->>F: normalized dict
+    F->>S: new state
+```
+
+Example payload from the F1 API:
+
+```json
+{
+  "Category": "Flag",
+  "Flag": "RED",
+  "Scope": "Track",
+  "Message": "SESSION STOPPED",
+  "Utc": 123456789
+}
+```
+
 
 
 
