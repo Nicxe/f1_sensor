@@ -189,6 +189,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 async for payload in self._client.messages():
                     msg = self._parse_message(payload)
                     if msg:
+                        _LOGGER.debug("Race control message: %s", msg)
                         self.available = True
                         self._last_message = msg
                         self.async_set_updated_data(msg)
