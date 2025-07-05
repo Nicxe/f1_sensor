@@ -106,6 +106,16 @@ recorder:
       - sensor.f1_season_results
 ```
 
+##### Debug logging
+Enable debug logging to view each Race Control message in the Home Assistant log:
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.f1_sensor: debug
+```
+
+
 
 
 
