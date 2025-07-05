@@ -215,8 +215,10 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 if isinstance(content, list) and content:
                     return content[-1]
                 if isinstance(content, dict) and content:
-                    key = max(content.keys(), key=lambda x: int(x))
-                    return content[key]
+                    numeric_keys = [k for k in content.keys() if str(k).isdigit()]
+                    if numeric_keys:
+                        key = max(numeric_keys, key=lambda x: int(x))
+                        return content[key]
         return None
 
     async def async_config_entry_first_refresh(self):
