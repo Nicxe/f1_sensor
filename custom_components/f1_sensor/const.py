@@ -13,8 +13,3 @@ LAST_RACE_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/last/results.jso
 SEASON_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/results.json?limit=100"
 
 LIVETIMING_INDEX_URL = "https://livetiming.formula1.com/static/{year}/Index.json"
-
-# SignalR reconnect settings
-FAST_RETRY_SEC = 5
-MAX_RETRY_SEC = 60
-BACK_OFF_FACTOR = 2

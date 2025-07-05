@@ -6,7 +6,6 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.restore_state import RestoreEntity
 from timezonefinder import TimezoneFinder
 
 from .const import DOMAIN
@@ -656,31 +655,12 @@ class F1NextSessionSensor(F1BaseEntity, SensorEntity):
         return attrs
 
 
-class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+class F1RaceControlSensor(F1BaseEntity, SensorEntity):
     """Sensor that shows latest race control message."""
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag"
-        self._attr_native_value = None
-        self._attr_extra_state_attributes = None
-
-    async def async_added_to_hass(self):
-        await super().async_added_to_hass()
-        self.coordinator.async_add_listener(self._handle_coordinator_update)
-        if last_state := await self.async_get_last_state():
-            self._attr_native_value = last_state.state
-            self._attr_extra_state_attributes = dict(last_state.attributes)
-
-    def _handle_coordinator_update(self) -> None:
-        self._attr_extra_state_attributes = self.coordinator.data
-        data = self.coordinator.data or {}
-        if isinstance(data, dict):
-            if "id" in data:
-                self._attr_native_value = data["id"]
-            else:
-                self._attr_native_value = data.get("Message")
-        self.async_write_ha_state()
 
     @property
     def available(self):
@@ -703,11 +683,16 @@ class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     @property
     def state(self):
-        return self._attr_native_value
+        data = self.coordinator.data or {}
+        if isinstance(data, dict):
+            if "id" in data:
+                return data["id"]
+            return data.get("Message")
+        return None
 
     @property
     def extra_state_attributes(self):
-        return self._attr_extra_state_attributes
+        return self.coordinator.data or {}
 
 
 class FlagStateMachine:
@@ -777,7 +762,7 @@ class FlagStateMachine:
         return self.state
 
 
-class F1FlagSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+class F1FlagSensor(F1BaseEntity, SensorEntity):
     """Aggregated flag status for the entire track."""
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
@@ -785,27 +770,10 @@ class F1FlagSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_icon = "mdi:flag"
         self._machine = FlagStateMachine()
         self._attr_native_value = self._machine.state
-        self._attr_extra_state_attributes = {
-            "track_red": False,
-            "vsc_active": False,
-            "active_yellow_sectors": [],
-        }
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         self.coordinator.async_add_listener(self._handle_coordinator_update)
-        if last_state := await self.async_get_last_state():
-            self._machine.track_red = last_state.attributes.get("track_red", False)
-            self._machine.vsc_active = last_state.attributes.get("vsc_active", False)
-            sectors = last_state.attributes.get("active_yellow_sectors", [])
-            self._machine.active_yellow_sectors = {int(s) for s in sectors}
-            self._machine.state = last_state.state or self._machine.state
-            self._attr_native_value = self._machine.state
-            self._attr_extra_state_attributes = {
-                "track_red": self._machine.track_red,
-                "vsc_active": self._machine.vsc_active,
-                "active_yellow_sectors": sorted(self._machine.active_yellow_sectors),
-            }
         if self.coordinator.data_list:
             for msg in self.coordinator.data_list:
                 if state := self._machine.handle_message(msg):
@@ -815,12 +783,7 @@ class F1FlagSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         for msg in self.coordinator.data_list:
             if state := self._machine.handle_message(msg):
                 self._attr_native_value = state
-        self._attr_extra_state_attributes = {
-            "track_red": self._machine.track_red,
-            "vsc_active": self._machine.vsc_active,
-            "active_yellow_sectors": sorted(self._machine.active_yellow_sectors),
-        }
-        self.async_write_ha_state()
+                self.async_write_ha_state()
 
     @property
     def state(self):
@@ -828,12 +791,8 @@ class F1FlagSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        return self._attr_extra_state_attributes
-
-    async def async_will_remove_from_hass(self) -> None:
-        self._attr_extra_state_attributes = {
+        return {
             "track_red": self._machine.track_red,
             "vsc_active": self._machine.vsc_active,
             "active_yellow_sectors": sorted(self._machine.active_yellow_sectors),
         }
-        await super().async_will_remove_from_hass()
