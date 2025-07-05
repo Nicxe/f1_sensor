@@ -6,6 +6,8 @@ from typing import AsyncGenerator, Optional
 from aiohttp import ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
 
+from .flag_state import FlagState
+
 from . import rc_transform
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,6 +31,7 @@ class SignalRClient:
         self._session = session
         self._ws = None
         self._t0 = dt.datetime.utcnow()
+        self._flag_state = FlagState()
 
     async def connect(self) -> None:
         _LOGGER.debug("Connecting to F1 SignalR service")
@@ -97,9 +100,21 @@ class SignalRClient:
             clean = rc_transform.clean_rc(rc_raw, self._t0)
             if not clean:
                 return
-            self._hass.states.async_set(
-                "sensor.f1_flag", clean.get("flag", "UNKNOWN"), clean
-            )
+
+            new_state = self._flag_state.apply(clean)
+            if new_state:
+                self._hass.states.async_set(
+                    "sensor.f1_flag",
+                    new_state,
+                    {
+                        **clean,
+                        "track_red": self._flag_state.track_red,
+                        "vsc_active": self._flag_state.vsc_active,
+                        "active_yellow_sectors": sorted(
+                            self._flag_state.active_yellows
+                        ),
+                    },
+                )
         except Exception as exc:  # pragma: no cover - defensive
             _LOGGER.warning(
                 "Race control transform failed: %s", exc, exc_info=True

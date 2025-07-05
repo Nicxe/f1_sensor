@@ -114,6 +114,16 @@ sys.modules["custom_components.f1_sensor.sensor"] = sensor
 spec.loader.exec_module(sensor)
 FlagStateMachine = sensor.FlagStateMachine
 
+spec_fs = importlib.util.spec_from_file_location(
+    "custom_components.f1_sensor.flag_state",
+    Path("custom_components/f1_sensor/flag_state.py"),
+)
+assert spec_fs and spec_fs.loader
+flag_state_mod = importlib.util.module_from_spec(spec_fs)
+sys.modules["custom_components.f1_sensor.flag_state"] = flag_state_mod
+spec_fs.loader.exec_module(flag_state_mod)
+FlagState = flag_state_mod.FlagState
+
 spec_bs = importlib.util.spec_from_file_location(
     "custom_components.f1_sensor.binary_sensor",
     Path("custom_components/f1_sensor/binary_sensor.py"),
@@ -160,3 +170,46 @@ def test_safety_car_sequence():
     sm = SafetyCarStateMachine()
     states = [sm.handle_message(m) for m in msgs]
     assert states == [True, True, False]
+
+
+def test_flag_state_apply_sequence():
+    msgs = [
+        {
+            "category": "Flag",
+            "flag": "RED",
+            "scope": "Track",
+            "sector": None,
+        },
+        {
+            "category": "Flag",
+            "flag": "GREEN",
+            "scope": "Track",
+            "sector": None,
+        },
+        {
+            "category": "SafetyCar",
+            "Status": "VSC DEPLOYED",
+            "scope": "Track",
+            "sector": None,
+        },
+        {"category": "SafetyCar", "Status": "VSC END", "scope": "Track"},
+        {
+            "category": "Flag",
+            "flag": "YELLOW",
+            "scope": "Sector",
+            "sector": 2,
+        },
+        {
+            "category": "Flag",
+            "flag": "CLEAR",
+            "scope": "Sector",
+            "sector": 2,
+        },
+    ]
+    fs = FlagState()
+    assert fs.apply(msgs[0]) == "red"
+    fs.apply(msgs[1])
+    assert fs.apply(msgs[2]) == "vsc"
+    fs.apply(msgs[3])
+    assert fs.apply(msgs[4]) == "yellow"
+    assert fs.apply(msgs[5]) == "green"

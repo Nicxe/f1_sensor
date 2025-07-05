@@ -22,6 +22,7 @@ FLAG_MAP = {
     6: "WHITE",
     7: "BLACK",
     8: "CHEQUERED",
+    "VIRTUAL SAFETY CAR": "VSC",
     "CLEAR": "CLEAR",
 }
 
@@ -33,6 +34,7 @@ FLAG_MAP.update({
 
 CATEGORY_MAP.update({
     "Flag": "Flag",
+    "SafetyCar": "SafetyCar",
     "Other": "Other",
 })
 SCOPE_MAP = {
