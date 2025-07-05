@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import datetime as dt
+import gzip
 from typing import AsyncGenerator, Optional
 
 from aiohttp import ClientSession, WSMsgType
@@ -71,12 +72,16 @@ class SignalRClient:
                 except json.JSONDecodeError:
                     continue
                 _LOGGER.debug("Stream payload: %s", payload)
-                messages = payload.get("M") if isinstance(payload, dict) else None
-                if messages:
-                    for update in messages:
+
+                if "M" in payload:
+                    for update in payload["M"]:
                         args = update.get("A", [])
-                        if len(args) >= 2 and args[0] == "RaceControlMessages":
-                            await self._on_rc(base64.b64decode(args[1]))
+                        if args:
+                            await self._on_rc(args[0])
+                elif "R" in payload and "RaceControlMessages" in payload["R"]:
+                    for update in payload["R"]["RaceControlMessages"]["Messages"]:
+                        await self._on_rc(json.dumps(update).encode())
+
                 yield payload
             elif msg.type in (WSMsgType.CLOSED, WSMsgType.ERROR):
                 break
@@ -86,8 +91,17 @@ class SignalRClient:
             await self._ws.close()
             self._ws = None
 
-    async def _on_rc(self, payload: bytes) -> None:
+    async def _on_rc(self, compressed_or_json) -> None:
         """Handle RaceControlMessages by updating sensor state."""
-        clean = rc_transform.clean_rc(payload, self._t0)
+        if isinstance(compressed_or_json, (bytes, bytearray)):
+            try:
+                json_bytes = gzip.decompress(compressed_or_json)
+            except OSError:
+                json_bytes = compressed_or_json
+            data = json.loads(json_bytes)
+        else:
+            data = json.loads(compressed_or_json)
+
+        clean = rc_transform.clean_rc(data, self._t0)
         _LOGGER.debug("Race control message: %s", clean)
-        self._hass.states.async_set("sensor.f1_flag", clean["flag"], clean)
+        self._hass.states.async_set("sensor.f1_flag", clean.get("flag"), clean)
