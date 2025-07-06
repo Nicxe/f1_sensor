@@ -12,6 +12,12 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
+            if not user_input.get("enable_race_control", True):
+                user_input["enabled_sensors"] = [
+                    s
+                    for s in user_input["enabled_sensors"]
+                    if s not in {"race_control", "flag", "safety_car"}
+                ]
             return self.async_create_entry(
                 title=user_input["sensor_name"], data=user_input
             )
@@ -63,6 +69,12 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
+            if not user_input.get("enable_race_control", True):
+                user_input["enabled_sensors"] = [
+                    s
+                    for s in user_input["enabled_sensors"]
+                    if s not in {"race_control", "flag", "safety_car"}
+                ]
             entry = self._get_reconfigure_entry()
             return self.async_update_reload_and_abort(
                 entry,

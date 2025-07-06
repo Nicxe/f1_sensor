@@ -29,10 +29,11 @@ async def async_setup_entry(
                 base,
             )
         )
-    if "safety_car" in enabled:
+    coord = data.get("race_control_coordinator")
+    if "safety_car" in enabled and coord:
         sensors.append(
             F1SafetyCarBinarySensor(
-                data.get("race_control_coordinator"),
+                coord,
                 f"{base}_safety_car",
                 f"{entry.entry_id}_safety_car",
                 entry.entry_id,
