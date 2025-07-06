@@ -20,6 +20,7 @@ Visit the [F1 Sensor Community at Home Assistant Community Forum](https://commun
 - Current weather and forecast for the next race location, including expected conditions at race start
 - Ideal for TTS, notifications, automations, and custom dashboards
 - Automate your lights to flash red whenever a red flag is active during a session.
+- Supports English and Swedish languages.
 <br>
 
 ### INSTALLATION & CONFIGURATION
@@ -195,12 +196,16 @@ If you want to support the continuous development of F1 Sensor, you can buy me a
 <a href="https://buymeacoffee.com/niklasv" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
 <br>
 
-> [!NOTE]  
+### DEVELOPMENT
+This project uses [pre-commit](https://pre-commit.com) for formatting and linting.
+Install the hooks with:
+```bash
+pre-commit install
+```
+This will run `black` and `ruff` on each commit.
+
+> [!NOTE]
 > Help me improve my documentation Suggest an edit to this page, or provide/view feedback for this page.
-
-
-
-
 
 ---
 ### Disclaimer

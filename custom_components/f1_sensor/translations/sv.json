@@ -1,0 +1,36 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "F1 Sensor-installation",
+                "data": {
+                    "sensor_name": "Enhetsnamn",
+                    "enabled_sensors": "Aktiverade sensorer"
+                }
+            },
+            "reconfigure": {
+                "title": "Konfigurera om F1 Sensor",
+                "data": {
+                    "sensor_name": "Enhetsnamn",
+                    "enabled_sensors": "Aktiverade sensorer"
+                }
+            }
+        }
+    },
+    "entity": {
+        "sensor": {
+            "next_race": {"name": "N\u00e4sta lopp"},
+            "current_season": {"name": "P\u00e5g\u00e5ende s\u00e4song"},
+            "driver_standings": {"name": "F\u00f6rarst\u00e4llning"},
+            "constructor_standings": {"name": "Konstrukt\u00f6rsm\u00e4sterskap"},
+            "weather": {"name": "V\u00e4der"},
+            "last_race_results": {"name": "Senaste loppresultat"},
+            "season_results": {"name": "S\u00e4songsresultat"},
+            "next_session": {"name": "N\u00e4sta session"},
+            "race_control": {"name": "T\u00e4vlingsledning"},
+            "flag": {"name": "Flagga"},
+            "safety_car": {"name": "S\u00e4kerhetsbil"}
+        },
+        "binary_sensor": {"race_week": {"name": "T\u00e4vlingsvecka"}}
+    }
+}
