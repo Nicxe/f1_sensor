@@ -1,11 +1,11 @@
-# F1 Sensor
+# F1 Sensor for Home Assistant
 
 ![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=) <img alt="Maintenance" src="https://img.shields.io/maintenance/yes/2025"> <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/Nicxe/f1_sensor"> <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/f1_sensor">
 
 
 ### OVERVIEW
 
-The F1 Sensor integration connects Home Assistant with the Jolpica–F1 API to bring real-time Formula 1 data into your smart home. And by leveraging Formula 1’s unofficial Live Timing API, the integration provides **real-time** updates on flag status and Safety Car conditions throughout each race weekend.
+The F1 Sensor integration connects Home Assistant with the Jolpica–F1 API to bring Formula 1 data into your smart home. And by leveraging Formula 1’s unofficial Live Timing API, the integration provides real-time updates on flag status and Safety Car conditions throughout each race weekend.
 
 
 > [!TIP]
@@ -14,7 +14,7 @@ Visit the [F1 Sensor Community at Home Assistant Community Forum](https://commun
 
 
 ### KEY FEATURES
-- Lightweight: choose only the sensors you need  
+- Lightweight, choose only the sensors you need  
 - Real-time updates on flag and Safety Car status 
 - Full timestamp support in UTC and local time  
 - Current weather and forecast for the next race location, including expected conditions at race start
@@ -53,7 +53,7 @@ Select which sensors to enable during setup. You can always change this selectio
 
 
 ### UPDATING DATA
-Automatic hourly updates via Jolpica–F1 API and real-time updates on flag status and Safety Car conditions throughout each race weekend. Race control messages are streamed directly via Formula 1's SignalR service for immediate notifications.
+Automatic hourly updates via Jolpica–F1 API and real-time updates on flag status and Safety Car conditions throughout each race weekend.
 
 
 
@@ -65,7 +65,7 @@ Automatic hourly updates via Jolpica–F1 API and real-time updates on flag stat
 
 | Entity                    | Info                                                             | 
 | --------                  | --------                                                         | 
-| sensor.f1_next_race       | Next race info (name, circuit, UTC and local times, location)    | 
+| sensor.f1_next_race       | Next race info    | 
 | sensor.f1_season_calendar       | Full race schedule    | 
 | sensor.f1_driver_standings       | Current driver championship standings    | 
 | sensor.f1_constructor_standings       | Current constructor standings    | 
@@ -73,8 +73,8 @@ Automatic hourly updates via Jolpica–F1 API and real-time updates on flag stat
 | sensor.f1_last_race_results       | Most recent race results    | 
 | sensor.f1_season_results       | All season race results    | 
 | binary_sensor.f1_race_week       | `on` during race week    |
-| sensor.f1_flag       | Track flag status (yellow sectors, VSC)    | 
-| binary_sensor.f1_safety_car       | `on` when Safety Car or VSC is active    |
+| sensor.f1_flag       | Track flag status (yellow red, VSC)    | 
+| binary_sensor.f1_safety_car       | `on` when Safety Car is active    |
 
 <br>
 
@@ -105,41 +105,6 @@ recorder:
     entities:
       - sensor.f1_season_results
 ```
-
-##### Debug logging
-Enable debug logging to view each Race Control message in the Home Assistant log:
-```yaml
-logger:
-  default: info
-  logs:
-    custom_components.f1_sensor: debug
-```
-
-#### Race Control message flow
-
-```mermaid
-sequenceDiagram
-    participant RC as SignalR
-    participant T as rc_transform
-    participant F as FlagState
-    participant S as sensor.f1_flag
-    RC->>T: raw message
-    T->>F: normalized dict
-    F->>S: new state
-```
-
-Example payload from the F1 API:
-
-```json
-{
-  "Category": "Flag",
-  "Flag": "RED",
-  "Scope": "Track",
-  "Message": "SESSION STOPPED",
-  "Utc": 123456789
-}
-```
-
 
 
 
@@ -220,14 +185,6 @@ data:
     3. {{ constructors[2].Constructor.name }} ({{ constructors[2].points }} pts)
 ```
 
-
-### DEVELOPMENT AND TESTING
-To run the unit tests, install the development requirements and execute `pytest`:
-
-```bash
-pip install -r requirements_dev.txt
-pytest -q
-```
 
 <br>
 <br>
