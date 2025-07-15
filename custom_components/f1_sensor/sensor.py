@@ -10,7 +10,6 @@ from timezonefinder import TimezoneFinder
 
 from .const import DOMAIN
 from .entity import F1BaseEntity
-from .helpers import find_next_session
 
 SYMBOL_CODE_TO_MDI = {
     "clearsky_day": "mdi:weather-sunny",
@@ -75,8 +74,6 @@ async def async_setup_entry(
         "weather": (F1WeatherSensor, data["race_coordinator"]),
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
-        "next_session": (F1NextSessionSensor, data.get("session_coordinator")),
-        "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
         "flag": (F1FlagSensor, data.get("race_control_coordinator")),
     }
 
@@ -608,91 +605,6 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
             )
         return {"races": cleaned}
 
-
-class F1NextSessionSensor(F1BaseEntity, SensorEntity):
-    """Sensor providing information about the next session."""
-
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
-        self._attr_icon = "mdi:clock-outline"
-        self._attr_device_class = SensorDeviceClass.TIMESTAMP
-
-    def _get_session(self):
-        meeting, session = find_next_session(self.coordinator.data or {})
-        return meeting, session
-
-    @property
-    def unique_id(self):
-        meeting, session = self._get_session()
-        if meeting and session:
-            return f"f1_next_session_{meeting.get('Key')}_{session.get('Key')}"
-        return self._attr_unique_id
-
-    @property
-    def state(self):
-        _, session = self._get_session()
-        if session:
-            return session.get("start_utc")
-        return None
-
-    @property
-    def extra_state_attributes(self):
-        meeting, session = self._get_session()
-        if not session:
-            return {}
-        attrs = {
-            "session_name": session.get("Name"),
-            "session_type": session.get("Type"),
-            "session_number": session.get("Number"),
-            "session_start": session.get("start_utc"),
-            "session_end": session.get("end_utc"),
-            "path": session.get("Path"),
-        }
-        if meeting:
-            attrs["meeting_name"] = meeting.get("Name")
-            attrs["meeting_key"] = meeting.get("Key")
-        attrs["session_key"] = session.get("Key")
-        return attrs
-
-
-class F1RaceControlSensor(F1BaseEntity, SensorEntity):
-    """Sensor that shows latest race control message."""
-
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
-        self._attr_icon = "mdi:flag"
-
-    @property
-    def available(self):
-        return getattr(self.coordinator, "available", True)
-
-    def _get_session_keys(self):
-        meeting, session = find_next_session(
-            self.hass.data[DOMAIN][self._entry_id]["session_coordinator"].data or {}
-        )
-        if meeting and session:
-            return meeting.get("Key"), session.get("Key")
-        return None, None
-
-    @property
-    def unique_id(self):
-        mk, sk = self._get_session_keys()
-        if mk and sk:
-            return f"f1_race_control_{mk}_{sk}"
-        return self._attr_unique_id
-
-    @property
-    def state(self):
-        data = self.coordinator.data or {}
-        if isinstance(data, dict):
-            if "id" in data:
-                return data["id"]
-            return data.get("Message")
-        return None
-
-    @property
-    def extra_state_attributes(self):
-        return self.coordinator.data or {}
 
 
 class FlagStateMachine:
