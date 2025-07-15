@@ -73,7 +73,7 @@ Automatic hourly updates via Jolpica–F1 API and real-time updates on flag stat
 | sensor.f1_last_race_results       | Most recent race results    | 
 | sensor.f1_season_results       | All season race results    | 
 | binary_sensor.f1_race_week       | `on` during race week    |
-| sensor.f1_flag       | Track flag status (yellow red, VSC)    | 
+| sensor.f1_flag       | Track flag status (`green`, `yellow`, `red`, `vsc`, `sc`, `chequered`)    | 
 | binary_sensor.f1_safety_car       | `on` when Safety Car is active    |
 
 <br>
