@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Inställning av F1-sensor",
+        "data": {
+          "sensor_name": "Enhetsnamn",
+          "enabled_sensors": "Aktiverade sensorer"
+        }
+      },
+      "reconfigure": {
+        "title": "Konfigurera om F1-sensor",
+        "data": {
+          "sensor_name": "Enhetsnamn",
+          "enabled_sensors": "Aktiverade sensorer"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_race": { "name": "Nästa lopp" },
+      "current_season": { "name": "Aktuell säsong" },
+      "driver_standings": { "name": "Förarställning" },
+      "constructor_standings": { "name": "Konstruktorställning" },
+      "weather": { "name": "Väder" },
+      "last_race_results": { "name": "Resultat från senaste loppet" },
+      "season_results": { "name": "Säsongsresultat" },
+      "flag": { "name": "Flagga" },
+      "safety_car": { "name": "Säkerhetsbil" }
+    },
+    "binary_sensor": {
+      "race_week": { "name": "Tävlingsvecka" }
+    }
+  }
+}
