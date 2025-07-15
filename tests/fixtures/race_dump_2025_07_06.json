@@ -1,0 +1,8 @@
+[
+  {"category": "Flag", "flag": "YELLOW", "scope": "Sector", "sector": 1},
+  {"category": "Flag", "flag": "CLEAR", "scope": "Sector", "sector": 2},
+  {"category": "SafetyCar", "Mode": "VIRTUAL SAFETY CAR", "Status": "DEPLOYED"},
+  {"category": "SafetyCar", "Mode": "VIRTUAL SAFETY CAR", "Status": "ENDING"},
+  {"category": "Flag", "flag": "GREEN", "scope": "Track"},
+  {"category": "Flag", "flag": "CHEQUERED", "scope": "Track"}
+]

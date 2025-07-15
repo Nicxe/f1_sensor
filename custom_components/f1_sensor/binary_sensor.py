@@ -11,6 +11,23 @@ from .const import DOMAIN
 from .entity import F1BaseEntity
 
 
+class SafetyCarStateMachine:
+    """Helper to keep track of Safety Car state."""
+
+    def __init__(self) -> None:
+        self.sc_active: bool = False
+
+    def handle_message(self, msg: dict) -> bool:
+        if msg.get("Category") != "SafetyCar" and msg.get("category") != "SafetyCar":
+            return self.sc_active
+
+        status = msg.get("Status", "").upper()
+        if "DEPLOYED" in status:
+            self.sc_active = True
+        elif status in ("ENDING", "IN THIS LAP"):
+            self.sc_active = False
+        return self.sc_active
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
@@ -102,24 +119,6 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
         }
 
 
-class SafetyCarStateMachine:
-    """State machine for safety car messages."""
-
-    def __init__(self) -> None:
-        self.sc_active: bool = False
-
-    def handle_message(self, msg: dict) -> bool:
-        if msg.get("Category") != "SafetyCar":
-            return self.sc_active
-
-        status = msg.get("Status")
-        if status == "DEPLOYED":
-            self.sc_active = True
-        elif status in ("ENDED",):
-            self.sc_active = False
-        return self.sc_active
-
-
 class F1SafetyCarBinarySensor(F1BaseEntity, BinarySensorEntity):
     """Binary sensor indicating if the Safety Car or VSC is active."""
 
@@ -132,22 +131,36 @@ class F1SafetyCarBinarySensor(F1BaseEntity, BinarySensorEntity):
             self._attr_device_class = BinarySensorDeviceClass.SAFETY
         except Exception:
             self._attr_device_class = None
-        self._machine = SafetyCarStateMachine()
+        self._attr_is_on = False
+        self._attr_extra_state_attributes = {}
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         self.coordinator.async_add_listener(self._handle_coordinator_update)
         if self.coordinator.data:
-            self._machine.handle_message(self.coordinator.data)
+            self._handle_message(self.coordinator.data)
 
     def _handle_coordinator_update(self) -> None:
         if self.coordinator.data:
-            self._machine.handle_message(self.coordinator.data)
+            self._handle_message(self.coordinator.data)
         self.async_write_ha_state()
+
+    def _handle_message(self, message: dict) -> None:
+        if message.get("Category") != "SafetyCar" and message.get("category") != "SafetyCar":
+            return
+        status = message.get("Status", "").upper()
+        if "DEPLOYED" in status:
+            self._attr_is_on = True
+            mode = message.get("Mode", "")
+            self._attr_extra_state_attributes["mode"] = (
+                "vsc" if "VIRTUAL" in mode.upper() else "sc"
+            )
+        elif status in ("ENDING", "IN THIS LAP"):
+            self._attr_is_on = False
 
     @property
     def is_on(self) -> bool:
-        return self._machine.sc_active
+        return self._attr_is_on
 
     @property
     def state(self):
