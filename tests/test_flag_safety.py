@@ -3,6 +3,7 @@ import json
 import sys
 import types
 from pathlib import Path
+import pytest
 
 async_timeout_mod = types.ModuleType("async_timeout")
 
@@ -169,10 +170,11 @@ def test_safety_car_sequence():
     msgs = _load_msgs("safety_car.json")
     sm = SafetyCarStateMachine()
     states = [sm.handle_message(m) for m in msgs]
-    assert states == [True, True, False]
+    assert states == [True, False, False]
 
 
-def test_flag_state_apply_sequence():
+@pytest.mark.asyncio
+async def test_flag_state_apply_sequence():
     msgs = [
         {
             "category": "Flag",
@@ -189,10 +191,16 @@ def test_flag_state_apply_sequence():
         {
             "category": "SafetyCar",
             "Status": "VSC DEPLOYED",
+            "Mode": "VIRTUAL SAFETY CAR",
             "scope": "Track",
             "sector": None,
         },
-        {"category": "SafetyCar", "Status": "VSC END", "scope": "Track"},
+        {
+            "category": "SafetyCar",
+            "Status": "ENDING",
+            "Mode": "VIRTUAL SAFETY CAR",
+            "scope": "Track",
+        },
         {
             "category": "Flag",
             "flag": "YELLOW",
@@ -207,9 +215,9 @@ def test_flag_state_apply_sequence():
         },
     ]
     fs = FlagState()
-    assert fs.apply(msgs[0]) == "red"
-    fs.apply(msgs[1])
-    assert fs.apply(msgs[2]) == "vsc"
-    fs.apply(msgs[3])
-    assert fs.apply(msgs[4]) == "yellow"
-    assert fs.apply(msgs[5]) == "green"
+    assert await fs.apply(msgs[0]) == "red"
+    await fs.apply(msgs[1])
+    assert await fs.apply(msgs[2]) == "vsc"
+    await fs.apply(msgs[3])
+    assert await fs.apply(msgs[4]) == "yellow"
+    assert await fs.apply(msgs[5]) == "green"

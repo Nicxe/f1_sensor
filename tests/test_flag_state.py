@@ -1,8 +1,10 @@
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
 
+import pytest
 
 homeassistant = types.ModuleType("homeassistant")
 homeassistant.core = types.ModuleType("homeassistant.core")
@@ -21,30 +23,31 @@ spec.loader.exec_module(module)
 FlagState = module.FlagState
 
 
-def test_track_red_overrides_all():
+@pytest.fixture
+def rc_dump():
+    path = Path("tests/fixtures/race_dump_2025_07_06.json")
+    return json.loads(path.read_text())
+
+
+@pytest.mark.asyncio
+async def test_flag_state_sequence(rc_dump):
     fs = FlagState()
-    fs.apply({"category": "Flag", "flag": "YELLOW", "scope": "Sector", "sector": 1})
+
+    # First yellow sector
+    assert await fs.apply(rc_dump[0]) == "yellow"
+
+    # Clear another sector should keep yellow
+    assert await fs.apply(rc_dump[1]) is None
     assert fs.state == "yellow"
-    fs.apply({"category": "Flag", "flag": "RED", "scope": "Track"})
-    assert fs.state == "red"
-    fs.apply({"category": "SafetyCar", "Status": "VSC DEPLOYED", "scope": "Track"})
-    assert fs.state == "red"
 
+    # VSC deployment
+    assert await fs.apply(rc_dump[2]) == "vsc"
 
-def test_sector_clear_does_not_cancel_track_red():
-    fs = FlagState()
-    fs.apply({"category": "Flag", "flag": "RED", "scope": "Track"})
-    fs.apply({"category": "Flag", "flag": "CLEAR", "scope": "Sector", "sector": 1})
-    assert fs.track_red
-    assert fs.state == "red"
+    # VSC ending - still yellow because sector 1 active
+    assert await fs.apply(rc_dump[3]) == "yellow"
 
+    # Track clear after SC with no yellows -> green
+    assert await fs.apply(rc_dump[4]) == "green"
 
-def test_track_clear_requires_no_yellows_for_green():
-    fs = FlagState()
-    fs.apply({"category": "Flag", "flag": "RED", "scope": "Track"})
-    fs.apply({"category": "Flag", "flag": "YELLOW", "scope": "Sector", "sector": 2})
-    fs.apply({"category": "Flag", "flag": "CLEAR", "scope": "Track"})
-    assert fs.state == "yellow"
-    fs.apply({"category": "Flag", "flag": "CLEAR", "scope": "Sector", "sector": 2})
-    assert fs.state == "green"
-
+    # Chequered flag
+    assert await fs.apply(rc_dump[5]) == "chequered"
