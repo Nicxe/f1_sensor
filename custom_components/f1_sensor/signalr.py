@@ -82,13 +82,14 @@ class SignalRClient:
     async def messages(self) -> AsyncGenerator[dict, None]:
         if not self._ws:
             return
+        index = 0
         async for msg in self._ws:
             if msg.type == WSMsgType.TEXT:
                 try:
                     payload = json.loads(msg.data)
                 except json.JSONDecodeError:
                     continue
-                _LOGGER.debug("Stream payload: %s", payload)
+                _LOGGER.debug("Stream payload %s: %s", index, payload)
 
                 if "M" in payload:
                     for hub_msg in payload["M"]:
@@ -96,12 +97,29 @@ class SignalRClient:
                             hub_msg.get("M") == "feed"
                             and hub_msg["A"][0] == "RaceControlMessages"
                         ):
-                            for msg in hub_msg["A"][1]["Messages"].values():
+                            raw = hub_msg["A"][1]["Messages"]
+                            if isinstance(raw, list):
+                                iterable = raw
+                            elif isinstance(raw, dict):
+                                iterable = raw.values()
+                            else:
+                                _LOGGER.warning("Unknown RC format: %s", type(raw))
+                                continue
+                            for msg in iterable:
                                 await self._handle_rc(msg)
                 elif "R" in payload and "RaceControlMessages" in payload["R"]:
-                    for update in payload["R"]["RaceControlMessages"]["Messages"]:
+                    raw = payload["R"]["RaceControlMessages"]["Messages"]
+                    if isinstance(raw, list):
+                        iterable = raw
+                    elif isinstance(raw, dict):
+                        iterable = raw.values()
+                    else:
+                        _LOGGER.warning("Unknown RC format: %s", type(raw))
+                        continue
+                    for update in iterable:
                         await self._handle_rc(update)
 
+                index += 1
                 yield payload
             elif msg.type in (WSMsgType.CLOSED, WSMsgType.ERROR):
                 break
@@ -119,8 +137,10 @@ class SignalRClient:
 
             hass = self._hass
             machine = hass.data.get(FLAG_MACHINE)
-            if machine and (new := machine.apply(clean)):
-                self._async_update_flag_sensor(new)
+            if machine:
+                new = await machine.apply(clean)
+                if new:
+                    self._async_update_flag_sensor(new)
         except Exception as exc:  # pragma: no cover - defensive
             _LOGGER.warning(
                 "Race control transform failed: %s", exc, exc_info=True
@@ -134,8 +154,8 @@ class SignalRClient:
             "sensor.f1_flag",
             state,
             {
-                "track_red": machine.track_red,
-                "vsc_active": machine.vsc_active,
-                "active_yellow_sectors": sorted(machine.active_yellows),
+                "active_sectors": sorted(machine.active_yellows),
+                "track_flag": machine.track_flag,
+                "sc_mode": machine.vsc_mode,
             },
         )
