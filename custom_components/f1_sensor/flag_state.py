@@ -43,6 +43,8 @@ class FlagState:
         utc_raw = rc.get("Utc") or rc.get("utc")
         if utc_raw:
             rc_time = datetime.fromisoformat(str(utc_raw).replace("Z", "+00:00"))
+            if rc_time.tzinfo is None:
+                rc_time = rc_time.replace(tzinfo=timezone.utc)
         else:
             rc_time = datetime.now(timezone.utc)
 
