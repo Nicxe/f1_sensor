@@ -103,7 +103,9 @@ class SignalRClient:
                             if isinstance(raw, list):
                                 iterable = raw
                             elif isinstance(raw, dict):
-                                iterable = raw.values()
+                                iterable = sorted(
+                                    raw.values(), key=lambda m: m.get("Utc")
+                                )
                             else:
                                 _LOGGER.warning("Unknown RC format: %s", type(raw))
                                 continue
@@ -114,7 +116,9 @@ class SignalRClient:
                     if isinstance(raw, list):
                         iterable = raw
                     elif isinstance(raw, dict):
-                        iterable = raw.values()
+                        iterable = sorted(
+                            raw.values(), key=lambda m: m.get("Utc")
+                        )
                     else:
                         _LOGGER.warning("Unknown RC format: %s", type(raw))
                         continue
