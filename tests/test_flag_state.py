@@ -34,20 +34,26 @@ async def test_flag_state_sequence(rc_dump):
     fs = FlagState()
 
     # First yellow sector
-    assert await fs.apply(rc_dump[0]) == "yellow"
+    changed, _ = await fs.apply(rc_dump[0])
+    assert changed == "yellow"
 
     # Clear another sector should keep yellow
-    assert await fs.apply(rc_dump[1]) is None
+    changed, _ = await fs.apply(rc_dump[1])
+    assert changed is None
     assert fs.state == "yellow"
 
     # VSC deployment
-    assert await fs.apply(rc_dump[2]) == "vsc"
+    changed, _ = await fs.apply(rc_dump[2])
+    assert changed == "vsc"
 
     # VSC ending - still yellow because sector 1 active
-    assert await fs.apply(rc_dump[3]) == "yellow"
+    changed, _ = await fs.apply(rc_dump[3])
+    assert changed == "yellow"
 
     # Track clear after SC with no yellows -> green
-    assert await fs.apply(rc_dump[4]) == "green"
+    changed, _ = await fs.apply(rc_dump[4])
+    assert changed == "green"
 
     # Chequered flag
-    assert await fs.apply(rc_dump[5]) == "chequered"
+    changed, _ = await fs.apply(rc_dump[5])
+    assert changed == "chequered"

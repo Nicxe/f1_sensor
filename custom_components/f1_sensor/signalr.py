@@ -31,6 +31,7 @@ class SignalRClient:
         self._session = session
         self._ws = None
         self._t0 = dt.datetime.utcnow()
+        self._startup_cutoff = None
 
     async def connect(self) -> None:
         _LOGGER.debug("Connecting to F1 SignalR service")
@@ -59,6 +60,7 @@ class SignalRClient:
         )
         await self._ws.send_json(SUBSCRIBE_MSG)
         self._t0 = dt.datetime.utcnow()
+        self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
         _LOGGER.debug("Subscribed to RaceControlMessages")
 
@@ -135,27 +137,25 @@ class SignalRClient:
             if not clean:
                 return
 
+            if self._startup_cutoff:
+                rc_time = dt.datetime.fromisoformat(clean["utc"].replace("Z", "+00:00"))
+                if rc_time < self._startup_cutoff:
+                    return
+
             hass = self._hass
             machine = hass.data.get(FLAG_MACHINE)
             if machine:
-                new = await machine.apply(clean)
-                if new:
-                    self._async_update_flag_sensor(new)
+                changed, attrs = await machine.apply(clean)
+                if changed is not None:
+                    self._async_update_flag_sensor(changed, attrs)
         except Exception as exc:  # pragma: no cover - defensive
             _LOGGER.warning(
                 "Race control transform failed: %s", exc, exc_info=True
             )
 
-    def _async_update_flag_sensor(self, state: str) -> None:
-        machine = self._hass.data.get(FLAG_MACHINE)
-        if not machine:
-            return
+    def _async_update_flag_sensor(self, state: str, attrs: dict) -> None:
         self._hass.states.async_set(
             "sensor.f1_flag",
             state,
-            {
-                "active_sectors": sorted(machine.active_yellows),
-                "track_flag": machine.track_flag,
-                "sc_mode": machine.vsc_mode,
-            },
+            attrs,
         )
