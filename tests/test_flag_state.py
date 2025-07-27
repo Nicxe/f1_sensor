@@ -57,3 +57,31 @@ async def test_flag_state_sequence(rc_dump):
     # Chequered flag
     changed, _ = await fs.apply(rc_dump[5])
     assert changed == "chequered"
+
+
+@pytest.mark.asyncio
+async def test_flag_state_drops_stale():
+    fs = FlagState()
+    msgs = [
+        {
+            "category": "Flag",
+            "flag": "GREEN",
+            "scope": "Track",
+            "Utc": "2024-01-01T12:00:00Z",
+        },
+        {
+            "category": "Flag",
+            "flag": "RED",
+            "scope": "Track",
+            "Utc": "2024-01-01T12:05:00Z",
+        },
+    ]
+
+    for msg in msgs:
+        await fs.apply(msg)
+    assert fs.state == "red"
+
+    fs = FlagState()
+    for msg in reversed(msgs):
+        await fs.apply(msg)
+    assert fs.state == "red"
