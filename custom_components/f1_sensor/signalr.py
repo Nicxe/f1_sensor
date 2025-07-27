@@ -30,7 +30,7 @@ class SignalRClient:
         self._hass = hass
         self._session = session
         self._ws = None
-        self._t0 = dt.datetime.utcnow()
+        self._t0 = dt.datetime.now(dt.timezone.utc)
         self._startup_cutoff = None
 
     async def connect(self) -> None:
@@ -59,7 +59,7 @@ class SignalRClient:
             CONNECT_URL, params=params, headers=headers
         )
         await self._ws.send_json(SUBSCRIBE_MSG)
-        self._t0 = dt.datetime.utcnow()
+        self._t0 = dt.datetime.now(dt.timezone.utc)
         self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
         _LOGGER.debug("Subscribed to RaceControlMessages")
