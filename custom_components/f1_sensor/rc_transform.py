@@ -48,10 +48,16 @@ SCOPE_MAP = {
 
 
 def _parse_date(raw, t0: dt.datetime) -> str:
-    """Return ISO-8601 oavsett om raw är ms eller ISO-sträng."""
+    """Return ISO-8601 timestamp in UTC regardless of input."""
     if isinstance(raw, (int, float)):
-        return (t0 + dt.timedelta(milliseconds=raw)).isoformat() + "Z"
-    return dparse.parse(raw).isoformat()
+        dt_obj = t0 + dt.timedelta(milliseconds=raw)
+    else:
+        dt_obj = dparse.parse(raw)
+
+    if dt_obj.tzinfo is None:
+        dt_obj = dt_obj.replace(tzinfo=dt.timezone.utc)
+
+    return dt_obj.astimezone(dt.timezone.utc).isoformat()
 
 
 def clean_rc(data, t0: dt.datetime):
