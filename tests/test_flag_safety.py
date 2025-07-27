@@ -215,9 +215,13 @@ async def test_flag_state_apply_sequence():
         },
     ]
     fs = FlagState()
-    assert await fs.apply(msgs[0]) == "red"
+    changed, _ = await fs.apply(msgs[0])
+    assert changed == "red"
     await fs.apply(msgs[1])
-    assert await fs.apply(msgs[2]) == "vsc"
+    changed, _ = await fs.apply(msgs[2])
+    assert changed == "vsc"
     await fs.apply(msgs[3])
-    assert await fs.apply(msgs[4]) == "yellow"
-    assert await fs.apply(msgs[5]) == "green"
+    changed, _ = await fs.apply(msgs[4])
+    assert changed == "yellow"
+    changed, _ = await fs.apply(msgs[5])
+    assert changed == "green"
