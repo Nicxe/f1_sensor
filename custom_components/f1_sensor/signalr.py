@@ -143,6 +143,8 @@ class SignalRClient:
 
             if self._startup_cutoff:
                 rc_time = dt.datetime.fromisoformat(clean["utc"].replace("Z", "+00:00"))
+                if rc_time.tzinfo is None:
+                    rc_time = rc_time.replace(tzinfo=dt.timezone.utc)
                 if rc_time < self._startup_cutoff:
                     return
 
