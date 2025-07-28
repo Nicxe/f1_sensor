@@ -7,6 +7,7 @@ from aiohttp import ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
 
 from .const import FLAG_MACHINE
+from .flag_state import FlagState
 
 from . import rc_transform
 
@@ -150,10 +151,13 @@ class SignalRClient:
 
             hass = self._hass
             machine = hass.data.get(FLAG_MACHINE)
-            if machine:
-                changed, attrs = await machine.apply(clean)
-                if changed is not None:
-                    self._async_update_flag_sensor(changed, attrs)
+            if machine is None:
+                machine = FlagState()
+                hass.data[FLAG_MACHINE] = machine
+
+            changed, attrs = await machine.apply(clean)
+            if changed is not None:
+                self._async_update_flag_sensor(changed, attrs)
         except Exception as exc:  # pragma: no cover - defensive
             _LOGGER.warning(
                 "Race control transform failed: %s", exc, exc_info=True

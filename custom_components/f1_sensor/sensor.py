@@ -10,6 +10,8 @@ from timezonefinder import TimezoneFinder
 
 from .const import DOMAIN
 from .entity import F1BaseEntity
+from .const import FLAG_MACHINE
+from .flag_state import FlagState
 
 SYMBOL_CODE_TO_MDI = {
     "clearsky_day": "mdi:weather-sunny",
@@ -607,104 +609,44 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
 
 
 
-class FlagStateMachine:
-    """Helper class aggregating flag status messages."""
-
-    def __init__(self) -> None:
-        self.track_red: bool = False
-        self.vsc_active: bool = False
-        self.active_yellow_sectors: set[int] = set()
-        self.state: str = "green"
-
-    def handle_message(self, msg: dict) -> str:
-        """Update state based on a race control message."""
-        cat = msg.get("Category")
-
-        if cat == "Flag" and msg.get("Flag") == "RED" and msg.get("Scope") == "Track":
-            self.track_red = True
-            self.vsc_active = False
-            self.active_yellow_sectors.clear()
-            self.state = "red"
-
-        elif cat == "SafetyCar" and msg.get("Mode") == "VIRTUAL SAFETY CAR":
-            if msg.get("Status") == "DEPLOYED":
-                self.vsc_active = True
-                self.state = "vsc"
-            elif msg.get("Status") in ("ENDED",):
-                self.vsc_active = False
-                if not self.track_red and not self.active_yellow_sectors:
-                    self.state = "green"
-
-        elif (
-            cat == "Flag"
-            and msg.get("Flag") in ("YELLOW", "DOUBLE YELLOW")
-            and msg.get("Scope") == "Sector"
-        ):
-            if not self.track_red and not self.vsc_active:
-                sector = msg.get("Sector")
-                if sector is not None:
-                    self.active_yellow_sectors.add(int(sector))
-                self.state = "yellow"
-
-        elif (
-            cat == "Flag"
-            and msg.get("Flag") == "CLEAR"
-            and msg.get("Scope") == "Sector"
-        ):
-            sector = msg.get("Sector")
-            if sector is not None:
-                self.active_yellow_sectors.discard(int(sector))
-            if (
-                not self.track_red
-                and not self.vsc_active
-                and not self.active_yellow_sectors
-            ):
-                self.state = "green"
-
-        elif (
-            cat == "Flag"
-            and msg.get("Flag") in ("CLEAR", "GREEN")
-            and msg.get("Scope") == "Track"
-        ):
-            self.track_red = False
-            self.vsc_active = False
-            self.active_yellow_sectors.clear()
-            self.state = "green"
-
-        return self.state
-
-
 class F1FlagSensor(F1BaseEntity, SensorEntity):
     """Aggregated flag status for the entire track."""
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag"
-        self._machine = FlagStateMachine()
-        self._attr_native_value = self._machine.state
+        self._machine: FlagState | None = None
+        self._attr_native_value = "green"
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        # Ensure a single shared FlagState instance
+        self._machine = self.hass.data.get(FLAG_MACHINE)
+        if self._machine is None:
+            self._machine = FlagState()
+            self.hass.data[FLAG_MACHINE] = self._machine
+        self._attr_native_value = self._machine.state
+        self._update_attrs()
         self.coordinator.async_add_listener(self._handle_coordinator_update)
-        if self.coordinator.data_list:
-            for msg in self.coordinator.data_list:
-                if state := self._machine.handle_message(msg):
-                    self._attr_native_value = state
 
     def _handle_coordinator_update(self) -> None:
+        # Feed new messages to the shared FlagState and update ourselves
         for msg in self.coordinator.data_list:
-            if state := self._machine.handle_message(msg):
-                self._attr_native_value = state
-                self.async_write_ha_state()
+            # FlagState.apply() is async; run in event loop
+            fut = self.hass.async_create_task(self._machine.apply(msg))
+            fut.add_done_callback(lambda _: None)
+
+        self._attr_native_value = self._machine.state
+        self._update_attrs()
+        self.async_write_ha_state()
+
+    def _update_attrs(self):
+        self._attr_extra_state_attributes = {
+            "track_flag": self._machine.track_flag,
+            "sc_mode": self._machine.vsc_mode,
+            "active_sectors": sorted(self._machine.active_yellows),
+        }
 
     @property
     def state(self):
         return self._machine.state
-
-    @property
-    def extra_state_attributes(self):
-        return {
-            "track_red": self._machine.track_red,
-            "vsc_active": self._machine.vsc_active,
-            "active_yellow_sectors": sorted(self._machine.active_yellow_sectors),
-        }

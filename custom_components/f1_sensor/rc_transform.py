@@ -79,6 +79,8 @@ def clean_rc(data, t0: dt.datetime):
         flag = flag_raw
     scope = SCOPE_MAP.get(scope_val, scope_val)
     sector = data.get("sc", data.get("Sector"))
+    status = data.get("st", data.get("Status"))
+    mode = data.get("mo", data.get("Mode"))
     message = data.get("mes", data.get("Message"))
     utc = _parse_date(data.get("utc", data.get("Utc")), t0)
 
@@ -89,4 +91,6 @@ def clean_rc(data, t0: dt.datetime):
         "sector": sector,
         "message": message,
         "utc": utc,
+        "Status": status,
+        "Mode": mode,
     }
