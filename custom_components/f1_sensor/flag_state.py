@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import asyncio
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class FlagState:
@@ -36,7 +39,18 @@ class FlagState:
         Update internal status. Return (new_state | None, attributes).
         Attributes are always returned for convenience.
         """
-        cat = rc["category"]
+        _LOGGER.debug("Incoming RC: %s", rc)
+        cat = rc.get("category")
+        if cat is None:
+            # Ignore messages that lack a "category" key to prevent KeyError
+            _LOGGER.debug("Ignored RC without category")
+            attrs = {
+                "active_sectors": sorted(self.active_yellows),
+                "track_flag": self.track_flag,
+                "sc_mode": self.vsc_mode,
+                "last_state_change": self.last_change.isoformat(),
+            }
+            return None, attrs
         scope = rc.get("scope")
         flag = rc.get("flag")
 
@@ -61,6 +75,7 @@ class FlagState:
             # SAFETY CAR / VSC --------------------------------------
             if cat == "SafetyCar":
                 status = rc.get("Status", "").upper()
+                _LOGGER.debug("SafetyCar update: status=%s, mode=%s", status, rc.get("Mode"))
                 if "DEPLOYED" in status:
                     self.vsc_mode = rc["Mode"]
                 elif status in ("ENDING", "IN THIS LAP"):
@@ -79,16 +94,31 @@ class FlagState:
                     else:
                         # GREEN låser upp chequered och rensar red
                         self.track_flag = flag.lower()
+                        _LOGGER.debug("Track flag set to %s", self.track_flag)
                         if flag.lower() in ("green", "red"):
                             self.active_yellows.clear()
 
         # SEKTORFLAGGOR --------------------------------------------
             elif cat == "Flag" and scope == "Sector":
-                sector = rc["sector"]
+                # Normalize sector value to int so add() and discard() match reliably
+                sector_raw = rc.get("sector")
+                try:
+                    sector = int(sector_raw)
+                except (TypeError, ValueError):
+                    _LOGGER.debug("Invalid sector value '%s'; skipping RC", sector_raw)
+                    attrs = {
+                        "active_sectors": sorted(self.active_yellows),
+                        "track_flag": self.track_flag,
+                        "sc_mode": self.vsc_mode,
+                        "last_state_change": self.last_change.isoformat(),
+                    }
+                    return None, attrs
                 if flag in ("YELLOW", "DOUBLE YELLOW"):
                     self.active_yellows.add(sector)
+                    _LOGGER.debug("Sector %s yellow; active_yellows=%s", sector_raw, self.active_yellows)
                 elif flag == "CLEAR":
                     self.active_yellows.discard(sector)
+                    _LOGGER.debug("Sector %s cleared; active_yellows=%s", sector_raw, self.active_yellows)
 
         # --- compute new state ------------------------------------
             new_state = self._recalculate()
@@ -104,11 +134,12 @@ class FlagState:
                 changed = new_state
             self.last_seen_utc = rc_time
 
+            _LOGGER.debug("State=%s, changed=%s", self.state, changed)
             attrs = {
                 "active_sectors": sorted(self.active_yellows),
                 "track_flag": self.track_flag,
                 "sc_mode": self.vsc_mode,
                 "last_state_change": self.last_change.isoformat(),
             }
+            _LOGGER.debug("Return attrs: %s", attrs)
             return changed, attrs
-
