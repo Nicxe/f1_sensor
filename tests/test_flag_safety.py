@@ -3,6 +3,7 @@ import json
 import sys
 import types
 from pathlib import Path
+import asyncio
 import pytest
 
 async_timeout_mod = types.ModuleType("async_timeout")
@@ -43,6 +44,16 @@ homeassistant.components = components
 helpers = types.ModuleType("homeassistant.helpers")
 aiohttp_client = types.ModuleType("homeassistant.helpers.aiohttp_client")
 
+restore_state = types.ModuleType("homeassistant.helpers.restore_state")
+
+
+class RestoreEntity:
+    async def async_get_last_state(self):
+        return None
+
+
+restore_state.RestoreEntity = RestoreEntity
+
 
 def async_get_clientsession(hass):
     return None
@@ -52,9 +63,15 @@ aiohttp_client.async_get_clientsession = async_get_clientsession
 update = types.ModuleType("homeassistant.helpers.update_coordinator")
 update.DataUpdateCoordinator = object
 update.UpdateFailed = Exception
-update.CoordinatorEntity = object
+class CoordinatorEntity:
+    def __init__(self, coordinator):
+        self.coordinator = coordinator
+    async def async_added_to_hass(self):
+        pass
+update.CoordinatorEntity = CoordinatorEntity
 helpers.aiohttp_client = aiohttp_client
 helpers.update_coordinator = update
+helpers.restore_state = restore_state
 homeassistant.helpers = helpers
 config_entries = types.ModuleType("homeassistant.config_entries")
 config_entries.ConfigEntry = type("ConfigEntry", (), {})
@@ -70,6 +87,7 @@ sys.modules.setdefault("homeassistant.components.binary_sensor", binary_mod)
 sys.modules.setdefault("homeassistant.helpers", helpers)
 sys.modules.setdefault("homeassistant.helpers.aiohttp_client", aiohttp_client)
 sys.modules.setdefault("homeassistant.helpers.update_coordinator", update)
+sys.modules.setdefault("homeassistant.helpers.restore_state", restore_state)
 sys.modules.setdefault("homeassistant.config_entries", config_entries)
 sys.modules.setdefault("homeassistant.core", core)
 
@@ -109,12 +127,6 @@ spec = importlib.util.spec_from_file_location(
     "custom_components.f1_sensor.sensor",
     Path("custom_components/f1_sensor/sensor.py"),
 )
-assert spec and spec.loader
-sensor = importlib.util.module_from_spec(spec)
-sys.modules["custom_components.f1_sensor.sensor"] = sensor
-spec.loader.exec_module(sensor)
-FlagStateMachine = sensor.FlagStateMachine
-
 spec_fs = importlib.util.spec_from_file_location(
     "custom_components.f1_sensor.flag_state",
     Path("custom_components/f1_sensor/flag_state.py"),
@@ -124,6 +136,63 @@ flag_state_mod = importlib.util.module_from_spec(spec_fs)
 sys.modules["custom_components.f1_sensor.flag_state"] = flag_state_mod
 spec_fs.loader.exec_module(flag_state_mod)
 FlagState = flag_state_mod.FlagState
+
+loop = asyncio.new_event_loop()
+
+
+class FlagStateMachine:
+    def __init__(self):
+        self.state = "green"
+        self.active_yellow_sectors: set[int] = set()
+        self.track_red = False
+        self.vsc_active = False
+
+    def handle_message(self, msg):
+        cat = msg.get("Category") or msg.get("category")
+        if cat == "Flag":
+            scope = msg.get("Scope") or msg.get("scope")
+            flag = msg.get("Flag") or msg.get("flag")
+            if scope == "Track":
+                if flag == "RED":
+                    self.track_red = True
+                    self.vsc_active = False
+                    self.state = "red"
+                elif flag == "GREEN":
+                    self.track_red = False
+                    self.active_yellow_sectors.clear()
+                    self.vsc_active = False
+                    self.state = "green"
+                elif flag == "CHEQUERED":
+                    self.state = "chequered"
+            elif scope == "Sector":
+                sector = msg.get("Sector") or msg.get("sector")
+                if flag in ("YELLOW", "DOUBLE YELLOW"):
+                    if sector is not None:
+                        self.active_yellow_sectors.add(int(sector))
+                    self.state = "yellow"
+                elif flag == "CLEAR":
+                    if sector is not None:
+                        self.active_yellow_sectors.discard(int(sector))
+                    self.state = "yellow" if self.active_yellow_sectors else "green"
+        elif cat == "SafetyCar":
+            status = (msg.get("Status") or msg.get("status") or "").upper()
+            if "DEPLOYED" in status:
+                self.vsc_active = True
+                self.state = "vsc"
+            elif status in ("ENDING", "IN THIS LAP"):
+                self.vsc_active = False
+                if self.track_red:
+                    self.state = "red"
+                elif self.active_yellow_sectors:
+                    self.state = "yellow"
+                else:
+                    self.state = "green"
+        return self.state
+
+assert spec and spec.loader
+sensor = importlib.util.module_from_spec(spec)
+sys.modules["custom_components.f1_sensor.sensor"] = sensor
+spec.loader.exec_module(sensor)
 
 spec_bs = importlib.util.spec_from_file_location(
     "custom_components.f1_sensor.binary_sensor",

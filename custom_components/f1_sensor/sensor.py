@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 import async_timeout
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -609,7 +610,7 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
 
 
 
-class F1FlagSensor(F1BaseEntity, SensorEntity):
+class F1FlagSensor(F1BaseEntity, SensorEntity, RestoreEntity):
     """Aggregated flag status for the entire track."""
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
@@ -625,7 +626,19 @@ class F1FlagSensor(F1BaseEntity, SensorEntity):
         if self._machine is None:
             self._machine = FlagState()
             self.hass.data[FLAG_MACHINE] = self._machine
-        self._attr_native_value = self._machine.state
+
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state:
+            self._machine.state = last_state.state
+            self._machine.track_flag = last_state.attributes.get("track_flag")
+            self._machine.vsc_mode = last_state.attributes.get("sc_mode")
+            self._machine.active_yellows = set(
+                last_state.attributes.get("active_sectors", [])
+            )
+            self._attr_native_value = last_state.state
+        else:
+            self._attr_native_value = self._machine.state
+
         self._update_attrs()
         self.coordinator.async_add_listener(self._handle_coordinator_update)
 
