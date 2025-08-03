@@ -1,6 +1,7 @@
 import json
 import logging
 import datetime as dt
+import asyncio
 from typing import AsyncGenerator
 
 from aiohttp import ClientSession, WSMsgType
@@ -33,6 +34,7 @@ class SignalRClient:
         self._ws = None
         self._t0 = dt.datetime.now(dt.timezone.utc)
         self._startup_cutoff = None
+        self._heartbeat_task: asyncio.Task | None = None
 
     async def connect(self) -> None:
         _LOGGER.debug("Connecting to F1 SignalR service")
@@ -60,6 +62,10 @@ class SignalRClient:
             CONNECT_URL, params=params, headers=headers
         )
         await self._ws.send_json(SUBSCRIBE_MSG)
+        # Renew the subscription every 5 minutes so Azure SignalR
+        # inte stänger grupp‑anslutningen (20 min timeout).
+        if self._heartbeat_task is None or self._heartbeat_task.done():
+            self._heartbeat_task = asyncio.create_task(self._heartbeat())
         self._t0 = dt.datetime.now(dt.timezone.utc)
         self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
@@ -131,11 +137,6 @@ class SignalRClient:
             elif msg.type in (WSMsgType.CLOSED, WSMsgType.ERROR):
                 break
 
-    async def close(self) -> None:
-        if self._ws is not None:
-            await self._ws.close()
-            self._ws = None
-
     async def _handle_rc(self, rc_raw) -> None:
         try:
             clean = rc_transform.clean_rc(rc_raw, self._t0)
@@ -169,3 +170,28 @@ class SignalRClient:
             state,
             attrs,
         )
+
+    async def _heartbeat(self) -> None:
+        """Send Subscribe‑kommandot var 5:e minut för att hålla strömmen vid liv."""
+        try:
+            while True:
+                await asyncio.sleep(300)  # 5 min
+                if self._ws is None or self._ws.closed:
+                    break
+                try:
+                    await self._ws.send_json(SUBSCRIBE_MSG)
+                    _LOGGER.debug("Heartbeat: subscription renewed")
+                except Exception as exc:          # pylint: disable=broad-except
+                    _LOGGER.warning("Heartbeat failed: %s", exc)
+                    break
+        except asyncio.CancelledError:
+            # Normalt vid nedstängning / reconnect
+            pass
+
+    async def close(self) -> None:
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            self._heartbeat_task = None
+        if self._ws is not None:
+            await self._ws.close()
+            self._ws = None
