@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 import async_timeout
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -12,6 +13,7 @@ from .const import DOMAIN
 from .entity import F1BaseEntity
 from .const import FLAG_MACHINE
 from .flag_state import FlagState
+from .helpers import normalize_track_status
 
 SYMBOL_CODE_TO_MDI = {
     "clearsky_day": "mdi:weather-sunny",
@@ -77,6 +79,7 @@ async def async_setup_entry(
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
         "flag": (F1FlagSensor, data.get("race_control_coordinator")),
+        "track_status": (F1TrackStatusSensor, data.get("track_status_coordinator")),
     }
 
     sensors = []
@@ -650,3 +653,80 @@ class F1FlagSensor(F1BaseEntity, SensorEntity):
     @property
     def state(self):
         return self._machine.state
+
+
+class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Track status sensor independent from flag logic."""
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:flag-checkered"
+        self._attr_native_value = None
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        # Prefer coordinator's latest if present, otherwise restore last state
+        initial = self._normalize(self._extract_current())
+        if initial is not None:
+            self._attr_native_value = initial
+            try:
+                from logging import getLogger
+                getLogger(__name__).debug("TrackStatus: Initialized from coordinator: %s", initial)
+            except Exception:
+                pass
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                self._attr_native_value = last.state
+                try:
+                    from logging import getLogger
+                    getLogger(__name__).debug("TrackStatus: Restored last state: %s", last.state)
+                except Exception:
+                    pass
+        # Listen for coordinator pushes
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self.async_write_ha_state() 
+
+    def _normalize(self, raw: dict | None) -> str | None:
+        return normalize_track_status(raw)
+
+    def _extract_current(self) -> dict | None:
+        # Coordinator stores last payload for TrackStatus
+        data = self.coordinator.data
+        if not data:
+            return None
+        # Expect either direct dict or wrapper with 'data'
+        if isinstance(data, dict) and ("Status" in data or "Message" in data):
+            return data
+        inner = data.get("data") if isinstance(data, dict) else None
+        if isinstance(inner, dict):
+            return inner
+        return None
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def state(self):
+        # Return stored value so restored/initialized state is honored until an update arrives
+        return self._attr_native_value
+
+    def _handle_coordinator_update(self) -> None:
+        raw = self._extract_current()
+        new_state = self._normalize(raw)
+        try:
+            from logging import getLogger
+            getLogger(__name__).debug("TrackStatus sensor state computed: raw=%s -> %s", raw, new_state)
+        except Exception:  # noqa: BLE001
+            pass
+        self._attr_native_value = new_state
+        self.async_write_ha_state()
+
+    @property
+    def extra_state_attributes(self):
+        raw = self._extract_current() or {}
+        return {
+            "raw": raw,
+        }

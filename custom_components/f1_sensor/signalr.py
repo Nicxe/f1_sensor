@@ -17,10 +17,12 @@ _LOGGER = logging.getLogger(__name__)
 NEGOTIATE_URL = "https://livetiming.formula1.com/signalr/negotiate"
 CONNECT_URL = "wss://livetiming.formula1.com/signalr/connect"
 HUB_DATA = '[{"name":"Streaming"}]'
+
+# Subscribe to both RaceControl and TrackStatus streams
 SUBSCRIBE_MSG = {
     "H": "Streaming",
     "M": "Subscribe",
-    "A": [["RaceControlMessages"]],
+    "A": [["RaceControlMessages", "TrackStatus"]],
     "I": 1,
 }
 
@@ -69,7 +71,7 @@ class SignalRClient:
         self._t0 = dt.datetime.now(dt.timezone.utc)
         self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
-        _LOGGER.debug("Subscribed to RaceControlMessages")
+        _LOGGER.debug("Subscribed to RaceControlMessages and TrackStatus")
 
     async def _ensure_connection(self) -> None:
         """Try to (re)connect using exponential back-off."""
@@ -102,35 +104,46 @@ class SignalRClient:
 
                 if "M" in payload:
                     for hub_msg in payload["M"]:
-                        if (
-                            hub_msg.get("M") == "feed"
-                            and hub_msg["A"][0] == "RaceControlMessages"
-                        ):
-                            raw = hub_msg["A"][1]["Messages"]
-                            if isinstance(raw, list):
-                                iterable = raw
-                            elif isinstance(raw, dict):
-                                iterable = sorted(
-                                    raw.values(), key=lambda m: m.get("Utc")
-                                )
-                            else:
-                                _LOGGER.warning("Unknown RC format: %s", type(raw))
-                                continue
-                            for msg in iterable:
-                                await self._handle_rc(msg)
-                elif "R" in payload and "RaceControlMessages" in payload["R"]:
-                    raw = payload["R"]["RaceControlMessages"]["Messages"]
-                    if isinstance(raw, list):
-                        iterable = raw
-                    elif isinstance(raw, dict):
-                        iterable = sorted(
-                            raw.values(), key=lambda m: m.get("Utc")
-                        )
-                    else:
-                        _LOGGER.warning("Unknown RC format: %s", type(raw))
-                        continue
-                    for update in iterable:
-                        await self._handle_rc(update)
+                        if hub_msg.get("M") == "feed":
+                            stream_name = hub_msg["A"][0]
+                            if stream_name == "RaceControlMessages":
+                                raw = hub_msg["A"][1]["Messages"]
+                                if isinstance(raw, list):
+                                    iterable = raw
+                                elif isinstance(raw, dict):
+                                    iterable = sorted(
+                                        raw.values(), key=lambda m: m.get("Utc")
+                                    )
+                                else:
+                                    _LOGGER.warning("Unknown RC format: %s", type(raw))
+                                    continue
+                                for msg in iterable:
+                                    await self._handle_rc(msg)
+                            elif stream_name == "TrackStatus":
+                                # Log TrackStatus updates at debug level similar to RaceControl
+                                try:
+                                    _LOGGER.debug("Track status message: %s", hub_msg["A"][1])
+                                except Exception:  # noqa: BLE001 - defensive logging
+                                    _LOGGER.debug("Track status message received (unparsed)")
+                elif "R" in payload:
+                    if "RaceControlMessages" in payload["R"]:
+                        raw = payload["R"]["RaceControlMessages"]["Messages"]
+                        if isinstance(raw, list):
+                            iterable = raw
+                        elif isinstance(raw, dict):
+                            iterable = sorted(
+                                raw.values(), key=lambda m: m.get("Utc")
+                            )
+                        else:
+                            _LOGGER.warning("Unknown RC format: %s", type(raw))
+                            continue
+                        for update in iterable:
+                            await self._handle_rc(update)
+                    if "TrackStatus" in payload["R"]:
+                        try:
+                            _LOGGER.debug("Track status message: %s", payload["R"]["TrackStatus"]) 
+                        except Exception:  # noqa: BLE001 - defensive logging
+                            _LOGGER.debug("Track status message received (unparsed)")
 
                 index += 1
                 yield payload
@@ -180,7 +193,7 @@ class SignalRClient:
                     break
                 try:
                     await self._ws.send_json(SUBSCRIBE_MSG)
-                    _LOGGER.debug("Heartbeat: subscription renewed")
+                    _LOGGER.debug("Heartbeat: subscriptions renewed")
                 except Exception as exc:          # pylint: disable=broad-except
                     _LOGGER.warning("Heartbeat failed: %s", exc)
                     break

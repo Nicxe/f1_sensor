@@ -45,9 +45,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session_coordinator = LiveSessionCoordinator(hass, year)
     enable_rc = entry.data.get("enable_race_control", True)
     race_control_coordinator = None
+    track_status_coordinator = None
     hass.data[FLAG_MACHINE] = FlagState()
     if enable_rc:
         race_control_coordinator = RaceControlCoordinator(
+            hass, session_coordinator
+        )
+        track_status_coordinator = TrackStatusCoordinator(
             hass, session_coordinator
         )
 
@@ -59,6 +63,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await session_coordinator.async_config_entry_first_refresh()
     if race_control_coordinator:
         await race_control_coordinator.async_config_entry_first_refresh()
+    if track_status_coordinator:
+        await track_status_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "race_coordinator": race_coordinator,
@@ -68,6 +74,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "season_results_coordinator": season_results_coordinator,
         "session_coordinator": session_coordinator,
         "race_control_coordinator": race_control_coordinator,
+        "track_status_coordinator": track_status_coordinator,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -232,6 +239,108 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                         )
                         return None
                     return content
+        return None
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        self._task = self.hass.loop.create_task(self._listen())
+
+
+class TrackStatusCoordinator(DataUpdateCoordinator):
+    """Coordinator for TrackStatus updates using SignalR."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: LiveSessionCoordinator,
+    ):
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="F1 Track Status Coordinator",
+            update_interval=None,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self.available = True
+        self._last_message = None
+        self.data_list: list[dict] = []
+        self._task = None
+        self._client = None
+        self._t0 = None
+        self._startup_cutoff = None
+
+    async def async_close(self, *_):
+        if self._task:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+        if self._client:
+            await self._client.close()
+
+    async def _async_update_data(self):
+        return self._last_message
+
+    async def _listen(self):
+        from .signalr import SignalRClient
+
+        self._client = SignalRClient(self.hass, self._session)
+        while True:
+            try:
+                await self._client._ensure_connection()
+                # Capture connection time similar to SignalRClient
+                from datetime import timezone
+                self._t0 = datetime.now(timezone.utc)
+                self._startup_cutoff = self._t0 - timedelta(seconds=30)
+                async for payload in self._client.messages():
+                    msg = self._parse_message(payload)
+                    if msg:
+                        # Drop old messages around reconnect/heartbeat like flag sensor
+                        utc_str = (
+                            msg.get("Utc")
+                            or msg.get("utc")
+                            or msg.get("processedAt")
+                            or msg.get("timestamp")
+                        )
+                        try:
+                            if utc_str:
+                                ts = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
+                                if ts.tzinfo is None:
+                                    from datetime import timezone as _tz
+                                    ts = ts.replace(tzinfo=_tz.utc)
+                                if self._startup_cutoff and ts < self._startup_cutoff:
+                                    _LOGGER.debug("TrackStatus: Ignored old message: %s", msg)
+                                    continue
+                        except Exception:  # noqa: BLE001
+                            pass
+
+                        _LOGGER.debug("TrackStatus: New message: %s", msg)
+                        self.available = True
+                        self._last_message = msg
+                        self.data_list = [msg]
+                        self.async_set_updated_data(msg)
+            except Exception as err:  # pragma: no cover - network errors
+                self.available = False
+                _LOGGER.warning("Track status websocket error: %s", err)
+            finally:
+                if self._client:
+                    await self._client.close()
+
+    @staticmethod
+    def _parse_message(data):
+        if not isinstance(data, dict):
+            return None
+        # Handle live feed entries
+        messages = data.get("M")
+        if isinstance(messages, list):
+            for update in messages:
+                args = update.get("A", [])
+                if len(args) >= 2 and args[0] == "TrackStatus":
+                    return args[1]
+        # Handle RPC responses
+        result = data.get("R")
+        if isinstance(result, dict) and "TrackStatus" in result:
+            return result.get("TrackStatus")
         return None
 
     async def async_config_entry_first_refresh(self):

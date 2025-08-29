@@ -1,5 +1,7 @@
+from homeassistant.const import Platform
+
 DOMAIN = "f1_sensor"
-PLATFORMS = ["sensor", "binary_sensor"]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 # Global key for the shared flag state machine
 FLAG_MACHINE = "f1_flag_state"
