@@ -56,16 +56,16 @@ def normalize_track_status(raw: dict | None) -> str | None:
     }
 
     numeric = {
+  
         "1": "CLEAR",
         "2": "YELLOW",
-        "3": "SC",
-        "4": "RED",
+        "4": "SC",          # Säkrast stöd för Safety Car
         "5": "RED",
         "6": "VSC",
-        "7": "VSC",
-        "8": "CLEAR",
-    }
-
+        "7": "VSC_ENDING",
+        "8": "CLEAR",       # Fallback, observerad som CLEAR i praktiken
+        # "3": okänd/kontextberoende – logga och validera mot Race Control
+     }
 
 
     # Prefer explicit message aliases when present to avoid wrong numeric overrides
