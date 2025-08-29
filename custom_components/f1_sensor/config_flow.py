@@ -50,6 +50,9 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     }
                 ),
                 vol.Optional("enable_race_control", default=True): cv.boolean,
+                vol.Optional(
+                    "live_delay_seconds", default=0
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=300)),
             }
         )
 
@@ -111,6 +114,10 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     "enable_race_control",
                     default=current.get("enable_race_control", True),
                 ): cv.boolean,
+                vol.Optional(
+                    "live_delay_seconds",
+                    default=current.get("live_delay_seconds", 0),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=300)),
             }
         )
 

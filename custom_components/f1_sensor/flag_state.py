@@ -83,6 +83,9 @@ class FlagState:
 
         # TRACK-WIDE FLAGGORS ---------------------------------------
             elif cat == "Flag" and scope == "Track":
+                # Treat Track "CLEAR" the same as explicit "GREEN" from RC
+                if flag == "CLEAR":
+                    flag = "GREEN"
                 if flag in ("GREEN", "RED", "CHEQUERED"):
                     if (
                         flag == "GREEN"

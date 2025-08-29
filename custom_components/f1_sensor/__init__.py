@@ -44,15 +44,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     year = datetime.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year)
     enable_rc = entry.data.get("enable_race_control", True)
+    live_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
     race_control_coordinator = None
     track_status_coordinator = None
     hass.data[FLAG_MACHINE] = FlagState()
     if enable_rc:
         race_control_coordinator = RaceControlCoordinator(
-            hass, session_coordinator
+            hass, session_coordinator, live_delay
         )
         track_status_coordinator = TrackStatusCoordinator(
-            hass, session_coordinator
+            hass, session_coordinator, live_delay
         )
 
     await race_coordinator.async_config_entry_first_refresh()
@@ -161,6 +162,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         session_coord: LiveSessionCoordinator,
+        delay_seconds: int = 0,
     ):
         super().__init__(
             hass,
@@ -175,6 +177,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self.data_list: list[dict] = []
         self._task = None
         self._client = None
+        self._delay = max(0, int(delay_seconds or 0))
 
     async def async_close(self, *_):
         if self._task:
@@ -198,10 +201,13 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                     msg = self._parse_message(payload)
                     if msg:
                         _LOGGER.debug("Race control message: %s", msg)
-                        self.available = True
-                        self._last_message = msg
-                        self.data_list = [msg]
-                        self.async_set_updated_data(msg)
+                        if self._delay > 0:
+                            self.hass.loop.call_later(
+                                self._delay,
+                                lambda m=msg: self._deliver(m),
+                            )
+                        else:
+                            self._deliver(msg)
             except Exception as err:  # pragma: no cover - network errors
                 self.available = False
                 _LOGGER.warning("Race control websocket error: %s", err)
@@ -241,6 +247,12 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                     return content
         return None
 
+    def _deliver(self, msg: dict) -> None:
+        self.available = True
+        self._last_message = msg
+        self.data_list = [msg]
+        self.async_set_updated_data(msg)
+
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         self._task = self.hass.loop.create_task(self._listen())
@@ -253,6 +265,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         session_coord: LiveSessionCoordinator,
+        delay_seconds: int = 0,
     ):
         super().__init__(
             hass,
@@ -269,6 +282,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         self._client = None
         self._t0 = None
         self._startup_cutoff = None
+        self._delay = max(0, int(delay_seconds or 0))
 
     async def async_close(self, *_):
         if self._task:
@@ -315,10 +329,13 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
                             pass
 
                         _LOGGER.debug("TrackStatus: New message: %s", msg)
-                        self.available = True
-                        self._last_message = msg
-                        self.data_list = [msg]
-                        self.async_set_updated_data(msg)
+                        if self._delay > 0:
+                            self.hass.loop.call_later(
+                                self._delay,
+                                lambda m=msg: self._deliver(m),
+                            )
+                        else:
+                            self._deliver(msg)
             except Exception as err:  # pragma: no cover - network errors
                 self.available = False
                 _LOGGER.warning("Track status websocket error: %s", err)
@@ -342,6 +359,12 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         if isinstance(result, dict) and "TrackStatus" in result:
             return result.get("TrackStatus")
         return None
+
+    def _deliver(self, msg: dict) -> None:
+        self.available = True
+        self._last_message = msg
+        self.data_list = [msg]
+        self.async_set_updated_data(msg)
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
