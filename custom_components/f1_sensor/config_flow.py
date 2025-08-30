@@ -46,6 +46,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "race_week": "Race week",
                         "flag": "Flag",
                         "track_status": "Track status",
+                        "session_status": "Session status",
                         "safety_car": "Safety car",
                     }
                 ),
@@ -107,6 +108,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "race_week": "Race week",
                         "flag": "Flag",
                         "track_status": "Track status",
+                        "session_status": "Session status",
                         "safety_car": "Safety car",
                     }
                 ),

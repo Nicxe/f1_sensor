@@ -20,6 +20,7 @@ from .const import (
     PLATFORMS,
     SEASON_RESULTS_URL,
     FLAG_MACHINE,
+    LATEST_TRACK_STATUS,
 )
 from .flag_state import FlagState
 
@@ -47,12 +48,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     live_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
     race_control_coordinator = None
     track_status_coordinator = None
+    session_status_coordinator = None
     hass.data[FLAG_MACHINE] = FlagState()
+    hass.data[LATEST_TRACK_STATUS] = None
     if enable_rc:
         race_control_coordinator = RaceControlCoordinator(
             hass, session_coordinator, live_delay
         )
         track_status_coordinator = TrackStatusCoordinator(
+            hass, session_coordinator, live_delay
+        )
+        session_status_coordinator = SessionStatusCoordinator(
             hass, session_coordinator, live_delay
         )
 
@@ -66,6 +72,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await race_control_coordinator.async_config_entry_first_refresh()
     if track_status_coordinator:
         await track_status_coordinator.async_config_entry_first_refresh()
+    if session_status_coordinator:
+        await session_status_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "race_coordinator": race_coordinator,
@@ -76,6 +84,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "session_coordinator": session_coordinator,
         "race_control_coordinator": race_control_coordinator,
         "track_status_coordinator": track_status_coordinator,
+        "session_status_coordinator": session_status_coordinator,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -359,6 +368,99 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         if isinstance(result, dict) and "TrackStatus" in result:
             return result.get("TrackStatus")
         return None
+
+    def _deliver(self, msg: dict) -> None:
+        self.available = True
+        self._last_message = msg
+        self.data_list = [msg]
+        self.async_set_updated_data(msg)
+        try:
+            self.hass.data[LATEST_TRACK_STATUS] = msg
+        except Exception:
+            pass
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        self._task = self.hass.loop.create_task(self._listen())
+
+
+class SessionStatusCoordinator(DataUpdateCoordinator):
+    """Coordinator for SessionStatus updates using SignalR."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: LiveSessionCoordinator,
+        delay_seconds: int = 0,
+    ):
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="F1 Session Status Coordinator",
+            update_interval=None,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self.available = True
+        self._last_message = None
+        self.data_list: list[dict] = []
+        self._task = None
+        self._client = None
+        self._delay = max(0, int(delay_seconds or 0))
+
+    async def async_close(self, *_):
+        if self._task:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+        if self._client:
+            await self._client.close()
+
+    async def _async_update_data(self):
+        return self._last_message
+
+    async def _listen(self):
+        from .signalr import SignalRClient
+
+        self._client = SignalRClient(self.hass, self._session)
+        while True:
+            try:
+                await self._client._ensure_connection()
+                async for payload in self._client.messages():
+                    msg = self._parse_message(payload)
+                    if msg:
+                        if self._delay > 0:
+                            self.hass.loop.call_later(
+                                self._delay,
+                                lambda m=msg: self._deliver(m),
+                            )
+                        else:
+                            self._deliver(msg)
+            except Exception as err:  # pragma: no cover - network errors
+                self.available = False
+                _LOGGER.warning("Session status websocket error: %s", err)
+            finally:
+                if self._client:
+                    await self._client.close()
+
+    @staticmethod
+    def _parse_message(data):
+        if not isinstance(data, dict):
+            return None
+        messages = data.get("M")
+        if isinstance(messages, list):
+            for update in messages:
+                args = update.get("A", [])
+                if len(args) >= 2 and args[0] == "SessionStatus":
+                    return args[1]
+        result = data.get("R")
+        if isinstance(result, dict) and "SessionStatus" in result:
+            return result.get("SessionStatus")
+        return None
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        self._task = self.hass.loop.create_task(self._listen())
 
     def _deliver(self, msg: dict) -> None:
         self.available = True

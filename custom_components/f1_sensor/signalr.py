@@ -18,11 +18,11 @@ NEGOTIATE_URL = "https://livetiming.formula1.com/signalr/negotiate"
 CONNECT_URL = "wss://livetiming.formula1.com/signalr/connect"
 HUB_DATA = '[{"name":"Streaming"}]'
 
-# Subscribe to both RaceControl and TrackStatus streams
+# Subscribe to RaceControl, TrackStatus and SessionStatus streams
 SUBSCRIBE_MSG = {
     "H": "Streaming",
     "M": "Subscribe",
-    "A": [["RaceControlMessages", "TrackStatus"]],
+    "A": [["RaceControlMessages", "TrackStatus", "SessionStatus"]],
     "I": 1,
 }
 
@@ -71,7 +71,7 @@ class SignalRClient:
         self._t0 = dt.datetime.now(dt.timezone.utc)
         self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
-        _LOGGER.debug("Subscribed to RaceControlMessages and TrackStatus")
+        _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus and SessionStatus")
 
     async def _ensure_connection(self) -> None:
         """Try to (re)connect using exponential back-off."""
@@ -125,6 +125,11 @@ class SignalRClient:
                                     _LOGGER.debug("Track status message: %s", hub_msg["A"][1])
                                 except Exception:  # noqa: BLE001 - defensive logging
                                     _LOGGER.debug("Track status message received (unparsed)")
+                            elif stream_name == "SessionStatus":
+                                try:
+                                    _LOGGER.debug("Session status message: %s", hub_msg["A"][1])
+                                except Exception:  # noqa: BLE001 - defensive logging
+                                    _LOGGER.debug("Session status message received (unparsed)")
                 elif "R" in payload:
                     if "RaceControlMessages" in payload["R"]:
                         raw = payload["R"]["RaceControlMessages"]["Messages"]
@@ -144,6 +149,11 @@ class SignalRClient:
                             _LOGGER.debug("Track status message: %s", payload["R"]["TrackStatus"]) 
                         except Exception:  # noqa: BLE001 - defensive logging
                             _LOGGER.debug("Track status message received (unparsed)")
+                    if "SessionStatus" in payload["R"]:
+                        try:
+                            _LOGGER.debug("Session status message: %s", payload["R"]["SessionStatus"]) 
+                        except Exception:  # noqa: BLE001 - defensive logging
+                            _LOGGER.debug("Session status message received (unparsed)")
 
                 index += 1
                 yield payload

@@ -5,6 +5,7 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 # Global key for the shared flag state machine
 FLAG_MACHINE = "f1_flag_state"
+LATEST_TRACK_STATUS = "f1_latest_track_status"
 
 API_URL = "https://api.jolpi.ca/ergast/f1/current.json"
 DRIVER_STANDINGS_URL = "https://api.jolpi.ca/ergast/f1/current/driverstandings.json"

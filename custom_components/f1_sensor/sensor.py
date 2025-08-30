@@ -11,9 +11,10 @@ from timezonefinder import TimezoneFinder
 
 from .const import DOMAIN
 from .entity import F1BaseEntity
-from .const import FLAG_MACHINE
+from .const import FLAG_MACHINE, LATEST_TRACK_STATUS
 from .flag_state import FlagState
 from .helpers import normalize_track_status
+from logging import getLogger
 
 SYMBOL_CODE_TO_MDI = {
     "clearsky_day": "mdi:weather-sunny",
@@ -80,6 +81,7 @@ async def async_setup_entry(
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
         "flag": (F1FlagSensor, data.get("race_control_coordinator")),
         "track_status": (F1TrackStatusSensor, data.get("track_status_coordinator")),
+        "session_status": (F1SessionStatusSensor, data.get("session_status_coordinator")),
     }
 
     sensors = []
@@ -695,6 +697,22 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         # Coordinator stores last payload for TrackStatus
         data = self.coordinator.data
         if not data:
+            # Fallback: some ws updates may only land in data_list initially
+            try:
+                hist = getattr(self.coordinator, "data_list", None)
+                if isinstance(hist, list) and hist:
+                    last = hist[-1]
+                    if isinstance(last, dict):
+                        return last
+            except Exception:  # noqa: BLE001
+                pass
+            # Final fallback: integration-level latest cache
+            try:
+                cache = self.hass.data.get(LATEST_TRACK_STATUS)
+                if isinstance(cache, dict):
+                    return cache
+            except Exception:  # noqa: BLE001
+                pass
             return None
         # Expect either direct dict or wrapper with 'data'
         if isinstance(data, dict) and ("Status" in data or "Message" in data):
@@ -730,3 +748,85 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         return {
             "raw": raw,
         }
+
+
+class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Sensor mapping SessionStatus to semantic states for automations."""
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:timer-play"
+        self._attr_native_value = None
+        self._started_flag = None
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        # Initialize from coordinator or restore
+        init = self._extract_current()
+        if init is not None:
+            self._attr_native_value = self._map_status(init)
+            try:
+                getLogger(__name__).debug("SessionStatus: Initialized from coordinator: raw=%s -> %s", init, self._attr_native_value)
+            except Exception:
+                pass
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                self._attr_native_value = last.state
+                try:
+                    getLogger(__name__).debug("SessionStatus: Restored last state: %s", last.state)
+                except Exception:
+                    pass
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self.async_write_ha_state()
+
+    def _extract_current(self) -> dict | None:
+        data = self.coordinator.data
+        if not data:
+            return None
+        if isinstance(data, dict) and ("Status" in data or "Message" in data):
+            return data
+        inner = data.get("data") if isinstance(data, dict) else None
+        if isinstance(inner, dict):
+            return inner
+        return None
+
+    def _map_status(self, raw: dict | None) -> str | None:
+        if not raw:
+            return None
+        # Prefer explicit string in Status, fall back to Message
+        message = str(raw.get("Status") or raw.get("Message") or "").strip()
+        # Track the first time we see Started to use in suspended rule
+        if message == "Started":
+            self._started_flag = "Started"
+        if message == "Started":
+            return "live"
+        if message in {"Aborted", "Inactive"} and self._started_flag == "Started":
+            return "suspended"
+        if message == "Finished":
+            return "finished"
+        if message == "Finalised":
+            return "finalised"
+        if message == "Ends":
+            return "ended"
+        return "pre"
+
+    def _handle_coordinator_update(self) -> None:
+        raw = self._extract_current()
+        new_state = self._map_status(raw)
+        try:
+            getLogger(__name__).debug("SessionStatus sensor state computed: raw=%s -> %s", raw, new_state)
+        except Exception:  # noqa: BLE001
+            pass
+        self._attr_native_value = new_state
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def extra_state_attributes(self):
+        raw = self._extract_current() or {}
+        return {"raw": raw}
