@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "F1-sensoroppsett",
+        "data": {
+          "sensor_name": "Enhetsnavn",
+          "enabled_sensors": "Aktiverte sensorer"
+        }
+      },
+      "reconfigure": {
+        "title": "Konfigurer F1-sensor på nytt",
+        "data": {
+          "sensor_name": "Enhetsnavn",
+          "enabled_sensors": "Aktiverte sensorer"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_race": { "name": "Neste løp" },
+      "current_season": { "name": "Nåværende sesong" },
+      "driver_standings": { "name": "Førerstilling" },
+      "constructor_standings": { "name": "Konstruktørstilling" },
+      "weather": { "name": "Vær" },
+      "last_race_results": { "name": "Resultater fra forrige løp" },
+      "season_results": { "name": "Sesongresultater" },
+      "safety_car": { "name": "Sikkerhetsbil" }
+    },
+    "binary_sensor": {
+      "race_week": { "name": "Raceuke" }
+    }
+  }
+}

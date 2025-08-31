@@ -2,6 +2,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 
+
 class F1BaseEntity(CoordinatorEntity):
     """Common base entity for F1 sensors."""
 
@@ -20,4 +21,3 @@ class F1BaseEntity(CoordinatorEntity):
             "manufacturer": "Nicxe",
             "model": "F1 Sensor",
         }
-

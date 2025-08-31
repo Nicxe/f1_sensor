@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Instellen van F1-sensor",
+        "data": {
+          "sensor_name": "Apparaatnaam",
+          "enabled_sensors": "Ingeschakelde sensoren"
+        }
+      },
+      "reconfigure": {
+        "title": "F1-sensor opnieuw configureren",
+        "data": {
+          "sensor_name": "Apparaatnaam",
+          "enabled_sensors": "Ingeschakelde sensoren"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_race": { "name": "Volgende race" },
+      "current_season": { "name": "Huidig seizoen" },
+      "driver_standings": { "name": "Rijdersklassement" },
+      "constructor_standings": { "name": "Constructeursklassement" },
+      "weather": { "name": "Weer" },
+      "last_race_results": { "name": "Resultaten laatste race" },
+      "season_results": { "name": "Seizoensresultaten" },
+      "safety_car": { "name": "Safety car" }
+    },
+    "binary_sensor": {
+      "race_week": { "name": "Raceweek" }
+    }
+  }
+}
