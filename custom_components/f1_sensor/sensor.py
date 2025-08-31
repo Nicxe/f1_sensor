@@ -67,7 +67,31 @@ async def async_setup_entry(
     """Create sensors when integration is added."""
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
-    enabled = entry.data.get("enabled_sensors", [])
+    # Normalize legacy/stale sensor keys
+    allowed = {
+        "next_race",
+        "current_season",
+        "driver_standings",
+        "constructor_standings",
+        "weather",
+        "last_race_results",
+        "season_results",
+        "race_week",
+        "flag",
+        "track_status",
+        "session_status",
+        "safety_car",
+    }
+    raw_enabled = entry.data.get("enabled_sensors", [])
+    normalized = []
+    seen = set()
+    for key in raw_enabled:
+        if key == "next_session":
+            key = "next_race"
+        if key in allowed and key not in seen:
+            normalized.append(key)
+            seen.add(key)
+    enabled = normalized
 
     mapping = {
         "next_race": (F1NextRaceSensor, data["race_coordinator"]),
