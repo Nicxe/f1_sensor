@@ -35,7 +35,7 @@ Visit  to share you procejt and get help and inspiration
 ---
 
 
-#### Live data setup
+### Live data setup
 
 When adding or reconfiguring the integration, you can choose to enable live data via Formula 1’s unofficial Live Timing API.  
 
