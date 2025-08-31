@@ -117,8 +117,7 @@ class SignalRClient:
                                 else:
                                     _LOGGER.warning("Unknown RC format: %s", type(raw))
                                     continue
-                                for msg in iterable:
-                                    await self._handle_rc(msg)
+                                # Defer processing of RaceControl messages to coordinators
                             elif stream_name == "TrackStatus":
                                 # Log TrackStatus updates at debug level similar to RaceControl
                                 try:
@@ -142,8 +141,7 @@ class SignalRClient:
                         else:
                             _LOGGER.warning("Unknown RC format: %s", type(raw))
                             continue
-                        for update in iterable:
-                            await self._handle_rc(update)
+                        # Defer processing of RaceControl messages to coordinators
                     if "TrackStatus" in payload["R"]:
                         try:
                             _LOGGER.debug("Track status message: %s", payload["R"]["TrackStatus"]) 

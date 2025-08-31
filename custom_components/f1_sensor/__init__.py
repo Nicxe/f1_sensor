@@ -202,6 +202,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
 
     async def _listen(self):
         from .signalr import SignalRClient
+        from . import rc_transform
 
         self._client = SignalRClient(self.hass, self._session)
         while True:
@@ -210,13 +211,34 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 async for payload in self._client.messages():
                     msg = self._parse_message(payload)
                     if msg:
+                        # Normalize using connection epoch so FlagState can process reliably
+                        try:
+                            clean = rc_transform.clean_rc(msg, self._client._t0)
+                        except Exception:
+                            clean = None
+                        if not clean:
+                            continue
+
+                        # Drop stale messages around (re)connect to mirror SignalRClient behavior
+                        try:
+                            from datetime import timezone as _tz
+                            rc_time = datetime.fromisoformat(clean["utc"].replace("Z", "+00:00"))
+                            if rc_time.tzinfo is None:
+                                rc_time = rc_time.replace(tzinfo=_tz.utc)
+                            startup_cutoff = (self._client._t0 - timedelta(seconds=30)) if getattr(self._client, "_t0", None) else None
+                            if startup_cutoff and rc_time < startup_cutoff:
+                                _LOGGER.debug("RaceControl: Ignored old message: %s", clean)
+                                continue
+                        except Exception:
+                            pass
+
                         _LOGGER.debug(
                             "RaceControl received at %s, category=%s, flag=%s, scope=%s, sector=%s, delay=%ss",
                             dt_util.utcnow().isoformat(timespec="seconds"),
-                            msg.get("Category"),
-                            msg.get("Flag"),
-                            msg.get("Scope"),
-                            msg.get("Sector"),
+                            clean.get("category"),
+                            clean.get("flag"),
+                            clean.get("scope"),
+                            clean.get("sector"),
                             self._delay,
                         )
                         if self._delay > 0:
@@ -231,10 +253,10 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                                 pass
                             self.hass.loop.call_later(
                                 self._delay,
-                                lambda m=msg: self._deliver(m),
+                                lambda m=clean: self._deliver(m),
                             )
                         else:
-                            self._deliver(msg)
+                            self._deliver(clean)
             except Exception as err:  # pragma: no cover - network errors
                 self.available = False
                 _LOGGER.warning("Race control websocket error: %s", err)
