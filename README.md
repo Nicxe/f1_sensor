@@ -15,15 +15,113 @@ Visit the [F1 Sensor Community at Home Assistant Community Forum](https://commun
 Visit  to share you procejt and get help and inspiration
 
 
-This integration **does not provide any UI components**. Instead, it creates:
-- `sensor.f1_next_race` — Attributes include detailed information about the next race, such as when and where it takes place. All start times are provided both in UTC and converted to the circuit's local timezone.
-- `sensor.f1_season_calendar` — A list of all races in the current F1 season.
-- `sensor.f1_driver_standings` — Current driver championship standings.
-- `sensor.f1_constructor_standings` — Current constructor championship standings.
-- `sensor.f1_weather`: Current weather and race-time forecast at the next race location.
-- `sensor.f1_last_race_results`: Results from the most recent Formula 1 race.
-- `sensor.f1_season_results`: All race results for the ongoing season.
-- `binary_sensor.f1_race_week`: A native binary sensor that returns `on` if it's currently race week.
+#### ENTITIES
+
+| Entity                            | Info                                                             | 
+| --------                          | --------                                                         | 
+| sensor.f1_next_race               | Next race info                                                   | 
+| sensor.f1_season_calendar         | Full race schedule                                               | 
+| sensor.f1_driver_standings        | Current driver championship standings                            | 
+| sensor.f1_constructor_standings   | Current constructor standings                                    | 
+| sensor.f1_weather                 | Weather forecast at next race circuit                            | 
+| sensor.f1_last_race_results       | Most recent race results                                         | 
+| sensor.f1_season_results          | All season race results                                          | 
+| binary_sensor.f1_race_week        | `on` during race week                                            | 
+| sensor.f1_session_status          | LIVE - Current session phase (pre, live, suspended, finished, finalised, ended) | 
+| sensor.f1_track_status            | LIVE - Current track status (CLEAR, YELLOW, VSC, SC, RED)               | 
+| binary_sensor.f1_safety_car       | LIVE - `on` when Safety Car (SC) or Virtual Safety Car (VSC) is active  | 
+
+
+---
+
+
+#### Live data setup
+
+When adding or reconfiguring the integration, you can choose to enable live data via Formula 1’s unofficial Live Timing API.  
+
+- **Enable live F1 API (Race Control/Track/Session)**  
+  Creates three additional live entities:  
+  - `sensor.f1_session_status`  
+  - `sensor.f1_track_status`  
+  - `binary_sensor.f1_safety_car`  
+
+  If this option is not selected, these live sensors are not created.
+
+- **Live update delay (seconds)**  
+  Lets you delay delivery of live messages to better align with what you see on TV or streaming.  
+
+  Typical broadcast delays:  
+  - Broadcast TV (satellite/cable/terrestrial): ~5–10 seconds behind  
+  - Streaming services: ~20–45 seconds behind, sometimes more  
+  - Sports cable/OTT providers: 45–60 seconds or more depending on provider  
+
+  By setting the delay accordingly, your Home Assistant automations (for example flashing lights on a red flag) can sync more closely with the live pictures you are watching.
+
+
+<details>
+<summary>More info! - Live session entities</summary>
+<br>
+In addition to season and race data, F1 Sensor provides live session entities during race weekends.  
+
+---
+
+##### `sensor.f1_session_status`
+
+Reflects the current phase of a session, powered by SessionStatus feed and an internal started_flag.
+
+**Possible states**
+- **pre** – session is open but not yet started (typically ~1h before lights out).  
+  
+- **live** – session is running.  
+  
+- **suspended** – a started session is stopped (red flag or interruption).  
+  
+- **finished** – clock is over, chequered flag. RaceControl may still send flags on in-laps.  
+  
+- **finalised** – results have been confirmed.  
+  
+- **ended** – feed is closed for the session.  
+  
+
+**Typical transitions**  
+`pre → live → suspended ↔ live → finished → finalised → ended`  
+After finalised or ended, logic resets and next session begins at **pre**.
+
+---
+
+##### `sensor.f1_track_status`
+
+Directly reflects the latest TrackStatus feed.  
+
+**Possible states**
+- CLEAR  
+- YELLOW  
+- VSC  
+- SC  
+- RED  
+
+> State reflects the last received track status and may persist briefly after *finished* while in-laps are ongoing.
+
+---
+
+##### `binary_sensor.f1_safety_car`
+
+Boolean entity derived from track status.  
+
+**States**
+- **on** – when `sensor.f1_track_status` is SC or VSC.  
+- **off** – in all other cases.
+
+</details>
+
+
+
+
+<img width="612" height="490" alt="image" src="https://github.com/user-attachments/assets/b31c82a2-077d-4447-a367-dc0095e0e72e" />
+
+
+---
+
 
 Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In addition, a `_local` variant such as `race_start_local` is available. These values use the circuit's timezone so you can easily create automations at the correct local time.
 
