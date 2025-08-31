@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configuration du capteur F1",
+        "data": {
+          "sensor_name": "Nom de l'appareil",
+          "enabled_sensors": "Capteurs activés"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigurer le capteur F1",
+        "data": {
+          "sensor_name": "Nom de l'appareil",
+          "enabled_sensors": "Capteurs activés"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_race": { "name": "Prochaine course" },
+      "current_season": { "name": "Saison en cours" },
+      "driver_standings": { "name": "Classement pilotes" },
+      "constructor_standings": { "name": "Classement constructeurs" },
+      "weather": { "name": "Météo" },
+      "last_race_results": { "name": "Résultats de la dernière course" },
+      "season_results": { "name": "Résultats de la saison" },
+      "safety_car": { "name": "Voiture de sécurité" }
+    },
+    "binary_sensor": {
+      "race_week": { "name": "Semaine de course" }
+    }
+  }
+}

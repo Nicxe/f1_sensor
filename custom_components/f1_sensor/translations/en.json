@@ -1,51 +1,45 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "F1 Sensor setup",
-        "data": {
-          "sensor_name": "Device name",
-          "enabled_sensors": "Enabled sensors"
+    "config": {
+        "step": {
+            "user": {
+                "title": "F1 Sensor setup",
+                "data": {
+                    "sensor_name": "Device name",
+                    "enabled_sensors": "Enabled sensors",
+                    "enable_race_control": "Enable live F1 API (Race Control/Track/Session)",
+                    "live_delay_seconds": "Live update delay (seconds)"
+                },
+                "data_description": {
+                    "enable_race_control": "Connects to Formula 1 Live Timing via SignalR to receive live Race Control, Track Status and Session Status updates. If disabled, these live sensors are not created.",
+                    "live_delay_seconds": "Delay delivery of live messages to align with TV broadcast or streams."
+                }
+            },
+            "reconfigure": {
+                "title": "Reconfigure F1 Sensor",
+                "data": {
+                    "sensor_name": "Device name",
+                    "enabled_sensors": "Enabled sensors",
+                    "enable_race_control": "Enable live F1 API",
+                    "live_delay_seconds": "Live update delay (seconds)"
+                },
+                "data_description": {
+                    "enable_race_control": "Connects to Formula 1 Live Timing to receive live Race Control, Track Status and Session Status updates. If disabled, these live sensors are not created.",
+                    "live_delay_seconds": "Delay delivery of live messages to align with TV broadcast or streams."
+                }
+            }
         }
-      },
-      "reconfigure": {
-        "title": "Reconfigure F1 Sensor",
-        "data": {
-          "sensor_name": "Device name",
-          "enabled_sensors": "Enabled sensors"
-        }
-      }
-    }
-  },
-  "entity": {
-    "sensor": {
-      "next_race": {
-        "name": "Next race"
-      },
-      "current_season": {
-        "name": "Current season"
-      },
-      "driver_standings": {
-        "name": "Driver standings"
-      },
-      "constructor_standings": {
-        "name": "Constructor standings"
-      },
-      "weather": {
-        "name": "Weather"
-      },
-      "last_race_results": {
-        "name": "Last race results"
-      },
-      "season_results": {
-        "name": "Season results"
-      }
     },
-    "binary_sensor": {
-      "race_week": {
-        "name": "Race week"
-      }
+    "entity": {
+        "sensor": {
+            "next_race": {"name": "Next race"},
+            "current_season": {"name": "Current season"},
+            "driver_standings": {"name": "Driver standings"},
+            "constructor_standings": {"name": "Constructor standings"},
+            "weather": {"name": "Weather"},
+            "last_race_results": {"name": "Last race results"},
+            "season_results": {"name": "Season results"},
+            "safety_car": {"name": "Safety car"}
+        },
+        "binary_sensor": {"race_week": {"name": "Race week"}}
     }
-  }
 }
-

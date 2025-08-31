@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Inställning av F1-sensor",
+        "data": {
+          "sensor_name": "Enhetsnamn",
+          "enabled_sensors": "Aktiverade sensorer",
+          "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
+          "live_delay_seconds": "Fördröjning för liveuppdateringar (sekunder)"
+        },
+        "data_description": {
+          "enable_race_control": "Ansluter till Formula 1 Live Timing via SignalR för att ta emot liveuppdateringar för Race Control, Track Status och Session Status. Om avaktiverad skapas inte dessa livesensorer.",
+          "live_delay_seconds": "Fördröj leverans av live‑meddelanden för att synka med TV‑sändning eller stream."
+        }
+      },
+      "reconfigure": {
+        "title": "Konfigurera om F1-sensor",
+        "data": {
+          "sensor_name": "Enhetsnamn",
+          "enabled_sensors": "Aktiverade sensorer",
+          "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
+          "live_delay_seconds": "Fördröjning för liveuppdateringar (sekunder)"
+        },
+        "data_description": {
+          "enable_race_control": "Ansluter till Formula 1 Live Timing för att ta emot liveuppdateringar för Race Control, Track Status och Session Status. Om avaktiverad skapas inte dessa livesensorer.",
+          "live_delay_seconds": "Fördröj leverans av live‑meddelanden för att synka med TV‑sändning eller stream."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_race": { "name": "Nästa lopp" },
+      "current_season": { "name": "Aktuell säsong" },
+      "driver_standings": { "name": "Förarställning" },
+      "constructor_standings": { "name": "Konstruktorställning" },
+      "weather": { "name": "Väder" },
+      "last_race_results": { "name": "Resultat från senaste loppet" },
+      "season_results": { "name": "Säsongsresultat" },
+      "safety_car": { "name": "Säkerhetsbil" }
+    },
+    "binary_sensor": {
+      "race_week": { "name": "Tävlingsvecka" }
+    }
+  }
+}

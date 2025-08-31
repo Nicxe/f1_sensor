@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "F1-anturin määritys",
+        "data": {
+          "sensor_name": "Laitteen nimi",
+          "enabled_sensors": "Käytössä olevat anturit"
+        }
+      },
+      "reconfigure": {
+        "title": "Määritä F1-anturi uudelleen",
+        "data": {
+          "sensor_name": "Laitteen nimi",
+          "enabled_sensors": "Käytössä olevat anturit"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_race": { "name": "Seuraava kilpailu" },
+      "current_season": { "name": "Nykyinen kausi" },
+      "driver_standings": { "name": "Kuljettajien pisteet" },
+      "constructor_standings": { "name": "Valmistajien pisteet" },
+      "weather": { "name": "Sää" },
+      "last_race_results": { "name": "Edellisen kilpailun tulokset" },
+      "season_results": { "name": "Kausitulokset" },
+      "safety_car": { "name": "Turva-auto" }
+    },
+    "binary_sensor": {
+      "race_week": { "name": "Kilpailuviikko" }
+    }
+  }
+}
