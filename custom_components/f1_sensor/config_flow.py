@@ -32,6 +32,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             "race_week",
                             "flag",
                             "track_status",
+                            "session_status",
                             "safety_car",
                         ],
                 ): cv.multi_select(
@@ -50,7 +51,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "safety_car": "Safety car",
                     }
                 ),
-                vol.Optional("enable_race_control", default=True): cv.boolean,
+                vol.Optional("enable_race_control", default=False): cv.boolean,
                 vol.Optional(
                     "live_delay_seconds", default=0
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=300)),
@@ -93,6 +94,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             "race_week",
                             "flag",
                             "track_status",
+                            "session_status",
                             "safety_car",
                         ],
                     ),
@@ -114,7 +116,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(
                     "enable_race_control",
-                    default=current.get("enable_race_control", True),
+                    default=current.get("enable_race_control", False),
                 ): cv.boolean,
                 vol.Optional(
                     "live_delay_seconds",

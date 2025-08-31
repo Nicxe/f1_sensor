@@ -15,6 +15,7 @@ from .const import FLAG_MACHINE, LATEST_TRACK_STATUS
 from .flag_state import FlagState
 from .helpers import normalize_track_status
 from logging import getLogger
+from homeassistant.util import dt as dt_util
 
 SYMBOL_CODE_TO_MDI = {
     "clearsky_day": "mdi:weather-sunny",
@@ -614,7 +615,7 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
 
 
 
-class F1FlagSensor(F1BaseEntity, SensorEntity):
+class F1FlagSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Aggregated flag status for the entire track."""
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
@@ -630,9 +631,31 @@ class F1FlagSensor(F1BaseEntity, SensorEntity):
         if self._machine is None:
             self._machine = FlagState()
             self.hass.data[FLAG_MACHINE] = self._machine
+        # Try to restore last known state and attributes
+        last = await self.async_get_last_state()
+        if last and last.state not in (None, "unknown", "unavailable"):
+            try:
+                # Restore machine internals so attributes align with restored state
+                track_flag = last.attributes.get("track_flag")
+                sc_mode = last.attributes.get("sc_mode")
+                sectors = last.attributes.get("active_sectors")
+                if isinstance(sectors, list):
+                    try:
+                        self._machine.active_yellows = {int(s) for s in sectors}
+                    except Exception:
+                        self._machine.active_yellows = set()
+                if isinstance(track_flag, str) or track_flag is None:
+                    self._machine.track_flag = track_flag
+                if isinstance(sc_mode, str) or sc_mode is None:
+                    self._machine.vsc_mode = sc_mode
+                self._machine.state = last.state
+            except Exception:
+                # Fall back to machine defaults on any restore error
+                pass
         self._attr_native_value = self._machine.state
         self._update_attrs()
         self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
         # Feed new messages to the shared FlagState and update ourselves
@@ -643,6 +666,16 @@ class F1FlagSensor(F1BaseEntity, SensorEntity):
 
         self._attr_native_value = self._machine.state
         self._update_attrs()
+        try:
+            last_msg = self.coordinator.data_list[-1] if self.coordinator.data_list else None
+            getLogger(__name__).debug(
+                "Flag sensor state computed at %s, based_on=RaceControl, raw=%s -> state=%s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                last_msg,
+                self._attr_native_value,
+            )
+        except Exception:  # noqa: BLE001
+            pass
         self.async_write_ha_state()
 
     def _update_attrs(self):
@@ -736,7 +769,12 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         new_state = self._normalize(raw)
         try:
             from logging import getLogger
-            getLogger(__name__).debug("TrackStatus sensor state computed: raw=%s -> %s", raw, new_state)
+            getLogger(__name__).debug(
+                "TrackStatus sensor state computed at %s, raw=%s -> state=%s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                raw,
+                new_state,
+            )
         except Exception:  # noqa: BLE001
             pass
         self._attr_native_value = new_state
@@ -797,26 +835,60 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             return None
         # Prefer explicit string in Status, fall back to Message
         message = str(raw.get("Status") or raw.get("Message") or "").strip()
-        # Track the first time we see Started to use in suspended rule
-        if message == "Started":
-            self._started_flag = "Started"
+        started_hint = str(raw.get("Started") or "").strip()
+
+        # Stateless mapping based only on this payload.
         if message == "Started":
             return "live"
-        if message in {"Aborted", "Inactive"} and self._started_flag == "Started":
-            return "suspended"
+
         if message == "Finished":
+            # A qualifying part or the session segment ended.
+            # Reset internal memory defensively.
+            self._started_flag = None
             return "finished"
+
         if message == "Finalised":
+            # Session finalised without requiring a prior "Finished".
+            self._started_flag = None
             return "finalised"
+
         if message == "Ends":
+            # Session officially ends. Clear any sticky state.
+            self._started_flag = None
             return "ended"
+
+        if message == "Inactive":
+            # Planned qualifying break vs. suspension vs. pre-session
+            if started_hint == "Finished":
+                # Planned pause between quali segments
+                self._started_flag = None
+                return "break"
+            if started_hint == "Started":
+                # Red flag / suspended while session is considered started
+                return "suspended"
+            # Not started yet
+            return "pre"
+
+        if message == "Aborted":
+            # Aborted within an already started session is a suspension-like state
+            if started_hint == "Started":
+                return "suspended"
+            # Otherwise treat like pre (no live running yet)
+            return "pre"
+
+        # Fallback: unknown values behave like pre-session
         return "pre"
 
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
         new_state = self._map_status(raw)
         try:
-            getLogger(__name__).debug("SessionStatus sensor state computed: raw=%s -> %s", raw, new_state)
+            getLogger(__name__).debug(
+                "SessionStatus sensor state computed at %s, raw=%s -> state=%s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                raw,
+                new_state,
+            )
         except Exception:  # noqa: BLE001
             pass
         self._attr_native_value = new_state

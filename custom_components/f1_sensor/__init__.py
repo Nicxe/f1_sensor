@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import (
     API_URL,
@@ -44,7 +45,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     year = datetime.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year)
-    enable_rc = entry.data.get("enable_race_control", True)
+    enable_rc = entry.data.get("enable_race_control", False)
     live_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
     race_control_coordinator = None
     track_status_coordinator = None
@@ -209,8 +210,25 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 async for payload in self._client.messages():
                     msg = self._parse_message(payload)
                     if msg:
-                        _LOGGER.debug("Race control message: %s", msg)
+                        _LOGGER.debug(
+                            "RaceControl received at %s, category=%s, flag=%s, scope=%s, sector=%s, delay=%ss",
+                            dt_util.utcnow().isoformat(timespec="seconds"),
+                            msg.get("Category"),
+                            msg.get("Flag"),
+                            msg.get("Scope"),
+                            msg.get("Sector"),
+                            self._delay,
+                        )
                         if self._delay > 0:
+                            try:
+                                scheduled = (dt_util.utcnow() + timedelta(seconds=self._delay)).isoformat(timespec="seconds")
+                                _LOGGER.debug(
+                                    "RaceControl scheduled delivery at %s (+%ss)",
+                                    scheduled,
+                                    self._delay,
+                                )
+                            except Exception:
+                                pass
                             self.hass.loop.call_later(
                                 self._delay,
                                 lambda m=msg: self._deliver(m),
@@ -261,6 +279,14 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._last_message = msg
         self.data_list = [msg]
         self.async_set_updated_data(msg)
+        try:
+            _LOGGER.debug(
+                "RaceControl delivered at %s: %s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                msg,
+            )
+        except Exception:
+            pass
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
@@ -337,8 +363,23 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
                         except Exception:  # noqa: BLE001
                             pass
 
-                        _LOGGER.debug("TrackStatus: New message: %s", msg)
+                        _LOGGER.debug(
+                            "TrackStatus received at %s, status=%s, message=%s, delay=%ss",
+                            dt_util.utcnow().isoformat(timespec="seconds"),
+                            (msg.get("Status") if isinstance(msg, dict) else None),
+                            (msg.get("Message") if isinstance(msg, dict) else None),
+                            self._delay,
+                        )
                         if self._delay > 0:
+                            try:
+                                scheduled = (dt_util.utcnow() + timedelta(seconds=self._delay)).isoformat(timespec="seconds")
+                                _LOGGER.debug(
+                                    "TrackStatus scheduled delivery at %s (+%ss)",
+                                    scheduled,
+                                    self._delay,
+                                )
+                            except Exception:
+                                pass
                             self.hass.loop.call_later(
                                 self._delay,
                                 lambda m=msg: self._deliver(m),
@@ -376,6 +417,14 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         self.async_set_updated_data(msg)
         try:
             self.hass.data[LATEST_TRACK_STATUS] = msg
+        except Exception:
+            pass
+        try:
+            _LOGGER.debug(
+                "TrackStatus delivered at %s: %s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                msg,
+            )
         except Exception:
             pass
 
@@ -429,7 +478,23 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
                 async for payload in self._client.messages():
                     msg = self._parse_message(payload)
                     if msg:
+                        _LOGGER.debug(
+                            "SessionStatus received at %s, status=%s, started=%s, delay=%ss",
+                            dt_util.utcnow().isoformat(timespec="seconds"),
+                            (msg.get("Status") if isinstance(msg, dict) else None),
+                            (msg.get("Started") if isinstance(msg, dict) else None),
+                            self._delay,
+                        )
                         if self._delay > 0:
+                            try:
+                                scheduled = (dt_util.utcnow() + timedelta(seconds=self._delay)).isoformat(timespec="seconds")
+                                _LOGGER.debug(
+                                    "SessionStatus scheduled delivery at %s (+%ss)",
+                                    scheduled,
+                                    self._delay,
+                                )
+                            except Exception:
+                                pass
                             self.hass.loop.call_later(
                                 self._delay,
                                 lambda m=msg: self._deliver(m),
@@ -467,6 +532,14 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self._last_message = msg
         self.data_list = [msg]
         self.async_set_updated_data(msg)
+        try:
+            _LOGGER.debug(
+                "SessionStatus delivered at %s: %s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                msg,
+            )
+        except Exception:
+            pass
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()

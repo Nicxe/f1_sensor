@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 from .entity import F1BaseEntity
 from .helpers import normalize_track_status
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -178,7 +179,8 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
         state = normalize_track_status(payload)
         is_on = state in {"VSC", "SC"}
         _LOGGER.debug(
-            "SafetyCar: Update from TrackStatus -> state=%s, is_on=%s, raw=%s",
+            "SafetyCar: Update from TrackStatus at %s -> state=%s, is_on=%s, raw=%s",
+            dt_util.utcnow().isoformat(timespec="seconds"),
             state,
             is_on,
             payload,
