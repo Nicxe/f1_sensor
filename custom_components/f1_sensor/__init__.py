@@ -38,7 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     last_race_coordinator = F1DataCoordinator(
         hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator"
     )
-    season_results_coordinator = F1DataCoordinator(
+    season_results_coordinator = F1SeasonResultsCoordinator(
         hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator"
     )
     year = datetime.utcnow().year
@@ -119,6 +119,109 @@ class F1DataCoordinator(DataUpdateCoordinator):
                     return json.loads(text.lstrip("\ufeff"))
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}") from err
+
+
+class F1SeasonResultsCoordinator(DataUpdateCoordinator):
+    """Fetch all season results across paginated Ergast responses."""
+
+    def __init__(self, hass: HomeAssistant, url: str, name: str):
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=name,
+            update_interval=timedelta(hours=1),
+        )
+        self._session = async_get_clientsession(hass)
+        self._base_url = url
+
+    async def async_close(self, *_):
+        return
+
+    async def _fetch_page(self, limit: int, offset: int):
+        from yarl import URL
+
+        url = str(URL(self._base_url).with_query({"limit": str(limit), "offset": str(offset)}))
+        async with async_timeout.timeout(10):
+            async with self._session.get(url) as response:
+                if response.status != 200:
+                    raise UpdateFailed(f"Error fetching data: {response.status}")
+                text = await response.text()
+                return json.loads(text.lstrip("\ufeff"))
+
+    @staticmethod
+    def _race_key(r: dict) -> tuple:
+        season = r.get("season")
+        round_ = r.get("round")
+        return (str(season) if season is not None else "", str(round_) if round_ is not None else "")
+
+    async def _async_update_data(self):
+        try:
+            # Start with a large page size; use API-returned limit/offset/total for correctness
+            request_limit = 200
+            offset = 0
+
+            races_by_key: dict[tuple, dict] = {}
+            order: list[tuple] = []
+
+            def merge_page(page_races: list[dict]):
+                for race in page_races or []:
+                    key = self._race_key(race)
+                    existing = races_by_key.get(key)
+                    if not existing:
+                        copy = dict(race)
+                        copy["Results"] = list(race.get("Results", []) or [])
+                        races_by_key[key] = copy
+                        order.append(key)
+                    else:
+                        seen = {
+                            (res.get("Driver", {}).get("driverId"), res.get("position"))
+                            for res in existing.get("Results", [])
+                        }
+                        for res in race.get("Results", []) or []:
+                            ident = (res.get("Driver", {}).get("driverId"), res.get("position"))
+                            if ident not in seen:
+                                existing["Results"].append(res)
+                                seen.add(ident)
+
+            # Fetch first page
+            first = await self._fetch_page(request_limit, offset)
+            mr = (first or {}).get("MRData", {})
+            total = int((mr.get("total") or "0"))
+            limit_used = int((mr.get("limit") or request_limit))
+            offset_used = int((mr.get("offset") or offset))
+
+            merge_page(((mr.get("RaceTable", {}) or {}).get("Races", []) or []))
+
+            # Iterate deterministically using server-reported paging
+            next_offset = offset_used + limit_used
+            # Cap loop iterations defensively
+            safety = 0
+            while next_offset < total and safety < 50:
+                page = await self._fetch_page(limit_used, next_offset)
+                pmr = (page or {}).get("MRData", {})
+                praces = (pmr.get("RaceTable", {}) or {}).get("Races", []) or []
+                merge_page(praces)
+                try:
+                    limit_used = int(pmr.get("limit") or limit_used)
+                    offset_used = int(pmr.get("offset") or next_offset)
+                    total = int(pmr.get("total") or total)
+                except Exception:
+                    pass
+                next_offset = offset_used + limit_used
+                safety += 1
+
+            # Assemble and sort by season then numeric round
+            assembled_races = [races_by_key[k] for k in order]
+            assembled_races.sort(key=lambda r: (str(r.get("season")), int(str(r.get("round") or 0))))
+            return {
+                "MRData": {
+                    "RaceTable": {
+                        "Races": assembled_races,
+                    }
+                }
+            }
+        except Exception as err:
+            raise UpdateFailed(f"Error fetching season results: {err}") from err
 
 
 class LiveSessionCoordinator(DataUpdateCoordinator):

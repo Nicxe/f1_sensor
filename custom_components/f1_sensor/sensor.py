@@ -529,6 +529,40 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:trophy"
+        self._tf = None
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self._tf = await self.hass.async_add_executor_job(TimezoneFinder)
+
+    def combine_date_time(self, date_str, time_str):
+        if not date_str:
+            return None
+        if not time_str:
+            time_str = "00:00:00Z"
+        dt_str = f"{date_str}T{time_str}".replace("Z", "+00:00")
+        try:
+            dt = datetime.datetime.fromisoformat(dt_str)
+            return dt.isoformat()
+        except ValueError:
+            return None
+
+    def _timezone_from_location(self, lat, lon):
+        if lat is None or lon is None or self._tf is None:
+            return None
+        try:
+            return self._tf.timezone_at(lat=float(lat), lng=float(lon))
+        except Exception:
+            return None
+
+    def _to_local(self, iso_ts, timezone):
+        if not iso_ts or not timezone:
+            return None
+        try:
+            dt = datetime.datetime.fromisoformat(iso_ts)
+            return dt.astimezone(ZoneInfo(timezone)).isoformat()
+        except Exception:
+            return None
 
     @property
     def state(self):
@@ -573,9 +607,24 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
             }
 
         results = [_clean_result(r) for r in race.get("Results", [])]
+        circuit = race.get("Circuit", {})
+        loc = circuit.get("Location", {})
+        timezone = self._timezone_from_location(loc.get("lat"), loc.get("long"))
+        race_start = self.combine_date_time(race.get("date"), race.get("time"))
         return {
             "round": race.get("round"),
             "race_name": race.get("raceName"),
+            "race_url": race.get("url"),
+            "circuit_id": circuit.get("circuitId"),
+            "circuit_name": circuit.get("circuitName"),
+            "circuit_url": circuit.get("url"),
+            "circuit_lat": loc.get("lat"),
+            "circuit_long": loc.get("long"),
+            "circuit_locality": loc.get("locality"),
+            "circuit_country": loc.get("country"),
+            "circuit_timezone": timezone,
+            "race_start": race_start,
+            "race_start_local": self._to_local(race_start, timezone),
             "results": results,
         }
 
