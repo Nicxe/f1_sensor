@@ -27,7 +27,7 @@ Visit  to share you procejt and get help and inspiration
 | sensor.f1_last_race_results       | Most recent race results                                         | 
 | sensor.f1_season_results          | All season race results                                          | 
 | binary_sensor.f1_race_week        | `on` during race week                                            | 
-| sensor.f1_session_status          | LIVE - Current session phase (pre, live, suspended, finished, finalised, ended) | 
+| sensor.f1_session_status          | LIVE - Current session phase (pre, live, suspended, breake, finished, finalised, ended) | 
 | sensor.f1_track_status            | LIVE - Current track status (CLEAR, YELLOW, VSC, SC, RED)               | 
 | binary_sensor.f1_safety_car       | LIVE - `on` when Safety Car (SC) or Virtual Safety Car (VSC) is active  | 
 
