@@ -10,7 +10,7 @@
                     "live_delay_seconds": "Live update delay (seconds)"
                 },
                 "data_description": {
-                    "enable_race_control": "Connects to Formula 1 Live Timing via SignalR to receive live Race Control, Track Status and Session Status updates. If disabled, these live sensors are not created.",
+                    "enable_race_control": "Connects to Formula 1 Live Timing via SignalR to receive live updates. If disabled, these live sensors are not created.",
                     "live_delay_seconds": "Delay delivery of live messages to align with TV broadcast or streams."
                 }
             },
@@ -23,7 +23,7 @@
                     "live_delay_seconds": "Live update delay (seconds)"
                 },
                 "data_description": {
-                    "enable_race_control": "Connects to Formula 1 Live Timing to receive live Race Control, Track Status and Session Status updates. If disabled, these live sensors are not created.",
+                    "enable_race_control": "Connects to Formula 1 Live Timing to receive live updates. If disabled, these live sensors are not created.",
                     "live_delay_seconds": "Delay delivery of live messages to align with TV broadcast or streams."
                 }
             }
@@ -36,6 +36,7 @@
             "driver_standings": {"name": "Driver standings"},
             "constructor_standings": {"name": "Constructor standings"},
             "weather": {"name": "Weather"},
+            "track_weather": {"name": "Track weather"},
             "last_race_results": {"name": "Last race results"},
             "season_results": {"name": "Season results"},
             "safety_car": {"name": "Safety car"}

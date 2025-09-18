@@ -7,5 +7,5 @@
     "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/Nicxe/f1_sensor/issues",
     "requirements": ["timezonefinder==5.2.0", "python-dateutil>=2.8"],
-    "version": "2.0.0"
+    "version": "2.1.0"
 }
