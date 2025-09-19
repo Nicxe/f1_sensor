@@ -895,6 +895,20 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_native_value = None
+        # Advertise as enum sensor so HA UI can suggest valid states
+        try:
+            self._attr_device_class = SensorDeviceClass.ENUM
+        except Exception:
+            self._attr_device_class = None
+        # Canonical states as produced by normalize_track_status
+        self._attr_options = [
+            "CLEAR",
+            "YELLOW",
+            "VSC",
+            "VSC_ENDING",
+            "SC",
+            "RED",
+        ]
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -994,6 +1008,21 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_icon = "mdi:timer-play"
         self._attr_native_value = None
         self._started_flag = None
+        # Advertise as enum sensor so HA UI can suggest valid states
+        try:
+            self._attr_device_class = SensorDeviceClass.ENUM
+        except Exception:
+            self._attr_device_class = None
+        # Possible mapped states from _map_status
+        self._attr_options = [
+            "pre",
+            "live",
+            "suspended",
+            "break",
+            "finished",
+            "finalised",
+            "ended",
+        ]
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -1062,6 +1091,14 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 self._started_flag = None
                 return "break"
             if started_hint == "Started":
+                # Tie-break using latest TrackStatus: if not RED, treat as live
+                try:
+                    cache = self.hass.data.get(LATEST_TRACK_STATUS)
+                    track_state = normalize_track_status(cache) if isinstance(cache, dict) else None
+                except Exception:
+                    track_state = None
+                if track_state and track_state != "RED":
+                    return "live"
                 # Red flag / suspended while session is considered started
                 return "suspended"
             # Not started yet
@@ -1070,6 +1107,14 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         if message == "Aborted":
             # Aborted within an already started session is a suspension-like state
             if started_hint == "Started":
+                # Tie-break using latest TrackStatus: if not RED, treat as live
+                try:
+                    cache = self.hass.data.get(LATEST_TRACK_STATUS)
+                    track_state = normalize_track_status(cache) if isinstance(cache, dict) else None
+                except Exception:
+                    track_state = None
+                if track_state and track_state != "RED":
+                    return "live"
                 return "suspended"
             # Otherwise treat like pre (no live running yet)
             return "pre"
