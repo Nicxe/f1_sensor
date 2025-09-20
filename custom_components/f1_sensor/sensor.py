@@ -1,9 +1,11 @@
 import datetime
+import asyncio
 from zoneinfo import ZoneInfo
 
 import async_timeout
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.event import async_call_later
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -73,6 +75,8 @@ async def async_setup_entry(
         "driver_standings",
         "constructor_standings",
         "weather",
+        "track_weather",
+        "race_lap_count",
         "last_race_results",
         "season_results",
         "race_week",
@@ -100,6 +104,8 @@ async def async_setup_entry(
             data["constructor_coordinator"],
         ),
         "weather": (F1WeatherSensor, data["race_coordinator"]),
+        "track_weather": (F1TrackWeatherSensor, data.get("weather_data_coordinator")),
+        "race_lap_count": (F1RaceLapCountSensor, data.get("lap_count_coordinator")),
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
         "track_status": (F1TrackStatusSensor, data.get("track_status_coordinator")),
@@ -529,6 +535,40 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:trophy"
+        self._tf = None
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self._tf = await self.hass.async_add_executor_job(TimezoneFinder)
+
+    def combine_date_time(self, date_str, time_str):
+        if not date_str:
+            return None
+        if not time_str:
+            time_str = "00:00:00Z"
+        dt_str = f"{date_str}T{time_str}".replace("Z", "+00:00")
+        try:
+            dt = datetime.datetime.fromisoformat(dt_str)
+            return dt.isoformat()
+        except ValueError:
+            return None
+
+    def _timezone_from_location(self, lat, lon):
+        if lat is None or lon is None or self._tf is None:
+            return None
+        try:
+            return self._tf.timezone_at(lat=float(lat), lng=float(lon))
+        except Exception:
+            return None
+
+    def _to_local(self, iso_ts, timezone):
+        if not iso_ts or not timezone:
+            return None
+        try:
+            dt = datetime.datetime.fromisoformat(iso_ts)
+            return dt.astimezone(ZoneInfo(timezone)).isoformat()
+        except Exception:
+            return None
 
     @property
     def state(self):
@@ -573,9 +613,24 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
             }
 
         results = [_clean_result(r) for r in race.get("Results", [])]
+        circuit = race.get("Circuit", {})
+        loc = circuit.get("Location", {})
+        timezone = self._timezone_from_location(loc.get("lat"), loc.get("long"))
+        race_start = self.combine_date_time(race.get("date"), race.get("time"))
         return {
             "round": race.get("round"),
             "race_name": race.get("raceName"),
+            "race_url": race.get("url"),
+            "circuit_id": circuit.get("circuitId"),
+            "circuit_name": circuit.get("circuitName"),
+            "circuit_url": circuit.get("url"),
+            "circuit_lat": loc.get("lat"),
+            "circuit_long": loc.get("long"),
+            "circuit_locality": loc.get("locality"),
+            "circuit_country": loc.get("country"),
+            "circuit_timezone": timezone,
+            "race_start": race_start,
+            "race_start_local": self._to_local(race_start, timezone),
             "results": results,
         }
 
@@ -635,6 +690,202 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
         return {"races": cleaned}
 
 
+class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Sensor for live track weather via WeatherData feed.
+
+    State: air temperature (Celsius). Attributes include track temp, humidity, pressure, rainfall,
+    wind speed and direction, with units. Restores last value on restart if no live data yet.
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:thermometer"
+        try:
+            self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        except Exception:
+            self._attr_device_class = None
+        self._attr_native_value = None
+        self._attr_native_unit_of_measurement = "°C"
+        self._attr_extra_state_attributes = {}
+        self._last_timestamped_dt = None
+        self._last_received_utc = None
+        # No stale timer: we keep last known value until a new payload arrives
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        # Initialize from coordinator if available, else restore
+        init = self._extract_current()
+        if init is not None:
+            self._apply_payload(init)
+            try:
+                getLogger(__name__).debug("TrackWeather: Initialized from coordinator: %s", init)
+            except Exception:
+                pass
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                # Restore last known state and attributes; do not clear due to age
+                self._attr_native_value = self._to_float(last.state)
+                attrs = dict(getattr(last, "attributes", {}) or {})
+                for k in ("measurement_time", "measurement_age_seconds", "received_at"):
+                    attrs.pop(k, None)
+                self._attr_extra_state_attributes = attrs
+                try:
+                    getLogger(__name__).debug("TrackWeather: Restored last state: %s", last.state)
+                except Exception:
+                    pass
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self._safe_write_ha_state()
+
+    async def async_will_remove_from_hass(self) -> None:
+        return
+
+    def _to_float(self, value):
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except Exception:
+            return None
+
+    def _extract_current(self) -> dict | None:
+        data = self.coordinator.data
+        # Accept direct dict from coordinator
+        if isinstance(data, dict) and any(k in data for k in ("TrackTemp", "AirTemp", "Humidity")):
+            return data
+        # Or wrapped inside {"data": {...}}
+        if isinstance(data, dict) and isinstance(data.get("data"), dict):
+            inner = data.get("data")
+            if any(k in inner for k in ("TrackTemp", "AirTemp", "Humidity")):
+                return inner
+        # Fallback: recent history buffer if available
+        history = getattr(self.coordinator, "data_list", None)
+        if isinstance(history, list) and history:
+            last = history[-1]
+            if isinstance(last, dict) and any(k in last for k in ("TrackTemp", "AirTemp", "Humidity")):
+                return last
+        return None
+
+    def _apply_payload(self, raw: dict) -> None:
+        # Parse and set state and attributes
+        track_temp = self._to_float(raw.get("TrackTemp"))
+        air_temp = self._to_float(raw.get("AirTemp"))
+        humidity = self._to_float(raw.get("Humidity"))
+        pressure = self._to_float(raw.get("Pressure"))
+        rainfall = self._to_float(raw.get("Rainfall"))
+        wind_dir = self._to_float(raw.get("WindDirection"))
+        wind_speed = self._to_float(raw.get("WindSpeed"))
+
+        # Try to extract a timestamp from the payload; if absent, infer measurement time as now
+        ts_iso = None
+        age_seconds = None
+        received_at_update = None
+        measurement_inferred = False
+        now_utc = dt_util.utcnow()
+        try:
+            utc_raw = (
+                raw.get("Utc")
+                or raw.get("utc")
+                or raw.get("processedAt")
+                or raw.get("timestamp")
+            )
+            if utc_raw:
+                ts = datetime.datetime.fromisoformat(str(utc_raw).replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=datetime.timezone.utc)
+                ts_iso = ts.astimezone(datetime.timezone.utc).isoformat(timespec="seconds")
+                self._last_timestamped_dt = ts
+                try:
+                    age_seconds = (now_utc - ts).total_seconds()
+                except Exception:
+                    age_seconds = None
+                # Only update 'received_at' when payload carries a timestamp
+                received_at_update = now_utc.isoformat(timespec="seconds")
+            else:
+                # No explicit timestamp; do not assign measurement_time
+                ts_iso = None
+                measurement_inferred = True
+                age_seconds = None
+        except Exception:
+            ts_iso = None
+
+        try:
+            getLogger(__name__).debug(
+                "TrackWeather sensor state computed at %s, raw=%s -> air_temp=%s (inferred_ts=%s)",
+                now_utc.isoformat(timespec="seconds"),
+                raw,
+                air_temp,
+                measurement_inferred,
+            )
+        except Exception:
+            pass
+
+        self._attr_native_value = air_temp
+        self._last_received_utc = now_utc
+        self._attr_extra_state_attributes = {
+            "air_temperature": air_temp,
+            "air_temperature_unit": "celsius",
+            "humidity": humidity,
+            "humidity_unit": "%",
+            "pressure": pressure,
+            "pressure_unit": "hPa",
+            "rainfall": rainfall,
+            "rainfall_unit": "mm",
+            "track_temperature": track_temp,
+            "track_temperature_unit": "celsius",
+            "wind_speed": wind_speed,
+            "wind_speed_unit": "m/s",
+            "wind_from_direction_degrees": wind_dir,
+            "wind_from_direction_unit": "degrees",
+            "measurement_inferred": measurement_inferred,
+            "raw": raw,
+        }
+
+        # No staleness handling: keep last known value until a new payload arrives
+
+    # No stale scheduling required for Track Weather
+
+    # No stale timeout handler
+
+    # Use default attributes storage; do not force placeholders
+
+    def _handle_coordinator_update(self) -> None:
+        raw = self._extract_current()
+        if raw is None:
+            # Keep last known values; just log an update
+            try:
+                getLogger(__name__).debug(
+                    "TrackWeather: No payload on update at %s; keeping previous state",
+                    dt_util.utcnow().isoformat(timespec="seconds"),
+                )
+            except Exception:
+                pass
+            self._safe_write_ha_state()
+            return
+        self._apply_payload(raw)
+        self._safe_write_ha_state()
+
+    def _safe_write_ha_state(self) -> None:
+        try:
+            in_loop = False
+            try:
+                running = asyncio.get_running_loop()
+                in_loop = running is self.hass.loop
+            except RuntimeError:
+                in_loop = False
+            if in_loop:
+                self.async_write_ha_state()
+            else:
+                self.schedule_update_ha_state()
+        except Exception:
+            # Last resort: avoid raising in thread-safety guard
+            try:
+                self.schedule_update_ha_state()
+            except Exception:
+                pass
+
+
 class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Track status sensor independent from flag logic."""
 
@@ -642,6 +893,20 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_native_value = None
+        # Advertise as enum sensor so HA UI can suggest valid states
+        try:
+            self._attr_device_class = SensorDeviceClass.ENUM
+        except Exception:
+            self._attr_device_class = None
+        # Canonical states as produced by normalize_track_status
+        self._attr_options = [
+            "CLEAR",
+            "YELLOW",
+            "VSC",
+            "VSC_ENDING",
+            "SC",
+            "RED",
+        ]
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -741,6 +1006,21 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_icon = "mdi:timer-play"
         self._attr_native_value = None
         self._started_flag = None
+        # Advertise as enum sensor so HA UI can suggest valid states
+        try:
+            self._attr_device_class = SensorDeviceClass.ENUM
+        except Exception:
+            self._attr_device_class = None
+        # Possible mapped states from _map_status
+        self._attr_options = [
+            "pre",
+            "live",
+            "suspended",
+            "break",
+            "finished",
+            "finalised",
+            "ended",
+        ]
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -809,6 +1089,14 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 self._started_flag = None
                 return "break"
             if started_hint == "Started":
+                # Tie-break using latest TrackStatus: if not RED, treat as live
+                try:
+                    cache = self.hass.data.get(LATEST_TRACK_STATUS)
+                    track_state = normalize_track_status(cache) if isinstance(cache, dict) else None
+                except Exception:
+                    track_state = None
+                if track_state and track_state != "RED":
+                    return "live"
                 # Red flag / suspended while session is considered started
                 return "suspended"
             # Not started yet
@@ -817,6 +1105,14 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         if message == "Aborted":
             # Aborted within an already started session is a suspension-like state
             if started_hint == "Started":
+                # Tie-break using latest TrackStatus: if not RED, treat as live
+                try:
+                    cache = self.hass.data.get(LATEST_TRACK_STATUS)
+                    track_state = normalize_track_status(cache) if isinstance(cache, dict) else None
+                except Exception:
+                    track_state = None
+                if track_state and track_state != "RED":
+                    return "live"
                 return "suspended"
             # Otherwise treat like pre (no live running yet)
             return "pre"
@@ -847,3 +1143,229 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def extra_state_attributes(self):
         raw = self._extract_current() or {}
         return {"raw": raw}
+
+
+class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Live race lap count based on LapCount coordinator.
+
+    - State: current lap (int)
+    - Attributes: total_laps (if present), measurement_time, measurement_age_seconds, received_at, raw
+    - Restore: Remembers last value/attributes on restart and keeps them until new feed data arrives.
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:counter"
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+        self._last_timestamped_dt = None
+        self._last_received_utc = None
+        self._stale_timer = None
+        
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        init = self._extract_current()
+        if init is not None:
+            self._apply_payload(init)
+            try:
+                getLogger(__name__).debug("RaceLapCount: Initialized from coordinator: %s", init)
+            except Exception:
+                pass
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                self._attr_native_value = self._to_int(last.state)
+                attrs = dict(getattr(last, "attributes", {}) or {})
+                for k in ("measurement_time", "measurement_age_seconds", "received_at"):
+                    attrs.pop(k, None)
+                self._attr_extra_state_attributes = attrs
+                now_utc = dt_util.utcnow()
+                try:
+                    t_ref = None
+                    mt = self._attr_extra_state_attributes.get("measurement_time")
+                    if isinstance(mt, str) and mt:
+                        t_ref = datetime.datetime.fromisoformat(mt.replace("Z", "+00:00"))
+                        if t_ref.tzinfo is None:
+                            t_ref = t_ref.replace(tzinfo=datetime.timezone.utc)
+                        self._last_timestamped_dt = t_ref
+                    if t_ref is None:
+                        ra = self._attr_extra_state_attributes.get("received_at")
+                        if isinstance(ra, str) and ra:
+                            t_ref = datetime.datetime.fromisoformat(ra.replace("Z", "+00:00"))
+                            if t_ref.tzinfo is None:
+                                t_ref = t_ref.replace(tzinfo=datetime.timezone.utc)
+                    if isinstance(t_ref, datetime.datetime):
+                        self._last_received_utc = t_ref
+                except Exception:
+                    pass
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self._safe_write_ha_state()
+        # No staleness timer: we keep last known value until new feed data arrives
+        
+
+    async def async_will_remove_from_hass(self) -> None:
+        try:
+            if self._stale_timer:
+                self._stale_timer()
+                self._stale_timer = None
+        except Exception:
+            pass
+        
+
+    def _to_int(self, value):
+        try:
+            if value is None:
+                return None
+            return int(float(value))
+        except Exception:
+            return None
+
+    def _extract_current(self) -> dict | None:
+        data = self.coordinator.data
+        if isinstance(data, dict) and ("CurrentLap" in data or "TotalLaps" in data or "LapCount" in data):
+            return data
+        inner = data.get("data") if isinstance(data, dict) else None
+        if isinstance(inner, dict) and ("CurrentLap" in inner or "TotalLaps" in inner or "LapCount" in inner):
+            return inner
+        hist = getattr(self.coordinator, "data_list", None)
+        if isinstance(hist, list) and hist:
+            last = hist[-1]
+            if isinstance(last, dict) and ("CurrentLap" in last or "TotalLaps" in last or "LapCount" in last):
+                return last
+        return None
+
+    def _apply_payload(self, raw: dict) -> None:
+        curr = self._to_int(raw.get("CurrentLap") if "CurrentLap" in raw else raw.get("LapCount"))
+        total = self._to_int(raw.get("TotalLaps"))
+
+        ts_iso = None
+        age_seconds = None
+        received_at_update = None
+        now_utc = dt_util.utcnow()
+        try:
+            utc_raw = (
+                raw.get("Utc")
+                or raw.get("utc")
+                or raw.get("processedAt")
+                or raw.get("timestamp")
+            )
+            if utc_raw:
+                ts = datetime.datetime.fromisoformat(str(utc_raw).replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=datetime.timezone.utc)
+                ts_iso = ts.astimezone(datetime.timezone.utc).isoformat(timespec="seconds")
+                self._last_timestamped_dt = ts
+                try:
+                    age_seconds = (now_utc - ts).total_seconds()
+                except Exception:
+                    age_seconds = None
+                received_at_update = now_utc.isoformat(timespec="seconds")
+        except Exception:
+            ts_iso = None
+
+        self._attr_native_value = curr
+        self._last_received_utc = now_utc
+        self._attr_extra_state_attributes = {
+            "total_laps": total,
+            "raw": raw,
+        }
+
+        # No staleness handling: do not clear state; keep last value until a new payload arrives
+
+    def _schedule_stale_check(self, t_ref: datetime.datetime | None = None, now_utc: datetime.datetime | None = None) -> None:
+        try:
+            if now_utc is None:
+                now_utc = dt_util.utcnow()
+            if t_ref is None:
+                t_ref = None
+                mt = (self._attr_extra_state_attributes or {}).get("measurement_time")
+                if isinstance(mt, str) and mt:
+                    try:
+                        t_ref = datetime.datetime.fromisoformat(mt.replace("Z", "+00:00"))
+                        if t_ref.tzinfo is None:
+                            t_ref = t_ref.replace(tzinfo=datetime.timezone.utc)
+                    except Exception:
+                        t_ref = None
+                if t_ref is None and isinstance(self._last_timestamped_dt, datetime.datetime):
+                    t_ref = self._last_timestamped_dt
+                if t_ref is None and isinstance(self._last_received_utc, datetime.datetime):
+                    t_ref = self._last_received_utc
+            if not isinstance(t_ref, datetime.datetime):
+                return
+            age = (now_utc - t_ref).total_seconds()
+            threshold = 300
+            delay = max(0.0, threshold - age)
+            if self._stale_timer:
+                try:
+                    self._stale_timer()
+                except Exception:
+                    pass
+                self._stale_timer = None
+            def _cb(_now):
+                self._handle_stale_timeout()
+            self._stale_timer = async_call_later(self.hass, delay, _cb)
+        except Exception:
+            pass
+
+    def _handle_stale_timeout(self) -> None:
+        try:
+            now_utc = dt_util.utcnow()
+            t_ref = None
+            mt = (self._attr_extra_state_attributes or {}).get("measurement_time")
+            if isinstance(mt, str) and mt:
+                try:
+                    t_ref = datetime.datetime.fromisoformat(mt.replace("Z", "+00:00"))
+                    if t_ref.tzinfo is None:
+                        t_ref = t_ref.replace(tzinfo=datetime.timezone.utc)
+                except Exception:
+                    t_ref = None
+            if t_ref is None and isinstance(self._last_timestamped_dt, datetime.datetime):
+                t_ref = self._last_timestamped_dt
+            if t_ref is None and isinstance(self._last_received_utc, datetime.datetime):
+                t_ref = self._last_received_utc
+            if isinstance(t_ref, datetime.datetime) and (now_utc - t_ref).total_seconds() >= 300:
+                self._attr_native_value = None
+                attrs = dict(self._attr_extra_state_attributes or {})
+                attrs["stale"] = True
+                attrs["stale_threshold_seconds"] = 300
+                self._attr_extra_state_attributes = attrs
+                self._safe_write_ha_state()
+        except Exception:
+            pass
+
+    def _safe_write_ha_state(self) -> None:
+        try:
+            import asyncio as _asyncio
+            in_loop = False
+            try:
+                running = _asyncio.get_running_loop()
+                in_loop = running is self.hass.loop
+            except RuntimeError:
+                in_loop = False
+            if in_loop:
+                self.async_write_ha_state()
+            else:
+                self.schedule_update_ha_state()
+        except Exception:
+            try:
+                self.schedule_update_ha_state()
+            except Exception:
+                pass
+
+    def _handle_coordinator_update(self) -> None:
+        raw = self._extract_current()
+        if raw is None:
+            try:
+                getLogger(__name__).debug(
+                    "RaceLapCount: No payload on update at %s; keeping previous state",
+                    dt_util.utcnow().isoformat(timespec="seconds"),
+                )
+            except Exception:
+                pass
+            self._safe_write_ha_state()
+            return
+        self._apply_payload(raw)
+        self._safe_write_ha_state()
+        
