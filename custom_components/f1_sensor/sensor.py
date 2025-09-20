@@ -726,7 +726,10 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             if last and last.state not in (None, "unknown", "unavailable"):
                 # Restore last known state and attributes; do not clear due to age
                 self._attr_native_value = self._to_float(last.state)
-                self._attr_extra_state_attributes = dict(getattr(last, "attributes", {}) or {})
+                attrs = dict(getattr(last, "attributes", {}) or {})
+                for k in ("measurement_time", "measurement_age_seconds", "received_at"):
+                    attrs.pop(k, None)
+                self._attr_extra_state_attributes = attrs
                 try:
                     getLogger(__name__).debug("TrackWeather: Restored last state: %s", last.state)
                 except Exception:
@@ -819,9 +822,7 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             pass
 
         self._attr_native_value = air_temp
-        prev_received = (self._attr_extra_state_attributes or {}).get("received_at")
         self._last_received_utc = now_utc
-        received_final = received_at_update if received_at_update is not None else prev_received
         self._attr_extra_state_attributes = {
             "air_temperature": air_temp,
             "air_temperature_unit": "celsius",
@@ -837,9 +838,6 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "wind_speed_unit": "m/s",
             "wind_from_direction_degrees": wind_dir,
             "wind_from_direction_unit": "degrees",
-            "measurement_time": ts_iso,
-            "measurement_age_seconds": age_seconds,
-            "received_at": received_final,
             "measurement_inferred": measurement_inferred,
             "raw": raw,
         }
@@ -1178,7 +1176,10 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             last = await self.async_get_last_state()
             if last and last.state not in (None, "unknown", "unavailable"):
                 self._attr_native_value = self._to_int(last.state)
-                self._attr_extra_state_attributes = dict(getattr(last, "attributes", {}) or {})
+                attrs = dict(getattr(last, "attributes", {}) or {})
+                for k in ("measurement_time", "measurement_age_seconds", "received_at"):
+                    attrs.pop(k, None)
+                self._attr_extra_state_attributes = attrs
                 now_utc = dt_util.utcnow()
                 try:
                     t_ref = None
@@ -1265,14 +1266,9 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             ts_iso = None
 
         self._attr_native_value = curr
-        prev_received = (self._attr_extra_state_attributes or {}).get("received_at")
         self._last_received_utc = now_utc
-        received_final = received_at_update if received_at_update is not None else prev_received
         self._attr_extra_state_attributes = {
             "total_laps": total,
-            "measurement_time": ts_iso,
-            "measurement_age_seconds": age_seconds,
-            "received_at": received_final,
             "raw": raw,
         }
 
