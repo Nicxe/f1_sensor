@@ -49,7 +49,9 @@ When adding or reconfiguring the integration, you can choose to enable live data
   Creates three additional live entities:  
   - `sensor.f1_session_status`  
   - `sensor.f1_track_status`  
-  - `binary_sensor.f1_safety_car`  
+  - `binary_sensor.f1_safety_car`
+  - `sensor.f1_track_weather`
+  - `sensor.f1_race_lap_count`
 
   If this option is not selected, these live sensors are not created.
 
@@ -63,6 +65,7 @@ When adding or reconfiguring the integration, you can choose to enable live data
 
   By setting the delay accordingly, your Home Assistant automations (for example flashing lights on a red flag) can sync more closely with the live pictures you are watching.
 
+![F1SensorFlag-ezgif com-video-to-gif-converter (5)](https://github.com/user-attachments/assets/18a74679-76e2-4d10-8a0d-d3f111c42593)
 
 
 
