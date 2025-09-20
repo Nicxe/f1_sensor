@@ -15,7 +15,7 @@ It is designed for users who want to build automations, scripts, notifications, 
 
 
 > [!TIP]
->Visit the [F1 Sensor Community at Home Assistant Community Forum](https://community.home-assistant.io/t/formula-1-racing-sensor/) to share your project and get help and >inspiration.
+>Visit the [F1 Sensor Community at Home Assistant Community Forum](https://community.home-assistant.io/t/formula-1-racing-sensor/) to share your project and get help and inspiration.
 >Visit  to share you procejt and get help and inspiration
 
 
@@ -45,13 +45,11 @@ It is designed for users who want to build automations, scripts, notifications, 
 
 When adding or reconfiguring the integration, you can choose to enable live data via Formula 1’s unofficial Live Timing API.  
 
-- **Enable live F1 API**  
+- **Enable live F1 API (Race Control/Track/Session)**  
   Creates three additional live entities:  
   - `sensor.f1_session_status`  
   - `sensor.f1_track_status`  
-  - `binary_sensor.f1_safety_car`
-  - `sensor.f1_track_weather`
-  - `sensor.f1_race_lap_count`
+  - `binary_sensor.f1_safety_car`  
 
   If this option is not selected, these live sensors are not created.
 
