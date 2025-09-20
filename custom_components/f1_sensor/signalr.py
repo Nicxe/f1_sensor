@@ -13,11 +13,11 @@ NEGOTIATE_URL = "https://livetiming.formula1.com/signalr/negotiate"
 CONNECT_URL = "wss://livetiming.formula1.com/signalr/connect"
 HUB_DATA = '[{"name":"Streaming"}]'
 
-# Subscribe to RaceControl, TrackStatus and SessionStatus streams
+# Subscribe to RaceControl, TrackStatus, SessionStatus, WeatherData and LapCount streams
 SUBSCRIBE_MSG = {
     "H": "Streaming",
     "M": "Subscribe",
-    "A": [["RaceControlMessages", "TrackStatus", "SessionStatus"]],
+    "A": [["RaceControlMessages", "TrackStatus", "SessionStatus", "WeatherData", "LapCount"]],
     "I": 1,
 }
 
@@ -66,7 +66,7 @@ class SignalRClient:
         self._t0 = dt.datetime.now(dt.timezone.utc)
         self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
-        _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus and SessionStatus")
+        _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData and LapCount")
 
     async def _ensure_connection(self) -> None:
         """Try to (re)connect using exponential back-off."""
@@ -117,6 +117,16 @@ class SignalRClient:
                                     _LOGGER.debug("Session status message: %s", hub_msg["A"][1])
                                 except Exception:  # noqa: BLE001 - defensive logging
                                     _LOGGER.debug("Session status message received (unparsed)")
+                            elif stream_name == "WeatherData":
+                                try:
+                                    _LOGGER.debug("Weather data message: %s", hub_msg["A"][1])
+                                except Exception:  # noqa: BLE001 - defensive logging
+                                    _LOGGER.debug("Weather data message received (unparsed)")
+                            elif stream_name == "LapCount":
+                                try:
+                                    _LOGGER.debug("Lap count message: %s", hub_msg["A"][1])
+                                except Exception:  # noqa: BLE001 - defensive logging
+                                    _LOGGER.debug("Lap count message received (unparsed)")
                 elif "R" in payload:
                     if "RaceControlMessages" in payload["R"]:
                         try:
@@ -133,6 +143,16 @@ class SignalRClient:
                             _LOGGER.debug("Session status message: %s", payload["R"]["SessionStatus"]) 
                         except Exception:  # noqa: BLE001 - defensive logging
                             _LOGGER.debug("Session status message received (unparsed)")
+                    if "WeatherData" in payload["R"]:
+                        try:
+                            _LOGGER.debug("Weather data message: %s", payload["R"]["WeatherData"]) 
+                        except Exception:  # noqa: BLE001 - defensive logging
+                            _LOGGER.debug("Weather data message received (unparsed)")
+                    if "LapCount" in payload["R"]:
+                        try:
+                            _LOGGER.debug("Lap count message: %s", payload["R"]["LapCount"]) 
+                        except Exception:  # noqa: BLE001 - defensive logging
+                            _LOGGER.debug("Lap count message received (unparsed)")
 
                 index += 1
                 yield payload

@@ -10,7 +10,7 @@
           "live_delay_seconds": "Fördröjning för liveuppdateringar (sekunder)"
         },
         "data_description": {
-          "enable_race_control": "Ansluter till Formula 1 Live Timing via SignalR för att ta emot liveuppdateringar för Race Control, Track Status och Session Status. Om avaktiverad skapas inte dessa livesensorer.",
+          "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
           "live_delay_seconds": "Fördröj leverans av live‑meddelanden för att synka med TV‑sändning eller stream."
         }
       },
@@ -23,7 +23,7 @@
           "live_delay_seconds": "Fördröjning för liveuppdateringar (sekunder)"
         },
         "data_description": {
-          "enable_race_control": "Ansluter till Formula 1 Live Timing för att ta emot liveuppdateringar för Race Control, Track Status och Session Status. Om avaktiverad skapas inte dessa livesensorer.",
+          "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
           "live_delay_seconds": "Fördröj leverans av live‑meddelanden för att synka med TV‑sändning eller stream."
         }
       }
@@ -36,6 +36,7 @@
       "driver_standings": { "name": "Förarställning" },
       "constructor_standings": { "name": "Konstruktorställning" },
       "weather": { "name": "Väder" },
+      "track_weather": { "name": "Bana väder" },
       "last_race_results": { "name": "Resultat från senaste loppet" },
       "season_results": { "name": "Säsongsresultat" },
       "safety_car": { "name": "Säkerhetsbil" }
