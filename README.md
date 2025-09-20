@@ -7,29 +7,35 @@
 
 ## What is F1 Sensor?
 
-This is a custom integration for Home Assistant that creates sensors using data from the [Jolpica-F1 API](https://github.com/jolpica/jolpica-f1). It is designed for users who want to build automations, scripts, notifications, TTS messages, or more advanced use cases such as generating dynamic dashboards, triggering race-day routines, syncing events to calendars, or integrating with external services based on upcoming Formula 1 events.
+This is a custom integration for Home Assistant that creates sensors using data from the [Jolpica-F1 API](https://github.com/jolpica/jolpica-f1).  
+
+It also fetches live data from Formula 1’s unofficial **Live Timing API** during active sessions (practice, qualifying, sprint, race). These live sensors only update shortly before, during, and shortly after a session. Outside of session times, they will not update.  
+
+It is designed for users who want to build automations, scripts, notifications, TTS messages, or more advanced use cases such as generating dynamic dashboards, triggering race-day routines, syncing events to calendars, or integrating with external services based on upcoming Formula 1 events.  
+
 
 > [!TIP]
-Visit the [F1 Sensor Community at Home Assistant Community Forum](https://community.home-assistant.io/t/formula-1-racing-sensor/) to share your project and get help and inspiration.
-
-Visit  to share you procejt and get help and inspiration
+>Visit the [F1 Sensor Community at Home Assistant Community Forum](https://community.home-assistant.io/t/formula-1-racing-sensor/) to share your project and get help and inspiration.
+>Visit  to share you procejt and get help and inspiration
 
 
 #### ENTITIES
 
-| Entity                            | Info                                                             | 
-| --------                          | --------                                                         | 
-| sensor.f1_next_race               | Next race info                                                   | 
-| sensor.f1_season_calendar         | Full race schedule                                               | 
-| sensor.f1_driver_standings        | Current driver championship standings                            | 
-| sensor.f1_constructor_standings   | Current constructor standings                                    | 
-| sensor.f1_weather                 | Weather forecast at next race circuit                            | 
-| sensor.f1_last_race_results       | Most recent race results                                         | 
-| sensor.f1_season_results          | All season race results                                          | 
-| binary_sensor.f1_race_week        | `on` during race week                                            | 
-| sensor.f1_session_status          | LIVE - Current session phase (pre, live, suspended, break, finished, finalised, ended) | 
-| sensor.f1_track_status            | LIVE - Current track status (CLEAR, YELLOW, VSC, SC, RED)               | 
-| binary_sensor.f1_safety_car       | LIVE - `on` when Safety Car (SC) or Virtual Safety Car (VSC) is active  | 
+| Entity                            | Info                                                                                   | 
+| --------                          | -------------------------------------------------------------------------------------- | 
+| sensor.f1_next_race               | Next race info                                                                         | 
+| sensor.f1_season_calendar         | Full race schedule                                                                     | 
+| sensor.f1_driver_standings        | Current driver championship standings                                                  | 
+| sensor.f1_constructor_standings   | Current constructor standings                                                          | 
+| sensor.f1_weather                 | Weather forecast at next race circuit                                                  | 
+| sensor.f1_last_race_results       | Most recent race results                                                               | 
+| sensor.f1_season_results          | All season race results                                                                | 
+| binary_sensor.f1_race_week        | `on` during race week                                                                  | 
+| sensor.f1_session_status          | LIVE - Current session phase (pre, live, suspended, finished, finalised, ended)        | 
+| sensor.f1_track_status            | LIVE - Current track status (CLEAR, YELLOW, VSC, SC, RED)                              | 
+| binary_sensor.f1_safety_car       | LIVE - `on` when Safety Car (SC) or Virtual Safety Car (VSC) is active                 | 
+| sensor.f1_track_weather           | LIVE - Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)     |
+| sensor.f1_race_lap_count          | LIVE - Current race lap number (only updates during a race, not during practice/qualy) | 
 
 
 ---
@@ -56,6 +62,8 @@ When adding or reconfiguring the integration, you can choose to enable live data
   - Sports cable/OTT providers: 45–60 seconds or more depending on provider  
 
   By setting the delay accordingly, your Home Assistant automations (for example flashing lights on a red flag) can sync more closely with the live pictures you are watching.
+
+
 
 
 <details>
@@ -112,13 +120,78 @@ Boolean entity derived from track status.
 - **on** – when `sensor.f1_track_status` is SC or VSC.  
 - **off** – in all other cases.
 
+---
+
+##### `sensor.f1_track_weather`
+
+Updates approximately every minute during an active session.  
+
+**Attributes include**
+- Air temperature  
+- Track temperature  
+- Rainfall  
+- Wind speed  
+
+---
+
+##### `sensor.f1_race_lap_count`
+
+Only updates during an active race session.  
+Shows the current lap number in real time.  
+
 </details>
 
+
+---
 
 
 
 <img width="612" height="490" alt="image" src="https://github.com/user-attachments/assets/b31c82a2-077d-4447-a367-dc0095e0e72e" />
 
+
+### Race Control messages
+
+Race Control messages are sent as events in Home Assistant under the event type `f1_sensor_race_control_event`.  
+These include flags, steward notes, incident reports, and other live race control communications.  
+
+Example payloads:  
+```yaml
+event_type: f1_sensor_race_control_event
+data:
+  message:
+    Utc: "2025-09-19T12:40:18"
+    Category: Flag
+    Flag: CLEAR
+    Scope: Sector
+    Sector: 6
+    Message: CLEAR IN TRACK SECTOR 6
+  received_at: "2025-09-19T12:40:44+00:00"
+origin: LOCAL
+time_fired: "2025-09-19T12:40:44.106956+00:00"
+
+event_type: f1_sensor_race_control_event
+data:
+  message:
+    Utc: "2025-09-19T12:40:07"
+    Category: Flag
+    Flag: YELLOW
+    Scope: Sector
+    Sector: 6
+    Message: YELLOW IN TRACK SECTOR 6
+  received_at: "2025-09-19T12:40:44+00:00"
+
+event_type: f1_sensor_race_control_event
+data:
+  message:
+    Utc: "2025-09-19T12:40:06"
+    Category: Other
+    Message: INCIDENT INVOLVING CAR 81 (PIA) NOTED - YELLOW FLAG INFRINGEMENT
+  received_at: "2025-09-19T12:40:44+00:00"
+```
+
+> [!NOTE]
+>Currently, Race Control is published as events only.
+>In a future release, these messages will also be exposed as a > sensor.
 
 ---
 
@@ -226,66 +299,8 @@ Community user Tiidler has used the sensors from this integration to create a fu
 ![image (1)](https://github.com/user-attachments/assets/4ed2748c-2ae7-4529-8767-bedbaa98636f)
 
 
-
-
-
 ---
 
-
-
-### Announce next race and top standings via TTS
-
-```yaml
-service: tts.google_translate_say
-data:
-  entity_id: media_player.living_room_speaker
-  message: >
-    {% set next_race = state_attr('sensor.f1_next_race', 'race_name') %}
-    {% set race_date = as_datetime(state_attr('sensor.f1_next_race', 'race_start_local')) %}
-    {% set race_location = state_attr('sensor.f1_next_race', 'circuit_locality') %}
-    {% set race_country = state_attr('sensor.f1_next_race', 'circuit_country') %}
-    {% set days_left = (race_date.date() - now().date()).days %}
-    {% set drivers = state_attr('sensor.f1_driver_standings', 'driver_standings') %}
-    {% set constructors = state_attr('sensor.f1_constructor_standings', 'constructor_standings') %}
-    The next Formula 1 race is the {{ next_race }} in {{ race_location }}, {{ race_country }}, happening in {{ days_left }} day{{ 's' if days_left != 1 else '' }}.
-    The top 3 drivers right now are:
-    Number 1: {{ drivers[0].Driver.givenName }} {{ drivers[0].Driver.familyName }} with {{ drivers[0].points }} points.
-    Number 2: {{ drivers[1].Driver.givenName }} {{ drivers[1].Driver.familyName }} with {{ drivers[1].points }} points.
-    Number 3: {{ drivers[2].Driver.givenName }} {{ drivers[2].Driver.familyName }} with {{ drivers[2].points }} points.
-    In the constructor standings:
-    Number 1: {{ constructors[0].Constructor.name }} with {{ constructors[0].points }} points.
-    Number 2: {{ constructors[1].Constructor.name }} with {{ constructors[1].points }} points.
-    Number 3: {{ constructors[2].Constructor.name }} with {{ constructors[2].points }} points.
-```
-
----
-
-### Mobile notification with race info and standings
-
-```yaml
-service: notify.mobile_app_yourdevice
-data:
-  title: "🏁 Formula 1 Update"
-  message: >
-    {% set race = state_attr('sensor.f1_next_race', 'race_name') %}
-    {% set city = state_attr('sensor.f1_next_race', 'circuit_locality') %}
-    {% set country = state_attr('sensor.f1_next_race', 'circuit_country') %}
-    {% set race_time = as_datetime(state_attr('sensor.f1_next_race', 'race_start_local')) %}
-    {% set days = (race_time.date() - now().date()).days %}
-    {% set drivers = state_attr('sensor.f1_driver_standings', 'driver_standings') %}
-    {% set constructors = state_attr('sensor.f1_constructor_standings', 'constructor_standings') %}
-    Next race: {{ race }} in {{ city }}, {{ country }} — in {{ days }} day{{ 's' if days != 1 else '' }}.
-    Top drivers:
-    1. {{ drivers[0].Driver.familyName }} ({{ drivers[0].points }} pts)
-    2. {{ drivers[1].Driver.familyName }} ({{ drivers[1].points }} pts)
-    3. {{ drivers[2].Driver.familyName }} ({{ drivers[2].points }} pts)
-    Top constructors:
-    1. {{ constructors[0].Constructor.name }} ({{ constructors[0].points }} pts)
-    2. {{ constructors[1].Constructor.name }} ({{ constructors[1].points }} pts)
-    3. {{ constructors[2].Constructor.name }} ({{ constructors[2].points }} pts)
-```
-
----
 
 > [!NOTE]  
 > ### Support the API that makes this possible  
