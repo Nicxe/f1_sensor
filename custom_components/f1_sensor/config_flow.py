@@ -12,6 +12,10 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
+            # Backwards-compat: migrate favorite_drivers -> favorite_tlas storage key
+            fav = user_input.pop("favorite_drivers", None)
+            if fav is not None:
+                user_input["favorite_tlas"] = fav
             return self.async_create_entry(
                 title=user_input["sensor_name"], data=user_input
             )
@@ -29,6 +33,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "weather",
                         "track_weather",
                         "race_lap_count",
+                        "race_leader",
+                        "driver_favorites",
                         "last_race_results",
                         "season_results",
                         "race_week",
@@ -45,6 +51,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "weather": "Weather",
                         "track_weather": "Track weather (live)",
                         "race_lap_count": "Race lap count (live)",
+                        "race_leader": "Race leader (live)",
+                        "driver_favorites": "Favorite drivers (live)",
                         "last_race_results": "Last race results",
                         "season_results": "Season results",
                         "race_week": "Race week",
@@ -57,6 +65,10 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     "live_delay_seconds", default=0
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=300)),
+                vol.Optional(
+                    "favorite_drivers",
+                    default="",
+                ): cv.string,
             }
         )
 
@@ -85,6 +97,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "weather": "Weather",
             "track_weather": "Track weather (live)",
             "race_lap_count": "Race lap count (live)",
+            "race_leader": "Race leader (live)",
+            "driver_favorites": "Favorite drivers (live)",
             "last_race_results": "Last race results",
             "season_results": "Season results",
             "race_week": "Race week",
@@ -100,6 +114,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "weather",
             "track_weather",
             "race_lap_count",
+            "race_leader",
+            "driver_favorites",
             "last_race_results",
             "season_results",
             "race_week",
@@ -134,6 +150,10 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     "live_delay_seconds",
                     default=current.get("live_delay_seconds", 0),
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=300)),
+                vol.Optional(
+                    "favorite_drivers",
+                    default=(current.get("favorite_drivers") or current.get("favorite_tlas") or ""),
+                ): cv.string,
             }
         )
 

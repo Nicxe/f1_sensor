@@ -77,6 +77,8 @@ async def async_setup_entry(
         "weather",
         "track_weather",
         "race_lap_count",
+        "race_leader",
+        "driver_favorites",
         "last_race_results",
         "season_results",
         "race_week",
@@ -110,21 +112,39 @@ async def async_setup_entry(
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
         "track_status": (F1TrackStatusSensor, data.get("track_status_coordinator")),
         "session_status": (F1SessionStatusSensor, data.get("session_status_coordinator")),
+        "race_leader": (F1RaceLeaderSensor, data.get("drivers_coordinator")),
+        "driver_favorites": (F1FavoriteDriverCollection, data.get("drivers_coordinator")),
     }
 
     sensors = []
     for key in enabled:
         cls, coord = mapping.get(key, (None, None))
         if cls and coord:
-            sensors.append(
-                cls(
-                    coord,
-                    f"{base}_{key}",
-                    f"{entry.entry_id}_{key}",
-                    entry.entry_id,
-                    base,
+            if cls is F1FavoriteDriverCollection:
+                # Expand into multiple driver sensors from option favorite_tlas
+                tlas = str(entry.data.get("favorite_tlas", "")).strip()
+                tlas_list = [t.strip().upper() for t in tlas.split(",") if t.strip()]
+                for tla in tlas_list:
+                    sensors.append(
+                        F1DriverLiveSensor(
+                            coord,
+                            f"{base}_driver_{tla}",
+                            f"{entry.entry_id}_driver_{tla}",
+                            entry.entry_id,
+                            base,
+                            tla,
+                        )
+                    )
+            else:
+                sensors.append(
+                    cls(
+                        coord,
+                        f"{base}_{key}",
+                        f"{entry.entry_id}_{key}",
+                        entry.entry_id,
+                        base,
+                    )
                 )
-            )
     async_add_entities(sensors, True)
 
 
@@ -1369,3 +1389,159 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._apply_payload(raw)
         self._safe_write_ha_state()
         
+
+class F1RaceLeaderSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Live leader sensor based on consolidated drivers coordinator.
+
+    State: leader TLA. Attributes include identity, gap to P2, last/best laps, lap counts.
+    Persists last known state across restarts until new data arrives. Freezes on session finished/finalised.
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:trophy"
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+        self._frozen = False
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        # Initialize from coordinator or restore
+        self._update_from_coordinator()
+        if self._attr_native_value is None:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                self._attr_native_value = last.state
+                self._attr_extra_state_attributes = dict(getattr(last, "attributes", {}) or {})
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self.async_write_ha_state()
+
+    def _handle_coordinator_update(self) -> None:
+        self._update_from_coordinator()
+        self.async_write_ha_state()
+
+    def _update_from_coordinator(self) -> None:
+        data = self.coordinator.data or {}
+        self._frozen = bool(data.get("frozen"))
+        leader_rn = data.get("leader_rn")
+        drivers = data.get("drivers", {})
+        leader = drivers.get(leader_rn, {}) if leader_rn else {}
+        ident = leader.get("identity", {})
+        timing = leader.get("timing", {})
+        laps = leader.get("laps", {})
+        tla = ident.get("tla")
+        if tla:
+            self._attr_native_value = tla
+        # Compute gap to P2 by scanning timing positions
+        gap_to_p2 = None
+        try:
+            p2 = None
+            for _rn, info in drivers.items():
+                pos = (info.get("timing", {}) or {}).get("position")
+                if str(pos or "").strip() == "2":
+                    p2 = info
+                    break
+            if isinstance(p2, dict):
+                gap_to_p2 = (p2.get("timing", {}) or {}).get("gap_to_leader")
+        except Exception:
+            gap_to_p2 = None
+        attrs = {
+            "name": ident.get("name"),
+            "team": ident.get("team"),
+            "team_color": ident.get("team_color"),
+            "gap_to_p2": gap_to_p2,
+            "last_lap": timing.get("last_lap"),
+            "best_lap": timing.get("best_lap"),
+            "lap_current": laps.get("lap_current"),
+            "lap_total": laps.get("lap_total"),
+        }
+        self._attr_extra_state_attributes = attrs
+
+    @property
+    def state(self):
+        return self._attr_native_value
+
+
+class F1FavoriteDriverCollection:
+    """Placeholder class only used in mapping to signal expansion into multiple sensors."""
+
+    pass
+
+
+class F1DriverLiveSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Live driver sensor for a specific favorite TLA using consolidated drivers coordinator.
+
+    State: current position (string). Attributes: identity, timing (gap, interval, last/best), status, tyres, laps.
+    Freezes on session finished/finalised and restores last known state at startup until data arrives.
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name, tla: str):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:car-sports"
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+        self._tla = str(tla or "").upper()
+        self._frozen = False
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self._update_from_coordinator()
+        if self._attr_native_value is None:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                self._attr_native_value = last.state
+                self._attr_extra_state_attributes = dict(getattr(last, "attributes", {}) or {})
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self.async_write_ha_state()
+
+    def _handle_coordinator_update(self) -> None:
+        self._update_from_coordinator()
+        self.async_write_ha_state()
+
+    def _update_from_coordinator(self) -> None:
+        data = self.coordinator.data or {}
+        self._frozen = bool(data.get("frozen"))
+        drivers = data.get("drivers", {})
+        # Find by TLA
+        selected = None
+        for rn, info in drivers.items():
+            try:
+                if (info.get("identity", {}) or {}).get("tla", "").upper() == self._tla:
+                    selected = info
+                    break
+            except Exception:
+                continue
+        if not isinstance(selected, dict):
+            return
+        ident = selected.get("identity", {})
+        timing = selected.get("timing", {})
+        tyres = selected.get("tyres", {})
+        laps = selected.get("laps", {})
+        pos = timing.get("position")
+        if pos is not None:
+            self._attr_native_value = pos
+        attrs = {
+            "tla": ident.get("tla"),
+            "name": ident.get("name"),
+            "team": ident.get("team"),
+            "team_color": ident.get("team_color"),
+            "gap_to_leader": timing.get("gap_to_leader"),
+            "interval": timing.get("interval"),
+            "last_lap": timing.get("last_lap"),
+            "best_lap": timing.get("best_lap"),
+            "in_pit": timing.get("in_pit"),
+            "retired": timing.get("retired"),
+            "compound": tyres.get("compound"),
+            "stint_laps": tyres.get("stint_laps"),
+            "new": tyres.get("new"),
+            "lap_current": laps.get("lap_current"),
+            "lap_total": laps.get("lap_total"),
+        }
+        self._attr_extra_state_attributes = attrs
+
+    @property
+    def state(self):
+        return self._attr_native_value
+

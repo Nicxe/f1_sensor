@@ -3,6 +3,7 @@ import logging
 import asyncio
 import contextlib
 from datetime import datetime, timedelta
+from typing import Any
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -85,6 +86,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if lap_count_coordinator:
         await lap_count_coordinator.async_config_entry_first_refresh()
 
+    # Live consolidated drivers coordinator (TimingData, DriverList, TimingAppData, LapCount, SessionStatus)
+    drivers_coordinator = LiveDriversCoordinator(
+        hass,
+        session_coordinator,
+        delay_seconds=int(entry.data.get("live_delay_seconds", 0) or 0),
+    )
+    await drivers_coordinator.async_config_entry_first_refresh()
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "race_coordinator": race_coordinator,
         "driver_coordinator": driver_coordinator,
@@ -97,6 +106,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
+        "drivers_coordinator": drivers_coordinator,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -567,6 +577,261 @@ class LapCountCoordinator(DataUpdateCoordinator):
             )
         except Exception:
             pass
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        self._task = self.hass.loop.create_task(self._listen())
+
+
+class LiveDriversCoordinator(DataUpdateCoordinator):
+    """Coordinator aggregating DriverList, TimingData, TimingAppData, LapCount and SessionStatus.
+
+    Exposes a consolidated structure suitable for sensors:
+    data = {
+      "drivers": {
+         rn: {
+            "identity": {"tla","name","team","team_color","racing_number"},
+            "timing": {"position","gap_to_leader","interval","last_lap","best_lap","in_pit","retired","stopped","status_code"},
+            "tyres": {"compound","stint_laps","new"},
+            "laps": {"lap_current","lap_total"},
+         },
+      },
+      "leader_rn": rn | None,
+      "lap_current": int | None,
+      "lap_total": int | None,
+      "session_status": dict | None,
+      "frozen": bool,
+    }
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: 'LiveSessionCoordinator',
+        delay_seconds: int = 0,
+    ) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="F1 Live Drivers Coordinator",
+            update_interval=None,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self._task = None
+        self._client = None
+        self._delay = max(0, int(delay_seconds or 0))
+        self._state: dict[str, Any] = {
+            "drivers": {},
+            "leader_rn": None,
+            "lap_current": None,
+            "lap_total": None,
+            "session_status": None,
+            "frozen": False,
+        }
+
+    async def async_close(self, *_):
+        if self._task:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+        if self._client:
+            await self._client.close()
+
+    async def _async_update_data(self):
+        return self._state
+
+    def _merge_driverlist(self, payload: dict) -> None:
+        # payload: { rn: {Tla, FullName, TeamName, TeamColour, ...}, ... }
+        drivers = self._state["drivers"]
+        for rn, info in (payload or {}).items():
+            if not isinstance(info, dict):
+                continue
+            ident = drivers.setdefault(rn, {})
+            ident.setdefault("identity", {})
+            ident.setdefault("timing", {})
+            ident.setdefault("tyres", {})
+            ident.setdefault("laps", {})
+            ident["identity"].update(
+                {
+                    "racing_number": str(info.get("RacingNumber") or rn),
+                    "tla": info.get("Tla"),
+                    "name": info.get("FullName") or info.get("BroadcastName"),
+                    "team": info.get("TeamName"),
+                    "team_color": info.get("TeamColour"),
+                }
+            )
+
+    @staticmethod
+    def _get_value(d: dict | None, *path, default: Any = None):
+        cur: Any = d
+        for p in path:
+            if not isinstance(cur, dict):
+                return default
+            cur = cur.get(p)
+        return cur if cur is not None else default
+
+    def _merge_timingdata(self, payload: dict) -> None:
+        # payload: {"Lines": { rn: {...timing...} } }
+        lines = (payload or {}).get("Lines", {})
+        if not isinstance(lines, dict):
+            return
+        drivers = self._state["drivers"]
+        leader_rn = None
+        best_pos = 1_000
+        for rn, td in lines.items():
+            if not isinstance(td, dict):
+                continue
+            entry = drivers.setdefault(rn, {})
+            entry.setdefault("identity", {})
+            entry.setdefault("timing", {})
+            entry.setdefault("tyres", {})
+            entry.setdefault("laps", {})
+            timing = entry["timing"]
+            pos_str = str(td.get("Position") or "")
+            try:
+                pos = int(pos_str) if pos_str.isdigit() else None
+            except Exception:
+                pos = None
+            if isinstance(pos, int) and pos < best_pos:
+                best_pos = pos
+                leader_rn = rn
+            timing.update(
+                {
+                    "position": pos_str or None,
+                    "gap_to_leader": td.get("GapToLeader"),
+                    "interval": self._get_value(td, "IntervalToPositionAhead", "Value"),
+                    "last_lap": self._get_value(td, "LastLapTime", "Value"),
+                    "best_lap": self._get_value(td, "BestLapTime", "Value"),
+                    "in_pit": bool(td.get("InPit")),
+                    "retired": bool(td.get("Retired")),
+                    "stopped": bool(td.get("Stopped")),
+                    "status_code": td.get("Status"),
+                }
+            )
+        if leader_rn is not None:
+            self._state["leader_rn"] = leader_rn
+
+    def _merge_timingapp(self, payload: dict) -> None:
+        # payload: {"Lines": { rn: {"Stints": { idx or list } } } }
+        lines = (payload or {}).get("Lines", {})
+        if not isinstance(lines, dict):
+            return
+        drivers = self._state["drivers"]
+        for rn, app in lines.items():
+            if not isinstance(app, dict):
+                continue
+            entry = drivers.setdefault(rn, {})
+            entry.setdefault("tyres", {})
+            stints = app.get("Stints")
+            latest: dict | None = None
+            if isinstance(stints, list) and stints:
+                latest = stints[-1] if isinstance(stints[-1], dict) else None
+            elif isinstance(stints, dict) and stints:
+                # Often indexed by numeric keys or 0/1
+                try:
+                    keys = [int(k) for k in stints.keys() if str(k).isdigit()]
+                    if keys:
+                        latest = stints.get(str(max(keys)))
+                except Exception:
+                    # Fallback: try key '0'
+                    latest = stints.get("0") if isinstance(stints.get("0"), dict) else None
+            if isinstance(latest, dict):
+                comp = latest.get("Compound")
+                stint_laps = latest.get("TotalLaps")
+                is_new = latest.get("New")
+                entry["tyres"].update(
+                    {
+                        "compound": comp,
+                        "stint_laps": int(stint_laps) if str(stint_laps or "").isdigit() else stint_laps,
+                        "new": True if str(is_new).lower() == "true" else (False if str(is_new).lower() == "false" else is_new),
+                    }
+                )
+
+    def _merge_lapcount(self, payload: dict) -> None:
+        # payload may be either {CurrentLap, TotalLaps} or wrapped
+        curr = payload.get("CurrentLap") or payload.get("LapCount")
+        total = payload.get("TotalLaps")
+        try:
+            curr_i = int(curr) if curr is not None else None
+        except Exception:
+            curr_i = None
+        try:
+            total_i = int(total) if total is not None else None
+        except Exception:
+            total_i = None
+        self._state["lap_current"] = curr_i
+        self._state["lap_total"] = total_i
+        # Mirror into each driver for convenience
+        for entry in self._state["drivers"].values():
+            entry.setdefault("laps", {})
+            entry["laps"].update({"lap_current": curr_i, "lap_total": total_i})
+
+    def _merge_sessionstatus(self, payload: dict) -> None:
+        self._state["session_status"] = payload
+        try:
+            msg = str(payload.get("Status") or payload.get("Message") or "").strip()
+            if msg in ("Finished", "Finalised", "Ends"):
+                self._state["frozen"] = True
+        except Exception:
+            pass
+
+    @staticmethod
+    def _extract(data: dict, key: str) -> dict | None:
+        if not isinstance(data, dict):
+            return None
+        messages = data.get("M")
+        if isinstance(messages, list):
+            for update in messages:
+                args = update.get("A", [])
+                if len(args) >= 2 and args[0] == key:
+                    return args[1]
+        result = data.get("R")
+        if isinstance(result, dict) and key in result:
+            return result.get(key)
+        return None
+
+    def _deliver(self) -> None:
+        # Push deep-copied shallow dict to avoid accidental external mutation
+        self.async_set_updated_data(self._state)
+
+    async def _listen(self):
+        from .signalr import SignalRClient
+
+        self._client = SignalRClient(self.hass, self._session)
+        while True:
+            try:
+                await self._client._ensure_connection()
+                async for payload in self._client.messages():
+                    # Respect frozen state: once frozen, ignore further live merges
+                    if self._state.get("frozen"):
+                        continue
+                    dl = self._extract(payload, "DriverList")
+                    if dl:
+                        self._merge_driverlist(dl)
+                    td = self._extract(payload, "TimingData")
+                    if td:
+                        self._merge_timingdata(td)
+                    ta = self._extract(payload, "TimingAppData")
+                    if ta:
+                        self._merge_timingapp(ta)
+                    lc = self._extract(payload, "LapCount")
+                    if lc:
+                        self._merge_lapcount(lc)
+                    ss = self._extract(payload, "SessionStatus")
+                    if ss:
+                        self._merge_sessionstatus(ss)
+                    # Schedule delivery (optional delay)
+                    if any((dl, td, ta, lc, ss)):
+                        if self._delay > 0:
+                            self.hass.loop.call_later(self._delay, self._deliver)
+                        else:
+                            self._deliver()
+            except Exception as err:  # pragma: no cover - network errors
+                _LOGGER.warning("Live drivers websocket error: %s", err)
+            finally:
+                if self._client:
+                    await self._client.close()
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()

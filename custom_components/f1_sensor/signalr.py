@@ -13,11 +13,21 @@ NEGOTIATE_URL = "https://livetiming.formula1.com/signalr/negotiate"
 CONNECT_URL = "wss://livetiming.formula1.com/signalr/connect"
 HUB_DATA = '[{"name":"Streaming"}]'
 
-# Subscribe to RaceControl, TrackStatus, SessionStatus, WeatherData and LapCount streams
+# Subscribe to core live streams used across the integration
+# Added: TimingData, DriverList, TimingAppData to support driver sensors
 SUBSCRIBE_MSG = {
     "H": "Streaming",
     "M": "Subscribe",
-    "A": [["RaceControlMessages", "TrackStatus", "SessionStatus", "WeatherData", "LapCount"]],
+    "A": [[
+        "RaceControlMessages",
+        "TrackStatus",
+        "SessionStatus",
+        "WeatherData",
+        "LapCount",
+        "TimingData",
+        "DriverList",
+        "TimingAppData",
+    ]],
     "I": 1,
 }
 
@@ -127,6 +137,21 @@ class SignalRClient:
                                     _LOGGER.debug("Lap count message: %s", hub_msg["A"][1])
                                 except Exception:  # noqa: BLE001 - defensive logging
                                     _LOGGER.debug("Lap count message received (unparsed)")
+                            elif stream_name == "TimingData":
+                                try:
+                                    _LOGGER.debug("TimingData message: %s", hub_msg["A"][1])
+                                except Exception:
+                                    _LOGGER.debug("TimingData message received (unparsed)")
+                            elif stream_name == "DriverList":
+                                try:
+                                    _LOGGER.debug("DriverList message: %s", hub_msg["A"][1])
+                                except Exception:
+                                    _LOGGER.debug("DriverList message received (unparsed)")
+                            elif stream_name == "TimingAppData":
+                                try:
+                                    _LOGGER.debug("TimingAppData message: %s", hub_msg["A"][1])
+                                except Exception:
+                                    _LOGGER.debug("TimingAppData message received (unparsed)")
                 elif "R" in payload:
                     if "RaceControlMessages" in payload["R"]:
                         try:
@@ -153,6 +178,21 @@ class SignalRClient:
                             _LOGGER.debug("Lap count message: %s", payload["R"]["LapCount"]) 
                         except Exception:  # noqa: BLE001 - defensive logging
                             _LOGGER.debug("Lap count message received (unparsed)")
+                    if "TimingData" in payload["R"]:
+                        try:
+                            _LOGGER.debug("TimingData message: %s", payload["R"]["TimingData"]) 
+                        except Exception:
+                            _LOGGER.debug("TimingData message received (unparsed)")
+                    if "DriverList" in payload["R"]:
+                        try:
+                            _LOGGER.debug("DriverList message: %s", payload["R"]["DriverList"]) 
+                        except Exception:
+                            _LOGGER.debug("DriverList message received (unparsed)")
+                    if "TimingAppData" in payload["R"]:
+                        try:
+                            _LOGGER.debug("TimingAppData message: %s", payload["R"]["TimingAppData"]) 
+                        except Exception:
+                            _LOGGER.debug("TimingAppData message received (unparsed)")
 
                 index += 1
                 yield payload
