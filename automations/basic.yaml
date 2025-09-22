@@ -1,0 +1,28 @@
+alias: F1 Track Status Light
+description: 'Please change the entity of the light you would like to control'
+trigger:
+  - platform: state
+    entity_id: sensor.f1_track_status
+variables:
+  status: "{{ states('sensor.f1_track_status') }}"
+  color_map:
+    CLEAR: [0, 255, 0]
+    YELLOW: [255, 255, 0]
+    RED:   [255, 0, 0]
+    SC:    [255, 255, 0]
+    VSC:   [255, 255, 0]
+action:
+  - choose:
+      - conditions: "{{ status in color_map }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: light.servieskast
+            data:
+              brightness_pct: 100
+              rgb_color: "{{ color_map[status] }}"
+    default:
+      - service: light.turn_off
+        target:
+          entity_id: light.servieskast
+mode: single
