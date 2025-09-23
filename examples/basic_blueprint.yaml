@@ -1,0 +1,151 @@
+blueprint:
+  name: "F1 Track Status Light"
+  description: "Set a light’s color and brightness based on the current F1 track status"
+  domain: automation
+
+  input:
+    track_status_sensor:
+      name: Track Status Sensor
+      description: Sensor that provides the current F1 track status (e.g., CLEAR, YELLOW, RED, SC, VSC)
+      selector:
+        entity:
+          domain: sensor
+
+    session_status_sensor:
+      name: Session Status Sensor
+      description: Sensor that indicates the current session state (live, suspended, finished, finalised)
+      selector:
+        entity:
+          domain: sensor
+
+    light_entity:
+      name: Light to Control
+      description: The light entity whose color and brightness will be updated
+      selector:
+        entity:
+          domain: light
+
+    brightness:
+      name: Brightness Percentage
+      description: Brightness level to set when the light turns on (0–100%)
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+
+    clear_color:
+      name: Color for CLEAR
+      description: RGB values for status “CLEAR”
+      default: [0, 255, 0]
+      selector:
+        color_rgb: {}
+
+    yellow_color:
+      name: Color for YELLOW
+      description: RGB values for status “YELLOW”
+      default: [255, 255, 0]
+      selector:
+        color_rgb: {}
+
+    red_color:
+      name: Color for RED
+      description: RGB values for status “RED”
+      default: [255, 0, 0]
+      selector:
+        color_rgb: {}
+
+    sc_color:
+      name: Color for SC (Safety Car)
+      description: RGB values for status “SC”
+      default: [255, 255, 0]
+      selector:
+        color_rgb: {}
+
+    vsc_color:
+      name: Color for VSC (Virtual Safety Car)
+      description: RGB values for status “VSC”
+      default: [255, 255, 0]
+      selector:
+        color_rgb: {}
+
+trigger:
+  - platform: state
+    entity_id: !input track_status_sensor
+
+condition:
+  - condition: state
+    entity_id: !input session_status_sensor
+    state:
+      - live
+      - suspended
+      - finished
+      - finalised
+
+variables:
+  status: "{{ states(!input track_status_sensor).state }}"
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ status == 'CLEAR' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: !input brightness
+              rgb_color: !input clear_color
+
+      - conditions:
+          - condition: template
+            value_template: "{{ status == 'YELLOW' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: !input brightness
+              rgb_color: !input yellow_color
+
+      - conditions:
+          - condition: template
+            value_template: "{{ status == 'RED' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: !input brightness
+              rgb_color: !input red_color
+
+      - conditions:
+          - condition: template
+            value_template: "{{ status == 'SC' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: !input brightness
+              rgb_color: !input sc_color
+
+      - conditions:
+          - condition: template
+            value_template: "{{ status == 'VSC' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: !input brightness
+              rgb_color: !input vsc_color
+
+    default:
+      - service: light.turn_off
+        target:
+          entity_id: !input light_entity
+
+mode: single
