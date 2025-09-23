@@ -286,6 +286,8 @@ If the button above does not work, you can also perform the following steps manu
 <br>
 
 ## Example
+### Automation
+There is an basic automation provided (feel free to contribute!) that currently works with when the session status is live, suspended, finished and finalised. The flag colours are in RGB (for example yellow is 255,255,0) so you need to be sure that the lights you would like to use support this!
 
 ### E-ink display
 
