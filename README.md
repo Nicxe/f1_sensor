@@ -289,6 +289,8 @@ If the button above does not work, you can also perform the following steps manu
 ### Blueprint
 [This Home Assistant blueprint](https://github.com/Nicxe/f1_sensor/blob/main/examples/basic_blueprint.yaml) by community member [EvertJob](https://github.com/EvertJob) watches your Formula 1 track status sensor and updates a chosen light’s color and brightness to reflect the current track condition. For example, when the sensor reports RED, your light will turn bright red; when it reports CLEAR, it will turn green. The automation only runs while the session status is one of live, suspended, finished, or finalised.
 
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FNicxe%2Ff1_sensor%2Fblob%2Fmain%2Fexamples%2Fbasic_blueprint.yaml)
+
 ### E-ink display
 
 This [e-ink display project](https://github.com/Nicxe/esphome) uses the sensors from this integration to show upcoming Formula 1 races, including race countdown and schedule.
