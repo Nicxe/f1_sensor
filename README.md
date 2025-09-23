@@ -286,8 +286,8 @@ If the button above does not work, you can also perform the following steps manu
 <br>
 
 ## Example
-### Automation
-There is an basic automation provided (feel free to contribute!) that currently works with when the session status is live, suspended, finished and finalised. The flag colours are in RGB (for example yellow is 255,255,0) so you need to be sure that the lights you would like to use support this!
+### Blueprint
+This Home Assistant blueprint watches your Formula 1 track status sensor and updates a chosen light’s color and brightness to reflect the current track condition. For example, when the sensor reports RED, your light will turn bright red; when it reports CLEAR, it will turn green. The automation only runs while the session status is one of live, suspended, finished, or finalised.
 
 ### E-ink display
 
