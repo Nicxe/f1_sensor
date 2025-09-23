@@ -286,6 +286,8 @@ If the button above does not work, you can also perform the following steps manu
 <br>
 
 ## Example
+### Blueprint
+This Home Assistant blueprint watches your Formula 1 track status sensor and updates a chosen light’s color and brightness to reflect the current track condition. For example, when the sensor reports RED, your light will turn bright red; when it reports CLEAR, it will turn green. The automation only runs while the session status is one of live, suspended, finished, or finalised.
 
 ### E-ink display
 

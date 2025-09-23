@@ -1,0 +1,146 @@
+blueprint:
+  name: "F1 Track Status Light - Custom RGB Colors with Flash"
+  description: "Set a light’s color and brightness based on the current F1 track status with customizable RGB colors and flash for SC and VSC"
+  domain: automation
+  input:
+    track_status_sensor:
+      name: "Track Status Sensor"
+      description: "Sensor providing the current F1 track status (CLEAR, YELLOW, RED, SC, VSC)"
+      selector:
+        entity:
+          domain: sensor
+    session_status_sensor:
+      name: "Session Status Sensor"
+      description: "Sensor indicating the current session state (live, suspended, finished, finalised)"
+      selector:
+        entity:
+          domain: sensor
+    light_entity:
+      name: "Light to Control"
+      description: "The light entity whose color and brightness will be updated"
+      selector:
+        entity:
+          domain: light
+    brightness:
+      name: "Brightness Percentage"
+      description: "Brightness level when turning the light on (0–100%)"
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+    flash_duration:
+      name: "Flash Duration for SC and VSC"
+      description: "Choose the flash duration for Safety Car (SC) and Virtual Safety Car (VSC) statuses"
+      default: "none"
+      selector:
+        select:
+          mode: dropdown
+          options:
+            - label: "Dont flash"
+              value: none
+            - label: "Flash once"
+              value: short
+            - label: "Flash long (15x with Hue)"
+              value: long
+    clear_rgb:
+      name: "RGB Color for CLEAR"
+      description: "RGB color values for CLEAR status (e.g., Green: 0, 255, 0)"
+      default: [255, 0, 0]
+      selector:
+        color_rgb: {}
+    yellow_rgb:
+      name: "RGB Color for YELLOW"
+      description: "RGB color values for YELLOW status (e.g., Yellow: 255, 255, 0)"
+      default: [255, 255, 0]
+      selector:
+        color_rgb: {}
+    red_rgb:
+      name: "RGB Color for RED"
+      description: "RGB color values for RED status (e.g., Red: 255, 0, 0)"
+      default: [255, 0, 0]
+      selector:
+        color_rgb: {}
+    sc_rgb:
+      name: "RGB Color for SC (Safety Car)"
+      description: "RGB color values for SC status (e.g., Yellow: 255, 255, 0)"
+      default: [255, 255, 0]
+      selector:
+        color_rgb: {}
+    vsc_rgb:
+      name: "RGB Color for VSC (Virtual Safety Car)"
+      description: "RGB color values for VSC status (e.g., Yellow: 255, 255, 0)"
+      default: [255, 255, 0]
+      selector:
+        color_rgb: {}
+trigger:
+  - platform: state
+    entity_id: !input track_status_sensor
+condition:
+  - condition: state
+    entity_id: !input session_status_sensor
+    state:
+      - live
+      - suspended
+      - finished
+      - finalised
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.state == 'CLEAR' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: !input brightness
+              rgb_color: !input clear_rgb
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.state == 'YELLOW' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: !input brightness
+              rgb_color: !input yellow_rgb
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.state == 'RED' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: !input brightness
+              rgb_color: !input red_rgb
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.state == 'SC' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: !input brightness
+              rgb_color: !input sc_rgb
+              flash: !input flash_duration # Flash for SC with selected duration
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.state == 'VSC' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: !input brightness
+              rgb_color: !input vsc_rgb
+              flash: !input flash_duration # Flash for VSC with selected duration
+    default:
+      - service: light.turn_off
+        target:
+          entity_id: !input light_entity
+mode: single
