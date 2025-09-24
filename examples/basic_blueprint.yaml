@@ -6,6 +6,7 @@ blueprint:
   domain: automation
   author: Toppe
   input:
+    #Setting the section for sensor inputs. Give's user the ability to specify the sensors
     sensors_section:
       name: Sensors
       icon: mdi:cog
@@ -45,6 +46,39 @@ blueprint:
                   value: finalised
                 - label: "Race has ended"
                   value: ended
+
+    #Setting the section for the time base to turn on (and off) do not disturb
+    time_based:
+      name: Sensors
+      icon: mdi:clock
+      description: Adjust time sensitive working of the blueprint, when enabled to blueprint will not work between the specified hours.
+      collapsed: true
+      input:
+        do_not_disturb:
+          name: "Do not disturb"
+          description: "If enabled a do not disturb state will turn on. Between that time nothing will hapen regardless the state of the race. Usefull for when you are sleeping or having visitors."
+          default: "enabled"
+          selector:
+            select:
+              options:
+                - label: "Enabled"
+                  value: enabled
+                - label: "Disabled"
+                  value: disabled
+        dnd_start:
+          name: "Start time"
+          description: "Start time to turn on do not disturb"
+          default: "23:00:00"
+          selector:
+            time:
+        dnd_end:
+          name: "End time"
+          description: "End time to turn off do not disturb"
+          default: "07:00:00"
+          selector:
+            time:
+
+    #Setting the section for the lights that needs to be controlled included  the transition and brightness
     lights_section:
       name: Light settings
       icon: mdi:traffic-light
@@ -76,6 +110,8 @@ blueprint:
               max: 10
               step: 0.5
               unit_of_measurement: "s"
+
+    #Setting the section for the flag colors
     flag_color:
       name: Flag colors
       icon: mdi:palette
@@ -100,6 +136,8 @@ blueprint:
           default: [255, 0, 0]
           selector:
             color_rgb: {}
+
+    #Setting the section for the SC/VSC
     sc:
       name: (Virtual) Safety Car
       icon: mdi:car-emergency
@@ -133,13 +171,29 @@ blueprint:
                 - label: "Flash long (15x with Hue)"
                   value: long
 
+#Set the trigger, in this case the input defined in the track_status_sensor
 trigger:
   - platform: state
     entity_id: !input track_status_sensor
+
+#Set some specific conditions like the phase of the race, check if DND is turned on and if the time is between the start and eind time
 condition:
   - condition: state
     entity_id: !input session_status_sensor
     state: !input session_type_list
+  - condition: not
+    conditions:
+      - condition: template
+        value_template: >
+          {{ is_state('input_boolean.do_not_disturb', 'enabled') }}
+      - condition: template
+        value_template: >
+          {% set now = now().hour * 3600 + now().minute * 60 + now().second %}
+          {% set start_raw = states('input_text.dnd_start') %}
+          {% set end_raw = states('input_text.dnd_end') %}
+          {% set start = (start_raw.split(':')[0]|default(0)|int * 3600) + (start_raw.split(':')[1]|default(0)|int * 60) if ':' in start_raw else 0 %}
+          {% set end = (end_raw.split(':')[0]|default(0)|int * 3600) + (end_raw.split(':')[1]|default(0)|int * 60) if ':' in end_raw else 0 %}
+          {{ (start <= end and start <= now <= end) or (start > end and (now >= start or now <= end)) }}
 action:
   - choose:
       - conditions:
