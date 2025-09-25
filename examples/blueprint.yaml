@@ -8,13 +8,17 @@ blueprint:
     This blueprint gives Formule 1 Race Control the posibility to control the lights in your house!
     If you have any questions please submit an issue!
 
+
+    To test the blueprint make sure that you choose `Race has ended`  in `Race is on-going (Live)`
+    After that you can change the status off the `Track state` sensor under [developer tools](https://my.home-assistant.io/redirect/developer_states/).
+
   domain: automation
   author: Toppe
   input:
     #Setting the section for sensor inputs. Give's user the ability to specify the sensors
     sensors_section:
-      name: Flag colors
-      icon: mdi:palette
+      name: Track sensors
+      icon: mdi:go-kart-track
       description: >
         Select the correct sensors to determine the current session and track status.
       collapsed: false
@@ -38,7 +42,7 @@ blueprint:
         session_type_list:
           name: Session type
           default: "Race is on-going (live)"
-          description: "Select in what phase this blueprint need's to be executed."
+          description: "Select in what phase this blueprint need's to be executed. "
           selector:
             select:
               mode: dropdown
@@ -60,7 +64,7 @@ blueprint:
     #Setting the section for the time base to turn on (and off) do not disturb
     time_based:
       name: Do not disturb
-      icon: mdi:clock
+      icon: mdi:minus-circle-off
       description: >
         Adjust time sensitive working of the blueprint, when enabled to blueprint will not work between the specified hours.
       collapsed: false
