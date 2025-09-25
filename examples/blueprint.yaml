@@ -2,33 +2,43 @@ blueprint:
   homeassistant:
     min_version: 2024.6.0
   name: "F1 Track Status Light"
-  description: "Set a light’s color and brightness based on the current F1 track status with customizable RGB colors, flash for SC and VSC, and transition time for smooth changes."
+  description: >
+    ## Lights out and away we go! 🏁
+
+    This blueprint gives Formule 1 Race Control the posibility to control the lights in your house!
+    If you have any questions please submit an issue!
+
   domain: automation
   author: Toppe
   input:
     #Setting the section for sensor inputs. Give's user the ability to specify the sensors
     sensors_section:
-      name: Sensors
-      icon: mdi:cog
-      description: Select the sensors from the F1 intergration
+      name: Flag colors
+      icon: mdi:palette
+      description: >
+        Select the correct sensors to determine the current session and track status.
       collapsed: false
       input:
-        track_status_sensor:
-          name: "Track Status Sensor"
-          description: "Sensor providing the current F1 track status (CLEAR, YELLOW, RED, SC, VSC)"
-          selector:
-            entity:
-              domain: sensor
         session_status_sensor:
-          name: "Session Status Sensor"
-          description: "Sensor indicating the current session state (live, suspended, finished, finalised)"
+          name: Session State
+          description: Sensor indicating the current session state.
           selector:
             entity:
-              domain: sensor
+              filter:
+                - domain: sensor
+              multiple: false
+        track_status_sensor:
+          name: Track state
+          description: Sensor indicating the current session state.
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+              multiple: false
         session_type_list:
-          name: Session type selector
+          name: Session type
           default: "Race is on-going (live)"
-          description: Select in what phase this blueprint need's to be executed.
+          description: "Select in what phase this blueprint need's to be executed."
           selector:
             select:
               mode: dropdown
@@ -49,10 +59,11 @@ blueprint:
 
     #Setting the section for the time base to turn on (and off) do not disturb
     time_based:
-      name: Sensors
+      name: Do not disturb
       icon: mdi:clock
-      description: Adjust time sensitive working of the blueprint, when enabled to blueprint will not work between the specified hours.
-      collapsed: true
+      description: >
+        Adjust time sensitive working of the blueprint, when enabled to blueprint will not work between the specified hours.
+      collapsed: false
       input:
         do_not_disturb:
           name: "Do not disturb"
@@ -82,15 +93,17 @@ blueprint:
     lights_section:
       name: Light settings
       icon: mdi:traffic-light
-      description: Select the entity for the lights. When multiple lights need to be controlled please create a light [group](https://www.home-assistant.io/integrations/group/)
-      collapsed: true
+      description: >
+        Select the entity for the lights. When multiple lights need to be controlled please create a light [group](https://www.home-assistant.io/integrations/group/) instead of seperate entities!
+      collapsed: false
       input:
         light_entity:
           name: "Light to Control"
           description: "The light entity whose color and brightness will be updated"
           selector:
             entity:
-              domain: light
+              filter:
+                - domain: light
         brightness:
           name: "Brightness Percentage"
           description: "Brightness level when turning the light on (0–100%)"
@@ -101,13 +114,13 @@ blueprint:
               max: 100
               unit_of_measurement: "%"
         transition_time:
-          name: "Transition Time (seconds)"
-          description: "Time in seconds for the light to transition to the new color and brightness (0–10 seconds)"
+          name: "Transition Time"
+          description: "Time in seconds for the light to transition to the new settings"
           default: 1
           selector:
             number:
               min: 0
-              max: 10
+              max: 5
               step: 0.5
               unit_of_measurement: "s"
 
@@ -115,24 +128,25 @@ blueprint:
     flag_color:
       name: Flag colors
       icon: mdi:palette
-      description: Set colors for flags
-      collapsed: true
+      description: >
+        Give each flag it's own color
+      collapsed: false
       input:
         clear_rgb:
-          name: "RGB Color for CLEAR"
-          description: "RGB color values for CLEAR status (e.g., Green: 0, 255, 0)"
+          name: "Clear ('Green')"
+          description: "The color for when the track is clear."
           default: [0, 255, 0]
           selector:
             color_rgb: {}
         yellow_rgb:
-          name: "RGB Color for YELLOW"
-          description: "RGB color values for YELLOW status (e.g., Yellow: 255, 255, 0)"
+          name: "Yellow"
+          description: "The color for when there is a yellow flag."
           default: [255, 255, 0]
           selector:
             color_rgb: {}
         red_rgb:
-          name: "RGB Color for RED"
-          description: "RGB color values for RED status (e.g., Red: 255, 0, 0)"
+          name: "Red"
+          description: "The color for when there is a red flag."
           default: [255, 0, 0]
           selector:
             color_rgb: {}
@@ -142,38 +156,38 @@ blueprint:
       name: (Virtual) Safety Car
       icon: mdi:car-emergency
       description: Specific settings for a safety car.
-      collapsed: true
+      collapsed: false
       input:
         vsc_rgb:
-          name: "RGB Color for VSC (Virtual Safety Car)"
-          description: "RGB color values for VSC status (e.g., Yellow: 255, 255, 0)"
+          name: "Virtual Safety Car"
+          description: "The color for when there is a virtual safety car"
           default: [255, 255, 0]
           selector:
             color_rgb: {}
         sc_rgb:
-          name: "RGB Color for SC (Safety Car)"
-          description: "RGB color values for SC status (e.g., Yellow: 255, 255, 0)"
+          name: "Safety Car"
+          description: "The color for when the safety car is on track"
           default: [255, 255, 0]
           selector:
             color_rgb: {}
         flash_duration:
           name: "Flash Duration for SC and VSC"
-          description: "Choose the flash duration for Safety Car (SC) and Virtual Safety Car (VSC) statuses"
-          default: "none"
+          description: "Should the lights be flashing when a SC or VSC is active?"
+          default: none
           selector:
             select:
               mode: dropdown
               options:
-                - label: "Don't flash"
-                  value: none
-                - label: "Flash once"
-                  value: short
-                - label: "Flash long (15x with Hue)"
-                  value: long
+                - none
+                - short
+                - long
+
+variables:
+  trigger_flash: !input flash_duration
 
 #Set the trigger, in this case the input defined in the track_status_sensor
 trigger:
-  - platform: state
+  - trigger: state
     entity_id: !input track_status_sensor
 
 #Set some specific conditions like the phase of the race, check if DND is turned on and if the time is between the start and eind time
@@ -233,26 +247,52 @@ action:
           - condition: template
             value_template: "{{ trigger.to_state.state == 'SC' }}"
         sequence:
-          - action: light.turn_on
-            target:
-              entity_id: !input light_entity
-            data:
-              brightness_pct: !input brightness
-              rgb_color: !input sc_rgb
-              flash: !input flash_duration
-              transition: !input transition_time
+          - if:
+              - condition: template
+                value_template: >
+                  {{ trigger_flash is in ['long', 'short'] }}
+            then:
+              - action: light.turn_on
+                target:
+                  entity_id: !input light_entity
+                data:
+                  brightness_pct: !input brightness
+                  rgb_color: !input sc_rgb
+                  transition: !input transition_time
+                  flash: "{{ trigger_flash }}"
+            else:
+              - action: light.turn_on
+                target:
+                  entity_id: !input light_entity
+                data:
+                  brightness_pct: !input brightness
+                  rgb_color: !input sc_rgb
+                  transition: !input transition_time
       - conditions:
           - condition: template
             value_template: "{{ trigger.to_state.state == 'VSC' }}"
         sequence:
-          - action: light.turn_on
-            target:
-              entity_id: !input light_entity
-            data:
-              brightness_pct: !input brightness
-              rgb_color: !input vsc_rgb
-              flash: !input flash_duration
-              transition: !input transition_time
+          - if:
+              - condition: template
+                value_template: >
+                  {{ trigger_flash is in ['long', 'short'] }}
+            then:
+              - action: light.turn_on
+                target:
+                  entity_id: !input light_entity
+                data:
+                  brightness_pct: !input brightness
+                  rgb_color: !input sc_rgb
+                  transition: !input transition_time
+                  flash: "{{ trigger_flash }}"
+            else:
+              - action: light.turn_on
+                target:
+                  entity_id: !input light_entity
+                data:
+                  brightness_pct: !input brightness
+                  rgb_color: !input sc_rgb
+                  transition: !input transition_time
     default:
       - action: light.turn_off
         target:
