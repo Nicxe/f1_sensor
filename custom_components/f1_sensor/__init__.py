@@ -1331,6 +1331,20 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             return result.get("SessionStatus")
         return None
 
+    def _deliver(self, msg: dict) -> None:
+        self.available = True
+        self._last_message = msg
+        self.data_list = [msg]
+        self.async_set_updated_data(msg)
+        try:
+            _LOGGER.debug(
+                "SessionStatus delivered at %s: %s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                msg,
+            )
+        except Exception:
+            pass
+
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         self._task = self.hass.loop.create_task(self._listen())
@@ -1436,24 +1450,6 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         try:
             _LOGGER.debug(
                 "SessionInfo delivered at %s: %s",
-                dt_util.utcnow().isoformat(timespec="seconds"),
-                msg,
-            )
-        except Exception:
-            pass
-
-    async def async_config_entry_first_refresh(self):
-        await super().async_config_entry_first_refresh()
-        self._task = self.hass.loop.create_task(self._listen())
-
-    def _deliver(self, msg: dict) -> None:
-        self.available = True
-        self._last_message = msg
-        self.data_list = [msg]
-        self.async_set_updated_data(msg)
-        try:
-            _LOGGER.debug(
-                "SessionStatus delivered at %s: %s",
                 dt_util.utcnow().isoformat(timespec="seconds"),
                 msg,
             )
