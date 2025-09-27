@@ -41,6 +41,7 @@
       "constructor_standings": { "name": "Konstruktorställning" },
       "weather": { "name": "Väder" },
       "track_weather": { "name": "Bana väder" },
+      "current_session": { "name": "Aktuell session" },
       "last_race_results": { "name": "Resultat från senaste loppet" },
       "season_results": { "name": "Säsongsresultat" },
       "safety_car": { "name": "Säkerhetsbil" }

@@ -24,6 +24,7 @@ SUBSCRIBE_MSG = {
         "SessionStatus",
         "WeatherData",
         "LapCount",
+        "SessionInfo",
         "TimingData",
         "DriverList",
         "TimingAppData",
@@ -76,7 +77,7 @@ class SignalRClient:
         self._t0 = dt.datetime.now(dt.timezone.utc)
         self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
-        _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData and LapCount")
+        _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, LapCount, SessionInfo, TimingData, DriverList, TimingAppData")
 
     async def _ensure_connection(self) -> None:
         """Try to (re)connect using exponential back-off."""
@@ -127,6 +128,11 @@ class SignalRClient:
                                     _LOGGER.debug("Session status message: %s", hub_msg["A"][1])
                                 except Exception:  # noqa: BLE001 - defensive logging
                                     _LOGGER.debug("Session status message received (unparsed)")
+                            elif stream_name == "SessionInfo":
+                                try:
+                                    _LOGGER.debug("SessionInfo message: %s", hub_msg["A"][1])
+                                except Exception:
+                                    _LOGGER.debug("SessionInfo message received (unparsed)")
                             elif stream_name == "WeatherData":
                                 try:
                                     _LOGGER.debug("Weather data message: %s", hub_msg["A"][1])
@@ -168,6 +174,11 @@ class SignalRClient:
                             _LOGGER.debug("Session status message: %s", payload["R"]["SessionStatus"]) 
                         except Exception:  # noqa: BLE001 - defensive logging
                             _LOGGER.debug("Session status message received (unparsed)")
+                    if "SessionInfo" in payload["R"]:
+                        try:
+                            _LOGGER.debug("SessionInfo message: %s", payload["R"]["SessionInfo"]) 
+                        except Exception:
+                            _LOGGER.debug("SessionInfo message received (unparsed)")
                     if "WeatherData" in payload["R"]:
                         try:
                             _LOGGER.debug("Weather data message: %s", payload["R"]["WeatherData"]) 

@@ -77,6 +77,7 @@ async def async_setup_entry(
         "weather",
         "track_weather",
         "race_lap_count",
+        "race_order",
         "race_leader",
         "driver_favorites",
         "last_race_results",
@@ -84,6 +85,7 @@ async def async_setup_entry(
         "race_week",
         "track_status",
         "session_status",
+        "current_session",
         "safety_car",
     }
     raw_enabled = entry.data.get("enabled_sensors", [])
@@ -112,6 +114,8 @@ async def async_setup_entry(
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
         "track_status": (F1TrackStatusSensor, data.get("track_status_coordinator")),
         "session_status": (F1SessionStatusSensor, data.get("session_status_coordinator")),
+        "current_session": (F1CurrentSessionSensor, data.get("session_info_coordinator")),
+        "race_order": (F1RaceOrderSensor, data.get("drivers_coordinator")),
         "race_leader": (F1RaceLeaderSensor, data.get("drivers_coordinator")),
         "driver_favorites": (F1FavoriteDriverCollection, data.get("drivers_coordinator")),
     }
@@ -859,7 +863,6 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "wind_from_direction_degrees": wind_dir,
             "wind_from_direction_unit": "degrees",
             "measurement_inferred": measurement_inferred,
-            "raw": raw,
         }
 
         # No staleness handling: keep last known value until a new payload arrives
@@ -1012,10 +1015,7 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        raw = self._extract_current() or {}
-        return {
-            "raw": raw,
-        }
+        return {}
 
 
 class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -1161,8 +1161,216 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
+        return {}
+
+
+class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Live sensor reporting current session label (e.g., Practice 1, Qualifying/Q1, Sprint Qualifying/SQ1, Sprint, Race).
+
+    - State: compact label string
+    - Attributes: full session metadata from SessionInfo (Type, Name, Number, Meeting, Circuit, Start/End),
+                  session_part (numeric), resolved_label, and raw payloads; includes live status from SessionStatus if available.
+    - Behavior: restores last state on restart; respects global live delay via coordinator.
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:calendar-clock"
+        try:
+            self._attr_device_class = SensorDeviceClass.ENUM
+        except Exception:
+            self._attr_device_class = None
+        self._attr_native_value = None
+        # Enumerate possible labels for UI dropdowns in automations
+        self._attr_options = [
+            "Practice 1",
+            "Practice 2",
+            "Practice 3",
+            "Qualifying",
+            "Q1",
+            "Q2",
+            "Q3",
+            "Sprint Qualifying",
+            "SQ1",
+            "SQ2",
+            "SQ3",
+            "Sprint",
+            "Race",
+        ]
+        self._status_coordinator = None
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        init = self._extract_current()
+        if init is not None:
+            self._apply_payload(init)
+            try:
+                getLogger(__name__).debug("CurrentSession: Initialized from coordinator: %s", init)
+            except Exception:
+                pass
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                self._attr_native_value = last.state
+                try:
+                    getLogger(__name__).debug("CurrentSession: Restored last state: %s", last.state)
+                except Exception:
+                    pass
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        # Also listen to SessionStatus so we can clear state when session ends
+        try:
+            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            self._status_coordinator = reg.get("session_status_coordinator")
+            if self._status_coordinator is not None:
+                rem2 = self._status_coordinator.async_add_listener(self._handle_status_update)
+                self.async_on_remove(rem2)
+        except Exception:
+            self._status_coordinator = None
+        self.async_write_ha_state()
+
+    def _extract_current(self) -> dict | None:
+        data = self.coordinator.data
+        if isinstance(data, dict) and any(k in data for k in ("Type", "Name", "Meeting")):
+            return data
+        inner = data.get("data") if isinstance(data, dict) else None
+        if isinstance(inner, dict) and any(k in inner for k in ("Type", "Name", "Meeting")):
+            return inner
+        # No dedicated history usage; SessionInfo snapshots have no high-frequency heartbeat like others
+        return None
+
+    def _resolve_label(self, info: dict) -> tuple[str | None, dict]:
+        t = str(info.get("Type") or "").strip()
+        name = str(info.get("Name") or "").strip()
+        num = info.get("Number")
+        try:
+            num_i = int(num) if num is not None else None
+        except Exception:
+            num_i = None
+
+        # Try detect session part from consolidated drivers coordinator if available
+        session_part = None
+        try:
+            drivers_data = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}).get("drivers_coordinator")
+            if drivers_data and hasattr(drivers_data, "data"):
+                sd = drivers_data.data or {}
+                session = sd.get("session") or {}
+                session_part = session.get("part")
+        except Exception:
+            session_part = None
+
+        label = None
+        if t == "Practice":
+            label = f"Practice {num_i}" if num_i else (name or "Practice")
+        elif t == "Qualifying":
+            # Sprint Qualifying vs standard Qualifying
+            nm = name.lower()
+            is_sprint_quali = nm.startswith("sprint qualifying") or nm.startswith("sprint shootout")
+            if is_sprint_quali:
+                part_map = {1: "SQ1", 2: "SQ2", 3: "SQ3"}
+            else:
+                part_map = {1: "Q1", 2: "Q2", 3: "Q3"}
+            part_label = part_map.get(int(session_part)) if isinstance(session_part, int) else None
+            label = part_label or (name or ("Sprint Qualifying" if is_sprint_quali else "Qualifying"))
+        elif t == "Race":
+            # Sprint and Sprint Qualifying are delivered sometimes as Type Race or Qualifying; use Name
+            if name.lower().startswith("sprint qualifying") or name.lower().startswith("sprint shootout"):
+                part_map = {1: "SQ1", 2: "SQ2", 3: "SQ3"}
+                part_label = part_map.get(int(session_part)) if isinstance(session_part, int) else None
+                label = part_label or "Sprint Qualifying"
+            elif name.lower().startswith("sprint"):
+                label = "Sprint"
+            else:
+                label = name or "Race"
+        else:
+            # Fallback: use Name then Type
+            label = name or t or None
+
+        meta = {
+            "type": t or None,
+            "name": name or None,
+            "number": num_i,
+            "session_part": session_part,
+        }
+        return label, meta
+
+    def _live_status(self) -> str | None:
+        try:
+            if self._status_coordinator and isinstance(self._status_coordinator.data, dict):
+                d = self._status_coordinator.data
+                return str(d.get("Status") or d.get("Message") or "").strip()
+        except Exception:
+            return None
+        return None
+
+    def _apply_payload(self, raw: dict) -> None:
+        label, meta = self._resolve_label(raw or {})
+        status = self._live_status()
+        active = (status == "Started")
+        # Only present a session label while live; otherwise clear state
+        self._attr_native_value = label if active else None
+        attrs = dict(meta)
+        # Merge common metadata
+        try:
+            meeting = raw.get("Meeting") or {}
+            circuit = (meeting.get("Circuit") if isinstance(meeting, dict) else None) or {}
+            attrs.update(
+                {
+                    "meeting_key": (meeting or {}).get("Key"),
+                    "meeting_name": (meeting or {}).get("Name"),
+                    "meeting_location": (meeting or {}).get("Location"),
+                    "meeting_country": ((meeting or {}).get("Country") or {}).get("Name"),
+                    "circuit_short_name": (circuit or {}).get("ShortName"),
+                    "gmt_offset": raw.get("GmtOffset"),
+                    "start": raw.get("StartDate"),
+                    "end": raw.get("EndDate"),
+                }
+            )
+        except Exception:
+            pass
+        # Include live status and activity flag
+        try:
+            attrs["live_status"] = status
+            attrs["active"] = active
+            if not active and label:
+                attrs["last_label"] = label
+        except Exception:
+            pass
+        self._attr_extra_state_attributes = attrs
+
+    def _handle_coordinator_update(self) -> None:
+        raw = self._extract_current()
+        if raw is None:
+            try:
+                getLogger(__name__).debug(
+                    "CurrentSession: No payload on update at %s; keeping previous state",
+                    dt_util.utcnow().isoformat(timespec="seconds"),
+                )
+            except Exception:
+                pass
+            self.async_write_ha_state()
+            return
+        self._apply_payload(raw)
+        self.async_write_ha_state()
+
+    def _handle_status_update(self) -> None:
+        # Re-evaluate state based on latest status (may clear on Ends/Finished/Finalised)
         raw = self._extract_current() or {}
-        return {"raw": raw}
+        self._apply_payload(raw)
+        try:
+            getLogger(__name__).debug(
+                "CurrentSession: Status update at %s -> state=%s, live_status=%s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                self._attr_native_value,
+                self._live_status(),
+            )
+        except Exception:
+            pass
+        self.async_write_ha_state()
+
+    @property
+    def state(self):
+        return self._attr_native_value
 
 
 class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -1289,7 +1497,6 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._last_received_utc = now_utc
         self._attr_extra_state_attributes = {
             "total_laps": total,
-            "raw": raw,
         }
 
         # No staleness handling: do not clear state; keep last value until a new payload arrives
@@ -1408,17 +1615,33 @@ class F1RaceLeaderSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         await super().async_added_to_hass()
         # Initialize from coordinator or restore
         self._update_from_coordinator()
+        try:
+            getLogger(__name__).debug("RaceLeader: Initialized from coordinator -> %s", self._attr_native_value)
+        except Exception:
+            pass
         if self._attr_native_value is None:
             last = await self.async_get_last_state()
             if last and last.state not in (None, "unknown", "unavailable"):
                 self._attr_native_value = last.state
                 self._attr_extra_state_attributes = dict(getattr(last, "attributes", {}) or {})
+                try:
+                    getLogger(__name__).debug("RaceLeader: Restored last state -> %s", last.state)
+                except Exception:
+                    pass
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
         self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
         self._update_from_coordinator()
+        try:
+            getLogger(__name__).debug(
+                "RaceLeader: Computed at %s -> %s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                self._attr_native_value,
+            )
+        except Exception:
+            pass
         self.async_write_ha_state()
 
     def _update_from_coordinator(self) -> None:
@@ -1463,6 +1686,88 @@ class F1RaceLeaderSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         return self._attr_native_value
 
 
+class F1RaceOrderSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Live race order P1..P20 using consolidated drivers coordinator.
+
+    State: leader TLA. Attributes: ordered list with per-position dicts {position,tla,name,team,team_color}.
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:format-list-numbered"
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self._update_from_coordinator()
+        if self._attr_native_value is None:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                self._attr_native_value = last.state
+                self._attr_extra_state_attributes = dict(getattr(last, "attributes", {}) or {})
+                try:
+                    getLogger(__name__).debug("RaceOrder: Restored last state -> %s", last.state)
+                except Exception:
+                    pass
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self.async_write_ha_state()
+
+    def _handle_coordinator_update(self) -> None:
+        self._update_from_coordinator()
+        try:
+            getLogger(__name__).debug(
+                "RaceOrder: Computed at %s -> leader=%s, n=%s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                self._attr_native_value,
+                len((self._attr_extra_state_attributes or {}).get("order", [])),
+            )
+        except Exception:
+            pass
+        self.async_write_ha_state()
+
+    def _update_from_coordinator(self) -> None:
+        data = self.coordinator.data or {}
+        drivers = data.get("drivers", {}) or {}
+        leader_rn = data.get("leader_rn")
+        leader = drivers.get(leader_rn, {}) if leader_rn else {}
+        leader_tla = (leader.get("identity", {}) or {}).get("tla")
+        if leader_tla:
+            self._attr_native_value = leader_tla
+        else:
+            try:
+                getLogger(__name__).debug("RaceOrder: No leader_tla available yet")
+            except Exception:
+                pass
+
+        # Build ordered list P1..Pn based on stored 'position'
+        grid = []
+        for rn, info in drivers.items():
+            ident = info.get("identity", {}) or {}
+            timing = info.get("timing", {}) or {}
+            pos_str = str(timing.get("position") or "").strip()
+            try:
+                pos = int(pos_str) if pos_str.isdigit() else None
+            except Exception:
+                pos = None
+            if pos is not None:
+                grid.append(
+                    {
+                        "position": pos,
+                        "tla": ident.get("tla"),
+                        "name": ident.get("name"),
+                        "team": ident.get("team"),
+                        "team_color": ident.get("team_color"),
+                    }
+                )
+        grid.sort(key=lambda x: x["position"])  # ascending P1..P20
+        self._attr_extra_state_attributes = {"order": grid}
+
+    @property
+    def state(self):
+        return self._attr_native_value
+
 class F1FavoriteDriverCollection:
     """Placeholder class only used in mapping to signal expansion into multiple sensors."""
 
@@ -1492,12 +1797,25 @@ class F1DriverLiveSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             if last and last.state not in (None, "unknown", "unavailable"):
                 self._attr_native_value = last.state
                 self._attr_extra_state_attributes = dict(getattr(last, "attributes", {}) or {})
+                try:
+                    getLogger(__name__).debug("DriverLive[%s]: Restored last state -> %s", self._tla, last.state)
+                except Exception:
+                    pass
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
         self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
         self._update_from_coordinator()
+        try:
+            getLogger(__name__).debug(
+                "DriverLive[%s]: Computed at %s -> %s",
+                self._tla,
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                self._attr_native_value,
+            )
+        except Exception:
+            pass
         self.async_write_ha_state()
 
     def _update_from_coordinator(self) -> None:
@@ -1522,6 +1840,11 @@ class F1DriverLiveSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         pos = timing.get("position")
         if pos is not None:
             self._attr_native_value = pos
+        else:
+            try:
+                getLogger(__name__).debug("DriverLive[%s]: No position yet", self._tla)
+            except Exception:
+                pass
         attrs = {
             "tla": ident.get("tla"),
             "name": ident.get("name"),

@@ -24,6 +24,7 @@
       "driver_standings": { "name": "Classifica piloti" },
       "constructor_standings": { "name": "Classifica costruttori" },
       "weather": { "name": "Meteo" },
+      "current_session": { "name": "Sessione corrente" },
       "last_race_results": { "name": "Risultati ultima gara" },
       "season_results": { "name": "Risultati della stagione" },
       "safety_car": { "name": "Safety car" }

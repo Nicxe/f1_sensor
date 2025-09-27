@@ -24,6 +24,7 @@
       "driver_standings": { "name": "Kuljettajien pisteet" },
       "constructor_standings": { "name": "Valmistajien pisteet" },
       "weather": { "name": "Sää" },
+      "current_session": { "name": "Käynnissä oleva sessio" },
       "last_race_results": { "name": "Edellisen kilpailun tulokset" },
       "season_results": { "name": "Kausitulokset" },
       "safety_car": { "name": "Turva-auto" }

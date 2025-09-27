@@ -40,7 +40,9 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "race_week",
                         "track_status",
                         "session_status",
+                        "current_session",
                         "safety_car",
+                        "race_order",
                     ],
                 ): cv.multi_select(
                     {
@@ -59,6 +61,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "track_status": "Track status (live)",
                         "session_status": "Session status (live)",
                         "safety_car": "Safety car (live)",
+                        "race_order": "Race driver order (live)",
                     }
                 ),
                 vol.Optional("enable_race_control", default=False): cv.boolean,
@@ -104,7 +107,9 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_week": "Race week",
             "track_status": "Track status (live)",
             "session_status": "Session status (live)",
+            "current_session": "Current session (live)",
             "safety_car": "Safety car (live)",
+            "race_order": "Race driver order (live)",
         }
         default_enabled = [
             "next_race",
@@ -121,7 +126,9 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_week",
             "track_status",
             "session_status",
+            "current_session",
             "safety_car",
+            "race_order",
         ]
         raw_enabled = current.get("enabled_sensors", default_enabled)
         normalized_enabled = []

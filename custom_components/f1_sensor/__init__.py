@@ -48,6 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     live_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
     track_status_coordinator = None
     session_status_coordinator = None
+    session_info_coordinator = None
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
@@ -57,6 +58,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass, session_coordinator, live_delay
         )
         session_status_coordinator = SessionStatusCoordinator(
+            hass, session_coordinator, live_delay
+        )
+        session_info_coordinator = SessionInfoCoordinator(
             hass, session_coordinator, live_delay
         )
         race_control_coordinator = RaceControlCoordinator(
@@ -79,6 +83,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await track_status_coordinator.async_config_entry_first_refresh()
     if session_status_coordinator:
         await session_status_coordinator.async_config_entry_first_refresh()
+    if session_info_coordinator:
+        await session_info_coordinator.async_config_entry_first_refresh()
     if race_control_coordinator:
         await race_control_coordinator.async_config_entry_first_refresh()
     if weather_data_coordinator:
@@ -103,6 +109,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "session_coordinator": session_coordinator,
         "track_status_coordinator": track_status_coordinator,
         "session_status_coordinator": session_status_coordinator,
+        "session_info_coordinator": session_info_coordinator,
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
@@ -677,8 +684,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         if not isinstance(lines, dict):
             return
         drivers = self._state["drivers"]
-        leader_rn = None
-        best_pos = 1_000
+        # 1) Apply incremental updates to stored driver timing
         for rn, td in lines.items():
             if not isinstance(td, dict):
                 continue
@@ -688,28 +694,73 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             entry.setdefault("tyres", {})
             entry.setdefault("laps", {})
             timing = entry["timing"]
-            pos_str = str(td.get("Position") or "")
-            try:
-                pos = int(pos_str) if pos_str.isdigit() else None
-            except Exception:
-                pos = None
-            if isinstance(pos, int) and pos < best_pos:
-                best_pos = pos
+            # IMPORTANT: Only set fields that are present in this delta payload.
+            if "Position" in td:
+                pos_raw = td.get("Position")
+                pos_str = str(pos_raw).strip() if pos_raw is not None else None
+                timing["position"] = pos_str or None
+            if "GapToLeader" in td:
+                timing["gap_to_leader"] = td.get("GapToLeader")
+            ival = self._get_value(td, "IntervalToPositionAhead", "Value")
+            if ival is not None:
+                timing["interval"] = ival
+            last_lap = self._get_value(td, "LastLapTime", "Value")
+            if last_lap is not None:
+                timing["last_lap"] = last_lap
+            best_lap = self._get_value(td, "BestLapTime", "Value")
+            if best_lap is not None:
+                timing["best_lap"] = best_lap
+            if "InPit" in td:
+                timing["in_pit"] = bool(td.get("InPit"))
+            if "Retired" in td:
+                timing["retired"] = bool(td.get("Retired"))
+            if "Stopped" in td:
+                timing["stopped"] = bool(td.get("Stopped"))
+            if "Status" in td:
+                timing["status_code"] = td.get("Status")
+        # SessionPart (for Q1/Q2/Q3 detection)
+        try:
+            part = payload.get("SessionPart")
+            if part is not None:
+                self._state.setdefault("session", {})
+                self._state["session"]["part"] = part
+        except Exception:
+            pass
+        # 2) Recompute leader from full stored state (not just current delta)
+        self._recompute_leader_from_state()
+
+    def _recompute_leader_from_state(self) -> None:
+        drivers = self._state.get("drivers", {}) or {}
+        prev = self._state.get("leader_rn")
+        # Prefer explicit position == "1"
+        leader_rn = None
+        for rn, info in drivers.items():
+            pos = (info.get("timing", {}) or {}).get("position")
+            if str(pos or "").strip() == "1":
                 leader_rn = rn
-            timing.update(
-                {
-                    "position": pos_str or None,
-                    "gap_to_leader": td.get("GapToLeader"),
-                    "interval": self._get_value(td, "IntervalToPositionAhead", "Value"),
-                    "last_lap": self._get_value(td, "LastLapTime", "Value"),
-                    "best_lap": self._get_value(td, "BestLapTime", "Value"),
-                    "in_pit": bool(td.get("InPit")),
-                    "retired": bool(td.get("Retired")),
-                    "stopped": bool(td.get("Stopped")),
-                    "status_code": td.get("Status"),
-                }
-            )
-        if leader_rn is not None:
+                break
+        if leader_rn is None:
+            # Fallback: minimal numeric position across all stored drivers
+            best: tuple[int, str] | None = None
+            for rn, info in drivers.items():
+                pos_str = str((info.get("timing", {}) or {}).get("position") or "").strip()
+                try:
+                    pos_int = int(pos_str) if pos_str.isdigit() else None
+                except Exception:
+                    pos_int = None
+                if isinstance(pos_int, int):
+                    if best is None or pos_int < best[0]:
+                        best = (pos_int, rn)
+            if best is not None:
+                leader_rn = best[1]
+        if leader_rn is None and prev:
+            # If we cannot determine a leader from current positions, keep previous to avoid flapping
+            leader_rn = prev
+        if leader_rn is not None and leader_rn != prev:
+            try:
+                _LOGGER.debug("LiveDrivers: leader changed %s -> %s", prev, leader_rn)
+            except Exception:
+                pass
             self._state["leader_rn"] = leader_rn
 
     def _merge_timingapp(self, payload: dict) -> None:
@@ -723,6 +774,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 continue
             entry = drivers.setdefault(rn, {})
             entry.setdefault("tyres", {})
+            entry.setdefault("timing", {})
             stints = app.get("Stints")
             latest: dict | None = None
             if isinstance(stints, list) and stints:
@@ -737,6 +789,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     # Fallback: try key '0'
                     latest = stints.get("0") if isinstance(stints.get("0"), dict) else None
             if isinstance(latest, dict):
+                # Tyres info
                 comp = latest.get("Compound")
                 stint_laps = latest.get("TotalLaps")
                 is_new = latest.get("New")
@@ -747,6 +800,22 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         "new": True if str(is_new).lower() == "true" else (False if str(is_new).lower() == "false" else is_new),
                     }
                 )
+                # Lap times: map latest LapTime to timing.last_lap and update best_lap
+                lap_time = latest.get("LapTime")
+                if isinstance(lap_time, str) and lap_time:
+                    timing = entry.setdefault("timing", {})
+                    timing["last_lap"] = lap_time
+                    prev_best = timing.get("best_lap")
+                    try:
+                        new_secs = self._parse_laptime_secs(lap_time)
+                        prev_secs = self._parse_laptime_secs(prev_best) if isinstance(prev_best, str) else None
+                        if new_secs is not None and (prev_secs is None or new_secs < prev_secs):
+                            timing["best_lap"] = lap_time
+                    except Exception:
+                        # If parsing fails, at least keep last_lap updated
+                        pass
+        # Tyre or lap time changes sometimes coincide with leader changes
+        self._recompute_leader_from_state()
 
     def _merge_lapcount(self, payload: dict) -> None:
         # payload may be either {CurrentLap, TotalLaps} or wrapped
@@ -766,6 +835,24 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         for entry in self._state["drivers"].values():
             entry.setdefault("laps", {})
             entry["laps"].update({"lap_current": curr_i, "lap_total": total_i})
+        # Recompute leader as lap and position updates can interact
+        self._recompute_leader_from_state()
+
+    @staticmethod
+    def _parse_laptime_secs(value: str | None) -> float | None:
+        """Parse a lap time formatted like 'M:SS.mmm' or 'SS.mmm' to seconds."""
+        if not value:
+            return None
+        try:
+            s = value.strip()
+            if ":" in s:
+                minutes_str, sec_str = s.split(":", 1)
+                minutes = int(minutes_str)
+                seconds = float(sec_str)
+                return minutes * 60.0 + seconds
+            return float(s)
+        except Exception:
+            return None
 
     def _merge_sessionstatus(self, payload: dict) -> None:
         self._state["session_status"] = payload
@@ -1243,6 +1330,117 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         if isinstance(result, dict) and "SessionStatus" in result:
             return result.get("SessionStatus")
         return None
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        self._task = self.hass.loop.create_task(self._listen())
+
+
+class SessionInfoCoordinator(DataUpdateCoordinator):
+    """Coordinator for SessionInfo updates using SignalR."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: LiveSessionCoordinator,
+        delay_seconds: int = 0,
+    ):
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="F1 Session Info Coordinator",
+            update_interval=None,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self.available = True
+        self._last_message = None
+        self.data_list: list[dict] = []
+        self._task = None
+        self._client = None
+        self._delay = max(0, int(delay_seconds or 0))
+
+    async def async_close(self, *_):
+        if self._task:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+        if self._client:
+            await self._client.close()
+
+    async def _async_update_data(self):
+        return self._last_message
+
+    async def _listen(self):
+        from .signalr import SignalRClient
+
+        self._client = SignalRClient(self.hass, self._session)
+        while True:
+            try:
+                await self._client._ensure_connection()
+                async for payload in self._client.messages():
+                    msg = self._parse_message(payload)
+                    if msg:
+                        try:
+                            _LOGGER.debug(
+                                "SessionInfo received at %s, message=%s, delay=%ss",
+                                dt_util.utcnow().isoformat(timespec="seconds"),
+                                msg,
+                                self._delay,
+                            )
+                        except Exception:
+                            pass
+                        if self._delay > 0:
+                            try:
+                                scheduled = (dt_util.utcnow() + timedelta(seconds=self._delay)).isoformat(timespec="seconds")
+                                _LOGGER.debug(
+                                    "SessionInfo scheduled delivery at %s (+%ss)",
+                                    scheduled,
+                                    self._delay,
+                                )
+                            except Exception:
+                                pass
+                            self.hass.loop.call_later(
+                                self._delay,
+                                lambda m=msg: self._deliver(m),
+                            )
+                        else:
+                            self._deliver(msg)
+            except Exception as err:  # pragma: no cover - network errors
+                self.available = False
+                _LOGGER.warning("Session info websocket error: %s", err)
+            finally:
+                if self._client:
+                    await self._client.close()
+
+    @staticmethod
+    def _parse_message(data):
+        if not isinstance(data, dict):
+            return None
+        messages = data.get("M")
+        if isinstance(messages, list):
+            for update in messages:
+                args = update.get("A", [])
+                if len(args) >= 2 and args[0] == "SessionInfo":
+                    return args[1]
+        result = data.get("R")
+        if isinstance(result, dict) and "SessionInfo" in result:
+            return result.get("SessionInfo")
+        return None
+
+    def _deliver(self, msg: dict) -> None:
+        self.available = True
+        self._last_message = msg
+        self.data_list = [msg]
+        self.async_set_updated_data(msg)
+        try:
+            _LOGGER.debug(
+                "SessionInfo delivered at %s: %s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                msg,
+            )
+        except Exception:
+            pass
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()

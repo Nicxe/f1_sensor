@@ -186,7 +186,7 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
             payload,
         )
         self._attr_is_on = is_on
-        self._attr_extra_state_attributes = {"track_status": state, "raw": payload}
+        self._attr_extra_state_attributes = {"track_status": state}
         if ts:
             self._last_ts = ts
 

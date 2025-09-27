@@ -24,6 +24,7 @@
       "driver_standings": { "name": "Førerstilling" },
       "constructor_standings": { "name": "Konstruktørstilling" },
       "weather": { "name": "Vær" },
+      "current_session": { "name": "Gjeldende økt" },
       "last_race_results": { "name": "Resultater fra forrige løp" },
       "season_results": { "name": "Sesongresultater" },
       "safety_car": { "name": "Sikkerhetsbil" }

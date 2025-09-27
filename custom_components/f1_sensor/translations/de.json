@@ -24,6 +24,7 @@
       "driver_standings": { "name": "Fahrerwertung" },
       "constructor_standings": { "name": "Teamwertung" },
       "weather": { "name": "Wetter" },
+      "current_session": { "name": "Aktuelle Session" },
       "last_race_results": { "name": "Letzte Rennergebnisse" },
       "season_results": { "name": "Saisonergebnisse" },
       "safety_car": { "name": "Sicherheitsauto" }
