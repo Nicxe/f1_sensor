@@ -247,24 +247,20 @@ blueprint:
         sc_rgb:
           name: "Safety Car"
           description: "The color for when the safety car is on track"
-          default: [255, 255, 0]
+          default: [255, 0, 0]
           selector:
             color_rgb: {}
-        flash_duration:
+        flash_on_sc:
           name: "Flash Duration for SC and VSC"
           description: "Should the lights be flashing when a SC or VSC is active?"
-          default: none
+          default: true
           selector:
-            select:
-              mode: dropdown
-              options:
-                - none
-                - short
-                - long
+            boolean:
 
 variables:
-  trigger_flash: !input flash_duration
   devices: !input device_list
+  light_id: !input light_entity
+  flashing: !input flash_on_sc
 
 #Set the trigger, in this case the input defined in the track_status_sensor
 trigger:
@@ -341,16 +337,35 @@ action:
           - if:
               - condition: template
                 value_template: >
-                  {{ trigger_flash is in ['long', 'short'] }}
+                  {{ flashing }}
             then:
-              - action: light.turn_on
-                target:
-                  entity_id: !input light_entity
-                data:
-                  brightness_pct: !input brightness
-                  rgb_color: !input sc_rgb
-                  transition: !input transition_time
-                  flash: "{{ trigger_flash }}"
+              repeat:
+                while:
+                  - condition: state
+                    entity_id: sensor.f1_track_status
+                    state: SC
+                sequence:
+                  - action: light.turn_on
+                    metadata: {}
+                    data:
+                      rgb_color: !input sc_rgb
+                    target:
+                      entity_id: !input light_entity
+                  - delay:
+                      hours: 0
+                      minutes: 0
+                      seconds: 1
+                      milliseconds: 0
+                  - action: light.turn_off
+                    metadata: {}
+                    data: {}
+                    target:
+                      entity_id: !input light_entity
+                  - delay:
+                      hours: 0
+                      minutes: 0
+                      seconds: 1
+                      milliseconds: 0
             else:
               - action: light.turn_on
                 target:
@@ -366,16 +381,35 @@ action:
           - if:
               - condition: template
                 value_template: >
-                  {{ trigger_flash is in ['long', 'short'] }}
+                  {{ flashing }}
             then:
-              - action: light.turn_on
-                target:
-                  entity_id: !input light_entity
-                data:
-                  brightness_pct: !input brightness
-                  rgb_color: !input sc_rgb
-                  transition: !input transition_time
-                  flash: "{{ trigger_flash }}"
+              repeat:
+                while:
+                  - condition: state
+                    entity_id: sensor.f1_track_status
+                    state: VSC
+                sequence:
+                  - action: light.turn_on
+                    metadata: {}
+                    data:
+                      rgb_color: !input vsc_rgb
+                    target:
+                      entity_id: !input light_entity
+                  - delay:
+                      hours: 0
+                      minutes: 0
+                      seconds: 1
+                      milliseconds: 0
+                  - action: light.turn_off
+                    metadata: {}
+                    data: {}
+                    target:
+                      entity_id: !input light_entity
+                  - delay:
+                      hours: 0
+                      minutes: 0
+                      seconds: 1
+                      milliseconds: 0
             else:
               - action: light.turn_on
                 target:
@@ -390,4 +424,4 @@ action:
           entity_id: !input light_entity
         data:
           transition: !input transition_time
-mode: single
+mode: restart
