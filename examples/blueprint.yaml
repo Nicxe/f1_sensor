@@ -67,9 +67,11 @@ blueprint:
     - Virtual Safety Car: Color for when there is a virtual safety car
       - Default: `255`, `255`, `0`
     - Safety Car: COlor for when there is a safety car
-      - Default: `255`, `255`, `0`
-    - Flash Duration for SC and VSC: Does the lights need to flash during a safety car?
-      - Default: none
+      - Default: `255`, `0`, `0`
+    - Flash for SC and VSC: Does the light needs to flash on a (virtual) safety car?
+      - Default `on`
+    - Flash Time: The time between pulsing on and off
+      - Default: `1` second
     </details>
 
   domain: automation
@@ -251,7 +253,7 @@ blueprint:
           selector:
             color_rgb: {}
         flash_on_sc:
-          name: "🪩 Flash Duration for SC and VSC"
+          name: "🪩 Flash for SC and VSC"
           description: "Should the lights be flashing when a SC or VSC is active?"
           default: true
           selector:
@@ -259,7 +261,7 @@ blueprint:
         flash_time:
           name: "⏱️ Flash Time"
           description: "Time between on-off behavior"
-          default: 0
+          default: 1
           selector:
             number:
               min: 0
