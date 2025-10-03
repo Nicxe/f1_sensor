@@ -87,7 +87,9 @@ blueprint:
       input:
         boolean_helper:
           name: Blueprint helper
-          description: Select the helper boolean to determine if the blueprint should run or not
+          description: >
+            Select the helper boolean to determine if the blueprint should run or not
+          default: ""
           selector:
             entity:
               filter:
@@ -115,11 +117,13 @@ blueprint:
       icon: mdi:go-kart-track
       description: >
         Select the correct sensors to determine the current session and track status.
-      collapsed: false
+      collapsed: true
       input:
         session_status_sensor:
           name: Session State
-          description: Sensor indicating the current session state.
+          description: >
+            Sensor indicating the current session state.
+          default: ""
           selector:
             entity:
               filter:
@@ -127,7 +131,9 @@ blueprint:
               multiple: false
         track_status_sensor:
           name: Track state
-          description: Sensor indicating the current session state.
+          description: >
+            Sensor indicating the current session state.
+          default: ""
           selector:
             entity:
               filter:
@@ -135,8 +141,9 @@ blueprint:
               multiple: false
         session_type_list:
           name: Race phase
+          description: >
+            Select in what phase this blueprint need's to be executed.
           default: "Race is on-going (live)"
-          description: "Select in what phase this blueprint need's to be executed. "
           selector:
             select:
               mode: dropdown
@@ -159,12 +166,15 @@ blueprint:
     device_based:
       name: Device tracker
       icon: mdi:tablet-cellphone
+      collapsed: true
       description: >
         When activated the blueprint will run when *one* of the selected devices has the status 'home'. Leave empty when you don't want to use this option.
       input:
         device_list:
           name: 📱 Devices
-          description: Select the devices.
+          description: >
+            Select the devices.
+          default: ""
           selector:
             entity:
               filter:
@@ -172,7 +182,9 @@ blueprint:
               multiple: true
         media_player:
           name: 📱 Mediaplayer
-          description: Select the mediaplayer that should be watched.
+          description: >
+            Select the mediaplayer that should be watched.
+          default: ""
           selector:
             entity:
               filter:
@@ -185,7 +197,7 @@ blueprint:
       icon: mdi:minus-circle-off
       description: >
         Adjust time sensitive working of the blueprint, when enabled to blueprint will not work between the specified hours.
-      collapsed: false
+      collapsed: true
       input:
         do_not_disturb:
           name: "🔇 Do not disturb"
@@ -217,18 +229,21 @@ blueprint:
       icon: mdi:traffic-light
       description: >
         Select the entity for the lights. When multiple lights need to be controlled please create a light [group](https://www.home-assistant.io/integrations/group/) instead of seperate entities!
-      collapsed: false
+      collapsed: true
       input:
         light_entity:
           name: "💡 Light to Control"
-          description: "The light entity whose color and brightness will be updated"
+          description: >
+            The light entity whose color and brightness will be updated
+          default: ""
           selector:
             entity:
               filter:
                 - domain: light
         brightness:
           name: "🔆 Brightness Percentage"
-          description: "Brightness level when turning the light on (0–100%)"
+          description: >
+            Brightness level when turning the light on (0–100%)
           default: 100
           selector:
             number:
@@ -237,7 +252,8 @@ blueprint:
               unit_of_measurement: "%"
         transition_time:
           name: "⏱️ Transition Time"
-          description: "Time in seconds for the light to transition to the new settings"
+          description: >
+            Time in seconds for the light to transition to the new settings
           default: 1
           selector:
             number:
@@ -252,7 +268,7 @@ blueprint:
       icon: mdi:palette
       description: >
         Give each flag it's own color
-      collapsed: false
+      collapsed: true
       input:
         clear_rgb:
           name: "🟩 Clear ('Green')"
@@ -278,7 +294,7 @@ blueprint:
       name: (Virtual) Safety Car
       icon: mdi:car-emergency
       description: Specific settings for a safety car.
-      collapsed: false
+      collapsed: true
       input:
         vsc_rgb:
           name: "🟨 Virtual Safety Car"
@@ -345,8 +361,8 @@ condition:
   - condition: template
     value_template: >
       {% set custom = states(template_config) %}
-      {% if custom | length > 0 %}
-        {{ custom }}
+      {% if template_config | length > 3 %}
+        {{ template_config }}
       {% else %}
         true
       {% endif %}
