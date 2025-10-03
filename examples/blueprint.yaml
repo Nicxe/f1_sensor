@@ -314,6 +314,10 @@ variables:
   mediaplayer: !input media_player
   light_id: !input light_entity
   flashing: !input flash_on_sc
+  dnd_state: !input do_not_disturb
+  dnd_start: !input dnd_start
+  dnd_end: !input dnd_end
+  template_config: !input custom_template
 
 #Set the trigger, in this case the input defined in the track_status_sensor
 trigger:
@@ -340,7 +344,7 @@ condition:
 
   - condition: template
     value_template: >
-      {% set custom = states('input_text.custom_template') %}
+      {% set custom = states(template_config) %}
       {% if custom | length > 0 %}
         {{ custom }}
       {% else %}
@@ -359,12 +363,12 @@ condition:
     conditions:
       - condition: template
         value_template: >
-          {{ is_state('input_boolean.do_not_disturb', 'enabled') }}
+          {{ is_state(dnd_state, 'enabled') }}
       - condition: template
         value_template: >
           {% set now = now().hour * 3600 + now().minute * 60 + now().second %}
-          {% set start_raw = states('input_text.dnd_start') %}
-          {% set end_raw = states('input_text.dnd_end') %}
+          {% set start_raw = states(dnd_start) %}
+          {% set end_raw = states(dnd_end) %}
           {% set start = (start_raw.split(':')[0]|default(0)|int * 3600) + (start_raw.split(':')[1]|default(0)|int * 60) if ':' in start_raw else 0 %}
           {% set end = (end_raw.split(':')[0]|default(0)|int * 3600) + (end_raw.split(':')[1]|default(0)|int * 60) if ':' in end_raw else 0 %}
           {{ (start <= end and start <= now <= end) or (start > end and (now >= start or now <= end)) }}
