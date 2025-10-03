@@ -77,6 +77,7 @@ async def async_setup_entry(
         "weather",
         "track_weather",
         "race_lap_count",
+        "driver_list",
         "race_order",
         "race_leader",
         "driver_favorites",
@@ -118,6 +119,7 @@ async def async_setup_entry(
         "race_order": (F1RaceOrderSensor, data.get("drivers_coordinator")),
         "race_leader": (F1RaceLeaderSensor, data.get("drivers_coordinator")),
         "driver_favorites": (F1FavoriteDriverCollection, data.get("drivers_coordinator")),
+        "driver_list": (F1DriverListSensor, data.get("drivers_coordinator")),
     }
 
     sensors = []
@@ -445,11 +447,33 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
         if not times:
             return
         curr = times[0].get("data", {}).get("instant", {}).get("details", {})
-        self._current = self._extract(curr)
+        # Derive current precipitation from forecast block (instant does not include precipitation)
+        current_forecast_block = (
+            times[0].get("data", {}).get("next_1_hours")
+            or times[0].get("data", {}).get("next_6_hours")
+            or times[0].get("data", {}).get("next_12_hours")
+            or {}
+        )
+        current_precip_details = current_forecast_block.get("details", {})
+        current_precip = (
+            current_precip_details.get("precipitation_amount")
+            if current_precip_details.get("precipitation_amount") is not None
+            else (
+                current_precip_details.get("precipitation_amount_min")
+                if current_precip_details.get("precipitation_amount_min") is not None
+                else current_precip_details.get("precipitation_amount_max", 0)
+            )
+        )
+        curr_with_precip = dict(curr)
+        curr_with_precip["precipitation_amount"] = current_precip
+        # Also expose min/max precipitation from forecast if available; fallback to amount
+        _cur_min = current_precip_details.get("precipitation_amount_min")
+        _cur_max = current_precip_details.get("precipitation_amount_max")
+        curr_with_precip["precipitation_amount_min"] = _cur_min if _cur_min is not None else current_precip
+        curr_with_precip["precipitation_amount_max"] = _cur_max if _cur_max is not None else current_precip
+        self._current = self._extract(curr_with_precip)
         current_symbol = (
-            times[0]
-            .get("data", {})
-            .get("next_1_hours", {})
+            current_forecast_block
             .get("summary", {})
             .get("symbol_code")
         )
@@ -477,13 +501,30 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
                 )
                 data_entry = closest.get("data", {})
                 instant_details = data_entry.get("instant", {}).get("details", {})
-                precip_1h = (
-                    data_entry.get("next_1_hours", {})
-                    .get("details", {})
-                    .get("precipitation_amount", 0)
+                # Prefer 1-hour precipitation at race start, fallback to 6/12-hour blocks
+                race_forecast_block = (
+                    data_entry.get("next_1_hours")
+                    or data_entry.get("next_6_hours")
+                    or data_entry.get("next_12_hours")
+                    or {}
+                )
+                race_precip_details = race_forecast_block.get("details", {})
+                race_precip = (
+                    race_precip_details.get("precipitation_amount")
+                    if race_precip_details.get("precipitation_amount") is not None
+                    else (
+                        race_precip_details.get("precipitation_amount_min")
+                        if race_precip_details.get("precipitation_amount_min") is not None
+                        else race_precip_details.get("precipitation_amount_max", 0)
+                    )
                 )
                 rd = dict(instant_details)
-                rd["precipitation_amount"] = precip_1h
+                rd["precipitation_amount"] = race_precip
+                # Also expose min/max precipitation at race time if available; fallback to amount
+                _race_min = race_precip_details.get("precipitation_amount_min")
+                _race_max = race_precip_details.get("precipitation_amount_max")
+                rd["precipitation_amount_min"] = _race_min if _race_min is not None else race_precip
+                rd["precipitation_amount_max"] = _race_max if _race_max is not None else race_precip
                 self._race = self._extract(rd)
                 forecast_block = (
                     data_entry.get("next_1_hours")
@@ -505,6 +546,8 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
             "cloud_cover": d.get("cloud_area_fraction"),
             "cloud_cover_unit": "%",
             "precipitation": d.get("precipitation_amount", 0),
+            "precipitation_amount_min": d.get("precipitation_amount_min"),
+            "precipitation_amount_max": d.get("precipitation_amount_max"),
             "precipitation_unit": "mm",
             "wind_speed": d.get("wind_speed"),
             "wind_speed_unit": "m/s",
@@ -1000,12 +1043,15 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
         new_state = self._normalize(raw)
+        prev = self._attr_native_value
+        if prev == new_state:
+            return
         try:
             from logging import getLogger
             getLogger(__name__).debug(
-                "TrackStatus sensor state computed at %s, raw=%s -> state=%s",
+                "TrackStatus changed at %s: %s -> %s",
                 dt_util.utcnow().isoformat(timespec="seconds"),
-                raw,
+                prev,
                 new_state,
             )
         except Exception:  # noqa: BLE001
@@ -1143,11 +1189,14 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
         new_state = self._map_status(raw)
+        prev = self._attr_native_value
+        if prev == new_state:
+            return
         try:
             getLogger(__name__).debug(
-                "SessionStatus sensor state computed at %s, raw=%s -> state=%s",
+                "SessionStatus changed at %s: %s -> %s",
                 dt_util.utcnow().isoformat(timespec="seconds"),
-                raw,
+                prev,
                 new_state,
             )
         except Exception:  # noqa: BLE001
@@ -1633,7 +1682,11 @@ class F1RaceLeaderSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
+        prev_state = self._attr_native_value
+        prev_attrs = self._attr_extra_state_attributes
         self._update_from_coordinator()
+        if prev_state == self._attr_native_value and prev_attrs == self._attr_extra_state_attributes:
+            return
         try:
             getLogger(__name__).debug(
                 "RaceLeader: Computed at %s -> %s",
@@ -1715,7 +1768,11 @@ class F1RaceOrderSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
+        prev_state = self._attr_native_value
+        prev_attrs = self._attr_extra_state_attributes
         self._update_from_coordinator()
+        if prev_state == self._attr_native_value and prev_attrs == self._attr_extra_state_attributes:
+            return
         try:
             getLogger(__name__).debug(
                 "RaceOrder: Computed at %s -> leader=%s, n=%s",
@@ -1806,7 +1863,11 @@ class F1DriverLiveSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
+        prev_state = self._attr_native_value
+        prev_attrs = self._attr_extra_state_attributes
         self._update_from_coordinator()
+        if prev_state == self._attr_native_value and prev_attrs == self._attr_extra_state_attributes:
+            return
         try:
             getLogger(__name__).debug(
                 "DriverLive[%s]: Computed at %s -> %s",
@@ -1863,6 +1924,105 @@ class F1DriverLiveSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "lap_total": laps.get("lap_total"),
         }
         self._attr_extra_state_attributes = attrs
+
+    @property
+    def state(self):
+        return self._attr_native_value
+
+
+class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Live driver list sensor.
+
+    - State: number of drivers in attributes
+    - Attributes: drivers: [ { racing_number, tla, name, first_name, last_name, team, team_color, headshot_small, headshot_large, reference } ]
+    - Behavior: restores last known state; logs only on change; respects consolidated drivers coordinator.
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:account-multiple"
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {"drivers": []}
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        # Initialize from coordinator or restore
+        self._update_from_coordinator()
+        if self._attr_native_value is None:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                try:
+                    self._attr_native_value = int(last.state)
+                except Exception:
+                    self._attr_native_value = None
+                try:
+                    from logging import getLogger
+                    attrs = dict(getattr(last, "attributes", {}) or {})
+                    # Drop legacy key 'headshot' if present (top-level or nested per-driver)
+                    attrs.pop("headshot", None)
+                    drivers_attr = attrs.get("drivers")
+                    if isinstance(drivers_attr, list):
+                        for drv in drivers_attr:
+                            if isinstance(drv, dict):
+                                drv.pop("headshot", None)
+                    self._attr_extra_state_attributes = attrs
+                    getLogger(__name__).debug("DriverList: Restored last state -> %s", last.state)
+                except Exception:
+                    pass
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self.async_write_ha_state()
+
+    def _handle_coordinator_update(self) -> None:
+        prev_state = self._attr_native_value
+        prev_attrs = self._attr_extra_state_attributes
+        self._update_from_coordinator()
+        if prev_state == self._attr_native_value and prev_attrs == self._attr_extra_state_attributes:
+            return
+        try:
+            from logging import getLogger
+            getLogger(__name__).debug(
+                "DriverList: Computed at %s -> count=%s",
+                dt_util.utcnow().isoformat(timespec="seconds"),
+                self._attr_native_value,
+            )
+        except Exception:
+            pass
+        self.async_write_ha_state()
+
+    def _update_from_coordinator(self) -> None:
+        data = self.coordinator.data or {}
+        drivers = (data.get("drivers") or {}) if isinstance(data, dict) else {}
+        # Build normalized list sorted by racing number (numeric if possible)
+        items = []
+        for rn, info in drivers.items():
+            ident = (info.get("identity") or {}) if isinstance(info, dict) else {}
+            try:
+                team_color = ident.get("team_color")
+                if isinstance(team_color, str) and team_color and not team_color.startswith("#"):
+                    team_color = f"#{team_color}"
+            except Exception:
+                team_color = ident.get("team_color")
+            items.append(
+                {
+                    "racing_number": ident.get("racing_number") or rn,
+                    "tla": ident.get("tla"),
+                    "name": ident.get("name"),
+                    "first_name": ident.get("first_name"),
+                    "last_name": ident.get("last_name"),
+                    "team": ident.get("team"),
+                    "team_color": team_color,
+                    "headshot_small": ident.get("headshot_small") or ident.get("headshot"),
+                    "headshot_large": ident.get("headshot_large") or ident.get("headshot"),
+                    "reference": ident.get("reference"),
+                }
+            )
+        def _rn_key(v):
+            val = str(v.get("racing_number") or "")
+            return (int(val) if val.isdigit() else 9999, val)
+        items.sort(key=_rn_key)
+        self._attr_extra_state_attributes = {"drivers": items}
+        self._attr_native_value = len(items)
 
     @property
     def state(self):

@@ -3,7 +3,8 @@ import logging
 import asyncio
 import contextlib
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Callable, Optional
+from collections import deque
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -23,6 +24,7 @@ from .const import (
     SEASON_RESULTS_URL,
     LATEST_TRACK_STATUS,
 )
+from .signalr import LiveBus
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,24 +55,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     lap_count_coordinator = None
     race_control_coordinator = None
     hass.data[LATEST_TRACK_STATUS] = None
+    # Create and start a shared LiveBus (single SignalR connection)
+    session = async_get_clientsession(hass)
+    live_bus = LiveBus(hass, session)
+    await live_bus.start()
+
     if enable_rc:
         track_status_coordinator = TrackStatusCoordinator(
-            hass, session_coordinator, live_delay
+            hass, session_coordinator, live_delay, bus=live_bus
         )
         session_status_coordinator = SessionStatusCoordinator(
-            hass, session_coordinator, live_delay
+            hass, session_coordinator, live_delay, bus=live_bus
         )
         session_info_coordinator = SessionInfoCoordinator(
-            hass, session_coordinator, live_delay
+            hass, session_coordinator, live_delay, bus=live_bus
         )
         race_control_coordinator = RaceControlCoordinator(
-            hass, session_coordinator, live_delay
+            hass, session_coordinator, live_delay, bus=live_bus
         )
         weather_data_coordinator = WeatherDataCoordinator(
-            hass, session_coordinator, live_delay
+            hass, session_coordinator, live_delay, bus=live_bus
         )
         lap_count_coordinator = LapCountCoordinator(
-            hass, session_coordinator, live_delay
+            hass, session_coordinator, live_delay, bus=live_bus
         )
 
     await race_coordinator.async_config_entry_first_refresh()
@@ -97,6 +104,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass,
         session_coordinator,
         delay_seconds=int(entry.data.get("live_delay_seconds", 0) or 0),
+        bus=live_bus,
     )
     await drivers_coordinator.async_config_entry_first_refresh()
 
@@ -114,6 +122,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
         "drivers_coordinator": drivers_coordinator,
+        "live_bus": live_bus,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -128,6 +137,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
+        bus: LiveBus | None = None,
     ):
         super().__init__(
             hass,
@@ -140,73 +150,51 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         self.available = True
         self._last_message = None
         self.data_list: list[dict] = []
-        self._task = None
-        self._client = None
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._bus = bus
+        self._unsub: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
 
     async def async_close(self, *_):
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-        if self._client:
-            await self._client.close()
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:
+                pass
+            self._unsub = None
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
 
     async def _async_update_data(self):
         return self._last_message
 
-    async def _listen(self):
-        from .signalr import SignalRClient
-
-        self._client = SignalRClient(self.hass, self._session)
-        while True:
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        # Skip duplicate snapshots without timestamp to avoid heartbeat churn
+        if self._should_skip_duplicate(msg):
+            return
+        if self._delay > 0:
             try:
-                await self._client._ensure_connection()
-                async for payload in self._client.messages():
-                    msg = self._parse_message(payload)
-                    if msg:
-                        # Skip duplicate snapshots without timestamp to avoid heartbeat churn
-                        if self._should_skip_duplicate(msg):
-                            try:
-                                _LOGGER.debug(
-                                    "WeatherData duplicate without timestamp ignored at %s: %s",
-                                    dt_util.utcnow().isoformat(timespec="seconds"),
-                                    msg,
-                                )
-                            except Exception:
-                                pass
-                            continue
-                        try:
-                            _LOGGER.debug(
-                                "WeatherData received at %s, delay=%ss, message=%s",
-                                dt_util.utcnow().isoformat(timespec="seconds"),
-                                self._delay,
-                                msg,
-                            )
-                        except Exception:
-                            pass
-                        if self._delay > 0:
-                            try:
-                                scheduled = (dt_util.utcnow() + timedelta(seconds=self._delay)).isoformat(timespec="seconds")
-                                _LOGGER.debug(
-                                    "WeatherData scheduled delivery at %s (+%ss)",
-                                    scheduled,
-                                    self._delay,
-                                )
-                            except Exception:
-                                pass
-                            self.hass.loop.call_later(
-                                self._delay,
-                                lambda m=msg: self._deliver(m),
-                            )
-                        else:
-                            self._deliver(msg)
-            except Exception as err:  # pragma: no cover - network errors
-                self.available = False
-                _LOGGER.warning("Weather data websocket error: %s", err)
-            finally:
-                if self._client:
-                    await self._client.close()
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(
+                self._delay, lambda m=msg: self._deliver(m)
+            )
+        else:
+            # Coalesce in same loop tick
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(lambda m=msg: self._deliver(m))
 
     @staticmethod
     def _has_timestamp(d: dict) -> bool:
@@ -265,18 +253,24 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         self._last_message = msg
         self.data_list = [msg]
         self.async_set_updated_data(msg)
-        try:
-            _LOGGER.debug(
-                "WeatherData delivered at %s: %s",
-                dt_util.utcnow().isoformat(timespec="seconds"),
-                msg,
-            )
-        except Exception:
-            pass
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            try:
+                keys = [k for k in (msg or {}).keys()][:6]
+                _LOGGER.debug(
+                    "WeatherData delivered at %s keys=%s",
+                    dt_util.utcnow().isoformat(timespec="seconds"),
+                    keys,
+                )
+            except Exception:
+                pass
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
-        self._task = self.hass.loop.create_task(self._listen())
+        # Subscribe to shared live bus
+        try:
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("WeatherData", self._on_bus_message)  # type: ignore[attr-defined]
+        except Exception:
+            self._unsub = None
 
 
 class RaceControlCoordinator(DataUpdateCoordinator):
@@ -291,6 +285,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
+        bus: LiveBus | None = None,
     ):
         super().__init__(
             hass,
@@ -303,20 +298,28 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self.available = True
         self._last_message = None
         self.data_list: list[dict] = []
-        self._task = None
-        self._client = None
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._bus = bus
+        self._unsub: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
         # For duplicate filtering and startup replay suppression
-        self._seen_ids: set[str] = set()
+        self._seen_ids_set: set[str] = set()
+        self._seen_ids_order = deque(maxlen=1024)
         self._startup_cutoff: datetime | None = None
 
     async def async_close(self, *_):
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-        if self._client:
-            await self._client.close()
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:
+                pass
+            self._unsub = None
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -368,86 +371,59 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         except Exception:
             return json.dumps(item, sort_keys=True, default=str)
 
-    async def _listen(self):
-        from .signalr import SignalRClient
-
-        self._client = SignalRClient(self.hass, self._session)
-        while True:
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, (dict, list)):
+            return
+        items = self._extract_items(msg)
+        if not items:
+            return
+        for item in items:
+            # Startup cutoff: ignore historical within 30s before now
             try:
-                await self._client._ensure_connection()
-                # Suppress historical replay within 30s before connect
-                from datetime import timezone
-                t0 = datetime.now(timezone.utc)
-                self._startup_cutoff = t0 - timedelta(seconds=30)
-                async for payload in self._client.messages():
-                    msg = self._parse_message(payload)
-                    if not msg:
+                ts_raw = (
+                    item.get("Utc")
+                    or item.get("utc")
+                    or item.get("processedAt")
+                    or item.get("timestamp")
+                )
+                if ts_raw:
+                    ts = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+                    if ts.tzinfo is None:
+                        from datetime import timezone as _tz
+                        ts = ts.replace(tzinfo=_tz.utc)
+                    if self._startup_cutoff and ts < self._startup_cutoff:
                         continue
-                    items = self._extract_items(msg)
-                    if not items:
-                        continue
-                    try:
-                        _LOGGER.debug(
-                            "RaceControl received at %s, delay=%ss, items=%s",
-                            dt_util.utcnow().isoformat(timespec="seconds"),
-                            self._delay,
-                            items,
-                        )
-                    except Exception:
-                        pass
-
-                    def schedule_delivery(item: dict):
-                        if self._delay > 0:
-                            try:
-                                scheduled = (dt_util.utcnow() + timedelta(seconds=self._delay)).isoformat(timespec="seconds")
-                                _LOGGER.debug(
-                                    "RaceControl scheduled delivery at %s (+%ss) for item=%s",
-                                    scheduled,
-                                    self._delay,
-                                    item,
-                                )
-                            except Exception:
-                                pass
-                            self.hass.loop.call_later(
-                                self._delay,
-                                lambda m=item: self._deliver(m),
-                            )
-                        else:
-                            self._deliver(item)
-
-                    # Deliver items individually with duplicate filtering and startup cutoff
-                    for item in items:
-                        # Parse timestamp
-                        ts_raw = (
-                            item.get("Utc")
-                            or item.get("utc")
-                            or item.get("processedAt")
-                            or item.get("timestamp")
-                        )
-                        try:
-                            if ts_raw and self._startup_cutoff:
-                                ts = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
-                                if ts.tzinfo is None:
-                                    from datetime import timezone as _tz
-                                    ts = ts.replace(tzinfo=_tz.utc)
-                                if ts < self._startup_cutoff:
-                                    _LOGGER.debug("RaceControl: Ignored old item at startup: %s", item)
-                                    continue
-                        except Exception:
-                            pass
-
-                        ident = self._message_id(item)
-                        if ident in self._seen_ids:
-                            _LOGGER.debug("RaceControl: Duplicate suppressed: %s", ident)
-                            continue
-                        self._seen_ids.add(ident)
-                        schedule_delivery(item)
-            except Exception as err:  # pragma: no cover - network errors
-                self.available = False
-                _LOGGER.warning("Race control websocket error: %s", err)
-            finally:
-                if self._client:
-                    await self._client.close()
+            except Exception:
+                pass
+            ident = self._message_id(item)
+            if ident in self._seen_ids_set:
+                continue
+            # Evict if needed then add
+            if len(self._seen_ids_order) == self._seen_ids_order.maxlen:
+                try:
+                    old = self._seen_ids_order.popleft()
+                    self._seen_ids_set.discard(old)
+                except Exception:
+                    pass
+            self._seen_ids_order.append(ident)
+            self._seen_ids_set.add(ident)
+            # Schedule/coalesce delivery
+            if self._delay > 0:
+                try:
+                    if self._deliver_handle:
+                        self._deliver_handle.cancel()
+                except Exception:
+                    pass
+                self._deliver_handle = self.hass.loop.call_later(
+                    self._delay, lambda m=item: self._deliver(m)
+                )
+            else:
+                try:
+                    if self._deliver_handle:
+                        self._deliver_handle.cancel()
+                except Exception:
+                    pass
+                self._deliver_handle = self.hass.loop.call_soon(lambda m=item: self._deliver(m))
 
     def _deliver(self, item: dict) -> None:
         self.available = True
@@ -455,14 +431,22 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._last_message = item
         self.data_list = [item]
         self.async_set_updated_data(item)
-        try:
-            _LOGGER.debug(
-                "RaceControl delivered at %s: %s",
-                dt_util.utcnow().isoformat(timespec="seconds"),
-                item,
-            )
-        except Exception:
-            pass
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            try:
+                cat = item.get("Category") or item.get("CategoryType")
+                flag = item.get("Flag")
+                text = item.get("Message") or item.get("Text")
+                ts = item.get("Utc") or item.get("utc") or item.get("timestamp")
+                _LOGGER.debug(
+                    "RaceControl delivered at %s ts=%s cat=%s flag=%s text=%s",
+                    dt_util.utcnow().isoformat(timespec="seconds"),
+                    ts,
+                    cat,
+                    flag,
+                    (str(text)[:60] if isinstance(text, str) else text),
+                )
+            except Exception:
+                pass
         # Publish on HA event bus with a consistent event name
         try:
             self.hass.bus.async_fire(
@@ -477,7 +461,18 @@ class RaceControlCoordinator(DataUpdateCoordinator):
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
-        self._task = self.hass.loop.create_task(self._listen())
+        # Establish startup cutoff for replay suppression
+        try:
+            from datetime import timezone
+            t0 = datetime.now(timezone.utc)
+            self._startup_cutoff = t0 - timedelta(seconds=30)
+        except Exception:
+            self._startup_cutoff = None
+        # Subscribe to LiveBus
+        try:
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("RaceControlMessages", self._on_bus_message)  # type: ignore[attr-defined]
+        except Exception:
+            self._unsub = None
 
 class LapCountCoordinator(DataUpdateCoordinator):
     """Coordinator for LapCount updates using SignalR, mirrors other live feeds."""
@@ -487,6 +482,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
+        bus: LiveBus | None = None,
     ):
         super().__init__(
             hass,
@@ -499,17 +495,24 @@ class LapCountCoordinator(DataUpdateCoordinator):
         self.available = True
         self._last_message = None
         self.data_list: list[dict] = []
-        self._task = None
-        self._client = None
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._bus = bus
+        self._unsub: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
 
     async def async_close(self, *_):
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-        if self._client:
-            await self._client.close()
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:
+                pass
+            self._unsub = None
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -529,65 +532,48 @@ class LapCountCoordinator(DataUpdateCoordinator):
             return result.get("LapCount")
         return None
 
-    async def _listen(self):
-        from .signalr import SignalRClient
-
-        self._client = SignalRClient(self.hass, self._session)
-        while True:
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        if self._delay > 0:
             try:
-                await self._client._ensure_connection()
-                async for payload in self._client.messages():
-                    msg = self._parse_message(payload)
-                    if msg:
-                        try:
-                            _LOGGER.debug(
-                                "LapCount received at %s, delay=%ss, message=%s",
-                                dt_util.utcnow().isoformat(timespec="seconds"),
-                                self._delay,
-                                msg,
-                            )
-                        except Exception:
-                            pass
-                        if self._delay > 0:
-                            try:
-                                scheduled = (dt_util.utcnow() + timedelta(seconds=self._delay)).isoformat(timespec="seconds")
-                                _LOGGER.debug(
-                                    "LapCount scheduled delivery at %s (+%ss)",
-                                    scheduled,
-                                    self._delay,
-                                )
-                            except Exception:
-                                pass
-                            self.hass.loop.call_later(
-                                self._delay,
-                                lambda m=msg: self._deliver(m),
-                            )
-                        else:
-                            self._deliver(msg)
-            except Exception as err:  # pragma: no cover - network errors
-                self.available = False
-                _LOGGER.warning("Lap count websocket error: %s", err)
-            finally:
-                if self._client:
-                    await self._client.close()
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(
+                self._delay, lambda m=msg: self._deliver(m)
+            )
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(lambda m=msg: self._deliver(m))
 
     def _deliver(self, msg: dict) -> None:
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
         self.async_set_updated_data(msg)
-        try:
-            _LOGGER.debug(
-                "LapCount delivered at %s: %s",
-                dt_util.utcnow().isoformat(timespec="seconds"),
-                msg,
-            )
-        except Exception:
-            pass
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            try:
+                _LOGGER.debug(
+                    "LapCount delivered at %s current=%s total=%s",
+                    dt_util.utcnow().isoformat(timespec="seconds"),
+                    (msg or {}).get("CurrentLap") or (msg or {}).get("LapCount"),
+                    (msg or {}).get("TotalLaps"),
+                )
+            except Exception:
+                pass
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
-        self._task = self.hass.loop.create_task(self._listen())
+        try:
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("LapCount", self._on_bus_message)  # type: ignore[attr-defined]
+        except Exception:
+            self._unsub = None
 
 
 class LiveDriversCoordinator(DataUpdateCoordinator):
@@ -616,6 +602,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
+        bus: LiveBus | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -625,8 +612,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
-        self._task = None
-        self._client = None
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._bus = bus
+        self._unsubs: list[Callable[[], None]] = []
         self._delay = max(0, int(delay_seconds or 0))
         self._state: dict[str, Any] = {
             "drivers": {},
@@ -638,12 +626,18 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         }
 
     async def async_close(self, *_):
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-        if self._client:
-            await self._client.close()
+        for u in list(self._unsubs):
+            try:
+                u()
+            except Exception:
+                pass
+        self._unsubs.clear()
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
 
     async def _async_update_data(self):
         return self._state
@@ -654,6 +648,17 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         for rn, info in (payload or {}).items():
             if not isinstance(info, dict):
                 continue
+            # Derive headshot URLs in both small (transform) and large (original) forms
+            headshot_raw = info.get("HeadshotUrl")
+            headshot_small = headshot_raw if isinstance(headshot_raw, str) else None
+            headshot_large = headshot_small
+            try:
+                if isinstance(headshot_raw, str):
+                    idx = headshot_raw.find(".transform/")
+                    if idx != -1:
+                        headshot_large = headshot_raw[:idx]
+            except Exception:
+                headshot_large = headshot_small
             ident = drivers.setdefault(rn, {})
             ident.setdefault("identity", {})
             ident.setdefault("timing", {})
@@ -666,6 +671,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "name": info.get("FullName") or info.get("BroadcastName"),
                     "team": info.get("TeamName"),
                     "team_color": info.get("TeamColour"),
+                    "first_name": info.get("FirstName"),
+                    "last_name": info.get("LastName"),
+                    "headshot_small": headshot_small,
+                    "headshot_large": headshot_large,
+                    "reference": info.get("Reference"),
                 }
             )
 
@@ -882,47 +892,79 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         # Push deep-copied shallow dict to avoid accidental external mutation
         self.async_set_updated_data(self._state)
 
-    async def _listen(self):
-        from .signalr import SignalRClient
-
-        self._client = SignalRClient(self.hass, self._session)
-        while True:
+    def _schedule_deliver(self) -> None:
+        if self._delay > 0:
             try:
-                await self._client._ensure_connection()
-                async for payload in self._client.messages():
-                    # Respect frozen state: once frozen, ignore further live merges
-                    if self._state.get("frozen"):
-                        continue
-                    dl = self._extract(payload, "DriverList")
-                    if dl:
-                        self._merge_driverlist(dl)
-                    td = self._extract(payload, "TimingData")
-                    if td:
-                        self._merge_timingdata(td)
-                    ta = self._extract(payload, "TimingAppData")
-                    if ta:
-                        self._merge_timingapp(ta)
-                    lc = self._extract(payload, "LapCount")
-                    if lc:
-                        self._merge_lapcount(lc)
-                    ss = self._extract(payload, "SessionStatus")
-                    if ss:
-                        self._merge_sessionstatus(ss)
-                    # Schedule delivery (optional delay)
-                    if any((dl, td, ta, lc, ss)):
-                        if self._delay > 0:
-                            self.hass.loop.call_later(self._delay, self._deliver)
-                        else:
-                            self._deliver()
-            except Exception as err:  # pragma: no cover - network errors
-                _LOGGER.warning("Live drivers websocket error: %s", err)
-            finally:
-                if self._client:
-                    await self._client.close()
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(self._delay, self._deliver)
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(self._deliver)
+
+    def _on_driverlist(self, dl: dict) -> None:
+        # Allow DriverList merges even when frozen so identity mapping remains available
+        self._merge_driverlist(dl)
+        self._schedule_deliver()
+
+    def _on_timingdata(self, td: dict) -> None:
+        if self._state.get("frozen"):
+            return
+        self._merge_timingdata(td)
+        self._schedule_deliver()
+
+    def _on_timingapp(self, ta: dict) -> None:
+        if self._state.get("frozen"):
+            return
+        self._merge_timingapp(ta)
+        self._schedule_deliver()
+
+    def _on_lapcount(self, lc: dict) -> None:
+        if self._state.get("frozen"):
+            return
+        self._merge_lapcount(lc)
+        self._schedule_deliver()
+
+    def _on_sessionstatus(self, ss: dict) -> None:
+        if self._state.get("frozen"):
+            return
+        self._merge_sessionstatus(ss)
+        self._schedule_deliver()
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
-        self._task = self.hass.loop.create_task(self._listen())
+        # Subscribe to LiveBus streams
+        try:
+            bus = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus"))  # type: ignore[assignment]
+        except Exception:
+            bus = None
+        if bus is not None:
+            try:
+                self._unsubs.append(bus.subscribe("DriverList", self._on_driverlist))
+            except Exception:
+                pass
+            try:
+                self._unsubs.append(bus.subscribe("TimingData", self._on_timingdata))
+            except Exception:
+                pass
+            try:
+                self._unsubs.append(bus.subscribe("TimingAppData", self._on_timingapp))
+            except Exception:
+                pass
+            try:
+                self._unsubs.append(bus.subscribe("LapCount", self._on_lapcount))
+            except Exception:
+                pass
+            try:
+                self._unsubs.append(bus.subscribe("SessionStatus", self._on_sessionstatus))
+            except Exception:
+                pass
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -932,6 +974,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for coordinator in data.values():
             await coordinator.async_close()
     return unload_ok
+
+
+    
 
 
 class F1DataCoordinator(DataUpdateCoordinator):
@@ -1109,6 +1154,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
+        bus: LiveBus | None = None,
     ):
         super().__init__(
             hass,
@@ -1121,85 +1167,66 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         self.available = True
         self._last_message = None
         self.data_list: list[dict] = []
-        self._task = None
-        self._client = None
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._bus = bus
+        self._unsub: Optional[Callable[[], None]] = None
         self._t0 = None
         self._startup_cutoff = None
         self._delay = max(0, int(delay_seconds or 0))
 
     async def async_close(self, *_):
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-        if self._client:
-            await self._client.close()
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:
+                pass
+            self._unsub = None
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
 
     async def _async_update_data(self):
         return self._last_message
 
-    async def _listen(self):
-        from .signalr import SignalRClient
-
-        self._client = SignalRClient(self.hass, self._session)
-        while True:
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        # Drop old messages near startup
+        utc_str = (
+            msg.get("Utc")
+            or msg.get("utc")
+            or msg.get("processedAt")
+            or msg.get("timestamp")
+        )
+        try:
+            if utc_str:
+                ts = datetime.fromisoformat(str(utc_str).replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    from datetime import timezone as _tz
+                    ts = ts.replace(tzinfo=_tz.utc)
+                if self._startup_cutoff and ts < self._startup_cutoff:
+                    return
+        except Exception:
+            pass
+        if self._delay > 0:
             try:
-                await self._client._ensure_connection()
-                # Capture connection time similar to SignalRClient
-                from datetime import timezone
-                self._t0 = datetime.now(timezone.utc)
-                self._startup_cutoff = self._t0 - timedelta(seconds=30)
-                async for payload in self._client.messages():
-                    msg = self._parse_message(payload)
-                    if msg:
-                        # Drop old messages around reconnect/heartbeat like flag sensor
-                        utc_str = (
-                            msg.get("Utc")
-                            or msg.get("utc")
-                            or msg.get("processedAt")
-                            or msg.get("timestamp")
-                        )
-                        try:
-                            if utc_str:
-                                ts = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
-                                if ts.tzinfo is None:
-                                    from datetime import timezone as _tz
-                                    ts = ts.replace(tzinfo=_tz.utc)
-                                if self._startup_cutoff and ts < self._startup_cutoff:
-                                    _LOGGER.debug("TrackStatus: Ignored old message: %s", msg)
-                                    continue
-                        except Exception:  # noqa: BLE001
-                            pass
-
-                        _LOGGER.debug(
-                            "TrackStatus received at %s, status=%s, message=%s, delay=%ss",
-                            dt_util.utcnow().isoformat(timespec="seconds"),
-                            (msg.get("Status") if isinstance(msg, dict) else None),
-                            (msg.get("Message") if isinstance(msg, dict) else None),
-                            self._delay,
-                        )
-                        if self._delay > 0:
-                            try:
-                                scheduled = (dt_util.utcnow() + timedelta(seconds=self._delay)).isoformat(timespec="seconds")
-                                _LOGGER.debug(
-                                    "TrackStatus scheduled delivery at %s (+%ss)",
-                                    scheduled,
-                                    self._delay,
-                                )
-                            except Exception:
-                                pass
-                            self.hass.loop.call_later(
-                                self._delay,
-                                lambda m=msg: self._deliver(m),
-                            )
-                        else:
-                            self._deliver(msg)
-            except Exception as err:  # pragma: no cover - network errors
-                self.available = False
-                _LOGGER.warning("Track status websocket error: %s", err)
-            finally:
-                if self._client:
-                    await self._client.close()
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(
+                self._delay, lambda m=msg: self._deliver(m)
+            )
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(lambda m=msg: self._deliver(m))
 
     @staticmethod
     def _parse_message(data):
@@ -1227,18 +1254,31 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             self.hass.data[LATEST_TRACK_STATUS] = msg
         except Exception:
             pass
-        try:
-            _LOGGER.debug(
-                "TrackStatus delivered at %s: %s",
-                dt_util.utcnow().isoformat(timespec="seconds"),
-                msg,
-            )
-        except Exception:
-            pass
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            try:
+                _LOGGER.debug(
+                    "TrackStatus delivered at %s status=%s message=%s",
+                    dt_util.utcnow().isoformat(timespec="seconds"),
+                    (msg or {}).get("Status"),
+                    (msg or {}).get("Message"),
+                )
+            except Exception:
+                pass
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
-        self._task = self.hass.loop.create_task(self._listen())
+        # Capture connection time and startup window
+        try:
+            from datetime import timezone
+            self._t0 = datetime.now(timezone.utc)
+            self._startup_cutoff = self._t0 - timedelta(seconds=30)
+        except Exception:
+            self._startup_cutoff = None
+        # Subscribe to LiveBus
+        try:
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("TrackStatus", self._on_bus_message)  # type: ignore[attr-defined]
+        except Exception:
+            self._unsub = None
 
 
 class SessionStatusCoordinator(DataUpdateCoordinator):
@@ -1249,6 +1289,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
+        bus: LiveBus | None = None,
     ):
         super().__init__(
             hass,
@@ -1261,60 +1302,47 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self.available = True
         self._last_message = None
         self.data_list: list[dict] = []
-        self._task = None
-        self._client = None
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._bus = bus
+        self._unsub: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
 
     async def async_close(self, *_):
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-        if self._client:
-            await self._client.close()
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:
+                pass
+            self._unsub = None
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
 
     async def _async_update_data(self):
         return self._last_message
 
-    async def _listen(self):
-        from .signalr import SignalRClient
-
-        self._client = SignalRClient(self.hass, self._session)
-        while True:
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        if self._delay > 0:
             try:
-                await self._client._ensure_connection()
-                async for payload in self._client.messages():
-                    msg = self._parse_message(payload)
-                    if msg:
-                        _LOGGER.debug(
-                            "SessionStatus received at %s, status=%s, started=%s, delay=%ss",
-                            dt_util.utcnow().isoformat(timespec="seconds"),
-                            (msg.get("Status") if isinstance(msg, dict) else None),
-                            (msg.get("Started") if isinstance(msg, dict) else None),
-                            self._delay,
-                        )
-                        if self._delay > 0:
-                            try:
-                                scheduled = (dt_util.utcnow() + timedelta(seconds=self._delay)).isoformat(timespec="seconds")
-                                _LOGGER.debug(
-                                    "SessionStatus scheduled delivery at %s (+%ss)",
-                                    scheduled,
-                                    self._delay,
-                                )
-                            except Exception:
-                                pass
-                            self.hass.loop.call_later(
-                                self._delay,
-                                lambda m=msg: self._deliver(m),
-                            )
-                        else:
-                            self._deliver(msg)
-            except Exception as err:  # pragma: no cover - network errors
-                self.available = False
-                _LOGGER.warning("Session status websocket error: %s", err)
-            finally:
-                if self._client:
-                    await self._client.close()
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(
+                self._delay, lambda m=msg: self._deliver(m)
+            )
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(lambda m=msg: self._deliver(m))
 
     @staticmethod
     def _parse_message(data):
@@ -1336,18 +1364,23 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self._last_message = msg
         self.data_list = [msg]
         self.async_set_updated_data(msg)
-        try:
-            _LOGGER.debug(
-                "SessionStatus delivered at %s: %s",
-                dt_util.utcnow().isoformat(timespec="seconds"),
-                msg,
-            )
-        except Exception:
-            pass
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            try:
+                _LOGGER.debug(
+                    "SessionStatus delivered at %s status=%s started=%s",
+                    dt_util.utcnow().isoformat(timespec="seconds"),
+                    (msg or {}).get("Status"),
+                    (msg or {}).get("Started"),
+                )
+            except Exception:
+                pass
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
-        self._task = self.hass.loop.create_task(self._listen())
+        try:
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("SessionStatus", self._on_bus_message)  # type: ignore[attr-defined]
+        except Exception:
+            self._unsub = None
 
 
 class SessionInfoCoordinator(DataUpdateCoordinator):
@@ -1358,6 +1391,7 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
+        bus: LiveBus | None = None,
     ):
         super().__init__(
             hass,
@@ -1370,62 +1404,47 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         self.available = True
         self._last_message = None
         self.data_list: list[dict] = []
-        self._task = None
-        self._client = None
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._bus = bus
+        self._unsub: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
 
     async def async_close(self, *_):
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-        if self._client:
-            await self._client.close()
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:
+                pass
+            self._unsub = None
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
 
     async def _async_update_data(self):
         return self._last_message
 
-    async def _listen(self):
-        from .signalr import SignalRClient
-
-        self._client = SignalRClient(self.hass, self._session)
-        while True:
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        if self._delay > 0:
             try:
-                await self._client._ensure_connection()
-                async for payload in self._client.messages():
-                    msg = self._parse_message(payload)
-                    if msg:
-                        try:
-                            _LOGGER.debug(
-                                "SessionInfo received at %s, message=%s, delay=%ss",
-                                dt_util.utcnow().isoformat(timespec="seconds"),
-                                msg,
-                                self._delay,
-                            )
-                        except Exception:
-                            pass
-                        if self._delay > 0:
-                            try:
-                                scheduled = (dt_util.utcnow() + timedelta(seconds=self._delay)).isoformat(timespec="seconds")
-                                _LOGGER.debug(
-                                    "SessionInfo scheduled delivery at %s (+%ss)",
-                                    scheduled,
-                                    self._delay,
-                                )
-                            except Exception:
-                                pass
-                            self.hass.loop.call_later(
-                                self._delay,
-                                lambda m=msg: self._deliver(m),
-                            )
-                        else:
-                            self._deliver(msg)
-            except Exception as err:  # pragma: no cover - network errors
-                self.available = False
-                _LOGGER.warning("Session info websocket error: %s", err)
-            finally:
-                if self._client:
-                    await self._client.close()
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(
+                self._delay, lambda m=msg: self._deliver(m)
+            )
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(lambda m=msg: self._deliver(m))
 
     @staticmethod
     def _parse_message(data):
@@ -1447,15 +1466,22 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         self._last_message = msg
         self.data_list = [msg]
         self.async_set_updated_data(msg)
-        try:
-            _LOGGER.debug(
-                "SessionInfo delivered at %s: %s",
-                dt_util.utcnow().isoformat(timespec="seconds"),
-                msg,
-            )
-        except Exception:
-            pass
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            try:
+                name = (msg or {}).get("Name")
+                t = (msg or {}).get("Type")
+                _LOGGER.debug(
+                    "SessionInfo delivered at %s type=%s name=%s",
+                    dt_util.utcnow().isoformat(timespec="seconds"),
+                    t,
+                    name,
+                )
+            except Exception:
+                pass
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
-        self._task = self.hass.loop.create_task(self._listen())
+        try:
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("SessionInfo", self._on_bus_message)  # type: ignore[attr-defined]
+        except Exception:
+            self._unsub = None
