@@ -22,7 +22,14 @@ blueprint:
 
     After that you can change the status off the `Track state` sensor under [developer tools](https://my.home-assistant.io/redirect/developer_states/).
 
+    ## Blueprint settings
+
+    To get the blueprint up and running you need to create a helper [here](https://my.home-assistant.io/redirect/helpers/). Select the boolean ('switch') type and give it a name.
+    If the helper is turned **off* the blueprint don't work! You need to turn it on by default. This could be usefull if you want to overrule the blueprint out of another automation (for example: Turn switch off when you go to sleep)
+
     ## Track sensors
+
+    This section needs to be filled in to communicate between the lights and the data provided by the add-on. 
 
     - Session State: The sensors that reports the current race session state
       - Default: `sensor.f1_session_status`
@@ -33,8 +40,12 @@ blueprint:
 
     ## Device tracker
 
-    When a device is selected it checks if that device is currently home. If the device is not at home the blueprint will be canceled. When selected multiple devices it checks if at least one device is at home.
-    If you dont select any device the state will be ignored and the blueprint will not stop running based on the device tracker.
+    Here are 2 options:
+    
+    - Devices gives you the opportunity to monitor if the device is at home.
+      - When selecting multiple devices it triggers when at least one device is at home
+    - Mediaplayer gives you the opportunity to monitor the state of a mediaplayer, currently only the domain `media_player` is possible
+      - Current states to check: `on` and `playing`
 
     ## Do not disturb
 
@@ -72,6 +83,11 @@ blueprint:
       - Default `on`
     - Flash Time: The time between pulsing on and off
       - Default: `1` second
+
+    ## Custum template
+
+    In the custom template section you can create you're own template options. Please be aware that the result needs to be `true` for the blueprint to run. If the return of your template is `false` the blueprint wont run. Leave empty if you don't want to use this option.
+  
     </details>
 
   domain: automation
@@ -95,21 +111,6 @@ blueprint:
               filter:
                 - domain: input_boolean
               multiple: false
-
-    custom_template_section:
-      name: Custom Template
-      icon: mdi:code-braces
-      description: >
-        Custom template
-      collapsed: true
-      input:
-        custom_template:
-          name: "🖹 Custom Template"
-          description: >
-            Write you're own Jinja2 template, please note that the return state should be **true* or **false**. Leave empty if you don't want to use it.
-          default: ""
-          selector:
-            template:
 
     #Setting the section for sensor inputs. Give's user the ability to specify the sensors
     sensors_section:
@@ -173,7 +174,7 @@ blueprint:
         device_list:
           name: 📱 Devices
           description: >
-            Select the devices.
+            The devices that should be checked if there home. Select none is you dont want to use this.
           default: ""
           selector:
             entity:
@@ -325,6 +326,22 @@ blueprint:
               step: 1
               unit_of_measurement: "s"
 
+    #Enable custom jinja templating
+    custom_template_section:
+      name: Custom Template
+      icon: mdi:code-braces
+      description: >
+        Custom template
+      collapsed: true
+      input:
+        custom_template:
+          name: "🖹 Custom Template"
+          description: >
+            Write you're own Jinja2 template, please note that the return state should be **true* or **false**. Leave empty if you don't want to use it.
+          default: ""
+          selector:
+            template:
+
 variables:
   devices: !input device_list
   mediaplayer: !input media_player
@@ -370,7 +387,7 @@ condition:
   - condition: template
     value_template: >
       {% if mediaplayer | length > 0 %}
-        {{ expand(media_player) | selectattr('state', 'in', ['playing', 'on']) | list }}
+        {{ expand(mediaplayer) | selectattr('state', 'in', ['playing', 'on']) | list }}
       {% else %}
         true
       {% endif %}
