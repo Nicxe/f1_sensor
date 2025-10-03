@@ -78,6 +78,38 @@ blueprint:
   author: Toppe
   input:
     #Setting the section for sensor inputs. Give's user the ability to specify the sensors
+    blueprint_settings:
+      name: Blueprint Settings
+      icon: mdi:cog-box
+      description: >
+        Set the correct values for the blueprint settings. **All settings are required!**
+      collapsed: false
+      input:
+        boolean_helper:
+          name: Blueprint helper
+          description: Select the helper boolean to determine if the blueprint should run or not
+          selector:
+            entity:
+              filter:
+                - domain: input_boolean
+              multiple: false
+
+    custom_template_section:
+      name: Custom Template
+      icon: mdi:code-braces
+      description: >
+        Custom template
+      collapsed: true
+      input:
+        custom_template:
+          name: "🖹 Custom Template"
+          description: >
+            Write you're own Jinja2 template, please note that the return state should be **true* or **false**. Leave empty if you don't want to use it.
+          default: ""
+          selector:
+            template:
+
+    #Setting the section for sensor inputs. Give's user the ability to specify the sensors
     sensors_section:
       name: Track sensors
       icon: mdi:go-kart-track
@@ -138,6 +170,14 @@ blueprint:
               filter:
                 - domain: device_tracker
               multiple: true
+        media_player:
+          name: 📱 Mediaplayer
+          description: Select the mediaplayer that should be watched.
+          selector:
+            entity:
+              filter:
+                - domain: media_player
+              multiple: false
 
     #Setting the section for the time base to turn on (and off) do not disturb
     time_based:
@@ -271,6 +311,7 @@ blueprint:
 
 variables:
   devices: !input device_list
+  mediaplayer: !input media_player
   light_id: !input light_entity
   flashing: !input flash_on_sc
 
@@ -285,10 +326,31 @@ condition:
     entity_id: !input session_status_sensor
     state: !input session_type_list
 
+  - condition: state
+    entity_id: !input boolean_helper
+    state: "on"
+
   - condition: template
     value_template: >
       {% if devices | length > 0 %}
         {{ expand(devices) | selectattr('state', 'eq', 'home') | list | count > 0 }}
+      {% else %}
+        true
+      {% endif %}
+
+  - condition: template
+    value_template: >
+      {% set custom = states('input_text.custom_template') %}
+      {% if custom | length > 0 %}
+        {{ custom }}
+      {% else %}
+        true
+      {% endif %}
+
+  - condition: template
+    value_template: >
+      {% if mediaplayer | length > 0 %}
+        {{ expand('media_player') | selectattr('state', 'in', ['playing', 'on']) | list }}
       {% else %}
         true
       {% endif %}
