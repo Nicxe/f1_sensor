@@ -78,16 +78,52 @@ blueprint:
   author: Toppe
   input:
     #Setting the section for sensor inputs. Give's user the ability to specify the sensors
+    blueprint_settings:
+      name: Blueprint Settings
+      icon: mdi:cog-box
+      description: >
+        Set the correct values for the blueprint settings. **All settings are required!**
+      collapsed: false
+      input:
+        boolean_helper:
+          name: Blueprint helper
+          description: >
+            Select the helper boolean to determine if the blueprint should run or not
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: input_boolean
+              multiple: false
+
+    custom_template_section:
+      name: Custom Template
+      icon: mdi:code-braces
+      description: >
+        Custom template
+      collapsed: true
+      input:
+        custom_template:
+          name: "🖹 Custom Template"
+          description: >
+            Write you're own Jinja2 template, please note that the return state should be **true* or **false**. Leave empty if you don't want to use it.
+          default: ""
+          selector:
+            template:
+
+    #Setting the section for sensor inputs. Give's user the ability to specify the sensors
     sensors_section:
       name: Track sensors
       icon: mdi:go-kart-track
       description: >
         Select the correct sensors to determine the current session and track status.
-      collapsed: false
+      collapsed: true
       input:
         session_status_sensor:
           name: Session State
-          description: Sensor indicating the current session state.
+          description: >
+            Sensor indicating the current session state.
+          default: ""
           selector:
             entity:
               filter:
@@ -95,7 +131,9 @@ blueprint:
               multiple: false
         track_status_sensor:
           name: Track state
-          description: Sensor indicating the current session state.
+          description: >
+            Sensor indicating the current session state.
+          default: ""
           selector:
             entity:
               filter:
@@ -103,8 +141,9 @@ blueprint:
               multiple: false
         session_type_list:
           name: Race phase
+          description: >
+            Select in what phase this blueprint need's to be executed.
           default: "Race is on-going (live)"
-          description: "Select in what phase this blueprint need's to be executed. "
           selector:
             select:
               mode: dropdown
@@ -127,17 +166,30 @@ blueprint:
     device_based:
       name: Device tracker
       icon: mdi:tablet-cellphone
+      collapsed: true
       description: >
         When activated the blueprint will run when *one* of the selected devices has the status 'home'. Leave empty when you don't want to use this option.
       input:
         device_list:
           name: 📱 Devices
-          description: Select the devices.
+          description: >
+            Select the devices.
+          default: ""
           selector:
             entity:
               filter:
                 - domain: device_tracker
               multiple: true
+        media_player:
+          name: 📱 Mediaplayer
+          description: >
+            Select the mediaplayer that should be watched.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: media_player
+              multiple: false
 
     #Setting the section for the time base to turn on (and off) do not disturb
     time_based:
@@ -145,7 +197,7 @@ blueprint:
       icon: mdi:minus-circle-off
       description: >
         Adjust time sensitive working of the blueprint, when enabled to blueprint will not work between the specified hours.
-      collapsed: false
+      collapsed: true
       input:
         do_not_disturb:
           name: "🔇 Do not disturb"
@@ -177,18 +229,21 @@ blueprint:
       icon: mdi:traffic-light
       description: >
         Select the entity for the lights. When multiple lights need to be controlled please create a light [group](https://www.home-assistant.io/integrations/group/) instead of seperate entities!
-      collapsed: false
+      collapsed: true
       input:
         light_entity:
           name: "💡 Light to Control"
-          description: "The light entity whose color and brightness will be updated"
+          description: >
+            The light entity whose color and brightness will be updated
+          default: ""
           selector:
             entity:
               filter:
                 - domain: light
         brightness:
           name: "🔆 Brightness Percentage"
-          description: "Brightness level when turning the light on (0–100%)"
+          description: >
+            Brightness level when turning the light on (0–100%)
           default: 100
           selector:
             number:
@@ -197,7 +252,8 @@ blueprint:
               unit_of_measurement: "%"
         transition_time:
           name: "⏱️ Transition Time"
-          description: "Time in seconds for the light to transition to the new settings"
+          description: >
+            Time in seconds for the light to transition to the new settings
           default: 1
           selector:
             number:
@@ -212,7 +268,7 @@ blueprint:
       icon: mdi:palette
       description: >
         Give each flag it's own color
-      collapsed: false
+      collapsed: true
       input:
         clear_rgb:
           name: "🟩 Clear ('Green')"
@@ -238,7 +294,7 @@ blueprint:
       name: (Virtual) Safety Car
       icon: mdi:car-emergency
       description: Specific settings for a safety car.
-      collapsed: false
+      collapsed: true
       input:
         vsc_rgb:
           name: "🟨 Virtual Safety Car"
@@ -271,8 +327,13 @@ blueprint:
 
 variables:
   devices: !input device_list
+  mediaplayer: !input media_player
   light_id: !input light_entity
   flashing: !input flash_on_sc
+  dnd_state: !input do_not_disturb
+  dnd_start: !input dnd_start
+  dnd_end: !input dnd_end
+  template_config: !input custom_template
 
 #Set the trigger, in this case the input defined in the track_status_sensor
 trigger:
@@ -285,6 +346,10 @@ condition:
     entity_id: !input session_status_sensor
     state: !input session_type_list
 
+  - condition: state
+    entity_id: !input boolean_helper
+    state: "on"
+
   - condition: template
     value_template: >
       {% if devices | length > 0 %}
@@ -293,16 +358,33 @@ condition:
         true
       {% endif %}
 
+  - condition: template
+    value_template: >
+      {% set custom = states(template_config) %}
+      {% if template_config | length > 3 %}
+        {{ template_config }}
+      {% else %}
+        true
+      {% endif %}
+
+  - condition: template
+    value_template: >
+      {% if mediaplayer | length > 0 %}
+        {{ expand(media_player) | selectattr('state', 'in', ['playing', 'on']) | list }}
+      {% else %}
+        true
+      {% endif %}
+
   - condition: not
     conditions:
       - condition: template
         value_template: >
-          {{ is_state('input_boolean.do_not_disturb', 'enabled') }}
+          {{ is_state(dnd_state, 'enabled') }}
       - condition: template
         value_template: >
           {% set now = now().hour * 3600 + now().minute * 60 + now().second %}
-          {% set start_raw = states('input_text.dnd_start') %}
-          {% set end_raw = states('input_text.dnd_end') %}
+          {% set start_raw = states(dnd_start) %}
+          {% set end_raw = states(dnd_end) %}
           {% set start = (start_raw.split(':')[0]|default(0)|int * 3600) + (start_raw.split(':')[1]|default(0)|int * 60) if ':' in start_raw else 0 %}
           {% set end = (end_raw.split(':')[0]|default(0)|int * 3600) + (end_raw.split(':')[1]|default(0)|int * 60) if ':' in end_raw else 0 %}
           {{ (start <= end and start <= now <= end) or (start > end and (now >= start or now <= end)) }}
