@@ -55,11 +55,13 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "race_lap_count": "Race lap count (live)",
                         "race_leader": "Race leader (live)",
                         "driver_favorites": "Favorite drivers (live)",
+                        "driver_list": "Driver list (live)",
                         "last_race_results": "Last race results",
                         "season_results": "Season results",
                         "race_week": "Race week",
                         "track_status": "Track status (live)",
                         "session_status": "Session status (live)",
+                        "current_session": "Current session (live)",
                         "safety_car": "Safety car (live)",
                         "race_order": "Race driver order (live)",
                     }
