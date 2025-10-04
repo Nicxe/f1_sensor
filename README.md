@@ -291,7 +291,13 @@ If the button above does not work, you can also perform the following steps manu
 
 There are several options including time transition, flash and do not disturb. After importing the blueprint and creating a automation with it in the left column is a brief how-to. If you got any questions please open an issue.
 
+
+> [!IMPORTANT]  
+>This blueprint is currently under active development and should be considered **in beta**.  
+>It’s regularly updated as improvements and fixes are made. You can follow the discussion and ongoing development in [this thread](https://github.com/Nicxe/f1_sensor/discussions/110).
+
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FNicxe%2Ff1_sensor%2Fblob%2Fmain%2Fexamples%2Fblueprint.yaml)
+
 
 ### E-ink display
 
