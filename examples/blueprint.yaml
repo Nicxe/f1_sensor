@@ -24,8 +24,8 @@ blueprint:
 
     ## Blueprint settings
 
-    To get the blueprint up and running you need to create a helper [here](https://my.home-assistant.io/redirect/helpers/). Select the boolean ('switch') type and give it a name.
-    If the helper is turned **off* the blueprint don't work! You need to turn it on by default. This could be usefull if you want to overrule the blueprint out of another automation (for example: Turn switch off when you go to sleep)
+    You can create a optional [helper](https://my.home-assistant.io/redirect/helpers/) that can be switched on or off. This is usefull when you want to enable of disable the blueprint really quick.
+    Yes, it's possible to enable or disable the automation itself but that could be harder to implement on a other automation.
 
     ## Track sensors
 
@@ -41,7 +41,7 @@ blueprint:
     ## Device tracker
 
     Here are 2 options:
-    
+
     - Devices gives you the opportunity to monitor if the device is at home.
       - When selecting multiple devices it triggers when at least one device is at home
     - Mediaplayer gives you the opportunity to monitor the state of a mediaplayer, currently only the domain `media_player` is possible
@@ -87,7 +87,7 @@ blueprint:
     ## Custum template
 
     In the custom template section you can create you're own template options. Please be aware that the result needs to be `true` for the blueprint to run. If the return of your template is `false` the blueprint wont run. Leave empty if you don't want to use this option.
-  
+
     </details>
 
   domain: automation
@@ -98,7 +98,7 @@ blueprint:
       name: Blueprint Settings
       icon: mdi:cog-box
       description: >
-        Set the correct values for the blueprint settings. **All settings are required!**
+        Set the correct values for the blueprint settings.
       collapsed: false
       input:
         boolean_helper:
@@ -351,6 +351,7 @@ variables:
   dnd_start: !input dnd_start
   dnd_end: !input dnd_end
   template_config: !input custom_template
+  blueprint_active: !input boolean_helper
 
 #Set the trigger, in this case the input defined in the track_status_sensor
 trigger:
@@ -363,9 +364,13 @@ condition:
     entity_id: !input session_status_sensor
     state: !input session_type_list
 
-  - condition: state
-    entity_id: !input boolean_helper
-    state: "on"
+  - condition: template
+    value_template: >
+      {% if blueprint_active | length > 0 %}
+        {{ (states(blueprint_active) == "on") | iif(true, false) }}
+      {% else %}
+        true
+      {% endif %}
 
   - condition: template
     value_template: >
@@ -378,7 +383,7 @@ condition:
   - condition: template
     value_template: >
       {% set custom = states(template_config) %}
-      {% if template_config | length > 3 %}
+      {% if template_config | length > 0 %}
         {{ template_config }}
       {% else %}
         true
