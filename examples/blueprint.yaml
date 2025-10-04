@@ -364,7 +364,7 @@ condition:
   - condition: template
     value_template: >
       {% if mediaplayer | length > 0 %}
-        {{ is_state(mediaplayer, 'on') }}
+        {{ expand(mediaplayer) | selectattr('state', 'in', ['playing', 'on', 'idle']) | list | count > 0 }}
       {% else %}
         true
       {% endif %}
