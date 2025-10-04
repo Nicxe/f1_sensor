@@ -22,11 +22,6 @@ blueprint:
 
     After that you can change the status off the `Track state` sensor under [developer tools](https://my.home-assistant.io/redirect/developer_states/).
 
-    ## Blueprint settings
-
-    You can create a optional [helper](https://my.home-assistant.io/redirect/helpers/) that can be switched on or off. This is usefull when you want to enable of disable the blueprint really quick.
-    Yes, it's possible to enable or disable the automation itself but that could be harder to implement on a other automation.
-
     ## Track sensors
 
     This section needs to be filled in to communicate between the lights and the data provided by the add-on. 
