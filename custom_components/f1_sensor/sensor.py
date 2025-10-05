@@ -78,9 +78,8 @@ async def async_setup_entry(
         "track_weather",
         "race_lap_count",
         "driver_list",
-        "race_order",
-        "race_leader",
-        "driver_favorites",
+        # TEMP_DISABLED: race_order
+        # TEMP_DISABLED: driver_favorites
         "last_race_results",
         "season_results",
         "race_week",
@@ -116,9 +115,8 @@ async def async_setup_entry(
         "track_status": (F1TrackStatusSensor, data.get("track_status_coordinator")),
         "session_status": (F1SessionStatusSensor, data.get("session_status_coordinator")),
         "current_session": (F1CurrentSessionSensor, data.get("session_info_coordinator")),
-        "race_order": (F1RaceOrderSensor, data.get("drivers_coordinator")),
-        "race_leader": (F1RaceLeaderSensor, data.get("drivers_coordinator")),
-        "driver_favorites": (F1FavoriteDriverCollection, data.get("drivers_coordinator")),
+        # TEMP_DISABLED: "race_order": (F1RaceOrderSensor, data.get("drivers_coordinator")),
+        # TEMP_DISABLED: "driver_favorites": (F1FavoriteDriverCollection, data.get("drivers_coordinator")),
         "driver_list": (F1DriverListSensor, data.get("drivers_coordinator")),
     }
 
@@ -130,7 +128,16 @@ async def async_setup_entry(
                 # Expand into multiple driver sensors from option favorite_tlas
                 tlas = str(entry.data.get("favorite_tlas", "")).strip()
                 tlas_list = [t.strip().upper() for t in tlas.split(",") if t.strip()]
-                for tla in tlas_list:
+                # Deduplicate and cap to 3
+                uniq = []
+                seen = set()
+                for t in tlas_list:
+                    if t not in seen:
+                        seen.add(t)
+                        uniq.append(t)
+                    if len(uniq) >= 3:
+                        break
+                for tla in uniq:
                     sensors.append(
                         F1DriverLiveSensor(
                             coord,
@@ -1236,13 +1243,7 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "Practice 2",
             "Practice 3",
             "Qualifying",
-            "Q1",
-            "Q2",
-            "Q3",
             "Sprint Qualifying",
-            "SQ1",
-            "SQ2",
-            "SQ3",
             "Sprint",
             "Race",
         ]
@@ -1312,22 +1313,16 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         if t == "Practice":
             label = f"Practice {num_i}" if num_i else (name or "Practice")
         elif t == "Qualifying":
-            # Sprint Qualifying vs standard Qualifying
+            # Aggregate all Q1/Q2/Q3 into "Qualifying"; treat Sprint Shootout as Sprint Qualifying
             nm = name.lower()
             is_sprint_quali = nm.startswith("sprint qualifying") or nm.startswith("sprint shootout")
-            if is_sprint_quali:
-                part_map = {1: "SQ1", 2: "SQ2", 3: "SQ3"}
-            else:
-                part_map = {1: "Q1", 2: "Q2", 3: "Q3"}
-            part_label = part_map.get(int(session_part)) if isinstance(session_part, int) else None
-            label = part_label or (name or ("Sprint Qualifying" if is_sprint_quali else "Qualifying"))
+            label = "Sprint Qualifying" if is_sprint_quali else "Qualifying"
         elif t == "Race":
-            # Sprint and Sprint Qualifying are delivered sometimes as Type Race or Qualifying; use Name
-            if name.lower().startswith("sprint qualifying") or name.lower().startswith("sprint shootout"):
-                part_map = {1: "SQ1", 2: "SQ2", 3: "SQ3"}
-                part_label = part_map.get(int(session_part)) if isinstance(session_part, int) else None
-                label = part_label or "Sprint Qualifying"
-            elif name.lower().startswith("sprint"):
+            # Some events report Sprint/Sprint Qualifying under Type "Race" via Name
+            nm = name.lower()
+            if nm.startswith("sprint qualifying") or nm.startswith("sprint shootout"):
+                label = "Sprint Qualifying"
+            elif nm.startswith("sprint"):
                 label = "Sprint"
             else:
                 label = name or "Race"
@@ -1355,9 +1350,23 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def _apply_payload(self, raw: dict) -> None:
         label, meta = self._resolve_label(raw or {})
         status = self._live_status()
-        active = (status == "Started")
-        # Only present a session label while live; otherwise clear state
-        self._attr_native_value = label if active else None
+        # Treat session as ended either by status or when EndDate has passed
+        ended = str(status or "").strip() in ("Finished", "Finalised", "Ends")
+        try:
+            end_iso = raw.get("EndDate")
+            if end_iso and not ended:
+                end_dt = datetime.datetime.fromisoformat(str(end_iso).replace("Z", "+00:00"))
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
+                if datetime.datetime.now(datetime.timezone.utc) >= end_dt:
+                    ended = True
+        except Exception:
+            pass
+        active = (str(status or "").strip() == "Started")
+        if label in ("Qualifying", "Sprint Qualifying"):
+            self._attr_native_value = None if ended else label
+        else:
+            self._attr_native_value = label if active else None
         attrs = dict(meta)
         # Merge common metadata
         try:
@@ -1646,97 +1655,8 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._safe_write_ha_state()
         
 
-class F1RaceLeaderSensor(F1BaseEntity, RestoreEntity, SensorEntity):
-    """Live leader sensor based on consolidated drivers coordinator.
-
-    State: leader TLA. Attributes include identity, gap to P2, last/best laps, lap counts.
-    Persists last known state across restarts until new data arrives. Freezes on session finished/finalised.
-    """
-
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
-        self._attr_icon = "mdi:trophy"
-        self._attr_native_value = None
-        self._attr_extra_state_attributes = {}
-        self._frozen = False
-
-    async def async_added_to_hass(self):
-        await super().async_added_to_hass()
-        # Initialize from coordinator or restore
-        self._update_from_coordinator()
-        try:
-            getLogger(__name__).debug("RaceLeader: Initialized from coordinator -> %s", self._attr_native_value)
-        except Exception:
-            pass
-        if self._attr_native_value is None:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._attr_native_value = last.state
-                self._attr_extra_state_attributes = dict(getattr(last, "attributes", {}) or {})
-                try:
-                    getLogger(__name__).debug("RaceLeader: Restored last state -> %s", last.state)
-                except Exception:
-                    pass
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
-        self.async_write_ha_state()
-
-    def _handle_coordinator_update(self) -> None:
-        prev_state = self._attr_native_value
-        prev_attrs = self._attr_extra_state_attributes
-        self._update_from_coordinator()
-        if prev_state == self._attr_native_value and prev_attrs == self._attr_extra_state_attributes:
-            return
-        try:
-            getLogger(__name__).debug(
-                "RaceLeader: Computed at %s -> %s",
-                dt_util.utcnow().isoformat(timespec="seconds"),
-                self._attr_native_value,
-            )
-        except Exception:
-            pass
-        self.async_write_ha_state()
-
-    def _update_from_coordinator(self) -> None:
-        data = self.coordinator.data or {}
-        self._frozen = bool(data.get("frozen"))
-        leader_rn = data.get("leader_rn")
-        drivers = data.get("drivers", {})
-        leader = drivers.get(leader_rn, {}) if leader_rn else {}
-        ident = leader.get("identity", {})
-        timing = leader.get("timing", {})
-        laps = leader.get("laps", {})
-        tla = ident.get("tla")
-        if tla:
-            self._attr_native_value = tla
-        # Compute gap to P2 by scanning timing positions
-        gap_to_p2 = None
-        try:
-            p2 = None
-            for _rn, info in drivers.items():
-                pos = (info.get("timing", {}) or {}).get("position")
-                if str(pos or "").strip() == "2":
-                    p2 = info
-                    break
-            if isinstance(p2, dict):
-                gap_to_p2 = (p2.get("timing", {}) or {}).get("gap_to_leader")
-        except Exception:
-            gap_to_p2 = None
-        attrs = {
-            "name": ident.get("name"),
-            "team": ident.get("team"),
-            "team_color": ident.get("team_color"),
-            "gap_to_p2": gap_to_p2,
-            "last_lap": timing.get("last_lap"),
-            "best_lap": timing.get("best_lap"),
-            "lap_current": laps.get("lap_current"),
-            "lap_total": laps.get("lap_total"),
-        }
-        self._attr_extra_state_attributes = attrs
-
-    @property
-    def state(self):
-        return self._attr_native_value
+class _Removed:  # keeps line positions stable; no behavior
+    pass
 
 
 class F1RaceOrderSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -1812,6 +1732,7 @@ class F1RaceOrderSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 grid.append(
                     {
                         "position": pos,
+                        "racing_number": ident.get("racing_number") or rn,
                         "tla": ident.get("tla"),
                         "name": ident.get("name"),
                         "team": ident.get("team"),
@@ -1845,6 +1766,9 @@ class F1DriverLiveSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_extra_state_attributes = {}
         self._tla = str(tla or "").upper()
         self._frozen = False
+        # Write coalescing (min 1s between writes per entity)
+        self._last_write_ts: float | None = None
+        self._pending_write: bool = False
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -1877,7 +1801,27 @@ class F1DriverLiveSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             )
         except Exception:
             pass
-        self.async_write_ha_state()
+        # Coalesce writes to at most 1 Hz
+        try:
+            import time as _time
+            now = _time.time()
+            if self._last_write_ts is None or (now - self._last_write_ts) >= 1.0:
+                self._last_write_ts = now
+                self.async_write_ha_state()
+            else:
+                if not self._pending_write:
+                    self._pending_write = True
+                    delay = max(0.0, 1.0 - (now - self._last_write_ts))
+                    from homeassistant.helpers.event import async_call_later as _later
+                    def _do_write(_):
+                        try:
+                            self._last_write_ts = _time.time()
+                            self.async_write_ha_state()
+                        finally:
+                            self._pending_write = False
+                    _later(self.hass, delay, _do_write)
+        except Exception:
+            self.async_write_ha_state()
 
     def _update_from_coordinator(self) -> None:
         data = self.coordinator.data or {}
@@ -1911,17 +1855,12 @@ class F1DriverLiveSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "name": ident.get("name"),
             "team": ident.get("team"),
             "team_color": ident.get("team_color"),
-            "gap_to_leader": timing.get("gap_to_leader"),
-            "interval": timing.get("interval"),
-            "last_lap": timing.get("last_lap"),
-            "best_lap": timing.get("best_lap"),
+            # trimmed: interval, last_lap, best_lap, lap_current, lap_total
             "in_pit": timing.get("in_pit"),
             "retired": timing.get("retired"),
             "compound": tyres.get("compound"),
             "stint_laps": tyres.get("stint_laps"),
             "new": tyres.get("new"),
-            "lap_current": laps.get("lap_current"),
-            "lap_total": laps.get("lap_total"),
         }
         self._attr_extra_state_attributes = attrs
 
@@ -1988,7 +1927,30 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             )
         except Exception:
             pass
-        self.async_write_ha_state()
+        # Rate limit writes to once per 60s
+        try:
+            import time as _time
+            lw = getattr(self, "_last_write_ts", None)
+            now = _time.time()
+            if lw is None or (now - lw) >= 60.0:
+                setattr(self, "_last_write_ts", now)
+                self.async_write_ha_state()
+            else:
+                # Schedule a delayed write at the 60s boundary if not already pending
+                pending = getattr(self, "_pending_write", False)
+                if not pending:
+                    setattr(self, "_pending_write", True)
+                    delay = max(0.0, 60.0 - (now - lw)) if lw is not None else 60.0
+                    from homeassistant.helpers.event import async_call_later as _later
+                    def _do_write(_):
+                        try:
+                            setattr(self, "_last_write_ts", _time.time())
+                            self.async_write_ha_state()
+                        finally:
+                            setattr(self, "_pending_write", False)
+                    _later(self.hass, delay, _do_write)
+        except Exception:
+            self.async_write_ha_state()
 
     def _update_from_coordinator(self) -> None:
         data = self.coordinator.data or {}

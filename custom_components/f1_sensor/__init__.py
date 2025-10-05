@@ -99,14 +99,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if lap_count_coordinator:
         await lap_count_coordinator.async_config_entry_first_refresh()
 
-    # Live consolidated drivers coordinator (TimingData, DriverList, TimingAppData, LapCount, SessionStatus)
-    drivers_coordinator = LiveDriversCoordinator(
-        hass,
-        session_coordinator,
-        delay_seconds=int(entry.data.get("live_delay_seconds", 0) or 0),
-        bus=live_bus,
-    )
-    await drivers_coordinator.async_config_entry_first_refresh()
+    # Conditionally create live drivers coordinator only if any drivers-related sensors are enabled
+    enabled = entry.data.get("enabled_sensors") or []
+    # Only create drivers coordinator if driver_list is enabled (TEMP: race_order/driver_favorites disabled)
+    need_drivers = any(k in enabled for k in ("driver_list",))
+    drivers_coordinator = None
+    if need_drivers:
+        drivers_coordinator = LiveDriversCoordinator(
+            hass,
+            session_coordinator,
+            delay_seconds=int(entry.data.get("live_delay_seconds", 0) or 0),
+            bus=live_bus,
+        )
+        await drivers_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "race_coordinator": race_coordinator,
@@ -868,8 +873,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._state["session_status"] = payload
         try:
             msg = str(payload.get("Status") or payload.get("Message") or "").strip()
+            started_flag = payload.get("Started")
+            # Freeze at session end
             if msg in ("Finished", "Finalised", "Ends"):
                 self._state["frozen"] = True
+            # Unfreeze on new session start or green running
+            elif started_flag is True or msg in ("Started", "Green", "GreenFlag"):
+                self._state["frozen"] = False
         except Exception:
             pass
 
@@ -932,8 +942,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._schedule_deliver()
 
     def _on_sessionstatus(self, ss: dict) -> None:
-        if self._state.get("frozen"):
-            return
+        # Always process SessionStatus so we can transition out of frozen on new sessions
         self._merge_sessionstatus(ss)
         self._schedule_deliver()
 
