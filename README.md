@@ -287,16 +287,11 @@ If the button above does not work, you can also perform the following steps manu
 
 ## Example
 ### Blueprint
-[This Home Assistant blueprint]([https://github.com/Nicxe/f1_sensor/blob/main/examples/blueprint.yaml](https://github.com/EvertJob/F1-Blueprint/blob/main/blueprint/f1.yaml)) by community member [EvertJob](https://github.com/EvertJob) watches your Formula 1 track status sensor and updates a chosen light’s color and brightness to reflect the current track condition. 
 
-There are several options including time transition, flash and do not disturb. After importing the blueprint and creating a automation with it in the left column is a brief how-to. If you got any questions please open an issue.
-
-
-> [!IMPORTANT]  
->This blueprint is currently under active development and should be considered **in beta**.  
->It’s regularly updated as improvements and fixes are made. You can follow the discussion and ongoing development in [this thread](https://github.com/Nicxe/f1_sensor/discussions/110). Please report issues [here](https://github.com/EvertJob/F1-Blueprint/issues/new)
-
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=[https%3A%2F%2Fgithub.com%2FNicxe%2Ff1_sensor%2Fblob%2Fmain%2Fexamples%2Fblueprint.yaml](https://github.com/EvertJob/F1-Blueprint/blob/main/blueprint/f1.yaml))
+> [!NOTE]  
+>The Formula 1 track status blueprint for Home Assistant is now maintained by EvertJob.
+>You can find the latest version and full instructions here:
+>👉 [github.com/EvertJob/F1-Blueprint](https://github.com/EvertJob/F1-Blueprint)
 
 
 ### E-ink display
