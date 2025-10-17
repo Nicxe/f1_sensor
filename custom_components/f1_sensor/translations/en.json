@@ -7,11 +7,13 @@
                     "sensor_name": "Device name",
                     "enabled_sensors": "Enabled sensors",
                     "enable_race_control": "Enable live F1 API (Race Control/Track/Session)",
-                    "live_delay_seconds": "Live update delay (seconds)"
+                    "live_delay_seconds": "Live update delay (seconds)",
+                    "favorite_drivers": "Favorite drivers (enter TLAs, comma-separated)"
                 },
                 "data_description": {
                     "enable_race_control": "Connects to Formula 1 Live Timing via SignalR to receive live updates. If disabled, these live sensors are not created.",
-                    "live_delay_seconds": "Delay delivery of live messages to align with TV broadcast or streams."
+                    "live_delay_seconds": "Delay delivery of live messages to align with TV broadcast or streams.",
+                    "favorite_drivers": "Example: VER, LEC, NOR. Creates one sensor per driver."
                 }
             },
             "reconfigure": {
@@ -20,11 +22,13 @@
                     "sensor_name": "Device name",
                     "enabled_sensors": "Enabled sensors",
                     "enable_race_control": "Enable live F1 API",
-                    "live_delay_seconds": "Live update delay (seconds)"
+                    "live_delay_seconds": "Live update delay (seconds)",
+                    "favorite_drivers": "Favorite drivers (enter TLAs, comma-separated)"
                 },
                 "data_description": {
                     "enable_race_control": "Connects to Formula 1 Live Timing to receive live updates. If disabled, these live sensors are not created.",
-                    "live_delay_seconds": "Delay delivery of live messages to align with TV broadcast or streams."
+                    "live_delay_seconds": "Delay delivery of live messages to align with TV broadcast or streams.",
+                    "favorite_drivers": "Example: VER, LEC, NOR. Creates one sensor per driver."
                 }
             }
         }
@@ -37,6 +41,7 @@
             "constructor_standings": {"name": "Constructor standings"},
             "weather": {"name": "Weather"},
             "track_weather": {"name": "Track weather"},
+            "current_session": {"name": "Current session"},
             "last_race_results": {"name": "Last race results"},
             "season_results": {"name": "Season results"},
             "safety_car": {"name": "Safety car"}

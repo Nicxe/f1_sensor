@@ -24,6 +24,7 @@
       "driver_standings": { "name": "Kørerstilling" },
       "constructor_standings": { "name": "Konstruktørstilling" },
       "weather": { "name": "Vejr" },
+      "current_session": { "name": "Aktuel session" },
       "last_race_results": { "name": "Resultater fra sidste løb" },
       "season_results": { "name": "Sæsonresultater" },
       "safety_car": { "name": "Sikkerhedsbil" }

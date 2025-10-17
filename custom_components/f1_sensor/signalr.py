@@ -2,7 +2,8 @@ import json
 import logging
 import datetime as dt
 import asyncio
-from typing import AsyncGenerator
+import time
+from typing import AsyncGenerator, Callable, Dict, List, Optional
 
 from aiohttp import ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
@@ -13,11 +14,22 @@ NEGOTIATE_URL = "https://livetiming.formula1.com/signalr/negotiate"
 CONNECT_URL = "wss://livetiming.formula1.com/signalr/connect"
 HUB_DATA = '[{"name":"Streaming"}]'
 
-# Subscribe to RaceControl, TrackStatus, SessionStatus, WeatherData and LapCount streams
+# Subscribe to core live streams used across the integration
+# Added: TimingData, DriverList, TimingAppData to support driver sensors
 SUBSCRIBE_MSG = {
     "H": "Streaming",
     "M": "Subscribe",
-    "A": [["RaceControlMessages", "TrackStatus", "SessionStatus", "WeatherData", "LapCount"]],
+    "A": [[
+        "RaceControlMessages",
+        "TrackStatus",
+        "SessionStatus",
+        "WeatherData",
+        "LapCount",
+        "SessionInfo",
+        "TimingData",
+        "DriverList",
+        "TimingAppData",
+    ]],
     "I": 1,
 }
 
@@ -66,7 +78,7 @@ class SignalRClient:
         self._t0 = dt.datetime.now(dt.timezone.utc)
         self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
-        _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData and LapCount")
+        _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, LapCount, SessionInfo, TimingData, DriverList, TimingAppData")
 
     async def _ensure_connection(self) -> None:
         """Try to (re)connect using exponential back-off."""
@@ -95,64 +107,16 @@ class SignalRClient:
                     payload = json.loads(msg.data)
                 except json.JSONDecodeError:
                     continue
-                _LOGGER.debug("Stream payload %s: %s", index, payload)
+                # Per-message payload logging suppressed to reduce verbosity
 
                 if "M" in payload:
                     for hub_msg in payload["M"]:
                         if hub_msg.get("M") == "feed":
                             stream_name = hub_msg["A"][0]
-                            if stream_name == "RaceControlMessages":
-                                try:
-                                    _LOGGER.debug("Race control message: %s", hub_msg["A"][1])
-                                except Exception:  # noqa: BLE001 - defensive logging
-                                    _LOGGER.debug("Race control message received (unparsed)")
-                            elif stream_name == "TrackStatus":
-                                # Log TrackStatus updates at debug level similar to RaceControl
-                                try:
-                                    _LOGGER.debug("Track status message: %s", hub_msg["A"][1])
-                                except Exception:  # noqa: BLE001 - defensive logging
-                                    _LOGGER.debug("Track status message received (unparsed)")
-                            elif stream_name == "SessionStatus":
-                                try:
-                                    _LOGGER.debug("Session status message: %s", hub_msg["A"][1])
-                                except Exception:  # noqa: BLE001 - defensive logging
-                                    _LOGGER.debug("Session status message received (unparsed)")
-                            elif stream_name == "WeatherData":
-                                try:
-                                    _LOGGER.debug("Weather data message: %s", hub_msg["A"][1])
-                                except Exception:  # noqa: BLE001 - defensive logging
-                                    _LOGGER.debug("Weather data message received (unparsed)")
-                            elif stream_name == "LapCount":
-                                try:
-                                    _LOGGER.debug("Lap count message: %s", hub_msg["A"][1])
-                                except Exception:  # noqa: BLE001 - defensive logging
-                                    _LOGGER.debug("Lap count message received (unparsed)")
+                            # Per-message logging suppressed (summarized by LiveBus)
                 elif "R" in payload:
-                    if "RaceControlMessages" in payload["R"]:
-                        try:
-                            _LOGGER.debug("Race control message: %s", payload["R"]["RaceControlMessages"]) 
-                        except Exception:  # noqa: BLE001 - defensive logging
-                            _LOGGER.debug("Race control message received (unparsed)")
-                    if "TrackStatus" in payload["R"]:
-                        try:
-                            _LOGGER.debug("Track status message: %s", payload["R"]["TrackStatus"]) 
-                        except Exception:  # noqa: BLE001 - defensive logging
-                            _LOGGER.debug("Track status message received (unparsed)")
-                    if "SessionStatus" in payload["R"]:
-                        try:
-                            _LOGGER.debug("Session status message: %s", payload["R"]["SessionStatus"]) 
-                        except Exception:  # noqa: BLE001 - defensive logging
-                            _LOGGER.debug("Session status message received (unparsed)")
-                    if "WeatherData" in payload["R"]:
-                        try:
-                            _LOGGER.debug("Weather data message: %s", payload["R"]["WeatherData"]) 
-                        except Exception:  # noqa: BLE001 - defensive logging
-                            _LOGGER.debug("Weather data message received (unparsed)")
-                    if "LapCount" in payload["R"]:
-                        try:
-                            _LOGGER.debug("Lap count message: %s", payload["R"]["LapCount"]) 
-                        except Exception:  # noqa: BLE001 - defensive logging
-                            _LOGGER.debug("Lap count message received (unparsed)")
+                    # Per-message RPC logging suppressed
+                    pass
 
                 index += 1
                 yield payload
@@ -185,3 +149,164 @@ class SignalRClient:
         if self._ws is not None:
             await self._ws.close()
             self._ws = None
+
+
+class LiveBus:
+    """Single shared SignalR connection with per-stream subscribers.
+
+    Subscribers receive already-extracted stream payloads (e.g. dict for "TrackStatus").
+    """
+
+    def __init__(self, hass: HomeAssistant, session: ClientSession) -> None:
+        self._hass = hass
+        self._session = session
+        self._client: Optional[SignalRClient] = None
+        self._task: Optional[asyncio.Task] = None
+        self._subs: Dict[str, List[Callable[[dict], None]]] = {}
+        self._running = False
+        # Lightweight per-stream counters for DEBUG summaries
+        self._cnt: Dict[str, int] = {}
+        self._last_ts: Dict[str, float] = {}
+        self._last_logged: float = time.time()
+        self._log_interval: float = 10.0  # seconds
+        # Cache last payload per stream so new subscribers receive latest snapshot immediately
+        self._last_payload: Dict[str, dict] = {}
+
+    def subscribe(self, stream: str, callback: Callable[[dict], None]) -> Callable[[], None]:
+        lst = self._subs.setdefault(stream, [])
+        lst.append(callback)
+
+        # Immediately replay last payload for this stream (if available)
+        try:
+            if stream in self._last_payload:
+                data = self._last_payload.get(stream)
+                if isinstance(data, dict):
+                    try:
+                        callback(data)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        def _unsub() -> None:
+            try:
+                if stream in self._subs and callback in self._subs[stream]:
+                    self._subs[stream].remove(callback)
+                    if not self._subs[stream]:
+                        self._subs.pop(stream, None)
+            except Exception:
+                pass
+
+        return _unsub
+
+    async def start(self) -> None:
+        if self._running:
+            return
+        self._running = True
+        self._client = SignalRClient(self._hass, self._session)
+        self._task = self._hass.loop.create_task(self._run())
+
+    async def _run(self) -> None:
+        assert self._client is not None
+        try:
+            while self._running:
+                try:
+                    await self._client._ensure_connection()
+                    async for payload in self._client.messages():
+                        # Dispatch feed messages by stream name
+                        try:
+                            if isinstance(payload, dict):
+                                # Live feed frames under "M" with hub messages
+                                msgs = payload.get("M")
+                                if isinstance(msgs, list):
+                                    for hub_msg in msgs:
+                                        try:
+                                            if hub_msg.get("M") == "feed":
+                                                args = hub_msg.get("A", [])
+                                                if len(args) >= 2:
+                                                    stream = args[0]
+                                                    data = args[1]
+                                                    # Cache latest even if no subscribers yet
+                                                    if isinstance(data, dict):
+                                                        self._last_payload[stream] = data
+                                                    # Dispatch to current subscribers (if any)
+                                                    if stream in self._subs:
+                                                        self._dispatch(stream, data)
+                                        except Exception:  # noqa: BLE001
+                                            continue
+                                # RPC results under "R" (rare)
+                                result = payload.get("R")
+                                if isinstance(result, dict):
+                                    for key, value in result.items():
+                                        # Cache last payload for key
+                                        if isinstance(value, dict):
+                                            self._last_payload[key] = value
+                                        # Dispatch if there are subscribers now
+                                        if key in self._subs:
+                                            self._dispatch(key, value)
+                        except Exception:  # noqa: BLE001
+                            continue
+                except Exception as err:  # pragma: no cover - network errors
+                    _LOGGER.warning("LiveBus websocket error: %s", err)
+                finally:
+                    if self._client:
+                        await self._client.close()
+                # Periodic compact DEBUG summary
+                self._maybe_log_summary()
+        except asyncio.CancelledError:
+            pass
+
+    def _dispatch(self, stream: str, data: dict) -> None:
+        try:
+            # Update counters
+            self._cnt[stream] = self._cnt.get(stream, 0) + 1
+            self._last_ts[stream] = time.time()
+            # Cache last payload for new subscribers
+            if isinstance(data, dict):
+                self._last_payload[stream] = data
+            callbacks = list(self._subs.get(stream, []) or [])
+            for cb in callbacks:
+                try:
+                    cb(data)
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _maybe_log_summary(self) -> None:
+        if not _LOGGER.isEnabledFor(logging.DEBUG):
+            return
+        now = time.time()
+        if (now - self._last_logged) < self._log_interval:
+            return
+        self._last_logged = now
+        try:
+            parts: List[str] = []
+            for stream, count in sorted(self._cnt.items()):
+                last_age = None
+                try:
+                    last_age = now - self._last_ts.get(stream, now)
+                except Exception:
+                    last_age = None
+                if last_age is not None:
+                    parts.append(f"{stream}:{count} (last {last_age:.1f}s)")
+                else:
+                    parts.append(f"{stream}:{count}")
+            if parts:
+                _LOGGER.debug("LiveBus summary (last %.0fs): %s", self._log_interval, ", ".join(parts))
+            # Reset window counters
+            for k in list(self._cnt.keys()):
+                self._cnt[k] = 0
+        except Exception:
+            pass
+
+    # Debug helpers removed to keep options surface minimal
+
+    async def async_close(self) -> None:
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            self._task = None
+        if self._client:
+            await self._client.close()
+            self._client = None

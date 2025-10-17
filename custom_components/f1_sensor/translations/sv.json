@@ -7,11 +7,13 @@
           "sensor_name": "Enhetsnamn",
           "enabled_sensors": "Aktiverade sensorer",
           "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
-          "live_delay_seconds": "Fördröjning för liveuppdateringar (sekunder)"
+          "live_delay_seconds": "Fördröjning för liveuppdateringar (sekunder)",
+          "favorite_drivers": "Favoritförare (ange TLA, separera med kommatecken)"
         },
         "data_description": {
           "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
-          "live_delay_seconds": "Fördröj leverans av live‑meddelanden för att synka med TV‑sändning eller stream."
+          "live_delay_seconds": "Fördröj leverans av live‑meddelanden för att synka med TV‑sändning eller stream.",
+          "favorite_drivers": "Exempel: VER, LEC, NOR. Skapar en sensor per förare."
         }
       },
       "reconfigure": {
@@ -20,11 +22,13 @@
           "sensor_name": "Enhetsnamn",
           "enabled_sensors": "Aktiverade sensorer",
           "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
-          "live_delay_seconds": "Fördröjning för liveuppdateringar (sekunder)"
+          "live_delay_seconds": "Fördröjning för liveuppdateringar (sekunder)",
+          "favorite_drivers": "Favoritförare (ange TLA, separera med kommatecken)"
         },
         "data_description": {
           "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
-          "live_delay_seconds": "Fördröj leverans av live‑meddelanden för att synka med TV‑sändning eller stream."
+          "live_delay_seconds": "Fördröj leverans av live‑meddelanden för att synka med TV‑sändning eller stream.",
+          "favorite_drivers": "Exempel: VER, LEC, NOR. Skapar en sensor per förare."
         }
       }
     }
@@ -37,6 +41,7 @@
       "constructor_standings": { "name": "Konstruktorställning" },
       "weather": { "name": "Väder" },
       "track_weather": { "name": "Bana väder" },
+      "current_session": { "name": "Aktuell session" },
       "last_race_results": { "name": "Resultat från senaste loppet" },
       "season_results": { "name": "Säsongsresultat" },
       "safety_car": { "name": "Säkerhetsbil" }
