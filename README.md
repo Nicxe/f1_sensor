@@ -35,10 +35,14 @@ It is designed for users who want to build automations, scripts, notifications, 
 | sensor.f1_track_status            | LIVE - Current track status (CLEAR, YELLOW, VSC, SC, RED)                              | 
 | binary_sensor.f1_safety_car       | LIVE - `on` when Safety Car (SC) or Virtual Safety Car (VSC) is active                 | 
 | sensor.f1_track_weather           | LIVE - Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)     |
-| sensor.f1_race_lap_count          | LIVE - Current race lap number (only updates during a race, not during practice/qualy) | 
+| sensor.f1_race_lap_count          | LIVE - Current race lap number (only updates during a race, not during practice/qualy) |
+| sensor.f1_current_session         | LIVE - Current ongoing session, like Practice 1, Qualification, Race                   | 
+| sensor.f1_driver_list             | Show list and details on all drivers, including team color, headshot URL etc from the Live API          | 
 
 
 ---
+
+
 
 
 ### Live data setup
@@ -52,6 +56,8 @@ When adding or reconfiguring the integration, you can choose to enable live data
   - `binary_sensor.f1_safety_car`
   - `sensor.f1_track_weather`
   - `sensor.f1_race_lap_count`
+  - `sensor.f1_current_session`
+  - `sensor.f1_driver_list`
 
   If this option is not selected, these live sensors are not created.
 
