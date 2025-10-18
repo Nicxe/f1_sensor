@@ -21,3 +21,22 @@ class F1BaseEntity(CoordinatorEntity):
             "manufacturer": "Nicxe",
             "model": "F1 Sensor",
         }
+
+    def _safe_write_ha_state(self) -> None:
+        try:
+            import asyncio as _asyncio
+            in_loop = False
+            try:
+                running = _asyncio.get_running_loop()
+                in_loop = running is self.hass.loop
+            except RuntimeError:
+                in_loop = False
+            if in_loop:
+                self.async_write_ha_state()
+            else:
+                self.schedule_update_ha_state()
+        except Exception:
+            try:
+                self.schedule_update_ha_state()
+            except Exception:
+                pass

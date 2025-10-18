@@ -1350,7 +1350,7 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def _apply_payload(self, raw: dict) -> None:
         label, meta = self._resolve_label(raw or {})
         status = self._live_status()
-        # Treat session as ended either by status or when EndDate has passed
+        # Treat session as ended by explicit status; only use EndDate as a soft fallback with grace
         ended = str(status or "").strip() in ("Finished", "Finalised", "Ends")
         try:
             end_iso = raw.get("EndDate")
@@ -1358,8 +1358,12 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 end_dt = datetime.datetime.fromisoformat(str(end_iso).replace("Z", "+00:00"))
                 if end_dt.tzinfo is None:
                     end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
-                if datetime.datetime.now(datetime.timezone.utc) >= end_dt:
-                    ended = True
+                now_utc = datetime.datetime.now(datetime.timezone.utc)
+                # Consider EndDate only if we are well past it and no active/green status is present
+                if now_utc >= (end_dt + datetime.timedelta(minutes=5)):
+                    st = str(status or "").strip()
+                    if st not in ("Started", "Green", "GreenFlag"):
+                        ended = True
         except Exception:
             pass
         active = (str(status or "").strip() == "Started")
@@ -1395,6 +1399,16 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         except Exception:
             pass
         self._attr_extra_state_attributes = attrs
+        try:
+            getLogger(__name__).debug(
+                "CurrentSession apply: label=%s status=%s ended=%s active=%s",
+                label,
+                status,
+                ended,
+                active,
+            )
+        except Exception:
+            pass
 
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
@@ -1807,7 +1821,7 @@ class F1DriverLiveSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             now = _time.time()
             if self._last_write_ts is None or (now - self._last_write_ts) >= 1.0:
                 self._last_write_ts = now
-                self.async_write_ha_state()
+                self._safe_write_ha_state()
             else:
                 if not self._pending_write:
                     self._pending_write = True
@@ -1816,12 +1830,12 @@ class F1DriverLiveSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     def _do_write(_):
                         try:
                             self._last_write_ts = _time.time()
-                            self.async_write_ha_state()
+                            self._safe_write_ha_state()
                         finally:
                             self._pending_write = False
                     _later(self.hass, delay, _do_write)
         except Exception:
-            self.async_write_ha_state()
+            self._safe_write_ha_state()
 
     def _update_from_coordinator(self) -> None:
         data = self.coordinator.data or {}
@@ -1934,7 +1948,7 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             now = _time.time()
             if lw is None or (now - lw) >= 60.0:
                 setattr(self, "_last_write_ts", now)
-                self.async_write_ha_state()
+                self._safe_write_ha_state()
             else:
                 # Schedule a delayed write at the 60s boundary if not already pending
                 pending = getattr(self, "_pending_write", False)
@@ -1945,12 +1959,12 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     def _do_write(_):
                         try:
                             setattr(self, "_last_write_ts", _time.time())
-                            self.async_write_ha_state()
+                            self._safe_write_ha_state()
                         finally:
                             setattr(self, "_pending_write", False)
                     _later(self.hass, delay, _do_write)
         except Exception:
-            self.async_write_ha_state()
+            self._safe_write_ha_state()
 
     def _update_from_coordinator(self) -> None:
         data = self.coordinator.data or {}
