@@ -1177,11 +1177,14 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         self._last_message = None
         self.data_list: list[dict] = []
         self._deliver_handle: Optional[asyncio.Handle] = None
+        self._deliver_handles: list[asyncio.Handle] = []
         self._bus = bus
         self._unsub: Optional[Callable[[], None]] = None
         self._t0 = None
         self._startup_cutoff = None
         self._delay = max(0, int(delay_seconds or 0))
+        # Lightweight dedupe of untimestamped repeats
+        self._last_untimestamped_fingerprint: str | None = None
 
     async def async_close(self, *_):
         if self._unsub:
@@ -1196,6 +1199,16 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._deliver_handle = None
+        # Cancel any queued delayed deliveries
+        try:
+            for h in list(self._deliver_handles):
+                try:
+                    h.cancel()
+                except Exception:
+                    pass
+            self._deliver_handles.clear()
+        except Exception:
+            pass
 
     async def _async_update_data(self):
         return self._last_message
@@ -1220,16 +1233,36 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
                     return
         except Exception:
             pass
-        if self._delay > 0:
+        # Dedupe untimestamped exact repeats to avoid flooding when delayed
+        try:
+            has_ts = any(k in msg for k in ("Utc", "utc", "processedAt", "timestamp"))
+        except Exception:
+            has_ts = False
+        if not has_ts:
             try:
-                if self._deliver_handle:
-                    self._deliver_handle.cancel()
+                fp = json.dumps({
+                    "Status": msg.get("Status"),
+                    "Message": msg.get("Message") or msg.get("TrackStatus")
+                }, sort_keys=True, default=str)
+                if self._last_untimestamped_fingerprint == fp:
+                    return
+                self._last_untimestamped_fingerprint = fp
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_later(
-                self._delay, lambda m=msg: self._deliver(m)
-            )
+
+        if self._delay > 0:
+            # Queue each delivery independently so intermediate states (e.g. YELLOW) survive
+            try:
+                handle = self.hass.loop.call_later(self._delay, lambda m=msg: self._deliver(m))
+                self._deliver_handles.append(handle)
+            except Exception:
+                # Fallback to immediate delivery
+                try:
+                    self._deliver(msg)
+                except Exception:
+                    pass
         else:
+            # Immediate delivery; keep legacy single-handle for symmetry
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
