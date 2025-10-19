@@ -22,6 +22,7 @@ from .const import (
     LIVETIMING_INDEX_URL,
     PLATFORMS,
     SEASON_RESULTS_URL,
+    SPRINT_RESULTS_URL,
     LATEST_TRACK_STATUS,
 )
 from .signalr import LiveBus
@@ -43,6 +44,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     season_results_coordinator = F1SeasonResultsCoordinator(
         hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator"
+    )
+    sprint_results_coordinator = F1SprintResultsCoordinator(
+        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator"
     )
     year = datetime.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year)
@@ -85,6 +89,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await constructor_coordinator.async_config_entry_first_refresh()
     await last_race_coordinator.async_config_entry_first_refresh()
     await season_results_coordinator.async_config_entry_first_refresh()
+    await sprint_results_coordinator.async_config_entry_first_refresh()
     await session_coordinator.async_config_entry_first_refresh()
     if track_status_coordinator:
         await track_status_coordinator.async_config_entry_first_refresh()
@@ -119,6 +124,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "constructor_coordinator": constructor_coordinator,
         "last_race_coordinator": last_race_coordinator,
         "season_results_coordinator": season_results_coordinator,
+        "sprint_results_coordinator": sprint_results_coordinator,
         "session_coordinator": session_coordinator,
         "track_status_coordinator": track_status_coordinator,
         "session_status_coordinator": session_status_coordinator,
@@ -1120,6 +1126,33 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise UpdateFailed(f"Error fetching season results: {err}") from err
 
+
+class F1SprintResultsCoordinator(DataUpdateCoordinator):
+    """Fetch sprint results for the current season (single, non-paginated endpoint)."""
+
+    def __init__(self, hass: HomeAssistant, url: str, name: str):
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=name,
+            update_interval=timedelta(hours=1),
+        )
+        self._session = async_get_clientsession(hass)
+        self._url = url
+
+    async def async_close(self, *_):
+        return
+
+    async def _async_update_data(self):
+        try:
+            async with async_timeout.timeout(10):
+                async with self._session.get(self._url) as response:
+                    if response.status != 200:
+                        raise UpdateFailed(f"Error fetching data: {response.status}")
+                    text = await response.text()
+                    return json.loads(text.lstrip("\ufeff"))
+        except Exception as err:
+            raise UpdateFailed(f"Error fetching sprint results: {err}") from err
 
 class LiveSessionCoordinator(DataUpdateCoordinator):
     """Fetch current or next session from the LiveTiming index."""
