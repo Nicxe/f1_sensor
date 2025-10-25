@@ -1812,21 +1812,7 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        init = self._extract_current()
-        if init is not None:
-            self._apply_payload(init)
-            try:
-                getLogger(__name__).debug("CurrentSession: Initialized from coordinator: %s", init)
-            except Exception:
-                pass
-        else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._attr_native_value = last.state
-                try:
-                    getLogger(__name__).debug("CurrentSession: Restored last state: %s", last.state)
-                except Exception:
-                    pass
+        # Wire listeners first so _live_status() reflects current coordinator state
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
         # Also listen to SessionStatus so we can clear state when session ends
@@ -1838,6 +1824,61 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 self.async_on_remove(rem2)
         except Exception:
             self._status_coordinator = None
+
+        # Restore last known state immediately; prevents unknown on restart mid-session
+        last = await self.async_get_last_state()
+        if last and last.state not in (None, "unknown", "unavailable"):
+            # Restore last attributes as well for better end-detection and UI context
+            attrs = dict(getattr(last, "attributes", {}) or {})
+            self._attr_extra_state_attributes = attrs
+            # If saved payload indicates the session ended long ago, clear state on startup
+            ended_by_attrs = False
+            try:
+                end_iso = attrs.get("end") or attrs.get("EndDate")
+                if end_iso:
+                    end_dt = datetime.datetime.fromisoformat(str(end_iso).replace("Z", "+00:00"))
+                    if end_dt.tzinfo is None:
+                        end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
+                    now_utc = datetime.datetime.now(datetime.timezone.utc)
+                    if now_utc >= (end_dt + datetime.timedelta(minutes=5)):
+                        # Also consider live status if available
+                        st = str(self._live_status() or "").strip()
+                        if st not in ("Started", "Green", "GreenFlag"):
+                            ended_by_attrs = True
+            except Exception:
+                ended_by_attrs = False
+            if ended_by_attrs:
+                # Keep last label in attributes, but clear current state
+                if last.state:
+                    try:
+                        self._attr_extra_state_attributes = dict(attrs)
+                        self._attr_extra_state_attributes.setdefault("last_label", last.state)
+                        self._attr_extra_state_attributes["active"] = False
+                    except Exception:
+                        pass
+                self._attr_native_value = None
+                try:
+                    getLogger(__name__).debug(
+                        "CurrentSession: Restored as ended (cleared) based on saved end=%s", attrs.get("end") or attrs.get("EndDate")
+                    )
+                except Exception:
+                    pass
+            else:
+                self._attr_native_value = last.state
+                try:
+                    getLogger(__name__).debug("CurrentSession: Restored last state: %s", last.state)
+                except Exception:
+                    pass
+
+        # Initialize from coordinator if available, but avoid clearing state at startup
+        init = self._extract_current()
+        if init is not None:
+            self._apply_payload(init, allow_clear=False)
+            try:
+                getLogger(__name__).debug("CurrentSession: Initialized from coordinator (no clear on startup): %s", init)
+            except Exception:
+                pass
+
         self.async_write_ha_state()
 
     def _extract_current(self) -> dict | None:
@@ -1908,7 +1949,7 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             return None
         return None
 
-    def _apply_payload(self, raw: dict) -> None:
+    def _apply_payload(self, raw: dict, allow_clear: bool = True) -> None:
         label, meta = self._resolve_label(raw or {})
         status = self._live_status()
         # Treat session as ended by explicit status; only use EndDate as a soft fallback with grace
@@ -1928,10 +1969,16 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         except Exception:
             pass
         active = (str(status or "").strip() == "Started")
+        desired_state = None
         if label in ("Qualifying", "Sprint Qualifying"):
-            self._attr_native_value = None if ended else label
+            desired_state = None if ended else label
         else:
-            self._attr_native_value = label if active else None
+            desired_state = label if active else None
+        # On startup we may not yet have live status; avoid clearing to unknown
+        if desired_state is None and not allow_clear:
+            # Do not substitute the label on startup for ended/inactive sessions; keep prior value only
+            desired_state = self._attr_native_value
+        self._attr_native_value = desired_state
         attrs = dict(meta)
         # Merge common metadata
         try:
