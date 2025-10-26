@@ -984,10 +984,24 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        data = hass.data[DOMAIN].pop(entry.entry_id)
-        for coordinator in data.values():
-            await coordinator.async_close()
+    # Proceed with best-effort cleanup even if unload_ok is False, but keep return value
+    try:
+        data_root = hass.data.get(DOMAIN)
+        data = None
+        if isinstance(data_root, dict):
+            data = data_root.pop(entry.entry_id, None)
+        if isinstance(data, dict):
+            for name, obj in list(data.items()):
+                if obj is None:
+                    continue
+                close = getattr(obj, "async_close", None)
+                if callable(close):
+                    try:
+                        await close()
+                    except Exception as err:  # noqa: BLE001
+                        _LOGGER.debug("Error during %s async_close: %s", name, err)
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Error during entry data cleanup: %s", err)
     return unload_ok
 
 
