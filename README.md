@@ -43,8 +43,51 @@ It is designed for users who want to build automations, scripts, notifications, 
 
 
 ---
+## Installation
+
+You can install this integration as a custom repository by following one of these guides:
+
+### With HACS (Recommended)
+
+To install the custom component using HACS:
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Nicxe&repository=f1_sensor&category=integration)
+
+or
+1. Install HACS if you don't have it already
+2. Open HACS in Home Assistant
+3. Search for "F1 Sensor"
+4. Click the download button. ⬇️
 
 
+<details>
+<summary>Without HACS</summary>
+
+1. Download the latest release of the F1 Sensor integration from **[GitHub Releases](https://github.com/Nicxe/f1_sensor/releases)**.
+2. Extract the downloaded files and place the `f1_sensor` folder in your Home Assistant `custom_components` directory (usually located in the `config/custom_components` directory).
+3. Restart your Home Assistant instance to load the new integration.
+
+</details>
+
+---
+
+## Configuration
+
+To add the integration to your Home Assistant instance, use the button below:
+
+[![Open your Home Assistant instance and start configuration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start?domain=f1_sensor)
+
+### Manual Configuration
+
+If the button above does not work, you can also perform the following steps manually:
+
+1. Browse to your Home Assistant instance.
+2. Go to **Settings > Devices & Services**.
+3. In the bottom right corner, select the **Add Integration** button.
+4. From the list, select **F1 Sensor**.
+5. Follow the on-screen instructions to complete the setup.
+
+---
 
 
 ### Live data setup
@@ -246,52 +289,6 @@ recorder:
 ```
 
 ---
-
-## Installation
-
-You can install this integration as a custom repository by following one of these guides:
-
-### With HACS (Recommended)
-
-To install the custom component using HACS:
-
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Nicxe&repository=f1_sensor&category=integration)
-
-or
-1. Install HACS if you don't have it already
-2. Open HACS in Home Assistant
-3. Search for "F1 Sensor"
-4. Click the download button. ⬇️
-
-
-<details>
-<summary>Without HACS</summary>
-
-1. Download the latest release of the F1 Sensor integration from **[GitHub Releases](https://github.com/Nicxe/f1_sensor/releases)**.
-2. Extract the downloaded files and place the `f1_sensor` folder in your Home Assistant `custom_components` directory (usually located in the `config/custom_components` directory).
-3. Restart your Home Assistant instance to load the new integration.
-
-</details>
-
----
-
-## Configuration
-
-To add the integration to your Home Assistant instance, use the button below:
-
-[![Open your Home Assistant instance and start configuration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start?domain=f1_sensor)
-
-### Manual Configuration
-
-If the button above does not work, you can also perform the following steps manually:
-
-1. Browse to your Home Assistant instance.
-2. Go to **Settings > Devices & Services**.
-3. In the bottom right corner, select the **Add Integration** button.
-4. From the list, select **F1 Sensor**.
-5. Follow the on-screen instructions to complete the setup.
-
-<br>
 
 ## Example
 ### Season Progression Charts
