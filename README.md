@@ -1,11 +1,16 @@
 # F1 Sensor for Home Assistant
 
 ![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=)
-<img alt="Maintenance" src="https://img.shields.io/maintenance/yes/2025"> <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/Nicxe/f1_sensor"><br><br>
-<img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/f1_sensor">
+<img alt="Maintenance" src="https://img.shields.io/maintenance/yes/2025"> <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/Nicxe/f1_sensor"> <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/f1_sensor">
+<br>
+
+
+[![HA Community forum](https://img.shields.io/badge/Home%20Assistant-Community%20Forum-319fee?logo=home-assistant)](https://community.home-assistant.io/t/formula-1-racing-sensor/880842)
 
 
 ## What is F1 Sensor?
+
+![F1SensorFlag-ezgif com-video-to-gif-converter (5)](https://github.com/user-attachments/assets/18a74679-76e2-4d10-8a0d-d3f111c42593)
 
 This is a custom integration for Home Assistant that creates sensors using data from the [Jolpica-F1 API](https://github.com/jolpica/jolpica-f1).  
 
@@ -13,10 +18,6 @@ It also fetches live data from Formula 1’s unofficial **Live Timing API** duri
 
 It is designed for users who want to build automations, scripts, notifications, TTS messages, or more advanced use cases such as generating dynamic dashboards, triggering race-day routines, syncing events to calendars, or integrating with external services based on upcoming Formula 1 events.  
 
-
-> [!TIP]
->Visit the [F1 Sensor Community at Home Assistant Community Forum](https://community.home-assistant.io/t/formula-1-racing-sensor/) to share your project and get help and inspiration.
->Visit  to share you procejt and get help and inspiration
 
 
 #### ENTITIES
@@ -116,7 +117,7 @@ When adding or reconfiguring the integration, you can choose to enable live data
 
   By setting the delay accordingly, your Home Assistant automations (for example flashing lights on a red flag) can sync more closely with the live pictures you are watching.
 
-![F1SensorFlag-ezgif com-video-to-gif-converter (5)](https://github.com/user-attachments/assets/18a74679-76e2-4d10-8a0d-d3f111c42593)
+
 
 
 
@@ -506,14 +507,6 @@ Community user Tiidler has used the sensors from this integration to create a fu
 
 
 ---
-
-
-> [!NOTE]  
-> ### Support the API that makes this possible  
-> This integration relies entirely on the amazing [Jolpica-F1 API](https://github.com/jolpica/jolpica-f1), which provides high-quality and up-to-date Formula 1 data for free.  
-> If you find this integration useful, please consider supporting the creator of the API by donating to their Ko-fi page: [https://ko-fi.com/jolpic](https://ko-fi.com/jolpic)  
-> Without this API, this integration would not be possible, so any support helps keep it live and maintained. 🙏
-
 
 
 ## Contributing
