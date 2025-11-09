@@ -32,9 +32,9 @@ It’s accurate, fast, and easy to set up , designed for both live excitement an
 
 ---
 
-### Quick start
+### Getting Started
 
-Ready to give it a try? Start with the [**installation guide**](/getting-started/installation), then jump into the [**Configuration**](/getting-started/add-integration) to set up the integration.
+Ready to give it a try? Start with the [**installation guide**](/getting-started/installation), then jump into the [**configuration**](/getting-started/add-integration) to set up the integration.
 
 ### Showcase
 

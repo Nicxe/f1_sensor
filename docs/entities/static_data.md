@@ -20,7 +20,7 @@ Information that rarely changes, such as schedules, drivers, circuits, and champ
 | [sensor.f1_season_results](#season-results)                                       | All season race results                           | 
 | [sensor.f1_driver_points_progression](#driver-points-progression)                 | Drivers Point Progression                         | 
 | [sensor.f1_constructor_points_progression](#constructor-points-progression)       | Constructors Point Progression                    | 
-| [binary_sensor.f1_race_week](#session-status)                                     | `on` during race week                             | 
+| [binary_sensor.f1_race_week](#race-week)                                     | `on` during race week                             | 
 
 ::::info
 Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In addition, a `_local` variant such as `race_start_local` is available. These values use the circuit's timezone so you can easily create automations at the correct local time.

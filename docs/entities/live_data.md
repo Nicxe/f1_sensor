@@ -16,15 +16,15 @@ The data for these entities comes from the F1 Live Timing API, which is unoffici
 
 ### Entities Summary
 
-| Entity                                                | State                                                                                                                 |  
+| Entity                                                | Info                                                                                                                 |  
 | --------                                              | --------                                                                                                              |  
-| [sensor.f1_session_status](#session-status)           | `pre` \| `live` \| `suspended` \| `finished` \| `finalised` \| `ended`                                                | 
-| [sensor.f1_current_session](#current-session)         | `Practice 1` \| `Practice 2` \| `Practice 3` \| `Qualifying` \| `Sprint Qualifying` \| `Sprint` \| `Race`             | 
-| [sensor.f1_track_status](#track-status)               | `CLEAR` \| `YELLOW` \| `VSC` \| `SC`\| `RED`                                                                          |
-| [binary_sensor.f1_safety_car](#safety-car)            | `ON` \| `OFF`                                                                                                         |  
-| [sensor.f1_race_lap_count](#race-lap)                 | -                                                                                                                     |
-| [sensor.f1_track_weather](#track-weather)             | -                                                                                                                     |
-| [sensor.f1_driver_list](#drivers-list)                | -                                                                                                                     | 
+| [sensor.f1_session_status](#session-status)           | Current session phase| 
+| [sensor.f1_current_session](#current-session)         | Current ongoing session, like Practice 1, Qualification, Race| 
+| [sensor.f1_track_status](#track-status)               | Current track status |
+| [binary_sensor.f1_safety_car](#safety-car)            | Safety Car (SC) or Virtual Safety Car (VSC) is active|  
+| [sensor.f1_race_lap_count](#race-lap)                 | Current race lap number|
+| [sensor.f1_track_weather](#track-weather)             | Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)|
+| [sensor.f1_driver_list](#driver-list)                 | Show list and details on all drivers, including team color, headshot URL etc| 
 
 
 ---
