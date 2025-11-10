@@ -26,7 +26,7 @@ from .const import (
     LATEST_TRACK_STATUS,
 )
 from .signalr import LiveBus
-from .helpers import build_user_agent
+from .helpers import build_user_agent, fetch_json
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,21 +38,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     http_session = async_create_clientsession(hass, headers={"User-Agent": ua_string})
     _LOGGER.debug("Using User-Agent for Jolpica/Ergast: %s", ua_string)
 
-    race_coordinator = F1DataCoordinator(hass, API_URL, "F1 Race Data Coordinator", session=http_session)
+    # Per-entry shared HTTP cache and in-flight maps (for Jolpica/Ergast only)
+    http_cache: dict = {}
+    http_inflight: dict = {}
+
+    race_coordinator = F1DataCoordinator(
+        hass, API_URL, "F1 Race Data Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=30
+    )
     driver_coordinator = F1DataCoordinator(
-        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator", session=http_session
+        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60
     )
     constructor_coordinator = F1DataCoordinator(
-        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator", session=http_session
+        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60
     )
     last_race_coordinator = F1DataCoordinator(
-        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator", session=http_session
+        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60
     )
     season_results_coordinator = F1SeasonResultsCoordinator(
-        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator", session=http_session
+        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60
     )
     sprint_results_coordinator = F1SprintResultsCoordinator(
-        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator", session=http_session
+        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60
     )
     year = datetime.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year)
@@ -127,6 +133,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "http_session": http_session,
         "user_agent": ua_string,
+        "http_cache": http_cache,
+        "http_inflight": http_inflight,
         "race_coordinator": race_coordinator,
         "driver_coordinator": driver_coordinator,
         "constructor_coordinator": constructor_coordinator,
@@ -1046,7 +1054,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class F1DataCoordinator(DataUpdateCoordinator):
     """Handles updates from a given F1 endpoint."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 30):
         super().__init__(
             hass,
             _LOGGER,
@@ -1055,6 +1063,9 @@ class F1DataCoordinator(DataUpdateCoordinator):
         )
         self._session = session or async_get_clientsession(hass)
         self._url = url
+        self._cache = cache
+        self._inflight = inflight
+        self._ttl = int(ttl_seconds or 30)
 
     async def async_close(self, *_):
         """Placeholder for future cleanup."""
@@ -1064,11 +1075,14 @@ class F1DataCoordinator(DataUpdateCoordinator):
         """Fetch data from the F1 API."""
         try:
             async with async_timeout.timeout(10):
-                async with self._session.get(self._url) as response:
-                    if response.status != 200:
-                        raise UpdateFailed(f"Error fetching data: {response.status}")
-                    text = await response.text()
-                    return json.loads(text.lstrip("\ufeff"))
+                return await fetch_json(
+                    self.hass,
+                    self._session,
+                    self._url,
+                    ttl_seconds=self._ttl,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                )
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}") from err
 
@@ -1076,7 +1090,7 @@ class F1DataCoordinator(DataUpdateCoordinator):
 class F1SeasonResultsCoordinator(DataUpdateCoordinator):
     """Fetch all season results across paginated Ergast responses."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60):
         super().__init__(
             hass,
             _LOGGER,
@@ -1085,20 +1099,25 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
         )
         self._session = session or async_get_clientsession(hass)
         self._base_url = url
+        self._cache = cache
+        self._inflight = inflight
+        self._ttl = int(ttl_seconds or 60)
 
     async def async_close(self, *_):
         return
 
     async def _fetch_page(self, limit: int, offset: int):
         from yarl import URL
-
         url = str(URL(self._base_url).with_query({"limit": str(limit), "offset": str(offset)}))
         async with async_timeout.timeout(10):
-            async with self._session.get(url) as response:
-                if response.status != 200:
-                    raise UpdateFailed(f"Error fetching data: {response.status}")
-                text = await response.text()
-                return json.loads(text.lstrip("\ufeff"))
+            return await fetch_json(
+                self.hass,
+                self._session,
+                url,
+                ttl_seconds=self._ttl,
+                cache=self._cache,
+                inflight=self._inflight,
+            )
 
     @staticmethod
     def _race_key(r: dict) -> tuple:
@@ -1179,7 +1198,7 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 class F1SprintResultsCoordinator(DataUpdateCoordinator):
     """Fetch sprint results for the current season (single, non-paginated endpoint)."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60):
         super().__init__(
             hass,
             _LOGGER,
@@ -1188,6 +1207,9 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
         )
         self._session = session or async_get_clientsession(hass)
         self._url = url
+        self._cache = cache
+        self._inflight = inflight
+        self._ttl = int(ttl_seconds or 60)
 
     async def async_close(self, *_):
         return
@@ -1195,11 +1217,14 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         try:
             async with async_timeout.timeout(10):
-                async with self._session.get(self._url) as response:
-                    if response.status != 200:
-                        raise UpdateFailed(f"Error fetching data: {response.status}")
-                    text = await response.text()
-                    return json.loads(text.lstrip("\ufeff"))
+                return await fetch_json(
+                    self.hass,
+                    self._session,
+                    self._url,
+                    ttl_seconds=self._ttl,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                )
         except Exception as err:
             raise UpdateFailed(f"Error fetching sprint results: {err}") from err
 
