@@ -514,7 +514,10 @@ Community user Tiidler has used the sensors from this integration to create a fu
 > If you find this integration useful, please consider supporting the creator of the API by donating to their Ko-fi page: [https://ko-fi.com/jolpic](https://ko-fi.com/jolpic)  
 > Without this API, this integration would not be possible, so any support helps keep it live and maintained. 🙏
 
-![IMG_1045](https://github.com/user-attachments/assets/017b8dd4-c6fc-4026-aec0-416d262a39e0)
+
+<img width="1071" height="1428" alt="IMG_1045 (1)" src="https://github.com/user-attachments/assets/c7ed086a-b4bd-46bb-8ef6-958039f48cff" />
+
+
 
 
 ## Contributing
