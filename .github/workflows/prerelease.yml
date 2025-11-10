@@ -1,29 +1,57 @@
-name: Pre-Release
+name: Pre-Release (validate only)
 
 on:
-  push:
-    tags:
-      - 'v*-beta.*'   # Ex: v2.3.0-beta.1
+  release:
+    types: [prereleased]   # Triggas när du klickar "Publish release" med "Pre-release" ikryssat
+
+permissions:
+  contents: read
 
 jobs:
-  prerelease:
+  validate:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      # Snabbvalidering innan release
-      - name: Validate manifest & HACS
+    steps:
+      - name: Checkout release target (beta)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.target_commitish }}
+
+      - name: Ensure pre-release targets beta
+        run: |
+          TARGET="${{ github.event.release.target_commitish }}"
+          echo "Target branch: $TARGET"
+          if [ "$TARGET" != "beta" ]; then
+            echo "Pre-release måste rikta mot 'beta' men var '$TARGET'."
+            exit 1
+          fi
+
+      - name: hassfest
         uses: home-assistant/actions/hassfest@master
 
-      - name: Validate HACS
+      - name: HACS validation
         uses: hacs/action@main
         with:
           category: integration
 
-      - name: Create GitHub Pre-Release
-        uses: softprops/action-gh-release@v2
-        with:
-          prerelease: true
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify manifest version matches tag
+        run: |
+          TAG="${{ github.event.release.tag_name }}"         # ex v2.4.0-beta.1
+          TAG_NO_V="${TAG#v}"                                 # ex 2.4.0-beta.1
+          FILE="custom_components/f1_sensor/manifest.json"
+          if [ ! -f "$FILE" ]; then
+            echo "Hittar ej $FILE"; exit 1
+          fi
+          MANIFEST_VER=$(python - <<'PY'
+import json;print(json.load(open("custom_components/f1_sensor/manifest.json"))["version"])
+PY
+)
+          echo "Tag: $TAG_NO_V"
+          echo "Manifest: $MANIFEST_VER"
+          case "$TAG_NO_V" in
+            *-beta.*) : ;;                                   # måste vara beta*
+            *) echo "Taggen är inte en beta-tagg (saknar -beta.N)."; exit 1 ;;
+          esac
+          if [ "$MANIFEST_VER" != "$TAG_NO_V" ]; then
+            echo "Version i manifest ($MANIFEST_VER) matchar inte taggen ($TAG_NO_V)."; exit 1
+          fi
