@@ -1,7 +1,6 @@
 ---
 id: installation
 title: Installation
-description: Learn how to install the Navbar Card in your Home Assistant setup
 ---
 
 # Installation Guide

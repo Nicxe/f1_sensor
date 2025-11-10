@@ -1,7 +1,6 @@
 ---
 id: faq
 title: FAQ
-description: Find answers to common questions about the Navbar Card, including templates, configuration, customization, and troubleshooting
 ---
 
 # Frequently Asked Questions
