@@ -22,7 +22,7 @@ jobs:
           TARGET="${{ github.event.release.target_commitish }}"
           echo "Target branch: $TARGET"
           if [ "$TARGET" != "main" ]; then
-            echo "Stabil release måste rikta mot 'main' men var '$TARGET'."
+            echo "❌ Stabil release måste rikta mot 'main' men var '$TARGET'."
             exit 1
           fi
 
@@ -36,22 +36,31 @@ jobs:
 
       - name: Verify manifest version matches tag
         run: |
-          TAG="${{ github.event.release.tag_name }}"         # ex v2.4.0
-          TAG_NO_V="${TAG#v}"                                 # ex 2.4.0
+          TAG="${{ github.event.release.tag_name }}"          # ex v2.4.0
+          TAG_NO_V="${TAG#v}"                                  # ex 2.4.0
           FILE="custom_components/f1_sensor/manifest.json"
+
           if [ ! -f "$FILE" ]; then
-            echo "Hittar ej $FILE"; exit 1
+            echo "❌ Hittar inte manifest.json i $FILE"
+            exit 1
           fi
+
           MANIFEST_VER=$(python - <<'PY'
-import json;print(json.load(open("custom_components/f1_sensor/manifest.json"))["version"])
+import json
+print(json.load(open("custom_components/f1_sensor/manifest.json"))["version"])
 PY
 )
           echo "Tag: $TAG_NO_V"
           echo "Manifest: $MANIFEST_VER"
-          # får inte vara beta på stabil release
+
+          # Kontrollera att taggen inte är beta
           if echo "$TAG_NO_V" | grep -q -- "-beta."; then
-            echo "Stabil release får inte använda beta-tagg."; exit 1
+            echo "❌ Stabil release får inte använda beta-tagg."
+            exit 1
           fi
+
+          # Kontrollera att version i manifest matchar taggen
           if [ "$MANIFEST_VER" != "$TAG_NO_V" ]; then
-            echo "Version i manifest ($MANIFEST_VER) matchar inte taggen ($TAG_NO_V)."; exit 1
+            echo "❌ Version i manifest ($MANIFEST_VER) matchar inte taggen ($TAG_NO_V)."
+            exit 1
           fi
