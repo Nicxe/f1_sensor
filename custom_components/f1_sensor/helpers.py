@@ -1,6 +1,11 @@
 import json
 from json import JSONDecodeError
 
+from homeassistant.const import __version__ as HA_VERSION
+from homeassistant.loader import async_get_integration
+
+from .const import DOMAIN
+
 
 def parse_racecontrol(text: str):
     last = None
@@ -78,3 +83,9 @@ def normalize_track_status(raw: dict | None) -> str | None:
     if message in {"CLEAR", "YELLOW", "VSC", "SC", "RED"}:
         return message
     return None
+
+
+async def build_user_agent(hass) -> str:
+    """Return UA like 'HomeAssistantF1Sensor/<integration> HomeAssistant/<core>'."""
+    integration = await async_get_integration(hass, DOMAIN)
+    return f"HomeAssistantF1Sensor/{integration.version} HomeAssistant/{HA_VERSION}"

@@ -9,7 +9,7 @@ from collections import deque
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_get_clientsession, async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -26,27 +26,33 @@ from .const import (
     LATEST_TRACK_STATUS,
 )
 from .signalr import LiveBus
+from .helpers import build_user_agent
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up integration via config flow."""
-    race_coordinator = F1DataCoordinator(hass, API_URL, "F1 Race Data Coordinator")
+    # Create dedicated HTTP session with custom User-Agent for Jolpica/Ergast
+    ua_string = await build_user_agent(hass)
+    http_session = async_create_clientsession(hass, headers={"User-Agent": ua_string})
+    _LOGGER.debug("Using User-Agent for Jolpica/Ergast: %s", ua_string)
+
+    race_coordinator = F1DataCoordinator(hass, API_URL, "F1 Race Data Coordinator", session=http_session)
     driver_coordinator = F1DataCoordinator(
-        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator"
+        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator", session=http_session
     )
     constructor_coordinator = F1DataCoordinator(
-        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator"
+        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator", session=http_session
     )
     last_race_coordinator = F1DataCoordinator(
-        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator"
+        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator", session=http_session
     )
     season_results_coordinator = F1SeasonResultsCoordinator(
-        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator"
+        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator", session=http_session
     )
     sprint_results_coordinator = F1SprintResultsCoordinator(
-        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator"
+        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator", session=http_session
     )
     year = datetime.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year)
@@ -119,6 +125,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await drivers_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "http_session": http_session,
+        "user_agent": ua_string,
         "race_coordinator": race_coordinator,
         "driver_coordinator": driver_coordinator,
         "constructor_coordinator": constructor_coordinator,
@@ -1020,6 +1028,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         await close()
                     except Exception as err:  # noqa: BLE001
                         _LOGGER.debug("Error during %s async_close: %s", name, err)
+            # Close dedicated HTTP session if present
+            try:
+                sess = data.get("http_session")
+                if sess is not None:
+                    await sess.close()
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Error during http_session close: %s", err)
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("Error during entry data cleanup: %s", err)
     return unload_ok
@@ -1031,14 +1046,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class F1DataCoordinator(DataUpdateCoordinator):
     """Handles updates from a given F1 endpoint."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
         )
-        self._session = async_get_clientsession(hass)
+        self._session = session or async_get_clientsession(hass)
         self._url = url
 
     async def async_close(self, *_):
@@ -1061,14 +1076,14 @@ class F1DataCoordinator(DataUpdateCoordinator):
 class F1SeasonResultsCoordinator(DataUpdateCoordinator):
     """Fetch all season results across paginated Ergast responses."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
         )
-        self._session = async_get_clientsession(hass)
+        self._session = session or async_get_clientsession(hass)
         self._base_url = url
 
     async def async_close(self, *_):
@@ -1164,14 +1179,14 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 class F1SprintResultsCoordinator(DataUpdateCoordinator):
     """Fetch sprint results for the current season (single, non-paginated endpoint)."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
         )
-        self._session = async_get_clientsession(hass)
+        self._session = session or async_get_clientsession(hass)
         self._url = url
 
     async def async_close(self, *_):
@@ -1191,14 +1206,14 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
 class LiveSessionCoordinator(DataUpdateCoordinator):
     """Fetch current or next session from the LiveTiming index."""
 
-    def __init__(self, hass: HomeAssistant, year: int):
+    def __init__(self, hass: HomeAssistant, year: int, session=None):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Live Session Coordinator",
             update_interval=timedelta(hours=1),
         )
-        self._session = async_get_clientsession(hass)
+        self._session = session or async_get_clientsession(hass)
         self.year = year
 
     async def async_close(self, *_):
