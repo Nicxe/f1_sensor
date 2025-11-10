@@ -1,7 +1,6 @@
 ---
 id: static-data
 title: Static Data
-description: To add the integration to your Home Assistant instance
 ---
 
 Information that rarely changes, such as schedules, drivers, circuits, and championship standings.

@@ -18,6 +18,11 @@ const sidebars = {
       items: ['entities/static-data', 'entities/live-data', 'entities/events'],
     },
 
+   {
+      type: 'doc',
+      label: 'Automation',
+      id: 'automation',
+    },
 
     {
       type: 'category',
@@ -26,10 +31,12 @@ const sidebars = {
     },
 
 
+
+
       {
       type: 'category',
       label: 'Need Help?',
-      items: ['help/faq', 'help/contact'],
+      items: ['help/faq', 'help/Issues', 'help/contact'],
     },
 
 

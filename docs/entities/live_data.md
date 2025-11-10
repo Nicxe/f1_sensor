@@ -1,7 +1,6 @@
 ---
 id: live-data
 title: Live Data
-description: To add the integration to your Home Assistant instance
 ---
 
 By enabling [live data](/getting-started/add-integration)  when configuring the F1 Sensor, Home Assistant can react to live data from an ongoing session such as practice, qualifying, or race. These entities update shortly before, during, and shortly after a session. Outside session times, they will not update. This means that a sensor may show as unknown or display the last known state even when no session is active. For example, the Track Status entity often remains `CLEAR` between race weekends.
