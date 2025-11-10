@@ -62,7 +62,8 @@ def normalize_track_status(raw: dict | None) -> str | None:
         "4": "SC",          # Säkrast stöd för Safety Car
         "5": "RED",
         "6": "VSC",
-        "7": "VSC_ENDING",
+        # Code "7" represents VSC ending phase; map to canonical VSC
+        "7": "VSC",
         "8": "CLEAR",       # Fallback, observerad som CLEAR i praktiken
         # "3": okänd/kontextberoende – logga och validera mot Race Control
      }
