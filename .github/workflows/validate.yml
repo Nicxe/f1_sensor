@@ -1,0 +1,43 @@
+name: Validate
+
+on:
+  push:
+    branches: [develop, beta, main]
+  pull_request:
+    branches: [beta, main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install ruff
+          pip install homeassistant
+          pip install hacs
+
+      - name: Lint code with Ruff (warnings only)
+        run: |
+          if [ -d custom_components ]; then
+            echo "🔍 Running Ruff lint (warnings only)..."
+            ruff check custom_components --exit-zero
+          else
+            echo "No custom_components folder found, skipping lint."
+          fi
+
+      - name: Run hassfest validation
+        uses: home-assistant/actions/hassfest@master
+
+      - name: Run HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration

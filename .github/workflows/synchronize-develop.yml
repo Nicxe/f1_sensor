@@ -1,0 +1,24 @@
+name: Sync main to develop
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Create PR from main → develop
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: sync main into develop after release"
+          title: "Sync main → develop"
+          body: "Automatisk PR för att hålla develop uppdaterad efter release."
+          branch: bot/sync-main-to-develop
+          base: develop
+          labels: maintenance
