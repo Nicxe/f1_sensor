@@ -359,8 +359,28 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             return [m for m in msg if isinstance(m, dict)]
         if isinstance(msg, dict):
             # Some payloads contain { "Messages": [ ... ] }
-            if isinstance(msg.get("Messages"), list):
-                return [m for m in msg.get("Messages") if isinstance(m, dict)]
+            messages = msg.get("Messages")
+            if isinstance(messages, list):
+                return [m for m in messages if isinstance(m, dict)]
+            # Some payloads contain { "Messages": { "1": {...}, "2": {...}, ... } }
+            if isinstance(messages, dict) and messages:
+                try:
+                    numeric_keys = [k for k in messages.keys() if str(k).isdigit()]
+                    # Sort by numeric key to preserve order if automations iterate
+                    numeric_keys.sort(key=lambda x: int(x))
+                    result: list[dict] = []
+                    for key in numeric_keys:
+                        val = messages.get(key)
+                        if isinstance(val, dict):
+                            item = dict(val)
+                            # Provide stable id if not present
+                            item.setdefault("id", int(key))
+                            result.append(item)
+                    if result:
+                        return result
+                except Exception:
+                    # Fall through to wrapper-as-item if something unexpected happens
+                    pass
             # Or a single message
             return [msg]
         return []

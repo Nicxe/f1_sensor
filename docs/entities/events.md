@@ -1,7 +1,6 @@
 ---
 id: events
 title: Race Control
-description: To add the integration to your Home Assistant instance
 ---
 
 

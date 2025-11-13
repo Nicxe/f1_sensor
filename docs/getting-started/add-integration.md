@@ -1,7 +1,6 @@
 ---
 id: add-integration
 title: Configuration
-description: To add the integration to your Home Assistant instance
 ---
 
 # Configuration

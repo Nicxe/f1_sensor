@@ -458,36 +458,41 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
         if not times:
             return
         curr = times[0].get("data", {}).get("instant", {}).get("details", {})
-        # Derive current precipitation from forecast block (instant does not include precipitation)
-        current_forecast_block = (
-            times[0].get("data", {}).get("next_1_hours")
-            or times[0].get("data", {}).get("next_6_hours")
-            or times[0].get("data", {}).get("next_12_hours")
-            or {}
-        )
-        current_precip_details = current_forecast_block.get("details", {})
-        current_precip = (
-            current_precip_details.get("precipitation_amount")
-            if current_precip_details.get("precipitation_amount") is not None
-            else (
-                current_precip_details.get("precipitation_amount_min")
-                if current_precip_details.get("precipitation_amount_min") is not None
-                else current_precip_details.get("precipitation_amount_max", 0)
-            )
-        )
+        # Derive current precipitation from forecast blocks (prefer max of 1h/6h/12h)
+        data0 = times[0].get("data", {})
+        block1 = data0.get("next_1_hours") or {}
+        block6 = data0.get("next_6_hours") or {}
+        block12 = data0.get("next_12_hours") or {}
+
+        def _precip_triplet(block: dict):
+            details = (block or {}).get("details", {}) or {}
+            amt = details.get("precipitation_amount")
+            if amt is None:
+                amt = details.get("precipitation_amount_min")
+            if amt is None:
+                amt = details.get("precipitation_amount_max")
+            if amt is None:
+                amt = 0
+            return amt, details.get("precipitation_amount_min"), details.get("precipitation_amount_max")
+
+        p1, p1min, p1max = _precip_triplet(block1)
+        p6, p6min, p6max = _precip_triplet(block6)
+        p12, p12min, p12max = _precip_triplet(block12)
+        candidates = [
+            (p1, p1min, p1max, block1),
+            (p6, p6min, p6max, block6),
+            (p12, p12min, p12max, block12),
+        ]
+        sel_amt, sel_min, sel_max, sel_block = max(candidates, key=lambda t: t[0])
         curr_with_precip = dict(curr)
-        curr_with_precip["precipitation_amount"] = current_precip
-        # Also expose min/max precipitation from forecast if available; fallback to amount
-        _cur_min = current_precip_details.get("precipitation_amount_min")
-        _cur_max = current_precip_details.get("precipitation_amount_max")
-        curr_with_precip["precipitation_amount_min"] = _cur_min if _cur_min is not None else current_precip
-        curr_with_precip["precipitation_amount_max"] = _cur_max if _cur_max is not None else current_precip
+        curr_with_precip["precipitation_amount"] = sel_amt
+        # Also expose min/max precipitation; fallback to selected amount when missing
+        _cur_min = sel_min
+        _cur_max = sel_max
+        curr_with_precip["precipitation_amount_min"] = _cur_min if _cur_min is not None else sel_amt
+        curr_with_precip["precipitation_amount_max"] = _cur_max if _cur_max is not None else sel_amt
         self._current = self._extract(curr_with_precip)
-        current_symbol = (
-            current_forecast_block
-            .get("summary", {})
-            .get("symbol_code")
-        )
+        current_symbol = (sel_block or {}).get("summary", {}).get("symbol_code")
         current_icon = SYMBOL_CODE_TO_MDI.get(current_symbol, self._attr_icon)
         self._attr_icon = current_icon
         start_iso = (
@@ -512,36 +517,26 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
                 )
                 data_entry = closest.get("data", {})
                 instant_details = data_entry.get("instant", {}).get("details", {})
-                # Prefer 1-hour precipitation at race start, fallback to 6/12-hour blocks
-                race_forecast_block = (
-                    data_entry.get("next_1_hours")
-                    or data_entry.get("next_6_hours")
-                    or data_entry.get("next_12_hours")
-                    or {}
-                )
-                race_precip_details = race_forecast_block.get("details", {})
-                race_precip = (
-                    race_precip_details.get("precipitation_amount")
-                    if race_precip_details.get("precipitation_amount") is not None
-                    else (
-                        race_precip_details.get("precipitation_amount_min")
-                        if race_precip_details.get("precipitation_amount_min") is not None
-                        else race_precip_details.get("precipitation_amount_max", 0)
-                    )
-                )
+                # Choose race precipitation as max of 1h/6h/12h around start time
+                r1 = data_entry.get("next_1_hours") or {}
+                r6 = data_entry.get("next_6_hours") or {}
+                r12 = data_entry.get("next_12_hours") or {}
+                rp1, rp1min, rp1max = _precip_triplet(r1)
+                rp6, rp6min, rp6max = _precip_triplet(r6)
+                rp12, rp12min, rp12max = _precip_triplet(r12)
+                rcandidates = [
+                    (rp1, rp1min, rp1max, r1),
+                    (rp6, rp6min, rp6max, r6),
+                    (rp12, rp12min, rp12max, r12),
+                ]
+                r_sel_amt, r_sel_min, r_sel_max, r_sel_block = max(rcandidates, key=lambda t: t[0])
                 rd = dict(instant_details)
-                rd["precipitation_amount"] = race_precip
-                # Also expose min/max precipitation at race time if available; fallback to amount
-                _race_min = race_precip_details.get("precipitation_amount_min")
-                _race_max = race_precip_details.get("precipitation_amount_max")
-                rd["precipitation_amount_min"] = _race_min if _race_min is not None else race_precip
-                rd["precipitation_amount_max"] = _race_max if _race_max is not None else race_precip
+                rd["precipitation_amount"] = r_sel_amt
+                # Also expose min/max precipitation at race time; fallback to selected amount
+                rd["precipitation_amount_min"] = r_sel_min if r_sel_min is not None else r_sel_amt
+                rd["precipitation_amount_max"] = r_sel_max if r_sel_max is not None else r_sel_amt
                 self._race = self._extract(rd)
-                forecast_block = (
-                    data_entry.get("next_1_hours")
-                    or data_entry.get("next_6_hours")
-                    or data_entry.get("next_12_hours", {})
-                )
+                forecast_block = r_sel_block or {}
                 race_symbol = forecast_block.get("summary", {}).get("symbol_code")
                 race_icon = SYMBOL_CODE_TO_MDI.get(race_symbol, self._attr_icon)
                 self._race["weather_icon"] = race_icon
@@ -1537,7 +1532,6 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "CLEAR",
             "YELLOW",
             "VSC",
-            "VSC_ENDING",
             "SC",
             "RED",
         ]
@@ -2175,6 +2169,14 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         self._attr_native_value = curr
         self._last_received_utc = now_utc
+        # Preserve last known total_laps if not present in this payload to avoid transient 'unknown'
+        prev_total = None
+        try:
+            prev_total = (self._attr_extra_state_attributes or {}).get("total_laps")
+        except Exception:
+            prev_total = None
+        if total is None:
+            total = prev_total
         self._attr_extra_state_attributes = {
             "total_laps": total,
         }
