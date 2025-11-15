@@ -1,10 +1,10 @@
-import json
-import logging
 import asyncio
 import contextlib
+import json
+import logging
+from collections import deque
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
-from collections import deque
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -19,11 +19,11 @@ from .const import (
     DOMAIN,
     DRIVER_STANDINGS_URL,
     LAST_RACE_RESULTS_URL,
+    LATEST_TRACK_STATUS,
     LIVETIMING_INDEX_URL,
     PLATFORMS,
     SEASON_RESULTS_URL,
     SPRINT_RESULTS_URL,
-    LATEST_TRACK_STATUS,
 )
 from .signalr import LiveBus
 
@@ -32,24 +32,24 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up integration via config flow."""
-    race_coordinator = F1DataCoordinator(hass, API_URL, "F1 Race Data Coordinator")
+    race_coordinator = F1DataCoordinator(hass, API_URL, "F1 Race Data Coordinator", entry)
     driver_coordinator = F1DataCoordinator(
-        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator"
+        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator", entry
     )
     constructor_coordinator = F1DataCoordinator(
-        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator"
+        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator", entry
     )
     last_race_coordinator = F1DataCoordinator(
-        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator"
+        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator", entry
     )
     season_results_coordinator = F1SeasonResultsCoordinator(
-        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator"
+        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator", entry
     )
     sprint_results_coordinator = F1SprintResultsCoordinator(
-        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator"
+        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator", entry
     )
     year = datetime.utcnow().year
-    session_coordinator = LiveSessionCoordinator(hass, year)
+    session_coordinator = LiveSessionCoordinator(hass, year, entry, url=LIVETIMING_INDEX_URL)
     enable_rc = entry.data.get("enable_race_control", False)
     live_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
     track_status_coordinator = None
@@ -66,22 +66,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if enable_rc:
         track_status_coordinator = TrackStatusCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, entry=entry
         )
         session_status_coordinator = SessionStatusCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, entry=entry
         )
         session_info_coordinator = SessionInfoCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, entry=entry
         )
         race_control_coordinator = RaceControlCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, entry=entry
         )
         weather_data_coordinator = WeatherDataCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, entry=entry
         )
         lap_count_coordinator = LapCountCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, entry=entry
         )
 
     await race_coordinator.async_config_entry_first_refresh()
@@ -111,8 +111,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     drivers_coordinator = None
     if need_drivers:
         drivers_coordinator = LiveDriversCoordinator(
-            hass,
-            session_coordinator,
+            hass=hass,
+            entry=entry,
+            session_coord=session_coordinator,
             delay_seconds=int(entry.data.get("live_delay_seconds", 0) or 0),
             bus=live_bus,
         )
@@ -147,14 +148,16 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         session_coord: 'LiveSessionCoordinator',
-        delay_seconds: int = 0,
-        bus: LiveBus | None = None,
+        delay_seconds: int,
+        bus: LiveBus | None,
+        entry: ConfigEntry,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Weather Data Coordinator",
             update_interval=None,
+            config_entry=entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -279,7 +282,8 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         await super().async_config_entry_first_refresh()
         # Subscribe to shared live bus
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("WeatherData", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe(
+                "WeatherData", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -295,14 +299,16 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         session_coord: 'LiveSessionCoordinator',
-        delay_seconds: int = 0,
-        bus: LiveBus | None = None,
+        delay_seconds: int,
+        bus: LiveBus | None,
+        entry: ConfigEntry,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Race Control Coordinator",
             update_interval=None,
+            config_entry=entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -501,9 +507,11 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             self._startup_cutoff = None
         # Subscribe to LiveBus
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("RaceControlMessages", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe(
+                "RaceControlMessages", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
+
 
 class LapCountCoordinator(DataUpdateCoordinator):
     """Coordinator for LapCount updates using SignalR, mirrors other live feeds."""
@@ -512,14 +520,16 @@ class LapCountCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         session_coord: 'LiveSessionCoordinator',
-        delay_seconds: int = 0,
-        bus: LiveBus | None = None,
+        delay_seconds: int,
+        bus: LiveBus | None,
+        entry: ConfigEntry,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Lap Count Coordinator",
             update_interval=None,
+            config_entry=entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -602,7 +612,8 @@ class LapCountCoordinator(DataUpdateCoordinator):
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("LapCount", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe(
+                "LapCount", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -631,15 +642,18 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
+        *,
+        entry: ConfigEntry,
         session_coord: 'LiveSessionCoordinator',
-        delay_seconds: int = 0,
-        bus: LiveBus | None = None,
+        delay_seconds: int,
+        bus: LiveBus | None,
     ) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Live Drivers Coordinator",
             update_interval=None,
+            config_entry=entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -1025,18 +1039,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-    
-
-
 class F1DataCoordinator(DataUpdateCoordinator):
     """Handles updates from a given F1 endpoint."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, entry: ConfigEntry):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
+            config_entry=entry,
         )
         self._session = async_get_clientsession(hass)
         self._url = url
@@ -1061,12 +1073,13 @@ class F1DataCoordinator(DataUpdateCoordinator):
 class F1SeasonResultsCoordinator(DataUpdateCoordinator):
     """Fetch all season results across paginated Ergast responses."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, entry: ConfigEntry):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
+            config_entry=entry
         )
         self._session = async_get_clientsession(hass)
         self._base_url = url
@@ -1164,12 +1177,14 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 class F1SprintResultsCoordinator(DataUpdateCoordinator):
     """Fetch sprint results for the current season (single, non-paginated endpoint)."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, entry: ConfigEntry):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
+            config_entry=entry
+
         )
         self._session = async_get_clientsession(hass)
         self._url = url
@@ -1188,18 +1203,21 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise UpdateFailed(f"Error fetching sprint results: {err}") from err
 
+
 class LiveSessionCoordinator(DataUpdateCoordinator):
     """Fetch current or next session from the LiveTiming index."""
 
-    def __init__(self, hass: HomeAssistant, year: int):
+    def __init__(self, hass: HomeAssistant, year: int, entry: ConfigEntry, url: str):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Live Session Coordinator",
             update_interval=timedelta(hours=1),
+            config_entry=entry
         )
         self._session = async_get_clientsession(hass)
         self.year = year
+        self._url = url
 
     async def async_close(self, *_):
         return
@@ -1221,7 +1239,6 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
             return self.data
 
 
-
 class TrackStatusCoordinator(DataUpdateCoordinator):
     """Coordinator for TrackStatus updates using SignalR."""
 
@@ -1229,14 +1246,16 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         session_coord: LiveSessionCoordinator,
-        delay_seconds: int = 0,
-        bus: LiveBus | None = None,
+        delay_seconds: int,
+        bus: LiveBus | None,
+        entry: ConfigEntry,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Track Status Coordinator",
             update_interval=None,
+            config_entry=entry
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -1385,7 +1404,8 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             self._startup_cutoff = None
         # Subscribe to LiveBus
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("TrackStatus", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe(
+                "TrackStatus", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -1397,14 +1417,16 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         session_coord: LiveSessionCoordinator,
-        delay_seconds: int = 0,
-        bus: LiveBus | None = None,
+        delay_seconds: int,
+        bus: LiveBus | None,
+        entry: ConfigEntry,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Session Status Coordinator",
             update_interval=None,
+            config_entry=entry
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -1487,7 +1509,8 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("SessionStatus", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe(
+                "SessionStatus", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -1499,14 +1522,16 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         session_coord: LiveSessionCoordinator,
-        delay_seconds: int = 0,
-        bus: LiveBus | None = None,
+        delay_seconds: int,
+        bus: LiveBus | None,
+        entry: ConfigEntry,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Session Info Coordinator",
             update_interval=None,
+            config_entry=entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -1591,6 +1616,7 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("SessionInfo", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe(
+                "SessionInfo", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
