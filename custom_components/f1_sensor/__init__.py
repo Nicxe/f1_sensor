@@ -9,7 +9,7 @@ from collections import deque
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_get_clientsession, async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -26,27 +26,74 @@ from .const import (
     LATEST_TRACK_STATUS,
 )
 from .signalr import LiveBus
+from .helpers import build_user_agent, fetch_json, PersistentCache
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up integration via config flow."""
-    race_coordinator = F1DataCoordinator(hass, API_URL, "F1 Race Data Coordinator")
+    # Create dedicated HTTP session with custom User-Agent for Jolpica/Ergast
+    ua_string = await build_user_agent(hass)
+    http_session = async_create_clientsession(hass, headers={"User-Agent": ua_string})
+    _LOGGER.debug("Using User-Agent for Jolpica/Ergast: %s", ua_string)
+
+    # Per-entry shared HTTP cache and in-flight maps (for Jolpica/Ergast only)
+    http_cache: dict = {}
+    http_inflight: dict = {}
+    # Persistent cache (across restarts) for rarely-changing endpoints
+    persisted = PersistentCache(hass, entry.entry_id)
+    persisted_map = await persisted.load()
+
+    # Seed in-memory cache from persisted content with conservative startup TTLs
+    try:
+        from yarl import URL
+        from time import monotonic as _mono
+        now = _mono()
+        def _startup_ttl_for_key(k: str) -> int:
+            # Assign longer TTLs to low-churn pages at startup only
+            # Results pagination: first pages are most stable late in season
+            if "/ergast/f1/current/results.json" in k:
+                q = URL(k).query
+                offset = int(str(q.get("offset") or "0")) if str(q.get("offset") or "0").isdigit() else 0
+                if offset == 0:
+                    return 24 * 3600  # 24h
+                return 3600  # 1h
+            if "/ergast/f1/current/driverstandings.json" in k or "/ergast/f1/current/constructorstandings.json" in k:
+                return 3600  # 1h
+            if "/ergast/f1/current/last/results.json" in k or "/ergast/f1/current/sprint.json" in k:
+                return 3600  # 1h
+            if "/ergast/f1/current.json" in k:
+                return 300  # 5m
+            return 300
+        for k, v in (persisted_map or {}).items():
+            data = v.get("data") if isinstance(v, dict) else None
+            if data is None:
+                continue
+            ttl = _startup_ttl_for_key(str(k))
+            http_cache[k] = (now + ttl, data)
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug("Seeded in-memory cache from persistent store with %d keys", len(http_cache))
+    except Exception:
+        pass
+
+    race_coordinator = F1DataCoordinator(
+        hass, API_URL, "F1 Race Data Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=30, persist_map=persisted_map, persist_save=persisted.schedule_save
+    )
     driver_coordinator = F1DataCoordinator(
-        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator"
+        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
     )
     constructor_coordinator = F1DataCoordinator(
-        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator"
+        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
     )
     last_race_coordinator = F1DataCoordinator(
-        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator"
+        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
     )
     season_results_coordinator = F1SeasonResultsCoordinator(
-        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator"
+        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
     )
     sprint_results_coordinator = F1SprintResultsCoordinator(
-        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator"
+        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
     )
     year = datetime.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year)
@@ -119,6 +166,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await drivers_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "http_session": http_session,
+        "user_agent": ua_string,
+        "http_cache": http_cache,
+        "http_inflight": http_inflight,
+        "http_persist": persisted_map,
         "race_coordinator": race_coordinator,
         "driver_coordinator": driver_coordinator,
         "constructor_coordinator": constructor_coordinator,
@@ -1020,6 +1072,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         await close()
                     except Exception as err:  # noqa: BLE001
                         _LOGGER.debug("Error during %s async_close: %s", name, err)
+            # Close dedicated HTTP session if present
+            try:
+                sess = data.get("http_session")
+                if sess is not None:
+                    await sess.close()
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Error during http_session close: %s", err)
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("Error during entry data cleanup: %s", err)
     return unload_ok
@@ -1031,15 +1090,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class F1DataCoordinator(DataUpdateCoordinator):
     """Handles updates from a given F1 endpoint."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 30, persist_map=None, persist_save=None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
         )
-        self._session = async_get_clientsession(hass)
+        self._session = session or async_get_clientsession(hass)
         self._url = url
+        self._cache = cache
+        self._inflight = inflight
+        self._ttl = int(ttl_seconds or 30)
+        self._persist = persist_map
+        self._persist_save = persist_save
 
     async def async_close(self, *_):
         """Placeholder for future cleanup."""
@@ -1049,11 +1113,16 @@ class F1DataCoordinator(DataUpdateCoordinator):
         """Fetch data from the F1 API."""
         try:
             async with async_timeout.timeout(10):
-                async with self._session.get(self._url) as response:
-                    if response.status != 200:
-                        raise UpdateFailed(f"Error fetching data: {response.status}")
-                    text = await response.text()
-                    return json.loads(text.lstrip("\ufeff"))
+                return await fetch_json(
+                    self.hass,
+                    self._session,
+                    self._url,
+                    ttl_seconds=self._ttl,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                    persist_map=self._persist,
+                    persist_save=self._persist_save,
+                )
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}") from err
 
@@ -1061,29 +1130,38 @@ class F1DataCoordinator(DataUpdateCoordinator):
 class F1SeasonResultsCoordinator(DataUpdateCoordinator):
     """Fetch all season results across paginated Ergast responses."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
         )
-        self._session = async_get_clientsession(hass)
+        self._session = session or async_get_clientsession(hass)
         self._base_url = url
+        self._cache = cache
+        self._inflight = inflight
+        self._ttl = int(ttl_seconds or 60)
+        self._persist = persist_map
+        self._persist_save = persist_save
 
     async def async_close(self, *_):
         return
 
     async def _fetch_page(self, limit: int, offset: int):
         from yarl import URL
-
         url = str(URL(self._base_url).with_query({"limit": str(limit), "offset": str(offset)}))
         async with async_timeout.timeout(10):
-            async with self._session.get(url) as response:
-                if response.status != 200:
-                    raise UpdateFailed(f"Error fetching data: {response.status}")
-                text = await response.text()
-                return json.loads(text.lstrip("\ufeff"))
+            return await fetch_json(
+                self.hass,
+                self._session,
+                url,
+                ttl_seconds=self._ttl,
+                cache=self._cache,
+                inflight=self._inflight,
+                persist_map=self._persist,
+                persist_save=self._persist_save,
+            )
 
     @staticmethod
     def _race_key(r: dict) -> tuple:
@@ -1164,15 +1242,20 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 class F1SprintResultsCoordinator(DataUpdateCoordinator):
     """Fetch sprint results for the current season (single, non-paginated endpoint)."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
         )
-        self._session = async_get_clientsession(hass)
+        self._session = session or async_get_clientsession(hass)
         self._url = url
+        self._cache = cache
+        self._inflight = inflight
+        self._ttl = int(ttl_seconds or 60)
+        self._persist = persist_map
+        self._persist_save = persist_save
 
     async def async_close(self, *_):
         return
@@ -1180,25 +1263,30 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         try:
             async with async_timeout.timeout(10):
-                async with self._session.get(self._url) as response:
-                    if response.status != 200:
-                        raise UpdateFailed(f"Error fetching data: {response.status}")
-                    text = await response.text()
-                    return json.loads(text.lstrip("\ufeff"))
+                return await fetch_json(
+                    self.hass,
+                    self._session,
+                    self._url,
+                    ttl_seconds=self._ttl,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                    persist_map=self._persist,
+                    persist_save=self._persist_save,
+                )
         except Exception as err:
             raise UpdateFailed(f"Error fetching sprint results: {err}") from err
 
 class LiveSessionCoordinator(DataUpdateCoordinator):
     """Fetch current or next session from the LiveTiming index."""
 
-    def __init__(self, hass: HomeAssistant, year: int):
+    def __init__(self, hass: HomeAssistant, year: int, session=None):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Live Session Coordinator",
             update_interval=timedelta(hours=1),
         )
-        self._session = async_get_clientsession(hass)
+        self._session = session or async_get_clientsession(hass)
         self.year = year
 
     async def async_close(self, *_):
