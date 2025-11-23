@@ -78,25 +78,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         pass
 
     race_coordinator = F1DataCoordinator(
-        hass, API_URL, "F1 Race Data Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=30, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, API_URL, "F1 Race Data Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=30, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
     driver_coordinator = F1DataCoordinator(
-        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
     constructor_coordinator = F1DataCoordinator(
-        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
     last_race_coordinator = F1DataCoordinator(
-        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
     season_results_coordinator = F1SeasonResultsCoordinator(
-        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
     sprint_results_coordinator = F1SprintResultsCoordinator(
-        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
     year = datetime.utcnow().year
-    session_coordinator = LiveSessionCoordinator(hass, year)
+    session_coordinator = LiveSessionCoordinator(hass, year, config_entry=entry)
     enable_rc = entry.data.get("enable_race_control", False)
     live_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
     track_status_coordinator = None
@@ -113,22 +113,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if enable_rc:
         track_status_coordinator = TrackStatusCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
         session_status_coordinator = SessionStatusCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
         session_info_coordinator = SessionInfoCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
         race_control_coordinator = RaceControlCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
         weather_data_coordinator = WeatherDataCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
         lap_count_coordinator = LapCountCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
 
     await race_coordinator.async_config_entry_first_refresh()
@@ -162,6 +162,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             session_coordinator,
             delay_seconds=int(entry.data.get("live_delay_seconds", 0) or 0),
             bus=live_bus,
+            config_entry=entry,
         )
         await drivers_coordinator.async_config_entry_first_refresh()
 
@@ -201,12 +202,14 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Weather Data Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -349,12 +352,14 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Race Control Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -566,12 +571,14 @@ class LapCountCoordinator(DataUpdateCoordinator):
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Lap Count Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -686,12 +693,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Live Drivers Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -1090,12 +1099,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class F1DataCoordinator(DataUpdateCoordinator):
     """Handles updates from a given F1 endpoint."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 30, persist_map=None, persist_save=None):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 30, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
+            config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
         self._url = url
@@ -1130,12 +1140,13 @@ class F1DataCoordinator(DataUpdateCoordinator):
 class F1SeasonResultsCoordinator(DataUpdateCoordinator):
     """Fetch all season results across paginated Ergast responses."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
+            config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
         self._base_url = url
@@ -1242,12 +1253,13 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 class F1SprintResultsCoordinator(DataUpdateCoordinator):
     """Fetch sprint results for the current season (single, non-paginated endpoint)."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
+            config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
         self._url = url
@@ -1279,12 +1291,13 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
 class LiveSessionCoordinator(DataUpdateCoordinator):
     """Fetch current or next session from the LiveTiming index."""
 
-    def __init__(self, hass: HomeAssistant, year: int, session=None):
+    def __init__(self, hass: HomeAssistant, year: int, session=None, config_entry: ConfigEntry | None = None):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Live Session Coordinator",
             update_interval=timedelta(hours=1),
+            config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
         self.year = year
@@ -1319,12 +1332,14 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Track Status Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -1487,12 +1502,14 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Session Status Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -1589,12 +1606,14 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Session Info Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
