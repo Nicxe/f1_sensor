@@ -38,3 +38,9 @@ Explore what’s possible with F1 Sensor. From dashboards to automations, check 
 ### 🍻 Support the Project
 
 If you enjoy using `F1 Sensor`, you can find ways to [**Support the project here**](https://nicxe.github.io/f1_sensor/support) and help keep the data flowing.
+<br>
+<br>
+<br>
+
+> [!NOTE]
+> F1 Sensor is an unofficial project and is not associated in any way with the Formula 1 companies. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD CHAMPIONSHIP, GRAND PRIX and related marks are trade marks of Formula One Licensing B.V.
