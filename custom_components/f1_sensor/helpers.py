@@ -1,5 +1,18 @@
 import json
+import logging
+import asyncio
+import time
+from typing import Any, Dict, Optional, Callable
+from urllib.parse import urlencode
 from json import JSONDecodeError
+
+from homeassistant.const import __version__ as HA_VERSION
+from homeassistant.loader import async_get_integration
+from homeassistant.helpers.storage import Store
+
+from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def parse_racecontrol(text: str):
@@ -78,3 +91,151 @@ def normalize_track_status(raw: dict | None) -> str | None:
     if message in {"CLEAR", "YELLOW", "VSC", "SC", "RED"}:
         return message
     return None
+
+
+async def build_user_agent(hass) -> str:
+    """Return UA like 'HomeAssistantF1Sensor/<integration> HomeAssistant/<core>'."""
+    integration = await async_get_integration(hass, DOMAIN)
+    return f"HomeAssistantF1Sensor/{integration.version} HomeAssistant/{HA_VERSION}"
+
+
+def _make_cache_key(url: str, params: Optional[Dict[str, Any]] = None) -> str:
+    if params:
+        try:
+            # Stable ordering of query params
+            qp = urlencode(sorted([(str(k), str(v)) for k, v in params.items()]))
+            return f"{url}?{qp}"
+        except Exception:
+            return url
+    return url
+
+
+async def fetch_json(
+    hass,
+    session,
+    url: str,
+    *,
+    params: Optional[Dict[str, Any]] = None,
+    ttl_seconds: int = 30,
+    cache: Optional[Dict[str, tuple[float, Any]]] = None,
+    inflight: Optional[Dict[str, asyncio.Future]] = None,
+    persist_map: Optional[Dict[str, Any]] = None,
+    persist_save: Optional[Callable[[], None]] = None,
+) -> Any:
+    """Fetch JSON with TTL cache and in-flight request de-duplication.
+
+    - Only intended for regular HTTP GETs (Jolpica/Ergast). Do not use for live WS.
+    - Returns parsed JSON (dict/list).
+    """
+    key = _make_cache_key(url, params)
+    now = time.monotonic()
+    cache_map: Dict[str, tuple[float, Any]] = cache if isinstance(cache, dict) else {}
+    inflight_map: Dict[str, asyncio.Future] = inflight if isinstance(inflight, dict) else {}
+    persist_store: Dict[str, Any] = persist_map if isinstance(persist_map, dict) else {}
+
+    # Cache hit
+    try:
+        exp, data = cache_map.get(key, (0.0, None))
+        if exp and now < exp:
+            if _LOGGER.isEnabledFor(logging.DEBUG):
+                _LOGGER.debug("HTTP cache HIT key=%s ttl_left=%.1fs", key, exp - now)
+            return data
+    except Exception:
+        pass
+
+    # In-flight dedup
+    fut = inflight_map.get(key)
+    if fut is not None and not fut.done():
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug("HTTP request COALESCED key=%s (awaiting in-flight)", key)
+        return await asyncio.shield(fut)
+
+    # First requester: perform network call
+    loop = hass.loop
+    fut = loop.create_future()
+    inflight_map[key] = fut
+    try:
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug("HTTP cache MISS key=%s -> fetching", key)
+        async with session.get(url, params=params) as resp:
+            resp.raise_for_status()
+            text = await resp.text()
+            data = json.loads(text.lstrip("\ufeff"))
+            # Update cache
+            try:
+                cache_map[key] = (now + max(1, int(ttl_seconds)), data)
+            except Exception:
+                pass
+            # Persist simplified record (data only). Validation headers are optional future work.
+            try:
+                persist_store[key] = {
+                    "data": data,
+                    "saved_at": time.time(),
+                }
+                if callable(persist_save):
+                    # Save debounced by caller; we just request a save
+                    persist_save()
+            except Exception:
+                pass
+            fut.set_result(data)
+            return data
+    except Exception as err:
+        if not fut.done():
+            fut.set_exception(err)
+        raise
+    finally:
+        # Allow future consumers to see completed future for a short while,
+        # then remove to avoid unbounded growth in inflight map.
+        try:
+            async def _cleanup_later():
+                await asyncio.sleep(0)  # next loop tick
+                inflight_map.pop(key, None)
+            loop.create_task(_cleanup_later())
+        except Exception:
+            try:
+                inflight_map.pop(key, None)
+            except Exception:
+                pass
+
+
+class PersistentCache:
+    """Versioned persistent cache using HA Store, per config-entry."""
+
+    def __init__(self, hass, entry_id: str, version: int = 1) -> None:
+        self._hass = hass
+        self._entry_id = entry_id
+        self._store = Store(hass, version, f"{DOMAIN}_{entry_id}_http_cache_v1")
+        self._data: Dict[str, Any] = {}
+        self._save_task: asyncio.Task | None = None
+
+    async def load(self) -> Dict[str, Any]:
+        try:
+            data = await self._store.async_load()
+            if isinstance(data, dict):
+                self._data = data
+            else:
+                self._data = {}
+        except Exception:
+            self._data = {}
+        return self._data
+
+    def map(self) -> Dict[str, Any]:
+        return self._data
+
+    def schedule_save(self, delay: float = 0.1) -> None:
+        try:
+            if self._save_task and not self._save_task.done():
+                return
+            async def _save_later():
+                try:
+                    await asyncio.sleep(delay)
+                    await self._store.async_save(self._data)
+                except Exception:
+                    pass
+            self._save_task = self._hass.loop.create_task(_save_later())
+        except Exception:
+            # Fallback to immediate save
+            try:
+                self._hass.loop.create_task(self._store.async_save(self._data))
+            except Exception:
+                pass
