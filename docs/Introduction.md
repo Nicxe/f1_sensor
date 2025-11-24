@@ -43,3 +43,9 @@ Want inspiration? Visit our **examples showcase** to see what's possible with F1
 ### Support
 
 If you enjoy using `F1 Sensor`, you can find ways to support the project [**here**](/support).
+
+---
+
+::::info 
+ F1 Sensor is an unofficial project and is not associated in any way with the Formula 1 companies. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD CHAMPIONSHIP, GRAND PRIX and related marks are trade marks of Formula One Licensing B.V.
+ ::::
