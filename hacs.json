@@ -1,5 +1,5 @@
 {
     "name": "F1 Sensor",
-    "country": ["SE"]
+    "zip_release": true,
+    "filename": "f1_sensor.zip"
 }
-  
