@@ -1,6 +1,6 @@
 ---
 id: events
-title: Race Control
+title: Race Control (beta)
 ---
 
 
@@ -11,11 +11,10 @@ Race Control messages are sent as events in Home Assistant under the event type 
 
 These include flags, steward notes, incident reports, and other live race control communications.  
 
-
-::::info
-Currently, Race Control is published as events only.
-In a future release, these messages will also be exposed as a sensor
+::::warning BETA
+Race Control messages are currently available only in the beta state. Functionality may be limited, and changes can occur in upcoming releases.
 ::::
+
 
 
 #### Example payloads
@@ -52,3 +51,8 @@ data:
     Message: INCIDENT INVOLVING CAR 81 (PIA) NOTED - YELLOW FLAG INFRINGEMENT
   received_at: "2025-09-19T12:40:44+00:00"
 ```
+
+:::info
+Currently, Race Control is published as events only.
+In a future release, these messages will also be exposed as a sensor
+::::
