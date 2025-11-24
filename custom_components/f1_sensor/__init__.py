@@ -366,7 +366,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self.available = True
         self._last_message = None
         self.data_list: list[dict] = []
-        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._deliver_handles: list[asyncio.Handle] = []
         self._bus = bus
         self._unsub: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
@@ -382,12 +382,13 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._unsub = None
-        if self._deliver_handle:
-            try:
-                self._deliver_handle.cancel()
-            except Exception:
-                pass
-            self._deliver_handle = None
+        if self._deliver_handles:
+            for handle in list(self._deliver_handles):
+                try:
+                    handle.cancel()
+                except Exception:
+                    pass
+            self._deliver_handles.clear()
 
     async def _async_update_data(self):
         return self._last_message
@@ -496,22 +497,29 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             self._seen_ids_order.append(ident)
             self._seen_ids_set.add(ident)
             # Schedule/coalesce delivery
-            if self._delay > 0:
-                try:
-                    if self._deliver_handle:
-                        self._deliver_handle.cancel()
-                except Exception:
-                    pass
-                self._deliver_handle = self.hass.loop.call_later(
-                    self._delay, lambda m=item: self._deliver(m)
-                )
-            else:
-                try:
-                    if self._deliver_handle:
-                        self._deliver_handle.cancel()
-                except Exception:
-                    pass
-                self._deliver_handle = self.hass.loop.call_soon(lambda m=item: self._deliver(m))
+            self._schedule_deliver(item)
+
+    def _schedule_deliver(self, item: dict) -> None:
+        handle: asyncio.Handle | None = None
+
+        def _callback(m=item):
+            nonlocal handle
+            try:
+                self._deliver(m)
+            finally:
+                if handle:
+                    try:
+                        self._deliver_handles.remove(handle)
+                    except ValueError:
+                        pass
+                    handle = None
+
+        loop = self.hass.loop
+        if self._delay > 0:
+            handle = loop.call_later(self._delay, _callback)
+        else:
+            handle = loop.call_soon(_callback)
+        self._deliver_handles.append(handle)
 
     def _deliver(self, item: dict) -> None:
         self.available = True
