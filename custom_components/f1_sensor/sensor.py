@@ -82,6 +82,7 @@ async def async_setup_entry(
         # TEMP_DISABLED: driver_favorites
         "last_race_results",
         "season_results",
+        "sprint_results",
         "driver_points_progression",
         "constructor_points_progression",
         "race_week",
@@ -115,6 +116,7 @@ async def async_setup_entry(
         "race_lap_count": (F1RaceLapCountSensor, data.get("lap_count_coordinator")),
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
+        "sprint_results": (F1SprintResultsSensor, data["sprint_results_coordinator"]),
         "driver_points_progression": (F1DriverPointsProgressionSensor, data["season_results_coordinator"]),
         "constructor_points_progression": (F1ConstructorPointsProgressionSensor, data["season_results_coordinator"]),
         "track_status": (F1TrackStatusSensor, data.get("track_status_coordinator")),
@@ -760,6 +762,67 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
                     "round": race.get("round"),
                     "race_name": race.get("raceName"),
                     "results": results,
+                }
+            )
+        return {"races": cleaned}
+
+
+class F1SprintResultsSensor(F1BaseEntity, SensorEntity):
+    """Sensor exposing sprint results across the current season."""
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:flag-variant"
+
+    def _get_races(self):
+        data = self.coordinator.data or {}
+        races = (
+            data.get("MRData", {})
+            .get("RaceTable", {})
+            .get("Races", [])
+        )
+        return races or []
+
+    @staticmethod
+    def _clean_result(result: dict) -> dict:
+        driver = result.get("Driver", {}) or {}
+        constructor = result.get("Constructor", {}) or {}
+        return {
+            "number": result.get("number"),
+            "position": result.get("position"),
+            "points": result.get("points"),
+            "status": result.get("status"),
+            "driver": {
+                "permanentNumber": driver.get("permanentNumber"),
+                "code": driver.get("code"),
+                "givenName": driver.get("givenName"),
+                "familyName": driver.get("familyName"),
+            },
+            "constructor": {
+                "name": constructor.get("name"),
+            },
+        }
+
+    @property
+    def state(self):
+        races = self._get_races()
+        if not races:
+            return 0
+        # Only count sprint weekends that actually include sprint results
+        return sum(1 for race in races if race.get("SprintResults"))
+
+    @property
+    def extra_state_attributes(self):
+        races = self._get_races()
+        cleaned = []
+        for race in races:
+            sprint_results = race.get("SprintResults") or []
+            sprint_payload = [self._clean_result(result) for result in sprint_results]
+            cleaned.append(
+                {
+                    "round": race.get("round"),
+                    "race_name": race.get("raceName"),
+                    "results": sprint_payload,
                 }
             )
         return {"races": cleaned}

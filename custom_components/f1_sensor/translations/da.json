@@ -27,6 +27,7 @@
       "current_session": { "name": "Aktuel session" },
       "last_race_results": { "name": "Resultater fra sidste løb" },
       "season_results": { "name": "Sæsonresultater" },
+      "sprint_results": { "name": "Sprintresultater" },
       "safety_car": { "name": "Sikkerhedsbil" },
       "fia_documents": { "name": "FIA-afgørelser" }
     },

@@ -27,6 +27,7 @@
       "current_session": { "name": "Sessão atual" },
       "last_race_results": { "name": "Resultados da última corrida" },
       "season_results": { "name": "Resultados da temporada" },
+      "sprint_results": { "name": "Resultados da sprint" },
       "safety_car": { "name": "Safety car" },
       "fia_documents": { "name": "Decisões da FIA" }
     },
