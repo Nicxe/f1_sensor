@@ -27,7 +27,8 @@
       "current_session": { "name": "Gjeldende økt" },
       "last_race_results": { "name": "Resultater fra forrige løp" },
       "season_results": { "name": "Sesongresultater" },
-      "safety_car": { "name": "Sikkerhetsbil" }
+      "safety_car": { "name": "Sikkerhetsbil" },
+      "fia_documents": { "name": "FIA-beslutninger" }
     },
     "binary_sensor": {
       "race_week": { "name": "Raceuke" }

@@ -44,7 +44,8 @@
             "current_session": {"name": "Current session"},
             "last_race_results": {"name": "Last race results"},
             "season_results": {"name": "Season results"},
-            "safety_car": {"name": "Safety car"}
+            "safety_car": {"name": "Safety car"},
+            "fia_documents": {"name": "FIA decisions"}
         },
         "binary_sensor": {"race_week": {"name": "Race week"}}
     }

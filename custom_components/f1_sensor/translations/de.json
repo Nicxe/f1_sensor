@@ -27,7 +27,8 @@
       "current_session": { "name": "Aktuelle Session" },
       "last_race_results": { "name": "Letzte Rennergebnisse" },
       "season_results": { "name": "Saisonergebnisse" },
-      "safety_car": { "name": "Sicherheitsauto" }
+      "safety_car": { "name": "Sicherheitsauto" },
+      "fia_documents": { "name": "FIA-Entscheidungen" }
     },
     "binary_sensor": {
       "race_week": { "name": "Rennwoche" }

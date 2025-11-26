@@ -2,9 +2,11 @@ import json
 import logging
 import asyncio
 import contextlib
+import re
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 from collections import deque
+from urllib.parse import urljoin
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -24,9 +26,20 @@ from .const import (
     SEASON_RESULTS_URL,
     SPRINT_RESULTS_URL,
     LATEST_TRACK_STATUS,
+    FIA_DOCUMENTS_BASE_URL,
+    FIA_SEASON_LIST_URL,
+    FIA_SEASON_FALLBACK_URL,
+    FIA_DOCS_POLL_INTERVAL,
+    FIA_DOCS_FETCH_TIMEOUT,
 )
 from .signalr import LiveBus
-from .helpers import build_user_agent, fetch_json, PersistentCache
+from .helpers import (
+    build_user_agent,
+    fetch_json,
+    fetch_text,
+    parse_fia_documents,
+    PersistentCache,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,6 +108,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     sprint_results_coordinator = F1SprintResultsCoordinator(
         hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
+    fia_documents_coordinator = FiaDocumentsCoordinator(
+        hass,
+        race_coordinator,
+        session=http_session,
+        cache=http_cache,
+        inflight=http_inflight,
+        ttl_seconds=FIA_DOCS_POLL_INTERVAL,
+        persist_map=persisted_map,
+        persist_save=persisted.schedule_save,
+        config_entry=entry,
+    )
     year = datetime.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year, config_entry=entry)
     enable_rc = entry.data.get("enable_race_control", False)
@@ -137,6 +161,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await last_race_coordinator.async_config_entry_first_refresh()
     await season_results_coordinator.async_config_entry_first_refresh()
     await sprint_results_coordinator.async_config_entry_first_refresh()
+    await fia_documents_coordinator.async_config_entry_first_refresh()
     await session_coordinator.async_config_entry_first_refresh()
     if track_status_coordinator:
         await track_status_coordinator.async_config_entry_first_refresh()
@@ -186,6 +211,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
         "drivers_coordinator": drivers_coordinator,
+        "fia_documents_coordinator": fia_documents_coordinator,
         "live_bus": live_bus,
     }
 
@@ -1089,13 +1115,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         await close()
                     except Exception as err:  # noqa: BLE001
                         _LOGGER.debug("Error during %s async_close: %s", name, err)
-            # Close dedicated HTTP session if present
-            try:
-                sess = data.get("http_session")
-                if sess is not None:
-                    await sess.close()
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Error during http_session close: %s", err)
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("Error during entry data cleanup: %s", err)
     return unload_ok
@@ -1296,6 +1315,155 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise UpdateFailed(f"Error fetching sprint results: {err}") from err
 
+
+class FiaDocumentsCoordinator(DataUpdateCoordinator):
+    """Coordinator that scrapes FIA decision documents for the active race weekend."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        race_coordinator: DataUpdateCoordinator,
+        *,
+        session=None,
+        cache=None,
+        inflight=None,
+        ttl_seconds: int = FIA_DOCS_POLL_INTERVAL,
+        persist_map=None,
+        persist_save=None,
+        config_entry: ConfigEntry | None = None,
+    ):
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="FIA Documents Coordinator",
+            update_interval=timedelta(seconds=max(60, int(ttl_seconds or FIA_DOCS_POLL_INTERVAL))),
+            config_entry=config_entry,
+        )
+        self._session = session or async_get_clientsession(hass)
+        self._race_coordinator = race_coordinator
+        self._cache = cache
+        self._inflight = inflight
+        self._ttl = max(60, int(ttl_seconds or FIA_DOCS_POLL_INTERVAL))
+        self._persist = persist_map
+        self._persist_save = persist_save
+        self._season_url_cache: dict[str, str] = {}
+
+    async def async_close(self, *_):
+        return
+
+    async def _async_update_data(self):
+        race = self._get_next_race()
+        if not race:
+            return {"event_key": None, "race": None, "documents": []}
+
+        season = str(race.get("season") or datetime.utcnow().year)
+        round_ = str(race.get("round") or "")
+        event_key = f"{season}_{round_ or 'next'}"
+
+        season_url = await self._get_season_url(season)
+
+        try:
+            async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+                html = await fetch_text(
+                    self.hass,
+                    self._session,
+                    season_url,
+                    ttl_seconds=self._ttl,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                    persist_map=self._persist,
+                    persist_save=self._persist_save,
+                )
+        except Exception as err:  # noqa: BLE001
+            raise UpdateFailed(f"Error fetching FIA documents: {err}") from err
+
+        try:
+            docs = parse_fia_documents(html)
+        except Exception as err:  # noqa: BLE001
+            raise UpdateFailed(f"Error parsing FIA documents: {err}") from err
+
+        return {
+            "event_key": event_key,
+            "race": self._summarize_race(race),
+            "documents": docs,
+        }
+
+    async def _get_season_url(self, season: str) -> str:
+        cached = self._season_url_cache.get(season)
+        if cached:
+            return cached
+        slug = None
+        try:
+            async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+                html = await fetch_text(
+                    self.hass,
+                    self._session,
+                    FIA_SEASON_LIST_URL,
+                    ttl_seconds=self._ttl,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                    persist_map=self._persist,
+                    persist_save=self._persist_save,
+                )
+            slug = self._extract_season_slug(html, season)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Failed to resolve FIA season slug for %s: %s", season, err)
+        url = (
+            urljoin(FIA_DOCUMENTS_BASE_URL + "/", slug)
+            if slug
+            else FIA_SEASON_FALLBACK_URL
+        )
+        self._season_url_cache[season] = url
+        return url
+
+    @staticmethod
+    def _extract_season_slug(html: str, season: str) -> str | None:
+        if not isinstance(html, str) or not html:
+            return None
+        pattern = re.compile(
+            rf'href="(?P<href>/documents[^"]*season/season-{re.escape(str(season))}-\d+)"',
+            re.IGNORECASE,
+        )
+        match = pattern.search(html)
+        if match:
+            return match.group("href")
+        return None
+
+    def _summarize_race(self, race: dict | None) -> dict:
+        if not isinstance(race, dict):
+            return {}
+        circuit = race.get("Circuit", {}) or {}
+        location = circuit.get("Location", {}) or {}
+        return {
+            "season": race.get("season"),
+            "round": race.get("round"),
+            "race_name": race.get("raceName"),
+            "race_date": race.get("date"),
+            "race_time": race.get("time"),
+            "circuit_id": circuit.get("circuitId"),
+            "circuit_name": circuit.get("circuitName"),
+            "circuit_url": circuit.get("url"),
+            "locality": location.get("locality"),
+            "country": location.get("country"),
+        }
+
+    def _get_next_race(self) -> dict | None:
+        data = getattr(self._race_coordinator, "data", None) or {}
+        races = (data.get("MRData") or {}).get("RaceTable", {}).get("Races", [])
+        if not isinstance(races, list):
+            return None
+        now = datetime.utcnow().replace(tzinfo=None)
+        for race in races:
+            date = race.get("date")
+            time_str = race.get("time") or "00:00:00Z"
+            dt_str = f"{date}T{time_str}".replace("Z", "+00:00")
+            try:
+                dt = datetime.fromisoformat(dt_str)
+            except Exception:
+                continue
+            if dt.replace(tzinfo=None) > now:
+                return race
+        return races[-1] if races else None
 class LiveSessionCoordinator(DataUpdateCoordinator):
     """Fetch current or next session from the LiveTiming index."""
 

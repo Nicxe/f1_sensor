@@ -79,6 +79,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "session_status": "Session status (live)",
                         "current_session": "Current session (live)",
                         "safety_car": "Safety car (live)",
+                        "fia_documents": "FIA decisions",
                         # TEMP_DISABLED: Race driver order (live)
                     }
                 ),
@@ -144,6 +145,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "session_status": "Session status (live)",
             "current_session": "Current session (live)",
             "safety_car": "Safety car (live)",
+            "fia_documents": "FIA decisions",
             # TEMP_DISABLED: Race driver order (live)
         }
         default_enabled = [

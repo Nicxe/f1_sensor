@@ -89,6 +89,7 @@ async def async_setup_entry(
         "session_status",
         "current_session",
         "safety_car",
+        "fia_documents",
     }
     raw_enabled = entry.data.get("enabled_sensors", [])
     normalized = []
@@ -122,6 +123,7 @@ async def async_setup_entry(
         # TEMP_DISABLED: "race_order": (F1RaceOrderSensor, data.get("drivers_coordinator")),
         # TEMP_DISABLED: "driver_favorites": (F1FavoriteDriverCollection, data.get("drivers_coordinator")),
         "driver_list": (F1DriverListSensor, data.get("drivers_coordinator")),
+        "fia_documents": (F1FiaDocumentsSensor, data.get("fia_documents_coordinator")),
     }
 
     sensors = []
@@ -761,6 +763,117 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
                 }
             )
         return {"races": cleaned}
+
+
+class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Sensor that tracks FIA decision documents per race weekend."""
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:file-document-alert"
+        self._attr_native_value = 0
+        self._attr_extra_state_attributes = {"documents": []}
+        self._documents: list[dict] = []
+        self._seen_urls: set[str] = set()
+        self._event_key: str | None = None
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        await self._restore_last_state()
+        self._update_from_coordinator(force=True)
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self.async_write_ha_state()
+
+    async def _restore_last_state(self) -> None:
+        last = await self.async_get_last_state()
+        if not last or last.state in (None, "unknown", "unavailable"):
+            return
+        try:
+            self._attr_native_value = int(last.state)
+        except Exception:
+            self._attr_native_value = 0
+        attrs = dict(getattr(last, "attributes", {}) or {})
+        docs = attrs.get("documents")
+        if isinstance(docs, list):
+            cleaned = [doc for doc in docs if isinstance(doc, dict)]
+            self._documents = cleaned
+            self._seen_urls = {
+                str(doc.get("url")).strip()
+                for doc in cleaned
+                if isinstance(doc.get("url"), str)
+            }
+        event_key = attrs.get("event_key")
+        if isinstance(event_key, str) and event_key:
+            self._event_key = event_key
+        race = attrs.get("race") if isinstance(attrs.get("race"), dict) else {}
+        self._attr_extra_state_attributes = {
+            "event_key": self._event_key,
+            "race": race,
+            "documents": list(self._documents),
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        changed = self._update_from_coordinator()
+        if changed:
+            from logging import getLogger
+
+            try:
+                getLogger(__name__).debug(
+                    "FIA documents updated -> event=%s count=%s",
+                    self._event_key,
+                    self._attr_native_value,
+                )
+            except Exception:
+                pass
+            self._safe_write_ha_state()
+
+    def _update_from_coordinator(self, force: bool = False) -> bool:
+        data = self.coordinator.data or {}
+        updated = False
+        event_key = data.get("event_key")
+        race_info = data.get("race") if isinstance(data.get("race"), dict) else {}
+        documents = data.get("documents") if isinstance(data.get("documents"), list) else []
+
+        if isinstance(event_key, str) and event_key and event_key != self._event_key:
+            self._event_key = event_key
+            self._documents = []
+            self._seen_urls = set()
+            updated = True
+
+        for doc in documents:
+            if not isinstance(doc, dict):
+                continue
+            url = str(doc.get("url") or "").strip()
+            if not url or url in self._seen_urls:
+                continue
+            self._seen_urls.add(url)
+            self._documents.append(doc)
+            updated = True
+
+        # Keep bounded attribute size
+        if len(self._documents) > 100:
+            excess = len(self._documents) - 100
+            for _ in range(excess):
+                removed = self._documents.pop(0)
+                url = str(removed.get("url") or "").strip()
+                if url in self._seen_urls:
+                    self._seen_urls.remove(url)
+            updated = True
+
+        new_state = len(self._documents)
+        attrs = {
+            "event_key": self._event_key,
+            "race": race_info,
+            "documents": list(self._documents),
+        }
+
+        if force or new_state != self._attr_native_value or attrs != self._attr_extra_state_attributes:
+            self._attr_native_value = new_state
+            self._attr_extra_state_attributes = attrs
+            updated = True
+
+        return updated
 
 
 class F1DriverPointsProgressionSensor(F1BaseEntity, RestoreEntity, SensorEntity):

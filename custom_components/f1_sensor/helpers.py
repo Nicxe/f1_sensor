@@ -2,8 +2,10 @@ import json
 import logging
 import asyncio
 import time
-from typing import Any, Dict, Optional, Callable
-from urllib.parse import urlencode
+import re
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, Optional, Callable, List
+from urllib.parse import urlencode, urljoin
 from json import JSONDecodeError
 
 from homeassistant.const import __version__ as HA_VERSION
@@ -198,6 +200,82 @@ async def fetch_json(
                 pass
 
 
+async def fetch_text(
+    hass,
+    session,
+    url: str,
+    *,
+    params: Optional[Dict[str, Any]] = None,
+    ttl_seconds: int = 30,
+    cache: Optional[Dict[str, tuple[float, Any]]] = None,
+    inflight: Optional[Dict[str, asyncio.Future]] = None,
+    persist_map: Optional[Dict[str, Any]] = None,
+    persist_save: Optional[Callable[[], None]] = None,
+) -> str:
+    """Fetch raw text with TTL cache and in-flight de-duplication."""
+    base_key = _make_cache_key(url, params)
+    key = f"text::{base_key}"
+    now = time.monotonic()
+    cache_map: Dict[str, tuple[float, Any]] = cache if isinstance(cache, dict) else {}
+    inflight_map: Dict[str, asyncio.Future] = inflight if isinstance(inflight, dict) else {}
+    persist_store: Dict[str, Any] = persist_map if isinstance(persist_map, dict) else {}
+
+    try:
+        exp, data = cache_map.get(key, (0.0, None))
+        if exp and now < exp and isinstance(data, str):
+            if _LOGGER.isEnabledFor(logging.DEBUG):
+                _LOGGER.debug("HTTP text cache HIT key=%s ttl_left=%.1fs", key, exp - now)
+            return data
+    except Exception:
+        pass
+
+    fut = inflight_map.get(key)
+    if fut is not None and not fut.done():
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug("HTTP text request COALESCED key=%s", key)
+        return await asyncio.shield(fut)
+
+    loop = hass.loop
+    fut = loop.create_future()
+    inflight_map[key] = fut
+    try:
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug("HTTP text cache MISS key=%s -> fetching", key)
+        async with session.get(url, params=params) as resp:
+            resp.raise_for_status()
+            text = await resp.text()
+            try:
+                cache_map[key] = (now + max(1, int(ttl_seconds)), text)
+            except Exception:
+                pass
+            try:
+                persist_store[key] = {
+                    "data": text,
+                    "saved_at": time.time(),
+                }
+                if callable(persist_save):
+                    persist_save()
+            except Exception:
+                pass
+            fut.set_result(text)
+            return text
+    except Exception as err:
+        if not fut.done():
+            fut.set_exception(err)
+        raise
+    finally:
+        try:
+            async def _cleanup_later():
+                await asyncio.sleep(0)
+                inflight_map.pop(key, None)
+            loop.create_task(_cleanup_later())
+        except Exception:
+            try:
+                inflight_map.pop(key, None)
+            except Exception:
+                pass
+
+
 class PersistentCache:
     """Versioned persistent cache using HA Store, per config-entry."""
 
@@ -239,3 +317,76 @@ class PersistentCache:
                 self._hass.loop.create_task(self._store.async_save(self._data))
             except Exception:
                 pass
+
+
+_PDF_ANCHOR_RE = re.compile(
+    r"<a[^>]*href=(['\"])(?P<href>[^'\"]+?\.pdf)\1[^>]*>(?P<label>[\s\S]*?)</a>",
+    re.IGNORECASE,
+)
+_PUBLISHED_ON_RE = re.compile(
+    r"Published on (\d{2})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})(?:\s*(CET|CEST|UTC))?",
+    re.IGNORECASE,
+)
+_TAG_RE = re.compile(r"<[^>]+>")
+_WS_RE = re.compile(r"\s+")
+_TZ_OFFSETS = {
+    "CET": 1,
+    "CEST": 2,
+    "UTC": 0,
+}
+
+
+def _strip_html(text: str) -> str:
+    return _WS_RE.sub(
+        " ",
+        _TAG_RE.sub(" ", text or ""),
+    ).strip()
+
+
+def _extract_published(text: str) -> tuple[Optional[str], str]:
+    if not text:
+        return None, text
+    match = _PUBLISHED_ON_RE.search(text)
+    if not match:
+        return None, text
+    day, month, year_short, hour, minute, zone = match.groups()
+    try:
+        year = int(year_short)
+        year += 2000 if year < 50 else 1900
+        dt = datetime(
+            year,
+            int(month),
+            int(day),
+            int(hour),
+            int(minute),
+        )
+        zone = (zone or "UTC").upper()
+        offset = _TZ_OFFSETS.get(zone, 0)
+        tzinfo = timezone(timedelta(hours=offset))
+        dt = dt.replace(tzinfo=tzinfo)
+        iso = dt.astimezone(timezone.utc).isoformat()
+    except Exception:
+        iso = None
+    cleaned = text.replace(match.group(0), "").strip()
+    cleaned = _WS_RE.sub(" ", cleaned.replace(zone or "", "")).strip()
+    return iso, cleaned
+
+
+def parse_fia_documents(html: str) -> List[Dict[str, Any]]:
+    """Extract FIA PDF links from HTML."""
+    if not isinstance(html, str) or not html:
+        return []
+    docs: List[Dict[str, Any]] = []
+    for match in _PDF_ANCHOR_RE.finditer(html):
+        href = match.group("href")
+        label = match.group("label") or ""
+        text = _strip_html(label)
+        published, clean_text = _extract_published(text)
+        absolute = urljoin("https://www.fia.com", href)
+        doc = {
+            "name": clean_text or absolute,
+            "url": absolute,
+            "published": published,
+        }
+        docs.append(doc)
+    return docs
