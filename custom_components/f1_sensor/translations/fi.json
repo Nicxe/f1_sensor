@@ -27,7 +27,9 @@
       "current_session": { "name": "Käynnissä oleva sessio" },
       "last_race_results": { "name": "Edellisen kilpailun tulokset" },
       "season_results": { "name": "Kausitulokset" },
-      "safety_car": { "name": "Turva-auto" }
+      "sprint_results": { "name": "Sprinttulokset" },
+      "safety_car": { "name": "Turva-auto" },
+      "fia_documents": { "name": "FIA-päätökset" }
     },
     "binary_sensor": {
       "race_week": { "name": "Kilpailuviikko" }

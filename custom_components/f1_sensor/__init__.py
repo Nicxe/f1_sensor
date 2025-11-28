@@ -2,9 +2,11 @@ import json
 import logging
 import asyncio
 import contextlib
+import re
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 from collections import deque
+from urllib.parse import urljoin
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -24,9 +26,20 @@ from .const import (
     SEASON_RESULTS_URL,
     SPRINT_RESULTS_URL,
     LATEST_TRACK_STATUS,
+    FIA_DOCUMENTS_BASE_URL,
+    FIA_SEASON_LIST_URL,
+    FIA_SEASON_FALLBACK_URL,
+    FIA_DOCS_POLL_INTERVAL,
+    FIA_DOCS_FETCH_TIMEOUT,
 )
 from .signalr import LiveBus
-from .helpers import build_user_agent, fetch_json, PersistentCache
+from .helpers import (
+    build_user_agent,
+    fetch_json,
+    fetch_text,
+    parse_fia_documents,
+    PersistentCache,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,25 +91,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         pass
 
     race_coordinator = F1DataCoordinator(
-        hass, API_URL, "F1 Race Data Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=30, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, API_URL, "F1 Race Data Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=30, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
     driver_coordinator = F1DataCoordinator(
-        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
     constructor_coordinator = F1DataCoordinator(
-        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
     last_race_coordinator = F1DataCoordinator(
-        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
     season_results_coordinator = F1SeasonResultsCoordinator(
-        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
     )
     sprint_results_coordinator = F1SprintResultsCoordinator(
-        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save
+        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
+    )
+    fia_documents_coordinator = FiaDocumentsCoordinator(
+        hass,
+        race_coordinator,
+        session=http_session,
+        cache=http_cache,
+        inflight=http_inflight,
+        ttl_seconds=FIA_DOCS_POLL_INTERVAL,
+        persist_map=persisted_map,
+        persist_save=persisted.schedule_save,
+        config_entry=entry,
     )
     year = datetime.utcnow().year
-    session_coordinator = LiveSessionCoordinator(hass, year)
+    session_coordinator = LiveSessionCoordinator(hass, year, config_entry=entry)
     enable_rc = entry.data.get("enable_race_control", False)
     live_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
     track_status_coordinator = None
@@ -113,22 +137,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if enable_rc:
         track_status_coordinator = TrackStatusCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
         session_status_coordinator = SessionStatusCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
         session_info_coordinator = SessionInfoCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
         race_control_coordinator = RaceControlCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
         weather_data_coordinator = WeatherDataCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
         lap_count_coordinator = LapCountCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus
+            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
         )
 
     await race_coordinator.async_config_entry_first_refresh()
@@ -137,6 +161,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await last_race_coordinator.async_config_entry_first_refresh()
     await season_results_coordinator.async_config_entry_first_refresh()
     await sprint_results_coordinator.async_config_entry_first_refresh()
+    await fia_documents_coordinator.async_config_entry_first_refresh()
     await session_coordinator.async_config_entry_first_refresh()
     if track_status_coordinator:
         await track_status_coordinator.async_config_entry_first_refresh()
@@ -162,6 +187,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             session_coordinator,
             delay_seconds=int(entry.data.get("live_delay_seconds", 0) or 0),
             bus=live_bus,
+            config_entry=entry,
         )
         await drivers_coordinator.async_config_entry_first_refresh()
 
@@ -185,6 +211,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
         "drivers_coordinator": drivers_coordinator,
+        "fia_documents_coordinator": fia_documents_coordinator,
         "live_bus": live_bus,
     }
 
@@ -201,12 +228,14 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Weather Data Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -349,19 +378,21 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Race Control Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
         self.available = True
         self._last_message = None
         self.data_list: list[dict] = []
-        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._deliver_handles: list[asyncio.Handle] = []
         self._bus = bus
         self._unsub: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
@@ -377,12 +408,13 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._unsub = None
-        if self._deliver_handle:
-            try:
-                self._deliver_handle.cancel()
-            except Exception:
-                pass
-            self._deliver_handle = None
+        if self._deliver_handles:
+            for handle in list(self._deliver_handles):
+                try:
+                    handle.cancel()
+                except Exception:
+                    pass
+            self._deliver_handles.clear()
 
     async def _async_update_data(self):
         return self._last_message
@@ -491,22 +523,29 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             self._seen_ids_order.append(ident)
             self._seen_ids_set.add(ident)
             # Schedule/coalesce delivery
-            if self._delay > 0:
-                try:
-                    if self._deliver_handle:
-                        self._deliver_handle.cancel()
-                except Exception:
-                    pass
-                self._deliver_handle = self.hass.loop.call_later(
-                    self._delay, lambda m=item: self._deliver(m)
-                )
-            else:
-                try:
-                    if self._deliver_handle:
-                        self._deliver_handle.cancel()
-                except Exception:
-                    pass
-                self._deliver_handle = self.hass.loop.call_soon(lambda m=item: self._deliver(m))
+            self._schedule_deliver(item)
+
+    def _schedule_deliver(self, item: dict) -> None:
+        handle: asyncio.Handle | None = None
+
+        def _callback(m=item):
+            nonlocal handle
+            try:
+                self._deliver(m)
+            finally:
+                if handle:
+                    try:
+                        self._deliver_handles.remove(handle)
+                    except ValueError:
+                        pass
+                    handle = None
+
+        loop = self.hass.loop
+        if self._delay > 0:
+            handle = loop.call_later(self._delay, _callback)
+        else:
+            handle = loop.call_soon(_callback)
+        self._deliver_handles.append(handle)
 
     def _deliver(self, item: dict) -> None:
         self.available = True
@@ -566,12 +605,14 @@ class LapCountCoordinator(DataUpdateCoordinator):
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Lap Count Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -686,12 +727,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         session_coord: 'LiveSessionCoordinator',
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Live Drivers Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -1072,13 +1115,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         await close()
                     except Exception as err:  # noqa: BLE001
                         _LOGGER.debug("Error during %s async_close: %s", name, err)
-            # Close dedicated HTTP session if present
-            try:
-                sess = data.get("http_session")
-                if sess is not None:
-                    await sess.close()
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Error during http_session close: %s", err)
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("Error during entry data cleanup: %s", err)
     return unload_ok
@@ -1090,12 +1126,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class F1DataCoordinator(DataUpdateCoordinator):
     """Handles updates from a given F1 endpoint."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 30, persist_map=None, persist_save=None):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 30, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
+            config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
         self._url = url
@@ -1130,12 +1167,13 @@ class F1DataCoordinator(DataUpdateCoordinator):
 class F1SeasonResultsCoordinator(DataUpdateCoordinator):
     """Fetch all season results across paginated Ergast responses."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
+            config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
         self._base_url = url
@@ -1242,12 +1280,13 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 class F1SprintResultsCoordinator(DataUpdateCoordinator):
     """Fetch sprint results for the current season (single, non-paginated endpoint)."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
         super().__init__(
             hass,
             _LOGGER,
             name=name,
             update_interval=timedelta(hours=1),
+            config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
         self._url = url
@@ -1276,15 +1315,165 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise UpdateFailed(f"Error fetching sprint results: {err}") from err
 
+
+class FiaDocumentsCoordinator(DataUpdateCoordinator):
+    """Coordinator that scrapes FIA decision documents for the active race weekend."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        race_coordinator: DataUpdateCoordinator,
+        *,
+        session=None,
+        cache=None,
+        inflight=None,
+        ttl_seconds: int = FIA_DOCS_POLL_INTERVAL,
+        persist_map=None,
+        persist_save=None,
+        config_entry: ConfigEntry | None = None,
+    ):
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="FIA Documents Coordinator",
+            update_interval=timedelta(seconds=max(60, int(ttl_seconds or FIA_DOCS_POLL_INTERVAL))),
+            config_entry=config_entry,
+        )
+        self._session = session or async_get_clientsession(hass)
+        self._race_coordinator = race_coordinator
+        self._cache = cache
+        self._inflight = inflight
+        self._ttl = max(60, int(ttl_seconds or FIA_DOCS_POLL_INTERVAL))
+        self._persist = persist_map
+        self._persist_save = persist_save
+        self._season_url_cache: dict[str, str] = {}
+
+    async def async_close(self, *_):
+        return
+
+    async def _async_update_data(self):
+        race = self._get_next_race()
+        if not race:
+            return {"event_key": None, "race": None, "documents": []}
+
+        season = str(race.get("season") or datetime.utcnow().year)
+        round_ = str(race.get("round") or "")
+        event_key = f"{season}_{round_ or 'next'}"
+
+        season_url = await self._get_season_url(season)
+
+        try:
+            async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+                html = await fetch_text(
+                    self.hass,
+                    self._session,
+                    season_url,
+                    ttl_seconds=self._ttl,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                    persist_map=self._persist,
+                    persist_save=self._persist_save,
+                )
+        except Exception as err:  # noqa: BLE001
+            raise UpdateFailed(f"Error fetching FIA documents: {err}") from err
+
+        try:
+            docs = parse_fia_documents(html)
+        except Exception as err:  # noqa: BLE001
+            raise UpdateFailed(f"Error parsing FIA documents: {err}") from err
+
+        return {
+            "event_key": event_key,
+            "race": self._summarize_race(race),
+            "documents": docs,
+        }
+
+    async def _get_season_url(self, season: str) -> str:
+        cached = self._season_url_cache.get(season)
+        if cached:
+            return cached
+        slug = None
+        try:
+            async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+                html = await fetch_text(
+                    self.hass,
+                    self._session,
+                    FIA_SEASON_LIST_URL,
+                    ttl_seconds=self._ttl,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                    persist_map=self._persist,
+                    persist_save=self._persist_save,
+                )
+            slug = self._extract_season_slug(html, season)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Failed to resolve FIA season slug for %s: %s", season, err)
+        url = (
+            urljoin(FIA_DOCUMENTS_BASE_URL + "/", slug)
+            if slug
+            else FIA_SEASON_FALLBACK_URL
+        )
+        self._season_url_cache[season] = url
+        return url
+
+    @staticmethod
+    def _extract_season_slug(html: str, season: str) -> str | None:
+        if not isinstance(html, str) or not html:
+            return None
+        pattern = re.compile(
+            rf'href="(?P<href>/documents[^"]*season/season-{re.escape(str(season))}-\d+)"',
+            re.IGNORECASE,
+        )
+        match = pattern.search(html)
+        if match:
+            return match.group("href")
+        return None
+
+    def _summarize_race(self, race: dict | None) -> dict:
+        if not isinstance(race, dict):
+            return {}
+        circuit = race.get("Circuit", {}) or {}
+        location = circuit.get("Location", {}) or {}
+        return {
+            "season": race.get("season"),
+            "round": race.get("round"),
+            "race_name": race.get("raceName"),
+            "race_date": race.get("date"),
+            "race_time": race.get("time"),
+            "circuit_id": circuit.get("circuitId"),
+            "circuit_name": circuit.get("circuitName"),
+            "circuit_url": circuit.get("url"),
+            "locality": location.get("locality"),
+            "country": location.get("country"),
+        }
+
+    def _get_next_race(self) -> dict | None:
+        data = getattr(self._race_coordinator, "data", None) or {}
+        races = (data.get("MRData") or {}).get("RaceTable", {}).get("Races", [])
+        if not isinstance(races, list):
+            return None
+        now = datetime.utcnow().replace(tzinfo=None)
+        for race in races:
+            date = race.get("date")
+            time_str = race.get("time") or "00:00:00Z"
+            dt_str = f"{date}T{time_str}".replace("Z", "+00:00")
+            try:
+                dt = datetime.fromisoformat(dt_str)
+            except Exception:
+                continue
+            if dt.replace(tzinfo=None) > now:
+                return race
+        return races[-1] if races else None
 class LiveSessionCoordinator(DataUpdateCoordinator):
     """Fetch current or next session from the LiveTiming index."""
 
-    def __init__(self, hass: HomeAssistant, year: int, session=None):
+    def __init__(self, hass: HomeAssistant, year: int, session=None, config_entry: ConfigEntry | None = None):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Live Session Coordinator",
             update_interval=timedelta(hours=1),
+            config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
         self.year = year
@@ -1319,12 +1508,14 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Track Status Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -1487,12 +1678,14 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Session Status Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
@@ -1589,12 +1782,14 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="F1 Session Info Coordinator",
             update_interval=None,
+            config_entry=config_entry,
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord

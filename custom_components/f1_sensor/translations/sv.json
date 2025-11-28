@@ -44,7 +44,9 @@
       "current_session": { "name": "Aktuell session" },
       "last_race_results": { "name": "Resultat från senaste loppet" },
       "season_results": { "name": "Säsongsresultat" },
-      "safety_car": { "name": "Säkerhetsbil" }
+      "sprint_results": { "name": "Sprintresultat" },
+      "safety_car": { "name": "Säkerhetsbil" },
+      "fia_documents": { "name": "FIA-beslut" }
     },
     "binary_sensor": {
       "race_week": { "name": "Tävlingsvecka" }
