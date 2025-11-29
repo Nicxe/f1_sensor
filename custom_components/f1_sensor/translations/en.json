@@ -45,6 +45,7 @@
             "last_race_results": {"name": "Last race results"},
             "season_results": {"name": "Season results"},
             "sprint_results": {"name": "Sprint results"},
+            "race_control": {"name": "Race control"},
             "safety_car": {"name": "Safety car"},
             "fia_documents": {"name": "FIA decisions"}
         },

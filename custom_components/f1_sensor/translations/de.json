@@ -28,6 +28,7 @@
       "last_race_results": { "name": "Letzte Rennergebnisse" },
       "season_results": { "name": "Saisonergebnisse" },
       "sprint_results": { "name": "Sprintergebnisse" },
+      "race_control": { "name": "Rennleitung" },
       "safety_car": { "name": "Sicherheitsauto" },
       "fia_documents": { "name": "FIA-Entscheidungen" }
     },

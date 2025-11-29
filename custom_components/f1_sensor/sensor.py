@@ -9,12 +9,11 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from timezonefinder import TimezoneFinder
 
 from .const import DOMAIN
 from .entity import F1BaseEntity
 from .const import LATEST_TRACK_STATUS
-from .helpers import normalize_track_status
+from .helpers import get_timezone, normalize_track_status
 from logging import getLogger
 from homeassistant.util import dt as dt_util
 
@@ -91,6 +90,7 @@ async def async_setup_entry(
         "current_session",
         "safety_car",
         "fia_documents",
+        "race_control",
     }
     raw_enabled = entry.data.get("enabled_sensors", [])
     normalized = []
@@ -126,6 +126,7 @@ async def async_setup_entry(
         # TEMP_DISABLED: "driver_favorites": (F1FavoriteDriverCollection, data.get("drivers_coordinator")),
         "driver_list": (F1DriverListSensor, data.get("drivers_coordinator")),
         "fia_documents": (F1FiaDocumentsSensor, data.get("fia_documents_coordinator")),
+        "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
     }
 
     sensors = []
@@ -176,11 +177,6 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
-        self._tf = None
-
-    async def async_added_to_hass(self):
-        await super().async_added_to_hass()
-        self._tf = await self.hass.async_add_executor_job(TimezoneFinder)
 
     def _get_next_race(self):
         data = self.coordinator.data
@@ -210,17 +206,14 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
         dt_str = f"{date_str}T{time_str}".replace("Z", "+00:00")
         try:
             dt = datetime.datetime.fromisoformat(dt_str)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(datetime.timezone.utc)
             return dt.isoformat()
         except ValueError:
             return None
 
     def _timezone_from_location(self, lat, lon):
-        if lat is None or lon is None or self._tf is None:
-            return None
-        try:
-            return self._tf.timezone_at(lat=float(lat), lng=float(lon))
-        except Exception:
-            return None
+        return get_timezone(lat, lon)
 
     def _to_local(self, iso_ts, timezone):
         if not iso_ts or not timezone:
@@ -230,6 +223,24 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
             return dt.astimezone(ZoneInfo(timezone)).isoformat()
         except Exception:
             return None
+
+    def _to_home(self, iso_ts):
+        if not iso_ts:
+            return None
+        try:
+            dt = datetime.datetime.fromisoformat(iso_ts)
+        except Exception:
+            return None
+        tzname = getattr(self.hass.config, "time_zone", None)
+        if not tzname:
+            return dt.isoformat()
+        tzinfo = dt_util.get_time_zone(tzname)
+        if tzinfo is None:
+            return dt.isoformat()
+        try:
+            return dt.astimezone(tzinfo).isoformat()
+        except Exception:
+            return dt.isoformat()
 
     @property
     def state(self):
@@ -273,7 +284,7 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
         )
         sprint_start = self.combine_date_time(sprint.get("date"), sprint.get("time"))
 
-        return {
+        attrs = {
             "season": race.get("season"),
             "round": race.get("round"),
             "race_name": race.get("raceName"),
@@ -286,23 +297,22 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
             "circuit_locality": loc.get("locality"),
             "circuit_country": loc.get("country"),
             "circuit_timezone": timezone,
-            "race_start": race_start,
-            "race_start_local": self._to_local(race_start, timezone),
-            "first_practice_start": first_start,
-            "first_practice_start_local": self._to_local(first_start, timezone),
-            "second_practice_start": second_start,
-            "second_practice_start_local": self._to_local(second_start, timezone),
-            "third_practice_start": third_start,
-            "third_practice_start_local": self._to_local(third_start, timezone),
-            "qualifying_start": qual_start,
-            "qualifying_start_local": self._to_local(qual_start, timezone),
-            "sprint_qualifying_start": sprint_quali_start,
-            "sprint_qualifying_start_local": self._to_local(
-                sprint_quali_start, timezone
-            ),
-            "sprint_start": sprint_start,
-            "sprint_start_local": self._to_local(sprint_start, timezone),
         }
+
+        def _populate(label, iso_value):
+            attrs[f"{label}_utc"] = iso_value
+            attrs[label] = self._to_home(iso_value)
+            attrs[f"{label}_local"] = self._to_local(iso_value, timezone)
+
+        _populate("race_start", race_start)
+        _populate("first_practice_start", first_start)
+        _populate("second_practice_start", second_start)
+        _populate("third_practice_start", third_start)
+        _populate("qualifying_start", qual_start)
+        _populate("sprint_qualifying_start", sprint_quali_start)
+        _populate("sprint_start", sprint_start)
+
+        return attrs
 
 
 class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
@@ -612,11 +622,6 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:trophy"
-        self._tf = None
-
-    async def async_added_to_hass(self):
-        await super().async_added_to_hass()
-        self._tf = await self.hass.async_add_executor_job(TimezoneFinder)
 
     def combine_date_time(self, date_str, time_str):
         if not date_str:
@@ -626,17 +631,14 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
         dt_str = f"{date_str}T{time_str}".replace("Z", "+00:00")
         try:
             dt = datetime.datetime.fromisoformat(dt_str)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(datetime.timezone.utc)
             return dt.isoformat()
         except ValueError:
             return None
 
     def _timezone_from_location(self, lat, lon):
-        if lat is None or lon is None or self._tf is None:
-            return None
-        try:
-            return self._tf.timezone_at(lat=float(lat), lng=float(lon))
-        except Exception:
-            return None
+        return get_timezone(lat, lon)
 
     def _to_local(self, iso_ts, timezone):
         if not iso_ts or not timezone:
@@ -646,6 +648,24 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
             return dt.astimezone(ZoneInfo(timezone)).isoformat()
         except Exception:
             return None
+
+    def _to_home(self, iso_ts):
+        if not iso_ts:
+            return None
+        try:
+            dt = datetime.datetime.fromisoformat(iso_ts)
+        except Exception:
+            return None
+        tzname = getattr(self.hass.config, "time_zone", None)
+        if not tzname:
+            return dt.isoformat()
+        tzinfo = dt_util.get_time_zone(tzname)
+        if tzinfo is None:
+            return dt.isoformat()
+        try:
+            return dt.astimezone(tzinfo).isoformat()
+        except Exception:
+            return dt.isoformat()
 
     @property
     def state(self):
@@ -694,7 +714,7 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
         loc = circuit.get("Location", {})
         timezone = self._timezone_from_location(loc.get("lat"), loc.get("long"))
         race_start = self.combine_date_time(race.get("date"), race.get("time"))
-        return {
+        attrs = {
             "round": race.get("round"),
             "race_name": race.get("raceName"),
             "race_url": race.get("url"),
@@ -706,10 +726,12 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
             "circuit_locality": loc.get("locality"),
             "circuit_country": loc.get("country"),
             "circuit_timezone": timezone,
-            "race_start": race_start,
-            "race_start_local": self._to_local(race_start, timezone),
             "results": results,
         }
+        attrs["race_start_utc"] = race_start
+        attrs["race_start"] = self._to_home(race_start)
+        attrs["race_start_local"] = self._to_local(race_start, timezone)
+        return attrs
 
 
 class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
@@ -2217,6 +2239,175 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         except Exception:
             pass
         self.async_write_ha_state()
+
+    @property
+    def state(self):
+        return self._attr_native_value
+
+
+class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Expose the latest Race Control message as an easy-to-use sensor."""
+
+    _history_limit = 5
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:flag-outline"
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+        self._last_event_id: str | None = None
+        self._history: list[dict] = []
+        self._sequence = 0
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+
+        payload = self._extract_current()
+        if payload:
+            self._apply_payload(payload, force=True)
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                self._attr_native_value = last.state
+                self._attr_extra_state_attributes = dict(getattr(last, "attributes", {}) or {})
+                self._last_event_id = self._attr_extra_state_attributes.get("event_id")
+                hist = self._attr_extra_state_attributes.get("history")
+                if isinstance(hist, list):
+                    self._history = [dict(item) for item in hist[: self._history_limit] if isinstance(item, dict)]
+        self.async_write_ha_state()
+
+    def _extract_current(self) -> dict | None:
+        data = self.coordinator.data
+        if isinstance(data, dict) and data:
+            return data
+        hist = getattr(self.coordinator, "data_list", None)
+        if isinstance(hist, list) and hist:
+            last = hist[-1]
+            if isinstance(last, dict):
+                return last
+        return None
+
+    def _cleanup_string(self, value) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    def _build_event_id(self, payload: dict) -> str | None:
+        ts = self._cleanup_string(
+            payload.get("Utc")
+            or payload.get("utc")
+            or payload.get("processedAt")
+            or payload.get("timestamp")
+        ) or ""
+        category = self._cleanup_string(payload.get("Category") or payload.get("CategoryType") or "") or ""
+        message = self._cleanup_string(payload.get("Message") or payload.get("Text") or payload.get("Flag") or "") or ""
+        ident = f"{ts}|{category}|{message}"
+        return ident if ident.strip("|") else None
+
+    def _resolve_icon(self, flag: str | None, category: str | None) -> str:
+        flag_upper = (flag or "").upper()
+        if flag_upper in ("RED", "BLACK"):
+            return "mdi:flag-variant"
+        if flag_upper in ("YELLOW", "DOUBLE YELLOW"):
+            return "mdi:flag"
+        if flag_upper in ("GREEN", "CLEAR"):
+            return "mdi:flag-checkered"
+        if flag_upper in ("BLUE", "WHITE"):
+            return "mdi:flag-variant-outline"
+        if str(category or "").lower() == "safetycar":
+            return "mdi:car-emergency"
+        if str(category or "").lower() == "vsc":
+            return "mdi:car-brake-alert"
+        return "mdi:flag-outline"
+
+    def _format_state(self, payload: dict) -> str:
+        message = self._cleanup_string(payload.get("Message") or payload.get("Text"))
+        if message:
+            return message[:255]
+        flag = self._cleanup_string(payload.get("Flag"))
+        category = self._cleanup_string(payload.get("Category") or payload.get("CategoryType"))
+        scope = self._cleanup_string(payload.get("Scope"))
+        sector = self._cleanup_string(payload.get("Sector"))
+        parts = [part for part in (flag, category, scope, sector) if part]
+        return " - ".join(parts) if parts else "Race control update"
+
+    def _apply_payload(self, payload: dict, *, force: bool = False) -> None:
+        if not isinstance(payload, dict):
+            return
+        event_id = self._build_event_id(payload)
+        if event_id and self._last_event_id == event_id and not force:
+            return
+
+        utc_str = self._cleanup_string(
+            payload.get("Utc")
+            or payload.get("utc")
+            or payload.get("processedAt")
+            or payload.get("timestamp")
+        )
+        try:
+            if utc_str:
+                dt = datetime.datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=datetime.timezone.utc)
+                utc_str = dt.astimezone(datetime.timezone.utc).isoformat(timespec="seconds")
+        except Exception:
+            utc_str = self._cleanup_string(utc_str)
+
+        category = self._cleanup_string(payload.get("Category") or payload.get("CategoryType"))
+        flag = self._cleanup_string(payload.get("Flag"))
+        scope = self._cleanup_string(payload.get("Scope"))
+        sector = self._cleanup_string(payload.get("Sector") or payload.get("TrackSegment"))
+        car_number = self._cleanup_string(
+            payload.get("CarNumber")
+            or payload.get("Number")
+            or payload.get("Car")
+            or payload.get("Driver")
+        )
+        message = self._format_state(payload)
+        received_at = dt_util.utcnow().isoformat(timespec="seconds")
+
+        self._sequence += 1
+        attrs = {
+            "utc": utc_str,
+            "received_at": received_at,
+            "category": category,
+            "flag": flag,
+            "scope": scope,
+            "sector": sector,
+            "car_number": car_number,
+            "message": self._cleanup_string(payload.get("Message") or payload.get("Text")),
+            "event_id": event_id,
+            "sequence": self._sequence,
+            "raw_message": payload,
+        }
+
+        history_entry = {
+            "event_id": event_id,
+            "utc": utc_str,
+            "category": category,
+            "flag": flag,
+            "message": attrs["message"] or message,
+        }
+        self._history.insert(0, history_entry)
+        self._history = self._history[: self._history_limit]
+        attrs["history"] = [dict(item) for item in self._history]
+
+        self._attr_native_value = message
+        self._attr_extra_state_attributes = attrs
+        self._attr_icon = self._resolve_icon(flag, category)
+        if event_id:
+            self._last_event_id = event_id
+
+    def _handle_coordinator_update(self) -> None:
+        payload = self._extract_current()
+        if payload is None:
+            self._safe_write_ha_state()
+            return
+        self._apply_payload(payload)
+        self._safe_write_ha_state()
 
     @property
     def state(self):

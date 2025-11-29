@@ -28,6 +28,7 @@
       "last_race_results": { "name": "Résultats de la dernière course" },
       "season_results": { "name": "Résultats de la saison" },
       "sprint_results": { "name": "Résultats sprint" },
+      "race_control": { "name": "Contrôle de course" },
       "safety_car": { "name": "Voiture de sécurité" },
       "fia_documents": { "name": "Décisions de la FIA" }
     },

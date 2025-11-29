@@ -28,6 +28,7 @@
       "last_race_results": { "name": "Edellisen kilpailun tulokset" },
       "season_results": { "name": "Kausitulokset" },
       "sprint_results": { "name": "Sprinttulokset" },
+      "race_control": { "name": "Kisavalvonta" },
       "safety_car": { "name": "Turva-auto" },
       "fia_documents": { "name": "FIA-päätökset" }
     },

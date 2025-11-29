@@ -56,6 +56,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "race_week",
                         "track_status",
                         "session_status",
+                        "race_control",
                         "current_session",
                         "safety_car",
                         # TEMP_DISABLED: race order (live)
@@ -79,6 +80,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "race_week": "Race week",
                         "track_status": "Track status (live)",
                         "session_status": "Session status (live)",
+                        "race_control": "Race control (live)",
                         "current_session": "Current session (live)",
                         "safety_car": "Safety car (live)",
                         "fia_documents": "FIA decisions",
@@ -146,6 +148,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_week": "Race week",
             "track_status": "Track status (live)",
             "session_status": "Session status (live)",
+            "race_control": "Race control (live)",
             "current_session": "Current session (live)",
             "safety_car": "Safety car (live)",
             "fia_documents": "FIA decisions",
@@ -169,6 +172,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_week",
             "track_status",
             "session_status",
+            "race_control",
             "current_session",
             "safety_car",
             # TEMP_DISABLED: race order (live)

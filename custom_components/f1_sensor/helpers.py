@@ -14,6 +14,11 @@ from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
 
+try:
+    from tzfpy import get_tz as _tzfpy_get_tz
+except ImportError:  # pragma: no cover - handled gracefully when dependency missing
+    _tzfpy_get_tz = None
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -93,6 +98,40 @@ def normalize_track_status(raw: dict | None) -> str | None:
     if message in {"CLEAR", "YELLOW", "VSC", "SC", "RED"}:
         return message
     return None
+
+
+_TZFPY_WARNED = False
+
+
+def get_timezone(lat: Any, lon: Any) -> Optional[str]:
+    """Return an IANA timezone name for the provided coordinates via tzfpy."""
+    if lat is None or lon is None:
+        return None
+
+    try:
+        lat_f = float(lat)
+        lon_f = float(lon)
+    except (TypeError, ValueError):
+        return None
+
+    if _tzfpy_get_tz is None:
+        global _TZFPY_WARNED
+        if not _TZFPY_WARNED:
+            _LOGGER.error(
+                "tzfpy dependency missing; timezone lookups disabled for coordinates"
+            )
+            _TZFPY_WARNED = True
+        return None
+
+    try:
+        tz = _tzfpy_get_tz(lon_f, lat_f)
+    except Exception as err:  # pragma: no cover - defensive guard
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug(
+                "tzfpy lookup failed for lat=%s lon=%s: %s", lat, lon, err, exc_info=err
+            )
+        return None
+    return tz
 
 
 async def build_user_agent(hass) -> str:
