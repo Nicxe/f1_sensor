@@ -5,17 +5,18 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 BASE_URL = "https://api.jolpi.ca/ergast/f1/current/"
+EXT = ".json"
 
-API_URL = BASE_URL + "current.json"
-DRIVER_STANDINGS_URL = BASE_URL + "driverstandings.json"
-CONSTRUCTOR_STANDINGS_URL = BASE_URL + "constructorstandings.json"
-LAST_RACE_RESULTS_URL = BASE_URL + "last/results.json"
+API_URL = f"{BASE_URL}current{EXT}"
+DRIVER_STANDINGS_URL = f"{BASE_URL}driverstandings{EXT}"
+CONSTRUCTOR_STANDINGS_URL = f"{BASE_URL}constructorstandings{EXT}"
+LAST_RACE_RESULTS_URL = f"{BASE_URL}last/results{EXT}"
 
-# Base URL for season results; pagination will be handled by the coordinator
-SEASON_RESULTS_URL = BASE_URL + "results.json"
+# Season-wide results (the coordinator handles pagination)
+SEASON_RESULTS_URL = f"{BASE_URL}results{EXT}"
 
-# Sprint results across the current season
-SPRINT_RESULTS_URL = BASE_URL + "sprint.json"
+# Sprint results for the current season
+SPRINT_RESULTS_URL = f"{BASE_URL}sprint{EXT}"
 
 LIVETIMING_INDEX_URL = "https://livetiming.formula1.com/static/{year}/Index.json"
 
