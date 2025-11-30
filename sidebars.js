@@ -27,7 +27,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Examples',
-      items: ['example/e-ink', 'example/season-progression-charts', 'example/custom-card'],
+      items: ['example/e-ink', 'example/season-progression-charts', 'example/custom-card', 'example/custom-card-by'],
     },
 
 
