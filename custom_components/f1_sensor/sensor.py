@@ -1,5 +1,6 @@
 import datetime
 import asyncio
+import re
 from zoneinfo import ZoneInfo
 
 import async_timeout
@@ -853,6 +854,11 @@ class F1SprintResultsSensor(F1BaseEntity, SensorEntity):
 class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Sensor that tracks FIA decision documents per race weekend."""
 
+    _DOC1_RESET_PATTERN = re.compile(
+        r"\bdoc(?:ument)?(?:\s+(?:no\.?|number))?\s*0*1\b",
+        re.IGNORECASE,
+    )
+
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:file-document-alert"
@@ -897,6 +903,7 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "race": race,
             "documents": list(self._documents),
         }
+        self._sort_documents()
 
     def _handle_coordinator_update(self) -> None:
         changed = self._update_from_coordinator()
@@ -930,7 +937,16 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             if not isinstance(doc, dict):
                 continue
             url = str(doc.get("url") or "").strip()
-            if not url or url in self._seen_urls:
+            if not url:
+                continue
+            is_new = url not in self._seen_urls
+            if is_new and self._should_reset_for_doc(doc):
+                if self._documents or self._seen_urls:
+                    # FIA document numbering resets every race weekend; Document 1 signals a new set.
+                    self._documents = []
+                    self._seen_urls = set()
+                    updated = True
+            if url in self._seen_urls:
                 continue
             self._seen_urls.add(url)
             self._documents.append(doc)
@@ -946,6 +962,8 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     self._seen_urls.remove(url)
             updated = True
 
+        self._sort_documents()
+
         new_state = len(self._documents)
         attrs = {
             "event_key": self._event_key,
@@ -959,6 +977,42 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             updated = True
 
         return updated
+
+    @staticmethod
+    def _published_timestamp(doc: dict) -> float | None:
+        published = doc.get("published")
+        if not isinstance(published, str) or not published:
+            return None
+        try:
+            dt = datetime.datetime.fromisoformat(published.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            return dt.timestamp()
+        except Exception:
+            return None
+
+    def _sort_documents(self) -> None:
+        if not self._documents:
+            return
+        indexed = list(enumerate(self._documents))
+        def sort_key(item):
+            idx, doc = item
+            ts = self._published_timestamp(doc)
+            return (0 if ts is not None else 1, ts if ts is not None else 0.0, idx)
+
+        indexed.sort(key=sort_key)
+        self._documents = [doc for _, doc in indexed]
+
+    @classmethod
+    def _should_reset_for_doc(cls, doc: dict) -> bool:
+        """Return True when a newly-seen doc indicates a fresh race weekend (Document 1)."""
+        name = doc.get("name")
+        if not isinstance(name, str):
+            return False
+        normalized = " ".join(name.split())
+        if not normalized:
+            return False
+        return bool(cls._DOC1_RESET_PATTERN.search(normalized))
 
 
 class F1DriverPointsProgressionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
