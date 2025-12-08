@@ -5,16 +5,24 @@
         "title": "Configuração do sensor F1",
         "data": {
           "sensor_name": "Nome do dispositivo",
-          "enabled_sensors": "Sensores habilitados"
+          "enabled_sensors": "Sensores habilitados",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       },
       "reconfigure": {
         "title": "Reconfigurar sensor F1",
         "data": {
           "sensor_name": "Nome do dispositivo",
-          "enabled_sensors": "Sensores habilitados"
+          "enabled_sensors": "Sensores habilitados",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       }
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
     }
   },
   "entity": {
@@ -27,7 +35,10 @@
       "current_session": { "name": "Sessão atual" },
       "last_race_results": { "name": "Resultados da última corrida" },
       "season_results": { "name": "Resultados da temporada" },
-      "safety_car": { "name": "Safety car" }
+      "sprint_results": { "name": "Resultados da sprint" },
+      "race_control": { "name": "Controle de corrida" },
+      "safety_car": { "name": "Safety car" },
+      "fia_documents": { "name": "Decisões da FIA" }
     },
     "binary_sensor": {
       "race_week": { "name": "Semana de corrida" }

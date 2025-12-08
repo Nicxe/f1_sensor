@@ -3,7 +3,7 @@ import logging
 import datetime as dt
 import asyncio
 import time
-from typing import AsyncGenerator, Callable, Dict, List, Optional
+from typing import AsyncGenerator, Callable, Dict, Iterable, List, Optional, Protocol
 
 from aiohttp import ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
@@ -26,12 +26,20 @@ SUBSCRIBE_MSG = {
         "WeatherData",
         "LapCount",
         "SessionInfo",
+        "Heartbeat",
+        "ExtrapolatedClock",
         "TimingData",
         "DriverList",
         "TimingAppData",
     ]],
     "I": 1,
 }
+
+
+class LiveTransport(Protocol):
+    async def ensure_connection(self) -> None: ...
+    async def messages(self) -> AsyncGenerator[dict, None]: ...
+    async def close(self) -> None: ...
 
 
 class SignalRClient:
@@ -80,7 +88,7 @@ class SignalRClient:
         _LOGGER.debug("SignalR connection established")
         _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, LapCount, SessionInfo, TimingData, DriverList, TimingAppData")
 
-    async def _ensure_connection(self) -> None:
+    async def ensure_connection(self) -> None:
         """Try to (re)connect using exponential back-off."""
         import asyncio
         from .const import FAST_RETRY_SEC, MAX_RETRY_SEC, BACK_OFF_FACTOR
@@ -157,10 +165,17 @@ class LiveBus:
     Subscribers receive already-extracted stream payloads (e.g. dict for "TrackStatus").
     """
 
-    def __init__(self, hass: HomeAssistant, session: ClientSession) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session: ClientSession,
+        *,
+        transport_factory: Callable[[], LiveTransport] | None = None,
+    ) -> None:
         self._hass = hass
         self._session = session
-        self._client: Optional[SignalRClient] = None
+        self._transport_factory = transport_factory
+        self._client: Optional[LiveTransport] = None
         self._task: Optional[asyncio.Task] = None
         self._subs: Dict[str, List[Callable[[dict], None]]] = {}
         self._running = False
@@ -171,6 +186,11 @@ class LiveBus:
         self._log_interval: float = 10.0  # seconds
         # Cache last payload per stream so new subscribers receive latest snapshot immediately
         self._last_payload: Dict[str, dict] = {}
+        self._expect_heartbeat = False
+        self._last_heartbeat_at: float | None = None
+        self._heartbeat_guard: Optional[asyncio.Task] = None
+        self._heartbeat_timeout = 45.0
+        self._heartbeat_check_interval = 5.0
 
     def subscribe(self, stream: str, callback: Callable[[dict], None]) -> Callable[[], None]:
         lst = self._subs.setdefault(stream, [])
@@ -201,17 +221,24 @@ class LiveBus:
 
     async def start(self) -> None:
         if self._running:
+            _LOGGER.debug("LiveBus start requested but already running")
             return
         self._running = True
-        self._client = SignalRClient(self._hass, self._session)
+        _LOGGER.info("LiveBus starting (transport=%s)", "custom" if self._transport_factory else "native")
+        self._client = self._create_client()
         self._task = self._hass.loop.create_task(self._run())
+        if self._heartbeat_guard is None or self._heartbeat_guard.done():
+            self._heartbeat_guard = self._hass.loop.create_task(self._monitor_heartbeat())
 
     async def _run(self) -> None:
-        assert self._client is not None
         try:
             while self._running:
                 try:
-                    await self._client._ensure_connection()
+                    if self._client is None:
+                        self._client = self._create_client()
+                    await self._client.ensure_connection()
+                    self._last_heartbeat_at = time.time()
+                    _LOGGER.info("LiveBus connected to SignalR")
                     async for payload in self._client.messages():
                         # Dispatch feed messages by stream name
                         try:
@@ -229,9 +256,9 @@ class LiveBus:
                                                     # Cache latest even if no subscribers yet
                                                     if isinstance(data, dict):
                                                         self._last_payload[stream] = data
-                                                    # Dispatch to current subscribers (if any)
-                                                    if stream in self._subs:
-                                                        self._dispatch(stream, data)
+                                                    # Always dispatch so heartbeat/activity bookkeeping
+                                                    # works even when there are no explicit subscribers
+                                                    self._dispatch(stream, data)
                                         except Exception:  # noqa: BLE001
                                             continue
                                 # RPC results under "R" (rare)
@@ -251,6 +278,7 @@ class LiveBus:
                 finally:
                     if self._client:
                         await self._client.close()
+                        self._client = None
                 # Periodic compact DEBUG summary
                 self._maybe_log_summary()
         except asyncio.CancelledError:
@@ -261,6 +289,8 @@ class LiveBus:
             # Update counters
             self._cnt[stream] = self._cnt.get(stream, 0) + 1
             self._last_ts[stream] = time.time()
+            if stream == "Heartbeat":
+                self._last_heartbeat_at = time.time()
             # Cache last payload for new subscribers
             if isinstance(data, dict):
                 self._last_payload[stream] = data
@@ -304,9 +334,86 @@ class LiveBus:
 
     async def async_close(self) -> None:
         self._running = False
+        _LOGGER.info("LiveBus shutting down")
         if self._task:
             self._task.cancel()
             self._task = None
+        if self._heartbeat_guard:
+            self._heartbeat_guard.cancel()
+            self._heartbeat_guard = None
         if self._client:
             await self._client.close()
             self._client = None
+
+    def _create_client(self) -> LiveTransport:
+        if callable(self._transport_factory):
+            return self._transport_factory()
+        return SignalRClient(self._hass, self._session)
+
+    async def _monitor_heartbeat(self) -> None:
+        try:
+            while self._running:
+                await asyncio.sleep(self._heartbeat_check_interval)
+                if not self._running:
+                    break
+                if not self._expect_heartbeat:
+                    continue
+                hb_age = self.last_heartbeat_age()
+                # Fall back to generic activity age if we have no explicit
+                # SignalR "Heartbeat" frames; this better matches how F1
+                # actually behaves in practice.
+                activity_age = self.last_stream_activity_age()
+                effective_age = hb_age if hb_age is not None else activity_age
+                if effective_age is None or effective_age < self._heartbeat_timeout:
+                    continue
+                # Treat this as a soft reconnect signal, not a hard warning –
+                # it's normal for the upstream to be quiet between bursts.
+                _LOGGER.debug(
+                    "LiveBus inactivity for %.0fs (hb=%s, activity=%s); forcing SignalR reconnect",
+                    effective_age,
+                    f"{hb_age:.1f}s" if hb_age is not None else "n/a",
+                    f"{activity_age:.1f}s" if activity_age is not None else "n/a",
+                )
+                if self._client:
+                    await self._client.close()
+                    self._client = None
+        except asyncio.CancelledError:
+            pass
+
+    def set_heartbeat_expectation(self, enabled: bool) -> None:
+        self._expect_heartbeat = bool(enabled)
+        if enabled:
+            if self._last_heartbeat_at is None:
+                self._last_heartbeat_at = time.time()
+            _LOGGER.info("Heartbeat guard ENABLED")
+        else:
+            self._last_heartbeat_at = None
+            _LOGGER.info("Heartbeat guard DISABLED")
+
+    def last_heartbeat_age(self) -> float | None:
+        if self._last_heartbeat_at is None:
+            return None
+        return time.time() - self._last_heartbeat_at
+
+    def last_stream_activity_age(self, streams: Iterable[str] | None = None) -> float | None:
+        """Return age in seconds for the most recent payload among given streams."""
+        if not self._last_ts:
+            return None
+        now = time.time()
+        if streams:
+            ages: list[float] = []
+            for stream in streams:
+                ts = self._last_ts.get(stream)
+                if ts is not None:
+                    ages.append(now - ts)
+            if not ages:
+                return None
+            return min(ages)
+        ages = [now - ts for ts in self._last_ts.values() if ts is not None]
+        if not ages:
+            return None
+        return min(ages)
+
+    def get_last_payload(self, stream: str) -> dict | None:
+        data = self._last_payload.get(stream)
+        return data if isinstance(data, dict) else None

@@ -5,16 +5,24 @@
         "title": "Instellen van F1-sensor",
         "data": {
           "sensor_name": "Apparaatnaam",
-          "enabled_sensors": "Ingeschakelde sensoren"
+          "enabled_sensors": "Ingeschakelde sensoren",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       },
       "reconfigure": {
         "title": "F1-sensor opnieuw configureren",
         "data": {
           "sensor_name": "Apparaatnaam",
-          "enabled_sensors": "Ingeschakelde sensoren"
+          "enabled_sensors": "Ingeschakelde sensoren",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       }
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
     }
   },
   "entity": {
@@ -27,7 +35,10 @@
       "current_session": { "name": "Huidige sessie" },
       "last_race_results": { "name": "Resultaten laatste race" },
       "season_results": { "name": "Seizoensresultaten" },
-      "safety_car": { "name": "Safety car" }
+      "sprint_results": { "name": "Sprintrace-resultaten" },
+      "race_control": { "name": "Race control" },
+      "safety_car": { "name": "Safety car" },
+      "fia_documents": { "name": "FIA-beslissingen" }
     },
     "binary_sensor": {
       "race_week": { "name": "Raceweek" }

@@ -5,16 +5,24 @@
         "title": "F1-sensoroppsett",
         "data": {
           "sensor_name": "Enhetsnavn",
-          "enabled_sensors": "Aktiverte sensorer"
+          "enabled_sensors": "Aktiverte sensorer",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       },
       "reconfigure": {
         "title": "Konfigurer F1-sensor på nytt",
         "data": {
           "sensor_name": "Enhetsnavn",
-          "enabled_sensors": "Aktiverte sensorer"
+          "enabled_sensors": "Aktiverte sensorer",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       }
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
     }
   },
   "entity": {
@@ -27,7 +35,10 @@
       "current_session": { "name": "Gjeldende økt" },
       "last_race_results": { "name": "Resultater fra forrige løp" },
       "season_results": { "name": "Sesongresultater" },
-      "safety_car": { "name": "Sikkerhetsbil" }
+      "sprint_results": { "name": "Sprintresultater" },
+      "race_control": { "name": "Racekontroll" },
+      "safety_car": { "name": "Sikkerhetsbil" },
+      "fia_documents": { "name": "FIA-beslutninger" }
     },
     "binary_sensor": {
       "race_week": { "name": "Raceuke" }

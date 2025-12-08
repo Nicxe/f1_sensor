@@ -5,16 +5,24 @@
         "title": "F1-anturin määritys",
         "data": {
           "sensor_name": "Laitteen nimi",
-          "enabled_sensors": "Käytössä olevat anturit"
+          "enabled_sensors": "Käytössä olevat anturit",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       },
       "reconfigure": {
         "title": "Määritä F1-anturi uudelleen",
         "data": {
           "sensor_name": "Laitteen nimi",
-          "enabled_sensors": "Käytössä olevat anturit"
+          "enabled_sensors": "Käytössä olevat anturit",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       }
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
     }
   },
   "entity": {
@@ -27,7 +35,10 @@
       "current_session": { "name": "Käynnissä oleva sessio" },
       "last_race_results": { "name": "Edellisen kilpailun tulokset" },
       "season_results": { "name": "Kausitulokset" },
-      "safety_car": { "name": "Turva-auto" }
+      "sprint_results": { "name": "Sprinttulokset" },
+      "race_control": { "name": "Kisavalvonta" },
+      "safety_car": { "name": "Turva-auto" },
+      "fia_documents": { "name": "FIA-päätökset" }
     },
     "binary_sensor": {
       "race_week": { "name": "Kilpailuviikko" }
