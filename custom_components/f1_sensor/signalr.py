@@ -3,7 +3,7 @@ import logging
 import datetime as dt
 import asyncio
 import time
-from typing import AsyncGenerator, Callable, Dict, List, Optional
+from typing import AsyncGenerator, Callable, Dict, List, Optional, Protocol
 
 from aiohttp import ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
@@ -32,6 +32,12 @@ SUBSCRIBE_MSG = {
     ]],
     "I": 1,
 }
+
+
+class LiveTransport(Protocol):
+    async def ensure_connection(self) -> None: ...
+    async def messages(self) -> AsyncGenerator[dict, None]: ...
+    async def close(self) -> None: ...
 
 
 class SignalRClient:
@@ -80,7 +86,7 @@ class SignalRClient:
         _LOGGER.debug("SignalR connection established")
         _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, LapCount, SessionInfo, TimingData, DriverList, TimingAppData")
 
-    async def _ensure_connection(self) -> None:
+    async def ensure_connection(self) -> None:
         """Try to (re)connect using exponential back-off."""
         import asyncio
         from .const import FAST_RETRY_SEC, MAX_RETRY_SEC, BACK_OFF_FACTOR
@@ -157,10 +163,17 @@ class LiveBus:
     Subscribers receive already-extracted stream payloads (e.g. dict for "TrackStatus").
     """
 
-    def __init__(self, hass: HomeAssistant, session: ClientSession) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session: ClientSession,
+        *,
+        transport_factory: Callable[[], LiveTransport] | None = None,
+    ) -> None:
         self._hass = hass
         self._session = session
-        self._client: Optional[SignalRClient] = None
+        self._transport_factory = transport_factory
+        self._client: Optional[LiveTransport] = None
         self._task: Optional[asyncio.Task] = None
         self._subs: Dict[str, List[Callable[[dict], None]]] = {}
         self._running = False
@@ -203,15 +216,16 @@ class LiveBus:
         if self._running:
             return
         self._running = True
-        self._client = SignalRClient(self._hass, self._session)
+        self._client = self._create_client()
         self._task = self._hass.loop.create_task(self._run())
 
     async def _run(self) -> None:
-        assert self._client is not None
         try:
             while self._running:
                 try:
-                    await self._client._ensure_connection()
+                    if self._client is None:
+                        self._client = self._create_client()
+                    await self._client.ensure_connection()
                     async for payload in self._client.messages():
                         # Dispatch feed messages by stream name
                         try:
@@ -251,6 +265,7 @@ class LiveBus:
                 finally:
                     if self._client:
                         await self._client.close()
+                        self._client = None
                 # Periodic compact DEBUG summary
                 self._maybe_log_summary()
         except asyncio.CancelledError:
@@ -310,3 +325,8 @@ class LiveBus:
         if self._client:
             await self._client.close()
             self._client = None
+
+    def _create_client(self) -> LiveTransport:
+        if callable(self._transport_factory):
+            return self._transport_factory()
+        return SignalRClient(self._hass, self._session)

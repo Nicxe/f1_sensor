@@ -1,7 +1,20 @@
 from homeassistant.const import Platform
 
 DOMAIN = "f1_sensor"
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.NUMBER,
+    Platform.SWITCH,
+]
+
+CONF_OPERATION_MODE = "operation_mode"
+CONF_REPLAY_FILE = "replay_file"
+
+OPERATION_MODE_LIVE = "live"
+OPERATION_MODE_DEVELOPMENT = "development"
+DEFAULT_OPERATION_MODE = OPERATION_MODE_LIVE
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 

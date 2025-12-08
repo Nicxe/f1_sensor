@@ -4,7 +4,12 @@ import re
 from zoneinfo import ZoneInfo
 
 import async_timeout
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.const import UnitOfTime
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.event import async_call_later
 from homeassistant.config_entries import ConfigEntry
@@ -942,7 +947,6 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             is_new = url not in self._seen_urls
             if is_new and self._should_reset_for_doc(doc):
                 if self._documents or self._seen_urls:
-                    # FIA document numbering resets every race weekend; Document 1 signals a new set.
                     self._documents = []
                     self._seen_urls = set()
                     updated = True
@@ -978,6 +982,17 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         return updated
 
+    @classmethod
+    def _should_reset_for_doc(cls, doc: dict) -> bool:
+        """Return True when a newly-seen doc indicates a fresh race weekend (Document 1)."""
+        name = doc.get("name")
+        if not isinstance(name, str):
+            return False
+        normalized = " ".join(name.split())
+        if not normalized:
+            return False
+        return bool(cls._DOC1_RESET_PATTERN.search(normalized))
+
     @staticmethod
     def _published_timestamp(doc: dict) -> float | None:
         published = doc.get("published")
@@ -1002,17 +1017,6 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         indexed.sort(key=sort_key)
         self._documents = [doc for _, doc in indexed]
-
-    @classmethod
-    def _should_reset_for_doc(cls, doc: dict) -> bool:
-        """Return True when a newly-seen doc indicates a fresh race weekend (Document 1)."""
-        name = doc.get("name")
-        if not isinstance(name, str):
-            return False
-        normalized = " ".join(name.split())
-        if not normalized:
-            return False
-        return bool(cls._DOC1_RESET_PATTERN.search(normalized))
 
 
 class F1DriverPointsProgressionSensor(F1BaseEntity, RestoreEntity, SensorEntity):

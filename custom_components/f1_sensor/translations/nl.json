@@ -5,16 +5,24 @@
         "title": "Instellen van F1-sensor",
         "data": {
           "sensor_name": "Apparaatnaam",
-          "enabled_sensors": "Ingeschakelde sensoren"
+          "enabled_sensors": "Ingeschakelde sensoren",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       },
       "reconfigure": {
         "title": "F1-sensor opnieuw configureren",
         "data": {
           "sensor_name": "Apparaatnaam",
-          "enabled_sensors": "Ingeschakelde sensoren"
+          "enabled_sensors": "Ingeschakelde sensoren",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       }
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
     }
   },
   "entity": {

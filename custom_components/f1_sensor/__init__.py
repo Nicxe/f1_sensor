@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 from collections import deque
 from urllib.parse import urljoin
+from pathlib import Path
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -31,8 +32,14 @@ from .const import (
     FIA_SEASON_FALLBACK_URL,
     FIA_DOCS_POLL_INTERVAL,
     FIA_DOCS_FETCH_TIMEOUT,
+    CONF_OPERATION_MODE,
+    CONF_REPLAY_FILE,
+    DEFAULT_OPERATION_MODE,
+    OPERATION_MODE_DEVELOPMENT,
+    OPERATION_MODE_LIVE,
 )
 from .signalr import LiveBus
+from .replay import ReplaySignalRClient
 from .helpers import (
     build_user_agent,
     fetch_json,
@@ -40,6 +47,8 @@ from .helpers import (
     parse_fia_documents,
     PersistentCache,
 )
+from .live_delay import LiveDelayController
+from .calibration import LiveDelayCalibrationManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -122,7 +131,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     year = datetime.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year, config_entry=entry)
     enable_rc = entry.data.get("enable_race_control", False)
-    live_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
+    configured_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
+    delay_controller = LiveDelayController(hass, entry.entry_id)
+    live_delay = await delay_controller.async_initialize(configured_delay)
+    operation_mode = entry.data.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+    replay_source = str(entry.data.get(CONF_REPLAY_FILE, "") or "").strip()
+    transport_factory = None
+    if operation_mode == OPERATION_MODE_DEVELOPMENT:
+        if not replay_source:
+            _LOGGER.warning(
+                "Development mode selected but no replay file configured; falling back to live SignalR"
+            )
+            operation_mode = OPERATION_MODE_LIVE
+        else:
+            replay_path = Path(replay_source).expanduser()
+            if not replay_path.exists():
+                _LOGGER.warning(
+                    "Replay file %s not found; falling back to live SignalR",
+                    replay_path,
+                )
+                operation_mode = OPERATION_MODE_LIVE
+            else:
+                _LOGGER.info(
+                    "Starting F1 Sensor in development replay mode using %s",
+                    replay_path,
+                )
+
+                def _transport_factory() -> ReplaySignalRClient:
+                    return ReplaySignalRClient(hass, replay_path)
+
+                transport_factory = _transport_factory
     track_status_coordinator = None
     session_status_coordinator = None
     session_info_coordinator = None
@@ -132,27 +170,68 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[LATEST_TRACK_STATUS] = None
     # Create and start a shared LiveBus (single SignalR connection)
     session = async_get_clientsession(hass)
-    live_bus = LiveBus(hass, session)
+    live_bus = LiveBus(hass, session, transport_factory=transport_factory)
     await live_bus.start()
+
+    def _reload_entry():
+        hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
+
+    calibration_manager = LiveDelayCalibrationManager(
+        hass,
+        delay_controller,
+        bus=live_bus,
+        timeout_seconds=120,
+        reload_callback=_reload_entry,
+    )
 
     if enable_rc:
         track_status_coordinator = TrackStatusCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
         )
         session_status_coordinator = SessionStatusCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
         )
         session_info_coordinator = SessionInfoCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
         )
         race_control_coordinator = RaceControlCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
         )
         weather_data_coordinator = WeatherDataCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
         )
         lap_count_coordinator = LapCountCoordinator(
-            hass, session_coordinator, live_delay, bus=live_bus, config_entry=entry
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
         )
 
     await race_coordinator.async_config_entry_first_refresh()
@@ -185,9 +264,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         drivers_coordinator = LiveDriversCoordinator(
             hass,
             session_coordinator,
-            delay_seconds=int(entry.data.get("live_delay_seconds", 0) or 0),
+            delay_seconds=live_delay,
             bus=live_bus,
             config_entry=entry,
+            delay_controller=delay_controller,
         )
         await drivers_coordinator.async_config_entry_first_refresh()
 
@@ -213,6 +293,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "drivers_coordinator": drivers_coordinator,
         "fia_documents_coordinator": fia_documents_coordinator,
         "live_bus": live_bus,
+        "operation_mode": operation_mode,
+        "replay_file": replay_source,
+        "live_delay_controller": delay_controller,
+        "calibration_manager": calibration_manager,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -229,6 +313,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
     ):
         super().__init__(
             hass,
@@ -245,7 +330,10 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         self._deliver_handle: Optional[asyncio.Handle] = None
         self._bus = bus
         self._unsub: Optional[Callable[[], None]] = None
+        self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
 
     async def async_close(self, *_):
         if self._unsub:
@@ -260,6 +348,18 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -364,6 +464,18 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         except Exception:
             self._unsub = None
 
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+
 
 class RaceControlCoordinator(DataUpdateCoordinator):
     """Coordinator for RaceControlMessages that publishes HA events for new items.
@@ -379,6 +491,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
     ):
         super().__init__(
             hass,
@@ -395,11 +508,19 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._deliver_handles: list[asyncio.Handle] = []
         self._bus = bus
         self._unsub: Optional[Callable[[], None]] = None
+        self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
         # For duplicate filtering and startup replay suppression
         self._seen_ids_set: set[str] = set()
         self._seen_ids_order = deque(maxlen=1024)
         self._startup_cutoff: datetime | None = None
+        self._dev_mode = (
+            bool(config_entry)
+            and config_entry.data.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+            == OPERATION_MODE_DEVELOPMENT
+        )
 
     async def async_close(self, *_):
         if self._unsub:
@@ -415,6 +536,12 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 except Exception:
                     pass
             self._deliver_handles.clear()
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -547,6 +674,19 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             handle = loop.call_soon(_callback)
         self._deliver_handles.append(handle)
 
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handles:
+            for handle in list(self._deliver_handles):
+                try:
+                    handle.cancel()
+                except Exception:
+                    pass
+            self._deliver_handles.clear()
+
     def _deliver(self, item: dict) -> None:
         self.available = True
         # Maintain last message for visibility and parity with other coordinators
@@ -584,12 +724,15 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         # Establish startup cutoff for replay suppression
-        try:
-            from datetime import timezone
-            t0 = datetime.now(timezone.utc)
-            self._startup_cutoff = t0 - timedelta(seconds=30)
-        except Exception:
+        if self._dev_mode:
             self._startup_cutoff = None
+        else:
+            try:
+                from datetime import timezone
+                t0 = datetime.now(timezone.utc)
+                self._startup_cutoff = t0 - timedelta(seconds=30)
+            except Exception:
+                self._startup_cutoff = None
         # Subscribe to LiveBus
         try:
             self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("RaceControlMessages", self._on_bus_message)  # type: ignore[attr-defined]
@@ -606,6 +749,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
     ):
         super().__init__(
             hass,
@@ -622,7 +766,10 @@ class LapCountCoordinator(DataUpdateCoordinator):
         self._deliver_handle: Optional[asyncio.Handle] = None
         self._bus = bus
         self._unsub: Optional[Callable[[], None]] = None
+        self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
 
     async def async_close(self, *_):
         if self._unsub:
@@ -637,6 +784,12 @@ class LapCountCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -699,6 +852,18 @@ class LapCountCoordinator(DataUpdateCoordinator):
         except Exception:
             self._unsub = None
 
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+
 
 class LiveDriversCoordinator(DataUpdateCoordinator):
     """Coordinator aggregating DriverList, TimingData, TimingAppData, LapCount and SessionStatus.
@@ -728,6 +893,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -741,7 +907,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._deliver_handle: Optional[asyncio.Handle] = None
         self._bus = bus
         self._unsubs: list[Callable[[], None]] = []
+        self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._state: dict[str, Any] = {
             "drivers": {},
             "leader_rn": None,
@@ -764,6 +933,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
 
     async def _async_update_data(self):
         return self._state
@@ -862,6 +1037,18 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 self._state["session"]["part"] = part
         except Exception:
             pass
+
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         # 2) Recompute leader from full stored state (not just current delta)
         self._recompute_leader_from_state()
 
@@ -1004,6 +1191,18 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         except Exception:
             pass
 
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+
     @staticmethod
     def _extract(data: dict, key: str) -> dict | None:
         if not isinstance(data, dict):
@@ -1095,6 +1294,18 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 self._unsubs.append(bus.subscribe("SessionStatus", self._on_sessionstatus))
             except Exception:
                 pass
+
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -1509,6 +1720,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
     ):
         super().__init__(
             hass,
@@ -1526,9 +1738,12 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         self._deliver_handles: list[asyncio.Handle] = []
         self._bus = bus
         self._unsub: Optional[Callable[[], None]] = None
+        self._delay_listener: Optional[Callable[[], None]] = None
         self._t0 = None
         self._startup_cutoff = None
         self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
         # Lightweight dedupe of untimestamped repeats
         self._last_untimestamped_fingerprint: str | None = None
 
@@ -1555,6 +1770,12 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             self._deliver_handles.clear()
         except Exception:
             pass
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -1668,6 +1889,25 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         except Exception:
             self._unsub = None
 
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+        if self._deliver_handles:
+            for handle in list(self._deliver_handles):
+                try:
+                    handle.cancel()
+                except Exception:
+                    pass
+            self._deliver_handles.clear()
+
 
 class SessionStatusCoordinator(DataUpdateCoordinator):
     """Coordinator for SessionStatus updates using SignalR."""
@@ -1679,6 +1919,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
     ):
         super().__init__(
             hass,
@@ -1695,7 +1936,10 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self._deliver_handle: Optional[asyncio.Handle] = None
         self._bus = bus
         self._unsub: Optional[Callable[[], None]] = None
+        self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
 
     async def async_close(self, *_):
         if self._unsub:
@@ -1710,6 +1954,12 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -1772,6 +2022,18 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         except Exception:
             self._unsub = None
 
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+
 
 class SessionInfoCoordinator(DataUpdateCoordinator):
     """Coordinator for SessionInfo updates using SignalR."""
@@ -1783,6 +2045,7 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
     ):
         super().__init__(
             hass,
@@ -1799,7 +2062,10 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         self._deliver_handle: Optional[asyncio.Handle] = None
         self._bus = bus
         self._unsub: Optional[Callable[[], None]] = None
+        self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
 
     async def async_close(self, *_):
         if self._unsub:
@@ -1814,6 +2080,12 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -1877,3 +2149,15 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
             self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("SessionInfo", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
+
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
