@@ -54,6 +54,11 @@ from .calibration import LiveDelayCalibrationManager
 
 _LOGGER = logging.getLogger(__name__)
 
+# Keep treating the current Grand Prix as "next" for a short period after
+# lights out, so helpers and sensors do not jump to the following weekend
+# immediately when a race starts.
+RACE_SWITCH_GRACE = timedelta(hours=3)
+
 
 class CoordinatorLogger(logging.LoggerAdapter):
     """Logger adapter that can suppress noisy manual-update debug lines."""
@@ -1783,7 +1788,11 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
                 dt = datetime.fromisoformat(dt_str)
             except Exception:
                 continue
-            if dt.replace(tzinfo=None) > now:
+            # Treat a race as ongoing for a grace period after the scheduled
+            # start time so that "next race" style helpers don't jump ahead
+            # too early.
+            end_dt = dt + RACE_SWITCH_GRACE
+            if end_dt.replace(tzinfo=None) > now:
                 return race
         return races[-1] if races else None
 class LiveSessionCoordinator(DataUpdateCoordinator):

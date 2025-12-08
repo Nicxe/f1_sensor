@@ -23,6 +23,8 @@ from .helpers import get_timezone, normalize_track_status
 from logging import getLogger
 from homeassistant.util import dt as dt_util
 
+RACE_SWITCH_GRACE = datetime.timedelta(hours=3)
+
 SYMBOL_CODE_TO_MDI = {
     "clearsky_day": "mdi:weather-sunny",
     "clearsky_night": "mdi:weather-night",
@@ -200,7 +202,11 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
                 dt = datetime.datetime.fromisoformat(dt_str)
             except ValueError:
                 continue
-            if dt > now:
+            # Consider a race as "current" until a grace period after the scheduled start.
+            # This prevents `sensor.f1_next_race` from flipping to the next weekend
+            # immediately when lights go out.
+            end_dt = dt + RACE_SWITCH_GRACE
+            if end_dt > now:
                 return race
         return None
 
@@ -443,7 +449,10 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
                 dt = datetime.datetime.fromisoformat(dt_str)
             except ValueError:
                 continue
-            if dt > now:
+            # Keep using the active race (for weather etc.) until a short grace
+            # period after the scheduled start, to match `sensor.f1_next_race`.
+            end_dt = dt + RACE_SWITCH_GRACE
+            if end_dt > now:
                 return race
         return None
 
@@ -863,6 +872,10 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         r"\bdoc(?:ument)?(?:\s+(?:no\.?|number))?\s*0*1\b",
         re.IGNORECASE,
     )
+    _DOC_NUMBER_RE = re.compile(
+        r"\bdoc(?:ument)?(?:\s+(?:no\.?|number))?\s*0*(\d+)\b",
+        re.IGNORECASE,
+    )
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -885,10 +898,6 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         last = await self.async_get_last_state()
         if not last or last.state in (None, "unknown", "unavailable"):
             return
-        try:
-            self._attr_native_value = int(last.state)
-        except Exception:
-            self._attr_native_value = 0
         attrs = dict(getattr(last, "attributes", {}) or {})
         docs = attrs.get("documents")
         if isinstance(docs, list):
@@ -899,16 +908,24 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 for doc in cleaned
                 if isinstance(doc.get("url"), str)
             }
-        event_key = attrs.get("event_key")
-        if isinstance(event_key, str) and event_key:
-            self._event_key = event_key
-        race = attrs.get("race") if isinstance(attrs.get("race"), dict) else {}
-        self._attr_extra_state_attributes = {
-            "event_key": self._event_key,
-            "race": race,
-            "documents": list(self._documents),
-        }
+        else:
+            # Newer format: restore single latest document from flat attributes if present
+            name = attrs.get("name")
+            url = attrs.get("url")
+            published = attrs.get("published")
+            if any((name, url, published)):
+                self._documents = [
+                    {
+                        "name": name,
+                        "url": url,
+                        "published": published,
+                    }
+                ]
         self._sort_documents()
+
+        latest = self._select_latest_document(self._documents) if self._documents else None
+        self._attr_native_value = self._extract_doc_number(latest.get("name")) if latest else 0
+        self._attr_extra_state_attributes = self._build_latest_attributes(latest)
 
     def _handle_coordinator_update(self) -> None:
         changed = self._update_from_coordinator()
@@ -938,7 +955,11 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self._seen_urls = set()
             updated = True
 
-        for doc in documents:
+        # Process documents from oldest to newest so that "Doc 1" for the
+        # current event is handled before later documents. This ensures that
+        # the final reset triggered by a new Document 1 corresponds to the
+        # latest race weekend instead of wiping out its newer docs.
+        for doc in reversed(documents):
             if not isinstance(doc, dict):
                 continue
             url = str(doc.get("url") or "").strip()
@@ -968,12 +989,9 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         self._sort_documents()
 
-        new_state = len(self._documents)
-        attrs = {
-            "event_key": self._event_key,
-            "race": race_info,
-            "documents": list(self._documents),
-        }
+        latest = self._select_latest_document(self._documents) if self._documents else None
+        new_state = self._extract_doc_number(latest.get("name")) if latest else 0
+        attrs = self._build_latest_attributes(latest)
 
         if force or new_state != self._attr_native_value or attrs != self._attr_extra_state_attributes:
             self._attr_native_value = new_state
@@ -1017,6 +1035,65 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         indexed.sort(key=sort_key)
         self._documents = [doc for _, doc in indexed]
+
+    @classmethod
+    def _extract_doc_number(cls, name: str | None) -> int:
+        """Extract the document number from a FIA document name like 'Doc 27 - ...'."""
+        if not isinstance(name, str) or not name:
+            return 0
+        match = cls._DOC_NUMBER_RE.search(name)
+        if not match:
+            return 0
+        try:
+            return int(match.group(1))
+        except Exception:
+            return 0
+
+    @classmethod
+    def _select_latest_document(cls, docs: list[dict]) -> dict | None:
+        """Select the latest document, preferring highest document number, then most recent published time.
+
+        In practice the FIA HTML is not always consistent about the "Published on"
+        metadata, but the document number monotonically increases for a given
+        event. Using the doc number as the primary key guarantees that we do not
+        regress from e.g. Doc 56 back to Doc 1 when some links lack a published
+        timestamp or use an unparseable format.
+        """
+        if not isinstance(docs, list) or not docs:
+            return None
+        best_doc: dict | None = None
+        best_num: int = -1
+        best_ts: float | None = None
+        for doc in docs:
+            if not isinstance(doc, dict):
+                continue
+            num = cls._extract_doc_number(doc.get("name"))
+            ts = cls._published_timestamp(doc)
+            # Primary key: highest document number
+            if num > best_num:
+                best_doc = doc
+                best_num = num
+                best_ts = ts
+                continue
+            if num < best_num:
+                continue
+            # Same document number: use newest publish timestamp when available
+            if ts is not None and (best_ts is None or ts > best_ts):
+                best_doc = doc
+                best_ts = ts
+        # Fallback: if we never selected anything (e.g. all names invalid), return the last doc
+        return best_doc or docs[-1]
+
+    @classmethod
+    def _build_latest_attributes(cls, latest: dict | None) -> dict:
+        """Build attributes for the latest document only."""
+        if not isinstance(latest, dict) or not latest:
+            return {}
+        return {
+            "name": latest.get("name"),
+            "url": latest.get("url"),
+            "published": latest.get("published"),
+        }
 
 
 class F1DriverPointsProgressionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
