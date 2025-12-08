@@ -8,6 +8,7 @@ from typing import Any, Callable, Optional
 from collections import deque
 from urllib.parse import urljoin
 from pathlib import Path
+import time
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
@@ -40,6 +41,7 @@ from .const import (
 )
 from .signalr import LiveBus
 from .replay import ReplaySignalRClient
+from .live_window import LiveSessionSupervisor, LiveAvailabilityTracker
 from .helpers import (
     build_user_agent,
     fetch_json,
@@ -51,6 +53,36 @@ from .live_delay import LiveDelayController
 from .calibration import LiveDelayCalibrationManager
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class CoordinatorLogger(logging.LoggerAdapter):
+    """Logger adapter that can suppress noisy manual-update debug lines."""
+
+    def __init__(
+        self,
+        logger: logging.Logger,
+        *,
+        suppress_manual: bool = False,
+        extra: dict | None = None,
+    ) -> None:
+        super().__init__(logger, extra or {})
+        self._suppress_manual = suppress_manual
+
+    def debug(self, msg: str, *args, **kwargs):
+        if (
+            self._suppress_manual
+            and isinstance(msg, str)
+            and msg.startswith("Manually updated ")
+        ):
+            return
+        super().debug(msg, *args, **kwargs)
+
+
+def coordinator_logger(name: str, *, suppress_manual: bool = False) -> CoordinatorLogger:
+    return CoordinatorLogger(
+        logging.getLogger(f"{__name__}.{name}"),
+        suppress_manual=suppress_manual,
+    )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -168,10 +200,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     lap_count_coordinator = None
     race_control_coordinator = None
     hass.data[LATEST_TRACK_STATUS] = None
-    # Create and start a shared LiveBus (single SignalR connection)
+    # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
     live_bus = LiveBus(hass, session, transport_factory=transport_factory)
-    await live_bus.start()
+    live_supervisor: LiveSessionSupervisor | None = None
+    live_state: LiveAvailabilityTracker
+    if operation_mode == OPERATION_MODE_LIVE:
+        live_supervisor = LiveSessionSupervisor(
+            hass,
+            session_coordinator,
+            live_bus,
+            http_session=session,
+        )
+        await live_supervisor.async_start()
+        live_state = live_supervisor.availability
+    else:
+        await live_bus.start()
+        live_state = LiveAvailabilityTracker()
+        live_state.set_state(True, "replay-mode")
 
     def _reload_entry():
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
@@ -192,6 +238,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             bus=live_bus,
             config_entry=entry,
             delay_controller=delay_controller,
+            live_state=live_state,
         )
         session_status_coordinator = SessionStatusCoordinator(
             hass,
@@ -200,6 +247,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             bus=live_bus,
             config_entry=entry,
             delay_controller=delay_controller,
+            live_state=live_state,
         )
         session_info_coordinator = SessionInfoCoordinator(
             hass,
@@ -208,6 +256,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             bus=live_bus,
             config_entry=entry,
             delay_controller=delay_controller,
+            live_state=live_state,
         )
         race_control_coordinator = RaceControlCoordinator(
             hass,
@@ -216,6 +265,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             bus=live_bus,
             config_entry=entry,
             delay_controller=delay_controller,
+            live_state=live_state,
         )
         weather_data_coordinator = WeatherDataCoordinator(
             hass,
@@ -224,6 +274,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             bus=live_bus,
             config_entry=entry,
             delay_controller=delay_controller,
+            live_state=live_state,
         )
         lap_count_coordinator = LapCountCoordinator(
             hass,
@@ -232,6 +283,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             bus=live_bus,
             config_entry=entry,
             delay_controller=delay_controller,
+            live_state=live_state,
         )
 
     await race_coordinator.async_config_entry_first_refresh()
@@ -268,6 +320,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             bus=live_bus,
             config_entry=entry,
             delay_controller=delay_controller,
+            live_state=live_state,
         )
         await drivers_coordinator.async_config_entry_first_refresh()
 
@@ -293,6 +346,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "drivers_coordinator": drivers_coordinator,
         "fia_documents_coordinator": fia_documents_coordinator,
         "live_bus": live_bus,
+        "live_supervisor": live_supervisor,
+        "live_state": live_state,
         "operation_mode": operation_mode,
         "replay_file": replay_source,
         "live_delay_controller": delay_controller,
@@ -314,10 +369,11 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
     ):
         super().__init__(
             hass,
-            _LOGGER,
+            coordinator_logger("weather", suppress_manual=True),
             name="F1 Weather Data Coordinator",
             update_interval=None,
             config_entry=config_entry,
@@ -334,6 +390,9 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         self._delay = max(0, int(delay_seconds or 0))
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
     async def async_close(self, *_):
         if self._unsub:
@@ -354,6 +413,12 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
         if self._delay_listener:
             try:
                 self._delay_listener()
@@ -476,6 +541,12 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
                 pass
             self._deliver_handle = None
 
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+        if not is_live:
+            self._last_message = None
+            self.data_list = []
+
 
 class RaceControlCoordinator(DataUpdateCoordinator):
     """Coordinator for RaceControlMessages that publishes HA events for new items.
@@ -492,10 +563,11 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
     ):
         super().__init__(
             hass,
-            _LOGGER,
+            coordinator_logger("race_control", suppress_manual=True),
             name="F1 Race Control Coordinator",
             update_interval=None,
             config_entry=config_entry,
@@ -521,6 +593,9 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             and config_entry.data.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
             == OPERATION_MODE_DEVELOPMENT
         )
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
     async def async_close(self, *_):
         if self._unsub:
@@ -542,6 +617,12 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -687,6 +768,9 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                     pass
             self._deliver_handles.clear()
 
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+
     def _deliver(self, item: dict) -> None:
         self.available = True
         # Maintain last message for visibility and parity with other coordinators
@@ -750,10 +834,11 @@ class LapCountCoordinator(DataUpdateCoordinator):
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
     ):
         super().__init__(
             hass,
-            _LOGGER,
+            coordinator_logger("lap_count", suppress_manual=True),
             name="F1 Lap Count Coordinator",
             update_interval=None,
             config_entry=config_entry,
@@ -770,6 +855,9 @@ class LapCountCoordinator(DataUpdateCoordinator):
         self._delay = max(0, int(delay_seconds or 0))
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
     async def async_close(self, *_):
         if self._unsub:
@@ -790,6 +878,12 @@ class LapCountCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -864,6 +958,9 @@ class LapCountCoordinator(DataUpdateCoordinator):
                 pass
             self._deliver_handle = None
 
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+
 
 class LiveDriversCoordinator(DataUpdateCoordinator):
     """Coordinator aggregating DriverList, TimingData, TimingAppData, LapCount and SessionStatus.
@@ -894,10 +991,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
     ) -> None:
         super().__init__(
             hass,
-            _LOGGER,
+            coordinator_logger("live_drivers", suppress_manual=True),
             name="F1 Live Drivers Coordinator",
             update_interval=None,
             config_entry=config_entry,
@@ -911,6 +1009,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._delay = max(0, int(delay_seconds or 0))
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self.available = True
         self._state: dict[str, Any] = {
             "drivers": {},
             "leader_rn": None,
@@ -919,6 +1018,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             "session_status": None,
             "frozen": False,
         }
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
     async def async_close(self, *_):
         for u in list(self._unsubs):
@@ -939,6 +1041,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
 
     async def _async_update_data(self):
         return self._state
@@ -1049,6 +1157,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._deliver_handle = None
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
         # 2) Recompute leader from full stored state (not just current delta)
         self._recompute_leader_from_state()
 
@@ -1688,25 +1799,59 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
         )
         self._session = session or async_get_clientsession(hass)
         self.year = year
+        self._last_good_index: dict | None = None
 
     async def async_close(self, *_):
         return
 
     async def _async_update_data(self):
+        payload = await self._fetch_index()
+        if payload:
+            self._last_good_index = payload
+            return payload
+        if self._last_good_index:
+            _LOGGER.warning("Using cached LiveTiming index (server returned empty response)")
+            return self._last_good_index
+        return payload
+
+    async def _fetch_index(self, *, cache_bust: bool = False):
         url = LIVETIMING_INDEX_URL.format(year=self.year)
+        if cache_bust:
+            url = f"{url}?t={int(time.time())}"
         try:
             async with async_timeout.timeout(10):
                 async with self._session.get(url) as response:
-                    if response.status in (403, 404):
-                        _LOGGER.warning("Index unavailable: %s", response.status)
-                        return self.data
-                    if response.status != 200:
-                        raise UpdateFailed(f"Error fetching data: {response.status}")
                     text = await response.text()
-                    return json.loads(text.lstrip("\ufeff"))
+                    if response.status != 200:
+                        _LOGGER.warning("Index fetch failed (%s): %s", response.status, text[:200])
+                        return None
+                    payload = json.loads(text.lstrip("\ufeff") or "null")
         except Exception as err:
-            _LOGGER.warning("Error fetching index: %s", err)
-            return self.data
+            _LOGGER.warning("Error fetching index (%s): %s", "cache-bust" if cache_bust else "standard", err)
+            return None
+        if self._has_sessions(payload):
+            return payload
+        if not cache_bust:
+            _LOGGER.debug("Index response missing sessions; retrying with cache-buster")
+            return await self._fetch_index(cache_bust=True)
+        _LOGGER.warning("Index response still missing sessions after cache-bust")
+        return None
+
+    @staticmethod
+    def _has_sessions(payload: Any) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        meetings = payload.get("Meetings") or payload.get("meetings")
+        sessions = payload.get("Sessions") or payload.get("sessions")
+        if isinstance(meetings, list) and meetings:
+            return True
+        if isinstance(meetings, dict) and meetings:
+            return True
+        if isinstance(sessions, list) and sessions:
+            return True
+        if isinstance(sessions, dict) and sessions:
+            return True
+        return False
 
 
 
@@ -1721,10 +1866,11 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
     ):
         super().__init__(
             hass,
-            _LOGGER,
+            coordinator_logger("track_status", suppress_manual=True),
             name="F1 Track Status Coordinator",
             update_interval=None,
             config_entry=config_entry,
@@ -1746,6 +1892,9 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         # Lightweight dedupe of untimestamped repeats
         self._last_untimestamped_fingerprint: str | None = None
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
     async def async_close(self, *_):
         if self._unsub:
@@ -1776,6 +1925,12 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -1908,6 +2063,9 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
                     pass
             self._deliver_handles.clear()
 
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+
 
 class SessionStatusCoordinator(DataUpdateCoordinator):
     """Coordinator for SessionStatus updates using SignalR."""
@@ -1920,10 +2078,11 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
     ):
         super().__init__(
             hass,
-            _LOGGER,
+            coordinator_logger("session_status", suppress_manual=True),
             name="F1 Session Status Coordinator",
             update_interval=None,
             config_entry=config_entry,
@@ -1940,6 +2099,9 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self._delay = max(0, int(delay_seconds or 0))
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
     async def async_close(self, *_):
         if self._unsub:
@@ -1960,6 +2122,12 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -2034,6 +2202,9 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
                 pass
             self._deliver_handle = None
 
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+
 
 class SessionInfoCoordinator(DataUpdateCoordinator):
     """Coordinator for SessionInfo updates using SignalR."""
@@ -2046,10 +2217,11 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
     ):
         super().__init__(
             hass,
-            _LOGGER,
+            coordinator_logger("session_info", suppress_manual=True),
             name="F1 Session Info Coordinator",
             update_interval=None,
             config_entry=config_entry,
@@ -2066,6 +2238,9 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         self._delay = max(0, int(delay_seconds or 0))
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
     async def async_close(self, *_):
         if self._unsub:
@@ -2086,6 +2261,12 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
 
     async def _async_update_data(self):
         return self._last_message
@@ -2161,3 +2342,6 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._deliver_handle = None
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live

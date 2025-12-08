@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+from homeassistant.components import persistent_notification
+from inspect import isawaitable
 from homeassistant.components.button import ButtonEntity
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.config_entries import ConfigEntry
@@ -57,3 +59,14 @@ class F1MatchDelayButton(F1AuxEntity, ButtonEntity):
             await self._manager.async_complete(source="button")
         except RuntimeError as err:  # noqa: BLE001
             _LOGGER.debug("Calibration button press ignored: %s", err)
+            if self.hass:
+                result = persistent_notification.async_create(
+                    self.hass,
+                    "Kalibreringen är inte aktiv.\n\n"
+                    "Slå på kalibrerings-switchen innan du trycker på "
+                    "`Match live delay`, annars skrivs inget värde.",
+                    title="F1 live delay",
+                    notification_id=f"{DOMAIN}_delay_calibration_warning",
+                )
+                if isawaitable(result):
+                    await result
