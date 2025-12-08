@@ -9,6 +9,7 @@ from .const import (
     CONF_REPLAY_FILE,
     DEFAULT_OPERATION_MODE,
     DOMAIN,
+    ENABLE_DEVELOPMENT_MODE_UI,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
 )
@@ -43,6 +44,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:
                 pass
 
+            # Resolve and validate operation mode
             mode = user_input.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
             if mode not in (OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT):
                 mode = DEFAULT_OPERATION_MODE
@@ -110,27 +112,41 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             # TEMP_DISABLED: Race driver order (live)
         }
 
-        data_schema = vol.Schema(
-            {
-                vol.Required(
-                    "sensor_name", default=current.get("sensor_name", "F1")
-                ): cv.string,
-                vol.Required(
-                    "enabled_sensors",
-                    default=current.get("enabled_sensors", default_enabled),
-                ): cv.multi_select(sensor_options),
-                vol.Required(
-                    CONF_OPERATION_MODE,
-                    default=current.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE),
-                ): vol.In([OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT]),
-                vol.Optional(
-                    CONF_REPLAY_FILE,
-                    default=current.get(CONF_REPLAY_FILE, ""),
-                ): cv.string,
-                vol.Optional("enable_race_control", default=False): cv.boolean,
-                # TEMP_DISABLED: favorite_drivers field hidden for this release
-            }
-        )
+        # Build base schema
+        schema_fields: dict = {
+            vol.Required(
+                "sensor_name", default=current.get("sensor_name", "F1")
+            ): cv.string,
+            vol.Required(
+                "enabled_sensors",
+                default=current.get("enabled_sensors", default_enabled),
+            ): cv.multi_select(sensor_options),
+            vol.Optional("enable_race_control", default=False): cv.boolean,
+            # TEMP_DISABLED: favorite_drivers field hidden for this release
+        }
+
+        # Only expose development-related controls when explicitly enabled.
+        # This keeps the main setup simple for normal users.
+        if ENABLE_DEVELOPMENT_MODE_UI:
+            schema_fields.update(
+                {
+                    vol.Required(
+                        CONF_OPERATION_MODE,
+                        default=current.get(
+                            CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE
+                        ),
+                    ): vol.In([OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT]),
+                    vol.Optional(
+                        CONF_REPLAY_FILE,
+                        default=current.get(CONF_REPLAY_FILE, ""),
+                    ): cv.string,
+                }
+            )
+        else:
+            # In normal installations we always run in LIVE mode.
+            current.setdefault(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+
+        data_schema = vol.Schema(schema_fields)
 
         return self.async_show_form(
             step_id="user", data_schema=data_schema, errors=errors
@@ -245,30 +261,45 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             if key in allowed and key not in seen:
                 normalized_enabled.append(key)
                 seen.add(key)
-        data_schema = vol.Schema(
-            {
-                vol.Required(
-                    "sensor_name", default=current.get("sensor_name", "F1")
-                ): cv.string,
-                vol.Required(
-                    "enabled_sensors",
-                    default=normalized_enabled,
-                ): cv.multi_select(allowed),
-                vol.Optional(
-                    "enable_race_control",
-                    default=current.get("enable_race_control", False),
-                ): cv.boolean,
-                vol.Required(
-                    CONF_OPERATION_MODE,
-                    default=current.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE),
-                ): vol.In([OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT]),
-                vol.Optional(
-                    CONF_REPLAY_FILE,
-                    default=current.get(CONF_REPLAY_FILE, ""),
-                ): cv.string,
-                # TEMP_DISABLED: favorite_drivers field hidden for this release
-            }
-        )
+        schema_fields: dict = {
+            vol.Required(
+                "sensor_name", default=current.get("sensor_name", "F1")
+            ): cv.string,
+            vol.Required(
+                "enabled_sensors",
+                default=normalized_enabled,
+            ): cv.multi_select(allowed),
+            vol.Optional(
+                "enable_race_control",
+                default=current.get("enable_race_control", False),
+            ): cv.boolean,
+            # TEMP_DISABLED: favorite_drivers field hidden for this release
+        }
+
+        # For reconfigure we show dev controls either when explicitly enabled
+        # or when the existing entry is already in development mode (so it
+        # remains editable even if the flag is later turned off).
+        show_dev_controls = ENABLE_DEVELOPMENT_MODE_UI or current.get(
+            CONF_OPERATION_MODE
+        ) == OPERATION_MODE_DEVELOPMENT
+
+        if show_dev_controls:
+            schema_fields.update(
+                {
+                    vol.Required(
+                        CONF_OPERATION_MODE,
+                        default=current.get(
+                            CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE
+                        ),
+                    ): vol.In([OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT]),
+                    vol.Optional(
+                        CONF_REPLAY_FILE,
+                        default=current.get(CONF_REPLAY_FILE, ""),
+                    ): cv.string,
+                }
+            )
+
+        data_schema = vol.Schema(schema_fields)
 
         return self.async_show_form(
             step_id="reconfigure",
