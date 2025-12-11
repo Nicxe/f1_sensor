@@ -76,6 +76,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "track_weather",
             "race_lap_count",
             # TEMP_DISABLED: favorite drivers (live)
+            "driver_list",
+            "current_tyres",
             "last_race_results",
             "season_results",
             "sprint_results",
@@ -97,6 +99,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_lap_count": "Race lap count (live)",
             # TEMP_DISABLED: Favorite drivers (live)
             "driver_list": "Driver list (live)",
+            "current_tyres": "Current tyres (live)",
+            "top_three": "Top three (leader, live)",
             "last_race_results": "Last race results",
             "season_results": "Season results",
             "sprint_results": "Sprint results",
@@ -214,6 +218,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_lap_count": "Race lap count (live)",
             # TEMP_DISABLED: Favorite drivers (live)
             "driver_list": "Driver list (live)",
+            "current_tyres": "Current tyres (live)",
+            "top_three": "Top three (leader, live)",
             "last_race_results": "Last race results",
             "season_results": "Season results",
             "sprint_results": "Sprint results",
@@ -238,6 +244,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_lap_count",
             # TEMP_DISABLED: favorite drivers (live)
             "driver_list",
+            "current_tyres",
             "last_race_results",
             "season_results",
             "sprint_results",

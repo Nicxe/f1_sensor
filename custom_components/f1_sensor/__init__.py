@@ -204,6 +204,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
+    top_three_coordinator = None
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
@@ -316,6 +317,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     enabled = entry.data.get("enabled_sensors") or []
     # Only create drivers coordinator if driver_list is enabled (TEMP: race_order/driver_favorites disabled)
     need_drivers = any(k in enabled for k in ("driver_list",))
+    need_top_three = any(k in enabled for k in ("top_three",))
     drivers_coordinator = None
     if need_drivers:
         drivers_coordinator = LiveDriversCoordinator(
@@ -328,6 +330,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             live_state=live_state,
         )
         await drivers_coordinator.async_config_entry_first_refresh()
+
+    # Conditionally create TopThree coordinator only if sensor is enabled
+    if enable_rc and need_top_three:
+        top_three_coordinator = TopThreeCoordinator(
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
+        await top_three_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "http_session": http_session,
@@ -348,6 +363,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
+        "top_three_coordinator": top_three_coordinator,
         "drivers_coordinator": drivers_coordinator,
         "fia_documents_coordinator": fia_documents_coordinator,
         "live_bus": live_bus,
@@ -1203,6 +1219,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             self._state["leader_rn"] = leader_rn
 
     def _merge_timingapp(self, payload: dict) -> None:
+        """Merge TimingAppData payloads.
+
+        We now use the dedicated TyreStintSeries stream for tyre information, so this
+        handler is only responsible for lap time fields from the embedded Stints.
+        """
         # payload: {"Lines": { rn: {"Stints": { idx or list } } } }
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
@@ -1212,7 +1233,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             if not isinstance(app, dict):
                 continue
             entry = drivers.setdefault(rn, {})
-            entry.setdefault("tyres", {})
             entry.setdefault("timing", {})
             stints = app.get("Stints")
             latest: dict | None = None
@@ -1228,17 +1248,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     # Fallback: try key '0'
                     latest = stints.get("0") if isinstance(stints.get("0"), dict) else None
             if isinstance(latest, dict):
-                # Tyres info
-                comp = latest.get("Compound")
-                stint_laps = latest.get("TotalLaps")
-                is_new = latest.get("New")
-                entry["tyres"].update(
-                    {
-                        "compound": comp,
-                        "stint_laps": int(stint_laps) if str(stint_laps or "").isdigit() else stint_laps,
-                        "new": True if str(is_new).lower() == "true" else (False if str(is_new).lower() == "false" else is_new),
-                    }
-                )
                 # Lap times: map latest LapTime to timing.last_lap and update best_lap
                 lap_time = latest.get("LapTime")
                 if isinstance(lap_time, str) and lap_time:
@@ -1253,7 +1262,58 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     except Exception:
                         # If parsing fails, at least keep last_lap updated
                         pass
-        # Tyre or lap time changes sometimes coincide with leader changes
+        # Lap time changes sometimes coincide with leader changes
+        self._recompute_leader_from_state()
+
+    def _merge_tyre_stints(self, payload: dict) -> None:
+        """Merge TyreStintSeries payloads into per-driver tyre state.
+
+        Expected payload shape (from SignalR stream \"TyreStintSeries\"):
+            {"Stints": { rn: { idx: {Compound, New, TotalLaps, ...}, ... }, ... }}
+        """
+        stints_root = (payload or {}).get("Stints", {})
+        if not isinstance(stints_root, dict):
+            return
+        drivers = self._state["drivers"]
+        for rn, stints in stints_root.items():
+            if not isinstance(stints, (dict, list)):
+                continue
+            entry = drivers.setdefault(rn, {})
+            entry.setdefault("tyres", {})
+            tyres = entry["tyres"]
+            latest: dict | None = None
+            if isinstance(stints, list) and stints:
+                latest = stints[-1] if isinstance(stints[-1], dict) else None
+            elif isinstance(stints, dict) and stints:
+                try:
+                    keys = [int(k) for k in stints.keys() if str(k).isdigit()]
+                    if keys:
+                        latest = stints.get(str(max(keys)))
+                except Exception:
+                    latest = stints.get("0") if isinstance(stints.get("0"), dict) else None
+            if not isinstance(latest, dict):
+                continue
+
+            # Only overwrite fields that are present in this delta to avoid losing
+            # previously-known compound/new values when we receive TotalLaps-only frames.
+            if "Compound" in latest:
+                tyres["compound"] = latest.get("Compound")
+            if "TotalLaps" in latest:
+                stint_laps = latest.get("TotalLaps")
+                tyres["stint_laps"] = (
+                    int(stint_laps) if str(stint_laps or "").isdigit() else stint_laps
+                )
+            if "New" in latest:
+                is_new = latest.get("New")
+                s = str(is_new).lower()
+                if s == "true":
+                    tyres["new"] = True
+                elif s == "false":
+                    tyres["new"] = False
+                else:
+                    tyres["new"] = is_new
+
+        # Tyre changes can also interact with leader logic (pit stops etc.)
         self._recompute_leader_from_state()
 
     def _merge_lapcount(self, payload: dict) -> None:
@@ -1371,6 +1431,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._merge_timingapp(ta)
         self._schedule_deliver()
 
+    def _on_tyre_stints(self, ts: dict) -> None:
+        if self._state.get("frozen"):
+            return
+        self._merge_tyre_stints(ts)
+        self._schedule_deliver()
+
     def _on_lapcount(self, lc: dict) -> None:
         if self._state.get("frozen"):
             return
@@ -1400,6 +1466,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 pass
             try:
                 self._unsubs.append(bus.subscribe("TimingAppData", self._on_timingapp))
+            except Exception:
+                pass
+            try:
+                self._unsubs.append(bus.subscribe("TyreStintSeries", self._on_tyre_stints))
             except Exception:
                 pass
             try:
@@ -2213,6 +2283,197 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         self.available = is_live
+
+
+class TopThreeCoordinator(DataUpdateCoordinator):
+    """Coordinator for TopThree updates using SignalR.
+
+    Normaliserar TopThree-flödet till ett enkelt state:
+        {
+            "withheld": bool | None,
+            "lines": [dict | None, dict | None, dict | None],
+            "last_update_ts": str | None,
+        }
+    där varje line är direkt baserad på feedens rader (Position, Tla, DiffToLeader osv).
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: LiveSessionCoordinator,
+        delay_seconds: int = 0,
+        bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+    ):
+        super().__init__(
+            hass,
+            coordinator_logger("top_three", suppress_manual=True),
+            name="F1 Top Three Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self.available = True
+        self._state: dict[str, Any] = {
+            "withheld": None,
+            "lines": [None, None, None],
+            "last_update_ts": None,
+        }
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._bus = bus
+        self._unsub: Optional[Callable[[], None]] = None
+        self._delay_listener: Optional[Callable[[], None]] = None
+        self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+
+    async def async_close(self, *_):
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:
+                pass
+            self._unsub = None
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
+
+    async def _async_update_data(self):
+        return self._state
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+
+    def _schedule_deliver(self) -> None:
+        if self._delay > 0:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(
+                self._delay, self._deliver
+            )
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(self._deliver)
+
+    def _merge_topthree(self, payload: dict) -> None:
+        """Merge a TopThree payload (full snapshot or partial delta) into state."""
+        if not isinstance(payload, dict):
+            return
+
+        state = self._state
+
+        # Withheld flag (om F1 väljer att inte visa topp 3)
+        try:
+            if "Withheld" in payload:
+                state["withheld"] = bool(payload.get("Withheld"))
+        except Exception:
+            pass
+
+        lines = payload.get("Lines")
+        cur_lines = state.get("lines") or [None, None, None]
+
+        # Full snapshot: Lines som lista [P1, P2, P3]
+        if isinstance(lines, list):
+            new_lines: list[Any] = [None, None, None]
+            for idx in range(3):
+                try:
+                    item = lines[idx]
+                except Exception:
+                    item = None
+                new_lines[idx] = item if isinstance(item, dict) else None
+            state["lines"] = new_lines
+        # Delta: Lines som dict { "0": {...}, "1": {...}, "2": {...} }
+        elif isinstance(lines, dict):
+            for key, delta in lines.items():
+                try:
+                    idx = int(key)
+                except Exception:
+                    continue
+                if idx < 0 or idx > 2:
+                    continue
+                if not isinstance(delta, dict):
+                    continue
+                base = cur_lines[idx]
+                if not isinstance(base, dict):
+                    base = {}
+                try:
+                    base.update(delta)
+                except Exception:
+                    # Sista försvarslinje – hellre lämna base opåverkad än krascha
+                    pass
+                cur_lines[idx] = base
+            state["lines"] = cur_lines
+
+        try:
+            state["last_update_ts"] = dt_util.utcnow().isoformat()
+        except Exception:
+            state["last_update_ts"] = None
+
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        try:
+            self._merge_topthree(msg)
+        except Exception:
+            return
+        self._schedule_deliver()
+
+    def _deliver(self) -> None:
+        # Pushar aktuellt state till sensorerna
+        self.async_set_updated_data(self._state)
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        # Prenumerera på TopThree från LiveBus
+        try:
+            bus = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus"))  # type: ignore[assignment]
+        except Exception:
+            bus = None
+        if bus is not None:
+            try:
+                self._unsub = bus.subscribe("TopThree", self._on_bus_message)
+            except Exception:
+                self._unsub = None
 
 
 class SessionInfoCoordinator(DataUpdateCoordinator):

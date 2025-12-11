@@ -31,6 +31,8 @@ SUBSCRIBE_MSG = {
         "TimingData",
         "DriverList",
         "TimingAppData",
+        "TopThree",
+        "TyreStintSeries",
     ]],
     "I": 1,
 }
@@ -86,7 +88,7 @@ class SignalRClient:
         self._t0 = dt.datetime.now(dt.timezone.utc)
         self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
-        _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, LapCount, SessionInfo, TimingData, DriverList, TimingAppData")
+        _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, LapCount, SessionInfo, TimingData, DriverList, TimingAppData, TopThree, TyreStintSeries")
 
     async def ensure_connection(self) -> None:
         """Try to (re)connect using exponential back-off."""
