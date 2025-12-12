@@ -318,6 +318,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Only create drivers coordinator if driver_list is enabled (TEMP: race_order/driver_favorites disabled)
     need_drivers = any(k in enabled for k in ("driver_list",))
     need_top_three = any(k in enabled for k in ("top_three",))
+    need_team_radio = any(k in enabled for k in ("team_radio",))
     drivers_coordinator = None
     if need_drivers:
         drivers_coordinator = LiveDriversCoordinator(
@@ -344,6 +345,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         await top_three_coordinator.async_config_entry_first_refresh()
 
+    team_radio_coordinator = None
+    if need_team_radio:
+        team_radio_coordinator = TeamRadioCoordinator(
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
+        await team_radio_coordinator.async_config_entry_first_refresh()
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "http_session": http_session,
         "user_agent": ua_string,
@@ -364,6 +378,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
         "top_three_coordinator": top_three_coordinator,
+        "team_radio_coordinator": team_radio_coordinator,
         "drivers_coordinator": drivers_coordinator,
         "fia_documents_coordinator": fia_documents_coordinator,
         "live_bus": live_bus,
@@ -982,6 +997,263 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         self.available = is_live
 
+
+class TeamRadioCoordinator(DataUpdateCoordinator):
+    """Coordinator for TeamRadio updates using SignalR.
+
+    Normaliserar TeamRadio-flödet till en enkel struktur:
+        data = {
+            "latest": { ...normaliserad capture... } | None,
+            "history": [ { ...capture... }, ... ],
+        }
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: "LiveSessionCoordinator",
+        delay_seconds: int = 0,
+        bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+        history_limit: int = 20,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator_logger("team_radio", suppress_manual=True),
+            name="F1 Team Radio Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self.available = True
+        self._state: dict[str, Any] = {
+            "latest": None,
+            "history": [],
+        }
+        self._history_limit = max(1, int(history_limit or 20))
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._bus = bus
+        self._unsub: Optional[Callable[[], None]] = None
+        self._delay_listener: Optional[Callable[[], None]] = None
+        self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self._config_entry = config_entry
+        self._dev_mode = (
+            bool(config_entry)
+            and config_entry.data.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+            == OPERATION_MODE_DEVELOPMENT
+        )
+        self._replay_static_root: str | None = None
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+
+    async def async_close(self, *_):
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:
+                pass
+            self._unsub = None
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
+
+    async def _async_update_data(self):
+        return self._state
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+        if not is_live:
+            self._state = {"latest": None, "history": []}
+
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        if self._delay > 0:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(
+                self._delay, lambda m=msg: self._deliver(m)
+            )
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(
+                lambda m=msg: self._deliver(m)
+            )
+
+    @staticmethod
+    def _normalize_captures(payload: dict) -> list[dict]:
+        """Extract a flat list of capture dicts from a TeamRadio payload."""
+        if not isinstance(payload, dict):
+            return []
+        captures = payload.get("Captures")
+        static_root = payload.get("_static_root")
+        result: list[dict] = []
+        try:
+            if isinstance(captures, list):
+                for item in captures:
+                    if isinstance(item, dict):
+                        copy = dict(item)
+                        if static_root and "_static_root" not in copy:
+                            copy["_static_root"] = static_root
+                        result.append(copy)
+            elif isinstance(captures, dict):
+                # Some dumps use numeric keys: {"Captures":{"1":{...},"2":{...}}}
+                numeric_keys = [
+                    k for k in captures.keys() if str(k).isdigit()
+                ]
+                if numeric_keys:
+                    numeric_keys.sort(key=lambda x: int(x))
+                    for key in numeric_keys:
+                        val = captures.get(key)
+                        if isinstance(val, dict):
+                            copy = dict(val)
+                            if static_root and "_static_root" not in copy:
+                                copy["_static_root"] = static_root
+                            result.append(copy)
+                else:
+                    for val in captures.values():
+                        if isinstance(val, dict):
+                            copy = dict(val)
+                            if static_root and "_static_root" not in copy:
+                                copy["_static_root"] = static_root
+                            result.append(copy)
+        except Exception:
+            return result
+        return result
+
+    def _deliver(self, msg: dict) -> None:
+        self.available = True
+        # In replay/development mode, try to provide a static root URL even if the
+        # transport did not annotate the payload (robust against file encoding quirks).
+        try:
+            if (
+                self._dev_mode
+                and self._replay_static_root
+                and isinstance(msg, dict)
+                and "_static_root" not in msg
+            ):
+                msg = dict(msg)
+                msg["_static_root"] = self._replay_static_root
+        except Exception:
+            pass
+        captures = self._normalize_captures(msg)
+        if not captures:
+            return
+        # Use the last capture as "latest"
+        latest = captures[-1]
+        history: list[dict] = list(self._state.get("history") or [])
+        history.extend(captures)
+        if len(history) > self._history_limit:
+            history = history[-self._history_limit :]
+        self._state = {
+            "latest": latest,
+            "history": history,
+        }
+        self.async_set_updated_data(self._state)
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            try:
+                _LOGGER.debug(
+                    "TeamRadio delivered at %s latest=%s history_len=%s",
+                    dt_util.utcnow().isoformat(timespec="seconds"),
+                    {
+                        "Utc": latest.get("Utc"),
+                        "RacingNumber": latest.get("RacingNumber"),
+                        "Path": latest.get("Path"),
+                    },
+                    len(history),
+                )
+            except Exception:
+                pass
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        # Best-effort: derive static root from the replay file's URL header so sensors
+        # can build full clip URLs during replay.
+        if self._dev_mode and self._config_entry:
+            try:
+                from pathlib import Path as _Path
+
+                replay_source = str(self._config_entry.data.get(CONF_REPLAY_FILE, "") or "").strip()
+                if replay_source:
+                    replay_path = _Path(replay_source).expanduser()
+
+                    def _read_static_root() -> str | None:
+                        try:
+                            with replay_path.open("r", encoding="utf-8") as fh:
+                                for raw in fh:
+                                    line = raw.lstrip("\ufeff").strip()
+                                    if not line:
+                                        continue
+                                    if line.upper().startswith("URL:"):
+                                        try:
+                                            _, url = line.split(":", 1)
+                                        except ValueError:
+                                            return None
+                                        full_url = url.strip().rstrip("/")
+                                        if not full_url:
+                                            return None
+                                        parts = full_url.split("/")
+                                        if len(parts) <= 1:
+                                            return None
+                                        # Drop the final segment (e.g. TeamRadio.jsonStream)
+                                        return "/".join(parts[:-1])
+                                    # Only consider the header area at top
+                                    return None
+                        except Exception:
+                            return None
+                        return None
+
+                    static_root = await self.hass.async_add_executor_job(_read_static_root)
+                    if static_root:
+                        self._replay_static_root = str(static_root)
+            except Exception:
+                pass
+        try:
+            self._unsub = (
+                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            ).subscribe("TeamRadio", self._on_bus_message)  # type: ignore[attr-defined]
+        except Exception:
+            self._unsub = None
 
 class LiveDriversCoordinator(DataUpdateCoordinator):
     """Coordinator aggregating DriverList, TimingData, TimingAppData, LapCount and SessionStatus.
