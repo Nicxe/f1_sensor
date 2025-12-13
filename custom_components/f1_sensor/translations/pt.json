@@ -38,6 +38,7 @@
       "sprint_results": { "name": "Resultados da sprint" },
       "race_control": { "name": "Controle de corrida" },
       "safety_car": { "name": "Safety car" },
+      "pitstops": { "name": "Pit stops" },
       "fia_documents": { "name": "Decisões da FIA" }
     },
     "binary_sensor": {

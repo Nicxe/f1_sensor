@@ -204,6 +204,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
+    top_three_coordinator = None
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
@@ -316,6 +317,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     enabled = entry.data.get("enabled_sensors") or []
     # Only create drivers coordinator if driver_list is enabled (TEMP: race_order/driver_favorites disabled)
     need_drivers = any(k in enabled for k in ("driver_list",))
+    need_top_three = any(k in enabled for k in ("top_three",))
+    need_team_radio = any(k in enabled for k in ("team_radio",))
+    need_pitstops = any(k in enabled for k in ("pitstops",))
+    need_championship_prediction = any(k in enabled for k in ("championship_prediction",))
     drivers_coordinator = None
     if need_drivers:
         drivers_coordinator = LiveDriversCoordinator(
@@ -328,6 +333,59 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             live_state=live_state,
         )
         await drivers_coordinator.async_config_entry_first_refresh()
+
+    # Conditionally create TopThree coordinator only if sensor is enabled
+    if enable_rc and need_top_three:
+        top_three_coordinator = TopThreeCoordinator(
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
+        await top_three_coordinator.async_config_entry_first_refresh()
+
+    team_radio_coordinator = None
+    if need_team_radio:
+        team_radio_coordinator = TeamRadioCoordinator(
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
+        await team_radio_coordinator.async_config_entry_first_refresh()
+
+    pitstop_coordinator = None
+    if need_pitstops:
+        pitstop_coordinator = PitStopCoordinator(
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
+            live_state=live_state,
+            history_limit=10,
+        )
+        await pitstop_coordinator.async_config_entry_first_refresh()
+
+    championship_prediction_coordinator = None
+    if need_championship_prediction:
+        championship_prediction_coordinator = ChampionshipPredictionCoordinator(
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
+        await championship_prediction_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "http_session": http_session,
@@ -348,6 +406,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
+        "top_three_coordinator": top_three_coordinator,
+        "team_radio_coordinator": team_radio_coordinator,
+        "pitstop_coordinator": pitstop_coordinator,
+        "championship_prediction_coordinator": championship_prediction_coordinator,
         "drivers_coordinator": drivers_coordinator,
         "fia_documents_coordinator": fia_documents_coordinator,
         "live_bus": live_bus,
@@ -967,6 +1029,1086 @@ class LapCountCoordinator(DataUpdateCoordinator):
         self.available = is_live
 
 
+class TeamRadioCoordinator(DataUpdateCoordinator):
+    """Coordinator for TeamRadio updates using SignalR.
+
+    Normaliserar TeamRadio-flödet till en enkel struktur:
+        data = {
+            "latest": { ...normaliserad capture... } | None,
+            "history": [ { ...capture... }, ... ],
+        }
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: "LiveSessionCoordinator",
+        delay_seconds: int = 0,
+        bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+        history_limit: int = 20,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator_logger("team_radio", suppress_manual=True),
+            name="F1 Team Radio Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self.available = True
+        self._state: dict[str, Any] = {
+            "latest": None,
+            "history": [],
+        }
+        self._history_limit = max(1, int(history_limit or 20))
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._bus = bus
+        self._unsub: Optional[Callable[[], None]] = None
+        self._delay_listener: Optional[Callable[[], None]] = None
+        self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self._config_entry = config_entry
+        self._dev_mode = (
+            bool(config_entry)
+            and config_entry.data.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+            == OPERATION_MODE_DEVELOPMENT
+        )
+        self._replay_static_root: str | None = None
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+
+    async def async_close(self, *_):
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:
+                pass
+            self._unsub = None
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
+
+    async def _async_update_data(self):
+        return self._state
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+        if not is_live:
+            self._state = {"latest": None, "history": []}
+
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        if self._delay > 0:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(
+                self._delay, lambda m=msg: self._deliver(m)
+            )
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(
+                lambda m=msg: self._deliver(m)
+            )
+
+    @staticmethod
+    def _normalize_captures(payload: dict) -> list[dict]:
+        """Extract a flat list of capture dicts from a TeamRadio payload."""
+        if not isinstance(payload, dict):
+            return []
+        captures = payload.get("Captures")
+        static_root = payload.get("_static_root")
+        result: list[dict] = []
+        try:
+            if isinstance(captures, list):
+                for item in captures:
+                    if isinstance(item, dict):
+                        copy = dict(item)
+                        if static_root and "_static_root" not in copy:
+                            copy["_static_root"] = static_root
+                        result.append(copy)
+            elif isinstance(captures, dict):
+                # Some dumps use numeric keys: {"Captures":{"1":{...},"2":{...}}}
+                numeric_keys = [
+                    k for k in captures.keys() if str(k).isdigit()
+                ]
+                if numeric_keys:
+                    numeric_keys.sort(key=lambda x: int(x))
+                    for key in numeric_keys:
+                        val = captures.get(key)
+                        if isinstance(val, dict):
+                            copy = dict(val)
+                            if static_root and "_static_root" not in copy:
+                                copy["_static_root"] = static_root
+                            result.append(copy)
+                else:
+                    for val in captures.values():
+                        if isinstance(val, dict):
+                            copy = dict(val)
+                            if static_root and "_static_root" not in copy:
+                                copy["_static_root"] = static_root
+                            result.append(copy)
+        except Exception:
+            return result
+        return result
+
+    def _deliver(self, msg: dict) -> None:
+        self.available = True
+        # In replay/development mode, try to provide a static root URL even if the
+        # transport did not annotate the payload (robust against file encoding quirks).
+        try:
+            if (
+                self._dev_mode
+                and self._replay_static_root
+                and isinstance(msg, dict)
+                and "_static_root" not in msg
+            ):
+                msg = dict(msg)
+                msg["_static_root"] = self._replay_static_root
+        except Exception:
+            pass
+        captures = self._normalize_captures(msg)
+        if not captures:
+            return
+        # Use the last capture as "latest"
+        latest = captures[-1]
+        history: list[dict] = list(self._state.get("history") or [])
+        history.extend(captures)
+        if len(history) > self._history_limit:
+            history = history[-self._history_limit :]
+        self._state = {
+            "latest": latest,
+            "history": history,
+        }
+        self.async_set_updated_data(self._state)
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            try:
+                _LOGGER.debug(
+                    "TeamRadio delivered at %s latest=%s history_len=%s",
+                    dt_util.utcnow().isoformat(timespec="seconds"),
+                    {
+                        "Utc": latest.get("Utc"),
+                        "RacingNumber": latest.get("RacingNumber"),
+                        "Path": latest.get("Path"),
+                    },
+                    len(history),
+                )
+            except Exception:
+                pass
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        # Best-effort: derive static root from the replay file's URL header so sensors
+        # can build full clip URLs during replay.
+        if self._dev_mode and self._config_entry:
+            try:
+                from pathlib import Path as _Path
+
+                replay_source = str(self._config_entry.data.get(CONF_REPLAY_FILE, "") or "").strip()
+                if replay_source:
+                    replay_path = _Path(replay_source).expanduser()
+
+                    def _read_static_root() -> str | None:
+                        try:
+                            with replay_path.open("r", encoding="utf-8") as fh:
+                                for raw in fh:
+                                    line = raw.lstrip("\ufeff").strip()
+                                    if not line:
+                                        continue
+                                    if line.upper().startswith("URL:"):
+                                        try:
+                                            _, url = line.split(":", 1)
+                                        except ValueError:
+                                            return None
+                                        full_url = url.strip().rstrip("/")
+                                        if not full_url:
+                                            return None
+                                        parts = full_url.split("/")
+                                        if len(parts) <= 1:
+                                            return None
+                                        # Drop the final segment (e.g. TeamRadio.jsonStream)
+                                        return "/".join(parts[:-1])
+                                    # Only consider the header area at top
+                                    return None
+                        except Exception:
+                            return None
+                        return None
+
+                    static_root = await self.hass.async_add_executor_job(_read_static_root)
+                    if static_root:
+                        self._replay_static_root = str(static_root)
+            except Exception:
+                pass
+        try:
+            self._unsub = (
+                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            ).subscribe("TeamRadio", self._on_bus_message)  # type: ignore[attr-defined]
+        except Exception:
+            self._unsub = None
+
+
+class PitStopCoordinator(DataUpdateCoordinator):
+    """Coordinator aggregating live pit stops for all cars.
+
+    Exposes:
+        data = {
+          "total_stops": int,
+          "cars": {
+            "44": {"count": 2, "stops": [ {stop}, ... ]},
+            ...
+          },
+          "last_update": "2025-12-07T14:07:19+00:00",
+        }
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: "LiveSessionCoordinator",
+        delay_seconds: int = 0,
+        bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+        history_limit: int = 10,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator_logger("pitstops", suppress_manual=True),
+            name="F1 PitStop Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self.available = True
+        self._bus = bus
+        self._config_entry = config_entry
+        self._unsubs: list[Callable[[], None]] = []
+        self._delay_listener: Optional[Callable[[], None]] = None
+        self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+
+        self._session_unsub: Optional[Callable[[], None]] = None
+        self._session_fingerprint: str | None = None
+
+        self._history_limit = max(1, int(history_limit or 10))
+        self._by_car: dict[str, list[dict]] = {}
+        self._dedup: set[tuple] = set()
+        self._driver_map: dict[str, dict[str, Any]] = {}
+        self._deliver_handle: Optional[asyncio.Handle] = None
+
+        self._state: dict[str, Any] = {
+            "total_stops": 0,
+            "cars": {},
+            "last_update": None,
+        }
+
+    async def async_close(self, *_):
+        for u in list(self._unsubs):
+            try:
+                u()
+            except Exception:
+                pass
+        self._unsubs.clear()
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
+        if self._session_unsub:
+            try:
+                self._session_unsub()
+            except Exception:
+                pass
+            self._session_unsub = None
+
+    async def _async_update_data(self):
+        return self._state
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+        if not is_live:
+            self._reset_store()
+
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+
+    def _reset_store(self) -> None:
+        self._by_car = {}
+        self._dedup = set()
+        self._state = {"total_stops": 0, "cars": {}, "last_update": None}
+        try:
+            self.async_set_updated_data(self._state)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _parse_int(value: Any) -> int | None:
+        try:
+            if value is None:
+                return None
+            if isinstance(value, int):
+                return value
+            text = str(value).strip()
+            if not text:
+                return None
+            if text.isdigit():
+                return int(text)
+            return int(float(text))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _parse_float(value: Any) -> float | None:
+        try:
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            text = str(value).strip()
+            if not text:
+                return None
+            return float(text)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _compute_session_fingerprint(index_payload: Any) -> str | None:
+        """Best-effort fingerprint used to reset between sessions/weekends."""
+        if not isinstance(index_payload, dict):
+            return None
+        try:
+            meetings = index_payload.get("Meetings") or index_payload.get("meetings")
+            sessions = index_payload.get("Sessions") or index_payload.get("sessions")
+            minimal = {"Meetings": meetings, "Sessions": sessions}
+            return json.dumps(minimal, sort_keys=True, default=str)[:20000]
+        except Exception:
+            return None
+
+    def _on_session_index_update(self) -> None:
+        fp = self._compute_session_fingerprint(getattr(self._session_coord, "data", None))
+        if fp is None:
+            return
+        if self._session_fingerprint is None:
+            self._session_fingerprint = fp
+            return
+        if fp != self._session_fingerprint:
+            self._session_fingerprint = fp
+            self._reset_store()
+
+    def _schedule_deliver(self) -> None:
+        if self._delay > 0:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(self._delay, self._deliver)
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(self._deliver)
+
+    def _add_stop(self, racing_number: str, stop: dict) -> None:
+        rn = str(racing_number or "").strip()
+        if not rn:
+            return
+        lap = self._parse_int(stop.get("lap"))
+        ts = stop.get("timestamp")
+        pit_stop_time = self._parse_float(stop.get("pit_stop_time"))
+        pit_lane_time = self._parse_float(stop.get("pit_lane_time"))
+
+        # Dedup: prefer timestamp when present, else fall back to lap/times.
+        if ts:
+            key = (rn, "ts", str(ts), pit_lane_time, pit_stop_time)
+        else:
+            key = (rn, "no_ts", lap, pit_lane_time, pit_stop_time)
+        if key in self._dedup:
+            return
+        self._dedup.add(key)
+
+        entry = {
+            "lap": lap,
+            "timestamp": str(ts) if ts else None,
+            "pit_stop_time": pit_stop_time,
+            "pit_lane_time": pit_lane_time,
+        }
+        lst = self._by_car.setdefault(rn, [])
+        lst.append(entry)
+        if len(lst) > self._history_limit:
+            self._by_car[rn] = lst[-self._history_limit :]
+
+    def _ingest_pitstopseries(self, msg: dict) -> None:
+        pit_times = (msg or {}).get("PitTimes")
+        if not isinstance(pit_times, dict):
+            return
+        for rn, entries in pit_times.items():
+            if isinstance(entries, list):
+                iterable = entries
+            elif isinstance(entries, dict):
+                iterable = list(entries.values())
+            else:
+                continue
+            for item in iterable:
+                if not isinstance(item, dict):
+                    continue
+                pitstop = item.get("PitStop")
+                if not isinstance(pitstop, dict):
+                    continue
+                timestamp = item.get("Timestamp")
+                self._add_stop(
+                    str(pitstop.get("RacingNumber") or rn),
+                    {
+                        "lap": pitstop.get("Lap"),
+                        "timestamp": timestamp,
+                        "pit_stop_time": pitstop.get("PitStopTime"),
+                        "pit_lane_time": pitstop.get("PitLaneTime"),
+                    },
+                )
+
+    def _on_driverlist(self, payload: dict) -> None:
+        """Merge DriverList into an rn -> {tla,name,team} mapping."""
+        if not isinstance(payload, dict):
+            return
+        for rn, info in (payload or {}).items():
+            if not isinstance(info, dict):
+                continue
+            racing_number = str(info.get("RacingNumber") or rn).strip()
+            if not racing_number:
+                continue
+            self._driver_map[racing_number] = {
+                "tla": info.get("Tla"),
+                "name": info.get("FullName") or info.get("BroadcastName"),
+                "team": info.get("TeamName"),
+            }
+
+    def _seed_driver_map_from_ergast(self) -> None:
+        """Fallback identity mapping using Ergast/Jolpica driver standings.
+
+        This is especially important in replay mode where only one stream dump
+        (e.g. PitStopSeries) is replayed, meaning DriverList frames are absent.
+        """
+        try:
+            if not self._config_entry:
+                return
+            reg = self.hass.data.get(DOMAIN, {}).get(self._config_entry.entry_id)
+            if not isinstance(reg, dict):
+                return
+            driver_coord = reg.get("driver_coordinator")
+            data = getattr(driver_coord, "data", None) or {}
+            standings = (
+                (data.get("MRData") or {})
+                .get("StandingsTable", {})
+                .get("StandingsLists", [])
+            )
+            if not isinstance(standings, list) or not standings:
+                return
+            ds = (standings[0] or {}).get("DriverStandings", [])
+            if not isinstance(ds, list):
+                return
+            for item in ds:
+                if not isinstance(item, dict):
+                    continue
+                driver = item.get("Driver") or {}
+                if not isinstance(driver, dict):
+                    continue
+                rn = str(driver.get("permanentNumber") or "").strip()
+                if not rn:
+                    continue
+                code = driver.get("code") or driver.get("driverId")
+                given = driver.get("givenName")
+                family = driver.get("familyName")
+                name = None
+                try:
+                    parts = [p for p in (given, family) if p]
+                    name = " ".join(parts) if parts else None
+                except Exception:
+                    name = None
+                constructors = item.get("Constructors") or []
+                team = None
+                if isinstance(constructors, list) and constructors:
+                    c0 = constructors[0]
+                    if isinstance(c0, dict):
+                        team = c0.get("name")
+                # Do not overwrite non-null values from DriverList
+                existing = self._driver_map.get(rn) if isinstance(self._driver_map, dict) else None
+                if isinstance(existing, dict):
+                    if existing.get("tla") or existing.get("name") or existing.get("team"):
+                        continue
+                self._driver_map[rn] = {"tla": code, "name": name, "team": team}
+        except Exception:
+            return
+
+    def _on_bus_pitstopseries(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        self._ingest_pitstopseries(msg)
+        self._schedule_deliver()
+
+    def _deliver(self) -> None:
+        self.available = True
+        cars: dict[str, Any] = {}
+        total = 0
+        try:
+            for rn, stops in sorted(
+                self._by_car.items(),
+                key=lambda kv: int(str(kv[0])) if str(kv[0]).isdigit() else str(kv[0]),
+            ):
+                lst = list(stops or [])
+                ident = self._driver_map.get(str(rn), {}) if isinstance(self._driver_map, dict) else {}
+                cars[str(rn)] = {
+                    "tla": ident.get("tla"),
+                    "name": ident.get("name"),
+                    "team": ident.get("team"),
+                    "count": len(lst),
+                    "stops": lst,
+                }
+                total += len(lst)
+        except Exception:
+            cars = {
+                str(rn): {"count": len(stops or []), "stops": list(stops or [])}
+                for rn, stops in (self._by_car or {}).items()
+            }
+            try:
+                total = sum(
+                    v.get("count", 0) for v in cars.values() if isinstance(v, dict)
+                )
+            except Exception:
+                total = 0
+
+        self._state = {
+            "total_stops": int(total),
+            "cars": cars,
+            "last_update": dt_util.utcnow().isoformat(timespec="seconds"),
+        }
+        self.async_set_updated_data(self._state)
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        # Seed identity mapping from Ergast/Jolpica so replay mode still shows TLA/name/team.
+        self._seed_driver_map_from_ergast()
+        # Reset when LiveTiming index changes (session/weekend rollover)
+        try:
+            self._session_fingerprint = self._compute_session_fingerprint(
+                getattr(self._session_coord, "data", None)
+            )
+            self._session_unsub = self._session_coord.async_add_listener(
+                self._on_session_index_update
+            )
+        except Exception:
+            self._session_unsub = None
+        # Subscribe to shared live bus streams
+        bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        try:
+            self._unsubs.append(bus.subscribe("DriverList", self._on_driverlist))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        try:
+            self._unsubs.append(
+                bus.subscribe("PitStopSeries", self._on_bus_pitstopseries)  # type: ignore[attr-defined]
+            )
+        except Exception:
+            pass
+
+
+class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
+    """Coordinator for ChampionshipPrediction updates using SignalR.
+
+    Maintains merged state across incremental payloads:
+        data = {
+          "drivers": { rn: {...merged fields...}, ... },
+          "teams": { team_key: {...merged fields...}, ... },
+          "predicted_driver_p1": { "racing_number": str|None, "tla": str|None, "points": float|None, "entry": dict|None },
+          "predicted_team_p1": { "team_key": str|None, "team_name": str|None, "points": float|None, "entry": dict|None },
+          "last_update": ISO string,
+        }
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: "LiveSessionCoordinator",
+        delay_seconds: int = 0,
+        bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator_logger("championship_prediction", suppress_manual=True),
+            name="F1 Championship Prediction Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self.available = True
+        self._bus = bus
+        self._config_entry = config_entry
+
+        self._unsubs: list[Callable[[], None]] = []
+        self._delay_listener: Optional[Callable[[], None]] = None
+        self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
+
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+
+        self._session_unsub: Optional[Callable[[], None]] = None
+        self._session_fingerprint: str | None = None
+
+        self._drivers: dict[str, dict[str, Any]] = {}
+        self._teams: dict[str, dict[str, Any]] = {}
+        self._driver_map: dict[str, dict[str, Any]] = {}
+
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._state: dict[str, Any] = {
+            "drivers": {},
+            "teams": {},
+            "predicted_driver_p1": {
+                "racing_number": None,
+                "tla": None,
+                "points": None,
+                "entry": None,
+            },
+            "predicted_team_p1": {
+                "team_key": None,
+                "team_name": None,
+                "points": None,
+                "entry": None,
+            },
+            "last_update": None,
+        }
+
+    async def async_close(self, *_):
+        for u in list(self._unsubs):
+            try:
+                u()
+            except Exception:
+                pass
+        self._unsubs.clear()
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
+        if self._session_unsub:
+            try:
+                self._session_unsub()
+            except Exception:
+                pass
+            self._session_unsub = None
+
+    async def _async_update_data(self):
+        return self._state
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+        if not is_live:
+            self._reset_store()
+
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+
+    def _reset_store(self) -> None:
+        self._drivers = {}
+        self._teams = {}
+        self._state = {
+            "drivers": {},
+            "teams": {},
+            "predicted_driver_p1": {
+                "racing_number": None,
+                "tla": None,
+                "points": None,
+                "entry": None,
+            },
+            "predicted_team_p1": {
+                "team_key": None,
+                "team_name": None,
+                "points": None,
+                "entry": None,
+            },
+            "last_update": None,
+        }
+        try:
+            self.async_set_updated_data(self._state)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _compute_session_fingerprint(index_payload: Any) -> str | None:
+        if not isinstance(index_payload, dict):
+            return None
+        try:
+            meetings = index_payload.get("Meetings") or index_payload.get("meetings")
+            sessions = index_payload.get("Sessions") or index_payload.get("sessions")
+            minimal = {"Meetings": meetings, "Sessions": sessions}
+            return json.dumps(minimal, sort_keys=True, default=str)[:20000]
+        except Exception:
+            return None
+
+    def _on_session_index_update(self) -> None:
+        fp = self._compute_session_fingerprint(getattr(self._session_coord, "data", None))
+        if fp is None:
+            return
+        if self._session_fingerprint is None:
+            self._session_fingerprint = fp
+            return
+        if fp != self._session_fingerprint:
+            self._session_fingerprint = fp
+            self._reset_store()
+
+    def _schedule_deliver(self) -> None:
+        if self._delay > 0:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(self._delay, self._deliver)
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(self._deliver)
+
+    @staticmethod
+    def _deep_merge(dst: dict[str, Any], src: dict[str, Any]) -> dict[str, Any]:
+        """Shallow/deep merge dicts: nested dicts are merged recursively."""
+        if not isinstance(dst, dict):
+            dst = {}
+        for k, v in (src or {}).items():
+            if isinstance(v, dict) and isinstance(dst.get(k), dict):
+                dst[k] = ChampionshipPredictionCoordinator._deep_merge(dst.get(k) or {}, v)
+            else:
+                dst[k] = v
+        return dst
+
+    def _ingest_prediction(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        drivers = msg.get("Drivers")
+        if isinstance(drivers, dict):
+            for key, patch in drivers.items():
+                if not isinstance(patch, dict):
+                    continue
+                rn = str(patch.get("RacingNumber") or key).strip()
+                if not rn:
+                    continue
+                cur = self._drivers.get(rn) or {}
+                # Ensure RacingNumber is stable
+                cur.setdefault("RacingNumber", rn)
+                self._drivers[rn] = self._deep_merge(cur, patch)
+
+        teams = msg.get("Teams")
+        if isinstance(teams, dict):
+            for team_key, patch in teams.items():
+                if not isinstance(patch, dict):
+                    continue
+                tk = str(team_key).strip()
+                if not tk:
+                    continue
+                cur = self._teams.get(tk) or {}
+                cur.setdefault("TeamKey", tk)
+                self._teams[tk] = self._deep_merge(cur, patch)
+
+    def _on_driverlist(self, payload: dict) -> None:
+        if not isinstance(payload, dict):
+            return
+        for rn, info in (payload or {}).items():
+            if not isinstance(info, dict):
+                continue
+            racing_number = str(info.get("RacingNumber") or rn).strip()
+            if not racing_number:
+                continue
+            self._driver_map[racing_number] = {
+                "tla": info.get("Tla"),
+                "name": info.get("FullName") or info.get("BroadcastName"),
+                "team": info.get("TeamName"),
+            }
+        # identity update can change sensor state even without prediction deltas
+        self._schedule_deliver()
+
+    def _seed_driver_map_from_ergast(self) -> None:
+        """Fallback identity mapping using Ergast/Jolpica driver standings (replay-friendly)."""
+        try:
+            if not self._config_entry:
+                return
+            reg = self.hass.data.get(DOMAIN, {}).get(self._config_entry.entry_id)
+            if not isinstance(reg, dict):
+                return
+            driver_coord = reg.get("driver_coordinator")
+            data = getattr(driver_coord, "data", None) or {}
+            standings = (
+                (data.get("MRData") or {})
+                .get("StandingsTable", {})
+                .get("StandingsLists", [])
+            )
+            if not isinstance(standings, list) or not standings:
+                return
+            ds = (standings[0] or {}).get("DriverStandings", [])
+            if not isinstance(ds, list):
+                return
+            for item in ds:
+                if not isinstance(item, dict):
+                    continue
+                driver = item.get("Driver") or {}
+                if not isinstance(driver, dict):
+                    continue
+                rn = str(driver.get("permanentNumber") or "").strip()
+                if not rn:
+                    continue
+                existing = self._driver_map.get(rn)
+                if isinstance(existing, dict) and (existing.get("tla") or existing.get("name") or existing.get("team")):
+                    continue
+                code = driver.get("code") or driver.get("driverId")
+                given = driver.get("givenName")
+                family = driver.get("familyName")
+                name = None
+                try:
+                    parts = [p for p in (given, family) if p]
+                    name = " ".join(parts) if parts else None
+                except Exception:
+                    name = None
+                constructors = item.get("Constructors") or []
+                team = None
+                if isinstance(constructors, list) and constructors:
+                    c0 = constructors[0]
+                    if isinstance(c0, dict):
+                        team = c0.get("name")
+                self._driver_map[rn] = {"tla": code, "name": name, "team": team}
+        except Exception:
+            return
+
+    @staticmethod
+    def _to_int(value: Any) -> int | None:
+        try:
+            if value is None:
+                return None
+            if isinstance(value, int):
+                return value
+            text = str(value).strip()
+            if not text:
+                return None
+            if text.isdigit():
+                return int(text)
+            return int(float(text))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _to_float(value: Any) -> float | None:
+        try:
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            text = str(value).strip()
+            if not text:
+                return None
+            return float(text)
+        except Exception:
+            return None
+
+    def _pick_predicted_driver_p1(self) -> tuple[str | None, dict | None]:
+        best_rn = None
+        best_entry = None
+        best_pos = None
+        for rn, entry in (self._drivers or {}).items():
+            if not isinstance(entry, dict):
+                continue
+            pos = self._to_int(entry.get("PredictedPosition"))
+            if pos is None:
+                continue
+            if best_pos is None or pos < best_pos:
+                best_pos = pos
+                best_rn = str(entry.get("RacingNumber") or rn)
+                best_entry = entry
+        return best_rn, best_entry
+
+    def _pick_predicted_team_p1(self) -> tuple[str | None, dict | None]:
+        best_key = None
+        best_entry = None
+        best_pos = None
+        for key, entry in (self._teams or {}).items():
+            if not isinstance(entry, dict):
+                continue
+            pos = self._to_int(entry.get("PredictedPosition"))
+            if pos is None:
+                continue
+            if best_pos is None or pos < best_pos:
+                best_pos = pos
+                best_key = str(entry.get("TeamKey") or key)
+                best_entry = entry
+        return best_key, best_entry
+
+    def _deliver(self) -> None:
+        self.available = True
+
+        p1_rn, p1_entry = self._pick_predicted_driver_p1()
+        ident = self._driver_map.get(str(p1_rn), {}) if p1_rn else {}
+        p1_tla = ident.get("tla") if isinstance(ident, dict) else None
+        p1_pts = self._to_float((p1_entry or {}).get("PredictedPoints")) if isinstance(p1_entry, dict) else None
+
+        t1_key, t1_entry = self._pick_predicted_team_p1()
+        team_name = None
+        if isinstance(t1_entry, dict):
+            team_name = t1_entry.get("TeamName") or t1_entry.get("teamName")
+        if not team_name and t1_key:
+            team_name = str(t1_key)
+        t1_pts = self._to_float((t1_entry or {}).get("PredictedPoints")) if isinstance(t1_entry, dict) else None
+
+        self._state = {
+            "drivers": dict(self._drivers),
+            "teams": dict(self._teams),
+            "predicted_driver_p1": {
+                "racing_number": p1_rn,
+                "tla": p1_tla,
+                "points": p1_pts,
+                "entry": dict(p1_entry) if isinstance(p1_entry, dict) else None,
+            },
+            "predicted_team_p1": {
+                "team_key": t1_key,
+                "team_name": team_name,
+                "points": t1_pts,
+                "entry": dict(t1_entry) if isinstance(t1_entry, dict) else None,
+            },
+            "last_update": dt_util.utcnow().isoformat(timespec="seconds"),
+        }
+        self.async_set_updated_data(self._state)
+
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        self._ingest_prediction(msg)
+        self._schedule_deliver()
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        # Seed driver identity for replay mode (single-stream dump).
+        self._seed_driver_map_from_ergast()
+        # Reset on index/session rollover
+        try:
+            self._session_fingerprint = self._compute_session_fingerprint(
+                getattr(self._session_coord, "data", None)
+            )
+            self._session_unsub = self._session_coord.async_add_listener(
+                self._on_session_index_update
+            )
+        except Exception:
+            self._session_unsub = None
+        # Subscriptions
+        bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        try:
+            self._unsubs.append(
+                bus.subscribe("ChampionshipPrediction", self._on_bus_message)  # type: ignore[attr-defined]
+            )
+        except Exception:
+            pass
+        try:
+            self._unsubs.append(
+                bus.subscribe("DriverList", self._on_driverlist)  # type: ignore[attr-defined]
+            )
+        except Exception:
+            pass
+
 class LiveDriversCoordinator(DataUpdateCoordinator):
     """Coordinator aggregating DriverList, TimingData, TimingAppData, LapCount and SessionStatus.
 
@@ -1203,6 +2345,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             self._state["leader_rn"] = leader_rn
 
     def _merge_timingapp(self, payload: dict) -> None:
+        """Merge TimingAppData payloads.
+
+        We now use the dedicated TyreStintSeries stream for tyre information, so this
+        handler is only responsible for lap time fields from the embedded Stints.
+        """
         # payload: {"Lines": { rn: {"Stints": { idx or list } } } }
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
@@ -1212,7 +2359,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             if not isinstance(app, dict):
                 continue
             entry = drivers.setdefault(rn, {})
-            entry.setdefault("tyres", {})
             entry.setdefault("timing", {})
             stints = app.get("Stints")
             latest: dict | None = None
@@ -1228,17 +2374,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     # Fallback: try key '0'
                     latest = stints.get("0") if isinstance(stints.get("0"), dict) else None
             if isinstance(latest, dict):
-                # Tyres info
-                comp = latest.get("Compound")
-                stint_laps = latest.get("TotalLaps")
-                is_new = latest.get("New")
-                entry["tyres"].update(
-                    {
-                        "compound": comp,
-                        "stint_laps": int(stint_laps) if str(stint_laps or "").isdigit() else stint_laps,
-                        "new": True if str(is_new).lower() == "true" else (False if str(is_new).lower() == "false" else is_new),
-                    }
-                )
                 # Lap times: map latest LapTime to timing.last_lap and update best_lap
                 lap_time = latest.get("LapTime")
                 if isinstance(lap_time, str) and lap_time:
@@ -1253,7 +2388,58 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     except Exception:
                         # If parsing fails, at least keep last_lap updated
                         pass
-        # Tyre or lap time changes sometimes coincide with leader changes
+        # Lap time changes sometimes coincide with leader changes
+        self._recompute_leader_from_state()
+
+    def _merge_tyre_stints(self, payload: dict) -> None:
+        """Merge TyreStintSeries payloads into per-driver tyre state.
+
+        Expected payload shape (from SignalR stream \"TyreStintSeries\"):
+            {"Stints": { rn: { idx: {Compound, New, TotalLaps, ...}, ... }, ... }}
+        """
+        stints_root = (payload or {}).get("Stints", {})
+        if not isinstance(stints_root, dict):
+            return
+        drivers = self._state["drivers"]
+        for rn, stints in stints_root.items():
+            if not isinstance(stints, (dict, list)):
+                continue
+            entry = drivers.setdefault(rn, {})
+            entry.setdefault("tyres", {})
+            tyres = entry["tyres"]
+            latest: dict | None = None
+            if isinstance(stints, list) and stints:
+                latest = stints[-1] if isinstance(stints[-1], dict) else None
+            elif isinstance(stints, dict) and stints:
+                try:
+                    keys = [int(k) for k in stints.keys() if str(k).isdigit()]
+                    if keys:
+                        latest = stints.get(str(max(keys)))
+                except Exception:
+                    latest = stints.get("0") if isinstance(stints.get("0"), dict) else None
+            if not isinstance(latest, dict):
+                continue
+
+            # Only overwrite fields that are present in this delta to avoid losing
+            # previously-known compound/new values when we receive TotalLaps-only frames.
+            if "Compound" in latest:
+                tyres["compound"] = latest.get("Compound")
+            if "TotalLaps" in latest:
+                stint_laps = latest.get("TotalLaps")
+                tyres["stint_laps"] = (
+                    int(stint_laps) if str(stint_laps or "").isdigit() else stint_laps
+                )
+            if "New" in latest:
+                is_new = latest.get("New")
+                s = str(is_new).lower()
+                if s == "true":
+                    tyres["new"] = True
+                elif s == "false":
+                    tyres["new"] = False
+                else:
+                    tyres["new"] = is_new
+
+        # Tyre changes can also interact with leader logic (pit stops etc.)
         self._recompute_leader_from_state()
 
     def _merge_lapcount(self, payload: dict) -> None:
@@ -1371,6 +2557,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._merge_timingapp(ta)
         self._schedule_deliver()
 
+    def _on_tyre_stints(self, ts: dict) -> None:
+        if self._state.get("frozen"):
+            return
+        self._merge_tyre_stints(ts)
+        self._schedule_deliver()
+
     def _on_lapcount(self, lc: dict) -> None:
         if self._state.get("frozen"):
             return
@@ -1400,6 +2592,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 pass
             try:
                 self._unsubs.append(bus.subscribe("TimingAppData", self._on_timingapp))
+            except Exception:
+                pass
+            try:
+                self._unsubs.append(bus.subscribe("TyreStintSeries", self._on_tyre_stints))
             except Exception:
                 pass
             try:
@@ -2213,6 +3409,197 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         self.available = is_live
+
+
+class TopThreeCoordinator(DataUpdateCoordinator):
+    """Coordinator for TopThree updates using SignalR.
+
+    Normaliserar TopThree-flödet till ett enkelt state:
+        {
+            "withheld": bool | None,
+            "lines": [dict | None, dict | None, dict | None],
+            "last_update_ts": str | None,
+        }
+    där varje line är direkt baserad på feedens rader (Position, Tla, DiffToLeader osv).
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: LiveSessionCoordinator,
+        delay_seconds: int = 0,
+        bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+    ):
+        super().__init__(
+            hass,
+            coordinator_logger("top_three", suppress_manual=True),
+            name="F1 Top Three Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self.available = True
+        self._state: dict[str, Any] = {
+            "withheld": None,
+            "lines": [None, None, None],
+            "last_update_ts": None,
+        }
+        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._bus = bus
+        self._unsub: Optional[Callable[[], None]] = None
+        self._delay_listener: Optional[Callable[[], None]] = None
+        self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+
+    async def async_close(self, *_):
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:
+                pass
+            self._unsub = None
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
+
+    async def _async_update_data(self):
+        return self._state
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+
+    def _schedule_deliver(self) -> None:
+        if self._delay > 0:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(
+                self._delay, self._deliver
+            )
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(self._deliver)
+
+    def _merge_topthree(self, payload: dict) -> None:
+        """Merge a TopThree payload (full snapshot or partial delta) into state."""
+        if not isinstance(payload, dict):
+            return
+
+        state = self._state
+
+        # Withheld flag (om F1 väljer att inte visa topp 3)
+        try:
+            if "Withheld" in payload:
+                state["withheld"] = bool(payload.get("Withheld"))
+        except Exception:
+            pass
+
+        lines = payload.get("Lines")
+        cur_lines = state.get("lines") or [None, None, None]
+
+        # Full snapshot: Lines som lista [P1, P2, P3]
+        if isinstance(lines, list):
+            new_lines: list[Any] = [None, None, None]
+            for idx in range(3):
+                try:
+                    item = lines[idx]
+                except Exception:
+                    item = None
+                new_lines[idx] = item if isinstance(item, dict) else None
+            state["lines"] = new_lines
+        # Delta: Lines som dict { "0": {...}, "1": {...}, "2": {...} }
+        elif isinstance(lines, dict):
+            for key, delta in lines.items():
+                try:
+                    idx = int(key)
+                except Exception:
+                    continue
+                if idx < 0 or idx > 2:
+                    continue
+                if not isinstance(delta, dict):
+                    continue
+                base = cur_lines[idx]
+                if not isinstance(base, dict):
+                    base = {}
+                try:
+                    base.update(delta)
+                except Exception:
+                    # Sista försvarslinje – hellre lämna base opåverkad än krascha
+                    pass
+                cur_lines[idx] = base
+            state["lines"] = cur_lines
+
+        try:
+            state["last_update_ts"] = dt_util.utcnow().isoformat()
+        except Exception:
+            state["last_update_ts"] = None
+
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        try:
+            self._merge_topthree(msg)
+        except Exception:
+            return
+        self._schedule_deliver()
+
+    def _deliver(self) -> None:
+        # Pushar aktuellt state till sensorerna
+        self.async_set_updated_data(self._state)
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        # Prenumerera på TopThree från LiveBus
+        try:
+            bus = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus"))  # type: ignore[assignment]
+        except Exception:
+            bus = None
+        if bus is not None:
+            try:
+                self._unsub = bus.subscribe("TopThree", self._on_bus_message)
+            except Exception:
+                self._unsub = None
 
 
 class SessionInfoCoordinator(DataUpdateCoordinator):

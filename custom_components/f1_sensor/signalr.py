@@ -16,6 +16,7 @@ HUB_DATA = '[{"name":"Streaming"}]'
 
 # Subscribe to core live streams used across the integration
 # Added: TimingData, DriverList, TimingAppData to support driver sensors
+# Added: TeamRadio to support team radio sensor
 SUBSCRIBE_MSG = {
     "H": "Streaming",
     "M": "Subscribe",
@@ -31,6 +32,11 @@ SUBSCRIBE_MSG = {
         "TimingData",
         "DriverList",
         "TimingAppData",
+        "TopThree",
+        "TyreStintSeries",
+        "TeamRadio",
+        "PitStopSeries",
+        "ChampionshipPrediction",
     ]],
     "I": 1,
 }
@@ -86,7 +92,11 @@ class SignalRClient:
         self._t0 = dt.datetime.now(dt.timezone.utc)
         self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
-        _LOGGER.debug("Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, LapCount, SessionInfo, TimingData, DriverList, TimingAppData")
+        _LOGGER.debug(
+            "Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, "
+            "LapCount, SessionInfo, TimingData, DriverList, TimingAppData, TopThree, "
+            "TyreStintSeries, TeamRadio"
+        )
 
     async def ensure_connection(self) -> None:
         """Try to (re)connect using exponential back-off."""

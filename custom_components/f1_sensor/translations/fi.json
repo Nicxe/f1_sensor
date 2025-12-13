@@ -38,6 +38,7 @@
       "sprint_results": { "name": "Sprinttulokset" },
       "race_control": { "name": "Kisavalvonta" },
       "safety_car": { "name": "Turva-auto" },
+      "pitstops": { "name": "Varikkopysähdykset" },
       "fia_documents": { "name": "FIA-päätökset" }
     },
     "binary_sensor": {

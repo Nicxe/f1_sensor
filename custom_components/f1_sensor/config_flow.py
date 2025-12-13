@@ -23,27 +23,6 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         current = user_input or {}
 
         if user_input is not None:
-            # Backwards-compat: migrate favorite_drivers -> favorite_tlas storage key
-            fav = user_input.pop("favorite_drivers", None)
-            if fav is not None:
-                user_input["favorite_tlas"] = fav
-            # Enforce max 3 favorites
-            try:
-                fav_str = str(user_input.get("favorite_tlas", "") or "").strip()
-                items = [t.strip().upper() for t in fav_str.split(",") if t.strip()]
-                # Deduplicate preserving order and cap to 3
-                seen = set()
-                capped = []
-                for t in items:
-                    if t not in seen:
-                        seen.add(t)
-                        capped.append(t)
-                    if len(capped) >= 3:
-                        break
-                user_input["favorite_tlas"] = ",".join(capped)
-            except Exception:
-                pass
-
             # Resolve and validate operation mode
             mode = user_input.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
             if mode not in (OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT):
@@ -75,7 +54,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "weather",
             "track_weather",
             "race_lap_count",
-            # TEMP_DISABLED: favorite drivers (live)
+            "driver_list",
+            "current_tyres",
             "last_race_results",
             "season_results",
             "sprint_results",
@@ -85,7 +65,6 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_control",
             "current_session",
             "safety_car",
-            # TEMP_DISABLED: race order (live)
         ]
         sensor_options = {
             "next_race": "Next race",
@@ -95,8 +74,11 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "weather": "Weather",
             "track_weather": "Track weather (live)",
             "race_lap_count": "Race lap count (live)",
-            # TEMP_DISABLED: Favorite drivers (live)
             "driver_list": "Driver list (live)",
+            "current_tyres": "Current tyres (live)",
+            "top_three": "Top three (leader, live)",
+            "pitstops": "Pit stops (live)",
+            "championship_prediction": "Championship prediction (live)",
             "last_race_results": "Last race results",
             "season_results": "Season results",
             "sprint_results": "Sprint results",
@@ -109,7 +91,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "current_session": "Current session (live)",
             "safety_car": "Safety car (live)",
             "fia_documents": "FIA decisions",
-            # TEMP_DISABLED: Race driver order (live)
+            "team_radio": "Team radio (latest clip)",
         }
 
         # Build base schema
@@ -122,7 +104,6 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 default=current.get("enabled_sensors", default_enabled),
             ): cv.multi_select(sensor_options),
             vol.Optional("enable_race_control", default=False): cv.boolean,
-            # TEMP_DISABLED: favorite_drivers field hidden for this release
         }
 
         # Only expose development-related controls when explicitly enabled.
@@ -159,25 +140,6 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         current = entry.data
 
         if user_input is not None:
-            # Normalize favorites and cap to 3
-            fav = user_input.pop("favorite_drivers", None)
-            if fav is not None:
-                user_input["favorite_tlas"] = fav
-            try:
-                fav_str = str(user_input.get("favorite_tlas", "") or "").strip()
-                items = [t.strip().upper() for t in fav_str.split(",") if t.strip()]
-                seen = set()
-                capped = []
-                for t in items:
-                    if t not in seen:
-                        seen.add(t)
-                        capped.append(t)
-                    if len(capped) >= 3:
-                        break
-                user_input["favorite_tlas"] = ",".join(capped)
-            except Exception:
-                pass
-
             mode = user_input.get(
                 CONF_OPERATION_MODE, current.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
             )
@@ -212,8 +174,11 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "weather": "Weather",
             "track_weather": "Track weather (live)",
             "race_lap_count": "Race lap count (live)",
-            # TEMP_DISABLED: Favorite drivers (live)
             "driver_list": "Driver list (live)",
+            "current_tyres": "Current tyres (live)",
+            "top_three": "Top three (leader, live)",
+            "pitstops": "Pit stops (live)",
+            "championship_prediction": "Championship prediction (live)",
             "last_race_results": "Last race results",
             "season_results": "Season results",
             "sprint_results": "Sprint results",
@@ -226,7 +191,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "current_session": "Current session (live)",
             "safety_car": "Safety car (live)",
             "fia_documents": "FIA decisions",
-            # TEMP_DISABLED: Race driver order (live)
+            "team_radio": "Team radio (latest clip)",
         }
         default_enabled = [
             "next_race",
@@ -236,8 +201,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "weather",
             "track_weather",
             "race_lap_count",
-            # TEMP_DISABLED: favorite drivers (live)
             "driver_list",
+            "current_tyres",
             "last_race_results",
             "season_results",
             "sprint_results",
@@ -249,7 +214,6 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_control",
             "current_session",
             "safety_car",
-            # TEMP_DISABLED: race order (live)
         ]
         raw_enabled = current.get("enabled_sensors", default_enabled)
         normalized_enabled = []
@@ -273,7 +237,6 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 "enable_race_control",
                 default=current.get("enable_race_control", False),
             ): cv.boolean,
-            # TEMP_DISABLED: favorite_drivers field hidden for this release
         }
 
         # For reconfigure we show dev controls either when explicitly enabled

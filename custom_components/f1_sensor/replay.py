@@ -20,6 +20,10 @@ KNOWN_STREAMS = {
     "TimingData",
     "DriverList",
     "TimingAppData",
+    # Team radio clips, e.g. TeamRadio.jsonStream
+    "TeamRadio",
+    "PitStopSeries",
+    "ChampionshipPrediction",
 }
 
 
@@ -97,14 +101,28 @@ class ReplaySignalRClient:
         frames: List[ReplayFrame] = []
         prev_ts: float | None = None
         stream_hint = self._stream_hint
+        static_root: str | None = None
         try:
             with self._path.open("r", encoding="utf-8") as handle:
                 for raw_line in handle:
-                    line = raw_line.strip()
+                    # Ta bort eventuell UTF‑8 BOM och trimma whitespace runtom
+                    line = raw_line.lstrip("\ufeff").strip()
                     if not line:
                         continue
                     if line.upper().startswith("URL:"):
-                        stream_hint = self._extract_stream_from_url(line) or stream_hint
+                        # Extract stream name and remember the static root URL (without the *.jsonStream tail)
+                        url_stream = self._extract_stream_from_url(line)
+                        stream_hint = url_stream or stream_hint
+                        try:
+                            _, url = line.split(":", 1)
+                            full_url = url.strip()
+                            if full_url:
+                                # Drop the final path segment (e.g. TeamRadio.jsonStream)
+                                parts = full_url.rstrip("/").split("/")
+                                if len(parts) > 1:
+                                    static_root = "/".join(parts[:-1])
+                        except Exception:
+                            static_root = static_root
                         continue
                     ts_part, json_part = self._split_line(line)
                     if not json_part:
@@ -124,6 +142,15 @@ class ReplaySignalRClient:
                     current_ts = self._parse_timestamp(ts_part)
                     delay = self._compute_delay(current_ts, prev_ts)
                     prev_ts = current_ts
+                    # Annotate TeamRadio payloads with static_root so sensors can build full clip URLs
+                    if (
+                        static_root
+                        and stream_name == "TeamRadio"
+                        and isinstance(payload, dict)
+                        and "_static_root" not in payload
+                    ):
+                        payload = dict(payload)
+                        payload["_static_root"] = static_root
                     frames.append(ReplayFrame(delay=delay, stream=stream_name, payload=payload))
         except FileNotFoundError:
             raise
