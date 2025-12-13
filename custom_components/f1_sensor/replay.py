@@ -22,6 +22,7 @@ KNOWN_STREAMS = {
     "TimingAppData",
     # Team radio clips, e.g. TeamRadio.jsonStream
     "TeamRadio",
+    "PitStopSeries",
 }
 
 

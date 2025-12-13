@@ -319,6 +319,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     need_drivers = any(k in enabled for k in ("driver_list",))
     need_top_three = any(k in enabled for k in ("top_three",))
     need_team_radio = any(k in enabled for k in ("team_radio",))
+    need_pitstops = any(k in enabled for k in ("pitstops",))
     drivers_coordinator = None
     if need_drivers:
         drivers_coordinator = LiveDriversCoordinator(
@@ -358,6 +359,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         await team_radio_coordinator.async_config_entry_first_refresh()
 
+    pitstop_coordinator = None
+    if need_pitstops:
+        pitstop_coordinator = PitStopCoordinator(
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
+            live_state=live_state,
+            history_limit=10,
+        )
+        await pitstop_coordinator.async_config_entry_first_refresh()
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "http_session": http_session,
         "user_agent": ua_string,
@@ -379,6 +394,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
         "top_three_coordinator": top_three_coordinator,
         "team_radio_coordinator": team_radio_coordinator,
+        "pitstop_coordinator": pitstop_coordinator,
         "drivers_coordinator": drivers_coordinator,
         "fia_documents_coordinator": fia_documents_coordinator,
         "live_bus": live_bus,
@@ -1254,6 +1270,400 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
             ).subscribe("TeamRadio", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
+
+
+class PitStopCoordinator(DataUpdateCoordinator):
+    """Coordinator aggregating live pit stops for all cars.
+
+    Exposes:
+        data = {
+          "total_stops": int,
+          "cars": {
+            "44": {"count": 2, "stops": [ {stop}, ... ]},
+            ...
+          },
+          "last_update": "2025-12-07T14:07:19+00:00",
+        }
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: "LiveSessionCoordinator",
+        delay_seconds: int = 0,
+        bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+        history_limit: int = 10,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator_logger("pitstops", suppress_manual=True),
+            name="F1 PitStop Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self.available = True
+        self._bus = bus
+        self._config_entry = config_entry
+        self._unsubs: list[Callable[[], None]] = []
+        self._delay_listener: Optional[Callable[[], None]] = None
+        self._delay = max(0, int(delay_seconds or 0))
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+
+        self._session_unsub: Optional[Callable[[], None]] = None
+        self._session_fingerprint: str | None = None
+
+        self._history_limit = max(1, int(history_limit or 10))
+        self._by_car: dict[str, list[dict]] = {}
+        self._dedup: set[tuple] = set()
+        self._driver_map: dict[str, dict[str, Any]] = {}
+        self._deliver_handle: Optional[asyncio.Handle] = None
+
+        self._state: dict[str, Any] = {
+            "total_stops": 0,
+            "cars": {},
+            "last_update": None,
+        }
+
+    async def async_close(self, *_):
+        for u in list(self._unsubs):
+            try:
+                u()
+            except Exception:
+                pass
+        self._unsubs.clear()
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+        if self._delay_listener:
+            try:
+                self._delay_listener()
+            except Exception:
+                pass
+            self._delay_listener = None
+        if self._live_state_unsub:
+            try:
+                self._live_state_unsub()
+            except Exception:
+                pass
+            self._live_state_unsub = None
+        if self._session_unsub:
+            try:
+                self._session_unsub()
+            except Exception:
+                pass
+            self._session_unsub = None
+
+    async def _async_update_data(self):
+        return self._state
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        self.available = is_live
+        if not is_live:
+            self._reset_store()
+
+    def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        if self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
+
+    def _reset_store(self) -> None:
+        self._by_car = {}
+        self._dedup = set()
+        self._state = {"total_stops": 0, "cars": {}, "last_update": None}
+        try:
+            self.async_set_updated_data(self._state)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _parse_int(value: Any) -> int | None:
+        try:
+            if value is None:
+                return None
+            if isinstance(value, int):
+                return value
+            text = str(value).strip()
+            if not text:
+                return None
+            if text.isdigit():
+                return int(text)
+            return int(float(text))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _parse_float(value: Any) -> float | None:
+        try:
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            text = str(value).strip()
+            if not text:
+                return None
+            return float(text)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _compute_session_fingerprint(index_payload: Any) -> str | None:
+        """Best-effort fingerprint used to reset between sessions/weekends."""
+        if not isinstance(index_payload, dict):
+            return None
+        try:
+            meetings = index_payload.get("Meetings") or index_payload.get("meetings")
+            sessions = index_payload.get("Sessions") or index_payload.get("sessions")
+            minimal = {"Meetings": meetings, "Sessions": sessions}
+            return json.dumps(minimal, sort_keys=True, default=str)[:20000]
+        except Exception:
+            return None
+
+    def _on_session_index_update(self) -> None:
+        fp = self._compute_session_fingerprint(getattr(self._session_coord, "data", None))
+        if fp is None:
+            return
+        if self._session_fingerprint is None:
+            self._session_fingerprint = fp
+            return
+        if fp != self._session_fingerprint:
+            self._session_fingerprint = fp
+            self._reset_store()
+
+    def _schedule_deliver(self) -> None:
+        if self._delay > 0:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_later(self._delay, self._deliver)
+        else:
+            try:
+                if self._deliver_handle:
+                    self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = self.hass.loop.call_soon(self._deliver)
+
+    def _add_stop(self, racing_number: str, stop: dict) -> None:
+        rn = str(racing_number or "").strip()
+        if not rn:
+            return
+        lap = self._parse_int(stop.get("lap"))
+        ts = stop.get("timestamp")
+        pit_stop_time = self._parse_float(stop.get("pit_stop_time"))
+        pit_lane_time = self._parse_float(stop.get("pit_lane_time"))
+
+        # Dedup: prefer timestamp when present, else fall back to lap/times.
+        if ts:
+            key = (rn, "ts", str(ts), pit_lane_time, pit_stop_time)
+        else:
+            key = (rn, "no_ts", lap, pit_lane_time, pit_stop_time)
+        if key in self._dedup:
+            return
+        self._dedup.add(key)
+
+        entry = {
+            "lap": lap,
+            "timestamp": str(ts) if ts else None,
+            "pit_stop_time": pit_stop_time,
+            "pit_lane_time": pit_lane_time,
+        }
+        lst = self._by_car.setdefault(rn, [])
+        lst.append(entry)
+        if len(lst) > self._history_limit:
+            self._by_car[rn] = lst[-self._history_limit :]
+
+    def _ingest_pitstopseries(self, msg: dict) -> None:
+        pit_times = (msg or {}).get("PitTimes")
+        if not isinstance(pit_times, dict):
+            return
+        for rn, entries in pit_times.items():
+            if isinstance(entries, list):
+                iterable = entries
+            elif isinstance(entries, dict):
+                iterable = list(entries.values())
+            else:
+                continue
+            for item in iterable:
+                if not isinstance(item, dict):
+                    continue
+                pitstop = item.get("PitStop")
+                if not isinstance(pitstop, dict):
+                    continue
+                timestamp = item.get("Timestamp")
+                self._add_stop(
+                    str(pitstop.get("RacingNumber") or rn),
+                    {
+                        "lap": pitstop.get("Lap"),
+                        "timestamp": timestamp,
+                        "pit_stop_time": pitstop.get("PitStopTime"),
+                        "pit_lane_time": pitstop.get("PitLaneTime"),
+                    },
+                )
+
+    def _on_driverlist(self, payload: dict) -> None:
+        """Merge DriverList into an rn -> {tla,name,team} mapping."""
+        if not isinstance(payload, dict):
+            return
+        for rn, info in (payload or {}).items():
+            if not isinstance(info, dict):
+                continue
+            racing_number = str(info.get("RacingNumber") or rn).strip()
+            if not racing_number:
+                continue
+            self._driver_map[racing_number] = {
+                "tla": info.get("Tla"),
+                "name": info.get("FullName") or info.get("BroadcastName"),
+                "team": info.get("TeamName"),
+            }
+
+    def _seed_driver_map_from_ergast(self) -> None:
+        """Fallback identity mapping using Ergast/Jolpica driver standings.
+
+        This is especially important in replay mode where only one stream dump
+        (e.g. PitStopSeries) is replayed, meaning DriverList frames are absent.
+        """
+        try:
+            if not self._config_entry:
+                return
+            reg = self.hass.data.get(DOMAIN, {}).get(self._config_entry.entry_id)
+            if not isinstance(reg, dict):
+                return
+            driver_coord = reg.get("driver_coordinator")
+            data = getattr(driver_coord, "data", None) or {}
+            standings = (
+                (data.get("MRData") or {})
+                .get("StandingsTable", {})
+                .get("StandingsLists", [])
+            )
+            if not isinstance(standings, list) or not standings:
+                return
+            ds = (standings[0] or {}).get("DriverStandings", [])
+            if not isinstance(ds, list):
+                return
+            for item in ds:
+                if not isinstance(item, dict):
+                    continue
+                driver = item.get("Driver") or {}
+                if not isinstance(driver, dict):
+                    continue
+                rn = str(driver.get("permanentNumber") or "").strip()
+                if not rn:
+                    continue
+                code = driver.get("code") or driver.get("driverId")
+                given = driver.get("givenName")
+                family = driver.get("familyName")
+                name = None
+                try:
+                    parts = [p for p in (given, family) if p]
+                    name = " ".join(parts) if parts else None
+                except Exception:
+                    name = None
+                constructors = item.get("Constructors") or []
+                team = None
+                if isinstance(constructors, list) and constructors:
+                    c0 = constructors[0]
+                    if isinstance(c0, dict):
+                        team = c0.get("name")
+                # Do not overwrite non-null values from DriverList
+                existing = self._driver_map.get(rn) if isinstance(self._driver_map, dict) else None
+                if isinstance(existing, dict):
+                    if existing.get("tla") or existing.get("name") or existing.get("team"):
+                        continue
+                self._driver_map[rn] = {"tla": code, "name": name, "team": team}
+        except Exception:
+            return
+
+    def _on_bus_pitstopseries(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        self._ingest_pitstopseries(msg)
+        self._schedule_deliver()
+
+    def _deliver(self) -> None:
+        self.available = True
+        cars: dict[str, Any] = {}
+        total = 0
+        try:
+            for rn, stops in sorted(
+                self._by_car.items(),
+                key=lambda kv: int(str(kv[0])) if str(kv[0]).isdigit() else str(kv[0]),
+            ):
+                lst = list(stops or [])
+                ident = self._driver_map.get(str(rn), {}) if isinstance(self._driver_map, dict) else {}
+                cars[str(rn)] = {
+                    "tla": ident.get("tla"),
+                    "name": ident.get("name"),
+                    "team": ident.get("team"),
+                    "count": len(lst),
+                    "stops": lst,
+                }
+                total += len(lst)
+        except Exception:
+            cars = {
+                str(rn): {"count": len(stops or []), "stops": list(stops or [])}
+                for rn, stops in (self._by_car or {}).items()
+            }
+            try:
+                total = sum(
+                    v.get("count", 0) for v in cars.values() if isinstance(v, dict)
+                )
+            except Exception:
+                total = 0
+
+        self._state = {
+            "total_stops": int(total),
+            "cars": cars,
+            "last_update": dt_util.utcnow().isoformat(timespec="seconds"),
+        }
+        self.async_set_updated_data(self._state)
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        # Seed identity mapping from Ergast/Jolpica so replay mode still shows TLA/name/team.
+        self._seed_driver_map_from_ergast()
+        # Reset when LiveTiming index changes (session/weekend rollover)
+        try:
+            self._session_fingerprint = self._compute_session_fingerprint(
+                getattr(self._session_coord, "data", None)
+            )
+            self._session_unsub = self._session_coord.async_add_listener(
+                self._on_session_index_update
+            )
+        except Exception:
+            self._session_unsub = None
+        # Subscribe to shared live bus streams
+        bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        try:
+            self._unsubs.append(bus.subscribe("DriverList", self._on_driverlist))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        try:
+            self._unsubs.append(
+                bus.subscribe("PitStopSeries", self._on_bus_pitstopseries)  # type: ignore[attr-defined]
+            )
+        except Exception:
+            pass
 
 class LiveDriversCoordinator(DataUpdateCoordinator):
     """Coordinator aggregating DriverList, TimingData, TimingAppData, LapCount and SessionStatus.

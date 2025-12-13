@@ -51,6 +51,7 @@
       "sprint_results": { "name": "Sprintresultat" },
       "race_control": { "name": "Tävlingskontroll" },
       "safety_car": { "name": "Säkerhetsbil" },
+      "pitstops": { "name": "Depåstopp" },
       "fia_documents": { "name": "FIA-beslut" }
     },
     "binary_sensor": {

@@ -103,6 +103,7 @@ async def async_setup_entry(
         "race_control",
         "top_three",
         "team_radio",
+        "pitstops",
     }
     raw_enabled = entry.data.get("enabled_sensors", [])
     normalized = []
@@ -140,6 +141,7 @@ async def async_setup_entry(
         "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
         "top_three": (None, data.get("top_three_coordinator")),
         "team_radio": (F1TeamRadioSensor, data.get("team_radio_coordinator")),
+        "pitstops": (F1PitStopsSensor, data.get("pitstop_coordinator")),
     }
 
     sensors = []
@@ -2948,6 +2950,83 @@ class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     @property
     def state(self):
         return self._attr_native_value
+
+
+class F1PitStopsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Live pit stops for all cars (aggregated).
+
+    - State: total pit stops (int)
+    - Attributes: cars (dict keyed by racing number), last_update
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:car-wrench"
+        self._attr_native_value = 0
+        self._attr_extra_state_attributes = {"cars": {}, "last_update": None}
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+
+        init = self._extract_current()
+        if init is not None:
+            self._apply_payload(init, force=True)
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                try:
+                    self._attr_native_value = int(float(str(last.state)))
+                except Exception:
+                    self._attr_native_value = last.state
+                self._attr_extra_state_attributes = dict(
+                    getattr(last, "attributes", {}) or {}
+                )
+        self.async_write_ha_state()
+
+    def _extract_current(self) -> dict | None:
+        data = self.coordinator.data
+        return data if isinstance(data, dict) else None
+
+    def _apply_payload(self, payload: dict, *, force: bool = False) -> None:
+        if not isinstance(payload, dict):
+            return
+        total = payload.get("total_stops")
+        cars = payload.get("cars")
+        last_update = payload.get("last_update")
+
+        try:
+            total_int = int(total) if total is not None else 0
+        except Exception:
+            try:
+                total_int = int(float(str(total)))
+            except Exception:
+                total_int = 0
+
+        # Avoid unnecessary writes
+        if (not force) and self._attr_native_value == total_int:
+            try:
+                prev_cars = (self._attr_extra_state_attributes or {}).get("cars")
+                if prev_cars == cars:
+                    return
+            except Exception:
+                pass
+
+        self._attr_native_value = total_int
+        self._attr_extra_state_attributes = {
+            "cars": cars if isinstance(cars, dict) else {},
+            "last_update": last_update,
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        payload = self._extract_current()
+        if payload is None:
+            self._safe_write_ha_state()
+            return
+        self._apply_payload(payload)
+        self._safe_write_ha_state()
 
 
 class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):

@@ -52,6 +52,7 @@
             "race_control": {"name": "Race control"},
             "safety_car": {"name": "Safety car"},
             "top_three": {"name": "Top three (leader)"},
+            "pitstops": {"name": "Pit stops"},
             "fia_documents": {"name": "FIA decisions"}
         },
         "binary_sensor": {"race_week": {"name": "Race week"}}

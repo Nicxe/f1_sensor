@@ -35,6 +35,7 @@ SUBSCRIBE_MSG = {
         "TopThree",
         "TyreStintSeries",
         "TeamRadio",
+        "PitStopSeries",
     ]],
     "I": 1,
 }
