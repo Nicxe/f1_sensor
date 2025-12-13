@@ -53,6 +53,7 @@
             "safety_car": {"name": "Safety car"},
             "top_three": {"name": "Top three (leader)"},
             "pitstops": {"name": "Pit stops"},
+            "championship_prediction": {"name": "Championship prediction"},
             "fia_documents": {"name": "FIA decisions"}
         },
         "binary_sensor": {"race_week": {"name": "Race week"}}

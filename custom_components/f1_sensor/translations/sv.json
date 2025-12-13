@@ -52,6 +52,7 @@
       "race_control": { "name": "Tävlingskontroll" },
       "safety_car": { "name": "Säkerhetsbil" },
       "pitstops": { "name": "Depåstopp" },
+      "championship_prediction": { "name": "Mästerskapsprognos" },
       "fia_documents": { "name": "FIA-beslut" }
     },
     "binary_sensor": {

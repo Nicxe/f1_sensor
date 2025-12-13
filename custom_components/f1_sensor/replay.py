@@ -23,6 +23,7 @@ KNOWN_STREAMS = {
     # Team radio clips, e.g. TeamRadio.jsonStream
     "TeamRadio",
     "PitStopSeries",
+    "ChampionshipPrediction",
 }
 
 

@@ -104,6 +104,7 @@ async def async_setup_entry(
         "top_three",
         "team_radio",
         "pitstops",
+        "championship_prediction",
     }
     raw_enabled = entry.data.get("enabled_sensors", [])
     normalized = []
@@ -142,6 +143,7 @@ async def async_setup_entry(
         "top_three": (None, data.get("top_three_coordinator")),
         "team_radio": (F1TeamRadioSensor, data.get("team_radio_coordinator")),
         "pitstops": (F1PitStopsSensor, data.get("pitstop_coordinator")),
+        "championship_prediction": (None, data.get("championship_prediction_coordinator")),
     }
 
     sensors = []
@@ -162,6 +164,27 @@ async def async_setup_entry(
                         pos,
                     )
                 )
+        elif key == "championship_prediction":
+            if not coord:
+                continue
+            sensors.append(
+                F1ChampionshipPredictionDriversSensor(
+                    coord,
+                    f"{base}_championship_prediction_drivers",
+                    f"{entry.entry_id}_championship_prediction_drivers",
+                    entry.entry_id,
+                    base,
+                )
+            )
+            sensors.append(
+                F1ChampionshipPredictionTeamsSensor(
+                    coord,
+                    f"{base}_championship_prediction_teams",
+                    f"{entry.entry_id}_championship_prediction_teams",
+                    entry.entry_id,
+                    base,
+                )
+            )
         elif cls and coord:
             sensors.append(
                 cls(
@@ -3017,6 +3040,134 @@ class F1PitStopsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_native_value = total_int
         self._attr_extra_state_attributes = {
             "cars": cars if isinstance(cars, dict) else {},
+            "last_update": last_update,
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        payload = self._extract_current()
+        if payload is None:
+            self._safe_write_ha_state()
+            return
+        self._apply_payload(payload)
+        self._safe_write_ha_state()
+
+
+class F1ChampionshipPredictionDriversSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Predicted Drivers Championship winner (P1).
+
+    - State: predicted P1 driver TLA (string) when available
+    - Attributes: predicted_driver_p1, drivers, last_update
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:trophy"
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+
+        init = self._extract_current()
+        if init is not None:
+            self._apply_payload(init, force=True)
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                self._attr_native_value = last.state
+                self._attr_extra_state_attributes = dict(getattr(last, "attributes", {}) or {})
+        self.async_write_ha_state()
+
+    def _extract_current(self) -> dict | None:
+        data = self.coordinator.data
+        return data if isinstance(data, dict) else None
+
+    def _apply_payload(self, payload: dict, *, force: bool = False) -> None:
+        if not isinstance(payload, dict):
+            return
+        pred = payload.get("predicted_driver_p1")
+        drivers = payload.get("drivers")
+        last_update = payload.get("last_update")
+
+        tla = None
+        if isinstance(pred, dict):
+            tla = pred.get("tla")
+        if tla is not None:
+            tla = str(tla).strip() or None
+
+        if (not force) and self._attr_native_value == tla:
+            return
+
+        self._attr_native_value = tla
+        self._attr_extra_state_attributes = {
+            "predicted_driver_p1": pred if isinstance(pred, dict) else None,
+            "drivers": drivers if isinstance(drivers, dict) else {},
+            "last_update": last_update,
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        payload = self._extract_current()
+        if payload is None:
+            self._safe_write_ha_state()
+            return
+        self._apply_payload(payload)
+        self._safe_write_ha_state()
+
+
+class F1ChampionshipPredictionTeamsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Predicted Constructors Championship winner (P1).
+
+    - State: predicted P1 team name (string)
+    - Attributes: predicted_team_p1, teams, last_update
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:trophy-variant"
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+
+        init = self._extract_current()
+        if init is not None:
+            self._apply_payload(init, force=True)
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                self._attr_native_value = last.state
+                self._attr_extra_state_attributes = dict(getattr(last, "attributes", {}) or {})
+        self.async_write_ha_state()
+
+    def _extract_current(self) -> dict | None:
+        data = self.coordinator.data
+        return data if isinstance(data, dict) else None
+
+    def _apply_payload(self, payload: dict, *, force: bool = False) -> None:
+        if not isinstance(payload, dict):
+            return
+        pred = payload.get("predicted_team_p1")
+        teams = payload.get("teams")
+        last_update = payload.get("last_update")
+
+        team_name = None
+        if isinstance(pred, dict):
+            team_name = pred.get("team_name")
+        if team_name is not None:
+            team_name = str(team_name).strip() or None
+
+        if (not force) and self._attr_native_value == team_name:
+            return
+
+        self._attr_native_value = team_name
+        self._attr_extra_state_attributes = {
+            "predicted_team_p1": pred if isinstance(pred, dict) else None,
+            "teams": teams if isinstance(teams, dict) else {},
             "last_update": last_update,
         }
 
