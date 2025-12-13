@@ -31,14 +31,11 @@ const sidebars = {
     },
 
 
-
-
       {
       type: 'category',
       label: 'Need Help?',
-      items: ['help/faq', 'help/Issues', 'help/contact'],
+      items: ['help/faq', 'help/Issues', 'help/contact', 'help/beta-tester'],
     },
-
 
 
     {
@@ -46,6 +43,9 @@ const sidebars = {
       label: 'Support the project',
       id: 'support',
     },
+
+
+
   ],
 };
 
