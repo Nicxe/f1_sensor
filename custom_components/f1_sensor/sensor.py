@@ -11,14 +11,20 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import UnitOfTime
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.entity import EntityCategory
 
 from .const import DOMAIN
-from .entity import F1BaseEntity
-from .const import LATEST_TRACK_STATUS
+from .entity import F1AuxEntity, F1BaseEntity
+from .const import (
+    CONF_OPERATION_MODE,
+    DEFAULT_OPERATION_MODE,
+    LATEST_TRACK_STATUS,
+    OPERATION_MODE_DEVELOPMENT,
+)
 from .helpers import get_timezone, normalize_track_status
 from .live_window import STATIC_BASE
 from logging import getLogger
@@ -105,6 +111,7 @@ async def async_setup_entry(
         "team_radio",
         "pitstops",
         "championship_prediction",
+        "live_timing_diagnostics",
     }
     raw_enabled = entry.data.get("enabled_sensors", [])
     normalized = []
@@ -144,6 +151,7 @@ async def async_setup_entry(
         "team_radio": (F1TeamRadioSensor, data.get("team_radio_coordinator")),
         "pitstops": (F1PitStopsSensor, data.get("pitstop_coordinator")),
         "championship_prediction": (None, data.get("championship_prediction_coordinator")),
+        "live_timing_diagnostics": (None, None),
     }
 
     sensors = []
@@ -185,6 +193,14 @@ async def async_setup_entry(
                     base,
                 )
             )
+        elif key == "live_timing_diagnostics":
+            sensors.append(
+                F1LiveTimingModeSensor(
+                    hass,
+                    entry.entry_id,
+                    base,
+                )
+            )
         elif cls and coord:
             sensors.append(
                 cls(
@@ -196,6 +212,101 @@ async def async_setup_entry(
                 )
             )
     async_add_entities(sensors, True)
+
+
+class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
+    """Diagnostic mode sensor for the live timing transport (idle/live/replay)."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:information-outline"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["idle", "live", "replay"]
+
+    def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
+        super().__init__(
+            name=f"{device_name}_live_timing_mode",
+            unique_id=f"{entry_id}_live_timing_mode",
+            entry_id=entry_id,
+            device_name=device_name,
+        )
+        self.hass = hass
+        self._entry_id = entry_id
+        self._unsub_live_state = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        live_state = reg.get("live_state")
+        if live_state is not None and hasattr(live_state, "add_listener"):
+            try:
+                self._unsub_live_state = live_state.add_listener(
+                    lambda *_: self._safe_write_ha_state()
+                )
+                self.async_on_remove(self._unsub_live_state)
+            except Exception:
+                self._unsub_live_state = None
+
+        # Periodic update for age/window attributes
+        try:
+            unsub = async_track_time_interval(
+                self.hass,
+                lambda *_: self._safe_write_ha_state(),
+                datetime.timedelta(seconds=10),
+            )
+            self.async_on_remove(unsub)
+        except Exception:
+            pass
+
+    def _compute(self) -> tuple[str, dict]:
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        operation_mode = reg.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+        live_state = reg.get("live_state")
+        live_bus = reg.get("live_bus")
+        live_supervisor = reg.get("live_supervisor")
+
+        is_live_window = bool(getattr(live_state, "is_live", False)) if live_state is not None else False
+        reason = getattr(live_state, "reason", None) if live_state is not None else None
+
+        if operation_mode == OPERATION_MODE_DEVELOPMENT:
+            mode = "replay"
+        else:
+            mode = "live" if is_live_window else "idle"
+
+        window = None
+        try:
+            cw = getattr(live_supervisor, "current_window", None) if live_supervisor is not None else None
+            if cw is not None and hasattr(cw, "label"):
+                window = cw.label
+        except Exception:
+            window = None
+
+        hb_age = None
+        activity_age = None
+        try:
+            if live_bus is not None:
+                hb_age = live_bus.last_heartbeat_age()
+                activity_age = live_bus.last_stream_activity_age()
+        except Exception:
+            hb_age = activity_age = None
+
+        attrs = {
+            "reason": reason,
+            "window": window,
+            "heartbeat_age_s": (round(hb_age, 1) if hb_age is not None else None),
+            "activity_age_s": (round(activity_age, 1) if activity_age is not None else None),
+        }
+        return mode, attrs
+
+    @property
+    def native_value(self):
+        mode, _ = self._compute()
+        return mode
+
+    @property
+    def extra_state_attributes(self):
+        _, attrs = self._compute()
+        return attrs
 
 
 class F1NextRaceSensor(F1BaseEntity, SensorEntity):

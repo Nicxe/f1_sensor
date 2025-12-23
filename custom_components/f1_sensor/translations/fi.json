@@ -39,10 +39,12 @@
       "race_control": { "name": "Kisavalvonta" },
       "safety_car": { "name": "Turva-auto" },
       "pitstops": { "name": "Varikkopysähdykset" },
-      "fia_documents": { "name": "FIA-päätökset" }
+      "fia_documents": { "name": "FIA-päätökset" },
+      "live_timing_mode": { "name": "Live timing -tila" }
     },
     "binary_sensor": {
-      "race_week": { "name": "Kilpailuviikko" }
+      "race_week": { "name": "Kilpailuviikko" },
+      "live_timing_online": { "name": "Live timing online" }
     }
   }
 }

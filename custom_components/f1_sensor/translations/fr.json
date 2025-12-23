@@ -39,10 +39,12 @@
       "race_control": { "name": "Contrôle de course" },
       "safety_car": { "name": "Voiture de sécurité" },
       "pitstops": { "name": "Arrêts aux stands" },
-      "fia_documents": { "name": "Décisions de la FIA" }
+      "fia_documents": { "name": "Décisions de la FIA" },
+      "live_timing_mode": { "name": "Mode Live Timing" }
     },
     "binary_sensor": {
-      "race_week": { "name": "Semaine de course" }
+      "race_week": { "name": "Semaine de course" },
+      "live_timing_online": { "name": "Live Timing en ligne" }
     }
   }
 }

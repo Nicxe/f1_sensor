@@ -65,6 +65,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_control",
             "current_session",
             "safety_car",
+            "live_timing_diagnostics",
         ]
         sensor_options = {
             "next_race": "Next race",
@@ -92,6 +93,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "safety_car": "Safety car (live)",
             "fia_documents": "FIA decisions",
             "team_radio": "Team radio (latest clip)",
+            "live_timing_diagnostics": "Live timing diagnostics (online/mode)",
         }
 
         # Build base schema
@@ -192,6 +194,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "safety_car": "Safety car (live)",
             "fia_documents": "FIA decisions",
             "team_radio": "Team radio (latest clip)",
+            "live_timing_diagnostics": "Live timing diagnostics (online/mode)",
         }
         default_enabled = [
             "next_race",
@@ -214,6 +217,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_control",
             "current_session",
             "safety_car",
+            "live_timing_diagnostics",
         ]
         raw_enabled = current.get("enabled_sensors", default_enabled)
         normalized_enabled = []
