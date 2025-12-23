@@ -2,3 +2,4 @@ node_modules
 build
 .DS_Store
 releasenote.md
+custom_components/f1_sensor/v3-ReleaseNote.MD

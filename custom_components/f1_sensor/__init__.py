@@ -609,6 +609,10 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
             self._deliver_handle = None
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        # Ignore initial attach callback so we don't mark entities unavailable
+        # before the LiveSessionSupervisor has decided whether to arm a window.
+        if reason == "init":
+            return
         self.available = is_live
         if not is_live:
             self._last_message = None
@@ -836,7 +840,12 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             self._deliver_handles.clear()
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
         self.available = is_live
+        if not is_live:
+            self._last_message = None
+            self.data_list = []
 
     def _deliver(self, item: dict) -> None:
         self.available = True
@@ -1026,7 +1035,12 @@ class LapCountCoordinator(DataUpdateCoordinator):
             self._deliver_handle = None
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
         self.available = is_live
+        if not is_live:
+            self._last_message = None
+            self.data_list = []
 
 
 class TeamRadioCoordinator(DataUpdateCoordinator):
@@ -1113,6 +1127,8 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         return self._state
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
         self.available = is_live
         if not is_live:
             self._state = {"latest": None, "history": []}
@@ -1384,6 +1400,8 @@ class PitStopCoordinator(DataUpdateCoordinator):
         return self._state
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
         self.available = is_live
         if not is_live:
             self._reset_store()
@@ -1789,6 +1807,8 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
         return self._state
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
         self.available = is_live
         if not is_live:
             self._reset_store()
@@ -2306,7 +2326,25 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             self._deliver_handle = None
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
         self.available = is_live
+        if not is_live:
+            # Clear consolidated state so a future session window does not briefly
+            # show stale driver/timing information before the first live frames.
+            try:
+                self._state = {
+                    "drivers": {},
+                    "leader_rn": None,
+                    "lap_current": None,
+                    "lap_total": None,
+                    "session_status": None,
+                    "frozen": False,
+                }
+                self.async_set_updated_data(self._state)
+            except Exception:
+                pass
+            return
         # 2) Recompute leader from full stored state (not just current delta)
         self._recompute_leader_from_state()
 
@@ -3269,7 +3307,12 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             self._deliver_handles.clear()
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
         self.available = is_live
+        if not is_live:
+            self._last_message = None
+            self.data_list = []
 
 
 class SessionStatusCoordinator(DataUpdateCoordinator):
@@ -3408,7 +3451,12 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             self._deliver_handle = None
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
         self.available = is_live
+        if not is_live:
+            self._last_message = None
+            self.data_list = []
 
 
 class TopThreeCoordinator(DataUpdateCoordinator):
@@ -3489,7 +3537,18 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         return self._state
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
         self.available = is_live
+        if not is_live:
+            try:
+                self._state = {
+                    "withheld": None,
+                    "lines": [None, None, None],
+                    "last_update_ts": None,
+                }
+            except Exception:
+                pass
 
     def set_delay(self, seconds: int) -> None:
         new_delay = max(0, int(seconds or 0))
@@ -3740,4 +3799,9 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
             self._deliver_handle = None
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
         self.available = is_live
+        if not is_live:
+            self._last_message = None
+            self.data_list = []

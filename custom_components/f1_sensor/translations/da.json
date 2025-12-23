@@ -39,10 +39,12 @@
       "race_control": { "name": "Racekontrol" },
       "safety_car": { "name": "Sikkerhedsbil" },
       "pitstops": { "name": "Pitstop" },
-      "fia_documents": { "name": "FIA-afgørelser" }
+      "fia_documents": { "name": "FIA-afgørelser" },
+      "live_timing_mode": { "name": "Live timing-tilstand" }
     },
     "binary_sensor": {
-      "race_week": { "name": "Løbsuge" }
+      "race_week": { "name": "Løbsuge" },
+      "live_timing_online": { "name": "Live timing online" }
     }
   }
 }

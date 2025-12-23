@@ -53,10 +53,12 @@
       "safety_car": { "name": "Säkerhetsbil" },
       "pitstops": { "name": "Depåstopp" },
       "championship_prediction": { "name": "Mästerskapsprognos" },
-      "fia_documents": { "name": "FIA-beslut" }
+      "fia_documents": { "name": "FIA-beslut" },
+      "live_timing_mode": { "name": "Live timing-läge" }
     },
     "binary_sensor": {
-      "race_week": { "name": "Tävlingsvecka" }
+      "race_week": { "name": "Tävlingsvecka" },
+      "live_timing_online": { "name": "Live timing online" }
     }
   }
 }

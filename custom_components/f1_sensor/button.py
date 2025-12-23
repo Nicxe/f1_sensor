@@ -60,11 +60,36 @@ class F1MatchDelayButton(F1AuxEntity, ButtonEntity):
         except RuntimeError as err:  # noqa: BLE001
             _LOGGER.debug("Calibration button press ignored: %s", err)
             if self.hass:
+                snapshot = {}
+                try:
+                    snapshot = self._manager.snapshot() or {}
+                except Exception:  # noqa: BLE001
+                    snapshot = {}
+                mode = str(snapshot.get("mode") or "idle")
+                if mode == "waiting":
+                    message = (
+                        "Calibration is enabled, but the timer hasn't started yet.\n\n"
+                        "This usually means no session has gone live yet. Wait until the "
+                        "session is running, then press `Match live delay` when your TV feed "
+                        "has caught up."
+                    )
+                elif mode == "idle":
+                    message = (
+                        "Calibration is not enabled.\n\n"
+                        "Turn on the calibration switch before pressing `Match live delay`, "
+                        "otherwise no value will be saved."
+                    )
+                else:
+                    detail = snapshot.get("message")
+                    detail_line = f"\n\nDetail: {detail}" if detail else ""
+                    message = (
+                        "Can't match live delay right now.\n\n"
+                        "The calibration timer must be running to save a value."
+                        f"{detail_line}"
+                    )
                 result = persistent_notification.async_create(
                     self.hass,
-                    "Kalibreringen är inte aktiv.\n\n"
-                    "Slå på kalibrerings-switchen innan du trycker på "
-                    "`Match live delay`, annars skrivs inget värde.",
+                    message,
                     title="F1 live delay",
                     notification_id=f"{DOMAIN}_delay_calibration_warning",
                 )
