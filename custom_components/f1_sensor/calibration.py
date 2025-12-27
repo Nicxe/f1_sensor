@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import timedelta
+from inspect import isawaitable
 from typing import Any
 
 from homeassistant.components import persistent_notification
@@ -277,11 +278,14 @@ class LiveDelayCalibrationManager:
                 _LOGGER.debug("Calibration listener raised", exc_info=True)
 
     def _notify_user(self, title: str, message: str) -> None:
-        self._hass.async_create_task(
-            persistent_notification.async_create(
-                self._hass,
-                message,
-                title=title,
-                notification_id=f"{DOMAIN}_delay_calibration",
-            )
+        # Home Assistant's persistent_notification helper has changed over time:
+        # in some versions async_create() returns a coroutine, in others it returns None.
+        # Never pass None into hass.async_create_task().
+        result = persistent_notification.async_create(
+            self._hass,
+            message,
+            title=title,
+            notification_id=f"{DOMAIN}_delay_calibration",
         )
+        if isawaitable(result):
+            self._hass.async_create_task(result)
