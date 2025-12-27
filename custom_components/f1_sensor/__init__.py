@@ -13,7 +13,7 @@ import time
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession, async_create_clientsession
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -92,10 +92,88 @@ def coordinator_logger(name: str, *, suppress_manual: bool = False) -> Coordinat
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up integration via config flow."""
-    # Create dedicated HTTP session with custom User-Agent for Jolpica/Ergast
+    # Normalize enabled sensors early so we can avoid unnecessary Jolpica calls.
+    allowed_enabled = {
+        "next_race",
+        "current_season",
+        "driver_standings",
+        "constructor_standings",
+        "weather",
+        "track_weather",
+        "race_lap_count",
+        "driver_list",
+        "current_tyres",
+        "last_race_results",
+        "season_results",
+        "sprint_results",
+        "driver_points_progression",
+        "constructor_points_progression",
+        "race_week",
+        "track_status",
+        "session_status",
+        "current_session",
+        "safety_car",
+        "fia_documents",
+        "race_control",
+        "top_three",
+        "team_radio",
+        "pitstops",
+        "championship_prediction",
+        "live_timing_diagnostics",
+    }
+    raw_enabled = entry.data.get("enabled_sensors") or []
+    enabled: list[str] = []
+    seen_enabled: set[str] = set()
+    for key in raw_enabled:
+        if key == "next_session":
+            key = "next_race"
+        if key in allowed_enabled and key not in seen_enabled:
+            enabled.append(key)
+            seen_enabled.add(key)
+
+    # Determine which Jolpica/Ergast coordinators are actually required.
+    need_race = any(
+        k in enabled
+        for k in (
+            "next_race",
+            "current_season",
+            "weather",
+            "race_week",
+            "fia_documents",
+            "driver_points_progression",
+            "constructor_points_progression",
+        )
+    )
+    need_driver = any(k in enabled for k in ("driver_standings", "driver_points_progression"))
+    need_constructor = any(
+        k in enabled for k in ("constructor_standings", "constructor_points_progression")
+    )
+    need_last_race = "last_race_results" in enabled
+    need_season_results = any(
+        k in enabled for k in ("season_results", "driver_points_progression", "constructor_points_progression")
+    )
+    need_sprint_results = any(
+        k in enabled for k in ("sprint_results", "driver_points_progression", "constructor_points_progression")
+    )
+    need_fia_docs = "fia_documents" in enabled
+
+    # Jolpica/Ergast TTL strategy (network-efficient; dashboards can tolerate delay).
+    # Units: seconds.
+    TTL_CURRENT = 24 * 3600  # current season schedule (rarely changes)
+    TTL_STANDINGS = 24 * 3600  # standings change after race weekends
+    TTL_LAST_RESULTS = 24 * 3600
+    TTL_SPRINT = 24 * 3600
+    # Season results are paginated; we refresh the latest page more often inside the coordinator.
+    TTL_SEASON_STABLE_PAGE = 30 * 24 * 3600  # older pages: effectively static
+    TTL_SEASON_RECENT_PAGE = 24 * 3600       # second-to-last-ish pages
+    TTL_SEASON_LATEST_PAGE = 6 * 3600        # latest page: updated after weekends
+
+    # Build custom User-Agent for Jolpica/Ergast. Note: HA's async_create_clientsession
+    # does not reliably override the default UA in recent core versions, so we apply
+    # this UA per request in the coordinators instead.
     ua_string = await build_user_agent(hass)
-    http_session = async_create_clientsession(hass, headers={"User-Agent": ua_string})
-    _LOGGER.debug("Using User-Agent for Jolpica/Ergast: %s", ua_string)
+    http_session = async_get_clientsession(hass)
+    _LOGGER.debug("Configured User-Agent for Jolpica/Ergast (per-request): %s", ua_string)
 
     # Per-entry shared HTTP cache and in-flight maps (for Jolpica/Ergast only)
     http_cache: dict = {}
@@ -109,61 +187,181 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         from yarl import URL
         from time import monotonic as _mono
         now = _mono()
+        wall_now = time.time()
+
         def _startup_ttl_for_key(k: str) -> int:
-            # Assign longer TTLs to low-churn pages at startup only
-            # Results pagination: first pages are most stable late in season
-            if "/ergast/f1/current/results.json" in k:
-                q = URL(k).query
-                offset = int(str(q.get("offset") or "0")) if str(q.get("offset") or "0").isdigit() else 0
-                if offset == 0:
-                    return 24 * 3600  # 24h
-                return 3600  # 1h
-            if "/ergast/f1/current/driverstandings.json" in k or "/ergast/f1/current/constructorstandings.json" in k:
-                return 3600  # 1h
-            if "/ergast/f1/current/last/results.json" in k or "/ergast/f1/current/sprint.json" in k:
-                return 3600  # 1h
-            if "/ergast/f1/current.json" in k:
-                return 300  # 5m
-            return 300
+            """Return TTL for persisted cache entries (seconds).
+
+            This is a conservative mapping that favors fewer network requests
+            while ensuring the newest season results page refreshes within hours.
+            """
+            kk = str(k)
+            if "/ergast/f1/current.json" in kk:
+                return TTL_CURRENT
+            if "/ergast/f1/current/driverstandings.json" in kk or "/ergast/f1/current/constructorstandings.json" in kk:
+                return TTL_STANDINGS
+            if "/ergast/f1/current/last/results.json" in kk:
+                return TTL_LAST_RESULTS
+            if "/ergast/f1/current/sprint.json" in kk:
+                return TTL_SPRINT
+            if "/ergast/f1/current/results.json" in kk:
+                # Best-effort per-page TTL from offset (latest pages have higher offsets).
+                try:
+                    q = URL(kk).query
+                    offset_raw = str(q.get("offset") or "0")
+                    offset = int(offset_raw) if offset_raw.isdigit() else 0
+                except Exception:
+                    offset = 0
+                # Heuristic: higher offsets tend to be nearer the latest results.
+                if offset >= 300:
+                    return TTL_SEASON_LATEST_PAGE
+                if offset >= 100:
+                    return TTL_SEASON_RECENT_PAGE
+                return 7 * 24 * 3600
+            # Default: keep a modest TTL
+            return 6 * 3600
         for k, v in (persisted_map or {}).items():
             data = v.get("data") if isinstance(v, dict) else None
             if data is None:
                 continue
-            ttl = _startup_ttl_for_key(str(k))
-            http_cache[k] = (now + ttl, data)
+            ttl = int(_startup_ttl_for_key(str(k)) or 0)
+            saved_at = None
+            try:
+                saved_at = float(v.get("saved_at")) if isinstance(v, dict) else None
+            except Exception:
+                saved_at = None
+            # Apply remaining TTL relative to saved_at, so old persisted data does not
+            # get an artificially "fresh" expiry after restarts.
+            try:
+                age = max(0.0, wall_now - float(saved_at)) if saved_at else 0.0
+            except Exception:
+                age = 0.0
+            remaining = max(0.0, float(ttl) - float(age))
+            http_cache[k] = (now + remaining, data)
         if _LOGGER.isEnabledFor(logging.DEBUG):
             _LOGGER.debug("Seeded in-memory cache from persistent store with %d keys", len(http_cache))
     except Exception:
         pass
 
-    race_coordinator = F1DataCoordinator(
-        hass, API_URL, "F1 Race Data Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=30, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
+    race_coordinator = (
+        F1DataCoordinator(
+            hass,
+            API_URL,
+            "F1 Race Data Coordinator",
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            ttl_seconds=TTL_CURRENT,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+        )
+        if need_race
+        else None
     )
-    driver_coordinator = F1DataCoordinator(
-        hass, DRIVER_STANDINGS_URL, "F1 Driver Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
+    driver_coordinator = (
+        F1DataCoordinator(
+            hass,
+            DRIVER_STANDINGS_URL,
+            "F1 Driver Standings Coordinator",
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            ttl_seconds=TTL_STANDINGS,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+        )
+        if need_driver
+        else None
     )
-    constructor_coordinator = F1DataCoordinator(
-        hass, CONSTRUCTOR_STANDINGS_URL, "F1 Constructor Standings Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
+    constructor_coordinator = (
+        F1DataCoordinator(
+            hass,
+            CONSTRUCTOR_STANDINGS_URL,
+            "F1 Constructor Standings Coordinator",
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            ttl_seconds=TTL_STANDINGS,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+        )
+        if need_constructor
+        else None
     )
-    last_race_coordinator = F1DataCoordinator(
-        hass, LAST_RACE_RESULTS_URL, "F1 Last Race Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
+    last_race_coordinator = (
+        F1DataCoordinator(
+            hass,
+            LAST_RACE_RESULTS_URL,
+            "F1 Last Race Results Coordinator",
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            ttl_seconds=TTL_LAST_RESULTS,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+        )
+        if need_last_race
+        else None
     )
-    season_results_coordinator = F1SeasonResultsCoordinator(
-        hass, SEASON_RESULTS_URL, "F1 Season Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
+    season_results_coordinator = (
+        F1SeasonResultsCoordinator(
+            hass,
+            SEASON_RESULTS_URL,
+            "F1 Season Results Coordinator",
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            ttl_seconds=TTL_SEASON_LATEST_PAGE,
+            ttl_stable=TTL_SEASON_STABLE_PAGE,
+            ttl_recent=TTL_SEASON_RECENT_PAGE,
+            ttl_latest=TTL_SEASON_LATEST_PAGE,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+        )
+        if need_season_results
+        else None
     )
-    sprint_results_coordinator = F1SprintResultsCoordinator(
-        hass, SPRINT_RESULTS_URL, "F1 Sprint Results Coordinator", session=http_session, cache=http_cache, inflight=http_inflight, ttl_seconds=60, persist_map=persisted_map, persist_save=persisted.schedule_save, config_entry=entry
+    sprint_results_coordinator = (
+        F1SprintResultsCoordinator(
+            hass,
+            SPRINT_RESULTS_URL,
+            "F1 Sprint Results Coordinator",
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            ttl_seconds=TTL_SPRINT,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+        )
+        if need_sprint_results
+        else None
     )
-    fia_documents_coordinator = FiaDocumentsCoordinator(
-        hass,
-        race_coordinator,
-        session=http_session,
-        cache=http_cache,
-        inflight=http_inflight,
-        ttl_seconds=FIA_DOCS_POLL_INTERVAL,
-        persist_map=persisted_map,
-        persist_save=persisted.schedule_save,
-        config_entry=entry,
+    fia_documents_coordinator = (
+        FiaDocumentsCoordinator(
+            hass,
+            race_coordinator,
+            session=http_session,
+            cache=http_cache,
+            inflight=http_inflight,
+            ttl_seconds=FIA_DOCS_POLL_INTERVAL,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+        )
+        if (need_fia_docs and race_coordinator is not None)
+        else None
     )
     year = datetime.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year, config_entry=entry)
@@ -292,13 +490,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             live_state=live_state,
         )
 
-    await race_coordinator.async_config_entry_first_refresh()
-    await driver_coordinator.async_config_entry_first_refresh()
-    await constructor_coordinator.async_config_entry_first_refresh()
-    await last_race_coordinator.async_config_entry_first_refresh()
-    await season_results_coordinator.async_config_entry_first_refresh()
-    await sprint_results_coordinator.async_config_entry_first_refresh()
-    await fia_documents_coordinator.async_config_entry_first_refresh()
+    if race_coordinator:
+        await race_coordinator.async_config_entry_first_refresh()
+    if driver_coordinator:
+        await driver_coordinator.async_config_entry_first_refresh()
+    if constructor_coordinator:
+        await constructor_coordinator.async_config_entry_first_refresh()
+    if last_race_coordinator:
+        await last_race_coordinator.async_config_entry_first_refresh()
+    if season_results_coordinator:
+        await season_results_coordinator.async_config_entry_first_refresh()
+    if sprint_results_coordinator:
+        await sprint_results_coordinator.async_config_entry_first_refresh()
+    if fia_documents_coordinator:
+        await fia_documents_coordinator.async_config_entry_first_refresh()
     await session_coordinator.async_config_entry_first_refresh()
     if track_status_coordinator:
         await track_status_coordinator.async_config_entry_first_refresh()
@@ -314,7 +519,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await lap_count_coordinator.async_config_entry_first_refresh()
 
     # Conditionally create live drivers coordinator only if any drivers-related sensors are enabled
-    enabled = entry.data.get("enabled_sensors") or []
     # Only create drivers coordinator if driver_list is enabled (TEMP: race_order/driver_favorites disabled)
     need_drivers = any(k in enabled for k in ("driver_list",))
     need_top_three = any(k in enabled for k in ("top_three",))
@@ -2687,7 +2891,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class F1DataCoordinator(DataUpdateCoordinator):
     """Handles updates from a given F1 endpoint."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 30, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, user_agent: str | None = None, cache=None, inflight=None, ttl_seconds: int = 30, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
         super().__init__(
             hass,
             _LOGGER,
@@ -2696,6 +2900,7 @@ class F1DataCoordinator(DataUpdateCoordinator):
             config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
+        self._headers = {"User-Agent": str(user_agent)} if user_agent else None
         self._url = url
         self._cache = cache
         self._inflight = inflight
@@ -2715,6 +2920,7 @@ class F1DataCoordinator(DataUpdateCoordinator):
                     self.hass,
                     self._session,
                     self._url,
+                    headers=self._headers,
                     ttl_seconds=self._ttl,
                     cache=self._cache,
                     inflight=self._inflight,
@@ -2728,7 +2934,24 @@ class F1DataCoordinator(DataUpdateCoordinator):
 class F1SeasonResultsCoordinator(DataUpdateCoordinator):
     """Fetch all season results across paginated Ergast responses."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        url: str,
+        name: str,
+        session=None,
+        user_agent: str | None = None,
+        cache=None,
+        inflight=None,
+        ttl_seconds: int = 6 * 3600,
+        *,
+        ttl_stable: int | None = None,
+        ttl_recent: int | None = None,
+        ttl_latest: int | None = None,
+        persist_map=None,
+        persist_save=None,
+        config_entry: ConfigEntry | None = None,
+    ):
         super().__init__(
             hass,
             _LOGGER,
@@ -2737,17 +2960,43 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
+        self._headers = {"User-Agent": str(user_agent)} if user_agent else None
         self._base_url = url
         self._cache = cache
         self._inflight = inflight
-        self._ttl = int(ttl_seconds or 60)
+        # ttl_seconds acts as a backward-compatible default (treated as "latest").
+        default_latest = int(ttl_seconds or 6 * 3600)
+        self._ttl_latest = int(ttl_latest or default_latest)
+        self._ttl_recent = int(ttl_recent or max(6 * 3600, 24 * 3600))
+        self._ttl_stable = int(ttl_stable or 30 * 24 * 3600)
         self._persist = persist_map
         self._persist_save = persist_save
 
     async def async_close(self, *_):
         return
 
-    async def _fetch_page(self, limit: int, offset: int):
+    def _ttl_for_offset(self, offset: int, last_offset: int, page_size: int) -> int:
+        """Return TTL for a given results page offset.
+
+        - Stable pages (older part of season): very long TTL.
+        - Recent pages: daily.
+        - Latest page: every few hours.
+        """
+        try:
+            o = int(offset)
+            last = int(last_offset)
+            size = max(1, int(page_size))
+        except Exception:
+            return self._ttl_latest
+        if last <= 0:
+            return self._ttl_latest
+        if o >= last:
+            return self._ttl_latest
+        if o >= max(0, last - size):
+            return self._ttl_recent
+        return self._ttl_stable
+
+    async def _fetch_page(self, limit: int, offset: int, *, ttl_seconds: int | None = None):
         from yarl import URL
         url = str(URL(self._base_url).with_query({"limit": str(limit), "offset": str(offset)}))
         async with async_timeout.timeout(10):
@@ -2755,7 +3004,8 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
                 self.hass,
                 self._session,
                 url,
-                ttl_seconds=self._ttl,
+                headers=self._headers,
+                ttl_seconds=int(ttl_seconds or self._ttl_latest),
                 cache=self._cache,
                 inflight=self._inflight,
                 persist_map=self._persist,
@@ -2797,8 +3047,9 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
                                 existing["Results"].append(res)
                                 seen.add(ident)
 
-            # Fetch first page
-            first = await self._fetch_page(request_limit, offset)
+            # Fetch first page (use recent TTL; we'll apply more specific TTLs
+            # for additional pages once we know the total/last offset).
+            first = await self._fetch_page(request_limit, offset, ttl_seconds=self._ttl_recent)
             mr = (first or {}).get("MRData", {})
             total = int((mr.get("total") or "0"))
             limit_used = int((mr.get("limit") or request_limit))
@@ -2806,12 +3057,19 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 
             merge_page(((mr.get("RaceTable", {}) or {}).get("Races", []) or []))
 
+            # Determine last page offset for TTL selection
+            try:
+                last_page_offset = ((max(0, total - 1) // max(1, limit_used)) * max(1, limit_used))
+            except Exception:
+                last_page_offset = offset_used
+
             # Iterate deterministically using server-reported paging
             next_offset = offset_used + limit_used
             # Cap loop iterations defensively
             safety = 0
             while next_offset < total and safety < 50:
-                page = await self._fetch_page(limit_used, next_offset)
+                page_ttl = self._ttl_for_offset(next_offset, last_page_offset, limit_used)
+                page = await self._fetch_page(limit_used, next_offset, ttl_seconds=page_ttl)
                 pmr = (page or {}).get("MRData", {})
                 praces = (pmr.get("RaceTable", {}) or {}).get("Races", []) or []
                 merge_page(praces)
@@ -2841,7 +3099,7 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 class F1SprintResultsCoordinator(DataUpdateCoordinator):
     """Fetch sprint results for the current season (single, non-paginated endpoint)."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
+    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, user_agent: str | None = None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
         super().__init__(
             hass,
             _LOGGER,
@@ -2850,6 +3108,7 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
             config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
+        self._headers = {"User-Agent": str(user_agent)} if user_agent else None
         self._url = url
         self._cache = cache
         self._inflight = inflight
@@ -2867,6 +3126,7 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
                     self.hass,
                     self._session,
                     self._url,
+                    headers=self._headers,
                     ttl_seconds=self._ttl,
                     cache=self._cache,
                     inflight=self._inflight,

@@ -21,6 +21,10 @@ except ImportError:  # pragma: no cover - handled gracefully when dependency mis
 
 _LOGGER = logging.getLogger(__name__)
 
+# Avoid log spam: only log Jolpica cache-hit UA once per cache key per runtime.
+_JOLPICA_UA_HIT_LOGGED: set[str] = set()
+_JOLPICA_UA_TEXT_HIT_LOGGED: set[str] = set()
+
 
 def parse_racecontrol(text: str):
     last = None
@@ -157,6 +161,7 @@ async def fetch_json(
     url: str,
     *,
     params: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
     ttl_seconds: int = 30,
     cache: Optional[Dict[str, tuple[float, Any]]] = None,
     inflight: Optional[Dict[str, asyncio.Future]] = None,
@@ -179,7 +184,32 @@ async def fetch_json(
         exp, data = cache_map.get(key, (0.0, None))
         if exp and now < exp:
             if _LOGGER.isEnabledFor(logging.DEBUG):
-                _LOGGER.debug("HTTP cache HIT key=%s ttl_left=%.1fs", key, exp - now)
+                is_jolpica = "api.jolpi.ca" in str(url) or "/ergast/" in str(url)
+                if is_jolpica:
+                    # ua_sent: prefer explicit per-request headers when provided
+                    ua_sent = None
+                    try:
+                        if isinstance(headers, dict) and headers.get("User-Agent"):
+                            ua_sent = headers.get("User-Agent")
+                        else:
+                            ua_sent = (
+                                session.headers.get("User-Agent")
+                                if getattr(session, "headers", None) is not None
+                                else None
+                            )
+                    except Exception:
+                        ua_sent = None
+                    # Log cache-hit UA once per key to keep logs readable
+                    if key not in _JOLPICA_UA_HIT_LOGGED:
+                        _JOLPICA_UA_HIT_LOGGED.add(key)
+                        _LOGGER.debug(
+                            "Jolpica cache HIT key=%s ttl_left=%.1fs ua_sent=%s",
+                            key,
+                            exp - now,
+                            ua_sent,
+                        )
+                else:
+                    _LOGGER.debug("HTTP cache HIT key=%s ttl_left=%.1fs", key, exp - now)
             return data
     except Exception:
         pass
@@ -197,8 +227,29 @@ async def fetch_json(
     inflight_map[key] = fut
     try:
         if _LOGGER.isEnabledFor(logging.DEBUG):
-            _LOGGER.debug("HTTP cache MISS key=%s -> fetching", key)
-        async with session.get(url, params=params) as resp:
+            ua_sent = None
+            try:
+                if isinstance(headers, dict) and headers.get("User-Agent"):
+                    ua_sent = headers.get("User-Agent")
+                else:
+                    # aiohttp ClientSession exposes default headers via `.headers`
+                    ua_sent = (
+                        session.headers.get("User-Agent")
+                        if getattr(session, "headers", None) is not None
+                        else None
+                    )
+            except Exception:
+                ua_sent = None
+            if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
+                _LOGGER.debug(
+                    "Jolpica request MISS -> url=%s ua_sent=%s key=%s",
+                    url,
+                    ua_sent,
+                    key,
+                )
+            else:
+                _LOGGER.debug("HTTP cache MISS key=%s -> fetching", key)
+        async with session.get(url, params=params, headers=headers) as resp:
             resp.raise_for_status()
             text = await resp.text()
             data = json.loads(text.lstrip("\ufeff"))
@@ -245,6 +296,7 @@ async def fetch_text(
     url: str,
     *,
     params: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
     ttl_seconds: int = 30,
     cache: Optional[Dict[str, tuple[float, Any]]] = None,
     inflight: Optional[Dict[str, asyncio.Future]] = None,
@@ -263,7 +315,30 @@ async def fetch_text(
         exp, data = cache_map.get(key, (0.0, None))
         if exp and now < exp and isinstance(data, str):
             if _LOGGER.isEnabledFor(logging.DEBUG):
-                _LOGGER.debug("HTTP text cache HIT key=%s ttl_left=%.1fs", key, exp - now)
+                is_jolpica = "api.jolpi.ca" in str(url) or "/ergast/" in str(url)
+                if is_jolpica:
+                    ua_sent = None
+                    try:
+                        if isinstance(headers, dict) and headers.get("User-Agent"):
+                            ua_sent = headers.get("User-Agent")
+                        else:
+                            ua_sent = (
+                                session.headers.get("User-Agent")
+                                if getattr(session, "headers", None) is not None
+                                else None
+                            )
+                    except Exception:
+                        ua_sent = None
+                    if key not in _JOLPICA_UA_TEXT_HIT_LOGGED:
+                        _JOLPICA_UA_TEXT_HIT_LOGGED.add(key)
+                        _LOGGER.debug(
+                            "Jolpica text cache HIT key=%s ttl_left=%.1fs ua_sent=%s",
+                            key,
+                            exp - now,
+                            ua_sent,
+                        )
+                else:
+                    _LOGGER.debug("HTTP text cache HIT key=%s ttl_left=%.1fs", key, exp - now)
             return data
     except Exception:
         pass
@@ -279,8 +354,28 @@ async def fetch_text(
     inflight_map[key] = fut
     try:
         if _LOGGER.isEnabledFor(logging.DEBUG):
-            _LOGGER.debug("HTTP text cache MISS key=%s -> fetching", key)
-        async with session.get(url, params=params) as resp:
+            ua_sent = None
+            try:
+                if isinstance(headers, dict) and headers.get("User-Agent"):
+                    ua_sent = headers.get("User-Agent")
+                else:
+                    ua_sent = (
+                        session.headers.get("User-Agent")
+                        if getattr(session, "headers", None) is not None
+                        else None
+                    )
+            except Exception:
+                ua_sent = None
+            if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
+                _LOGGER.debug(
+                    "Jolpica text request MISS -> url=%s ua_sent=%s key=%s",
+                    url,
+                    ua_sent,
+                    key,
+                )
+            else:
+                _LOGGER.debug("HTTP text cache MISS key=%s -> fetching", key)
+        async with session.get(url, params=params, headers=headers) as resp:
             resp.raise_for_status()
             text = await resp.text()
             try:
