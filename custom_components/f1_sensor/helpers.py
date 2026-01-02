@@ -12,7 +12,7 @@ from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.loader import async_get_integration
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN
+from .const import DOMAIN, ENABLE_DEVELOPMENT_MODE_UI
 
 try:
     from tzfpy import get_tz as _tzfpy_get_tz
@@ -24,6 +24,20 @@ _LOGGER = logging.getLogger(__name__)
 # Avoid log spam: only log Jolpica cache-hit UA once per cache key per runtime.
 _JOLPICA_UA_HIT_LOGGED: set[str] = set()
 _JOLPICA_UA_TEXT_HIT_LOGGED: set[str] = set()
+
+
+def _record_jolpica_miss(hass, key: str) -> None:
+    """Dev-only: count Jolpica network MISS calls for periodic summary logging."""
+    if not ENABLE_DEVELOPMENT_MODE_UI:
+        return
+    try:
+        root = hass.data.setdefault(DOMAIN, {})
+        stats = root.setdefault("__jolpica_stats__", {})
+        counts = stats.setdefault("counts", {})
+        counts[key] = int(counts.get(key, 0)) + 1
+    except Exception:
+        # Never let stats break normal operation
+        return
 
 
 def parse_racecontrol(text: str):
@@ -249,6 +263,8 @@ async def fetch_json(
                 )
             else:
                 _LOGGER.debug("HTTP cache MISS key=%s -> fetching", key)
+        if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
+            _record_jolpica_miss(hass, key)
         async with session.get(url, params=params, headers=headers) as resp:
             resp.raise_for_status()
             text = await resp.text()
@@ -375,6 +391,8 @@ async def fetch_text(
                 )
             else:
                 _LOGGER.debug("HTTP text cache MISS key=%s -> fetching", key)
+        if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
+            _record_jolpica_miss(hass, key)
         async with session.get(url, params=params, headers=headers) as resp:
             resp.raise_for_status()
             text = await resp.text()
