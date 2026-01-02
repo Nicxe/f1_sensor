@@ -628,7 +628,7 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
         if lat is None or lon is None:
             return
         session = async_get_clientsession(self.hass)
-        url = f"https://api.met.no/weatherapi/locationforecast/2.0/compact?lat={lat}&lon={lon}"
+        url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
         headers = {"User-Agent": "homeassistant-f1_sensor"}
         try:
             async with async_timeout.timeout(10):
@@ -657,6 +657,10 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
                 amt = 0
             return amt, details.get("precipitation_amount_min"), details.get("precipitation_amount_max")
 
+        def _precip_probability(block: dict):
+            details = (block or {}).get("details", {}) or {}
+            return details.get("probability_of_precipitation")
+
         p1, p1min, p1max = _precip_triplet(block1)
         p6, p6min, p6max = _precip_triplet(block6)
         p12, p12min, p12max = _precip_triplet(block12)
@@ -668,6 +672,7 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
         sel_amt, sel_min, sel_max, sel_block = max(candidates, key=lambda t: t[0])
         curr_with_precip = dict(curr)
         curr_with_precip["precipitation_amount"] = sel_amt
+        curr_with_precip["probability_of_precipitation"] = _precip_probability(sel_block)
         # Also expose min/max precipitation; fallback to selected amount when missing
         _cur_min = sel_min
         _cur_max = sel_max
@@ -714,6 +719,7 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
                 r_sel_amt, r_sel_min, r_sel_max, r_sel_block = max(rcandidates, key=lambda t: t[0])
                 rd = dict(instant_details)
                 rd["precipitation_amount"] = r_sel_amt
+                rd["probability_of_precipitation"] = _precip_probability(r_sel_block)
                 # Also expose min/max precipitation at race time; fallback to selected amount
                 rd["precipitation_amount_min"] = r_sel_min if r_sel_min is not None else r_sel_amt
                 rd["precipitation_amount_max"] = r_sel_max if r_sel_max is not None else r_sel_amt
@@ -736,6 +742,8 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
             "precipitation": d.get("precipitation_amount", 0),
             "precipitation_amount_min": d.get("precipitation_amount_min"),
             "precipitation_amount_max": d.get("precipitation_amount_max"),
+            "precipitation_probability": d.get("probability_of_precipitation"),
+            "precipitation_probability_unit": "%",
             "precipitation_unit": "mm",
             "wind_speed": d.get("wind_speed"),
             "wind_speed_unit": "m/s",
