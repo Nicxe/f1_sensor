@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 import contextlib
 import json
+import time
 from typing import Any, Callable, Iterable, TYPE_CHECKING
 
 import async_timeout
@@ -277,6 +278,16 @@ class LiveSessionSupervisor:
         self._stopped = False
         self._current_window: SessionWindow | None = None
         self._availability = LiveAvailabilityTracker()
+        # Throttle noisy logs (e.g. missing index at season rollover)
+        self._log_throttle: dict[str, float] = {}
+
+    def _should_log(self, key: str, *, interval_seconds: float) -> bool:
+        now = time.monotonic()
+        last = self._log_throttle.get(key, 0.0)
+        if now - last < interval_seconds:
+            return False
+        self._log_throttle[key] = now
+        return True
 
     @property
     def availability(self) -> LiveAvailabilityTracker:
@@ -312,10 +323,13 @@ class LiveSessionSupervisor:
                         continue
                     fallback = True
                     window = self._make_fallback_window()
-                    _LOGGER.warning(
-                        "Falling back to legacy live connection for %s seconds",
-                        FALLBACK_WINDOW_DURATION.total_seconds(),
-                    )
+                    # Only log this occasionally; otherwise it can flood logs when
+                    # the live index is temporarily missing/unavailable.
+                    if self._should_log("legacy_fallback", interval_seconds=3600):
+                        _LOGGER.info(
+                            "Falling back to legacy live connection for %s seconds",
+                            FALLBACK_WINDOW_DURATION.total_seconds(),
+                        )
                 now = dt_util.utcnow()
                 if now < window.connect_at:
                     wait = max(30.0, min(IDLE_REFRESH.total_seconds(), (window.connect_at - now).total_seconds()))
@@ -363,11 +377,25 @@ class LiveSessionSupervisor:
                 data = None
         windows = build_session_windows(data, pre_window=self._pre_window, post_window=self._post_window)
         if not windows:
-            _LOGGER.warning(
-                "Live timing index returned no sessions for year %s (payload=%s)",
-                getattr(self._session_coord, "year", "unknown"),
-                _debug_payload_preview(data),
-            )
+            year = getattr(self._session_coord, "year", "unknown")
+            status = getattr(self._session_coord, "last_http_status", None)
+            # Special case: at season rollover the new year's Index.json may not
+            # exist yet and F1's CDN returns 403/404. Treat as "not published",
+            # don't spam warnings and don't start legacy fallback loops.
+            if status in (403, 404):
+                if self._should_log(f"index_unavailable_{year}", interval_seconds=6 * 3600):
+                    _LOGGER.info(
+                        "Live timing index not available for year %s yet (HTTP %s). Waiting before retry.",
+                        year,
+                        status,
+                    )
+                return None, False
+            if self._should_log(f"no_sessions_{year}", interval_seconds=3600):
+                _LOGGER.warning(
+                    "Live timing index returned no sessions for year %s (payload=%s)",
+                    year,
+                    _debug_payload_preview(data),
+                )
             # Index is missing / unusable; allow legacy fallback.
             return None, True
         now = dt_util.utcnow()

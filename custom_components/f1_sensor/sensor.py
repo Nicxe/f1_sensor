@@ -555,6 +555,7 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
         self._attr_icon = "mdi:weather-partly-cloudy"
         self._current = {}
         self._race = {}
+        self._circuit = {}
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -580,8 +581,9 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
                 dt = datetime.datetime.fromisoformat(dt_str)
             except ValueError:
                 continue
-            # Keep using the active race (for weather etc.) until a short grace
-            # period after the scheduled start, to match `sensor.f1_next_race`.
+            # Keep using the active race (for weather etc.) until a grace period
+            # after the scheduled start. This matches `sensor.f1_next_race` and
+            # defaults to 3 hours via `RACE_SWITCH_GRACE`.
             end_dt = dt + RACE_SWITCH_GRACE
             if end_dt > now:
                 return race
@@ -601,12 +603,32 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
 
     async def _update_weather(self):
         race = self._get_next_race()
+        # Store which circuit this weather is for, so the UI can show context even
+        # when only temperature is used as the sensor state.
+        if race:
+            circuit = race.get("Circuit", {}) or {}
+            loc = circuit.get("Location", {}) or {}
+            self._circuit = {
+                "season": race.get("season"),
+                "round": race.get("round"),
+                "race_name": race.get("raceName"),
+                "race_url": race.get("url"),
+                "circuit_id": circuit.get("circuitId"),
+                "circuit_name": circuit.get("circuitName"),
+                "circuit_url": circuit.get("url"),
+                "circuit_lat": loc.get("lat"),
+                "circuit_long": loc.get("long"),
+                "circuit_locality": loc.get("locality"),
+                "circuit_country": loc.get("country"),
+            }
+        else:
+            self._circuit = {}
         loc = race.get("Circuit", {}).get("Location", {}) if race else {}
         lat, lon = loc.get("lat"), loc.get("long")
         if lat is None or lon is None:
             return
         session = async_get_clientsession(self.hass)
-        url = f"https://api.met.no/weatherapi/locationforecast/2.0/compact?lat={lat}&lon={lon}"
+        url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
         headers = {"User-Agent": "homeassistant-f1_sensor"}
         try:
             async with async_timeout.timeout(10):
@@ -635,6 +657,10 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
                 amt = 0
             return amt, details.get("precipitation_amount_min"), details.get("precipitation_amount_max")
 
+        def _precip_probability(block: dict):
+            details = (block or {}).get("details", {}) or {}
+            return details.get("probability_of_precipitation")
+
         p1, p1min, p1max = _precip_triplet(block1)
         p6, p6min, p6max = _precip_triplet(block6)
         p12, p12min, p12max = _precip_triplet(block12)
@@ -646,6 +672,7 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
         sel_amt, sel_min, sel_max, sel_block = max(candidates, key=lambda t: t[0])
         curr_with_precip = dict(curr)
         curr_with_precip["precipitation_amount"] = sel_amt
+        curr_with_precip["probability_of_precipitation"] = _precip_probability(sel_block)
         # Also expose min/max precipitation; fallback to selected amount when missing
         _cur_min = sel_min
         _cur_max = sel_max
@@ -692,6 +719,7 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
                 r_sel_amt, r_sel_min, r_sel_max, r_sel_block = max(rcandidates, key=lambda t: t[0])
                 rd = dict(instant_details)
                 rd["precipitation_amount"] = r_sel_amt
+                rd["probability_of_precipitation"] = _precip_probability(r_sel_block)
                 # Also expose min/max precipitation at race time; fallback to selected amount
                 rd["precipitation_amount_min"] = r_sel_min if r_sel_min is not None else r_sel_amt
                 rd["precipitation_amount_max"] = r_sel_max if r_sel_max is not None else r_sel_amt
@@ -714,6 +742,8 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
             "precipitation": d.get("precipitation_amount", 0),
             "precipitation_amount_min": d.get("precipitation_amount_min"),
             "precipitation_amount_max": d.get("precipitation_amount_max"),
+            "precipitation_probability": d.get("probability_of_precipitation"),
+            "precipitation_probability_unit": "%",
             "precipitation_unit": "mm",
             "wind_speed": d.get("wind_speed"),
             "wind_speed_unit": "m/s",
@@ -757,7 +787,8 @@ class F1WeatherSensor(F1BaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        attrs = {f"current_{k}": v for k, v in self._current.items()}
+        attrs = dict(self._circuit or {})
+        attrs.update({f"current_{k}": v for k, v in self._current.items()})
         attrs.update({f"race_{k}": v for k, v in self._race.items()})
         return attrs
 
@@ -3540,9 +3571,15 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        # Initialize from coordinator or restore
-        self._update_from_coordinator()
-        if self._attr_native_value is None:
+        # Initialize from coordinator (only if it has real driver data) or restore.
+        #
+        # LiveDriversCoordinator intentionally clears its consolidated state when
+        # the live window ends to avoid briefly showing stale timing data at the
+        # start of a new session. For `sensor.f1_driver_list` we *do* want to keep
+        # the last known list for dashboards/UI, so we treat an empty coordinator
+        # payload as "no update" and keep/restored state.
+        updated = self._update_from_coordinator()
+        if (not updated) and self._attr_native_value is None:
             last = await self.async_get_last_state()
             if last and last.state not in (None, "unknown", "unavailable"):
                 try:
@@ -3563,6 +3600,18 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     getLogger(__name__).debug("DriverList: Restored last state -> %s", last.state)
                 except Exception:
                     pass
+        # If we have neither live data nor a restored state, try a one-time
+        # bootstrap from Ergast/Jolpica standings (typically last completed season).
+        if self._attr_native_value is None:
+            try:
+                boot = self._bootstrap_from_ergast()
+                if boot:
+                    from logging import getLogger
+                    getLogger(__name__).info(
+                        "DriverList: Bootstrapped from Ergast/Jolpica standings (no live feed / no restore-state yet)"
+                    )
+            except Exception:
+                pass
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
         self.async_write_ha_state()
@@ -3570,7 +3619,10 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         prev_state = self._attr_native_value
         prev_attrs = self._attr_extra_state_attributes
-        self._update_from_coordinator()
+        updated = self._update_from_coordinator()
+        if not updated:
+            # No driver payload (common outside live windows): keep last value/attrs.
+            return
         if prev_state == self._attr_native_value and prev_attrs == self._attr_extra_state_attributes:
             return
         try:
@@ -3607,9 +3659,11 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         except Exception:
             self._safe_write_ha_state()
 
-    def _update_from_coordinator(self) -> None:
+    def _update_from_coordinator(self) -> bool:
         data = self.coordinator.data or {}
-        drivers = (data.get("drivers") or {}) if isinstance(data, dict) else {}
+        drivers = (data.get("drivers") or None) if isinstance(data, dict) else None
+        if not isinstance(drivers, dict) or not drivers:
+            return False
         # Build normalized list sorted by racing number (numeric if possible)
         items = []
         for rn, info in drivers.items():
@@ -3640,6 +3694,101 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         items.sort(key=_rn_key)
         self._attr_extra_state_attributes = {"drivers": items}
         self._attr_native_value = len(items)
+        return True
+
+    def _bootstrap_from_ergast(self) -> bool:
+        """Best-effort bootstrap driver list from the standings coordinator.
+
+        This is used at season rollover (or first install) when live timing has
+        no feed yet and there is no restored state available.
+        """
+        try:
+            hass = getattr(self, "hass", None)
+            if hass is None:
+                return False
+            reg = (hass.data.get(DOMAIN, {}) or {}).get(self._entry_id)
+            if not isinstance(reg, dict):
+                return False
+            driver_coord = reg.get("driver_coordinator")
+            data = getattr(driver_coord, "data", None) or {}
+            standings = (
+                (data.get("MRData") or {})
+                .get("StandingsTable", {})
+                .get("StandingsLists", [])
+            )
+            if not isinstance(standings, list) or not standings:
+                return False
+            ds = (standings[0] or {}).get("DriverStandings", [])
+            if not isinstance(ds, list) or not ds:
+                return False
+
+            items: list[dict] = []
+            for item in ds:
+                if not isinstance(item, dict):
+                    continue
+                driver = item.get("Driver") or {}
+                if not isinstance(driver, dict):
+                    continue
+                rn = str(driver.get("permanentNumber") or "").strip()
+                if not rn:
+                    continue
+                tla = driver.get("code") or driver.get("driverId")
+                first = driver.get("givenName")
+                last = driver.get("familyName")
+                full = None
+                try:
+                    parts = [p for p in (first, last) if p]
+                    full = " ".join(parts) if parts else None
+                except Exception:
+                    full = None
+                constructors = item.get("Constructors") or []
+                team = None
+                if isinstance(constructors, list) and constructors:
+                    c0 = constructors[0]
+                    if isinstance(c0, dict):
+                        team = c0.get("name")
+
+                items.append(
+                    {
+                        "racing_number": rn,
+                        "tla": tla,
+                        "name": full,
+                        "first_name": first,
+                        "last_name": last,
+                        "team": team,
+                        "team_color": None,
+                        "headshot_small": None,
+                        "headshot_large": None,
+                        "reference": driver.get("url") or driver.get("driverId"),
+                    }
+                )
+
+            if not items:
+                return False
+
+            def _rn_key(v):
+                val = str(v.get("racing_number") or "")
+                return (int(val) if val.isdigit() else 9999, val)
+
+            items.sort(key=_rn_key)
+            self._attr_extra_state_attributes = {
+                "drivers": items,
+                "source": "ergast",
+            }
+            self._attr_native_value = len(items)
+            return True
+        except Exception:
+            return False
+
+    @property
+    def available(self) -> bool:
+        """Keep this sensor available even without a live timing feed.
+
+        Many dashboards are built around the driver list; showing it as
+        `unavailable` breaks those UIs. We therefore keep the last known list and
+        do not mirror live-feed availability here.
+        """
+        return True
 
     @property
     def state(self):

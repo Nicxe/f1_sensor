@@ -14,6 +14,7 @@ import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -38,6 +39,7 @@ from .const import (
     DEFAULT_OPERATION_MODE,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
+    ENABLE_DEVELOPMENT_MODE_UI,
 )
 from .signalr import LiveBus
 from .replay import ReplaySignalRClient
@@ -53,6 +55,71 @@ from .live_delay import LiveDelayController
 from .calibration import LiveDelayCalibrationManager
 
 _LOGGER = logging.getLogger(__name__)
+
+_JOLPICA_STATS_KEY = "__jolpica_stats__"
+
+
+def _ensure_jolpica_stats_reporting(hass: HomeAssistant) -> None:
+    """Register a dev-only periodic log of Jolpica network MISS counts."""
+    if not ENABLE_DEVELOPMENT_MODE_UI:
+        return
+    root = hass.data.setdefault(DOMAIN, {})
+    stats = root.get(_JOLPICA_STATS_KEY)
+    if isinstance(stats, dict) and callable(stats.get("unsub")):
+        return
+
+    root[_JOLPICA_STATS_KEY] = {
+        "since": dt_util.utcnow().isoformat(),
+        "unsub": None,
+    }
+
+    async def _log_and_reset(_now) -> None:
+        # Snapshot and reset counts (counts live in hass.data[DOMAIN][_JOLPICA_STATS_KEY])
+        root2 = hass.data.get(DOMAIN, {}) or {}
+        s = root2.get(_JOLPICA_STATS_KEY) or {}
+        counts = s.get("counts") if isinstance(s, dict) else None
+        if not isinstance(counts, dict) or not counts:
+            # Still update since to avoid misleading "since" windows.
+            try:
+                s["since"] = dt_util.utcnow().isoformat()
+            except Exception:
+                pass
+            return
+
+        total = 0
+        try:
+            total = int(sum(int(v) for v in counts.values()))
+        except Exception:
+            total = 0
+
+        # Top endpoints by MISS count
+        try:
+            top = sorted(counts.items(), key=lambda kv: int(kv[1]), reverse=True)[:10]
+        except Exception:
+            top = []
+
+        since = s.get("since")
+        until = dt_util.utcnow().isoformat()
+        _LOGGER.info(
+            "Jolpica MISS summary (dev) since=%s until=%s total=%s top=%s",
+            since,
+            until,
+            total,
+            [(k, int(v)) for k, v in top],
+        )
+
+        # Reset
+        try:
+            s["counts"] = {}
+            s["since"] = until
+        except Exception:
+            pass
+
+    unsub = async_track_time_interval(hass, _log_and_reset, timedelta(days=1))
+    try:
+        root[_JOLPICA_STATS_KEY]["unsub"] = unsub
+    except Exception:
+        pass
 
 # Keep treating the current Grand Prix as "next" for a short period after
 # lights out, so helpers and sensors do not jump to the following weekend
@@ -92,6 +159,8 @@ def coordinator_logger(name: str, *, suppress_manual: bool = False) -> Coordinat
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up integration via config flow."""
+    # Dev-only: periodically report how many Jolpica requests actually hit the network.
+    _ensure_jolpica_stats_reporting(hass)
     # Normalize enabled sensors early so we can avoid unnecessary Jolpica calls.
     allowed_enabled = {
         "next_race",
@@ -132,6 +201,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             seen_enabled.add(key)
 
     # Determine which Jolpica/Ergast coordinators are actually required.
+    # Note: we also create the "current season" coordinator when season/sprint results
+    # are enabled, because it is used to detect season rollovers and to derive the
+    # authoritative season for season-scoped endpoints.
     need_race = any(
         k in enabled
         for k in (
@@ -142,6 +214,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "fia_documents",
             "driver_points_progression",
             "constructor_points_progression",
+            "season_results",
+            "sprint_results",
         )
     )
     need_driver = any(k in enabled for k in ("driver_standings", "driver_points_progression"))
@@ -327,6 +401,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             persist_map=persisted_map,
             persist_save=persisted.schedule_save,
             config_entry=entry,
+            season_source=race_coordinator,
         )
         if need_season_results
         else None
@@ -350,15 +425,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     fia_documents_coordinator = (
         FiaDocumentsCoordinator(
-            hass,
-            race_coordinator,
-            session=http_session,
-            cache=http_cache,
-            inflight=http_inflight,
-            ttl_seconds=FIA_DOCS_POLL_INTERVAL,
-            persist_map=persisted_map,
-            persist_save=persisted.schedule_save,
-            config_entry=entry,
+        hass,
+        race_coordinator,
+        session=http_session,
+        cache=http_cache,
+        inflight=http_inflight,
+        ttl_seconds=FIA_DOCS_POLL_INTERVAL,
+        persist_map=persisted_map,
+        persist_save=persisted.schedule_save,
+        config_entry=entry,
         )
         if (need_fia_docs and race_coordinator is not None)
         else None
@@ -2880,6 +2955,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         await close()
                     except Exception as err:  # noqa: BLE001
                         _LOGGER.debug("Error during %s async_close: %s", name, err)
+        # If this was the last entry, remove dev-only stats reporter.
+        if isinstance(data_root, dict):
+            # Keep only real entry dicts (exclude our global stats key)
+            remaining_entries = [
+                k for k in data_root.keys() if isinstance(k, str) and k != _JOLPICA_STATS_KEY
+            ]
+            if not remaining_entries:
+                stats = data_root.get(_JOLPICA_STATS_KEY)
+                unsub = stats.get("unsub") if isinstance(stats, dict) else None
+                if callable(unsub):
+                    try:
+                        unsub()
+                    except Exception:
+                        pass
+                data_root.pop(_JOLPICA_STATS_KEY, None)
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("Error during entry data cleanup: %s", err)
     return unload_ok
@@ -2907,6 +2997,105 @@ class F1DataCoordinator(DataUpdateCoordinator):
         self._ttl = int(ttl_seconds or 30)
         self._persist = persist_map
         self._persist_save = persist_save
+        self._last_seen_season: str | None = None
+
+        # Initialize last-seen season from persisted current.json payload if present.
+        # This makes rollover detection work immediately after a restart, even if the
+        # first read is served from cache before the first network MISS.
+        try:
+            if self._url == API_URL and isinstance(self._persist, dict):
+                rec = self._persist.get(API_URL)
+                payload = rec.get("data") if isinstance(rec, dict) else None
+                season = self._extract_season(payload) if payload else None
+                if season:
+                    self._last_seen_season = season
+        except Exception:
+            pass
+
+    def _extract_season(self, payload: Any) -> str | None:
+        """Best-effort extraction of season (year) from Ergast/Jolpica payloads."""
+        try:
+            mr = (payload or {}).get("MRData", {}) if isinstance(payload, dict) else {}
+            rt = mr.get("RaceTable", {}) if isinstance(mr, dict) else {}
+            season = rt.get("season")
+            if season is not None:
+                s = str(season).strip()
+                return s if s else None
+            # Fallback: infer from first race if available
+            races = rt.get("Races") if isinstance(rt, dict) else None
+            if isinstance(races, list) and races:
+                season2 = races[0].get("season")
+                if season2 is not None:
+                    s2 = str(season2).strip()
+                    return s2 if s2 else None
+        except Exception:
+            return None
+        return None
+
+    def _handle_season_rollover_if_needed(self, payload: Any) -> None:
+        """If current season changed, invalidate cached /current/* endpoints and refresh dependents.
+
+        This avoids keeping last year's 'current' data for weeks due to aggressive TTLs.
+        """
+        if self._url != API_URL:
+            return
+        season = self._extract_season(payload)
+        if not season:
+            return
+        if self._last_seen_season is None:
+            self._last_seen_season = season
+            return
+        if season == self._last_seen_season:
+            return
+
+        prev = self._last_seen_season
+        self._last_seen_season = season
+        _LOGGER.info("Detected season rollover %s -> %s; invalidating Jolpica /current cache", prev, season)
+
+        # Invalidate in-memory cache entries for /current endpoints
+        try:
+            if isinstance(self._cache, dict):
+                for k in list(self._cache.keys()):
+                    ks = str(k)
+                    if "/ergast/f1/current" in ks:
+                        self._cache.pop(k, None)
+        except Exception:
+            pass
+
+        # Invalidate persisted cache too, so restarts don't re-seed stale 'current' data
+        try:
+            if isinstance(self._persist, dict):
+                for k in list(self._persist.keys()):
+                    ks = str(k)
+                    if "/ergast/f1/current" in ks:
+                        self._persist.pop(k, None)
+                if callable(self._persist_save):
+                    self._persist_save()
+        except Exception:
+            pass
+
+        # Trigger refresh of dependent coordinators for this entry (best effort)
+        try:
+            ce = getattr(self, "config_entry", None)
+            entry_id = getattr(ce, "entry_id", None) if ce is not None else None
+            if not entry_id:
+                return
+            reg = (self.hass.data.get(DOMAIN, {}) or {}).get(entry_id, {}) or {}
+            for name in (
+                "driver_coordinator",
+                "constructor_coordinator",
+                "last_race_coordinator",
+                "season_results_coordinator",
+                "sprint_results_coordinator",
+            ):
+                coord = reg.get(name)
+                if coord is None:
+                    continue
+                req = getattr(coord, "async_request_refresh", None)
+                if callable(req):
+                    self.hass.async_create_task(req())
+        except Exception:
+            pass
 
     async def async_close(self, *_):
         """Placeholder for future cleanup."""
@@ -2916,7 +3105,7 @@ class F1DataCoordinator(DataUpdateCoordinator):
         """Fetch data from the F1 API."""
         try:
             async with async_timeout.timeout(10):
-                return await fetch_json(
+                data = await fetch_json(
                     self.hass,
                     self._session,
                     self._url,
@@ -2927,6 +3116,9 @@ class F1DataCoordinator(DataUpdateCoordinator):
                     persist_map=self._persist,
                     persist_save=self._persist_save,
                 )
+                # Detect season rollovers in current.json and clear stale caches if needed.
+                self._handle_season_rollover_if_needed(data)
+                return data
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}") from err
 
@@ -2951,6 +3143,7 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
         persist_map=None,
         persist_save=None,
         config_entry: ConfigEntry | None = None,
+        season_source: DataUpdateCoordinator | None = None,
     ):
         super().__init__(
             hass,
@@ -2971,9 +3164,49 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
         self._ttl_stable = int(ttl_stable or 30 * 24 * 3600)
         self._persist = persist_map
         self._persist_save = persist_save
+        self._season_source = season_source
 
     async def async_close(self, *_):
         return
+
+    @staticmethod
+    def _extract_season(payload: Any) -> str | None:
+        """Best-effort extraction of season (year) from Ergast/Jolpica payloads."""
+        try:
+            if not isinstance(payload, dict):
+                return None
+            mr = payload.get("MRData", {}) or {}
+            rt = mr.get("RaceTable", {}) or {}
+            season = rt.get("season")
+            if season is not None:
+                s = str(season).strip()
+                return s if s else None
+            races = rt.get("Races")
+            if isinstance(races, list) and races:
+                season2 = (races[0] or {}).get("season")
+                if season2 is not None:
+                    s2 = str(season2).strip()
+                    return s2 if s2 else None
+        except Exception:
+            return None
+        return None
+
+    def _effective_base_url(self) -> str:
+        """Prefer a season-scoped URL (/f1/<year>/...) over /f1/current/... when possible.
+
+        This avoids stale caches across season rollovers where /current endpoints keep the
+        same URL, but the "meaning" changes.
+        """
+        base = str(self._base_url)
+        src = getattr(self._season_source, "data", None) if self._season_source is not None else None
+        season = self._extract_season(src)
+        if not season:
+            return base
+        # Only rewrite known /current/ Ergast paths.
+        marker = "/ergast/f1/current/"
+        if marker in base:
+            return base.replace(marker, f"/ergast/f1/{season}/")
+        return base
 
     def _ttl_for_offset(self, offset: int, last_offset: int, page_size: int) -> int:
         """Return TTL for a given results page offset.
@@ -2998,19 +3231,41 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 
     async def _fetch_page(self, limit: int, offset: int, *, ttl_seconds: int | None = None):
         from yarl import URL
-        url = str(URL(self._base_url).with_query({"limit": str(limit), "offset": str(offset)}))
+        ttl = int(ttl_seconds or self._ttl_latest)
+
+        # Primary: season-scoped URL when we can derive season from current.json.
+        primary_base = self._effective_base_url()
+        primary_url = str(URL(primary_base).with_query({"limit": str(limit), "offset": str(offset)}))
+
         async with async_timeout.timeout(10):
-            return await fetch_json(
-                self.hass,
-                self._session,
-                url,
-                headers=self._headers,
-                ttl_seconds=int(ttl_seconds or self._ttl_latest),
-                cache=self._cache,
-                inflight=self._inflight,
-                persist_map=self._persist,
-                persist_save=self._persist_save,
-            )
+            try:
+                return await fetch_json(
+                    self.hass,
+                    self._session,
+                    primary_url,
+                    headers=self._headers,
+                    ttl_seconds=ttl,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                    persist_map=self._persist,
+                    persist_save=self._persist_save,
+                )
+            except Exception:
+                # Fallback: legacy /current/ URL (in case the API doesn't support season-scoped paths)
+                fallback_url = str(URL(str(self._base_url)).with_query({"limit": str(limit), "offset": str(offset)}))
+                if fallback_url == primary_url:
+                    raise
+                return await fetch_json(
+                    self.hass,
+                    self._session,
+                    fallback_url,
+                    headers=self._headers,
+                    ttl_seconds=ttl,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                    persist_map=self._persist,
+                    persist_save=self._persist_save,
+                )
 
     @staticmethod
     def _race_key(r: dict) -> tuple:
@@ -3303,6 +3558,25 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
         self._session = session or async_get_clientsession(hass)
         self.year = year
         self._last_good_index: dict | None = None
+        # Expose last HTTP status so the live window supervisor can distinguish
+        # "index not published yet" (403/404) from other failures.
+        self.last_http_status: int | None = None
+        self._log_throttle: dict[str, float] = {}
+
+    def _log_throttled(
+        self,
+        level: int,
+        key: str,
+        msg: str,
+        *args,
+        interval_seconds: float = 3600,
+    ) -> None:
+        now = time.monotonic()
+        last = self._log_throttle.get(key, 0.0)
+        if now - last < interval_seconds:
+            return
+        self._log_throttle[key] = now
+        _LOGGER.log(level, msg, *args)
 
     async def async_close(self, *_):
         return
@@ -3313,7 +3587,13 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
             self._last_good_index = payload
             return payload
         if self._last_good_index:
-            _LOGGER.warning("Using cached LiveTiming index (server returned empty response)")
+            # Avoid flooding logs if callers are forcing frequent refreshes.
+            self._log_throttled(
+                logging.DEBUG,
+                "using_cached_index",
+                "Using cached LiveTiming index (server returned empty response)",
+                interval_seconds=3600,
+            )
             return self._last_good_index
         return payload
 
@@ -3325,19 +3605,52 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
             async with async_timeout.timeout(10):
                 async with self._session.get(url) as response:
                     text = await response.text()
+                    self.last_http_status = response.status
                     if response.status != 200:
-                        _LOGGER.warning("Index fetch failed (%s): %s", response.status, text[:200])
+                        preview = text[:200]
+                        # 403/404 is common when a new season index isn't published yet.
+                        if response.status in (403, 404):
+                            self._log_throttled(
+                                logging.INFO,
+                                f"index_http_{response.status}_{self.year}",
+                                "LiveTiming index not available for year %s yet (HTTP %s). Will retry later.",
+                                self.year,
+                                response.status,
+                                interval_seconds=6 * 3600,
+                            )
+                            _LOGGER.debug("Index fetch failed (%s): %s", response.status, preview)
+                        else:
+                            self._log_throttled(
+                                logging.WARNING,
+                                f"index_http_{response.status}_{self.year}",
+                                "Index fetch failed (%s): %s",
+                                response.status,
+                                preview,
+                                interval_seconds=3600,
+                            )
                         return None
                     payload = json.loads(text.lstrip("\ufeff") or "null")
         except Exception as err:
-            _LOGGER.warning("Error fetching index (%s): %s", "cache-bust" if cache_bust else "standard", err)
+            self._log_throttled(
+                logging.WARNING,
+                f"index_fetch_exception_{self.year}",
+                "Error fetching index (%s): %s",
+                "cache-bust" if cache_bust else "standard",
+                err,
+                interval_seconds=1800,
+            )
             return None
         if self._has_sessions(payload):
             return payload
         if not cache_bust:
             _LOGGER.debug("Index response missing sessions; retrying with cache-buster")
             return await self._fetch_index(cache_bust=True)
-        _LOGGER.warning("Index response still missing sessions after cache-bust")
+        self._log_throttled(
+            logging.WARNING,
+            f"index_missing_sessions_{self.year}",
+            "Index response still missing sessions after cache-bust",
+            interval_seconds=3600,
+        )
         return None
 
     @staticmethod
