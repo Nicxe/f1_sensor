@@ -48,7 +48,7 @@ In the same folder, I created another file, myfont.css, with the following conte
 I went to **Settings \-\> Dashboards \-\> Resources** (located in the More menu of Dashboards, the 3 vertical dots) and added a new resource of type **Stylesheet**, pointing to (URL) **/local/fonts/myfont.css**
 
 
-![Resources fonts](/img/dashboard_resources_fonts.png)
+![Resources fonts](/static/img/dashboard_resources_fonts.png)
 
 At this point, an **Empty Cache and Hard reload** might be required (as I said, I had many trials and errors, involving even restarts of HA, so try the Empty Cache and Hard reload, as it does not hurt).
 
@@ -125,7 +125,7 @@ Here are the codes.
 
 ### Drivers Standings card
 
-![Drivers standings](/img/Drivers_standings_card.png)
+![Drivers standings](/static/img/Drivers_standings_card.png)
 
 ```yaml
 type: custom:button-card
@@ -393,7 +393,7 @@ custom_fields:
 
 ### Constructors Standings card
 
-![Constructors standings](/img/constructors_standings_card.png)
+![Constructors standings](/static/img/constructors_standings_card.png)
 
 ```yaml
 type: custom:button-card
