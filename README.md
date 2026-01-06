@@ -1,6 +1,6 @@
 # F1 Sensor for Home Assistant
 
-[![Buy me a Coffee](https://img.shields.io/badge/Support-Buy%20me%20a%20coffee-fdd734?logo=buy-me-a-coffee)](ttps://www.buymeacoffee.com/NiklasV) [![Last commit](https://img.shields.io/github/last-commit/Nicxe/f1_sensor)](#) [![Version](https://img.shields.io/github/v/release/Nicxe/f1_sensor)](#) [![HA Community forum](https://img.shields.io/badge/Home%20Assistant-Community%20Forum-319fee?logo=home-assistant)](https://community.home-assistant.io/t/formula-1-racing-sensor/880842)<br>
+[![Buy me a Coffee](https://img.shields.io/badge/Support-Buy%20me%20a%20coffee-fdd734?logo=buy-me-a-coffee)](https://www.buymeacoffee.com/NiklasV) [![Last commit](https://img.shields.io/github/last-commit/Nicxe/f1_sensor)](#) [![Version](https://img.shields.io/github/v/release/Nicxe/f1_sensor)](#) [![HA Community forum](https://img.shields.io/badge/Home%20Assistant-Community%20Forum-319fee?logo=home-assistant)](https://community.home-assistant.io/t/formula-1-racing-sensor/880842)<br>
 ![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/nicxe/f1_sensor/latest/total)
 <br>
 <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/f1_sensor">
