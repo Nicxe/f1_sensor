@@ -1,3 +1,4 @@
+URL: https://livetiming.formula1.com/static/2025/2025-11-22_Las_Vegas_Grand_Prix/2025-11-20_Practice_2/TeamRadio.jsonStream
 00:00:00.000{"stream":"TrackStatus","payload":{"Status":"1","Message":"AllClear"}}
 00:00:00.000{"stream":"SessionInfo","payload":{"Meeting":{"Key":1274,"Name":"Las Vegas Grand Prix","OfficialName":"FORMULA 1 HEINEKEN LAS VEGAS GRAND PRIX 2025","Location":"Las Vegas","Number":22,"Country":{"Key":19,"Code":"USA","Name":"United States"},"Circuit":{"Key":152,"ShortName":"Las Vegas"}},"SessionStatus":"Inactive","ArchiveStatus":{"Status":"Generating"},"Key":9852,"Type":"Practice","Number":2,"Name":"Practice 2","StartDate":"2025-11-20T20:00:00","EndDate":"2025-11-20T21:00:00","GmtOffset":"-08:00:00","Path":"2025/2025-11-22_Las_Vegas_Grand_Prix/2025-11-20_Practice_2/"}}
 00:00:02.494{"stream":"ExtrapolatedClock","payload":{"Utc":"2025-11-21T03:46:09.004Z","Remaining":"00:00:00","Extrapolating":false}}

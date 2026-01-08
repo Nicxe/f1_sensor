@@ -1,3 +1,4 @@
+URL: https://livetiming.formula1.com/static/2025/2025-09-07_Italian_Grand_Prix/2025-09-05_Practice_1/TeamRadio.jsonStream
 00:00:00.000{"stream":"TrackStatus","payload":{"Status":"2","Message":"Yellow"}}
 00:00:00.000{"stream":"SessionInfo","payload":{"Meeting":{"Key":1268,"Name":"Italian Grand Prix","OfficialName":"FORMULA 1 PIRELLI GRAN PREMIO D\u2019ITALIA 2025","Location":"Monza","Number":16,"Country":{"Key":13,"Code":"ITA","Name":"Italy"},"Circuit":{"Key":39,"ShortName":"Monza"}},"SessionStatus":"Inactive","ArchiveStatus":{"Status":"Generating"},"Key":9905,"Type":"Practice","Number":1,"Name":"Practice 1","StartDate":"2025-09-05T13:30:00","EndDate":"2025-09-05T14:30:00","GmtOffset":"02:00:00","Path":"2025/2025-09-07_Italian_Grand_Prix/2025-09-05_Practice_1/"}}
 00:00:02.119{"stream":"ExtrapolatedClock","payload":{"Utc":"2025-09-05T11:16:18.012Z","Remaining":"00:00:00","Extrapolating":false}}

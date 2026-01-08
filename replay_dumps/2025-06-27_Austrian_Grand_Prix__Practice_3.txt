@@ -1,3 +1,4 @@
+URL: https://livetiming.formula1.com/static/2025/2025-06-29_Austrian_Grand_Prix/2025-06-28_Practice_3/TeamRadio.jsonStream
 00:00:00.000{"stream":"SessionInfo","payload":{"Meeting":{"Key":1264,"Name":"Austrian Grand Prix","OfficialName":"FORMULA 1 MSC CRUISES AUSTRIAN GRAND PRIX 2025","Location":"Spielberg","Number":11,"Country":{"Key":17,"Code":"AUT","Name":"Austria"},"Circuit":{"Key":19,"ShortName":"Spielberg"}},"SessionStatus":"Inactive","ArchiveStatus":{"Status":"Generating"},"Key":9950,"Type":"Practice","Number":3,"Name":"Practice 3","StartDate":"2025-06-28T12:30:00","EndDate":"2025-06-28T13:30:00","GmtOffset":"02:00:00","Path":"2025/2025-06-29_Austrian_Grand_Prix/2025-06-28_Practice_3/"}}
 00:00:01.398{"stream":"TrackStatus","payload":{"Status":"2","Message":"Yellow"}}
 00:00:03.008{"stream":"ExtrapolatedClock","payload":{"Utc":"2025-06-28T10:17:01.008Z","Remaining":"00:00:00","Extrapolating":false}}
