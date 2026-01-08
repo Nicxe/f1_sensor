@@ -1546,7 +1546,13 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
                     def _read_static_root() -> str | None:
                         try:
                             with replay_path.open("r", encoding="utf-8") as fh:
-                                for raw in fh:
+                                # Scan a bit deeper than the first non-empty line; some dumps
+                                # may have the URL header later (or be prepended with comments).
+                                # We keep this bounded to avoid reading huge files in full.
+                                max_lines = 500
+                                for idx, raw in enumerate(fh):
+                                    if idx >= max_lines:
+                                        break
                                     line = raw.lstrip("\ufeff").strip()
                                     if not line:
                                         continue
@@ -1563,8 +1569,6 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
                                             return None
                                         # Drop the final segment (e.g. TeamRadio.jsonStream)
                                         return "/".join(parts[:-1])
-                                    # Only consider the header area at top
-                                    return None
                         except Exception:
                             return None
                         return None

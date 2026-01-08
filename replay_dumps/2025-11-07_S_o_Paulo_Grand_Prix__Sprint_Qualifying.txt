@@ -1,3 +1,4 @@
+URL: https://livetiming.formula1.com/static/2025/2025-11-09_São_Paulo_Grand_Prix/2025-11-07_Sprint_Qualifying/TeamRadio.jsonStream
 00:00:00.000{"stream":"TrackStatus","payload":{"Status":"1","Message":"AllClear"}}
 00:00:00.000{"stream":"SessionInfo","payload":{"Meeting":{"Key":1273,"Name":"S\u00e3o Paulo Grand Prix","OfficialName":"FORMULA 1 MSC CRUISES GRANDE PR\u00caMIO DE S\u00c3O PAULO 2025","Location":"S\u00e3o Paulo","Number":21,"Country":{"Key":10,"Code":"BRA","Name":"Brazil"},"Circuit":{"Key":14,"ShortName":"Interlagos"}},"SessionStatus":"Inactive","ArchiveStatus":{"Status":"Generating"},"Key":9860,"Type":"Qualifying","Name":"Sprint Qualifying","StartDate":"2025-11-07T15:30:00","EndDate":"2025-11-07T16:14:00","GmtOffset":"-03:00:00","Path":"2025/2025-11-09_S\u00e3o_Paulo_Grand_Prix/2025-11-07_Sprint_Qualifying/"}}
 00:00:02.949{"stream":"ExtrapolatedClock","payload":{"Utc":"2025-11-07T18:16:25.008Z","Remaining":"00:00:00","Extrapolating":false}}

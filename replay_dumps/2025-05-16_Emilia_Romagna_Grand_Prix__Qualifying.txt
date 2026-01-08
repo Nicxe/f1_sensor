@@ -1,3 +1,4 @@
+URL: https://livetiming.formula1.com/static/2025/2025-05-18_Emilia_Romagna_Grand_Prix/2025-05-17_Qualifying/TeamRadio.jsonStream
 00:00:00.000{"stream":"TrackStatus","payload":{"Status":"1","Message":"AllClear"}}
 00:00:00.000{"stream":"SessionInfo","payload":{"Meeting":{"Key":1260,"Name":"Emilia Romagna Grand Prix","OfficialName":"FORMULA 1 AWS GRAN PREMIO DEL MADE IN ITALY E DELL'EMILIA-ROMAGNA 2025","Location":"Imola","Number":7,"Country":{"Key":13,"Code":"ITA","Name":"Italy"},"Circuit":{"Key":6,"ShortName":"Imola"}},"ArchiveStatus":{"Status":"Generating"},"Key":9983,"Type":"Qualifying","Name":"Qualifying","StartDate":"2025-05-17T16:00:00","EndDate":"2025-05-17T17:00:00","GmtOffset":"02:00:00","Path":"2025/2025-05-18_Emilia_Romagna_Grand_Prix/2025-05-17_Qualifying/"}}
 00:00:03.127{"stream":"ExtrapolatedClock","payload":{"Utc":"2025-05-17T13:46:22.01Z","Remaining":"00:00:00","Extrapolating":false}}
