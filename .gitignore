@@ -6,3 +6,4 @@ custom_components/f1_sensor/v3-ReleaseNote.MD
 *.pyc
 node_modules/
 npm-debug.log*
+f1_sensor.zip

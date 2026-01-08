@@ -70,7 +70,9 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
     def __init__(self, coordinator, name, unique_id, entry_id, device_name):
         super().__init__(coordinator, name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:calendar-range"
-        self._attr_device_class = BinarySensorDeviceClass.OCCUPANCY
+        # No device class: this is not a physical presence/occupancy type sensor.
+        # Using a device class here can lead to misleading UI semantics/translations.
+        self._attr_device_class = None
 
     def _get_next_race(self):
         data = self.coordinator.data
@@ -105,10 +107,6 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
         return start_of_week.date() <= next_race_dt.date() <= end_of_week.date()
 
     @property
-    def state(self):
-        return self.is_on
-
-    @property
     def extra_state_attributes(self):
         next_race_dt, race = self._get_next_race()
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -130,12 +128,9 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     def __init__(self, coordinator, name, unique_id, entry_id, device_name):
         super().__init__(coordinator, name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:car"
-        try:
-            from homeassistant.components.binary_sensor import BinarySensorDeviceClass
-
-            self._attr_device_class = BinarySensorDeviceClass.SAFETY
-        except Exception:
-            self._attr_device_class = None
+        # No device class: BinarySensorDeviceClass.SAFETY maps to "safe/unsafe"
+        # semantics (OFF="safe"), which is misleading for "safety car deployed".
+        self._attr_device_class = None
         self._attr_is_on = False
         self._attr_extra_state_attributes = {}
         self._last_ts: datetime.datetime | None = None
@@ -212,10 +207,6 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         return self._attr_is_on
-
-    @property
-    def state(self):
-        return self.is_on
 
 
 class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):

@@ -3071,7 +3071,26 @@ class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     window = getattr(live_supervisor, "current_window", None)
                     base_path = getattr(window, "path", None)
                     if isinstance(base_path, str) and base_path:
-                        root = f"{STATIC_BASE}/{base_path.strip('/')}"
+                        # Index.json "Path" can be either:
+                        # - "2025/2025-12-07_Abu_Dhabi_Grand_Prix/2025-12-07_Race/"
+                        # - "2025-12-07_Abu_Dhabi_Grand_Prix/2025-12-07_Race/"
+                        # Ensure we have the year segment when missing so the resulting URL is usable.
+                        cleaned_base = base_path.strip("/")
+                        year = None
+                        try:
+                            if isinstance(reg, dict):
+                                session_coord = reg.get("session_coordinator")
+                                year = getattr(session_coord, "year", None)
+                        except Exception:
+                            year = None
+                        try:
+                            if cleaned_base and not re.match(r"^\d{4}/", f"{cleaned_base}/"):
+                                if year and str(year).isdigit():
+                                    cleaned_base = f"{int(year)}/{cleaned_base}"
+                        except Exception:
+                            # Keep best-effort base if regex/year parsing fails
+                            cleaned_base = base_path.strip("/")
+                        root = f"{STATIC_BASE}/{cleaned_base}"
                         clip_url = f"{root}/{path.lstrip('/')}"
             except Exception:
                 clip_url = None
