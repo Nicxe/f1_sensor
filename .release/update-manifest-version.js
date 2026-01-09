@@ -13,6 +13,69 @@ function parseArgs(argv) {
   return out;
 }
 
+function detectNewline(text) {
+  return text.includes("\r\n") ? "\r\n" : "\n";
+}
+
+function upsertVersionPreservingFormat(text, version) {
+  // 1) If the key exists, replace only the string value.
+  //    Keep whitespace around ":" exactly as-is.
+  const existing = /("version"\s*:\s*")([^"]*)(")/m;
+  if (existing.test(text)) {
+    return text.replace(existing, `$1${version}$3`);
+  }
+
+  // 2) If the key doesn't exist, insert it as the last top-level property.
+  //    We try hard to preserve the file's current formatting (single-line vs multi-line,
+  //    indentation, newline style) and only touch what's needed.
+  const newline = detectNewline(text);
+  const isMultiline = text.includes("\n");
+
+  if (!isMultiline) {
+    // Single-line JSON object: insert before final "}"
+    const lastBrace = text.lastIndexOf("}");
+    if (lastBrace === -1) return text;
+
+    const beforeBrace = text.slice(0, lastBrace);
+    const afterBrace = text.slice(lastBrace); // includes "}" and any trailing whitespace
+
+    // Determine whether object is empty (only "{" + whitespace)
+    const openBrace = beforeBrace.indexOf("{");
+    const inside = openBrace === -1 ? "" : beforeBrace.slice(openBrace + 1).trim();
+    const needsComma = inside.length > 0 && !inside.endsWith(",");
+
+    const insertion = `${needsComma ? "," : ""} "version": "${version}"`;
+    return `${beforeBrace}${insertion}${afterBrace}`;
+  }
+
+  // Multi-line JSON: insert a new line before the closing "}" and ensure
+  // the previous property has a trailing comma.
+  const lines = text.split(/\r?\n/);
+
+  // Find the closing brace line (ignoring trailing blank lines).
+  let closeIdx = lines.length - 1;
+  while (closeIdx > 0 && lines[closeIdx].trim() === "") closeIdx -= 1;
+  if (lines[closeIdx].trim() !== "}") {
+    // Fall back to returning original text if we can't confidently insert.
+    return text;
+  }
+
+  // Indentation: reuse the indentation of the first property line if possible.
+  const indentMatch = text.match(/^[ \t]+(?="[^"]+"\s*:)/m);
+  const indent = indentMatch ? indentMatch[0] : "  ";
+
+  // Find the last property line before "}".
+  let propIdx = closeIdx - 1;
+  while (propIdx >= 0 && !/:\s*/.test(lines[propIdx])) propIdx -= 1;
+
+  if (propIdx >= 0 && !lines[propIdx].trim().endsWith(",")) {
+    lines[propIdx] = `${lines[propIdx].replace(/\s*$/, "")},`;
+  }
+
+  lines.splice(closeIdx, 0, `${indent}"version": "${version}"`);
+  return lines.join(newline);
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const file = args.file;
@@ -26,14 +89,31 @@ function main() {
     process.exit(2);
   }
 
+  if (!fs.existsSync(file)) {
+    throw new Error(`File not found: ${file}`);
+  }
+
   const before = fs.readFileSync(file, "utf8");
 
-  // Replace only the value, preserving original whitespace/formatting.
-  const re = /("version"\s*:\s*")([^"]*)(")/;
-  const after = before.replace(re, `$1${version}$3`);
+  const after = upsertVersionPreservingFormat(before, version);
 
+  // If we still haven't changed anything, something is off (e.g., unexpected structure).
   if (after === before) {
-    throw new Error(`Could not find "version" field in ${file}`);
+    // If the manifest already has the desired version, that's fine (idempotent).
+    let parsed;
+    try {
+      parsed = JSON.parse(before);
+    } catch (e) {
+      throw new Error(
+        `Could not update or insert "version" field in ${file} (unexpected format)`
+      );
+    }
+    if (String(parsed?.version ?? "") === String(version)) {
+      return;
+    }
+    throw new Error(
+      `Could not update or insert "version" field in ${file} (unexpected format)`
+    );
   }
 
   // Validate we didn't break JSON.
