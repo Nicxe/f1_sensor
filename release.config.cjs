@@ -50,6 +50,16 @@ module.exports = {
         },
         writerOpts: {
           mainTemplate,
+          // `@semantic-release/release-notes-generator` (via conventional-changelog) does NOT
+          // automatically expose semantic-release's branch config like `{ prerelease: true }`
+          // to the Handlebars template context. We inject our own boolean so `{{#if prerelease}}`
+          // in `.release/release-notes.hbs` behaves predictably.
+          finalizeContext: (context) => {
+            const v = String(context?.version || "");
+            // prerelease versions include a "-" suffix, e.g. "1.2.3-beta.1"
+            context.prerelease = v.includes("-");
+            return context;
+          },
           groupBy: "type",
           commitGroupsSort: "title",
           commitsSort: ["scope", "subject"],
@@ -116,7 +126,7 @@ module.exports = {
       "@semantic-release/exec",
       {
         prepareCmd:
-          "jq '.version = \"${nextRelease.version}\"' custom_components/f1_sensor/manifest.json > manifest.tmp && mv manifest.tmp custom_components/f1_sensor/manifest.json && cd custom_components && zip -r f1_sensor.zip f1_sensor",
+          "jq --arg version \"${nextRelease.version}\" '.version = $version' custom_components/f1_sensor/manifest.json > custom_components/f1_sensor/manifest.tmp && mv custom_components/f1_sensor/manifest.tmp custom_components/f1_sensor/manifest.json && (cd custom_components && rm -f f1_sensor.zip && zip -r f1_sensor.zip f1_sensor)",
 
         // After a successful release, comment on issues referenced via "Fixes #123" etc
         // in commits included in this release. GitHub will still close issues automatically
