@@ -7,5 +7,5 @@
     "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/Nicxe/f1_sensor/issues",
     "requirements": ["tzfpy==1.0.0", "python-dateutil>=2.8"],
-    "version": "3.0.0-beta.5"
+    "version": "3.0.0-beta.7"
 }
