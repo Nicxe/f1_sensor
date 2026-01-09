@@ -126,7 +126,7 @@ module.exports = {
       "@semantic-release/exec",
       {
         prepareCmd:
-          "jq --arg version \"${nextRelease.version}\" '.version = $version' custom_components/f1_sensor/manifest.json > custom_components/f1_sensor/manifest.tmp && mv custom_components/f1_sensor/manifest.tmp custom_components/f1_sensor/manifest.json && (cd custom_components && rm -f f1_sensor.zip && zip -r f1_sensor.zip f1_sensor)",
+          "node .release/update-manifest-version.js --file custom_components/f1_sensor/manifest.json --version \"${nextRelease.version}\" && (cd custom_components && rm -f f1_sensor.zip && zip -r f1_sensor.zip f1_sensor)",
 
         // After a successful release, comment on issues referenced via "Fixes #123" etc
         // in commits included in this release. GitHub will still close issues automatically
