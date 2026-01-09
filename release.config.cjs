@@ -50,6 +50,16 @@ module.exports = {
         },
         writerOpts: {
           mainTemplate,
+          // `@semantic-release/release-notes-generator` (via conventional-changelog) does NOT
+          // automatically expose semantic-release's branch config like `{ prerelease: true }`
+          // to the Handlebars template context. We inject our own boolean so `{{#if prerelease}}`
+          // in `.release/release-notes.hbs` behaves predictably.
+          finalizeContext: (context) => {
+            const v = String(context?.version || "");
+            // prerelease versions include a "-" suffix, e.g. "1.2.3-beta.1"
+            context.prerelease = v.includes("-");
+            return context;
+          },
           groupBy: "type",
           commitGroupsSort: "title",
           commitsSort: ["scope", "subject"],
