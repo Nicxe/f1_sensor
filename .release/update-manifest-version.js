@@ -89,18 +89,22 @@ function main() {
     process.exit(2);
   }
 
-  // Home Assistant validates manifest.json "version" strictly as MAJOR.MINOR.PATCH.
-  // semantic-release prerelease versions look like "3.0.0-beta.7" and will make HA ignore the
-  // integration (it then reports "Integration '<domain>' not found").
-  // Therefore: if the version is a semver prerelease, store only the base part in manifest.json.
-  const semverBaseMatch = String(versionRaw).match(/^(\d+\.\d+\.\d+)(?:-.+)?$/);
-  const version = semverBaseMatch ? semverBaseMatch[1] : String(versionRaw);
+  // Keep semantic-release version as-is (including prereleases), but normalize the prerelease
+  // tag casing to match the project's manifest convention (e.g. "beta" -> "Beta").
+  // Example: "3.0.0-beta.7" -> "3.0.0-Beta.7"
+  const version = String(versionRaw).replace(/-(\w)/, (_, c) => `-${String(c).toUpperCase()}`);
 
   if (!fs.existsSync(file)) {
     throw new Error(`File not found: ${file}`);
   }
 
   const before = fs.readFileSync(file, "utf8");
+  let beforeVersion;
+  try {
+    beforeVersion = JSON.parse(before)?.version;
+  } catch (e) {
+    beforeVersion = undefined;
+  }
 
   const after = upsertVersionPreservingFormat(before, version);
 
@@ -127,6 +131,20 @@ function main() {
   JSON.parse(after);
 
   fs.writeFileSync(file, after);
+
+  // Log what we actually wrote, so Actions output is unambiguous.
+  let writtenVersion;
+  try {
+    writtenVersion = JSON.parse(fs.readFileSync(file, "utf8"))?.version;
+  } catch (e) {
+    writtenVersion = undefined;
+  }
+  // eslint-disable-next-line no-console
+  console.log(
+    `[update-manifest-version] ${file}: ${String(beforeVersion ?? "")} -> ${String(
+      versionRaw
+    )} (written: ${String(writtenVersion ?? "")})`
+  );
 }
 
 main();
