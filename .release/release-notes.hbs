@@ -7,8 +7,10 @@
 ### {{title}}
 {{#each commits}}
 - {{subject}}
+{{#if bodyIndented}}
+{{bodyIndented}}
+{{/if}}
 {{/each}}
-
 {{/each}}
 
 ---
