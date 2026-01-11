@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & Support
+    url: https://community.home-assistant.io/t/formula-1-racing-sensor/880842
+    about: For questions, help, and discussions about F1 Sensor, please use our dedicated Home Assistant community forum thread.
+  - name: 📖 Documentation
+    url: https://nicxe.github.io/f1_sensor/
+    about: Check the documentation before opening an issue.
