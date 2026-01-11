@@ -17,7 +17,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import EntityCategory
 
-from .const import DOMAIN
+from .const import DOMAIN, ENABLE_DEVELOPMENT_MODE_UI
 from .entity import F1AuxEntity, F1BaseEntity
 from .const import (
     CONF_OPERATION_MODE,
@@ -194,13 +194,15 @@ async def async_setup_entry(
                 )
             )
         elif key == "live_timing_diagnostics":
-            sensors.append(
-                F1LiveTimingModeSensor(
-                    hass,
-                    entry.entry_id,
-                    base,
+            # Dev-only diagnostic sensor; hide it entirely unless dev UI is enabled.
+            if ENABLE_DEVELOPMENT_MODE_UI:
+                sensors.append(
+                    F1LiveTimingModeSensor(
+                        hass,
+                        entry.entry_id,
+                        base,
+                    )
                 )
-            )
         elif cls and coord:
             sensors.append(
                 cls(
