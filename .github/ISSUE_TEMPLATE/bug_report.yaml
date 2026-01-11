@@ -40,6 +40,22 @@ body:
     validations:
       required: true
 
+  - type: markdown
+    attributes:
+      value: |
+        ### Enable Debug Logging for F1 Sensor
+
+        Before submitting a bug report, please enable debug logging:
+
+        1. Go to **Settings → Devices & Services → Integrations**
+        2. Find **F1 Sensor** and click the three dots → **Enable Debug Logging**
+        3. Restart Home Assistant
+        4. Reproduce the issue
+        5. Go to **Settings → System → Logs**
+        6. Download the full log or copy the relevant part for F1 Sensor
+
+        Paste the debug log below.
+
   - type: textarea
     id: logs
     attributes:
