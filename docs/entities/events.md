@@ -1,20 +1,24 @@
 ---
 id: events
-title: Race Control (beta)
+title: Events
 ---
 
+## Home Assistant Events
 
+Home Assistant provides an **Event Bus** that integrations can use to publish real-time information for low-latency automations and triggers.  
+Events are ideal for transient signals and instantaneous state changes that should be reacted to immediately, rather than stored as long-lived sensor states.
 
-### Race Control messages
+For a general introduction to how events work in Home Assistant, see:  
+https://www.home-assistant.io/integrations/event/
 
-Race Control messages are sent as events in Home Assistant under the event type `f1_sensor_race_control_event`.  
+## Event Streams
 
-These include flags, steward notes, incident reports, and other live race control communications.  
+### Race Control
 
-::::warning BETA
-Race Control messages are currently available only in the beta state. Functionality may be limited, and changes can occur in upcoming releases.
-::::
+Race Control messages are available both as a **sensor** and as **events** in Home Assistant.  
+Events are published under the event type `f1_sensor_race_control_event` and act as a real-time complement to the Race Control sensor.
 
+They include flags, steward notes, incident reports, and other live race control communications.  
 
 
 #### Example payloads
@@ -53,6 +57,13 @@ data:
 ```
 
 :::info
-Currently, Race Control is published as events only.
-In a future release, these messages will also be exposed as a sensor
-::::
+Race Control is now exposed both as a [sensor](/entities/live-data#race-control) (for dashboards and history) and as events (for real-time automations and triggers).  
+The event stream remains available as a complementary, low-latency feed alongside the sensor.
+:::
+
+## Future Event Streams
+
+The Event Bus support in F1 Sensor is designed to be extensible.  
+While Race Control is the first published stream, additional real-time events may be added in future releases, such as:
+
+This page will be extended as new event types are introduced.

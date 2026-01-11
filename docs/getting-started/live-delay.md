@@ -67,9 +67,6 @@ When you see the session start on your TV, press the `button.f1_match_live_delay
 `number.f1_live_delay`  
 
 
-<!-- TODO: Short GIF showing:
-     Switch ON → Session goes live → User presses Match button → Confirmation -->
-
 :::info When does the session go live?
 
 The integration listens to the session state from `sensor.f1_session_status`. The moment this sensor switches from `pre` to `live`, the session is considered started.

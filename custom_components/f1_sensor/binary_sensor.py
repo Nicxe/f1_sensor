@@ -31,6 +31,7 @@ async def async_setup_entry(
     enabled = entry.data.get("enabled_sensors", [])
 
     sensors = []
+    # Useful for power users/automations even when dev UI is disabled.
     if "live_timing_diagnostics" in enabled:
         sensors.append(
             F1LiveTimingOnlineBinarySensor(
