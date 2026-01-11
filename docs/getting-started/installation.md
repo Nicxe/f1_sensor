@@ -18,9 +18,6 @@ This guide walks you through installation and configuration in Home Assistant, s
 2. Add it to Home Assistant  
 3. Select which sensors you want to use  
 
-
-![Install and configure](/img/install_config.gif)
-
 ---
 
 ## Step 1 - Install the integration
@@ -98,3 +95,5 @@ You can always change this later via
 Once configuration is complete, the sensors are created automatically and are ready to be used in dashboards, automations, and templates.
 
 ---
+
+![Install and configure](/img/install_config.gif)

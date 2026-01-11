@@ -19,7 +19,10 @@ Information that rarely changes, such as schedules, drivers, circuits, and champ
 | [sensor.f1_season_results](#season-results)                                       | All season race results                           | 
 | [sensor.f1_driver_points_progression](#driver-points-progression)                 | Drivers Point Progression                         | 
 | [sensor.f1_constructor_points_progression](#constructor-points-progression)       | Constructors Point Progression                    | 
-| [binary_sensor.f1_race_week](#race-week)                                     | `on` during race week                             | 
+| [binary_sensor.f1_race_week](#race-week)                                          | `on` during race week                             | 
+| [sensor.f1_sprint_results](#sprint-results)                                       | Sprint classification results |
+| [sensor.f1_fia_documents](#fia-decision-documents)                                | FIA decisions and documents for the current weekend |
+
 
 ::::info
 Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In addition, a `_local` variant such as `race_start_local` is available. These values use the circuit's timezone so you can easily create automations at the correct local time.
@@ -67,10 +70,16 @@ Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In additi
 ---
 
 ### Current Season Race 
-`sensor.f1_next_race` - Number of races in the current season.
+`sensor.f1_season_calendar` - Number of races in the current season.
 
 **State**
+
   - Integer: count of races in the season.
+
+**Example**
+```text
+24
+```
 
 **Attributes**
 
@@ -83,10 +92,16 @@ Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In additi
 
 
 ### Driver Standings
-`sensor.f1_next_race` - Driver standings snapshot from Ergast.
+`sensor.f1_driver_standings` - Driver standings snapshot from Ergast.
 
 **State**
+
 - Integer: number of drivers in the standings list.
+
+**Example**
+```text
+20
+```
 
 **Attributes**
 
@@ -99,10 +114,16 @@ Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In additi
 ---
 
 ### Constructor Standings
-`sensor.f1_next_race` - Constructor standings snapshot from Ergast.
+`sensor.f1_constructor_standings` - Constructor standings snapshot from Ergast.
 
 **State**
+
 - Integer: number of constructors in the standings list.
+
+**Example**
+```text
+10
+```
 
 **Attributes**
 
@@ -118,6 +139,11 @@ Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In additi
 
 **State**
 - Number: current air temperature (°C), or `unknown`.
+
+**Example**
+```text
+18.6
+```
 
 **Attributes**
 
@@ -158,12 +184,17 @@ Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In additi
 ---
 
 ### Last Race Results
-`sensor.f1_next_race` - Results of the most recent race; state is the winner’s family name.
+`sensor.f1_last_race_results` - Results of the most recent race; state is the winner’s family name.
 
-- State
+**State**
   - String: winner surname, or `unknown`.
 
-- Attributes
+**Example**
+```text
+Verstappen
+```
+
+**Attributes**
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -186,10 +217,16 @@ Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In additi
 ---
 
 ### Season Results
-`sensor.f1_next_race` - All results across the current season.
+`sensor.f1_season_results` - All results across the current season.
 
 **State**
+
   - Integer: number of races with results.
+
+**Example**
+```text
+22
+```
 
 **Attributes**
 
@@ -222,10 +259,16 @@ recorder:
 
 
 ### Driver Points Progression
-`sensor.f1_next_race` - Per‑round driver points (including sprint) with cumulative series, suitable for charts.
+`sensor.f1_driver_points_progression` - Per‑round driver points (including sprint) with cumulative series, suitable for charts.
 
 **State**
+
   - Integer: number of rounds covered.
+
+**Example**
+```text
+12
+```
 
 **Attributes**
 
@@ -240,10 +283,16 @@ recorder:
 ---
 
 ### Constructor Points Progression
-`sensor.f1_next_race` - Per‑round constructor points (including sprint) with cumulative series.
+`sensor.f1_constructor_points_progression` - Per‑round constructor points (including sprint) with cumulative series.
 
 **State**
+
   - Integer: number of rounds covered.
+
+**Example**
+```text
+12
+```
 
 **Attributes**
 
@@ -256,10 +305,15 @@ recorder:
 
 
 ### Race Week 
-`sensor.f1_next_race` - True when the next race is scheduled in the current calendar week.
+`binary_sensor.f1_race_week` - True when the next race is scheduled in the current calendar week.
 
 **State (on/off)**
 - `on` during weeks containing the next race date; otherwise `off`.
+
+**Example**
+```text
+on
+```
 
 **Attributes**
 
@@ -270,6 +324,50 @@ recorder:
 
 ---
 
-::::note API-update
-The integration fetches fresh data from the Jolpica-F1 API every 1 hours.
+
+
+## Sprint Results
+
+Classification results for sprint sessions.
+
+**State**
+- `finished` when results are available, or `unknown` when none are available.
+
+**Example**
+```text
+finished
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| classification | list | `[ { position, driver, team, time, points } ]` |
+| fastest_lap | string | Driver with fastest lap, when available |
+
+---
+
+## FIA Decision Documents
+
+::::caution BETA
+This sensor is in BETA. Data structure and availability may change as the upstream feed and parsing are refined.
 ::::
+
+Collects FIA decisions and official documents for the current race weekend.
+
+**State**
+- Integer: number of available documents, or `unknown` when none are available.
+
+**Example**
+```text
+3
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| documents | list | `[ { title, type, published_at, url } ]` |
+| last_update | string | ISO‑8601 timestamp of the latest document |
+
+
