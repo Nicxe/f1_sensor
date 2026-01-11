@@ -5,16 +5,24 @@
         "title": "Configurazione sensore F1",
         "data": {
           "sensor_name": "Nome dispositivo",
-          "enabled_sensors": "Sensori abilitati"
+          "enabled_sensors": "Sensori abilitati",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       },
       "reconfigure": {
         "title": "Riconfigura sensore F1",
         "data": {
           "sensor_name": "Nome dispositivo",
-          "enabled_sensors": "Sensori abilitati"
+          "enabled_sensors": "Sensori abilitati",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
         }
       }
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
     }
   },
   "entity": {
@@ -27,10 +35,16 @@
       "current_session": { "name": "Sessione corrente" },
       "last_race_results": { "name": "Risultati ultima gara" },
       "season_results": { "name": "Risultati della stagione" },
-      "safety_car": { "name": "Safety car" }
+      "sprint_results": { "name": "Risultati sprint" },
+      "race_control": { "name": "Direzione gara" },
+      "safety_car": { "name": "Safety car" },
+      "pitstops": { "name": "Pit stop" },
+      "fia_documents": { "name": "Decisioni FIA" },
+      "live_timing_mode": { "name": "Modalità Live Timing" }
     },
     "binary_sensor": {
-      "race_week": { "name": "Settimana di gara" }
+      "race_week": { "name": "Settimana di gara" },
+      "live_timing_online": { "name": "Live Timing online" }
     }
   }
 }

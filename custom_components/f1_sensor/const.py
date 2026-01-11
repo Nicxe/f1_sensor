@@ -1,7 +1,25 @@
 from homeassistant.const import Platform
 
 DOMAIN = "f1_sensor"
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.NUMBER,
+    Platform.SWITCH,
+]
+
+CONF_OPERATION_MODE = "operation_mode"
+CONF_REPLAY_FILE = "replay_file"
+
+OPERATION_MODE_LIVE = "live"
+OPERATION_MODE_DEVELOPMENT = "development"
+DEFAULT_OPERATION_MODE = OPERATION_MODE_LIVE
+
+# Gate for exposing development mode controls in the UI.
+# Keep this False in released versions to avoid confusing users;
+# flip to True locally when you want to work with replay/development mode.
+ENABLE_DEVELOPMENT_MODE_UI = False
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 
@@ -23,3 +41,12 @@ LIVETIMING_INDEX_URL = "https://livetiming.formula1.com/static/{year}/Index.json
 FAST_RETRY_SEC = 5
 MAX_RETRY_SEC = 60
 BACK_OFF_FACTOR = 2
+
+# FIA document scraping defaults (best effort, update slug each season if FIA changes structure)
+FIA_DOCUMENTS_BASE_URL = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14"
+FIA_SEASON_LIST_URL = f"{FIA_DOCUMENTS_BASE_URL}/season"
+FIA_SEASON_FALLBACK_URL = (
+    f"{FIA_DOCUMENTS_BASE_URL}/season/season-2025-2071"
+)
+FIA_DOCS_POLL_INTERVAL = 900  # seconds
+FIA_DOCS_FETCH_TIMEOUT = 15

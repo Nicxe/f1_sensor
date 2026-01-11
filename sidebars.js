@@ -10,7 +10,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Getting Started',
-      items: ['getting-started/installation', 'getting-started/add-integration'],
+      items: ['getting-started/installation', 'getting-started/live-delay'],
     },
     {
       type: 'category',

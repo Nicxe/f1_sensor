@@ -1,4 +1,9 @@
 node_modules
 build
 .DS_Store
-custom_components/f1_sensor/releasenote.md
+releasenote.md
+custom_components/f1_sensor/v3-ReleaseNote.MD
+*.pyc
+node_modules/
+npm-debug.log*
+f1_sensor.zip

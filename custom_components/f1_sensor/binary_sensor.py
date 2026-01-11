@@ -5,12 +5,19 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
-from .entity import F1BaseEntity
+from .const import (
+    CONF_OPERATION_MODE,
+    DEFAULT_OPERATION_MODE,
+    DOMAIN,
+    OPERATION_MODE_DEVELOPMENT,
+)
+from .entity import F1BaseEntity, F1AuxEntity
 from .helpers import normalize_track_status
 from homeassistant.util import dt as dt_util
 
@@ -24,6 +31,15 @@ async def async_setup_entry(
     enabled = entry.data.get("enabled_sensors", [])
 
     sensors = []
+    # Useful for power users/automations even when dev UI is disabled.
+    if "live_timing_diagnostics" in enabled:
+        sensors.append(
+            F1LiveTimingOnlineBinarySensor(
+                hass,
+                entry.entry_id,
+                base,
+            )
+        )
     if "race_week" in enabled:
         sensors.append(
             F1RaceWeekSensor(
@@ -55,7 +71,9 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
     def __init__(self, coordinator, name, unique_id, entry_id, device_name):
         super().__init__(coordinator, name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:calendar-range"
-        self._attr_device_class = BinarySensorDeviceClass.OCCUPANCY
+        # No device class: this is not a physical presence/occupancy type sensor.
+        # Using a device class here can lead to misleading UI semantics/translations.
+        self._attr_device_class = None
 
     def _get_next_race(self):
         data = self.coordinator.data
@@ -90,10 +108,6 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
         return start_of_week.date() <= next_race_dt.date() <= end_of_week.date()
 
     @property
-    def state(self):
-        return self.is_on
-
-    @property
     def extra_state_attributes(self):
         next_race_dt, race = self._get_next_race()
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -115,12 +129,9 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     def __init__(self, coordinator, name, unique_id, entry_id, device_name):
         super().__init__(coordinator, name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:car"
-        try:
-            from homeassistant.components.binary_sensor import BinarySensorDeviceClass
-
-            self._attr_device_class = BinarySensorDeviceClass.SAFETY
-        except Exception:
-            self._attr_device_class = None
+        # No device class: BinarySensorDeviceClass.SAFETY maps to "safe/unsafe"
+        # semantics (OFF="safe"), which is misleading for "safety car deployed".
+        self._attr_device_class = None
         self._attr_is_on = False
         self._attr_extra_state_attributes = {}
         self._last_ts: datetime.datetime | None = None
@@ -198,6 +209,102 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         return self._attr_is_on
 
+
+class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
+    """Diagnostic connectivity sensor for the live timing transport.
+
+    - ON: replay mode, or live timing window active with recent stream activity.
+    - OFF: outside window / idle.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:access-point"
+
+    def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
+        super().__init__(
+            name=f"{device_name}_live_timing_online",
+            unique_id=f"{entry_id}_live_timing_online",
+            entry_id=entry_id,
+            device_name=device_name,
+        )
+        self.hass = hass
+        self._entry_id = entry_id
+        self._unsub_live_state = None
+        self._online_threshold_s = 90.0
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        live_state = reg.get("live_state")
+        if live_state is not None and hasattr(live_state, "add_listener"):
+            try:
+                self._unsub_live_state = live_state.add_listener(
+                    lambda *_: self._safe_write_ha_state()
+                )
+                self.async_on_remove(self._unsub_live_state)
+            except Exception:
+                self._unsub_live_state = None
+
+        # Periodic update to refresh age-related attributes while running
+        try:
+            unsub = async_track_time_interval(
+                self.hass,
+                lambda *_: self._safe_write_ha_state(),
+                datetime.timedelta(seconds=10),
+            )
+            self.async_on_remove(unsub)
+        except Exception:
+            pass
+
+    def _compute_mode_and_ages(self) -> tuple[str, float | None, float | None, float | None, str | None]:
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        operation_mode = reg.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+        live_state = reg.get("live_state")
+        live_bus = reg.get("live_bus")
+
+        is_live_window = bool(getattr(live_state, "is_live", False)) if live_state is not None else False
+        reason = getattr(live_state, "reason", None) if live_state is not None else None
+
+        if operation_mode == OPERATION_MODE_DEVELOPMENT:
+            mode = "replay"
+        else:
+            mode = "live" if is_live_window else "idle"
+
+        hb_age = None
+        activity_age = None
+        effective_age = None
+        try:
+            if live_bus is not None:
+                hb_age = live_bus.last_heartbeat_age()
+                activity_age = live_bus.last_stream_activity_age()
+                effective_age = hb_age if hb_age is not None else activity_age
+        except Exception:
+            hb_age = activity_age = effective_age = None
+
+        return mode, hb_age, activity_age, effective_age, reason
+
     @property
-    def state(self):
-        return self.is_on
+    def is_on(self) -> bool:
+        mode, _, _, effective_age, _ = self._compute_mode_and_ages()
+        if mode == "replay":
+            return True
+        if mode != "live":
+            return False
+        # If we just armed the window and haven't seen frames yet, be optimistic.
+        if effective_age is None:
+            return True
+        return effective_age < self._online_threshold_s
+
+    @property
+    def extra_state_attributes(self):
+        mode, hb_age, activity_age, effective_age, reason = self._compute_mode_and_ages()
+        return {
+            "mode": mode,
+            "reason": reason,
+            "online_threshold_s": self._online_threshold_s,
+            "heartbeat_age_s": (round(hb_age, 1) if hb_age is not None else None),
+            "activity_age_s": (round(activity_age, 1) if activity_age is not None else None),
+            "effective_age_s": (round(effective_age, 1) if effective_age is not None else None),
+        }

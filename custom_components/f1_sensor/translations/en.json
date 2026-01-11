@@ -6,14 +6,14 @@
                 "data": {
                     "sensor_name": "Device name",
                     "enabled_sensors": "Enabled sensors",
-                    "enable_race_control": "Enable live F1 API (Race Control/Track/Session)",
-                    "live_delay_seconds": "Live update delay (seconds)",
-                    "favorite_drivers": "Favorite drivers (enter TLAs, comma-separated)"
+                    "operation_mode": "Operation mode",
+                    "replay_file": "Replay dump path",
+                    "enable_race_control": "Enable live F1 API (Race Control/Track/Session)"
                 },
                 "data_description": {
-                    "enable_race_control": "Connects to Formula 1 Live Timing via SignalR to receive live updates. If disabled, these live sensors are not created.",
-                    "live_delay_seconds": "Delay delivery of live messages to align with TV broadcast or streams.",
-                    "favorite_drivers": "Example: VER, LEC, NOR. Creates one sensor per driver."
+                    "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
+                    "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
+                    "enable_race_control": "Connects to Formula 1 Live Timing via SignalR to receive live updates. If disabled, these live sensors are not created."
                 }
             },
             "reconfigure": {
@@ -21,16 +21,20 @@
                 "data": {
                     "sensor_name": "Device name",
                     "enabled_sensors": "Enabled sensors",
-                    "enable_race_control": "Enable live F1 API",
-                    "live_delay_seconds": "Live update delay (seconds)",
-                    "favorite_drivers": "Favorite drivers (enter TLAs, comma-separated)"
+                    "operation_mode": "Operation mode",
+                    "replay_file": "Replay dump path",
+                    "enable_race_control": "Enable live F1 API"
                 },
                 "data_description": {
-                    "enable_race_control": "Connects to Formula 1 Live Timing to receive live updates. If disabled, these live sensors are not created.",
-                    "live_delay_seconds": "Delay delivery of live messages to align with TV broadcast or streams.",
-                    "favorite_drivers": "Example: VER, LEC, NOR. Creates one sensor per driver."
+                    "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
+                    "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
+                    "enable_race_control": "Connects to Formula 1 Live Timing to receive live updates. If disabled, these live sensors are not created."
                 }
             }
+        },
+        "error": {
+            "replay_required": "Select a replay dump file when Development mode is enabled.",
+            "replay_missing": "Replay dump file not found or unreadable."
         }
     },
     "entity": {
@@ -44,8 +48,18 @@
             "current_session": {"name": "Current session"},
             "last_race_results": {"name": "Last race results"},
             "season_results": {"name": "Season results"},
-            "safety_car": {"name": "Safety car"}
+            "sprint_results": {"name": "Sprint results"},
+            "race_control": {"name": "Race control"},
+            "safety_car": {"name": "Safety car"},
+            "top_three": {"name": "Top three (leader)"},
+            "pitstops": {"name": "Pit stops"},
+            "championship_prediction": {"name": "Championship prediction"},
+            "fia_documents": {"name": "FIA decisions"},
+            "live_timing_mode": {"name": "Live timing mode"}
         },
-        "binary_sensor": {"race_week": {"name": "Race week"}}
+        "binary_sensor": {
+            "race_week": {"name": "Race week"},
+            "live_timing_online": {"name": "Live timing online"}
+        }
     }
 }
