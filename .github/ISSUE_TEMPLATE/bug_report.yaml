@@ -1,0 +1,48 @@
+name: 🐞 Bug Report
+description: Report a problem with F1 Sensor
+title: "[Bug]: "
+labels: ["bug"]
+assignees: ["Nicxe"]
+body:
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I am running the latest version of F1 Sensor
+          required: true
+        - label: I have searched existing issues
+          required: true
+        - label: I have restarted Home Assistant
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: F1 Sensor Version
+      placeholder: e.g. 3.0.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Current Behavior
+      description: What is happening?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected Behavior
+      description: What should happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant Home Assistant logs
+      render: shell
