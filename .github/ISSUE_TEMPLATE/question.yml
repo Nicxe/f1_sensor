@@ -1,0 +1,9 @@
+name: ❓ Question
+description: Ask a question about F1 Sensor
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please use the Home Assistant Community Forum for support and questions:
+        https://community.home-assistant.io/t/formula-1-racing-sensor/880842
