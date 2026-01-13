@@ -24,6 +24,37 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      description: What device are you running Home Assistant on?
+      placeholder: e.g. Raspberry Pi 4, Intel NUC, VM on Proxmox
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation_type
+    attributes:
+      label: Home Assistant Installation Type
+      description: How is Home Assistant installed?
+      options:
+        - Home Assistant OS
+        - Home Assistant Container
+        - Home Assistant Core
+        - Supervised
+    validations:
+      required: true
+
+  - type: input
+    id: architecture
+    attributes:
+      label: System Architecture
+      description: If running in Container or VM, what architecture is it?
+      placeholder: e.g. aarch64, armv7, amd64
+    validations:
+
+
   - type: textarea
     id: current_behavior
     attributes:
