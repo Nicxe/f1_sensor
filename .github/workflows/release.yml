@@ -1,37 +1,21 @@
-name: release
+name: Release
 
 on:
   push:
-    branches:
-      - main
-      - beta
+    branches: [beta, main]
 
 permissions:
   contents: write
   issues: write
   pull-requests: write
-  packages: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   release:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: "https://npm.pkg.github.com"
-          scope: "@nicxe"
-
-      - run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - run: npx semantic-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    uses: nicxe/.github/.github/workflows/reusable-release.yml@main
+    with:
+      node_version: "22"
+    secrets: inherit
