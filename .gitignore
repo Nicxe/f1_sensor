@@ -7,3 +7,4 @@ custom_components/f1_sensor/v3-ReleaseNote.MD
 node_modules/
 npm-debug.log*
 f1_sensor.zip
+/F1 Live Timing API - Dumps
