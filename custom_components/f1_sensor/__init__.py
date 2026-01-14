@@ -438,7 +438,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if (need_fia_docs and race_coordinator is not None)
         else None
     )
-    year = datetime.utcnow().year
+    year = dt_util.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year, config_entry=entry)
     enable_rc = entry.data.get("enable_race_control", False)
     configured_delay = int(entry.data.get("live_delay_seconds", 0) or 0)

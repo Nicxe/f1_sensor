@@ -7,3 +7,8 @@ custom_components/f1_sensor/v3-ReleaseNote.MD
 node_modules/
 npm-debug.log*
 f1_sensor.zip
+/F1 Live Timing API - Dumps
+/custom_components/f1_sensor/.claude
+custom_components/f1_sensor/AGENTS.md
+custom_components/f1_sensor/CLAUDE.md
+/custom_components/f1_sensor/skills
