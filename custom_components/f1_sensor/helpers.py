@@ -4,6 +4,8 @@ import asyncio
 import time
 import re
 from datetime import datetime, timezone, timedelta
+
+import async_timeout
 from typing import Any, Dict, Optional, Callable, List
 from urllib.parse import urlencode, urljoin
 from json import JSONDecodeError
@@ -226,7 +228,7 @@ async def fetch_json(
                     _LOGGER.debug("HTTP cache HIT key=%s ttl_left=%.1fs", key, exp - now)
             return data
     except Exception:
-        pass
+        _LOGGER.debug("Cache lookup failed for key=%s", key, exc_info=True)
 
     # In-flight dedup
     fut = inflight_map.get(key)
@@ -265,28 +267,29 @@ async def fetch_json(
                 _LOGGER.debug("HTTP cache MISS key=%s -> fetching", key)
         if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
             _record_jolpica_miss(hass, key)
-        async with session.get(url, params=params, headers=headers) as resp:
-            resp.raise_for_status()
-            text = await resp.text()
-            data = json.loads(text.lstrip("\ufeff"))
-            # Update cache
-            try:
-                cache_map[key] = (now + max(1, int(ttl_seconds)), data)
-            except Exception:
-                pass
-            # Persist simplified record (data only). Validation headers are optional future work.
-            try:
-                persist_store[key] = {
-                    "data": data,
-                    "saved_at": time.time(),
-                }
-                if callable(persist_save):
-                    # Save debounced by caller; we just request a save
-                    persist_save()
-            except Exception:
-                pass
-            fut.set_result(data)
-            return data
+        async with async_timeout.timeout(30):
+            async with session.get(url, params=params, headers=headers) as resp:
+                resp.raise_for_status()
+                text = await resp.text()
+        data = json.loads(text.lstrip("\ufeff"))
+        # Update cache
+        try:
+            cache_map[key] = (now + max(1, int(ttl_seconds)), data)
+        except Exception:
+            _LOGGER.debug("Failed to update cache for key=%s", key, exc_info=True)
+        # Persist simplified record (data only). Validation headers are optional future work.
+        try:
+            persist_store[key] = {
+                "data": data,
+                "saved_at": time.time(),
+            }
+            if callable(persist_save):
+                # Save debounced by caller; we just request a save
+                persist_save()
+        except Exception:
+            _LOGGER.debug("Failed to persist data for key=%s", key, exc_info=True)
+        fut.set_result(data)
+        return data
     except Exception as err:
         if not fut.done():
             fut.set_exception(err)
@@ -357,7 +360,7 @@ async def fetch_text(
                     _LOGGER.debug("HTTP text cache HIT key=%s ttl_left=%.1fs", key, exp - now)
             return data
     except Exception:
-        pass
+        _LOGGER.debug("Text cache lookup failed for key=%s", key, exc_info=True)
 
     fut = inflight_map.get(key)
     if fut is not None and not fut.done():
@@ -393,24 +396,25 @@ async def fetch_text(
                 _LOGGER.debug("HTTP text cache MISS key=%s -> fetching", key)
         if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
             _record_jolpica_miss(hass, key)
-        async with session.get(url, params=params, headers=headers) as resp:
-            resp.raise_for_status()
-            text = await resp.text()
-            try:
-                cache_map[key] = (now + max(1, int(ttl_seconds)), text)
-            except Exception:
-                pass
-            try:
-                persist_store[key] = {
-                    "data": text,
-                    "saved_at": time.time(),
-                }
-                if callable(persist_save):
-                    persist_save()
-            except Exception:
-                pass
-            fut.set_result(text)
-            return text
+        async with async_timeout.timeout(30):
+            async with session.get(url, params=params, headers=headers) as resp:
+                resp.raise_for_status()
+                text = await resp.text()
+        try:
+            cache_map[key] = (now + max(1, int(ttl_seconds)), text)
+        except Exception:
+            _LOGGER.debug("Failed to update text cache for key=%s", key, exc_info=True)
+        try:
+            persist_store[key] = {
+                "data": text,
+                "saved_at": time.time(),
+            }
+            if callable(persist_save):
+                persist_save()
+        except Exception:
+            _LOGGER.debug("Failed to persist text data for key=%s", key, exc_info=True)
+        fut.set_result(text)
+        return text
     except Exception as err:
         if not fut.done():
             fut.set_exception(err)

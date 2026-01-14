@@ -4,6 +4,7 @@
     "codeowners": ["@Nicxe"],
     "config_flow": true,
     "documentation": "https://github.com/Nicxe/f1_sensor",
+    "homeassistant": "2024.1.0",
     "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/Nicxe/f1_sensor/issues",
     "requirements": ["tzfpy>=1.1.0", "python-dateutil>=2.8"],
