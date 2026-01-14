@@ -29,7 +29,8 @@ The data for these entities comes from the F1 Live Timing API, which is unoffici
 | [sensor.f1_current_tyres](#current-tyres)             | Current tyre compound per driver |
 | [sensor.f1_top_three](#top-three)                     | Dedicated sensors for current P1, P2 and P3 |
 | [sensor.f1_race_control](#race-control)               | Race Control messages feed (flags, incidents, key updates) |
-
+| [sensor.f1__championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) |
+| [sensor.f1__championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) |
 
 
 ---
@@ -344,4 +345,101 @@ Feed-style sensor exposing Race Control messages such as flags, incidents, and k
 | history | list | Rolling list of recent messages with timestamps |
 
 ---
+
+## Championship Prediction (Drivers)
+
+Predicted Drivers Championship winner and points table, sourced from the live ChampionshipPrediction stream.
+
+**State**
+- Predicted P1 driver TLA, or `unknown` when not available.
+
+**Example**
+```text
+VER
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| predicted_driver_p1 | object | `{ racing_number, tla, points, entry }` |
+| drivers | object | Map of driver keys to prediction entries |
+| last_update | string | ISO-8601 timestamp of the last update |
+
+
+## Championship Prediction (Teams)
+
+Predicted Constructors Championship winner and points table, sourced from the live ChampionshipPrediction stream.
+
+**State**
+- Predicted P1 team name, or `unknown` when not available.
+
+**Example**
+```text
+Red Bull Racing
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| predicted_team_p1 | object | `{ team_key, team_name, points, entry }` |
+| teams | object | Map of team keys to prediction entries |
+| last_update | string | ISO-8601 timestamp of the last update |
+
+## Championship Prediction (Drivers)
+
+Predicted Drivers Championship winner and points table, sourced from the live ChampionshipPrediction stream.
+
+**State**
+- Predicted P1 driver TLA, or `unknown` when not available.
+
+**Example**
+```text
+VER
+```
+
+**Attributes**
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| predicted_driver_p1 | object | `{ racing_number, tla, points, entry }` – The driver currently predicted to lead the championship |
+| predicted_driver_p1.entry | object | `{ RacingNumber, CurrentPosition, PredictedPosition, CurrentPoints, PredictedPoints }` – Prediction details for the leading driver |
+| drivers | object | `{ [racing_number]: entry }` – Map of all drivers keyed by racing number, each using the same prediction entry structure |
+| last_update | string | ISO-8601 timestamp of the last prediction update |
+| icon | string | MDI icon used by the sensor |
+| friendly_name | string | Display name in Home Assistant |
+
+
+
+
+## Championship Prediction (Teams)
+
+Predicted Constructors Championship winner and points table, sourced from the live ChampionshipPrediction stream.
+
+**State**
+- Predicted P1 team name, or `unknown` when not available.
+
+**Example**
+```text
+Red Bull Racing
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| predicted_team_p1 | object | `{ team_key, team_name, points, entry }` – The team currently predicted to lead the constructors' championship |
+| predicted_team_p1.entry | object | `{ TeamKey, TeamName, CurrentPosition, PredictedPosition, CurrentPoints, PredictedPoints }` – Prediction details for the leading team |
+| teams | object | `{ [team_key]: entry }` – Map of all teams keyed by team key, each using the same prediction entry structure |
+| last_update | string | ISO-8601 timestamp of the last prediction update |
+| icon | string | MDI icon used by the sensor |
+| friendly_name | string | Display name in Home Assistant |
+
+
+---
+
+
 
