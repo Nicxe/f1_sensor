@@ -1,0 +1,14 @@
+name: Sync beta back to dev
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: ${{ github.event.release.prerelease == true && github.event.release.target_commitish == 'beta' }}
+    uses: nicxe/.github/.github/workflows/reusable-sync-beta-to-dev.yml@main
+    secrets: inherit
