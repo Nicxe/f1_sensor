@@ -19,6 +19,7 @@ CONF_REPLAY_FILE = "replay_file"
 CONF_RACE_WEEK_SUNDAY_START = "race_week_sunday_start"
 CONF_RACE_WEEK_START_DAY = "race_week_start_day"
 RACE_WEEK_START_MONDAY = "monday"
+RACE_WEEK_START_SATURDAY = "saturday"
 RACE_WEEK_START_SUNDAY = "sunday"
 DEFAULT_RACE_WEEK_START_DAY = RACE_WEEK_START_MONDAY
 
@@ -29,7 +30,7 @@ DEFAULT_OPERATION_MODE = OPERATION_MODE_LIVE
 # Gate for exposing development mode controls in the UI.
 # Keep this False in released versions to avoid confusing users;
 # flip to True locally when you want to work with replay/development mode.
-ENABLE_DEVELOPMENT_MODE_UI = False
+ENABLE_DEVELOPMENT_MODE_UI = True
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 

@@ -20,6 +20,7 @@ from .const import (
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
     RACE_WEEK_START_MONDAY,
+    RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
 )
 from .entity import F1BaseEntity, F1AuxEntity
@@ -33,12 +34,20 @@ RACE_SWITCH_GRACE = datetime.timedelta(hours=3)
 
 def _normalize_race_week_start(data: dict) -> str:
     value = data.get(CONF_RACE_WEEK_START_DAY)
-    if value in (RACE_WEEK_START_MONDAY, RACE_WEEK_START_SUNDAY):
+    if value in (
+        RACE_WEEK_START_MONDAY,
+        RACE_WEEK_START_SATURDAY,
+        RACE_WEEK_START_SUNDAY,
+    ):
         return value
     legacy = data.get(CONF_RACE_WEEK_SUNDAY_START)
     if isinstance(legacy, bool):
         return RACE_WEEK_START_SUNDAY if legacy else RACE_WEEK_START_MONDAY
-    if legacy in (RACE_WEEK_START_MONDAY, RACE_WEEK_START_SUNDAY):
+    if legacy in (
+        RACE_WEEK_START_MONDAY,
+        RACE_WEEK_START_SATURDAY,
+        RACE_WEEK_START_SUNDAY,
+    ):
         return legacy
     return DEFAULT_RACE_WEEK_START_DAY
 
@@ -140,9 +149,12 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
         now_local = dt_util.as_local(dt_util.utcnow())
         next_race_local = dt_util.as_local(next_race_dt)
 
-        first_weekday = (
-            6 if self._race_week_start == RACE_WEEK_START_SUNDAY else 0
-        )  # Monday=0..Sunday=6
+        if self._race_week_start == RACE_WEEK_START_SUNDAY:
+            first_weekday = 6
+        elif self._race_week_start == RACE_WEEK_START_SATURDAY:
+            first_weekday = 5
+        else:
+            first_weekday = 0
         days_since_week_start = (now_local.weekday() - first_weekday) % 7
         start_of_week = now_local.date() - datetime.timedelta(days=days_since_week_start)
         end_of_week = start_of_week + datetime.timedelta(days=6)

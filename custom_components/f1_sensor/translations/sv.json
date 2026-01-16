@@ -15,7 +15,7 @@
           "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
           "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
           "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
-          "race_week_start_day": "Välj om tävlingsveckan börjar på söndag eller måndag."
+          "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag."
         }
       },
       "reconfigure": {
@@ -32,7 +32,7 @@
           "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
           "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
           "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
-          "race_week_start_day": "Välj om tävlingsveckan börjar på söndag eller måndag."
+          "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag."
         }
       }
     },
