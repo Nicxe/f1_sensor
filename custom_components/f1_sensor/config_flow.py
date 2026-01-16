@@ -6,7 +6,9 @@ from homeassistant import config_entries
 
 from .const import (
     CONF_OPERATION_MODE,
+    CONF_RACE_WEEK_SUNDAY_START,
     CONF_REPLAY_FILE,
+    DEFAULT_RACE_WEEK_SUNDAY_START,
     DEFAULT_OPERATION_MODE,
     DOMAIN,
     ENABLE_DEVELOPMENT_MODE_UI,
@@ -114,6 +116,12 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 default=current.get("enabled_sensors", default_enabled),
             ): cv.multi_select(sensor_options),
             vol.Optional("enable_race_control", default=False): cv.boolean,
+            vol.Optional(
+                CONF_RACE_WEEK_SUNDAY_START,
+                default=current.get(
+                    CONF_RACE_WEEK_SUNDAY_START, DEFAULT_RACE_WEEK_SUNDAY_START
+                ),
+            ): cv.boolean,
         }
 
         # Only expose development-related controls when explicitly enabled.
@@ -251,6 +259,12 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional(
                 "enable_race_control",
                 default=current.get("enable_race_control", False),
+            ): cv.boolean,
+            vol.Optional(
+                CONF_RACE_WEEK_SUNDAY_START,
+                default=current.get(
+                    CONF_RACE_WEEK_SUNDAY_START, DEFAULT_RACE_WEEK_SUNDAY_START
+                ),
             ): cv.boolean,
         }
 

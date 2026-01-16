@@ -27,6 +27,7 @@ from .const import (
 )
 from .helpers import get_timezone, normalize_track_status
 from .live_window import STATIC_BASE
+from .replay_entities import F1ReplayStatusSensor
 from logging import getLogger
 from homeassistant.util import dt as dt_util
 
@@ -213,6 +214,20 @@ async def async_setup_entry(
                     base,
                 )
             )
+
+    # Replay status sensor
+    replay_controller = data.get("replay_controller")
+    if replay_controller is not None:
+        sensors.append(
+            F1ReplayStatusSensor(
+                replay_controller,
+                f"{base}_replay_status",
+                f"{entry.entry_id}_replay_status",
+                entry.entry_id,
+                base,
+            )
+        )
+
     async_add_entities(sensors, True)
 
 
@@ -2504,6 +2519,13 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         raw = self._extract_current()
         new_state = self._map_status(raw)
         prev = self._attr_native_value
+        try:
+            getLogger(__name__).debug(
+                "SessionStatus: coordinator update, raw=%s, mapped=%s, prev=%s",
+                raw, new_state, prev
+            )
+        except Exception:
+            pass
         if prev == new_state:
             return
         try:

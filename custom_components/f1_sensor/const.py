@@ -7,10 +7,17 @@ PLATFORMS: list[Platform] = [
     Platform.BUTTON,
     Platform.NUMBER,
     Platform.SWITCH,
+    Platform.SELECT,
 ]
+
+# Replay Mode
+REPLAY_CACHE_DIR = "f1_replay_cache"
+REPLAY_CACHE_RETENTION_DAYS = 1  # Short retention - cache is deleted on stop, this is just backup
 
 CONF_OPERATION_MODE = "operation_mode"
 CONF_REPLAY_FILE = "replay_file"
+CONF_RACE_WEEK_SUNDAY_START = "race_week_sunday_start"
+DEFAULT_RACE_WEEK_SUNDAY_START = False
 
 OPERATION_MODE_LIVE = "live"
 OPERATION_MODE_DEVELOPMENT = "development"

@@ -284,7 +284,15 @@ class LiveBus:
                         except Exception:  # noqa: BLE001
                             continue
                 except Exception as err:  # pragma: no cover - network errors
-                    _LOGGER.warning("LiveBus websocket error: %s", err)
+                    # Log replay-related errors at DEBUG since they're expected during replay stop
+                    err_str = str(err)
+                    if "Replay" in err_str or "replay" in err_str:
+                        _LOGGER.debug("LiveBus replay transport closed: %s", err)
+                    else:
+                        _LOGGER.warning("LiveBus websocket error: %s", err)
+                    # Add delay before reconnect to prevent tight loops
+                    if self._running:
+                        await asyncio.sleep(2)
                 finally:
                     if self._client:
                         await self._client.close()
@@ -347,9 +355,17 @@ class LiveBus:
         _LOGGER.info("LiveBus shutting down")
         if self._task:
             self._task.cancel()
+            try:
+                await self._task  # Wait for task to actually finish
+            except asyncio.CancelledError:
+                pass
             self._task = None
         if self._heartbeat_guard:
             self._heartbeat_guard.cancel()
+            try:
+                await self._heartbeat_guard
+            except asyncio.CancelledError:
+                pass
             self._heartbeat_guard = None
         if self._client:
             await self._client.close()
@@ -427,3 +443,48 @@ class LiveBus:
     def get_last_payload(self, stream: str) -> dict | None:
         data = self._last_payload.get(stream)
         return data if isinstance(data, dict) else None
+
+    async def swap_transport(
+        self, transport_factory: Callable[[], LiveTransport] | None
+    ) -> None:
+        """Hot-swap transport for replay mode.
+
+        This allows switching between live SignalR and replay transport
+        without recreating the bus or losing subscribers.
+        """
+        was_running = self._running
+
+        if was_running:
+            _LOGGER.info("Stopping LiveBus for transport swap")
+            await self.async_close()
+
+        self._transport_factory = transport_factory
+        self._last_payload.clear()  # Clear cached payloads from previous session
+        self._cnt.clear()
+        self._last_ts.clear()
+
+        # For replay mode (transport_factory provided), always start the bus
+        # For restoring to live (transport_factory=None), only restart if it was running
+        # (let LiveSessionSupervisor handle normal reconnection)
+        if transport_factory is not None:
+            _LOGGER.info("Starting LiveBus with replay transport")
+            await self.start()
+        elif was_running:
+            _LOGGER.info("Restarting LiveBus with live transport")
+            await self.start()
+
+    def inject_message(self, stream: str, payload: dict) -> None:
+        """Inject a message directly into the bus (for replay mode).
+
+        This allows external code to feed data into the bus without
+        going through the transport layer.
+        """
+        subs_count = len(self._subs.get(stream, []))
+        _LOGGER.debug(
+            "inject_message: stream=%s, subs=%d, payload_keys=%s",
+            stream, subs_count,
+            list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__
+        )
+        if isinstance(payload, dict):
+            self._last_payload[stream] = payload
+        self._dispatch(stream, payload)

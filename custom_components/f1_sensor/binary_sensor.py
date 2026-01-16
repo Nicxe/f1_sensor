@@ -13,6 +13,8 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_OPERATION_MODE,
+    CONF_RACE_WEEK_SUNDAY_START,
+    DEFAULT_RACE_WEEK_SUNDAY_START,
     DEFAULT_OPERATION_MODE,
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
@@ -23,12 +25,17 @@ from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
+RACE_SWITCH_GRACE = datetime.timedelta(hours=3)
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
     enabled = entry.data.get("enabled_sensors", [])
+    race_week_sunday_start = entry.data.get(
+        CONF_RACE_WEEK_SUNDAY_START, DEFAULT_RACE_WEEK_SUNDAY_START
+    )
 
     sensors = []
     # Useful for power users/automations even when dev UI is disabled.
@@ -48,6 +55,7 @@ async def async_setup_entry(
                 f"{entry.entry_id}_race_week",
                 entry.entry_id,
                 base,
+                race_week_sunday_start=race_week_sunday_start,
             )
         )
     if "safety_car" in enabled:
@@ -68,12 +76,22 @@ async def async_setup_entry(
 class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
     """Binary sensor indicating if it's currently race week."""
 
-    def __init__(self, coordinator, name, unique_id, entry_id, device_name):
+    def __init__(
+        self,
+        coordinator,
+        name,
+        unique_id,
+        entry_id,
+        device_name,
+        *,
+        race_week_sunday_start: bool = DEFAULT_RACE_WEEK_SUNDAY_START,
+    ):
         super().__init__(coordinator, name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:calendar-range"
         # No device class: this is not a physical presence/occupancy type sensor.
         # Using a device class here can lead to misleading UI semantics/translations.
         self._attr_device_class = None
+        self._race_week_sunday_start = bool(race_week_sunday_start)
 
     def _get_next_race(self):
         data = self.coordinator.data
@@ -81,17 +99,23 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
             return None, None
 
         races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = dt_util.utcnow()
 
         for race in races:
             date = race.get("date")
-            time = race.get("time") or "00:00:00Z"
+            if not date:
+                continue
+            # If the source omits time for some reason, assume end-of-day so we
+            # don't drop out of "race week" early on race day.
+            time = race.get("time") or "23:59:59Z"
             dt_str = f"{date}T{time}".replace("Z", "+00:00")
             try:
                 dt = datetime.datetime.fromisoformat(dt_str)
             except ValueError:
                 continue
-            if dt > now:
+            # Consider the current race as "next" until a short grace period
+            # after the scheduled start, matching `sensor.f1_next_race`.
+            if (dt + RACE_SWITCH_GRACE) > now:
                 return dt, race
         return None, None
 
@@ -100,21 +124,24 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
         next_race_dt, _ = self._get_next_race()
         if not next_race_dt:
             return False
-        now = datetime.datetime.now(datetime.timezone.utc)
-        start_of_week = now - datetime.timedelta(days=now.weekday())
-        end_of_week = start_of_week + datetime.timedelta(
-            days=6, hours=23, minutes=59, seconds=59
-        )
-        return start_of_week.date() <= next_race_dt.date() <= end_of_week.date()
+        now_local = dt_util.as_local(dt_util.utcnow())
+        next_race_local = dt_util.as_local(next_race_dt)
+
+        first_weekday = 6 if self._race_week_sunday_start else 0  # Monday=0..Sunday=6
+        days_since_week_start = (now_local.weekday() - first_weekday) % 7
+        start_of_week = now_local.date() - datetime.timedelta(days=days_since_week_start)
+        end_of_week = start_of_week + datetime.timedelta(days=6)
+        return start_of_week <= next_race_local.date() <= end_of_week
 
     @property
     def extra_state_attributes(self):
         next_race_dt, race = self._get_next_race()
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now_local = dt_util.as_local(dt_util.utcnow())
         days = None
         race_name = None
         if next_race_dt:
-            delta = next_race_dt.date() - now.date()
+            next_race_local = dt_util.as_local(next_race_dt)
+            delta = next_race_local.date() - now_local.date()
             days = delta.days
             race_name = race.get("raceName") if race else None
         return {

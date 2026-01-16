@@ -14,6 +14,13 @@ import async_timeout
 from .const import DOMAIN, API_URL, ENABLE_DEVELOPMENT_MODE_UI
 from .entity import F1AuxEntity
 from .calibration import LiveDelayCalibrationManager
+from .replay_entities import (
+    F1ReplayLoadButton,
+    F1ReplayPlayButton,
+    F1ReplayPauseButton,
+    F1ReplayStopButton,
+    F1ReplayRefreshButton,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,6 +58,47 @@ async def async_setup_entry(
                 unique_id=f"{entry.entry_id}_jolpica_user_agent_test",
             )
         )
+
+    # Replay mode buttons
+    replay_controller = registry.get("replay_controller")
+    if replay_controller is not None:
+        entities.extend([
+            F1ReplayLoadButton(
+                replay_controller,
+                f"{name} Replay Load",
+                f"{entry.entry_id}_replay_load",
+                entry.entry_id,
+                name,
+            ),
+            F1ReplayPlayButton(
+                replay_controller,
+                f"{name} Replay Play",
+                f"{entry.entry_id}_replay_play",
+                entry.entry_id,
+                name,
+            ),
+            F1ReplayPauseButton(
+                replay_controller,
+                f"{name} Replay Pause",
+                f"{entry.entry_id}_replay_pause",
+                entry.entry_id,
+                name,
+            ),
+            F1ReplayStopButton(
+                replay_controller,
+                f"{name} Replay Stop",
+                f"{entry.entry_id}_replay_stop",
+                entry.entry_id,
+                name,
+            ),
+            F1ReplayRefreshButton(
+                replay_controller,
+                f"{name} Replay Refresh Sessions",
+                f"{entry.entry_id}_replay_refresh",
+                entry.entry_id,
+                name,
+            ),
+        ])
 
     if entities:
         async_add_entities(entities)

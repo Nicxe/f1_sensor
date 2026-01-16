@@ -65,10 +65,14 @@ class SessionWindow:
 class LiveAvailabilityTracker:
     """Fan-out tracker so coordinators can react to live/offline transitions."""
 
+    # Reasons that indicate replay mode is controlling state
+    _REPLAY_REASONS = frozenset({"replay", "replay-completed", "replay-stopped"})
+
     def __init__(self) -> None:
         self._listeners: list[Callable[[bool, str | None], None]] = []
         self._state = False
         self._reason: str | None = "init"
+        self._replay_locked = False  # When True, only replay can change state
 
     @property
     def is_live(self) -> bool:
@@ -79,6 +83,22 @@ class LiveAvailabilityTracker:
         return self._reason
 
     def set_state(self, is_live: bool, reason: str | None = None) -> None:
+        is_replay_reason = reason in self._REPLAY_REASONS
+
+        # If replay has locked the state, only replay reasons can change it
+        if self._replay_locked and not is_replay_reason:
+            _LOGGER.debug(
+                "Live state change blocked (replay active): would change to %s (%s)",
+                "LIVE" if is_live else "IDLE", reason
+            )
+            return
+
+        # Update replay lock based on reason
+        if reason == "replay":
+            self._replay_locked = True
+        elif reason in ("replay-completed", "replay-stopped"):
+            self._replay_locked = False
+
         if self._state == is_live and (reason is None or reason == self._reason):
             return
         self._state = is_live

@@ -65,9 +65,26 @@ class F1BaseEntity(CoordinatorEntity):
                     if operation_mode != OPERATION_MODE_DEVELOPMENT and is_live_window is False:
                         return False
 
+                    # Check if replay mode is active - skip activity check during replay
+                    # since activity timestamps are cleared during transport swap
+                    replay_controller = reg.get("replay_controller")
+                    replay_active = False
+                    if replay_controller is not None:
+                        try:
+                            from .replay_mode import ReplayState
+                            replay_active = replay_controller.state in (
+                                ReplayState.PLAYING, ReplayState.PAUSED
+                            )
+                        except Exception:
+                            pass
+
                     # If we're in a live window, require actual stream activity.
                     # If we have seen no activity at all, treat as offline.
-                    if operation_mode != OPERATION_MODE_DEVELOPMENT and is_live_window is True:
+                    # Skip this check during replay mode since activity timestamps
+                    # are reset when swapping transports.
+                    if (operation_mode != OPERATION_MODE_DEVELOPMENT
+                        and is_live_window is True
+                        and not replay_active):
                         bus = reg.get("live_bus")
                         activity_age = None
                         try:

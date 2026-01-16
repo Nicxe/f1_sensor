@@ -53,6 +53,7 @@ from .helpers import (
 )
 from .live_delay import LiveDelayController
 from .calibration import LiveDelayCalibrationManager
+from .replay_mode import ReplayController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -509,6 +510,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         reload_callback=_reload_entry,
     )
 
+    # Create replay controller for historical session playback
+    replay_controller = ReplayController(
+        hass,
+        entry.entry_id,
+        http_session,
+        live_bus,
+        live_state=live_state,
+    )
+    await replay_controller.async_initialize()
+
     if enable_rc:
         track_status_coordinator = TrackStatusCoordinator(
             hass,
@@ -698,6 +709,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "replay_file": replay_source,
         "live_delay_controller": delay_controller,
         "calibration_manager": calibration_manager,
+        "replay_controller": replay_controller,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -896,6 +908,8 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
 
 
 class RaceControlCoordinator(DataUpdateCoordinator):
@@ -1125,6 +1139,14 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
+        # In replay mode, disable the startup cutoff so historical messages are accepted
+        if is_live and reason == "replay":
+            self._startup_cutoff = None
+            self._seen_ids_set.clear()
+            self._seen_ids_order.clear()
+            _LOGGER.debug("RaceControl: disabled startup cutoff for replay mode")
 
     def _deliver(self, item: dict) -> None:
         self.available = True
@@ -1320,6 +1342,8 @@ class LapCountCoordinator(DataUpdateCoordinator):
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
 
 
 class TeamRadioCoordinator(DataUpdateCoordinator):
@@ -1411,6 +1435,8 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         self.available = is_live
         if not is_live:
             self._state = {"latest": None, "history": []}
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._state)
 
     def set_delay(self, seconds: int) -> None:
         new_delay = max(0, int(seconds or 0))
@@ -3890,6 +3916,18 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Clear global cache so sensors don't fall back to stale data
+            try:
+                self.hass.data[LATEST_TRACK_STATUS] = None
+            except Exception:
+                pass
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
+        # In replay mode, disable startup cutoff and clear dedup state
+        if is_live and reason == "replay":
+            self._startup_cutoff = None
+            self._last_untimestamped_fingerprint = None
+            _LOGGER.debug("TrackStatus: disabled startup cutoff for replay mode")
 
 
 class SessionStatusCoordinator(DataUpdateCoordinator):
@@ -4034,6 +4072,8 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
 
 
 class TopThreeCoordinator(DataUpdateCoordinator):
@@ -4117,6 +4157,10 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         if reason == "init":
             return
         self.available = is_live
+        # Note: For replay mode, we don't schedule deliver here.
+        # The inject_message call will handle delivery with the correct initial state.
+        if is_live and reason == "replay":
+            _LOGGER.debug("TopThree: replay mode activated, waiting for initial state injection")
         if not is_live:
             try:
                 self._state = {
@@ -4124,6 +4168,8 @@ class TopThreeCoordinator(DataUpdateCoordinator):
                     "lines": [None, None, None],
                     "last_update_ts": None,
                 }
+                # Notify entities to clear their state
+                self.async_set_updated_data(self._state)
             except Exception:
                 pass
 
@@ -4174,12 +4220,24 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         lines = payload.get("Lines")
         cur_lines = state.get("lines") or [None, None, None]
 
+        # Debug: Log what we received
+        _LOGGER.debug(
+            "TopThree _merge: Lines type=%s, Lines=%s",
+            type(lines).__name__,
+            str(lines)[:500] if lines else None
+        )
+
         # Full snapshot: Lines som lista [P1, P2, P3]
         if isinstance(lines, list):
+            _LOGGER.debug("TopThree: processing as list with %d items", len(lines))
             new_lines: list[Any] = [None, None, None]
             for idx in range(3):
                 try:
                     item = lines[idx]
+                    _LOGGER.debug(
+                        "TopThree: list[%d] type=%s, value=%s",
+                        idx, type(item).__name__, str(item)[:200] if item else None
+                    )
                 except Exception:
                     item = None
                 new_lines[idx] = item if isinstance(item, dict) else None
@@ -4217,11 +4275,23 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         try:
             self._merge_topthree(msg)
         except Exception:
+            _LOGGER.debug("TopThree: failed to merge message")
             return
+        # Log what we got after merge
+        lines = self._state.get("lines", [])
+        line_summary = [
+            (l.get("Tla") if isinstance(l, dict) else None) for l in lines
+        ]
+        _LOGGER.debug("TopThree: merged message, lines=%s", line_summary)
         self._schedule_deliver()
 
     def _deliver(self) -> None:
         # Pushar aktuellt state till sensorerna
+        lines = self._state.get("lines", [])
+        line_summary = [
+            (l.get("Tla") if isinstance(l, dict) else None) for l in lines
+        ]
+        _LOGGER.debug("TopThree: delivering state, lines=%s", line_summary)
         self.async_set_updated_data(self._state)
 
     async def async_config_entry_first_refresh(self):
@@ -4382,3 +4452,5 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
