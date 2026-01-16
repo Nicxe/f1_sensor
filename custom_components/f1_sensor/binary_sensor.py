@@ -13,11 +13,14 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_OPERATION_MODE,
+    CONF_RACE_WEEK_START_DAY,
     CONF_RACE_WEEK_SUNDAY_START,
-    DEFAULT_RACE_WEEK_SUNDAY_START,
+    DEFAULT_RACE_WEEK_START_DAY,
     DEFAULT_OPERATION_MODE,
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
+    RACE_WEEK_START_MONDAY,
+    RACE_WEEK_START_SUNDAY,
 )
 from .entity import F1BaseEntity, F1AuxEntity
 from .helpers import normalize_track_status
@@ -27,15 +30,25 @@ _LOGGER = logging.getLogger(__name__)
 
 RACE_SWITCH_GRACE = datetime.timedelta(hours=3)
 
+
+def _normalize_race_week_start(data: dict) -> str:
+    value = data.get(CONF_RACE_WEEK_START_DAY)
+    if value in (RACE_WEEK_START_MONDAY, RACE_WEEK_START_SUNDAY):
+        return value
+    legacy = data.get(CONF_RACE_WEEK_SUNDAY_START)
+    if isinstance(legacy, bool):
+        return RACE_WEEK_START_SUNDAY if legacy else RACE_WEEK_START_MONDAY
+    if legacy in (RACE_WEEK_START_MONDAY, RACE_WEEK_START_SUNDAY):
+        return legacy
+    return DEFAULT_RACE_WEEK_START_DAY
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
     enabled = entry.data.get("enabled_sensors", [])
-    race_week_sunday_start = entry.data.get(
-        CONF_RACE_WEEK_SUNDAY_START, DEFAULT_RACE_WEEK_SUNDAY_START
-    )
+    race_week_start = _normalize_race_week_start(entry.data)
 
     sensors = []
     # Useful for power users/automations even when dev UI is disabled.
@@ -55,7 +68,7 @@ async def async_setup_entry(
                 f"{entry.entry_id}_race_week",
                 entry.entry_id,
                 base,
-                race_week_sunday_start=race_week_sunday_start,
+                race_week_start=race_week_start,
             )
         )
     if "safety_car" in enabled:
@@ -84,14 +97,14 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
         entry_id,
         device_name,
         *,
-        race_week_sunday_start: bool = DEFAULT_RACE_WEEK_SUNDAY_START,
+        race_week_start: str = DEFAULT_RACE_WEEK_START_DAY,
     ):
         super().__init__(coordinator, name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:calendar-range"
         # No device class: this is not a physical presence/occupancy type sensor.
         # Using a device class here can lead to misleading UI semantics/translations.
         self._attr_device_class = None
-        self._race_week_sunday_start = bool(race_week_sunday_start)
+        self._race_week_start = race_week_start
 
     def _get_next_race(self):
         data = self.coordinator.data
@@ -127,7 +140,9 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
         now_local = dt_util.as_local(dt_util.utcnow())
         next_race_local = dt_util.as_local(next_race_dt)
 
-        first_weekday = 6 if self._race_week_sunday_start else 0  # Monday=0..Sunday=6
+        first_weekday = (
+            6 if self._race_week_start == RACE_WEEK_START_SUNDAY else 0
+        )  # Monday=0..Sunday=6
         days_since_week_start = (now_local.weekday() - first_weekday) % 7
         start_of_week = now_local.date() - datetime.timedelta(days=days_since_week_start)
         end_of_week = start_of_week + datetime.timedelta(days=6)

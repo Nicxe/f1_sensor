@@ -8,7 +8,7 @@
           "enabled_sensors": "Sensores habilitados",
           "operation_mode": "Operation mode",
           "replay_file": "Replay dump path",
-          "race_week_sunday_start": "A semana de corrida começa no domingo"
+          "race_week_start_day": "A semana de corrida começa no domingo"
         }
       },
       "reconfigure": {
@@ -18,7 +18,7 @@
           "enabled_sensors": "Sensores habilitados",
           "operation_mode": "Operation mode",
           "replay_file": "Replay dump path",
-          "race_week_sunday_start": "A semana de corrida começa no domingo"
+          "race_week_start_day": "A semana de corrida começa no domingo"
         }
       }
     },

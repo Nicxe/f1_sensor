@@ -9,13 +9,13 @@
                     "operation_mode": "Operation mode",
                     "replay_file": "Replay dump path",
                     "enable_race_control": "Enable live F1 API (Race Control/Track/Session)",
-                    "race_week_sunday_start": "Race week starts on Sunday"
+                    "race_week_start_day": "First day of race week"
                 },
                 "data_description": {
                     "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
                     "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
                     "enable_race_control": "Connects to Formula 1 Live Timing via SignalR to receive live updates. If disabled, these live sensors are not created.",
-                    "race_week_sunday_start": "If enabled, Race week treats Sunday as the first day of the week; otherwise it starts on Monday."
+                    "race_week_start_day": "Choose whether Race week starts on Sunday or Monday."
                 }
             },
             "reconfigure": {
@@ -26,13 +26,13 @@
                     "operation_mode": "Operation mode",
                     "replay_file": "Replay dump path",
                     "enable_race_control": "Enable live F1 API",
-                    "race_week_sunday_start": "Race week starts on Sunday"
+                    "race_week_start_day": "First day of race week"
                 },
                 "data_description": {
                     "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
                     "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
                     "enable_race_control": "Connects to Formula 1 Live Timing to receive live updates. If disabled, these live sensors are not created.",
-                    "race_week_sunday_start": "If enabled, Race week treats Sunday as the first day of the week; otherwise it starts on Monday."
+                    "race_week_start_day": "Choose whether Race week starts on Sunday or Monday."
                 }
             }
         },

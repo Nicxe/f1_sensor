@@ -8,7 +8,7 @@
           "enabled_sensors": "Ingeschakelde sensoren",
           "operation_mode": "Operation mode",
           "replay_file": "Replay dump path",
-          "race_week_sunday_start": "Raceweek start op zondag"
+          "race_week_start_day": "Raceweek start op zondag"
         }
       },
       "reconfigure": {
@@ -18,7 +18,7 @@
           "enabled_sensors": "Ingeschakelde sensoren",
           "operation_mode": "Operation mode",
           "replay_file": "Replay dump path",
-          "race_week_sunday_start": "Raceweek start op zondag"
+          "race_week_start_day": "Raceweek start op zondag"
         }
       }
     },

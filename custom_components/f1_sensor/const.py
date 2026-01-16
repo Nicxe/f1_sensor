@@ -17,7 +17,10 @@ REPLAY_CACHE_RETENTION_DAYS = 1  # Short retention - cache is deleted on stop, t
 CONF_OPERATION_MODE = "operation_mode"
 CONF_REPLAY_FILE = "replay_file"
 CONF_RACE_WEEK_SUNDAY_START = "race_week_sunday_start"
-DEFAULT_RACE_WEEK_SUNDAY_START = False
+CONF_RACE_WEEK_START_DAY = "race_week_start_day"
+RACE_WEEK_START_MONDAY = "monday"
+RACE_WEEK_START_SUNDAY = "sunday"
+DEFAULT_RACE_WEEK_START_DAY = RACE_WEEK_START_MONDAY
 
 OPERATION_MODE_LIVE = "live"
 OPERATION_MODE_DEVELOPMENT = "development"
