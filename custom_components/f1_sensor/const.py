@@ -4,6 +4,7 @@ DOMAIN = "f1_sensor"
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
+    Platform.MEDIA_PLAYER,
     Platform.BUTTON,
     Platform.NUMBER,
     Platform.SWITCH,

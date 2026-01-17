@@ -44,6 +44,9 @@
       "fia_documents": { "name": "FIA-päätökset" },
       "live_timing_mode": { "name": "Live timing -tila" }
     },
+    "media_player": {
+      "replay_player": { "name": "Replay player" }
+    },
     "binary_sensor": {
       "race_week": { "name": "Kilpailuviikko" },
       "live_timing_online": { "name": "Live timing online" }

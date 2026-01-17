@@ -44,6 +44,9 @@
       "fia_documents": { "name": "Decisioni FIA" },
       "live_timing_mode": { "name": "Modalità Live Timing" }
     },
+    "media_player": {
+      "replay_player": { "name": "Replay player" }
+    },
     "binary_sensor": {
       "race_week": { "name": "Settimana di gara" },
       "live_timing_online": { "name": "Live Timing online" }

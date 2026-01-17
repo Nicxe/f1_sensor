@@ -44,6 +44,9 @@
       "fia_documents": { "name": "FIA-afgørelser" },
       "live_timing_mode": { "name": "Live timing-tilstand" }
     },
+    "media_player": {
+      "replay_player": { "name": "Replay player" }
+    },
     "binary_sensor": {
       "race_week": { "name": "Løbsuge" },
       "live_timing_online": { "name": "Live timing online" }

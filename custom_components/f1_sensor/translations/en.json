@@ -61,6 +61,9 @@
             "fia_documents": {"name": "FIA decisions"},
             "live_timing_mode": {"name": "Live timing mode"}
         },
+        "media_player": {
+            "replay_player": {"name": "Replay player"}
+        },
         "binary_sensor": {
             "race_week": {"name": "Race week"},
             "live_timing_online": {"name": "Live timing online"}
