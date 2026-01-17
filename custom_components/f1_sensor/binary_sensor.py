@@ -1,5 +1,6 @@
 import datetime
 import logging
+from typing import Any, Callable
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -24,6 +25,7 @@ from .const import (
     RACE_WEEK_START_SUNDAY,
 )
 from .entity import F1BaseEntity, F1AuxEntity
+from .formation_start import FormationStartTracker
 from .helpers import normalize_track_status
 from homeassistant.util import dt as dt_util
 
@@ -88,6 +90,18 @@ async def async_setup_entry(
                     coord,
                     f"{base}_safety_car",
                     f"{entry.entry_id}_safety_car",
+                    entry.entry_id,
+                    base,
+                )
+            )
+    if "formation_start" in enabled:
+        tracker: FormationStartTracker | None = data.get("formation_start_tracker")
+        if tracker is not None:
+            sensors.append(
+                F1FormationStartBinarySensor(
+                    tracker,
+                    f"{base}_formation_start",
+                    f"{entry.entry_id}_formation_start",
                     entry.entry_id,
                     base,
                 )
@@ -262,6 +276,61 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         return self._attr_is_on
+
+
+class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
+    """Binary sensor indicating the formation start marker for races/sprints."""
+
+    _attr_device_class = None
+
+    def __init__(
+        self,
+        tracker: FormationStartTracker,
+        name: str,
+        unique_id: str,
+        entry_id: str,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, name, unique_id, entry_id, device_name)
+        BinarySensorEntity.__init__(self)
+        self._tracker = tracker
+        self._is_on = False
+        self._attrs: dict[str, Any] = {}
+        self._unsub: Callable[[], None] | None = None
+        self._attr_icon = "mdi:flag-outline"
+
+    async def async_added_to_hass(self) -> None:
+        self._unsub = self._tracker.add_listener(self._handle_update)
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:  # noqa: BLE001
+                pass
+            self._unsub = None
+
+    @property
+    def is_on(self) -> bool:
+        return self._is_on
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self._attrs
+
+    def _handle_update(self, snapshot: dict[str, Any]) -> None:
+        self._is_on = snapshot.get("status") == "ready"
+        self._attrs = {
+            "status": snapshot.get("status"),
+            "scheduled_start": snapshot.get("scheduled_start"),
+            "formation_start": snapshot.get("formation_start"),
+            "delta_seconds": snapshot.get("delta_seconds"),
+            "source": snapshot.get("source"),
+            "session_type": snapshot.get("session_type"),
+            "session_name": snapshot.get("session_name"),
+            "error": snapshot.get("error"),
+        }
+        self._safe_write_ha_state()
 
 
 class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):

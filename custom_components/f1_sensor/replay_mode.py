@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import shutil
 import time
+import zlib
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
@@ -45,7 +47,9 @@ REPLAY_STREAMS = [
 STATIC_BASE = "https://livetiming.formula1.com/static"
 MAX_SESSIONS_TO_SHOW = 150  # ~24 race weekends * 5 sessions + testing
 # Cache version - bump this when changing initial_state format to invalidate old caches
-CACHE_VERSION = 2
+CACHE_VERSION = 3
+FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
+FORMATION_HTTP_TIMEOUT = 20
 
 
 class ReplayState(Enum):
@@ -104,8 +108,10 @@ class ReplayIndex:
     session_started_at_ms: int  # When SessionStatus:Started occurs
     frames_file: Path
     index_file: Path
+    formation_started_at_ms: int | None = None
     # Snapshot of all streams at session_started_at_ms for initial state
     initial_state: Dict[str, Any] | None = None
+    formation_initial_state: Dict[str, Any] | None = None
 
 
 class ReplaySessionManager:
@@ -403,9 +409,11 @@ class ReplaySessionManager:
                         total_frames=index_data["total_frames"],
                         duration_ms=index_data["duration_ms"],
                         session_started_at_ms=index_data["session_started_at_ms"],
+                        formation_started_at_ms=index_data.get("formation_started_at_ms"),
                         frames_file=frames_file,
                         index_file=index_file,
                         initial_state=index_data.get("initial_state"),
+                        formation_initial_state=index_data.get("formation_initial_state"),
                     )
                 else:
                     _LOGGER.info(
@@ -445,66 +453,39 @@ class ReplaySessionManager:
 
         # Build initial state snapshot - last value of each stream at session start
         # This ensures sensors have their correct initial values when replay starts
-        initial_state: Dict[str, Any] = {}
-        # Special handling for TopThree which uses delta updates after initial snapshot
-        topthree_state: Dict[str, Any] = {"lines": [None, None, None], "withheld": False}
-
-        for frame in all_frames:
-            if frame.timestamp_ms > session_started_at_ms:
-                break
-
-            # TopThree needs special merge logic because it uses delta updates
-            if frame.stream == "TopThree" and isinstance(frame.payload, dict):
-                self._merge_topthree_state(topthree_state, frame.payload)
-            else:
-                # For other streams, just store latest value
-                initial_state[frame.stream] = frame.payload
-
-        # Convert TopThree state back to payload format
-        if topthree_state["lines"] != [None, None, None]:
-            initial_state["TopThree"] = {
-                "Withheld": topthree_state.get("withheld", False),
-                "Lines": topthree_state["lines"],
-            }
-            _LOGGER.debug(
-                "Built merged TopThree initial state: %s",
-                [(l.get("Tla") if isinstance(l, dict) else None) for l in topthree_state["lines"]]
-            )
-
-        # For streams that don't have data before session start, capture their first frame(s)
-        # This is important for streams like TopThree that may only start at session begin
-        streams_needing_first = set(REPLAY_STREAMS) - set(initial_state.keys())
-        if streams_needing_first:
-            for frame in all_frames:
-                if frame.stream in streams_needing_first:
-                    # For TopThree, merge multiple frames until we have all 3 positions
-                    if frame.stream == "TopThree" and isinstance(frame.payload, dict):
-                        self._merge_topthree_state(topthree_state, frame.payload)
-                        # Only mark complete when all 3 positions are filled
-                        lines = topthree_state.get("lines", [None, None, None])
-                        all_filled = all(isinstance(l, dict) for l in lines)
-                        if all_filled:
-                            initial_state["TopThree"] = {
-                                "Withheld": topthree_state.get("withheld", False),
-                                "Lines": lines,
-                            }
-                            streams_needing_first.discard("TopThree")
-                    else:
-                        initial_state[frame.stream] = frame.payload
-                        streams_needing_first.discard(frame.stream)
-                if not streams_needing_first:
-                    break
-            # If TopThree still incomplete but has some data, include what we have
-            if "TopThree" not in initial_state and topthree_state["lines"] != [None, None, None]:
-                initial_state["TopThree"] = {
-                    "Withheld": topthree_state.get("withheld", False),
-                    "Lines": topthree_state["lines"],
-                }
+        initial_state = self._build_initial_state(all_frames, session_started_at_ms)
 
         _LOGGER.debug(
             "Built initial state snapshot with %d streams: %s",
             len(initial_state), list(initial_state.keys())
         )
+
+        formation_started_at_ms: int | None = None
+        formation_initial_state: Dict[str, Any] | None = None
+
+        if self._is_race_or_sprint_session(session):
+            formation_start_utc = await self._find_formation_start_utc(session)
+            if formation_start_utc is not None:
+                formation_started_at_ms = self._find_closest_frame_ms(
+                    all_frames, formation_start_utc
+                )
+                if formation_started_at_ms is not None:
+                    formation_initial_state = self._build_initial_state(
+                        all_frames, formation_started_at_ms
+                    )
+                    _LOGGER.debug(
+                        "Built formation initial state snapshot with %d streams",
+                        len(formation_initial_state),
+                    )
+                else:
+                    _LOGGER.debug(
+                        "No replay frame matched formation start UTC for %s",
+                        session.unique_id,
+                    )
+            else:
+                _LOGGER.debug(
+                    "Formation start marker unavailable for %s", session.unique_id
+                )
 
         # Write frames file
         self._download_progress = 0.95
@@ -535,7 +516,9 @@ class ReplaySessionManager:
             "total_frames": len(all_frames),
             "duration_ms": duration_ms,
             "session_started_at_ms": session_started_at_ms,
+            "formation_started_at_ms": formation_started_at_ms,
             "initial_state": initial_state,
+            "formation_initial_state": formation_initial_state,
             "created_at": dt_util.utcnow().isoformat(),
         }
 
@@ -551,9 +534,11 @@ class ReplaySessionManager:
             total_frames=len(all_frames),
             duration_ms=duration_ms,
             session_started_at_ms=session_started_at_ms,
+            formation_started_at_ms=formation_started_at_ms,
             frames_file=frames_file,
             index_file=index_file,
             initial_state=initial_state,
+            formation_initial_state=formation_initial_state,
         )
 
     async def _download_stream(
@@ -655,6 +640,197 @@ class ReplaySessionManager:
                 base.update(delta)
                 cur_lines[idx] = base
             state["lines"] = cur_lines
+
+    def _build_initial_state(
+        self, frames: List[ReplayFrame], start_ms: int
+    ) -> Dict[str, Any]:
+        """Return the latest stream payloads at the provided timestamp."""
+        initial_state: Dict[str, Any] = {}
+        topthree_state: Dict[str, Any] = {"lines": [None, None, None], "withheld": False}
+
+        for frame in frames:
+            if frame.timestamp_ms > start_ms:
+                break
+            if frame.stream == "TopThree" and isinstance(frame.payload, dict):
+                self._merge_topthree_state(topthree_state, frame.payload)
+            else:
+                initial_state[frame.stream] = frame.payload
+
+        if topthree_state["lines"] != [None, None, None]:
+            initial_state["TopThree"] = {
+                "Withheld": topthree_state.get("withheld", False),
+                "Lines": topthree_state["lines"],
+            }
+
+        streams_needing_first = set(REPLAY_STREAMS) - set(initial_state.keys())
+        if streams_needing_first:
+            for frame in frames:
+                if frame.stream in streams_needing_first:
+                    if frame.stream == "TopThree" and isinstance(frame.payload, dict):
+                        self._merge_topthree_state(topthree_state, frame.payload)
+                        lines = topthree_state.get("lines", [None, None, None])
+                        all_filled = all(isinstance(l, dict) for l in lines)
+                        if all_filled:
+                            initial_state["TopThree"] = {
+                                "Withheld": topthree_state.get("withheld", False),
+                                "Lines": lines,
+                            }
+                            streams_needing_first.discard("TopThree")
+                    else:
+                        initial_state[frame.stream] = frame.payload
+                        streams_needing_first.discard(frame.stream)
+                if not streams_needing_first:
+                    break
+            if "TopThree" not in initial_state and topthree_state["lines"] != [None, None, None]:
+                initial_state["TopThree"] = {
+                    "Withheld": topthree_state.get("withheld", False),
+                    "Lines": topthree_state["lines"],
+                }
+
+        return initial_state
+
+    @staticmethod
+    def _is_race_or_sprint_session(session: ReplaySession) -> bool:
+        joined = f"{session.session_type} {session.session_name}".lower()
+        if "sprint" in joined and "qualifying" not in joined:
+            return True
+        return "race" in joined
+
+    @staticmethod
+    def _parse_utc(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            if value.endswith("Z"):
+                dt_val = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            else:
+                dt_val = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        if dt_val.tzinfo is None:
+            dt_val = dt_val.replace(tzinfo=timezone.utc)
+        return dt_val.astimezone(timezone.utc)
+
+    def _extract_frame_utc(self, payload: dict | None) -> datetime | None:
+        if not isinstance(payload, dict):
+            return None
+        for key in ("Utc", "utc", "processedAt", "timestamp"):
+            dt_val = self._parse_utc(payload.get(key))
+            if dt_val is not None:
+                return dt_val
+        entries = payload.get("Entries")
+        if isinstance(entries, list):
+            for entry in entries:
+                if isinstance(entry, dict):
+                    dt_val = self._parse_utc(entry.get("Utc"))
+                    if dt_val is not None:
+                        return dt_val
+        return None
+
+    def _find_closest_frame_ms(
+        self, frames: List[ReplayFrame], target_utc: datetime
+    ) -> int | None:
+        best_ms: int | None = None
+        best_delta: float | None = None
+        for frame in frames:
+            utc_val = self._extract_frame_utc(frame.payload)
+            if utc_val is None:
+                continue
+            delta = abs((utc_val - target_utc).total_seconds())
+            if best_delta is None or delta < best_delta:
+                best_delta = delta
+                best_ms = frame.timestamp_ms
+                if best_delta <= 0.5:
+                    break
+        if best_ms is None or best_delta is None:
+            return None
+        if best_delta > FORMATION_SEARCH_WINDOW.total_seconds():
+            return None
+        return best_ms
+
+    @staticmethod
+    def _parse_cardata_line(line: str) -> list[datetime]:
+        if not line or line.startswith("URL:"):
+            return []
+        if '"' not in line:
+            return []
+        try:
+            _, rest = line.split('"', 1)
+            encoded = rest.split('"', 1)[0]
+        except ValueError:
+            return []
+        if not encoded:
+            return []
+        try:
+            raw = base64.b64decode(encoded)
+            payload = zlib.decompress(raw, wbits=-15)
+            data = json.loads(payload)
+        except Exception:  # noqa: BLE001
+            return []
+        entries = data.get("Entries") if isinstance(data, dict) else None
+        if not isinstance(entries, list):
+            return []
+        utcs: list[datetime] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            dt_val = ReplaySessionManager._parse_utc(entry.get("Utc"))
+            if dt_val is not None:
+                utcs.append(dt_val)
+        return utcs
+
+    async def _find_formation_start_utc(
+        self, session: ReplaySession
+    ) -> datetime | None:
+        if not session.path or session.start_utc is None:
+            return None
+        url = f"{STATIC_BASE}/{session.path}/CarData.z.jsonStream"
+        target = session.start_utc
+        best_utc: datetime | None = None
+        best_delta: float | None = None
+        max_seen: datetime | None = None
+        stop_scan = False
+        try:
+            async with async_timeout.timeout(FORMATION_HTTP_TIMEOUT):
+                async with self._http.get(url) as resp:
+                    if resp.status == 404:
+                        return None
+                    if resp.status != 200:
+                        return None
+                    while not stop_scan:
+                        raw = await resp.content.readline()
+                        if not raw:
+                            break
+                        line = raw.decode("utf-8", errors="ignore").strip()
+                        if not line:
+                            continue
+                        utcs = await self._hass.async_add_executor_job(
+                            self._parse_cardata_line, line
+                        )
+                        for utc_val in utcs:
+                            if max_seen is None or utc_val > max_seen:
+                                max_seen = utc_val
+                            delta = abs((utc_val - target).total_seconds())
+                            if best_delta is None or delta < best_delta:
+                                best_delta = delta
+                                best_utc = utc_val
+                            if utc_val > target + FORMATION_SEARCH_WINDOW:
+                                stop_scan = True
+                                break
+        except asyncio.TimeoutError:
+            return None
+        except Exception:  # noqa: BLE001
+            return None
+
+        if max_seen is None:
+            return None
+        if max_seen < (target - timedelta(seconds=1)):
+            return None
+        if best_utc is None or best_delta is None:
+            return None
+        if best_delta > FORMATION_SEARCH_WINDOW.total_seconds():
+            return None
+        return best_utc
 
     @staticmethod
     def _parse_timestamp_to_ms(ts: str) -> int:
@@ -792,17 +968,20 @@ class ReplayTransport:
         replay_index: ReplayIndex,
         *,
         start_from_session_start: bool = True,
+        start_from_ms: int | None = None,
         speed_multiplier: float = 1.0,
     ) -> None:
         self._hass = hass
         self._index = replay_index
         self._start_from_session_start = start_from_session_start
+        self._start_from_ms = start_from_ms
         self._speed = max(0.1, min(10.0, speed_multiplier))
         self._closed = False
         self._paused = False
         self._pause_event = asyncio.Event()
         self._pause_event.set()  # Not paused initially
         self._current_position_ms = 0
+        self._playback_start_ms = 0
         self._playback_started_at: float | None = None
         self._pause_started_at: float | None = None
         self._total_paused_duration: float = 0.0
@@ -814,8 +993,14 @@ class ReplayTransport:
 
     async def messages(self) -> AsyncGenerator[dict, None]:
         """Yield replay frames as SignalR-compatible messages."""
-        start_ms = self._index.session_started_at_ms if self._start_from_session_start else 0
+        if self._start_from_ms is not None:
+            start_ms = self._start_from_ms
+        else:
+            start_ms = (
+                self._index.session_started_at_ms if self._start_from_session_start else 0
+            )
         self._current_position_ms = start_ms
+        self._playback_start_ms = start_ms
         self._playback_started_at = time.monotonic()
         self._total_paused_duration = 0.0
 
@@ -941,6 +1126,10 @@ class ReplayTransport:
         """Get the offset where session actually starts."""
         return self._index.session_started_at_ms
 
+    def get_playback_start_offset_ms(self) -> int:
+        """Get the offset where replay playback starts."""
+        return self._playback_start_ms
+
     def get_total_duration_ms(self) -> int:
         """Get total duration of the replay in milliseconds."""
         return self._index.duration_ms
@@ -1025,11 +1214,26 @@ class ReplayController:
         if not index:
             raise RuntimeError("No replay index loaded")
 
+        start_from_ms = index.session_started_at_ms
+        initial_state = index.initial_state
+        if (
+            index.formation_started_at_ms is not None
+            and index.formation_started_at_ms < index.session_started_at_ms
+        ):
+            start_from_ms = index.formation_started_at_ms
+            if index.formation_initial_state is not None:
+                initial_state = index.formation_initial_state
+            _LOGGER.info(
+                "Replay will start from formation marker at %dms",
+                index.formation_started_at_ms,
+            )
+
         # Create transport
         self._transport = ReplayTransport(
             self._hass,
             index,
-            start_from_session_start=True,
+            start_from_session_start=False,
+            start_from_ms=start_from_ms,
         )
 
         # Signal coordinators that we're "live" for replay mode
@@ -1060,12 +1264,12 @@ class ReplayController:
 
         # Inject initial state for all streams so sensors have their correct values
         # before the replay transport starts yielding frames
-        if index.initial_state:
+        if initial_state:
             _LOGGER.info(
                 "Injecting initial state for %d streams: %s",
-                len(index.initial_state), list(index.initial_state.keys())
+                len(initial_state), list(initial_state.keys())
             )
-            for stream, payload in index.initial_state.items():
+            for stream, payload in initial_state.items():
                 if isinstance(payload, dict):
                     self._live_bus.inject_message(stream, payload)
 
@@ -1182,6 +1386,7 @@ class ReplayController:
         return {
             "position_ms": self._transport.get_playback_position_ms(),
             "session_start_ms": self._transport.get_session_start_offset_ms(),
+            "playback_start_ms": self._transport.get_playback_start_offset_ms(),
             "duration_ms": self._transport.get_total_duration_ms(),
             "paused": self._transport.is_paused(),
             "elapsed_s": self._transport._get_elapsed_playback_time(),

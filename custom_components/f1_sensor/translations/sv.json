@@ -65,7 +65,8 @@
     },
     "binary_sensor": {
       "race_week": { "name": "Tävlingsvecka" },
-      "live_timing_online": { "name": "Live timing online" }
+      "live_timing_online": { "name": "Live timing online" },
+      "formation_start": { "name": "Formation start" }
     }
   }
 }

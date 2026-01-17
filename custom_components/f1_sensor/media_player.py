@@ -131,6 +131,9 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
         playback = self._controller.get_playback_status()
 
         session_start_ms = int(playback.get("session_start_ms", 0) or 0)
+        playback_start_ms = int(
+            playback.get("playback_start_ms", session_start_ms) or 0
+        )
         duration_ms = int(playback.get("duration_ms", 0) or 0)
         position_ms = int(playback.get("position_ms", 0) or 0)
 
@@ -138,10 +141,16 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
             index = self._controller.session_manager.get_loaded_index()
             if index is not None:
                 session_start_ms = index.session_started_at_ms
+                playback_start_ms = (
+                    index.formation_started_at_ms
+                    if index.formation_started_at_ms is not None
+                    and index.formation_started_at_ms < index.session_started_at_ms
+                    else index.session_started_at_ms
+                )
                 duration_ms = index.duration_ms
 
-        total_ms = max(0, duration_ms - session_start_ms)
-        position_ms = max(0, position_ms - session_start_ms)
+        total_ms = max(0, duration_ms - playback_start_ms)
+        position_ms = max(0, position_ms - playback_start_ms)
         total_s = int(total_ms / 1000)
         position_s = int(position_ms / 1000)
         remaining_s = max(0, total_s - position_s)
@@ -174,6 +183,7 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
             "playback_position_s": position_s,
             "playback_remaining_s": remaining_s,
             "playback_total_s": total_s,
+            "session_start_offset_s": int(session_start_ms / 1000),
         }
 
     async def async_media_play(self) -> None:

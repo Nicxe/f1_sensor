@@ -28,6 +28,12 @@ OPERATION_MODE_LIVE = "live"
 OPERATION_MODE_DEVELOPMENT = "development"
 DEFAULT_OPERATION_MODE = OPERATION_MODE_LIVE
 
+# Live delay calibration reference
+CONF_LIVE_DELAY_REFERENCE = "live_delay_reference"
+LIVE_DELAY_REFERENCE_SESSION = "session_live"
+LIVE_DELAY_REFERENCE_FORMATION = "formation_start"
+DEFAULT_LIVE_DELAY_REFERENCE = LIVE_DELAY_REFERENCE_SESSION
+
 # Gate for exposing development mode controls in the UI.
 # Keep this False in released versions to avoid confusing users;
 # flip to True locally when you want to work with replay/development mode.

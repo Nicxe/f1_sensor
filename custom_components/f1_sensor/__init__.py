@@ -34,8 +34,10 @@ from .const import (
     FIA_SEASON_FALLBACK_URL,
     FIA_DOCS_POLL_INTERVAL,
     FIA_DOCS_FETCH_TIMEOUT,
+    CONF_LIVE_DELAY_REFERENCE,
     CONF_OPERATION_MODE,
     CONF_REPLAY_FILE,
+    DEFAULT_LIVE_DELAY_REFERENCE,
     DEFAULT_OPERATION_MODE,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
@@ -51,7 +53,8 @@ from .helpers import (
     parse_fia_documents,
     PersistentCache,
 )
-from .live_delay import LiveDelayController
+from .formation_start import FormationStartTracker
+from .live_delay import LiveDelayController, LiveDelayReferenceController
 from .calibration import LiveDelayCalibrationManager
 from .replay_mode import ReplayController
 
@@ -183,6 +186,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "session_status",
         "current_session",
         "safety_car",
+        "formation_start",
         "fia_documents",
         "race_control",
         "top_three",
@@ -445,6 +449,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     configured_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
     delay_controller = LiveDelayController(hass, entry.entry_id)
     live_delay = await delay_controller.async_initialize(configured_delay)
+    reference_controller = LiveDelayReferenceController(hass, entry.entry_id)
+    await reference_controller.async_initialize(
+        entry.data.get(CONF_LIVE_DELAY_REFERENCE, DEFAULT_LIVE_DELAY_REFERENCE)
+    )
     operation_mode = entry.data.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
     replay_source = str(entry.data.get(CONF_REPLAY_FILE, "") or "").strip()
     transport_factory = None
@@ -499,16 +507,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_state = LiveAvailabilityTracker()
         live_state.set_state(True, "replay-mode")
 
+    formation_tracker = None
+    if operation_mode == OPERATION_MODE_LIVE:
+        formation_tracker = FormationStartTracker(
+            hass,
+            bus=live_bus,
+            http_session=session,
+        )
+
     def _reload_entry():
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
-
-    calibration_manager = LiveDelayCalibrationManager(
-        hass,
-        delay_controller,
-        bus=live_bus,
-        timeout_seconds=120,
-        reload_callback=_reload_entry,
-    )
 
     # Create replay controller for historical session playback
     replay_controller = ReplayController(
@@ -519,6 +527,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_state=live_state,
     )
     await replay_controller.async_initialize()
+
+    calibration_manager = LiveDelayCalibrationManager(
+        hass,
+        delay_controller,
+        bus=live_bus,
+        timeout_seconds=120,
+        reload_callback=_reload_entry,
+        reference_controller=reference_controller,
+        formation_tracker=formation_tracker,
+        replay_controller=replay_controller,
+    )
 
     if enable_rc:
         track_status_coordinator = TrackStatusCoordinator(
@@ -708,7 +727,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "operation_mode": operation_mode,
         "replay_file": replay_source,
         "live_delay_controller": delay_controller,
+        "delay_reference_controller": reference_controller,
         "calibration_manager": calibration_manager,
+        "formation_start_tracker": formation_tracker,
         "replay_controller": replay_controller,
     }
 

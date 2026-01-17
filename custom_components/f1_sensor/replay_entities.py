@@ -13,6 +13,7 @@ from homeassistant.helpers.entity import EntityCategory
 from .const import DOMAIN
 from .entity import F1AuxEntity
 from .replay_mode import ReplayController, ReplayState
+from .calibration import LiveDelayCalibrationManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,11 +104,21 @@ class F1ReplayLoadButton(F1AuxEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Handle button press - load selected session."""
+        await self._block_calibration_for_replay("load")
         if self._controller.state == ReplayState.SELECTED:
             try:
                 await self._controller.session_manager.async_load_session()
             except RuntimeError as err:
                 _LOGGER.warning("Failed to load session: %s", err)
+
+    async def _block_calibration_for_replay(self, action: str) -> None:
+        if not self.hass:
+            return
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        manager: LiveDelayCalibrationManager | None = reg.get("calibration_manager")
+        if manager is None:
+            return
+        await manager.async_blocked_by_replay(source=f"replay_{action}")
 
 
 class F1ReplayPlayButton(F1AuxEntity, ButtonEntity):
@@ -130,6 +141,7 @@ class F1ReplayPlayButton(F1AuxEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Handle button press - start or resume playback."""
+        await self._block_calibration_for_replay("play")
         state = self._controller.state
         try:
             if state == ReplayState.READY:
@@ -138,6 +150,15 @@ class F1ReplayPlayButton(F1AuxEntity, ButtonEntity):
                 await self._controller.async_resume()
         except RuntimeError as err:
             _LOGGER.warning("Failed to start/resume playback: %s", err)
+
+    async def _block_calibration_for_replay(self, action: str) -> None:
+        if not self.hass:
+            return
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        manager: LiveDelayCalibrationManager | None = reg.get("calibration_manager")
+        if manager is None:
+            return
+        await manager.async_blocked_by_replay(source=f"replay_{action}")
 
 
 class F1ReplayPauseButton(F1AuxEntity, ButtonEntity):
@@ -237,10 +258,11 @@ class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
         # Calculate human-readable position
         position_s = playback.get("position_ms", 0) // 1000
         session_start_s = playback.get("session_start_ms", 0) // 1000
+        playback_start_s = playback.get("playback_start_ms", 0) // 1000
         duration_s = playback.get("duration_ms", 0) // 1000
 
         # Position relative to session start
-        relative_position_s = max(0, position_s - session_start_s)
+        relative_position_s = max(0, position_s - playback_start_s)
 
         self._attrs = {
             "selected_session": snapshot.get("selected_session"),
@@ -248,8 +270,9 @@ class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
             "download_error": snapshot.get("download_error"),
             "playback_position_s": relative_position_s,
             "playback_position_formatted": self._format_time(relative_position_s),
-            "playback_total_s": duration_s - session_start_s,
-            "playback_total_formatted": self._format_time(duration_s - session_start_s),
+            "playback_total_s": duration_s - playback_start_s,
+            "playback_total_formatted": self._format_time(duration_s - playback_start_s),
+            "session_start_offset_s": session_start_s,
             "paused": playback.get("paused", False),
             "sessions_available": snapshot.get("sessions_count", 0),
         }

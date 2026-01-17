@@ -49,7 +49,8 @@
     },
     "binary_sensor": {
       "race_week": { "name": "Rennwoche" },
-      "live_timing_online": { "name": "Live-Timing online" }
+      "live_timing_online": { "name": "Live-Timing online" },
+      "formation_start": { "name": "Formation start" }
     }
   }
 }
