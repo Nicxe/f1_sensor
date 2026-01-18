@@ -4,6 +4,7 @@ import asyncio
 import time
 import re
 from datetime import datetime, timezone, timedelta
+from html.parser import HTMLParser
 
 import async_timeout
 from typing import Any, Dict, Optional, Callable, List
@@ -492,6 +493,10 @@ _TZ_OFFSETS = {
 }
 
 
+def _normalize_text(text: str) -> str:
+    return _WS_RE.sub(" ", (text or "").replace("\xa0", " ")).strip()
+
+
 def _strip_html(text: str) -> str:
     return _WS_RE.sub(
         " ",
@@ -528,16 +533,109 @@ def _extract_published(text: str) -> tuple[Optional[str], str]:
     return iso, cleaned
 
 
-def parse_fia_documents(html: str) -> List[Dict[str, Any]]:
-    """Extract FIA PDF links from HTML."""
-    if not isinstance(html, str) or not html:
-        return []
-    docs: List[Dict[str, Any]] = []
-    for match in _PDF_ANCHOR_RE.finditer(html):
-        href = match.group("href")
-        label = match.group("label") or ""
-        text = _strip_html(label)
-        published, clean_text = _extract_published(text)
+def _get_attr(attrs: list[tuple[str, str | None]], name: str) -> str | None:
+    for key, value in attrs:
+        if key.lower() == name:
+            return value
+    return None
+
+
+def _is_doc_container(tag: str, attrs: list[tuple[str, str | None]] | None) -> bool:
+    if tag in {"li", "tr"}:
+        return True
+    if tag in {"div", "article", "section"}:
+        class_attr = _get_attr(attrs or [], "class")
+        if class_attr and "document" in class_attr.lower():
+            return True
+    return False
+
+
+class _FiaDocumentHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._documents: list[dict[str, str]] = []
+        self._container_stack: list[tuple[int, list[str]]] = []
+        self._tag_stack: list[str] = []
+        self._current_href: str | None = None
+        self._current_text: list[str] = []
+        self._current_container: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        self._tag_stack.append(tag)
+        if _is_doc_container(tag, attrs):
+            self._container_stack.append((len(self._tag_stack), []))
+        if tag == "a":
+            href = _get_attr(attrs, "href")
+            if href and ".pdf" in href.lower():
+                self._current_href = href
+                self._current_text = []
+                self._current_container = (
+                    self._container_stack[-1][1] if self._container_stack else None
+                )
+
+    def handle_data(self, data: str) -> None:
+        if not data:
+            return
+        for _, buffer in self._container_stack:
+            buffer.append(data)
+        if self._current_href is not None:
+            self._current_text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag == "a" and self._current_href is not None:
+            anchor_text = "".join(self._current_text)
+            container_text = (
+                "".join(self._current_container) if self._current_container else ""
+            )
+            self._documents.append(
+                {
+                    "href": self._current_href,
+                    "anchor_text": anchor_text,
+                    "container_text": container_text,
+                }
+            )
+            self._current_href = None
+            self._current_text = []
+            self._current_container = None
+        if self._tag_stack:
+            self._tag_stack.pop()
+        while (
+            self._container_stack
+            and self._container_stack[-1][0] > len(self._tag_stack)
+        ):
+            self._container_stack.pop()
+
+    def close(self) -> None:
+        super().close()
+        if self._current_href is not None:
+            anchor_text = "".join(self._current_text)
+            container_text = (
+                "".join(self._current_container) if self._current_container else ""
+            )
+            self._documents.append(
+                {
+                    "href": self._current_href,
+                    "anchor_text": anchor_text,
+                    "container_text": container_text,
+                }
+            )
+            self._current_href = None
+            self._current_text = []
+            self._current_container = None
+
+    def documents(self) -> list[dict[str, str]]:
+        return list(self._documents)
+
+
+def _build_fia_documents(entries: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    docs: list[dict[str, Any]] = []
+    for href, text in entries:
+        if not href:
+            continue
+        normalized = _normalize_text(text)
+        published, clean_text = _extract_published(normalized)
         absolute = urljoin("https://www.fia.com", href)
         doc = {
             "name": clean_text or absolute,
@@ -546,3 +644,42 @@ def parse_fia_documents(html: str) -> List[Dict[str, Any]]:
         }
         docs.append(doc)
     return docs
+
+
+def _parse_fia_documents_html(html: str) -> list[dict[str, Any]]:
+    parser = _FiaDocumentHTMLParser()
+    try:
+        parser.feed(html)
+        parser.close()
+    except Exception:
+        return []
+    entries: list[tuple[str, str]] = []
+    for item in parser.documents():
+        href = item.get("href") or ""
+        anchor_text = item.get("anchor_text") or ""
+        container_text = item.get("container_text") or ""
+        text = anchor_text
+        if container_text and ("Published on" in container_text or not text.strip()):
+            text = container_text
+        entries.append((href, text))
+    return _build_fia_documents(entries)
+
+
+def _parse_fia_documents_regex(html: str) -> list[dict[str, Any]]:
+    entries: list[tuple[str, str]] = []
+    for match in _PDF_ANCHOR_RE.finditer(html):
+        href = match.group("href")
+        label = match.group("label") or ""
+        text = _strip_html(label)
+        entries.append((href, text))
+    return _build_fia_documents(entries)
+
+
+def parse_fia_documents(html: str) -> List[Dict[str, Any]]:
+    """Extract FIA PDF links from HTML."""
+    if not isinstance(html, str) or not html:
+        return []
+    docs = _parse_fia_documents_html(html)
+    if docs:
+        return docs
+    return _parse_fia_documents_regex(html)

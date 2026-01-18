@@ -118,7 +118,9 @@ class F1ReplayLoadButton(F1AuxEntity, ButtonEntity):
         manager: LiveDelayCalibrationManager | None = reg.get("calibration_manager")
         if manager is None:
             return
-        await manager.async_blocked_by_replay(source=f"replay_{action}")
+        mode = str(manager.snapshot().get("mode") or "idle")
+        if mode in {"waiting", "running"}:
+            await manager.async_blocked_by_replay(source=f"replay_{action}")
 
 
 class F1ReplayPlayButton(F1AuxEntity, ButtonEntity):
@@ -158,7 +160,9 @@ class F1ReplayPlayButton(F1AuxEntity, ButtonEntity):
         manager: LiveDelayCalibrationManager | None = reg.get("calibration_manager")
         if manager is None:
             return
-        await manager.async_blocked_by_replay(source=f"replay_{action}")
+        mode = str(manager.snapshot().get("mode") or "idle")
+        if mode in {"waiting", "running"}:
+            await manager.async_blocked_by_replay(source=f"replay_{action}")
 
 
 class F1ReplayPauseButton(F1AuxEntity, ButtonEntity):

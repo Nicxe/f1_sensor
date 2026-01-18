@@ -3533,8 +3533,23 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
                     persist_save=self._persist_save,
                 )
             slug = self._extract_season_slug(html, season)
+            if not slug:
+                async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+                    html = await fetch_text(
+                        self.hass,
+                        self._session,
+                        FIA_DOCUMENTS_BASE_URL,
+                        ttl_seconds=self._ttl,
+                        cache=self._cache,
+                        inflight=self._inflight,
+                        persist_map=self._persist,
+                        persist_save=self._persist_save,
+                    )
+                slug = self._extract_season_slug(html, season)
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("Failed to resolve FIA season slug for %s: %s", season, err)
+        if not slug:
+            _LOGGER.debug("FIA season slug not found for %s; using fallback URL", season)
         url = (
             urljoin(FIA_DOCUMENTS_BASE_URL + "/", slug)
             if slug
@@ -3547,8 +3562,11 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
     def _extract_season_slug(html: str, season: str) -> str | None:
         if not isinstance(html, str) or not html:
             return None
+        season_escaped = re.escape(str(season))
         pattern = re.compile(
-            rf'href="(?P<href>/documents[^"]*season/season-{re.escape(str(season))}-\d+)"',
+            rf'(?:href|value)=(["\'])'
+            rf'(?P<href>(?:https?://[^"\']+)?/documents[^"\']*season/season-{season_escaped}-\d+)'
+            rf'\1',
             re.IGNORECASE,
         )
         match = pattern.search(html)
