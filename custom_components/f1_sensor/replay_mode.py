@@ -46,6 +46,12 @@ REPLAY_STREAMS = [
 
 STATIC_BASE = "https://livetiming.formula1.com/static"
 MAX_SESSIONS_TO_SHOW = 150  # ~24 race weekends * 5 sessions + testing
+# Keep year options tight but future-proof (current year +/- 1).
+REPLAY_YEAR_BACK = 1
+# Index fetch status for UI feedback.
+INDEX_STATUS_OK = "ok"
+INDEX_STATUS_NO_DATA = "no_data"
+INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when changing initial_state format to invalidate old caches
 CACHE_VERSION = 3
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
@@ -131,6 +137,10 @@ class ReplaySessionManager:
         self._selected_session: ReplaySession | None = None
         self._loaded_index: ReplayIndex | None = None
         self._available_sessions: List[ReplaySession] = []
+        self._selected_year = dt_util.utcnow().year
+        self._index_year: int | None = None
+        self._index_status: str | None = None
+        self._index_error: str | None = None
         self._listeners: List[Callable[[dict], None]] = []
         self._download_progress: float = 0.0
         self._download_error: str | None = None
@@ -149,6 +159,39 @@ class ReplaySessionManager:
     def available_sessions(self) -> List[ReplaySession]:
         """List of available sessions for replay."""
         return self._available_sessions
+
+    @property
+    def selected_year(self) -> int:
+        """Selected replay year."""
+        return self._selected_year
+
+    @property
+    def year_options(self) -> list[int]:
+        """Return the year options for the replay selector."""
+        current_year = dt_util.utcnow().year
+        years = [current_year, current_year - REPLAY_YEAR_BACK]
+        options: list[int] = []
+        for year in years:
+            if year > 0 and year not in options:
+                options.append(year)
+        if self._selected_year not in options:
+            options.append(self._selected_year)
+        return options
+
+    @property
+    def index_status(self) -> str | None:
+        """Last index fetch status."""
+        return self._index_status
+
+    @property
+    def index_year(self) -> int | None:
+        """Year used for the last index fetch."""
+        return self._index_year
+
+    @property
+    def index_error(self) -> str | None:
+        """Last index fetch error."""
+        return self._index_error
 
     @property
     def download_progress(self) -> float:
@@ -184,47 +227,73 @@ class ReplaySessionManager:
     async def async_fetch_sessions(self, year: int | None = None) -> List[ReplaySession]:
         """Fetch available sessions from F1 Live Timing Index."""
         if year is None:
-            year = dt_util.utcnow().year
+            year = self._selected_year
+        else:
+            self._selected_year = year
 
         sessions: List[ReplaySession] = []
+        previous_index_year = self._index_year
+        year_changed = previous_index_year != year
+        self._index_year = year
+        self._index_status = None
+        self._index_error = None
 
-        # Try current year, fall back to previous year if not available
-        years_to_try = [year, year - 1] if year == dt_util.utcnow().year else [year]
-
-        data = None
-        used_year = None
-        for try_year in years_to_try:
-            url = f"{STATIC_BASE}/{try_year}/Index.json"
-            try:
-                async with async_timeout.timeout(15):
-                    async with self._http.get(url) as resp:
-                        if resp.status in (403, 404):
-                            _LOGGER.debug(
-                                "Index for %s not available (HTTP %s), trying previous year",
-                                try_year, resp.status
-                            )
-                            continue
-                        if resp.status != 200:
-                            _LOGGER.warning(
-                                "Failed to fetch index for %s: HTTP %s", try_year, resp.status
-                            )
-                            continue
-                        text = await resp.text()
-                        data = json.loads(text.lstrip("\ufeff"))
-                        used_year = try_year
-                        break
-            except asyncio.TimeoutError:
-                _LOGGER.warning("Timeout fetching session index for year %s", try_year)
-                continue
-            except Exception as err:
-                _LOGGER.warning("Error fetching session index for %s: %s", try_year, err)
-                continue
-
-        if data is None:
-            _LOGGER.warning("Could not fetch session index for any year")
+        url = f"{STATIC_BASE}/{year}/Index.json"
+        try:
+            async with async_timeout.timeout(15):
+                async with self._http.get(url) as resp:
+                    if resp.status in (403, 404):
+                        self._index_status = INDEX_STATUS_NO_DATA
+                        self._available_sessions = []
+                        self._selected_session = None
+                        self._loaded_index = None
+                        self._state = ReplayState.IDLE
+                        self._notify_listeners()
+                        _LOGGER.info(
+                            "Replay index not available for year %s (HTTP %s)",
+                            year,
+                            resp.status,
+                        )
+                        return sessions
+                    if resp.status != 200:
+                        self._index_status = INDEX_STATUS_ERROR
+                        self._index_error = f"HTTP {resp.status}"
+                        if year_changed:
+                            self._available_sessions = []
+                            self._selected_session = None
+                            self._loaded_index = None
+                            self._state = ReplayState.IDLE
+                        self._notify_listeners()
+                        _LOGGER.warning(
+                            "Failed to fetch index for %s: HTTP %s", year, resp.status
+                        )
+                        return sessions
+                    text = await resp.text()
+                    data = json.loads(text.lstrip("\ufeff"))
+        except asyncio.TimeoutError:
+            self._index_status = INDEX_STATUS_ERROR
+            self._index_error = "timeout"
+            if year_changed:
+                self._available_sessions = []
+                self._selected_session = None
+                self._loaded_index = None
+                self._state = ReplayState.IDLE
+            self._notify_listeners()
+            _LOGGER.warning("Timeout fetching session index for year %s", year)
+            return sessions
+        except Exception as err:
+            self._index_status = INDEX_STATUS_ERROR
+            self._index_error = str(err)
+            if year_changed:
+                self._available_sessions = []
+                self._selected_session = None
+                self._loaded_index = None
+                self._state = ReplayState.IDLE
+            self._notify_listeners()
+            _LOGGER.warning("Error fetching session index for %s: %s", year, err)
             return sessions
 
-        _LOGGER.info("Fetching replay sessions from year %s", used_year)
+        _LOGGER.info("Fetching replay sessions from year %s", year)
 
         # Parse meetings and sessions
         meetings = data.get("Meetings", [])
@@ -255,7 +324,7 @@ class ReplaySessionManager:
                 if start_utc and path:
                     sessions.append(
                         ReplaySession(
-                            year=used_year,
+                            year=year,
                             meeting_key=meeting_key,
                             meeting_name=meeting_name,
                             session_key=session_key,
@@ -278,11 +347,29 @@ class ReplaySessionManager:
             s.available = True
 
         self._available_sessions = past_sessions[:MAX_SESSIONS_TO_SHOW]
+        self._index_status = INDEX_STATUS_OK
         self._notify_listeners()
         _LOGGER.info(
             "Fetched %d available replay sessions for %s", len(self._available_sessions), year
         )
         return self._available_sessions
+
+    async def async_set_year(self, year: int) -> None:
+        """Set the selected year and refresh the session list."""
+        if year == self._selected_year:
+            await self.async_fetch_sessions(year)
+            return
+
+        self._selected_year = year
+        self._selected_session = None
+        self._loaded_index = None
+        self._state = ReplayState.IDLE
+        self._download_progress = 0.0
+        self._download_error = None
+        self._index_status = None
+        self._index_error = None
+        self._notify_listeners()
+        await self.async_fetch_sessions(year)
 
     async def async_select_session(self, session_id: str) -> None:
         """Select a session for loading."""
@@ -385,6 +472,10 @@ class ReplaySessionManager:
             "download_progress": self._download_progress,
             "download_error": self._download_error,
             "sessions_count": len(self._available_sessions),
+            "selected_year": self._selected_year,
+            "index_year": self._index_year,
+            "index_status": self._index_status,
+            "index_error": self._index_error,
         }
 
     async def _download_and_index_session(self, session: ReplaySession) -> ReplayIndex:

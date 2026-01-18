@@ -17,7 +17,7 @@ from .const import (
 )
 from .entity import F1AuxEntity
 from .live_delay import LiveDelayReferenceController
-from .replay_entities import F1ReplaySessionSelect
+from .replay_entities import F1ReplaySessionSelect, F1ReplayYearSelect
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,6 +53,15 @@ async def async_setup_entry(
     replay_controller = registry.get("replay_controller")
     if replay_controller is not None:
         entities.append(
+            F1ReplayYearSelect(
+                replay_controller,
+                f"{name} Replay Year",
+                f"{entry.entry_id}_replay_year_select",
+                entry.entry_id,
+                name,
+            )
+        )
+        entities.append(
             F1ReplaySessionSelect(
                 replay_controller,
                 f"{name} Replay Session",
@@ -84,7 +93,6 @@ class F1LiveDelayReferenceSelect(F1AuxEntity, SelectEntity):
         F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
         SelectEntity.__init__(self)
         self._controller = controller
-        self._unsub = controller.add_listener(self._handle_reference_update)
         self._option_to_value = {
             "Session live": LIVE_DELAY_REFERENCE_SESSION,
             "Formation start (race/sprint)": LIVE_DELAY_REFERENCE_FORMATION,
@@ -93,6 +101,12 @@ class F1LiveDelayReferenceSelect(F1AuxEntity, SelectEntity):
         self._current_option = self._value_to_option.get(
             controller.current, "Session live"
         )
+        self._unsub = None
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to reference changes when added to hass."""
+        if not self._unsub:
+            self._unsub = self._controller.add_listener(self._handle_reference_update)
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub:

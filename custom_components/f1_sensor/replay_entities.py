@@ -18,10 +18,89 @@ from .calibration import LiveDelayCalibrationManager
 _LOGGER = logging.getLogger(__name__)
 
 
+class F1ReplayYearSelect(F1AuxEntity, SelectEntity):
+    """Select entity for choosing replay year."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_should_poll = False
+
+    def __init__(
+        self,
+        controller: ReplayController,
+        sensor_name: str,
+        unique_id: str,
+        entry_id: str,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        SelectEntity.__init__(self)
+        self._controller = controller
+        self._unsub: Callable[[], None] | None = None
+        self._current_option: str | None = None
+        self._options: list[str] = []
+        self._attr_icon = "mdi:calendar"
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to state changes when added to hass."""
+        self._unsub = self._controller.session_manager.add_listener(self._handle_update)
+        self._rebuild_options()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unsubscribe when removed."""
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+
+    @property
+    def options(self) -> list[str]:
+        """Return list of available options."""
+        return self._options
+
+    @property
+    def current_option(self) -> str | None:
+        """Return current selected option."""
+        return self._current_option
+
+    async def async_select_option(self, option: str) -> None:
+        """Handle option selection."""
+        try:
+            year = int(option)
+        except ValueError:
+            return
+
+        if self._controller.state == ReplayState.LOADING:
+            _LOGGER.warning("Replay year change ignored while loading")
+            return
+
+        if self._controller.state in (ReplayState.PLAYING, ReplayState.PAUSED, ReplayState.READY):
+            await self._controller.async_stop()
+
+        manager = self._controller.session_manager
+        if year == manager.selected_year:
+            await manager.async_fetch_sessions(year)
+            return
+        await manager.async_set_year(year)
+
+    def _handle_update(self, snapshot: dict) -> None:
+        """Handle state update from controller."""
+        self._rebuild_options()
+        selected_year = snapshot.get("selected_year")
+        if selected_year is None:
+            selected_year = self._controller.session_manager.selected_year
+        self._current_option = str(selected_year) if selected_year is not None else None
+        self.async_write_ha_state()
+
+    def _rebuild_options(self) -> None:
+        """Rebuild options list from available years."""
+        years = self._controller.session_manager.year_options
+        self._options = [str(y) for y in years]
+
+
 class F1ReplaySessionSelect(F1AuxEntity, SelectEntity):
     """Select entity for choosing replay session."""
 
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_should_poll = False
 
     def __init__(
         self,
@@ -38,6 +117,7 @@ class F1ReplaySessionSelect(F1AuxEntity, SelectEntity):
         self._current_option: str | None = None
         self._options: list[str] = []
         self._session_map: dict[str, str] = {}  # label -> session_id
+        self._placeholder_option: str | None = None
         self._attr_icon = "mdi:calendar-clock"
 
     async def async_added_to_hass(self) -> None:
@@ -74,14 +154,32 @@ class F1ReplaySessionSelect(F1AuxEntity, SelectEntity):
     def _handle_update(self, snapshot: dict) -> None:
         """Handle state update from controller."""
         self._rebuild_options()
-        self._current_option = snapshot.get("selected_session")
+        selected = snapshot.get("selected_session")
+        if selected is not None:
+            self._current_option = selected
+        elif self._placeholder_option:
+            self._current_option = self._placeholder_option
+        else:
+            self._current_option = None
         self.async_write_ha_state()
 
     def _rebuild_options(self) -> None:
         """Rebuild options list from available sessions."""
-        sessions = self._controller.session_manager.available_sessions
+        manager = self._controller.session_manager
+        sessions = manager.available_sessions
         self._options = [s.label for s in sessions]
         self._session_map = {s.label: s.unique_id for s in sessions}
+        self._placeholder_option = None
+        if not self._options:
+            year = manager.selected_year
+            status = manager.index_status
+            if status == "no_data":
+                self._placeholder_option = f"No data for {year}"
+            elif status == "error":
+                self._placeholder_option = "Session list unavailable"
+            else:
+                self._placeholder_option = f"No sessions for {year}"
+            self._options = [self._placeholder_option]
 
 
 class F1ReplayLoadButton(F1AuxEntity, ButtonEntity):
@@ -216,6 +314,7 @@ class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
     """Sensor showing replay status and progress."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_should_poll = False
 
     def __init__(
         self,
@@ -279,6 +378,10 @@ class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
             "session_start_offset_s": session_start_s,
             "paused": playback.get("paused", False),
             "sessions_available": snapshot.get("sessions_count", 0),
+            "selected_year": snapshot.get("selected_year"),
+            "index_year": snapshot.get("index_year"),
+            "index_status": snapshot.get("index_status"),
+            "index_error": snapshot.get("index_error"),
         }
         self.async_write_ha_state()
 

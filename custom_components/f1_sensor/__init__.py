@@ -61,6 +61,11 @@ from .replay_mode import ReplayController
 _LOGGER = logging.getLogger(__name__)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
+_REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode"})
+
+
+def _is_replay_delay_reason(reason: str | None) -> bool:
+    return reason in _REPLAY_DELAY_REASONS
 
 
 def _ensure_jolpica_stats_reporting(hass: HomeAssistant) -> None:
@@ -767,6 +772,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -814,14 +820,15 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         # Skip duplicate snapshots without timestamp to avoid heartbeat churn
         if self._should_skip_duplicate(msg):
             return
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
             self._deliver_handle = self.hass.loop.call_later(
-                self._delay, lambda m=msg: self._deliver(m)
+                delay, lambda m=msg: self._deliver(m)
             )
         else:
             # Coalesce in same loop tick
@@ -925,6 +932,13 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         # before the LiveSessionSupervisor has decided whether to arm a window.
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._last_message = None
@@ -967,6 +981,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         # For duplicate filtering and startup replay suppression
@@ -1134,8 +1149,9 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                     handle = None
 
         loop = self.hass.loop
-        if self._delay > 0:
-            handle = loop.call_later(self._delay, _callback)
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
+            handle = loop.call_later(delay, _callback)
         else:
             handle = loop.call_soon(_callback)
         self._deliver_handles.append(handle)
@@ -1156,6 +1172,14 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handles:
+            for handle in list(self._deliver_handles):
+                try:
+                    handle.cancel()
+                except Exception:
+                    pass
+            self._deliver_handles.clear()
         self.available = is_live
         if not is_live:
             self._last_message = None
@@ -1251,6 +1275,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -1304,14 +1329,15 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
             self._deliver_handle = self.hass.loop.call_later(
-                self._delay, lambda m=msg: self._deliver(m)
+                delay, lambda m=msg: self._deliver(m)
             )
         else:
             try:
@@ -1359,6 +1385,13 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._last_message = None
@@ -1408,6 +1441,7 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._config_entry = config_entry
@@ -1453,6 +1487,13 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._state = {"latest": None, "history": []}
@@ -1474,14 +1515,15 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
             self._deliver_handle = self.hass.loop.call_later(
-                self._delay, lambda m=msg: self._deliver(m)
+                delay, lambda m=msg: self._deliver(m)
             )
         else:
             try:
@@ -1673,6 +1715,7 @@ class PitStopCoordinator(DataUpdateCoordinator):
         self._unsubs: list[Callable[[], None]] = []
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -1732,6 +1775,13 @@ class PitStopCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._reset_store()
@@ -1812,13 +1862,14 @@ class PitStopCoordinator(DataUpdateCoordinator):
             self._reset_store()
 
     def _schedule_deliver(self) -> None:
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_later(self._delay, self._deliver)
+            self._deliver_handle = self.hass.loop.call_later(delay, self._deliver)
         else:
             try:
                 if self._deliver_handle:
@@ -2068,6 +2119,7 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
         self._unsubs: list[Callable[[], None]] = []
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
 
@@ -2139,6 +2191,13 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._reset_store()
@@ -2204,13 +2263,14 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
             self._reset_store()
 
     def _schedule_deliver(self) -> None:
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_later(self._delay, self._deliver)
+            self._deliver_handle = self.hass.loop.call_later(delay, self._deliver)
         else:
             try:
                 if self._deliver_handle:
@@ -2504,6 +2564,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._unsubs: list[Callable[[], None]] = []
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self.available = True
@@ -2658,6 +2719,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             # Clear consolidated state so a future session window does not briefly
@@ -2893,13 +2961,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self.async_set_updated_data(self._state)
 
     def _schedule_deliver(self) -> None:
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_later(self._delay, self._deliver)
+            self._deliver_handle = self.hass.loop.call_later(delay, self._deliver)
         else:
             try:
                 if self._deliver_handle:
@@ -3773,6 +3842,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         self._t0 = None
         self._startup_cutoff = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         # Lightweight dedupe of untimestamped repeats
@@ -3857,10 +3927,11 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
 
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             # Queue each delivery independently so intermediate states (e.g. YELLOW) survive
             try:
-                handle = self.hass.loop.call_later(self._delay, lambda m=msg: self._deliver(m))
+                handle = self.hass.loop.call_later(delay, lambda m=msg: self._deliver(m))
                 self._deliver_handles.append(handle)
             except Exception:
                 # Fallback to immediate delivery
@@ -3951,6 +4022,21 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode:
+            if self._deliver_handle:
+                try:
+                    self._deliver_handle.cancel()
+                except Exception:
+                    pass
+                self._deliver_handle = None
+            if self._deliver_handles:
+                for handle in list(self._deliver_handles):
+                    try:
+                        handle.cancel()
+                    except Exception:
+                        pass
+                self._deliver_handles.clear()
         self.available = is_live
         if not is_live:
             self._last_message = None
@@ -3999,6 +4085,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -4037,14 +4124,15 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
             self._deliver_handle = self.hass.loop.call_later(
-                self._delay, lambda m=msg: self._deliver(m)
+                delay, lambda m=msg: self._deliver(m)
             )
         else:
             try:
@@ -4107,6 +4195,13 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._last_message = None
@@ -4157,6 +4252,7 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -4195,6 +4291,13 @@ class TopThreeCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         # Note: For replay mode, we don't schedule deliver here.
         # The inject_message call will handle delivery with the correct initial state.
@@ -4225,14 +4328,15 @@ class TopThreeCoordinator(DataUpdateCoordinator):
             self._deliver_handle = None
 
     def _schedule_deliver(self) -> None:
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
             self._deliver_handle = self.hass.loop.call_later(
-                self._delay, self._deliver
+                delay, self._deliver
             )
         else:
             try:
@@ -4377,6 +4481,7 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -4415,14 +4520,15 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
             self._deliver_handle = self.hass.loop.call_later(
-                self._delay, lambda m=msg: self._deliver(m)
+                delay, lambda m=msg: self._deliver(m)
             )
         else:
             try:
@@ -4487,6 +4593,13 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._last_message = None
