@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime
 import logging
 from typing import Any, Callable
@@ -52,6 +54,7 @@ def _normalize_race_week_start(data: dict) -> str:
     ):
         return legacy
     return DEFAULT_RACE_WEEK_START_DAY
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
@@ -170,7 +173,9 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
         else:
             first_weekday = 0
         days_since_week_start = (now_local.weekday() - first_weekday) % 7
-        start_of_week = now_local.date() - datetime.timedelta(days=days_since_week_start)
+        start_of_week = now_local.date() - datetime.timedelta(
+            days=days_since_week_start
+        )
         end_of_week = start_of_week + datetime.timedelta(days=6)
         return start_of_week <= next_race_local.date() <= end_of_week
 
@@ -253,7 +258,12 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     def _update_from_track_status(self) -> None:
         payload, ts = self._extract_payload()
         if ts and self._last_ts and ts <= self._last_ts:
-            _LOGGER.debug("SafetyCar: Ignored old TrackStatus (ts=%s <= last=%s): %s", ts, self._last_ts, payload)
+            _LOGGER.debug(
+                "SafetyCar: Ignored old TrackStatus (ts=%s <= last=%s): %s",
+                ts,
+                self._last_ts,
+                payload,
+            )
             return
         state = normalize_track_status(payload)
         is_on = state in {"VSC", "SC"}
@@ -297,10 +307,23 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
         self._is_on = False
         self._attrs: dict[str, Any] = {}
         self._unsub: Callable[[], None] | None = None
+        self._unsub_live_state: Callable[[], None] | None = None
         self._attr_icon = "mdi:flag-outline"
 
     async def async_added_to_hass(self) -> None:
         self._unsub = self._tracker.add_listener(self._handle_update)
+        if self.hass is None:
+            return
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        live_state = reg.get("live_state")
+        if live_state is not None and hasattr(live_state, "add_listener"):
+            try:
+                self._unsub_live_state = live_state.add_listener(
+                    lambda *_: self._safe_write_ha_state()
+                )
+                self.async_on_remove(self._unsub_live_state)
+            except Exception:  # noqa: BLE001
+                self._unsub_live_state = None
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub:
@@ -309,9 +332,26 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
             except Exception:  # noqa: BLE001
                 pass
             self._unsub = None
+        if self._unsub_live_state:
+            try:
+                self._unsub_live_state()
+            except Exception:  # noqa: BLE001
+                pass
+            self._unsub_live_state = None
 
     @property
     def is_on(self) -> bool:
+        if self.hass is None:
+            return self._is_on
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        live_state = reg.get("live_state")
+        is_live_window = (
+            bool(getattr(live_state, "is_live", False))
+            if live_state is not None
+            else None
+        )
+        if is_live_window is False:
+            return False
         return self._is_on
 
     @property
@@ -381,13 +421,19 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
         except Exception:
             pass
 
-    def _compute_mode_and_ages(self) -> tuple[str, float | None, float | None, float | None, str | None]:
+    def _compute_mode_and_ages(
+        self,
+    ) -> tuple[str, float | None, float | None, float | None, str | None]:
         reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
         operation_mode = reg.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
         live_state = reg.get("live_state")
         live_bus = reg.get("live_bus")
 
-        is_live_window = bool(getattr(live_state, "is_live", False)) if live_state is not None else False
+        is_live_window = (
+            bool(getattr(live_state, "is_live", False))
+            if live_state is not None
+            else False
+        )
         reason = getattr(live_state, "reason", None) if live_state is not None else None
 
         if operation_mode == OPERATION_MODE_DEVELOPMENT:
@@ -422,12 +468,18 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
 
     @property
     def extra_state_attributes(self):
-        mode, hb_age, activity_age, effective_age, reason = self._compute_mode_and_ages()
+        mode, hb_age, activity_age, effective_age, reason = (
+            self._compute_mode_and_ages()
+        )
         return {
             "mode": mode,
             "reason": reason,
             "online_threshold_s": self._online_threshold_s,
             "heartbeat_age_s": (round(hb_age, 1) if hb_age is not None else None),
-            "activity_age_s": (round(activity_age, 1) if activity_age is not None else None),
-            "effective_age_s": (round(effective_age, 1) if effective_age is not None else None),
+            "activity_age_s": (
+                round(activity_age, 1) if activity_age is not None else None
+            ),
+            "effective_age_s": (
+                round(effective_age, 1) if effective_age is not None else None
+            ),
         }

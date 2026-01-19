@@ -10,9 +10,14 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    REPLAY_START_REFERENCE_FORMATION,
+    REPLAY_START_REFERENCE_SESSION,
+)
 from .entity import F1AuxEntity
 from .replay_mode import ReplayController, ReplayState
+from .replay_start import ReplayStartReferenceController
 from .calibration import LiveDelayCalibrationManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -72,7 +77,11 @@ class F1ReplayYearSelect(F1AuxEntity, SelectEntity):
             _LOGGER.warning("Replay year change ignored while loading")
             return
 
-        if self._controller.state in (ReplayState.PLAYING, ReplayState.PAUSED, ReplayState.READY):
+        if self._controller.state in (
+            ReplayState.PLAYING,
+            ReplayState.PAUSED,
+            ReplayState.READY,
+        ):
             await self._controller.async_stop()
 
         manager = self._controller.session_manager
@@ -180,6 +189,68 @@ class F1ReplaySessionSelect(F1AuxEntity, SelectEntity):
             else:
                 self._placeholder_option = f"No sessions for {year}"
             self._options = [self._placeholder_option]
+
+
+class F1ReplayStartReferenceSelect(F1AuxEntity, SelectEntity):
+    """Select entity for choosing replay playback start reference."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_should_poll = False
+
+    def __init__(
+        self,
+        controller: ReplayStartReferenceController,
+        sensor_name: str,
+        unique_id: str,
+        entry_id: str,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        SelectEntity.__init__(self)
+        self._controller = controller
+        self._option_to_value = {
+            "Session live": REPLAY_START_REFERENCE_SESSION,
+            "Formation start (race/sprint)": REPLAY_START_REFERENCE_FORMATION,
+        }
+        self._value_to_option = {v: k for k, v in self._option_to_value.items()}
+        self._current_option = self._value_to_option.get(
+            controller.current, "Formation start (race/sprint)"
+        )
+        self._unsub: Callable[[], None] | None = None
+        self._attr_icon = "mdi:flag-checkered"
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to reference changes when added to hass."""
+        if not self._unsub:
+            self._unsub = self._controller.add_listener(self._handle_reference_update)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unsubscribe when removed."""
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+
+    @property
+    def options(self) -> list[str]:
+        """Return list of available options."""
+        return list(self._option_to_value.keys())
+
+    @property
+    def current_option(self) -> str | None:
+        """Return current selected option."""
+        return self._current_option
+
+    async def async_select_option(self, option: str) -> None:
+        """Handle option selection."""
+        value = self._option_to_value.get(option, REPLAY_START_REFERENCE_FORMATION)
+        await self._controller.async_set_reference(value, source="select_entity")
+
+    def _handle_reference_update(self, value: str) -> None:
+        self._current_option = self._value_to_option.get(
+            value, "Formation start (race/sprint)"
+        )
+        if self.hass:
+            self.async_write_ha_state()
 
 
 class F1ReplayLoadButton(F1AuxEntity, ButtonEntity):
@@ -359,10 +430,22 @@ class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
         playback = self._controller.get_playback_status()
 
         # Calculate human-readable position
-        position_s = playback.get("position_ms", 0) // 1000
-        session_start_s = playback.get("session_start_ms", 0) // 1000
-        playback_start_s = playback.get("playback_start_ms", 0) // 1000
-        duration_s = playback.get("duration_ms", 0) // 1000
+        position_ms = int(playback.get("position_ms", 0) or 0)
+        session_start_ms = int(playback.get("session_start_ms", 0) or 0)
+        playback_start_ms = int(playback.get("playback_start_ms", 0) or 0)
+        duration_ms = int(playback.get("duration_ms", 0) or 0)
+
+        if duration_ms == 0:
+            planned = self._controller.get_planned_playback_details()
+            if planned:
+                session_start_ms = planned.get("session_start_ms", session_start_ms)
+                playback_start_ms = planned.get("playback_start_ms", playback_start_ms)
+                duration_ms = planned.get("duration_ms", duration_ms)
+
+        position_s = position_ms // 1000
+        session_start_s = session_start_ms // 1000
+        playback_start_s = playback_start_ms // 1000
+        duration_s = duration_ms // 1000
 
         # Position relative to session start
         relative_position_s = max(0, position_s - playback_start_s)
@@ -374,7 +457,9 @@ class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
             "playback_position_s": relative_position_s,
             "playback_position_formatted": self._format_time(relative_position_s),
             "playback_total_s": duration_s - playback_start_s,
-            "playback_total_formatted": self._format_time(duration_s - playback_start_s),
+            "playback_total_formatted": self._format_time(
+                duration_s - playback_start_s
+            ),
             "session_start_offset_s": session_start_s,
             "paused": playback.get("paused", False),
             "sessions_available": snapshot.get("sessions_count", 0),

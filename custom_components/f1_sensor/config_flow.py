@@ -181,7 +181,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             mode = user_input.get(
-                CONF_OPERATION_MODE, current.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+                CONF_OPERATION_MODE,
+                current.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE),
             )
             if mode not in (OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT):
                 mode = DEFAULT_OPERATION_MODE
@@ -292,9 +293,10 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         # For reconfigure we show dev controls either when explicitly enabled
         # or when the existing entry is already in development mode (so it
         # remains editable even if the flag is later turned off).
-        show_dev_controls = ENABLE_DEVELOPMENT_MODE_UI or current.get(
-            CONF_OPERATION_MODE
-        ) == OPERATION_MODE_DEVELOPMENT
+        show_dev_controls = (
+            ENABLE_DEVELOPMENT_MODE_UI
+            or current.get(CONF_OPERATION_MODE) == OPERATION_MODE_DEVELOPMENT
+        )
 
         if show_dev_controls:
             schema_fields.update(
@@ -327,6 +329,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _validate_replay_file(self, path: str) -> bool:
         """Return True if the provided path points to a readable file."""
+
         def _check() -> bool:
             try:
                 candidate = Path(path).expanduser()

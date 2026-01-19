@@ -63,7 +63,9 @@ class LiveDelayCalibrationManager:
                     "SessionStatus", self._handle_session_status
                 )
             except Exception:  # noqa: BLE001
-                _LOGGER.debug("Calibration manager failed to subscribe to SessionStatus")
+                _LOGGER.debug(
+                    "Calibration manager failed to subscribe to SessionStatus"
+                )
         if self._reference_controller is not None:
             self._reference_unsub = self._reference_controller.add_listener(
                 self._handle_reference_update
@@ -146,7 +148,9 @@ class LiveDelayCalibrationManager:
             try:
                 self._reload_cb()
             except Exception:  # noqa: BLE001
-                _LOGGER.debug("Failed to schedule reload after calibration", exc_info=True)
+                _LOGGER.debug(
+                    "Failed to schedule reload after calibration", exc_info=True
+                )
         return self.snapshot()
 
     async def async_cancel(self, *, source: str = "button") -> dict[str, Any]:
@@ -171,7 +175,9 @@ class LiveDelayCalibrationManager:
         _LOGGER.debug("Calibration blocked in replay mode (source=%s)", source)
         return self.snapshot()
 
-    def add_listener(self, listener: Callable[[dict[str, Any]], None]) -> Callable[[], None]:
+    def add_listener(
+        self, listener: Callable[[dict[str, Any]], None]
+    ) -> Callable[[], None]:
         self._listeners.append(listener)
         try:
             listener(self.snapshot())
@@ -347,7 +353,10 @@ class LiveDelayCalibrationManager:
         self._state["reference"] = self._reference
         if self._reference == LIVE_DELAY_REFERENCE_FORMATION:
             self._ensure_formation_listener()
-            if self._state["mode"] == "waiting" and self._formation_start_utc is not None:
+            if (
+                self._state["mode"] == "waiting"
+                and self._formation_start_utc is not None
+            ):
                 self._start_timer(
                     reason="formation_reference_switch",
                     started_at=self._formation_start_utc,

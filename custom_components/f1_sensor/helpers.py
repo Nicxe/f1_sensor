@@ -1,6 +1,8 @@
+from __future__ import annotations
+
+import asyncio
 import json
 import logging
-import asyncio
 import time
 import re
 from datetime import datetime, timezone, timedelta
@@ -97,18 +99,16 @@ def normalize_track_status(raw: dict | None) -> str | None:
     }
 
     numeric = {
-  
         "1": "CLEAR",
         "2": "YELLOW",
-        "4": "SC",          # Säkrast stöd för Safety Car
+        "4": "SC",  # Säkrast stöd för Safety Car
         "5": "RED",
         "6": "VSC",
         # Code "7" represents VSC ending phase; map to canonical VSC
         "7": "VSC",
-        "8": "CLEAR",       # Fallback, observerad som CLEAR i praktiken
+        "8": "CLEAR",  # Fallback, observerad som CLEAR i praktiken
         # "3": okänd/kontextberoende – logga och validera mot Race Control
-     }
-
+    }
 
     # Prefer explicit message aliases when present to avoid wrong numeric overrides
     for key, val in aliases.items():
@@ -193,7 +193,9 @@ async def fetch_json(
     key = _make_cache_key(url, params)
     now = time.monotonic()
     cache_map: Dict[str, tuple[float, Any]] = cache if isinstance(cache, dict) else {}
-    inflight_map: Dict[str, asyncio.Future] = inflight if isinstance(inflight, dict) else {}
+    inflight_map: Dict[str, asyncio.Future] = (
+        inflight if isinstance(inflight, dict) else {}
+    )
     persist_store: Dict[str, Any] = persist_map if isinstance(persist_map, dict) else {}
 
     # Cache hit
@@ -226,7 +228,9 @@ async def fetch_json(
                             ua_sent,
                         )
                 else:
-                    _LOGGER.debug("HTTP cache HIT key=%s ttl_left=%.1fs", key, exp - now)
+                    _LOGGER.debug(
+                        "HTTP cache HIT key=%s ttl_left=%.1fs", key, exp - now
+                    )
             return data
     except Exception:
         _LOGGER.debug("Cache lookup failed for key=%s", key, exc_info=True)
@@ -299,9 +303,11 @@ async def fetch_json(
         # Allow future consumers to see completed future for a short while,
         # then remove to avoid unbounded growth in inflight map.
         try:
+
             async def _cleanup_later():
                 await asyncio.sleep(0)  # next loop tick
                 inflight_map.pop(key, None)
+
             loop.create_task(_cleanup_later())
         except Exception:
             try:
@@ -328,7 +334,9 @@ async def fetch_text(
     key = f"text::{base_key}"
     now = time.monotonic()
     cache_map: Dict[str, tuple[float, Any]] = cache if isinstance(cache, dict) else {}
-    inflight_map: Dict[str, asyncio.Future] = inflight if isinstance(inflight, dict) else {}
+    inflight_map: Dict[str, asyncio.Future] = (
+        inflight if isinstance(inflight, dict) else {}
+    )
     persist_store: Dict[str, Any] = persist_map if isinstance(persist_map, dict) else {}
 
     try:
@@ -358,7 +366,9 @@ async def fetch_text(
                             ua_sent,
                         )
                 else:
-                    _LOGGER.debug("HTTP text cache HIT key=%s ttl_left=%.1fs", key, exp - now)
+                    _LOGGER.debug(
+                        "HTTP text cache HIT key=%s ttl_left=%.1fs", key, exp - now
+                    )
             return data
     except Exception:
         _LOGGER.debug("Text cache lookup failed for key=%s", key, exc_info=True)
@@ -422,9 +432,11 @@ async def fetch_text(
         raise
     finally:
         try:
+
             async def _cleanup_later():
                 await asyncio.sleep(0)
                 inflight_map.pop(key, None)
+
             loop.create_task(_cleanup_later())
         except Exception:
             try:
@@ -461,12 +473,14 @@ class PersistentCache:
         try:
             if self._save_task and not self._save_task.done():
                 return
+
             async def _save_later():
                 try:
                     await asyncio.sleep(delay)
                     await self._store.async_save(self._data)
                 except Exception:
                     pass
+
             self._save_task = self._hass.loop.create_task(_save_later())
         except Exception:
             # Fallback to immediate save
@@ -601,9 +615,8 @@ class _FiaDocumentHTMLParser(HTMLParser):
             self._current_container = None
         if self._tag_stack:
             self._tag_stack.pop()
-        while (
-            self._container_stack
-            and self._container_stack[-1][0] > len(self._tag_stack)
+        while self._container_stack and self._container_stack[-1][0] > len(
+            self._tag_stack
         ):
             self._container_stack.pop()
 

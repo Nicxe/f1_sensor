@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import asyncio
+import inspect
 import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator, List, Sequence
+from typing import AsyncGenerator, List
 
 from homeassistant.core import HomeAssistant
 
@@ -27,7 +30,12 @@ KNOWN_STREAMS = {
 }
 
 
-@dataclass(slots=True)
+_DATACLASS_KWARGS = {}
+if "slots" in inspect.signature(dataclass).parameters:
+    _DATACLASS_KWARGS["slots"] = True
+
+
+@dataclass(**_DATACLASS_KWARGS)
 class ReplayFrame:
     delay: float
     stream: str
@@ -151,11 +159,15 @@ class ReplaySignalRClient:
                     ):
                         payload = dict(payload)
                         payload["_static_root"] = static_root
-                    frames.append(ReplayFrame(delay=delay, stream=stream_name, payload=payload))
+                    frames.append(
+                        ReplayFrame(delay=delay, stream=stream_name, payload=payload)
+                    )
         except FileNotFoundError:
             raise
         except Exception as err:  # noqa: BLE001
-            raise RuntimeError(f"Failed to parse replay dump {self._path}: {err}") from err
+            raise RuntimeError(
+                f"Failed to parse replay dump {self._path}: {err}"
+            ) from err
         return frames
 
     def _compute_delay(self, current: float | None, prev_ts: float | None) -> float:
@@ -174,7 +186,12 @@ class ReplaySignalRClient:
             parsed = datetime.strptime(text, fmt)
         except ValueError:
             return None
-        return parsed.hour * 3600 + parsed.minute * 60 + parsed.second + (parsed.microsecond / 1_000_000)
+        return (
+            parsed.hour * 3600
+            + parsed.minute * 60
+            + parsed.second
+            + (parsed.microsecond / 1_000_000)
+        )
 
     @staticmethod
     def _split_line(line: str) -> tuple[str, str]:
@@ -227,4 +244,3 @@ class ReplaySignalRClient:
             payload = {k: v for k, v in obj.items() if k != "_stream"}
             return str(stream), payload
         return None, obj
-

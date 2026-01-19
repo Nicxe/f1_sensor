@@ -83,7 +83,9 @@ class LiveDelayController:
         try:
             listener(self._value)
         except Exception:  # noqa: BLE001 - defensive
-            _LOGGER.debug("LiveDelay listener raised during initial sync", exc_info=True)
+            _LOGGER.debug(
+                "LiveDelay listener raised during initial sync", exc_info=True
+            )
 
         @callback
         def _remove() -> None:
@@ -167,7 +169,9 @@ class LiveDelayReferenceController:
         await self._async_commit()
         return self._value
 
-    async def async_set_reference(self, value: Any, *, source: str | None = None) -> str:
+    async def async_set_reference(
+        self, value: Any, *, source: str | None = None
+    ) -> str:
         new_value = self._normalize(value)
         if new_value == self._value:
             return self._value
@@ -184,7 +188,8 @@ class LiveDelayReferenceController:
             listener(self._value)
         except Exception:  # noqa: BLE001
             _LOGGER.debug(
-                "Live delay reference listener raised during initial sync", exc_info=True
+                "Live delay reference listener raised during initial sync",
+                exc_info=True,
             )
 
         @callback
@@ -214,9 +219,7 @@ class LiveDelayReferenceController:
             try:
                 await self._store.async_save({"reference": self._value})
             except Exception:  # noqa: BLE001
-                _LOGGER.debug(
-                    "Failed to persist live delay reference", exc_info=True
-                )
+                _LOGGER.debug("Failed to persist live delay reference", exc_info=True)
 
         self._save_task = self._hass.async_create_task(_save())
 

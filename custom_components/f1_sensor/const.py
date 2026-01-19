@@ -13,7 +13,9 @@ PLATFORMS: list[Platform] = [
 
 # Replay Mode
 REPLAY_CACHE_DIR = "f1_replay_cache"
-REPLAY_CACHE_RETENTION_DAYS = 1  # Short retention - cache is deleted on stop, this is just backup
+REPLAY_CACHE_RETENTION_DAYS = (
+    1  # Short retention - cache is deleted on stop, this is just backup
+)
 
 CONF_OPERATION_MODE = "operation_mode"
 CONF_REPLAY_FILE = "replay_file"
@@ -33,6 +35,12 @@ CONF_LIVE_DELAY_REFERENCE = "live_delay_reference"
 LIVE_DELAY_REFERENCE_SESSION = "session_live"
 LIVE_DELAY_REFERENCE_FORMATION = "formation_start"
 DEFAULT_LIVE_DELAY_REFERENCE = LIVE_DELAY_REFERENCE_SESSION
+
+# Replay start reference
+CONF_REPLAY_START_REFERENCE = "replay_start_reference"
+REPLAY_START_REFERENCE_SESSION = LIVE_DELAY_REFERENCE_SESSION
+REPLAY_START_REFERENCE_FORMATION = LIVE_DELAY_REFERENCE_FORMATION
+DEFAULT_REPLAY_START_REFERENCE = REPLAY_START_REFERENCE_FORMATION
 
 # Gate for exposing development mode controls in the UI.
 # Keep this False in released versions to avoid confusing users;
@@ -61,10 +69,10 @@ MAX_RETRY_SEC = 60
 BACK_OFF_FACTOR = 2
 
 # FIA document scraping defaults (best effort, update slug each season if FIA changes structure)
-FIA_DOCUMENTS_BASE_URL = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14"
-FIA_SEASON_LIST_URL = f"{FIA_DOCUMENTS_BASE_URL}/season"
-FIA_SEASON_FALLBACK_URL = (
-    f"{FIA_DOCUMENTS_BASE_URL}/season/season-2025-2071"
+FIA_DOCUMENTS_BASE_URL = (
+    "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14"
 )
+FIA_SEASON_LIST_URL = f"{FIA_DOCUMENTS_BASE_URL}/season"
+FIA_SEASON_FALLBACK_URL = f"{FIA_DOCUMENTS_BASE_URL}/season/season-2025-2071"
 FIA_DOCS_POLL_INTERVAL = 900  # seconds
 FIA_DOCS_FETCH_TIMEOUT = 15

@@ -170,11 +170,24 @@ class FormationStartTracker:
             "error": self._last_error,
         }
 
+    def reset(self, *, status: str = "idle") -> None:
+        """Clear any stored formation state and notify listeners."""
+        self._cancel_task()
+        self._session_id = None
+        self._session_type = None
+        self._session_name = None
+        self._path = None
+        self._scheduled_start_utc = None
+        self._reset_state(status=status)
+        self._notify_listeners()
+
     async def async_close(self) -> None:
         self._detach_bus()
         self._cancel_task()
 
-    def add_listener(self, listener: Callable[[dict[str, Any]], None]) -> Callable[[], None]:
+    def add_listener(
+        self, listener: Callable[[dict[str, Any]], None]
+    ) -> Callable[[], None]:
         self._listeners.append(listener)
         if len(self._listeners) == 1:
             self._attach_bus()
@@ -258,7 +271,9 @@ class FormationStartTracker:
         self._session_type = str(payload.get("Type") or self._session_type or "")
         self._session_name = str(payload.get("Name") or self._session_name or "")
         self._path = str(path or self._path or "").strip() or None
-        self._scheduled_start_utc = _session_start_utc(payload) or self._scheduled_start_utc
+        self._scheduled_start_utc = (
+            _session_start_utc(payload) or self._scheduled_start_utc
+        )
 
         if not _is_race_or_sprint(self._session_type, self._session_name):
             if self._status != "not_applicable":

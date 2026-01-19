@@ -13,14 +13,21 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from typing import Any, AsyncGenerator, Callable, Dict, List
 
 import async_timeout
 from aiohttp import ClientSession
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .const import REPLAY_CACHE_DIR, REPLAY_CACHE_RETENTION_DAYS
+from .const import (
+    DEFAULT_REPLAY_START_REFERENCE,
+    REPLAY_CACHE_DIR,
+    REPLAY_CACHE_RETENTION_DAYS,
+    REPLAY_START_REFERENCE_FORMATION,
+)
+from .formation_start import FormationStartTracker
+from .replay_start import ReplayStartReferenceController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -220,11 +227,15 @@ class ReplaySessionManager:
         try:
             await asyncio.sleep(2)  # Small delay to let integration finish loading
             await self.async_fetch_sessions()
-            _LOGGER.info("Loaded %d replay sessions at startup", len(self._available_sessions))
+            _LOGGER.info(
+                "Loaded %d replay sessions at startup", len(self._available_sessions)
+            )
         except Exception as err:
             _LOGGER.warning("Failed to fetch replay sessions at startup: %s", err)
 
-    async def async_fetch_sessions(self, year: int | None = None) -> List[ReplaySession]:
+    async def async_fetch_sessions(
+        self, year: int | None = None
+    ) -> List[ReplaySession]:
         """Fetch available sessions from F1 Live Timing Index."""
         if year is None:
             year = self._selected_year
@@ -350,7 +361,9 @@ class ReplaySessionManager:
         self._index_status = INDEX_STATUS_OK
         self._notify_listeners()
         _LOGGER.info(
-            "Fetched %d available replay sessions for %s", len(self._available_sessions), year
+            "Fetched %d available replay sessions for %s",
+            len(self._available_sessions),
+            year,
         )
         return self._available_sessions
 
@@ -433,7 +446,9 @@ class ReplaySessionManager:
                 await self._hass.async_add_executor_job(shutil.rmtree, session_dir)
                 _LOGGER.info("Deleted replay cache for session %s", session_id)
             except Exception as err:
-                _LOGGER.warning("Failed to delete replay cache for %s: %s", session_id, err)
+                _LOGGER.warning(
+                    "Failed to delete replay cache for %s: %s", session_id, err
+                )
 
     def get_loaded_index(self) -> ReplayIndex | None:
         """Return the loaded replay index for the transport."""
@@ -467,8 +482,12 @@ class ReplaySessionManager:
         """Get current state snapshot."""
         return {
             "state": self._state.value,
-            "selected_session": self._selected_session.label if self._selected_session else None,
-            "selected_session_id": self._selected_session.unique_id if self._selected_session else None,
+            "selected_session": self._selected_session.label
+            if self._selected_session
+            else None,
+            "selected_session_id": self._selected_session.unique_id
+            if self._selected_session
+            else None,
             "download_progress": self._download_progress,
             "download_error": self._download_error,
             "sessions_count": len(self._available_sessions),
@@ -494,22 +513,32 @@ class ReplaySessionManager:
                 )
                 cached_version = index_data.get("cache_version", 1)
                 if cached_version >= CACHE_VERSION:
-                    _LOGGER.debug("Using cached session data for %s (v%d)", session.unique_id, cached_version)
+                    _LOGGER.debug(
+                        "Using cached session data for %s (v%d)",
+                        session.unique_id,
+                        cached_version,
+                    )
                     return ReplayIndex(
                         session_id=session.unique_id,
                         total_frames=index_data["total_frames"],
                         duration_ms=index_data["duration_ms"],
                         session_started_at_ms=index_data["session_started_at_ms"],
-                        formation_started_at_ms=index_data.get("formation_started_at_ms"),
+                        formation_started_at_ms=index_data.get(
+                            "formation_started_at_ms"
+                        ),
                         frames_file=frames_file,
                         index_file=index_file,
                         initial_state=index_data.get("initial_state"),
-                        formation_initial_state=index_data.get("formation_initial_state"),
+                        formation_initial_state=index_data.get(
+                            "formation_initial_state"
+                        ),
                     )
                 else:
                     _LOGGER.info(
                         "Cache version mismatch for %s (cached=%d, current=%d), re-downloading",
-                        session.unique_id, cached_version, CACHE_VERSION
+                        session.unique_id,
+                        cached_version,
+                        CACHE_VERSION,
                     )
             except Exception as err:
                 _LOGGER.warning("Failed to load cached index, re-downloading: %s", err)
@@ -528,7 +557,9 @@ class ReplaySessionManager:
             all_frames.extend(frames)
 
         if not all_frames:
-            raise RuntimeError("No frames downloaded - session data may not be available yet")
+            raise RuntimeError(
+                "No frames downloaded - session data may not be available yet"
+            )
 
         # Sort by timestamp
         all_frames.sort(key=lambda f: f.timestamp_ms)
@@ -548,7 +579,8 @@ class ReplaySessionManager:
 
         _LOGGER.debug(
             "Built initial state snapshot with %d streams: %s",
-            len(initial_state), list(initial_state.keys())
+            len(initial_state),
+            list(initial_state.keys()),
         )
 
         formation_started_at_ms: int | None = None
@@ -737,7 +769,10 @@ class ReplaySessionManager:
     ) -> Dict[str, Any]:
         """Return the latest stream payloads at the provided timestamp."""
         initial_state: Dict[str, Any] = {}
-        topthree_state: Dict[str, Any] = {"lines": [None, None, None], "withheld": False}
+        topthree_state: Dict[str, Any] = {
+            "lines": [None, None, None],
+            "withheld": False,
+        }
 
         for frame in frames:
             if frame.timestamp_ms > start_ms:
@@ -760,7 +795,7 @@ class ReplaySessionManager:
                     if frame.stream == "TopThree" and isinstance(frame.payload, dict):
                         self._merge_topthree_state(topthree_state, frame.payload)
                         lines = topthree_state.get("lines", [None, None, None])
-                        all_filled = all(isinstance(l, dict) for l in lines)
+                        all_filled = all(isinstance(line, dict) for line in lines)
                         if all_filled:
                             initial_state["TopThree"] = {
                                 "Withheld": topthree_state.get("withheld", False),
@@ -772,7 +807,11 @@ class ReplaySessionManager:
                         streams_needing_first.discard(frame.stream)
                 if not streams_needing_first:
                     break
-            if "TopThree" not in initial_state and topthree_state["lines"] != [None, None, None]:
+            if "TopThree" not in initial_state and topthree_state["lines"] != [
+                None,
+                None,
+                None,
+            ]:
                 initial_state["TopThree"] = {
                     "Withheld": topthree_state.get("withheld", False),
                     "Lines": topthree_state["lines"],
@@ -941,7 +980,9 @@ class ReplaySessionManager:
         except ValueError:
             return 0
 
-    async def _validate_session_availability(self, sessions: List[ReplaySession]) -> None:
+    async def _validate_session_availability(
+        self, sessions: List[ReplaySession]
+    ) -> None:
         """Check which sessions have data available via HEAD requests."""
         # Batch validation - check SessionStatus.jsonStream existence
         tasks = []
@@ -962,9 +1003,7 @@ class ReplaySessionManager:
 
     async def _cleanup_old_cache(self) -> None:
         """Remove cache entries older than retention period."""
-        cleaned = await self._hass.async_add_executor_job(
-            self._cleanup_old_cache_sync
-        )
+        cleaned = await self._hass.async_add_executor_job(self._cleanup_old_cache_sync)
         if cleaned > 0:
             _LOGGER.info("Cleaned %d old replay cache entries", cleaned)
 
@@ -1088,7 +1127,9 @@ class ReplayTransport:
             start_ms = self._start_from_ms
         else:
             start_ms = (
-                self._index.session_started_at_ms if self._start_from_session_start else 0
+                self._index.session_started_at_ms
+                if self._start_from_session_start
+                else 0
             )
         self._current_position_ms = start_ms
         self._playback_start_ms = start_ms
@@ -1151,7 +1192,8 @@ class ReplayTransport:
                 elif yielded_count % 1000 == 0:
                     _LOGGER.debug(
                         "Replay progress: %d frames yielded, position=%dms",
-                        yielded_count, frame_ms
+                        yielded_count,
+                        frame_ms,
                     )
 
                 # Yield in SignalR format
@@ -1264,6 +1306,8 @@ class ReplayController:
         http_session: ClientSession,
         live_bus: Any,
         live_state: Any = None,
+        start_reference_controller: ReplayStartReferenceController | None = None,
+        formation_tracker: FormationStartTracker | None = None,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
@@ -1271,6 +1315,8 @@ class ReplayController:
         self._live_bus = live_bus
         self._live_state = live_state  # LiveAvailabilityTracker to signal coordinators
         self._session_manager = ReplaySessionManager(hass, entry_id, http_session)
+        self._start_reference_controller = start_reference_controller
+        self._formation_tracker = formation_tracker
         self._transport: ReplayTransport | None = None
         self._original_transport_factory: Callable | None = None
         self._replay_active = False  # Track if replay transport is active
@@ -1292,6 +1338,42 @@ class ReplayController:
         """Get the current transport (for playback status)."""
         return self._transport
 
+    def _get_start_reference(self) -> str:
+        if self._start_reference_controller is not None:
+            return self._start_reference_controller.current
+        return DEFAULT_REPLAY_START_REFERENCE
+
+    def _resolve_playback_start(
+        self, index: ReplayIndex, *, log: bool
+    ) -> tuple[int, Dict[str, Any] | None]:
+        start_from_ms = index.session_started_at_ms
+        initial_state = index.initial_state
+        if self._get_start_reference() == REPLAY_START_REFERENCE_FORMATION:
+            formation_start = index.formation_started_at_ms
+            if (
+                formation_start is not None
+                and formation_start < index.session_started_at_ms
+            ):
+                start_from_ms = formation_start
+                if index.formation_initial_state is not None:
+                    initial_state = index.formation_initial_state
+                if log:
+                    _LOGGER.info(
+                        "Replay will start from formation marker at %dms",
+                        formation_start,
+                    )
+        return start_from_ms, initial_state
+
+    def _reset_formation_tracker(self) -> None:
+        if self._formation_tracker is None:
+            return
+        try:
+            self._formation_tracker.reset()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug(
+                "Failed to reset formation tracker after replay", exc_info=True
+            )
+
     async def async_initialize(self) -> None:
         """Initialize the controller."""
         await self._session_manager.async_initialize()
@@ -1305,19 +1387,7 @@ class ReplayController:
         if not index:
             raise RuntimeError("No replay index loaded")
 
-        start_from_ms = index.session_started_at_ms
-        initial_state = index.initial_state
-        if (
-            index.formation_started_at_ms is not None
-            and index.formation_started_at_ms < index.session_started_at_ms
-        ):
-            start_from_ms = index.formation_started_at_ms
-            if index.formation_initial_state is not None:
-                initial_state = index.formation_initial_state
-            _LOGGER.info(
-                "Replay will start from formation marker at %dms",
-                index.formation_started_at_ms,
-            )
+        start_from_ms, initial_state = self._resolve_playback_start(index, log=True)
 
         # Create transport
         self._transport = ReplayTransport(
@@ -1339,7 +1409,9 @@ class ReplayController:
 
         def _replay_transport_factory():
             if not self._replay_active or self._transport is None:
-                _LOGGER.warning("Replay transport factory called but replay is not active")
+                _LOGGER.warning(
+                    "Replay transport factory called but replay is not active"
+                )
                 raise RuntimeError("Replay transport is not available")
             # Check if transport is closed (playback complete) - deactivate to stop reconnects
             if self._transport._closed:
@@ -1351,14 +1423,17 @@ class ReplayController:
 
         _LOGGER.debug("Calling swap_transport with replay factory")
         await self._live_bus.swap_transport(_replay_transport_factory)
-        _LOGGER.debug("swap_transport completed, LiveBus running=%s", self._live_bus._running)
+        _LOGGER.debug(
+            "swap_transport completed, LiveBus running=%s", self._live_bus._running
+        )
 
         # Inject initial state for all streams so sensors have their correct values
         # before the replay transport starts yielding frames
         if initial_state:
             _LOGGER.info(
                 "Injecting initial state for %d streams: %s",
-                len(initial_state), list(initial_state.keys())
+                len(initial_state),
+                list(initial_state.keys()),
             )
             for stream, payload in initial_state.items():
                 if isinstance(payload, dict):
@@ -1420,6 +1495,8 @@ class ReplayController:
             _LOGGER.info("Restoring live_state to idle after replay stop")
             self._live_state.set_state(False, "replay-stopped")
 
+        self._reset_formation_tracker()
+
         await self._session_manager.async_unload()
 
     async def _run_playback(self) -> None:
@@ -1462,12 +1539,26 @@ class ReplayController:
                 if self._live_state is not None:
                     self._live_state.set_state(False, "replay-completed")
 
+                self._reset_formation_tracker()
+
                 # Update session state to IDLE (not READY - session is done)
                 self._session_manager._state = ReplayState.IDLE
                 self._session_manager._notify_listeners()
 
                 # Clean up cache
                 await self._session_manager.async_unload()
+
+    def get_planned_playback_details(self) -> dict[str, int]:
+        """Return playback offsets/duration for the loaded index (if any)."""
+        index = self._session_manager.get_loaded_index()
+        if not index:
+            return {}
+        start_from_ms, _ = self._resolve_playback_start(index, log=False)
+        return {
+            "session_start_ms": index.session_started_at_ms,
+            "playback_start_ms": start_from_ms,
+            "duration_ms": index.duration_ms,
+        }
 
     def get_playback_status(self) -> dict:
         """Get current playback position and status."""

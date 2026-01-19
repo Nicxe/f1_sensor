@@ -20,7 +20,9 @@ async def async_setup_entry(
     if not registry:
         return
     controller: LiveDelayController | None = registry.get("live_delay_controller")
-    calibration: LiveDelayCalibrationManager | None = registry.get("calibration_manager")
+    calibration: LiveDelayCalibrationManager | None = registry.get(
+        "calibration_manager"
+    )
     if controller is None:
         return
     entity = F1LiveDelayNumber(

@@ -63,6 +63,12 @@
     "media_player": {
       "replay_player": { "name": "Replay player" }
     },
+    "select": {
+      "live_delay_reference": { "name": "Live delay reference" },
+      "replay_year": { "name": "Replay year" },
+      "replay_session": { "name": "Replay session" },
+      "replay_start_reference": { "name": "Replay start reference" }
+    },
     "binary_sensor": {
       "race_week": { "name": "Tävlingsvecka" },
       "live_timing_online": { "name": "Live timing online" },

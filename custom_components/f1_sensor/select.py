@@ -17,7 +17,11 @@ from .const import (
 )
 from .entity import F1AuxEntity
 from .live_delay import LiveDelayReferenceController
-from .replay_entities import F1ReplaySessionSelect, F1ReplayYearSelect
+from .replay_entities import (
+    F1ReplaySessionSelect,
+    F1ReplayStartReferenceSelect,
+    F1ReplayYearSelect,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,6 +74,17 @@ async def async_setup_entry(
                 name,
             )
         )
+        start_reference_controller = registry.get("replay_start_reference_controller")
+        if start_reference_controller is not None:
+            entities.append(
+                F1ReplayStartReferenceSelect(
+                    start_reference_controller,
+                    f"{name} Replay start reference",
+                    f"{entry.entry_id}_replay_start_reference",
+                    entry.entry_id,
+                    name,
+                )
+            )
 
     if entities:
         async_add_entities(entities)

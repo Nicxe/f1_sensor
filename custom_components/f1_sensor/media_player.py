@@ -138,16 +138,11 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
         position_ms = int(playback.get("position_ms", 0) or 0)
 
         if duration_ms == 0:
-            index = self._controller.session_manager.get_loaded_index()
-            if index is not None:
-                session_start_ms = index.session_started_at_ms
-                playback_start_ms = (
-                    index.formation_started_at_ms
-                    if index.formation_started_at_ms is not None
-                    and index.formation_started_at_ms < index.session_started_at_ms
-                    else index.session_started_at_ms
-                )
-                duration_ms = index.duration_ms
+            planned = self._controller.get_planned_playback_details()
+            if planned:
+                session_start_ms = planned.get("session_start_ms", session_start_ms)
+                playback_start_ms = planned.get("playback_start_ms", playback_start_ms)
+                duration_ms = planned.get("duration_ms", duration_ms)
 
         total_ms = max(0, duration_ms - playback_start_ms)
         position_ms = max(0, position_ms - playback_start_ms)
