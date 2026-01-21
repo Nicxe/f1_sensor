@@ -3,6 +3,7 @@ name: Validate
 on:
   push:
     branches: [develop, beta, main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
