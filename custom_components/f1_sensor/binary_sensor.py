@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import datetime
 import logging
+from typing import Any, Callable
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -13,15 +16,45 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_OPERATION_MODE,
+    CONF_RACE_WEEK_START_DAY,
+    CONF_RACE_WEEK_SUNDAY_START,
+    DEFAULT_RACE_WEEK_START_DAY,
     DEFAULT_OPERATION_MODE,
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
+    RACE_WEEK_START_MONDAY,
+    RACE_WEEK_START_SATURDAY,
+    RACE_WEEK_START_SUNDAY,
 )
 from .entity import F1BaseEntity, F1AuxEntity
+from .formation_start import FormationStartTracker
 from .helpers import normalize_track_status
 from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
+
+RACE_SWITCH_GRACE = datetime.timedelta(hours=3)
+
+
+def _normalize_race_week_start(data: dict) -> str:
+    value = data.get(CONF_RACE_WEEK_START_DAY)
+    if value in (
+        RACE_WEEK_START_MONDAY,
+        RACE_WEEK_START_SATURDAY,
+        RACE_WEEK_START_SUNDAY,
+    ):
+        return value
+    legacy = data.get(CONF_RACE_WEEK_SUNDAY_START)
+    if isinstance(legacy, bool):
+        return RACE_WEEK_START_SUNDAY if legacy else RACE_WEEK_START_MONDAY
+    if legacy in (
+        RACE_WEEK_START_MONDAY,
+        RACE_WEEK_START_SATURDAY,
+        RACE_WEEK_START_SUNDAY,
+    ):
+        return legacy
+    return DEFAULT_RACE_WEEK_START_DAY
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
@@ -29,6 +62,7 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
     enabled = entry.data.get("enabled_sensors", [])
+    race_week_start = _normalize_race_week_start(entry.data)
 
     sensors = []
     # Useful for power users/automations even when dev UI is disabled.
@@ -48,6 +82,7 @@ async def async_setup_entry(
                 f"{entry.entry_id}_race_week",
                 entry.entry_id,
                 base,
+                race_week_start=race_week_start,
             )
         )
     if "safety_car" in enabled:
@@ -62,18 +97,40 @@ async def async_setup_entry(
                     base,
                 )
             )
+    if "formation_start" in enabled:
+        tracker: FormationStartTracker | None = data.get("formation_start_tracker")
+        if tracker is not None:
+            sensors.append(
+                F1FormationStartBinarySensor(
+                    tracker,
+                    f"{base}_formation_start",
+                    f"{entry.entry_id}_formation_start",
+                    entry.entry_id,
+                    base,
+                )
+            )
     async_add_entities(sensors, True)
 
 
 class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
     """Binary sensor indicating if it's currently race week."""
 
-    def __init__(self, coordinator, name, unique_id, entry_id, device_name):
+    def __init__(
+        self,
+        coordinator,
+        name,
+        unique_id,
+        entry_id,
+        device_name,
+        *,
+        race_week_start: str = DEFAULT_RACE_WEEK_START_DAY,
+    ):
         super().__init__(coordinator, name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:calendar-range"
         # No device class: this is not a physical presence/occupancy type sensor.
         # Using a device class here can lead to misleading UI semantics/translations.
         self._attr_device_class = None
+        self._race_week_start = race_week_start
 
     def _get_next_race(self):
         data = self.coordinator.data
@@ -81,17 +138,23 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
             return None, None
 
         races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = dt_util.utcnow()
 
         for race in races:
             date = race.get("date")
-            time = race.get("time") or "00:00:00Z"
+            if not date:
+                continue
+            # If the source omits time for some reason, assume end-of-day so we
+            # don't drop out of "race week" early on race day.
+            time = race.get("time") or "23:59:59Z"
             dt_str = f"{date}T{time}".replace("Z", "+00:00")
             try:
                 dt = datetime.datetime.fromisoformat(dt_str)
             except ValueError:
                 continue
-            if dt > now:
+            # Consider the current race as "next" until a short grace period
+            # after the scheduled start, matching `sensor.f1_next_race`.
+            if (dt + RACE_SWITCH_GRACE) > now:
                 return dt, race
         return None, None
 
@@ -100,21 +163,31 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
         next_race_dt, _ = self._get_next_race()
         if not next_race_dt:
             return False
-        now = datetime.datetime.now(datetime.timezone.utc)
-        start_of_week = now - datetime.timedelta(days=now.weekday())
-        end_of_week = start_of_week + datetime.timedelta(
-            days=6, hours=23, minutes=59, seconds=59
+        now_local = dt_util.as_local(dt_util.utcnow())
+        next_race_local = dt_util.as_local(next_race_dt)
+
+        if self._race_week_start == RACE_WEEK_START_SUNDAY:
+            first_weekday = 6
+        elif self._race_week_start == RACE_WEEK_START_SATURDAY:
+            first_weekday = 5
+        else:
+            first_weekday = 0
+        days_since_week_start = (now_local.weekday() - first_weekday) % 7
+        start_of_week = now_local.date() - datetime.timedelta(
+            days=days_since_week_start
         )
-        return start_of_week.date() <= next_race_dt.date() <= end_of_week.date()
+        end_of_week = start_of_week + datetime.timedelta(days=6)
+        return start_of_week <= next_race_local.date() <= end_of_week
 
     @property
     def extra_state_attributes(self):
         next_race_dt, race = self._get_next_race()
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now_local = dt_util.as_local(dt_util.utcnow())
         days = None
         race_name = None
         if next_race_dt:
-            delta = next_race_dt.date() - now.date()
+            next_race_local = dt_util.as_local(next_race_dt)
+            delta = next_race_local.date() - now_local.date()
             days = delta.days
             race_name = race.get("raceName") if race else None
         return {
@@ -185,7 +258,12 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     def _update_from_track_status(self) -> None:
         payload, ts = self._extract_payload()
         if ts and self._last_ts and ts <= self._last_ts:
-            _LOGGER.debug("SafetyCar: Ignored old TrackStatus (ts=%s <= last=%s): %s", ts, self._last_ts, payload)
+            _LOGGER.debug(
+                "SafetyCar: Ignored old TrackStatus (ts=%s <= last=%s): %s",
+                ts,
+                self._last_ts,
+                payload,
+            )
             return
         state = normalize_track_status(payload)
         is_on = state in {"VSC", "SC"}
@@ -208,6 +286,91 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         return self._attr_is_on
+
+
+class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
+    """Binary sensor indicating the formation start marker for races/sprints."""
+
+    _attr_device_class = None
+
+    def __init__(
+        self,
+        tracker: FormationStartTracker,
+        name: str,
+        unique_id: str,
+        entry_id: str,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, name, unique_id, entry_id, device_name)
+        BinarySensorEntity.__init__(self)
+        self._tracker = tracker
+        self._is_on = False
+        self._attrs: dict[str, Any] = {}
+        self._unsub: Callable[[], None] | None = None
+        self._unsub_live_state: Callable[[], None] | None = None
+        self._attr_icon = "mdi:flag-outline"
+
+    async def async_added_to_hass(self) -> None:
+        self._unsub = self._tracker.add_listener(self._handle_update)
+        if self.hass is None:
+            return
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        live_state = reg.get("live_state")
+        if live_state is not None and hasattr(live_state, "add_listener"):
+            try:
+                self._unsub_live_state = live_state.add_listener(
+                    lambda *_: self._safe_write_ha_state()
+                )
+                self.async_on_remove(self._unsub_live_state)
+            except Exception:  # noqa: BLE001
+                self._unsub_live_state = None
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub:
+            try:
+                self._unsub()
+            except Exception:  # noqa: BLE001
+                pass
+            self._unsub = None
+        if self._unsub_live_state:
+            try:
+                self._unsub_live_state()
+            except Exception:  # noqa: BLE001
+                pass
+            self._unsub_live_state = None
+
+    @property
+    def is_on(self) -> bool:
+        if self.hass is None:
+            return self._is_on
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        live_state = reg.get("live_state")
+        is_live_window = (
+            bool(getattr(live_state, "is_live", False))
+            if live_state is not None
+            else None
+        )
+        if is_live_window is False:
+            return False
+        return self._is_on
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self._attrs
+
+    def _handle_update(self, snapshot: dict[str, Any]) -> None:
+        self._is_on = snapshot.get("status") == "ready"
+        self._attrs = {
+            "status": snapshot.get("status"),
+            "scheduled_start": snapshot.get("scheduled_start"),
+            "formation_start": snapshot.get("formation_start"),
+            "delta_seconds": snapshot.get("delta_seconds"),
+            "source": snapshot.get("source"),
+            "session_type": snapshot.get("session_type"),
+            "session_name": snapshot.get("session_name"),
+            "error": snapshot.get("error"),
+        }
+        self._safe_write_ha_state()
 
 
 class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
@@ -258,13 +421,19 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
         except Exception:
             pass
 
-    def _compute_mode_and_ages(self) -> tuple[str, float | None, float | None, float | None, str | None]:
+    def _compute_mode_and_ages(
+        self,
+    ) -> tuple[str, float | None, float | None, float | None, str | None]:
         reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
         operation_mode = reg.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
         live_state = reg.get("live_state")
         live_bus = reg.get("live_bus")
 
-        is_live_window = bool(getattr(live_state, "is_live", False)) if live_state is not None else False
+        is_live_window = (
+            bool(getattr(live_state, "is_live", False))
+            if live_state is not None
+            else False
+        )
         reason = getattr(live_state, "reason", None) if live_state is not None else None
 
         if operation_mode == OPERATION_MODE_DEVELOPMENT:
@@ -299,12 +468,18 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
 
     @property
     def extra_state_attributes(self):
-        mode, hb_age, activity_age, effective_age, reason = self._compute_mode_and_ages()
+        mode, hb_age, activity_age, effective_age, reason = (
+            self._compute_mode_and_ages()
+        )
         return {
             "mode": mode,
             "reason": reason,
             "online_threshold_s": self._online_threshold_s,
             "heartbeat_age_s": (round(hb_age, 1) if hb_age is not None else None),
-            "activity_age_s": (round(activity_age, 1) if activity_age is not None else None),
-            "effective_age_s": (round(effective_age, 1) if effective_age is not None else None),
+            "activity_age_s": (
+                round(activity_age, 1) if activity_age is not None else None
+            ),
+            "effective_age_s": (
+                round(effective_age, 1) if effective_age is not None else None
+            ),
         }

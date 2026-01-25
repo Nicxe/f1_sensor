@@ -65,10 +65,14 @@ class SessionWindow:
 class LiveAvailabilityTracker:
     """Fan-out tracker so coordinators can react to live/offline transitions."""
 
+    # Reasons that indicate replay mode is controlling state
+    _REPLAY_REASONS = frozenset({"replay", "replay-completed", "replay-stopped"})
+
     def __init__(self) -> None:
         self._listeners: list[Callable[[bool, str | None], None]] = []
         self._state = False
         self._reason: str | None = "init"
+        self._replay_locked = False  # When True, only replay can change state
 
     @property
     def is_live(self) -> bool:
@@ -79,20 +83,43 @@ class LiveAvailabilityTracker:
         return self._reason
 
     def set_state(self, is_live: bool, reason: str | None = None) -> None:
+        is_replay_reason = reason in self._REPLAY_REASONS
+
+        # If replay has locked the state, only replay reasons can change it
+        if self._replay_locked and not is_replay_reason:
+            _LOGGER.debug(
+                "Live state change blocked (replay active): would change to %s (%s)",
+                "LIVE" if is_live else "IDLE",
+                reason,
+            )
+            return
+
+        # Update replay lock based on reason
+        if reason == "replay":
+            self._replay_locked = True
+        elif reason in ("replay-completed", "replay-stopped"):
+            self._replay_locked = False
+
         if self._state == is_live and (reason is None or reason == self._reason):
             return
         self._state = is_live
         self._reason = reason
         state_label = "LIVE" if is_live else "IDLE"
         if _LOGGER.isEnabledFor(logging.INFO):
-            _LOGGER.info("Live timing availability -> %s (%s)", state_label, reason or "no-reason")
+            _LOGGER.info(
+                "Live timing availability -> %s (%s)",
+                state_label,
+                reason or "no-reason",
+            )
         for callback in list(self._listeners):
             try:
                 callback(is_live, reason)
             except Exception:  # noqa: BLE001 - defensive
                 _LOGGER.debug("Live availability listener raised", exc_info=True)
 
-    def add_listener(self, callback: Callable[[bool, str | None], None]) -> Callable[[], None]:
+    def add_listener(
+        self, callback: Callable[[bool, str | None], None]
+    ) -> Callable[[], None]:
         self._listeners.append(callback)
         # Fire immediately with current state
         try:
@@ -115,7 +142,10 @@ def _parse_offset(offset: str | None) -> timedelta:
         return timedelta()
     try:
         sign = -1 if offset.startswith("-") else 1
-        hh, mm, ss = (abs(int(part)) for part in offset.replace("+", "").replace("-", "").split(":"))
+        hh, mm, ss = (
+            abs(int(part))
+            for part in offset.replace("+", "").replace("-", "").split(":")
+        )
         return timedelta(seconds=sign * (hh * 3600 + mm * 60 + ss))
     except Exception:  # noqa: BLE001
         return timedelta()
@@ -168,7 +198,9 @@ def _iter_meeting_sessions(index_payload: Any) -> Iterable[tuple[dict, dict]]:
     meetings = _ensure_sequence(payload.get("Meetings") or payload.get("meetings"))
     if meetings:
         for meeting in meetings:
-            sessions = _ensure_sequence(meeting.get("Sessions") or meeting.get("sessions"))
+            sessions = _ensure_sequence(
+                meeting.get("Sessions") or meeting.get("sessions")
+            )
             for session in sessions:
                 yield meeting, session
         return
@@ -218,8 +250,12 @@ def build_session_windows(
         disconnect_at = end + post_window
         windows.append(
             SessionWindow(
-                meeting_name=(meeting.get("Name") or meeting.get("OfficialName") or "F1").strip(),
-                session_name=(session.get("Name") or session.get("Type") or "Session").strip(),
+                meeting_name=(
+                    meeting.get("Name") or meeting.get("OfficialName") or "F1"
+                ).strip(),
+                session_name=(
+                    session.get("Name") or session.get("Type") or "Session"
+                ).strip(),
                 path=path or "",
                 start_utc=start,
                 end_utc=end,
@@ -332,7 +368,13 @@ class LiveSessionSupervisor:
                         )
                 now = dt_util.utcnow()
                 if now < window.connect_at:
-                    wait = max(30.0, min(IDLE_REFRESH.total_seconds(), (window.connect_at - now).total_seconds()))
+                    wait = max(
+                        30.0,
+                        min(
+                            IDLE_REFRESH.total_seconds(),
+                            (window.connect_at - now).total_seconds(),
+                        ),
+                    )
                     _LOGGER.debug(
                         "Next session %s opens in %.0fs (connect window %s – %s)",
                         window.label,
@@ -340,7 +382,9 @@ class LiveSessionSupervisor:
                         window.connect_at.isoformat(),
                         window.disconnect_at.isoformat(),
                     )
-                    self._availability.set_state(False, f"waiting-{window.session_name}")
+                    self._availability.set_state(
+                        False, f"waiting-{window.session_name}"
+                    )
                     await asyncio.sleep(wait)
                     continue
                 await self._activate_window(window, fallback=fallback)
@@ -375,7 +419,9 @@ class LiveSessionSupervisor:
                 data = getattr(self._session_coord, "data", None)
             except Exception:  # noqa: BLE001
                 data = None
-        windows = build_session_windows(data, pre_window=self._pre_window, post_window=self._post_window)
+        windows = build_session_windows(
+            data, pre_window=self._pre_window, post_window=self._post_window
+        )
         if not windows:
             year = getattr(self._session_coord, "year", "unknown")
             status = getattr(self._session_coord, "last_http_status", None)
@@ -383,7 +429,9 @@ class LiveSessionSupervisor:
             # exist yet and F1's CDN returns 403/404. Treat as "not published",
             # don't spam warnings and don't start legacy fallback loops.
             if status in (403, 404):
-                if self._should_log(f"index_unavailable_{year}", interval_seconds=6 * 3600):
+                if self._should_log(
+                    f"index_unavailable_{year}", interval_seconds=6 * 3600
+                ):
                     _LOGGER.info(
                         "Live timing index not available for year %s yet (HTTP %s). Waiting before retry.",
                         year,
@@ -438,7 +486,9 @@ class LiveSessionSupervisor:
             return False
         now = dt_util.utcnow()
         try:
-            data = await self._fetch_json(_build_static_url(window.path, "SessionStatus.jsonStream"))
+            data = await self._fetch_json(
+                _build_static_url(window.path, "SessionStatus.jsonStream")
+            )
         except Exception as err:
             slack = window.end_utc + timedelta(hours=2)
             if now <= slack:
@@ -455,7 +505,9 @@ class LiveSessionSupervisor:
             )
             return False
         if not isinstance(data, dict):
-            _LOGGER.debug("SessionStatus payload invalid for %s: %s", window.label, data)
+            _LOGGER.debug(
+                "SessionStatus payload invalid for %s: %s", window.label, data
+            )
             return False
         status = str(data.get("Status") or "").strip()
         started = str(data.get("Started") or "").strip()
@@ -465,7 +517,9 @@ class LiveSessionSupervisor:
             return False
         return True
 
-    async def _activate_window(self, window: SessionWindow, *, fallback: bool = False) -> None:
+    async def _activate_window(
+        self, window: SessionWindow, *, fallback: bool = False
+    ) -> None:
         self._current_window = window
         label = window.label
         _LOGGER.info(
@@ -487,12 +541,18 @@ class LiveSessionSupervisor:
             self._bus.set_heartbeat_expectation(False)
             await self._bus.async_close()
             self._availability.set_state(False, f"finished-{window.session_name}")
-            _LOGGER.info("Live timing closed for %s (%s)", label, reason if 'reason' in locals() else "no-reason")
+            _LOGGER.info(
+                "Live timing closed for %s (%s)",
+                label,
+                reason if "reason" in locals() else "no-reason",
+            )
             self._current_window = None
             try:
                 await self._session_coord.async_request_refresh()
             except Exception:  # noqa: BLE001
-                _LOGGER.debug("Session index refresh failed after %s", label, exc_info=True)
+                _LOGGER.debug(
+                    "Session index refresh failed after %s", label, exc_info=True
+                )
 
     async def _prime_metadata(self, window: SessionWindow) -> None:
         url = _build_static_url(window.path, "SessionInfo.jsonStream")
@@ -506,15 +566,26 @@ class LiveSessionSupervisor:
             try:
                 payload = await self._fetch_json(target)
                 if payload:
-                    _LOGGER.debug("%s prime %s keys=%s", window.label, name, list(payload.keys())[:5])
+                    _LOGGER.debug(
+                        "%s prime %s keys=%s",
+                        window.label,
+                        name,
+                        list(payload.keys())[:5],
+                    )
             except Exception:  # noqa: BLE001
-                _LOGGER.debug("Failed priming %s for %s", name, window.label, exc_info=True)
+                _LOGGER.debug(
+                    "Failed priming %s for %s", name, window.label, exc_info=True
+                )
 
-    async def _monitor_window(self, window: SessionWindow, *, fallback: bool = False) -> str:
+    async def _monitor_window(
+        self, window: SessionWindow, *, fallback: bool = False
+    ) -> str:
         label = window.label
         reason = "disconnect-window-expired"
         max_disconnect_at = (
-            window.disconnect_at + POST_WINDOW_EXTENSION_CAP if not fallback else window.disconnect_at
+            window.disconnect_at + POST_WINDOW_EXTENSION_CAP
+            if not fallback
+            else window.disconnect_at
         )
         while not self._stopped:
             await asyncio.sleep(ACTIVE_REFRESH.total_seconds())
@@ -527,7 +598,10 @@ class LiveSessionSupervisor:
                     and window.disconnect_at < max_disconnect_at
                     and (
                         (hb_age is not None and hb_age <= HEARTBEAT_DRAIN_SECONDS)
-                        or (activity_age is not None and activity_age <= HEARTBEAT_DRAIN_SECONDS)
+                        or (
+                            activity_age is not None
+                            and activity_age <= HEARTBEAT_DRAIN_SECONDS
+                        )
                     )
                 )
                 if should_extend:
@@ -550,13 +624,18 @@ class LiveSessionSupervisor:
                 reason = "disconnect-window-expired"
                 break
             if hb_age is not None and hb_age > HEARTBEAT_DRAIN_SECONDS:
-                _LOGGER.info("Heartbeat aged %.0fs for %s; assuming feed idle", hb_age, label)
+                _LOGGER.info(
+                    "Heartbeat aged %.0fs for %s; assuming feed idle", hb_age, label
+                )
                 reason = f"heartbeat-timeout-{hb_age:.0f}s"
                 break
             if fallback:
                 candidate, _ = await self._resolve_window()
                 if candidate and candidate.session_name != "Fallback":
-                    _LOGGER.info("Real session detected while fallback active; switching to %s", candidate.label)
+                    _LOGGER.info(
+                        "Real session detected while fallback active; switching to %s",
+                        candidate.label,
+                    )
                     reason = "fallback-replaced"
                     break
         return reason
@@ -583,5 +662,3 @@ class LiveSessionSupervisor:
                 resp.raise_for_status()
                 text = await resp.text()
         return json.loads(text.lstrip("\ufeff"))
-
-

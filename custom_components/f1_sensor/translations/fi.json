@@ -7,7 +7,8 @@
           "sensor_name": "Laitteen nimi",
           "enabled_sensors": "Käytössä olevat anturit",
           "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path"
+          "replay_file": "Replay dump path",
+          "race_week_start_day": "Kilpailuviikon ensimmäinen päivä"
         }
       },
       "reconfigure": {
@@ -16,7 +17,8 @@
           "sensor_name": "Laitteen nimi",
           "enabled_sensors": "Käytössä olevat anturit",
           "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path"
+          "replay_file": "Replay dump path",
+          "race_week_start_day": "Kilpailuviikon ensimmäinen päivä"
         }
       }
     },
@@ -42,9 +44,19 @@
       "fia_documents": { "name": "FIA-päätökset" },
       "live_timing_mode": { "name": "Live timing -tila" }
     },
+    "media_player": {
+      "replay_player": { "name": "Replay player" }
+    },
+    "select": {
+      "live_delay_reference": { "name": "Live delay reference" },
+      "replay_year": { "name": "Replay year" },
+      "replay_session": { "name": "Replay session" },
+      "replay_start_reference": { "name": "Replay start reference" }
+    },
     "binary_sensor": {
       "race_week": { "name": "Kilpailuviikko" },
-      "live_timing_online": { "name": "Live timing online" }
+      "live_timing_online": { "name": "Live timing online" },
+      "formation_start": { "name": "Formation start" }
     }
   }
 }

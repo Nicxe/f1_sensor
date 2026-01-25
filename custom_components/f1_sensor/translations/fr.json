@@ -7,7 +7,8 @@
           "sensor_name": "Nom de l'appareil",
           "enabled_sensors": "Capteurs activés",
           "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path"
+          "replay_file": "Replay dump path",
+          "race_week_start_day": "Premier jour de la semaine de course"
         }
       },
       "reconfigure": {
@@ -16,7 +17,8 @@
           "sensor_name": "Nom de l'appareil",
           "enabled_sensors": "Capteurs activés",
           "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path"
+          "replay_file": "Replay dump path",
+          "race_week_start_day": "Premier jour de la semaine de course"
         }
       }
     },
@@ -42,9 +44,19 @@
       "fia_documents": { "name": "Décisions de la FIA" },
       "live_timing_mode": { "name": "Mode Live Timing" }
     },
+    "media_player": {
+      "replay_player": { "name": "Replay player" }
+    },
+    "select": {
+      "live_delay_reference": { "name": "Live delay reference" },
+      "replay_year": { "name": "Replay year" },
+      "replay_session": { "name": "Replay session" },
+      "replay_start_reference": { "name": "Replay start reference" }
+    },
     "binary_sensor": {
       "race_week": { "name": "Semaine de course" },
-      "live_timing_online": { "name": "Live Timing en ligne" }
+      "live_timing_online": { "name": "Live Timing en ligne" },
+      "formation_start": { "name": "Formation start" }
     }
   }
 }

@@ -6,21 +6,45 @@ from homeassistant import config_entries
 
 from .const import (
     CONF_OPERATION_MODE,
+    CONF_RACE_WEEK_START_DAY,
+    CONF_RACE_WEEK_SUNDAY_START,
     CONF_REPLAY_FILE,
+    DEFAULT_RACE_WEEK_START_DAY,
     DEFAULT_OPERATION_MODE,
     DOMAIN,
     ENABLE_DEVELOPMENT_MODE_UI,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
+    RACE_WEEK_START_MONDAY,
+    RACE_WEEK_START_SATURDAY,
+    RACE_WEEK_START_SUNDAY,
 )
+
+RACE_WEEK_START_OPTIONS = {
+    RACE_WEEK_START_MONDAY: "Monday",
+    RACE_WEEK_START_SUNDAY: "Sunday",
+    RACE_WEEK_START_SATURDAY: "Saturday",
+}
 
 
 class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
+    def _normalize_race_week_start(self, data: dict) -> str:
+        value = data.get(CONF_RACE_WEEK_START_DAY)
+        if value in RACE_WEEK_START_OPTIONS:
+            return value
+        legacy = data.get(CONF_RACE_WEEK_SUNDAY_START)
+        if isinstance(legacy, bool):
+            return RACE_WEEK_START_SUNDAY if legacy else RACE_WEEK_START_MONDAY
+        if legacy in RACE_WEEK_START_OPTIONS:
+            return legacy
+        return DEFAULT_RACE_WEEK_START_DAY
+
     async def async_step_user(self, user_input=None):
         errors = {}
         current = user_input or {}
+        race_week_start = self._normalize_race_week_start(current)
 
         if user_input is not None:
             # Resolve and validate operation mode
@@ -93,6 +117,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "track_status": "Track status (live)",
             "session_status": "Session status (live)",
             "safety_car": "Safety car (live)",
+            "formation_start": "Formation start (race/sprint)",
             "race_control": "Race control (live)",
             "team_radio": "Team radio (latest clip)",
             "top_three": "Top three (leader, live)",
@@ -114,6 +139,10 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 default=current.get("enabled_sensors", default_enabled),
             ): cv.multi_select(sensor_options),
             vol.Optional("enable_race_control", default=False): cv.boolean,
+            vol.Optional(
+                CONF_RACE_WEEK_START_DAY,
+                default=race_week_start,
+            ): vol.In(RACE_WEEK_START_OPTIONS),
         }
 
         # Only expose development-related controls when explicitly enabled.
@@ -148,10 +177,12 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         entry = self._get_reconfigure_entry()
         current = entry.data
+        race_week_start = self._normalize_race_week_start(current)
 
         if user_input is not None:
             mode = user_input.get(
-                CONF_OPERATION_MODE, current.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+                CONF_OPERATION_MODE,
+                current.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE),
             )
             if mode not in (OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT):
                 mode = DEFAULT_OPERATION_MODE
@@ -199,6 +230,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "track_status": "Track status (live)",
             "session_status": "Session status (live)",
             "safety_car": "Safety car (live)",
+            "formation_start": "Formation start (race/sprint)",
             "race_control": "Race control (live)",
             "team_radio": "Team radio (latest clip)",
             "top_three": "Top three (leader, live)",
@@ -252,14 +284,19 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 "enable_race_control",
                 default=current.get("enable_race_control", False),
             ): cv.boolean,
+            vol.Optional(
+                CONF_RACE_WEEK_START_DAY,
+                default=race_week_start,
+            ): vol.In(RACE_WEEK_START_OPTIONS),
         }
 
         # For reconfigure we show dev controls either when explicitly enabled
         # or when the existing entry is already in development mode (so it
         # remains editable even if the flag is later turned off).
-        show_dev_controls = ENABLE_DEVELOPMENT_MODE_UI or current.get(
-            CONF_OPERATION_MODE
-        ) == OPERATION_MODE_DEVELOPMENT
+        show_dev_controls = (
+            ENABLE_DEVELOPMENT_MODE_UI
+            or current.get(CONF_OPERATION_MODE) == OPERATION_MODE_DEVELOPMENT
+        )
 
         if show_dev_controls:
             schema_fields.update(
@@ -292,6 +329,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _validate_replay_file(self, path: str) -> bool:
         """Return True if the provided path points to a readable file."""
+
         def _check() -> bool:
             try:
                 candidate = Path(path).expanduser()

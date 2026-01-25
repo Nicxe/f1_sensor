@@ -11,8 +11,14 @@ from homeassistant.components import persistent_notification
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
-from .live_delay import LiveDelayController
+from .const import (
+    DOMAIN,
+    DEFAULT_LIVE_DELAY_REFERENCE,
+    LIVE_DELAY_REFERENCE_FORMATION,
+    LIVE_DELAY_REFERENCE_SESSION,
+)
+from .formation_start import FormationStartTracker
+from .live_delay import LiveDelayController, LiveDelayReferenceController
 from .signalr import LiveBus
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,25 +35,41 @@ class LiveDelayCalibrationManager:
         bus: LiveBus | None = None,
         timeout_seconds: int = 120,
         reload_callback: Callable[[], None] | None = None,
+        reference_controller: LiveDelayReferenceController | None = None,
+        formation_tracker: FormationStartTracker | None = None,
+        replay_controller: Any | None = None,
     ) -> None:
         self._hass = hass
         self._controller = controller
         self._bus = bus
         self._timeout_seconds = max(5, int(timeout_seconds))
         self._reload_cb = reload_callback
+        self._reference_controller = reference_controller
+        self._formation_tracker = formation_tracker
+        self._replay_controller = replay_controller
+        self._reference = DEFAULT_LIVE_DELAY_REFERENCE
+        self._reference_unsub: Callable[[], None] | None = None
+        self._formation_unsub: Callable[[], None] | None = None
         self._state = self._initial_state()
         self._listeners: list[Callable[[dict[str, Any]], None]] = []
         self._tick_handle: asyncio.Handle | None = None
         self._timeout_handle: asyncio.Handle | None = None
         self._session_unsub: Callable[[], None] | None = None
         self._last_session_payload: dict | None = None
+        self._formation_start_utc = None
         if self._bus is not None:
             try:
                 self._session_unsub = self._bus.subscribe(
                     "SessionStatus", self._handle_session_status
                 )
             except Exception:  # noqa: BLE001
-                _LOGGER.debug("Calibration manager failed to subscribe to SessionStatus")
+                _LOGGER.debug(
+                    "Calibration manager failed to subscribe to SessionStatus"
+                )
+        if self._reference_controller is not None:
+            self._reference_unsub = self._reference_controller.add_listener(
+                self._handle_reference_update
+            )
 
     def snapshot(self) -> dict[str, Any]:
         return self._serialize_state()
@@ -60,9 +82,23 @@ class LiveDelayCalibrationManager:
             except Exception:  # noqa: BLE001
                 pass
             self._session_unsub = None
+        if self._reference_unsub:
+            try:
+                self._reference_unsub()
+            except Exception:  # noqa: BLE001
+                pass
+            self._reference_unsub = None
+        if self._formation_unsub:
+            try:
+                self._formation_unsub()
+            except Exception:  # noqa: BLE001
+                pass
+            self._formation_unsub = None
 
     async def async_prepare(self, *, source: str = "button") -> dict[str, Any]:
         """Arm calibration and wait for session start."""
+        if self._is_replay_active():
+            return await self.async_blocked_by_replay(source=source)
         _LOGGER.debug("Calibration prepare triggered by %s", source)
         self._cancel_handles()
         now = dt_util.utcnow()
@@ -73,16 +109,26 @@ class LiveDelayCalibrationManager:
                 "started_at": None,
                 "elapsed": 0.0,
                 "timeout_at": None,
-                "message": "Waiting for SessionStatus to report 'Started'.",
+                "reference": self._reference,
+                "message": self._waiting_message(),
             }
         )
         self._notify_listeners()
-        if self._is_session_live(self._last_session_payload):
-            self._start_timer(reason="session_already_live")
+        if self._reference == LIVE_DELAY_REFERENCE_SESSION:
+            if self._is_session_live(self._last_session_payload):
+                self._start_timer(reason="session_already_live")
+        elif self._reference == LIVE_DELAY_REFERENCE_FORMATION:
+            if self._formation_start_utc is not None:
+                self._start_timer(
+                    reason="formation_already_found",
+                    started_at=self._formation_start_utc,
+                )
         return self.snapshot()
 
     async def async_complete(self, *, source: str = "button") -> dict[str, Any]:
         """Commit the measured delay."""
+        if self._is_replay_active():
+            return await self.async_blocked_by_replay(source=source)
         if self._state["mode"] != "running":
             raise RuntimeError("Calibration timer is not running")
         elapsed = self._compute_elapsed()
@@ -102,11 +148,15 @@ class LiveDelayCalibrationManager:
             try:
                 self._reload_cb()
             except Exception:  # noqa: BLE001
-                _LOGGER.debug("Failed to schedule reload after calibration", exc_info=True)
+                _LOGGER.debug(
+                    "Failed to schedule reload after calibration", exc_info=True
+                )
         return self.snapshot()
 
     async def async_cancel(self, *, source: str = "button") -> dict[str, Any]:
         """Abort the calibration flow."""
+        if self._is_replay_active() and source != "replay":
+            return await self.async_blocked_by_replay(source=source)
         self._transition_to_idle("Calibration cancelled.")
         self._notify_listeners()
         if source == "timeout":
@@ -116,7 +166,18 @@ class LiveDelayCalibrationManager:
             )
         return self.snapshot()
 
-    def add_listener(self, listener: Callable[[dict[str, Any]], None]) -> Callable[[], None]:
+    async def async_blocked_by_replay(self, *, source: str) -> dict[str, Any]:
+        """Abort calibration with a replay-mode notification."""
+        message = "Live delay calibration is not available in replay mode."
+        self._transition_to_idle(message)
+        self._notify_listeners()
+        self._notify_user("F1 live delay", message)
+        _LOGGER.debug("Calibration blocked in replay mode (source=%s)", source)
+        return self.snapshot()
+
+    def add_listener(
+        self, listener: Callable[[dict[str, Any]], None]
+    ) -> Callable[[], None]:
         self._listeners.append(listener)
         try:
             listener(self.snapshot())
@@ -136,14 +197,21 @@ class LiveDelayCalibrationManager:
 
     def _handle_session_status(self, payload: dict) -> None:
         self._last_session_payload = payload
-        if self._state["mode"] == "waiting" and self._is_session_live(payload):
-            self._start_timer(reason="session_status_live")
+        if self._reference == LIVE_DELAY_REFERENCE_SESSION:
+            if self._state["mode"] == "waiting" and self._is_session_live(payload):
+                self._start_timer(reason="session_status_live")
         elif self._state["mode"] == "running" and self._is_session_finished(payload):
             self._transition_to_idle("Sessionen avslutades – kalibreringen stoppades.")
             self._notify_listeners()
 
-    def _start_timer(self, *, reason: str) -> None:
-        start = dt_util.utcnow()
+    def _start_timer(self, *, reason: str, started_at: Any | None = None) -> None:
+        if started_at is not None:
+            try:
+                start = dt_util.as_utc(started_at)
+            except Exception:  # noqa: BLE001
+                start = dt_util.utcnow()
+        else:
+            start = dt_util.utcnow()
         self._state.update(
             {
                 "mode": "running",
@@ -151,7 +219,8 @@ class LiveDelayCalibrationManager:
                 "started_at": start,
                 "elapsed": 0.0,
                 "timeout_at": start + timedelta(seconds=self._timeout_seconds),
-                "message": "Calibration running – press 'Match live delay' when TV catches up.",
+                "reference": self._reference,
+                "message": self._running_message(),
             }
         )
         _LOGGER.debug("Calibration timer started (%s)", reason)
@@ -211,6 +280,7 @@ class LiveDelayCalibrationManager:
         self._state.update(
             {
                 "mode": "idle",
+                "reference": self._reference,
                 "waiting_since": None,
                 "started_at": None,
                 "elapsed": 0.0,
@@ -241,6 +311,7 @@ class LiveDelayCalibrationManager:
     def _initial_state(self) -> dict[str, Any]:
         return {
             "mode": "idle",
+            "reference": self._reference,
             "waiting_since": None,
             "started_at": None,
             "elapsed": 0.0,
@@ -277,6 +348,71 @@ class LiveDelayCalibrationManager:
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Calibration listener raised", exc_info=True)
 
+    def _handle_reference_update(self, reference: str) -> None:
+        self._reference = reference or DEFAULT_LIVE_DELAY_REFERENCE
+        self._state["reference"] = self._reference
+        if self._reference == LIVE_DELAY_REFERENCE_FORMATION:
+            self._ensure_formation_listener()
+            if (
+                self._state["mode"] == "waiting"
+                and self._formation_start_utc is not None
+            ):
+                self._start_timer(
+                    reason="formation_reference_switch",
+                    started_at=self._formation_start_utc,
+                )
+        else:
+            self._remove_formation_listener()
+            if self._state["mode"] == "waiting" and self._is_session_live(
+                self._last_session_payload
+            ):
+                self._start_timer(reason="session_reference_switch")
+        if self._state["mode"] == "waiting":
+            self._state["message"] = self._waiting_message()
+        self._notify_listeners()
+
+    def _ensure_formation_listener(self) -> None:
+        if self._formation_tracker is None or self._formation_unsub is not None:
+            return
+        self._formation_unsub = self._formation_tracker.add_listener(
+            self._handle_formation_update
+        )
+
+    def _remove_formation_listener(self) -> None:
+        if self._formation_unsub is None:
+            return
+        try:
+            self._formation_unsub()
+        except Exception:  # noqa: BLE001
+            pass
+        self._formation_unsub = None
+
+    def _handle_formation_update(self, snapshot: dict[str, Any]) -> None:
+        if self._formation_tracker is not None:
+            self._formation_start_utc = self._formation_tracker.formation_start_utc
+        if (
+            self._reference == LIVE_DELAY_REFERENCE_FORMATION
+            and self._state["mode"] == "waiting"
+            and self._formation_start_utc is not None
+        ):
+            self._start_timer(
+                reason="formation_marker_found",
+                started_at=self._formation_start_utc,
+            )
+
+    def _waiting_message(self) -> str:
+        if self._reference == LIVE_DELAY_REFERENCE_FORMATION:
+            return "Waiting for formation start marker (race/sprint)."
+        return "Waiting for SessionStatus to report 'Started'."
+
+    def _running_message(self) -> str:
+        if self._reference == LIVE_DELAY_REFERENCE_FORMATION:
+            return (
+                "Calibration running from formation marker – press 'Match live delay' "
+                "when TV catches up."
+            )
+        return "Calibration running – press 'Match live delay' when TV catches up."
+
     def _notify_user(self, title: str, message: str) -> None:
         # Home Assistant's persistent_notification helper has changed over time:
         # in some versions async_create() returns a coroutine, in others it returns None.
@@ -289,3 +425,20 @@ class LiveDelayCalibrationManager:
         )
         if isawaitable(result):
             self._hass.async_create_task(result)
+
+    def _is_replay_active(self) -> bool:
+        controller = self._replay_controller
+        if controller is None:
+            return False
+        try:
+            from .replay_mode import ReplayState
+
+            return controller.state in {
+                ReplayState.SELECTED,
+                ReplayState.LOADING,
+                ReplayState.READY,
+                ReplayState.PLAYING,
+                ReplayState.PAUSED,
+            }
+        except Exception:  # noqa: BLE001
+            return False

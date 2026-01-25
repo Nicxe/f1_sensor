@@ -8,12 +8,14 @@
           "enabled_sensors": "Aktiverade sensorer",
           "operation_mode": "Operation mode",
           "replay_file": "Replay dump path",
-          "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)"
+          "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
+          "race_week_start_day": "Första dagen i tävlingsveckan"
         },
         "data_description": {
           "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
           "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
-          "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer."
+          "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
+          "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag."
         }
       },
       "reconfigure": {
@@ -23,12 +25,14 @@
           "enabled_sensors": "Aktiverade sensorer",
           "operation_mode": "Operation mode",
           "replay_file": "Replay dump path",
-          "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)"
+          "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
+          "race_week_start_day": "Första dagen i tävlingsveckan"
         },
         "data_description": {
           "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
           "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
-          "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer."
+          "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
+          "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag."
         }
       }
     },
@@ -56,9 +60,19 @@
       "fia_documents": { "name": "FIA-beslut" },
       "live_timing_mode": { "name": "Live timing-läge" }
     },
+    "media_player": {
+      "replay_player": { "name": "Replay player" }
+    },
+    "select": {
+      "live_delay_reference": { "name": "Live delay reference" },
+      "replay_year": { "name": "Replay year" },
+      "replay_session": { "name": "Replay session" },
+      "replay_start_reference": { "name": "Replay start reference" }
+    },
     "binary_sensor": {
       "race_week": { "name": "Tävlingsvecka" },
-      "live_timing_online": { "name": "Live timing online" }
+      "live_timing_online": { "name": "Live timing online" },
+      "formation_start": { "name": "Formation start" }
     }
   }
 }

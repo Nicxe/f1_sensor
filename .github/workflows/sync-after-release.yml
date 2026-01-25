@@ -1,0 +1,14 @@
+name: Sync main back to beta
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: ${{ github.event.release.prerelease == false && github.event.release.target_commitish == 'main' }}
+    uses: nicxe/.github/.github/workflows/resusable-sync-main-back-to-beta.yml@main
+    secrets: inherit

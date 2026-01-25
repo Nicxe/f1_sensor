@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 import datetime as dt
@@ -20,24 +22,26 @@ HUB_DATA = '[{"name":"Streaming"}]'
 SUBSCRIBE_MSG = {
     "H": "Streaming",
     "M": "Subscribe",
-    "A": [[
-        "RaceControlMessages",
-        "TrackStatus",
-        "SessionStatus",
-        "WeatherData",
-        "LapCount",
-        "SessionInfo",
-        "Heartbeat",
-        "ExtrapolatedClock",
-        "TimingData",
-        "DriverList",
-        "TimingAppData",
-        "TopThree",
-        "TyreStintSeries",
-        "TeamRadio",
-        "PitStopSeries",
-        "ChampionshipPrediction",
-    ]],
+    "A": [
+        [
+            "RaceControlMessages",
+            "TrackStatus",
+            "SessionStatus",
+            "WeatherData",
+            "LapCount",
+            "SessionInfo",
+            "Heartbeat",
+            "ExtrapolatedClock",
+            "TimingData",
+            "DriverList",
+            "TimingAppData",
+            "TopThree",
+            "TyreStintSeries",
+            "TeamRadio",
+            "PitStopSeries",
+            "ChampionshipPrediction",
+        ]
+    ],
     "I": 1,
 }
 
@@ -130,8 +134,8 @@ class SignalRClient:
                 if "M" in payload:
                     for hub_msg in payload["M"]:
                         if hub_msg.get("M") == "feed":
-                            stream_name = hub_msg["A"][0]
                             # Per-message logging suppressed (summarized by LiveBus)
+                            pass
                 elif "R" in payload:
                     # Per-message RPC logging suppressed
                     pass
@@ -153,7 +157,7 @@ class SignalRClient:
                 try:
                     await self._ws.send_json(SUBSCRIBE_MSG)
                     _LOGGER.debug("Heartbeat: subscriptions renewed")
-                except Exception as exc:          # pylint: disable=broad-except
+                except Exception as exc:  # pylint: disable=broad-except
                     _LOGGER.warning("Heartbeat failed: %s", exc)
                     break
         except asyncio.CancelledError:
@@ -202,7 +206,9 @@ class LiveBus:
         self._heartbeat_timeout = 45.0
         self._heartbeat_check_interval = 5.0
 
-    def subscribe(self, stream: str, callback: Callable[[dict], None]) -> Callable[[], None]:
+    def subscribe(
+        self, stream: str, callback: Callable[[dict], None]
+    ) -> Callable[[], None]:
         lst = self._subs.setdefault(stream, [])
         lst.append(callback)
 
@@ -234,11 +240,16 @@ class LiveBus:
             _LOGGER.debug("LiveBus start requested but already running")
             return
         self._running = True
-        _LOGGER.info("LiveBus starting (transport=%s)", "custom" if self._transport_factory else "native")
+        _LOGGER.info(
+            "LiveBus starting (transport=%s)",
+            "custom" if self._transport_factory else "native",
+        )
         self._client = self._create_client()
         self._task = self._hass.loop.create_task(self._run())
         if self._heartbeat_guard is None or self._heartbeat_guard.done():
-            self._heartbeat_guard = self._hass.loop.create_task(self._monitor_heartbeat())
+            self._heartbeat_guard = self._hass.loop.create_task(
+                self._monitor_heartbeat()
+            )
 
     async def _run(self) -> None:
         try:
@@ -265,7 +276,9 @@ class LiveBus:
                                                     data = args[1]
                                                     # Cache latest even if no subscribers yet
                                                     if isinstance(data, dict):
-                                                        self._last_payload[stream] = data
+                                                        self._last_payload[stream] = (
+                                                            data
+                                                        )
                                                     # Always dispatch so heartbeat/activity bookkeeping
                                                     # works even when there are no explicit subscribers
                                                     self._dispatch(stream, data)
@@ -284,7 +297,15 @@ class LiveBus:
                         except Exception:  # noqa: BLE001
                             continue
                 except Exception as err:  # pragma: no cover - network errors
-                    _LOGGER.warning("LiveBus websocket error: %s", err)
+                    # Log replay-related errors at DEBUG since they're expected during replay stop
+                    err_str = str(err)
+                    if "Replay" in err_str or "replay" in err_str:
+                        _LOGGER.debug("LiveBus replay transport closed: %s", err)
+                    else:
+                        _LOGGER.warning("LiveBus websocket error: %s", err)
+                    # Add delay before reconnect to prevent tight loops
+                    if self._running:
+                        await asyncio.sleep(2)
                 finally:
                     if self._client:
                         await self._client.close()
@@ -333,7 +354,11 @@ class LiveBus:
                 else:
                     parts.append(f"{stream}:{count}")
             if parts:
-                _LOGGER.debug("LiveBus summary (last %.0fs): %s", self._log_interval, ", ".join(parts))
+                _LOGGER.debug(
+                    "LiveBus summary (last %.0fs): %s",
+                    self._log_interval,
+                    ", ".join(parts),
+                )
             # Reset window counters
             for k in list(self._cnt.keys()):
                 self._cnt[k] = 0
@@ -347,9 +372,17 @@ class LiveBus:
         _LOGGER.info("LiveBus shutting down")
         if self._task:
             self._task.cancel()
+            try:
+                await self._task  # Wait for task to actually finish
+            except asyncio.CancelledError:
+                pass
             self._task = None
         if self._heartbeat_guard:
             self._heartbeat_guard.cancel()
+            try:
+                await self._heartbeat_guard
+            except asyncio.CancelledError:
+                pass
             self._heartbeat_guard = None
         if self._client:
             await self._client.close()
@@ -405,7 +438,9 @@ class LiveBus:
             return None
         return time.time() - self._last_heartbeat_at
 
-    def last_stream_activity_age(self, streams: Iterable[str] | None = None) -> float | None:
+    def last_stream_activity_age(
+        self, streams: Iterable[str] | None = None
+    ) -> float | None:
         """Return age in seconds for the most recent payload among given streams."""
         if not self._last_ts:
             return None
@@ -427,3 +462,51 @@ class LiveBus:
     def get_last_payload(self, stream: str) -> dict | None:
         data = self._last_payload.get(stream)
         return data if isinstance(data, dict) else None
+
+    async def swap_transport(
+        self, transport_factory: Callable[[], LiveTransport] | None
+    ) -> None:
+        """Hot-swap transport for replay mode.
+
+        This allows switching between live SignalR and replay transport
+        without recreating the bus or losing subscribers.
+        """
+        was_running = self._running
+
+        if was_running:
+            _LOGGER.info("Stopping LiveBus for transport swap")
+            await self.async_close()
+
+        self._transport_factory = transport_factory
+        self._last_payload.clear()  # Clear cached payloads from previous session
+        self._cnt.clear()
+        self._last_ts.clear()
+
+        # For replay mode (transport_factory provided), always start the bus
+        # For restoring to live (transport_factory=None), only restart if it was running
+        # (let LiveSessionSupervisor handle normal reconnection)
+        if transport_factory is not None:
+            _LOGGER.info("Starting LiveBus with replay transport")
+            await self.start()
+        elif was_running:
+            _LOGGER.info("Restarting LiveBus with live transport")
+            await self.start()
+
+    def inject_message(self, stream: str, payload: dict) -> None:
+        """Inject a message directly into the bus (for replay mode).
+
+        This allows external code to feed data into the bus without
+        going through the transport layer.
+        """
+        subs_count = len(self._subs.get(stream, []))
+        _LOGGER.debug(
+            "inject_message: stream=%s, subs=%d, payload_keys=%s",
+            stream,
+            subs_count,
+            list(payload.keys())
+            if isinstance(payload, dict)
+            else type(payload).__name__,
+        )
+        if isinstance(payload, dict):
+            self._last_payload[stream] = payload
+        self._dispatch(stream, payload)

@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import json
 import logging
 import asyncio
-import contextlib
 import re
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
@@ -34,9 +35,13 @@ from .const import (
     FIA_SEASON_FALLBACK_URL,
     FIA_DOCS_POLL_INTERVAL,
     FIA_DOCS_FETCH_TIMEOUT,
+    CONF_LIVE_DELAY_REFERENCE,
     CONF_OPERATION_MODE,
     CONF_REPLAY_FILE,
+    CONF_REPLAY_START_REFERENCE,
+    DEFAULT_LIVE_DELAY_REFERENCE,
     DEFAULT_OPERATION_MODE,
+    DEFAULT_REPLAY_START_REFERENCE,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
     ENABLE_DEVELOPMENT_MODE_UI,
@@ -51,12 +56,20 @@ from .helpers import (
     parse_fia_documents,
     PersistentCache,
 )
-from .live_delay import LiveDelayController
+from .formation_start import FormationStartTracker
+from .live_delay import LiveDelayController, LiveDelayReferenceController
+from .replay_start import ReplayStartReferenceController
 from .calibration import LiveDelayCalibrationManager
+from .replay_mode import ReplayController
 
 _LOGGER = logging.getLogger(__name__)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
+_REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode"})
+
+
+def _is_replay_delay_reason(reason: str | None) -> bool:
+    return reason in _REPLAY_DELAY_REASONS
 
 
 def _ensure_jolpica_stats_reporting(hass: HomeAssistant) -> None:
@@ -121,6 +134,7 @@ def _ensure_jolpica_stats_reporting(hass: HomeAssistant) -> None:
     except Exception:
         pass
 
+
 # Keep treating the current Grand Prix as "next" for a short period after
 # lights out, so helpers and sensors do not jump to the following weekend
 # immediately when a race starts.
@@ -150,7 +164,9 @@ class CoordinatorLogger(logging.LoggerAdapter):
         super().debug(msg, *args, **kwargs)
 
 
-def coordinator_logger(name: str, *, suppress_manual: bool = False) -> CoordinatorLogger:
+def coordinator_logger(
+    name: str, *, suppress_manual: bool = False
+) -> CoordinatorLogger:
     return CoordinatorLogger(
         logging.getLogger(f"{__name__}.{name}"),
         suppress_manual=suppress_manual,
@@ -182,6 +198,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "session_status",
         "current_session",
         "safety_car",
+        "formation_start",
         "fia_documents",
         "race_control",
         "top_three",
@@ -218,16 +235,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "sprint_results",
         )
     )
-    need_driver = any(k in enabled for k in ("driver_standings", "driver_points_progression"))
+    need_driver = any(
+        k in enabled for k in ("driver_standings", "driver_points_progression")
+    )
     need_constructor = any(
-        k in enabled for k in ("constructor_standings", "constructor_points_progression")
+        k in enabled
+        for k in ("constructor_standings", "constructor_points_progression")
     )
     need_last_race = "last_race_results" in enabled
     need_season_results = any(
-        k in enabled for k in ("season_results", "driver_points_progression", "constructor_points_progression")
+        k in enabled
+        for k in (
+            "season_results",
+            "driver_points_progression",
+            "constructor_points_progression",
+        )
     )
     need_sprint_results = any(
-        k in enabled for k in ("sprint_results", "driver_points_progression", "constructor_points_progression")
+        k in enabled
+        for k in (
+            "sprint_results",
+            "driver_points_progression",
+            "constructor_points_progression",
+        )
     )
     need_fia_docs = "fia_documents" in enabled
 
@@ -239,15 +269,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     TTL_SPRINT = 24 * 3600
     # Season results are paginated; we refresh the latest page more often inside the coordinator.
     TTL_SEASON_STABLE_PAGE = 30 * 24 * 3600  # older pages: effectively static
-    TTL_SEASON_RECENT_PAGE = 24 * 3600       # second-to-last-ish pages
-    TTL_SEASON_LATEST_PAGE = 6 * 3600        # latest page: updated after weekends
+    TTL_SEASON_RECENT_PAGE = 24 * 3600  # second-to-last-ish pages
+    TTL_SEASON_LATEST_PAGE = 6 * 3600  # latest page: updated after weekends
 
     # Build custom User-Agent for Jolpica/Ergast. Note: HA's async_create_clientsession
     # does not reliably override the default UA in recent core versions, so we apply
     # this UA per request in the coordinators instead.
     ua_string = await build_user_agent(hass)
     http_session = async_get_clientsession(hass)
-    _LOGGER.debug("Configured User-Agent for Jolpica/Ergast (per-request): %s", ua_string)
+    _LOGGER.debug(
+        "Configured User-Agent for Jolpica/Ergast (per-request): %s", ua_string
+    )
 
     # Per-entry shared HTTP cache and in-flight maps (for Jolpica/Ergast only)
     http_cache: dict = {}
@@ -260,6 +292,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         from yarl import URL
         from time import monotonic as _mono
+
         now = _mono()
         wall_now = time.time()
 
@@ -272,7 +305,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             kk = str(k)
             if "/ergast/f1/current.json" in kk:
                 return TTL_CURRENT
-            if "/ergast/f1/current/driverstandings.json" in kk or "/ergast/f1/current/constructorstandings.json" in kk:
+            if (
+                "/ergast/f1/current/driverstandings.json" in kk
+                or "/ergast/f1/current/constructorstandings.json" in kk
+            ):
                 return TTL_STANDINGS
             if "/ergast/f1/current/last/results.json" in kk:
                 return TTL_LAST_RESULTS
@@ -294,6 +330,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return 7 * 24 * 3600
             # Default: keep a modest TTL
             return 6 * 3600
+
         for k, v in (persisted_map or {}).items():
             data = v.get("data") if isinstance(v, dict) else None
             if data is None:
@@ -313,7 +350,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             remaining = max(0.0, float(ttl) - float(age))
             http_cache[k] = (now + remaining, data)
         if _LOGGER.isEnabledFor(logging.DEBUG):
-            _LOGGER.debug("Seeded in-memory cache from persistent store with %d keys", len(http_cache))
+            _LOGGER.debug(
+                "Seeded in-memory cache from persistent store with %d keys",
+                len(http_cache),
+            )
     except Exception:
         pass
 
@@ -425,15 +465,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     fia_documents_coordinator = (
         FiaDocumentsCoordinator(
-        hass,
-        race_coordinator,
-        session=http_session,
-        cache=http_cache,
-        inflight=http_inflight,
-        ttl_seconds=FIA_DOCS_POLL_INTERVAL,
-        persist_map=persisted_map,
-        persist_save=persisted.schedule_save,
-        config_entry=entry,
+            hass,
+            race_coordinator,
+            session=http_session,
+            cache=http_cache,
+            inflight=http_inflight,
+            ttl_seconds=FIA_DOCS_POLL_INTERVAL,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
         )
         if (need_fia_docs and race_coordinator is not None)
         else None
@@ -444,6 +484,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     configured_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
     delay_controller = LiveDelayController(hass, entry.entry_id)
     live_delay = await delay_controller.async_initialize(configured_delay)
+    reference_controller = LiveDelayReferenceController(hass, entry.entry_id)
+    await reference_controller.async_initialize(
+        entry.data.get(CONF_LIVE_DELAY_REFERENCE, DEFAULT_LIVE_DELAY_REFERENCE)
+    )
+    replay_start_reference_controller = ReplayStartReferenceController(
+        hass, entry.entry_id
+    )
+    await replay_start_reference_controller.async_initialize(
+        entry.data.get(CONF_REPLAY_START_REFERENCE, DEFAULT_REPLAY_START_REFERENCE)
+    )
     operation_mode = entry.data.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
     replay_source = str(entry.data.get(CONF_REPLAY_FILE, "") or "").strip()
     transport_factory = None
@@ -498,8 +548,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_state = LiveAvailabilityTracker()
         live_state.set_state(True, "replay-mode")
 
+    formation_tracker = None
+    if operation_mode == OPERATION_MODE_LIVE:
+        formation_tracker = FormationStartTracker(
+            hass,
+            bus=live_bus,
+            http_session=session,
+        )
+
     def _reload_entry():
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
+
+    # Create replay controller for historical session playback
+    replay_controller = ReplayController(
+        hass,
+        entry.entry_id,
+        http_session,
+        live_bus,
+        live_state=live_state,
+        start_reference_controller=replay_start_reference_controller,
+        formation_tracker=formation_tracker,
+    )
+    await replay_controller.async_initialize()
 
     calibration_manager = LiveDelayCalibrationManager(
         hass,
@@ -507,6 +577,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         bus=live_bus,
         timeout_seconds=120,
         reload_callback=_reload_entry,
+        reference_controller=reference_controller,
+        formation_tracker=formation_tracker,
+        replay_controller=replay_controller,
     )
 
     if enable_rc:
@@ -599,7 +672,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     need_top_three = any(k in enabled for k in ("top_three",))
     need_team_radio = any(k in enabled for k in ("team_radio",))
     need_pitstops = any(k in enabled for k in ("pitstops",))
-    need_championship_prediction = any(k in enabled for k in ("championship_prediction",))
+    need_championship_prediction = any(
+        k in enabled for k in ("championship_prediction",)
+    )
     drivers_coordinator = None
     if need_drivers:
         drivers_coordinator = LiveDriversCoordinator(
@@ -697,7 +772,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "operation_mode": operation_mode,
         "replay_file": replay_source,
         "live_delay_controller": delay_controller,
+        "delay_reference_controller": reference_controller,
+        "replay_start_reference_controller": replay_start_reference_controller,
         "calibration_manager": calibration_manager,
+        "formation_start_tracker": formation_tracker,
+        "replay_controller": replay_controller,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -710,7 +789,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        session_coord: 'LiveSessionCoordinator',
+        session_coord: "LiveSessionCoordinator",
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
@@ -734,6 +813,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -781,14 +861,15 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         # Skip duplicate snapshots without timestamp to avoid heartbeat churn
         if self._should_skip_duplicate(msg):
             return
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
             self._deliver_handle = self.hass.loop.call_later(
-                self._delay, lambda m=msg: self._deliver(m)
+                delay, lambda m=msg: self._deliver(m)
             )
         else:
             # Coalesce in same loop tick
@@ -797,7 +878,9 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_soon(lambda m=msg: self._deliver(m))
+            self._deliver_handle = self.hass.loop.call_soon(
+                lambda m=msg: self._deliver(m)
+            )
 
     @staticmethod
     def _has_timestamp(d: dict) -> bool:
@@ -871,7 +954,9 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         await super().async_config_entry_first_refresh()
         # Subscribe to shared live bus
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("WeatherData", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (
+                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            ).subscribe("WeatherData", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -892,10 +977,19 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         # before the LiveSessionSupervisor has decided whether to arm a window.
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
 
 
 class RaceControlCoordinator(DataUpdateCoordinator):
@@ -908,7 +1002,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        session_coord: 'LiveSessionCoordinator',
+        session_coord: "LiveSessionCoordinator",
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
@@ -932,6 +1026,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         # For duplicate filtering and startup replay suppression
@@ -1038,7 +1133,9 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 or item.get("timestamp")
                 or ""
             )
-            text = str(item.get("Message") or item.get("Text") or item.get("Flag") or "")
+            text = str(
+                item.get("Message") or item.get("Text") or item.get("Flag") or ""
+            )
             cat = str(item.get("Category") or item.get("CategoryType") or "")
             return f"{ts}|{cat}|{text}"
         except Exception:
@@ -1063,6 +1160,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                     ts = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
                     if ts.tzinfo is None:
                         from datetime import timezone as _tz
+
                         ts = ts.replace(tzinfo=_tz.utc)
                     if self._startup_cutoff and ts < self._startup_cutoff:
                         continue
@@ -1099,8 +1197,9 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                     handle = None
 
         loop = self.hass.loop
-        if self._delay > 0:
-            handle = loop.call_later(self._delay, _callback)
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
+            handle = loop.call_later(delay, _callback)
         else:
             handle = loop.call_soon(_callback)
         self._deliver_handles.append(handle)
@@ -1121,10 +1220,26 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handles:
+            for handle in list(self._deliver_handles):
+                try:
+                    handle.cancel()
+                except Exception:
+                    pass
+            self._deliver_handles.clear()
         self.available = is_live
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
+        # In replay mode, disable the startup cutoff so historical messages are accepted
+        if is_live and reason == "replay":
+            self._startup_cutoff = None
+            self._seen_ids_set.clear()
+            self._seen_ids_order.clear()
+            _LOGGER.debug("RaceControl: disabled startup cutoff for replay mode")
 
     def _deliver(self, item: dict) -> None:
         self.available = True
@@ -1168,15 +1283,19 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         else:
             try:
                 from datetime import timezone
+
                 t0 = datetime.now(timezone.utc)
                 self._startup_cutoff = t0 - timedelta(seconds=30)
             except Exception:
                 self._startup_cutoff = None
         # Subscribe to LiveBus
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("RaceControlMessages", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (
+                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            ).subscribe("RaceControlMessages", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
+
 
 class LapCountCoordinator(DataUpdateCoordinator):
     """Coordinator for LapCount updates using SignalR, mirrors other live feeds."""
@@ -1184,7 +1303,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        session_coord: 'LiveSessionCoordinator',
+        session_coord: "LiveSessionCoordinator",
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
@@ -1208,6 +1327,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -1261,14 +1381,15 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
             self._deliver_handle = self.hass.loop.call_later(
-                self._delay, lambda m=msg: self._deliver(m)
+                delay, lambda m=msg: self._deliver(m)
             )
         else:
             try:
@@ -1276,7 +1397,9 @@ class LapCountCoordinator(DataUpdateCoordinator):
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_soon(lambda m=msg: self._deliver(m))
+            self._deliver_handle = self.hass.loop.call_soon(
+                lambda m=msg: self._deliver(m)
+            )
 
     def _deliver(self, msg: dict) -> None:
         self.available = True
@@ -1297,7 +1420,9 @@ class LapCountCoordinator(DataUpdateCoordinator):
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("LapCount", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (
+                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            ).subscribe("LapCount", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -1316,10 +1441,19 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
 
 
 class TeamRadioCoordinator(DataUpdateCoordinator):
@@ -1363,6 +1497,7 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._config_entry = config_entry
@@ -1408,9 +1543,18 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._state = {"latest": None, "history": []}
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._state)
 
     def set_delay(self, seconds: int) -> None:
         new_delay = max(0, int(seconds or 0))
@@ -1427,14 +1571,15 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
             self._deliver_handle = self.hass.loop.call_later(
-                self._delay, lambda m=msg: self._deliver(m)
+                delay, lambda m=msg: self._deliver(m)
             )
         else:
             try:
@@ -1464,9 +1609,7 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
                         result.append(copy)
             elif isinstance(captures, dict):
                 # Some dumps use numeric keys: {"Captures":{"1":{...},"2":{...}}}
-                numeric_keys = [
-                    k for k in captures.keys() if str(k).isdigit()
-                ]
+                numeric_keys = [k for k in captures.keys() if str(k).isdigit()]
                 if numeric_keys:
                     numeric_keys.sort(key=lambda x: int(x))
                     for key in numeric_keys:
@@ -1539,7 +1682,9 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
             try:
                 from pathlib import Path as _Path
 
-                replay_source = str(self._config_entry.data.get(CONF_REPLAY_FILE, "") or "").strip()
+                replay_source = str(
+                    self._config_entry.data.get(CONF_REPLAY_FILE, "") or ""
+                ).strip()
                 if replay_source:
                     replay_path = _Path(replay_source).expanduser()
 
@@ -1573,7 +1718,9 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
                             return None
                         return None
 
-                    static_root = await self.hass.async_add_executor_job(_read_static_root)
+                    static_root = await self.hass.async_add_executor_job(
+                        _read_static_root
+                    )
                     if static_root:
                         self._replay_static_root = str(static_root)
             except Exception:
@@ -1626,6 +1773,7 @@ class PitStopCoordinator(DataUpdateCoordinator):
         self._unsubs: list[Callable[[], None]] = []
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -1685,6 +1833,13 @@ class PitStopCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._reset_store()
@@ -1754,7 +1909,9 @@ class PitStopCoordinator(DataUpdateCoordinator):
             return None
 
     def _on_session_index_update(self) -> None:
-        fp = self._compute_session_fingerprint(getattr(self._session_coord, "data", None))
+        fp = self._compute_session_fingerprint(
+            getattr(self._session_coord, "data", None)
+        )
         if fp is None:
             return
         if self._session_fingerprint is None:
@@ -1765,13 +1922,14 @@ class PitStopCoordinator(DataUpdateCoordinator):
             self._reset_store()
 
     def _schedule_deliver(self) -> None:
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_later(self._delay, self._deliver)
+            self._deliver_handle = self.hass.loop.call_later(delay, self._deliver)
         else:
             try:
                 if self._deliver_handle:
@@ -1902,9 +2060,17 @@ class PitStopCoordinator(DataUpdateCoordinator):
                     if isinstance(c0, dict):
                         team = c0.get("name")
                 # Do not overwrite non-null values from DriverList
-                existing = self._driver_map.get(rn) if isinstance(self._driver_map, dict) else None
+                existing = (
+                    self._driver_map.get(rn)
+                    if isinstance(self._driver_map, dict)
+                    else None
+                )
                 if isinstance(existing, dict):
-                    if existing.get("tla") or existing.get("name") or existing.get("team"):
+                    if (
+                        existing.get("tla")
+                        or existing.get("name")
+                        or existing.get("team")
+                    ):
                         continue
                 self._driver_map[rn] = {"tla": code, "name": name, "team": team}
         except Exception:
@@ -1926,7 +2092,11 @@ class PitStopCoordinator(DataUpdateCoordinator):
                 key=lambda kv: int(str(kv[0])) if str(kv[0]).isdigit() else str(kv[0]),
             ):
                 lst = list(stops or [])
-                ident = self._driver_map.get(str(rn), {}) if isinstance(self._driver_map, dict) else {}
+                ident = (
+                    self._driver_map.get(str(rn), {})
+                    if isinstance(self._driver_map, dict)
+                    else {}
+                )
                 cars[str(rn)] = {
                     "tla": ident.get("tla"),
                     "name": ident.get("name"),
@@ -2021,6 +2191,7 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
         self._unsubs: list[Callable[[], None]] = []
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
 
@@ -2092,6 +2263,13 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._reset_store()
@@ -2146,7 +2324,9 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
             return None
 
     def _on_session_index_update(self) -> None:
-        fp = self._compute_session_fingerprint(getattr(self._session_coord, "data", None))
+        fp = self._compute_session_fingerprint(
+            getattr(self._session_coord, "data", None)
+        )
         if fp is None:
             return
         if self._session_fingerprint is None:
@@ -2157,13 +2337,14 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
             self._reset_store()
 
     def _schedule_deliver(self) -> None:
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_later(self._delay, self._deliver)
+            self._deliver_handle = self.hass.loop.call_later(delay, self._deliver)
         else:
             try:
                 if self._deliver_handle:
@@ -2179,7 +2360,9 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
             dst = {}
         for k, v in (src or {}).items():
             if isinstance(v, dict) and isinstance(dst.get(k), dict):
-                dst[k] = ChampionshipPredictionCoordinator._deep_merge(dst.get(k) or {}, v)
+                dst[k] = ChampionshipPredictionCoordinator._deep_merge(
+                    dst.get(k) or {}, v
+                )
             else:
                 dst[k] = v
         return dst
@@ -2259,7 +2442,9 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
                 if not rn:
                     continue
                 existing = self._driver_map.get(rn)
-                if isinstance(existing, dict) and (existing.get("tla") or existing.get("name") or existing.get("team")):
+                if isinstance(existing, dict) and (
+                    existing.get("tla") or existing.get("name") or existing.get("team")
+                ):
                     continue
                 code = driver.get("code") or driver.get("driverId")
                 given = driver.get("givenName")
@@ -2348,7 +2533,11 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
         p1_rn, p1_entry = self._pick_predicted_driver_p1()
         ident = self._driver_map.get(str(p1_rn), {}) if p1_rn else {}
         p1_tla = ident.get("tla") if isinstance(ident, dict) else None
-        p1_pts = self._to_float((p1_entry or {}).get("PredictedPoints")) if isinstance(p1_entry, dict) else None
+        p1_pts = (
+            self._to_float((p1_entry or {}).get("PredictedPoints"))
+            if isinstance(p1_entry, dict)
+            else None
+        )
 
         t1_key, t1_entry = self._pick_predicted_team_p1()
         team_name = None
@@ -2356,7 +2545,11 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
             team_name = t1_entry.get("TeamName") or t1_entry.get("teamName")
         if not team_name and t1_key:
             team_name = str(t1_key)
-        t1_pts = self._to_float((t1_entry or {}).get("PredictedPoints")) if isinstance(t1_entry, dict) else None
+        t1_pts = (
+            self._to_float((t1_entry or {}).get("PredictedPoints"))
+            if isinstance(t1_entry, dict)
+            else None
+        )
 
         self._state = {
             "drivers": dict(self._drivers),
@@ -2412,6 +2605,7 @@ class ChampionshipPredictionCoordinator(DataUpdateCoordinator):
         except Exception:
             pass
 
+
 class LiveDriversCoordinator(DataUpdateCoordinator):
     """Coordinator aggregating DriverList, TimingData, TimingAppData, LapCount and SessionStatus.
 
@@ -2436,7 +2630,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        session_coord: 'LiveSessionCoordinator',
+        session_coord: "LiveSessionCoordinator",
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
@@ -2457,6 +2651,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._unsubs: list[Callable[[], None]] = []
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self.available = True
@@ -2611,6 +2806,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             # Clear consolidated state so a future session window does not briefly
@@ -2645,7 +2847,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             # Fallback: minimal numeric position across all stored drivers
             best: tuple[int, str] | None = None
             for rn, info in drivers.items():
-                pos_str = str((info.get("timing", {}) or {}).get("position") or "").strip()
+                pos_str = str(
+                    (info.get("timing", {}) or {}).get("position") or ""
+                ).strip()
                 try:
                     pos_int = int(pos_str) if pos_str.isdigit() else None
                 except Exception:
@@ -2693,7 +2897,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         latest = stints.get(str(max(keys)))
                 except Exception:
                     # Fallback: try key '0'
-                    latest = stints.get("0") if isinstance(stints.get("0"), dict) else None
+                    latest = (
+                        stints.get("0") if isinstance(stints.get("0"), dict) else None
+                    )
             if isinstance(latest, dict):
                 # Lap times: map latest LapTime to timing.last_lap and update best_lap
                 lap_time = latest.get("LapTime")
@@ -2703,8 +2909,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     prev_best = timing.get("best_lap")
                     try:
                         new_secs = self._parse_laptime_secs(lap_time)
-                        prev_secs = self._parse_laptime_secs(prev_best) if isinstance(prev_best, str) else None
-                        if new_secs is not None and (prev_secs is None or new_secs < prev_secs):
+                        prev_secs = (
+                            self._parse_laptime_secs(prev_best)
+                            if isinstance(prev_best, str)
+                            else None
+                        )
+                        if new_secs is not None and (
+                            prev_secs is None or new_secs < prev_secs
+                        ):
                             timing["best_lap"] = lap_time
                     except Exception:
                         # If parsing fails, at least keep last_lap updated
@@ -2737,7 +2949,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     if keys:
                         latest = stints.get(str(max(keys)))
                 except Exception:
-                    latest = stints.get("0") if isinstance(stints.get("0"), dict) else None
+                    latest = (
+                        stints.get("0") if isinstance(stints.get("0"), dict) else None
+                    )
             if not isinstance(latest, dict):
                 continue
 
@@ -2814,18 +3028,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         except Exception:
             pass
 
-    def set_delay(self, seconds: int) -> None:
-        new_delay = max(0, int(seconds or 0))
-        if new_delay == self._delay:
-            return
-        self._delay = new_delay
-        if self._deliver_handle:
-            try:
-                self._deliver_handle.cancel()
-            except Exception:
-                pass
-            self._deliver_handle = None
-
     @staticmethod
     def _extract(data: dict, key: str) -> dict | None:
         if not isinstance(data, dict):
@@ -2846,13 +3048,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self.async_set_updated_data(self._state)
 
     def _schedule_deliver(self) -> None:
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_later(self._delay, self._deliver)
+            self._deliver_handle = self.hass.loop.call_later(delay, self._deliver)
         else:
             try:
                 if self._deliver_handle:
@@ -2899,7 +3102,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         await super().async_config_entry_first_refresh()
         # Subscribe to LiveBus streams
         try:
-            bus = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus"))  # type: ignore[assignment]
+            bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")  # type: ignore[assignment]
         except Exception:
             bus = None
         if bus is not None:
@@ -2916,7 +3119,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             try:
-                self._unsubs.append(bus.subscribe("TyreStintSeries", self._on_tyre_stints))
+                self._unsubs.append(
+                    bus.subscribe("TyreStintSeries", self._on_tyre_stints)
+                )
             except Exception:
                 pass
             try:
@@ -2924,21 +3129,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             try:
-                self._unsubs.append(bus.subscribe("SessionStatus", self._on_sessionstatus))
+                self._unsubs.append(
+                    bus.subscribe("SessionStatus", self._on_sessionstatus)
+                )
             except Exception:
                 pass
-
-    def set_delay(self, seconds: int) -> None:
-        new_delay = max(0, int(seconds or 0))
-        if new_delay == self._delay:
-            return
-        self._delay = new_delay
-        if self._deliver_handle:
-            try:
-                self._deliver_handle.cancel()
-            except Exception:
-                pass
-            self._deliver_handle = None
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -2963,7 +3158,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if isinstance(data_root, dict):
             # Keep only real entry dicts (exclude our global stats key)
             remaining_entries = [
-                k for k in data_root.keys() if isinstance(k, str) and k != _JOLPICA_STATS_KEY
+                k
+                for k in data_root.keys()
+                if isinstance(k, str) and k != _JOLPICA_STATS_KEY
             ]
             if not remaining_entries:
                 stats = data_root.get(_JOLPICA_STATS_KEY)
@@ -2979,13 +3176,23 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-    
-
-
 class F1DataCoordinator(DataUpdateCoordinator):
     """Handles updates from a given F1 endpoint."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, user_agent: str | None = None, cache=None, inflight=None, ttl_seconds: int = 30, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        url: str,
+        name: str,
+        session=None,
+        user_agent: str | None = None,
+        cache=None,
+        inflight=None,
+        ttl_seconds: int = 30,
+        persist_map=None,
+        persist_save=None,
+        config_entry: ConfigEntry | None = None,
+    ):
         super().__init__(
             hass,
             _LOGGER,
@@ -3054,7 +3261,11 @@ class F1DataCoordinator(DataUpdateCoordinator):
 
         prev = self._last_seen_season
         self._last_seen_season = season
-        _LOGGER.info("Detected season rollover %s -> %s; invalidating Jolpica /current cache", prev, season)
+        _LOGGER.info(
+            "Detected season rollover %s -> %s; invalidating Jolpica /current cache",
+            prev,
+            season,
+        )
 
         # Invalidate in-memory cache entries for /current endpoints
         try:
@@ -3202,7 +3413,11 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
         same URL, but the "meaning" changes.
         """
         base = str(self._base_url)
-        src = getattr(self._season_source, "data", None) if self._season_source is not None else None
+        src = (
+            getattr(self._season_source, "data", None)
+            if self._season_source is not None
+            else None
+        )
         season = self._extract_season(src)
         if not season:
             return base
@@ -3233,13 +3448,18 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             return self._ttl_recent
         return self._ttl_stable
 
-    async def _fetch_page(self, limit: int, offset: int, *, ttl_seconds: int | None = None):
+    async def _fetch_page(
+        self, limit: int, offset: int, *, ttl_seconds: int | None = None
+    ):
         from yarl import URL
+
         ttl = int(ttl_seconds or self._ttl_latest)
 
         # Primary: season-scoped URL when we can derive season from current.json.
         primary_base = self._effective_base_url()
-        primary_url = str(URL(primary_base).with_query({"limit": str(limit), "offset": str(offset)}))
+        primary_url = str(
+            URL(primary_base).with_query({"limit": str(limit), "offset": str(offset)})
+        )
 
         async with async_timeout.timeout(10):
             try:
@@ -3256,7 +3476,11 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
                 )
             except Exception:
                 # Fallback: legacy /current/ URL (in case the API doesn't support season-scoped paths)
-                fallback_url = str(URL(str(self._base_url)).with_query({"limit": str(limit), "offset": str(offset)}))
+                fallback_url = str(
+                    URL(str(self._base_url)).with_query(
+                        {"limit": str(limit), "offset": str(offset)}
+                    )
+                )
                 if fallback_url == primary_url:
                     raise
                 return await fetch_json(
@@ -3275,7 +3499,10 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
     def _race_key(r: dict) -> tuple:
         season = r.get("season")
         round_ = r.get("round")
-        return (str(season) if season is not None else "", str(round_) if round_ is not None else "")
+        return (
+            str(season) if season is not None else "",
+            str(round_) if round_ is not None else "",
+        )
 
     async def _async_update_data(self):
         try:
@@ -3301,14 +3528,19 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
                             for res in existing.get("Results", [])
                         }
                         for res in race.get("Results", []) or []:
-                            ident = (res.get("Driver", {}).get("driverId"), res.get("position"))
+                            ident = (
+                                res.get("Driver", {}).get("driverId"),
+                                res.get("position"),
+                            )
                             if ident not in seen:
                                 existing["Results"].append(res)
                                 seen.add(ident)
 
             # Fetch first page (use recent TTL; we'll apply more specific TTLs
             # for additional pages once we know the total/last offset).
-            first = await self._fetch_page(request_limit, offset, ttl_seconds=self._ttl_recent)
+            first = await self._fetch_page(
+                request_limit, offset, ttl_seconds=self._ttl_recent
+            )
             mr = (first or {}).get("MRData", {})
             total = int((mr.get("total") or "0"))
             limit_used = int((mr.get("limit") or request_limit))
@@ -3318,7 +3550,9 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 
             # Determine last page offset for TTL selection
             try:
-                last_page_offset = ((max(0, total - 1) // max(1, limit_used)) * max(1, limit_used))
+                last_page_offset = (max(0, total - 1) // max(1, limit_used)) * max(
+                    1, limit_used
+                )
             except Exception:
                 last_page_offset = offset_used
 
@@ -3327,8 +3561,12 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             # Cap loop iterations defensively
             safety = 0
             while next_offset < total and safety < 50:
-                page_ttl = self._ttl_for_offset(next_offset, last_page_offset, limit_used)
-                page = await self._fetch_page(limit_used, next_offset, ttl_seconds=page_ttl)
+                page_ttl = self._ttl_for_offset(
+                    next_offset, last_page_offset, limit_used
+                )
+                page = await self._fetch_page(
+                    limit_used, next_offset, ttl_seconds=page_ttl
+                )
                 pmr = (page or {}).get("MRData", {})
                 praces = (pmr.get("RaceTable", {}) or {}).get("Races", []) or []
                 merge_page(praces)
@@ -3343,7 +3581,9 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 
             # Assemble and sort by season then numeric round
             assembled_races = [races_by_key[k] for k in order]
-            assembled_races.sort(key=lambda r: (str(r.get("season")), int(str(r.get("round") or 0))))
+            assembled_races.sort(
+                key=lambda r: (str(r.get("season")), int(str(r.get("round") or 0)))
+            )
             return {
                 "MRData": {
                     "RaceTable": {
@@ -3358,7 +3598,20 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 class F1SprintResultsCoordinator(DataUpdateCoordinator):
     """Fetch sprint results for the current season (single, non-paginated endpoint)."""
 
-    def __init__(self, hass: HomeAssistant, url: str, name: str, session=None, user_agent: str | None = None, cache=None, inflight=None, ttl_seconds: int = 60, persist_map=None, persist_save=None, config_entry: ConfigEntry | None = None):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        url: str,
+        name: str,
+        session=None,
+        user_agent: str | None = None,
+        cache=None,
+        inflight=None,
+        ttl_seconds: int = 60,
+        persist_map=None,
+        persist_save=None,
+        config_entry: ConfigEntry | None = None,
+    ):
         super().__init__(
             hass,
             _LOGGER,
@@ -3416,7 +3669,9 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name="FIA Documents Coordinator",
-            update_interval=timedelta(seconds=max(60, int(ttl_seconds or FIA_DOCS_POLL_INTERVAL))),
+            update_interval=timedelta(
+                seconds=max(60, int(ttl_seconds or FIA_DOCS_POLL_INTERVAL))
+            ),
             config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
@@ -3486,8 +3741,25 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
                     persist_save=self._persist_save,
                 )
             slug = self._extract_season_slug(html, season)
+            if not slug:
+                async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+                    html = await fetch_text(
+                        self.hass,
+                        self._session,
+                        FIA_DOCUMENTS_BASE_URL,
+                        ttl_seconds=self._ttl,
+                        cache=self._cache,
+                        inflight=self._inflight,
+                        persist_map=self._persist,
+                        persist_save=self._persist_save,
+                    )
+                slug = self._extract_season_slug(html, season)
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("Failed to resolve FIA season slug for %s: %s", season, err)
+        if not slug:
+            _LOGGER.debug(
+                "FIA season slug not found for %s; using fallback URL", season
+            )
         url = (
             urljoin(FIA_DOCUMENTS_BASE_URL + "/", slug)
             if slug
@@ -3500,8 +3772,11 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
     def _extract_season_slug(html: str, season: str) -> str | None:
         if not isinstance(html, str) or not html:
             return None
+        season_escaped = re.escape(str(season))
         pattern = re.compile(
-            rf'href="(?P<href>/documents[^"]*season/season-{re.escape(str(season))}-\d+)"',
+            rf'(?:href|value)=(["\'])'
+            rf'(?P<href>(?:https?://[^"\']+)?/documents[^"\']*season/season-{season_escaped}-\d+)'
+            rf"\1",
             re.IGNORECASE,
         )
         match = pattern.search(html)
@@ -3548,10 +3823,18 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
             if end_dt.replace(tzinfo=None) > now:
                 return race
         return races[-1] if races else None
+
+
 class LiveSessionCoordinator(DataUpdateCoordinator):
     """Fetch current or next session from the LiveTiming index."""
 
-    def __init__(self, hass: HomeAssistant, year: int, session=None, config_entry: ConfigEntry | None = None):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        year: int,
+        session=None,
+        config_entry: ConfigEntry | None = None,
+    ):
         super().__init__(
             hass,
             _LOGGER,
@@ -3622,7 +3905,9 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
                                 response.status,
                                 interval_seconds=6 * 3600,
                             )
-                            _LOGGER.debug("Index fetch failed (%s): %s", response.status, preview)
+                            _LOGGER.debug(
+                                "Index fetch failed (%s): %s", response.status, preview
+                            )
                         else:
                             self._log_throttled(
                                 logging.WARNING,
@@ -3674,7 +3959,6 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
         return False
 
 
-
 class TrackStatusCoordinator(DataUpdateCoordinator):
     """Coordinator for TrackStatus updates using SignalR."""
 
@@ -3708,6 +3992,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         self._t0 = None
         self._startup_cutoff = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         # Lightweight dedupe of untimestamped repeats
@@ -3770,6 +4055,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
                 ts = datetime.fromisoformat(str(utc_str).replace("Z", "+00:00"))
                 if ts.tzinfo is None:
                     from datetime import timezone as _tz
+
                     ts = ts.replace(tzinfo=_tz.utc)
                 if self._startup_cutoff and ts < self._startup_cutoff:
                     return
@@ -3782,20 +4068,27 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             has_ts = False
         if not has_ts:
             try:
-                fp = json.dumps({
-                    "Status": msg.get("Status"),
-                    "Message": msg.get("Message") or msg.get("TrackStatus")
-                }, sort_keys=True, default=str)
+                fp = json.dumps(
+                    {
+                        "Status": msg.get("Status"),
+                        "Message": msg.get("Message") or msg.get("TrackStatus"),
+                    },
+                    sort_keys=True,
+                    default=str,
+                )
                 if self._last_untimestamped_fingerprint == fp:
                     return
                 self._last_untimestamped_fingerprint = fp
             except Exception:
                 pass
 
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             # Queue each delivery independently so intermediate states (e.g. YELLOW) survive
             try:
-                handle = self.hass.loop.call_later(self._delay, lambda m=msg: self._deliver(m))
+                handle = self.hass.loop.call_later(
+                    delay, lambda m=msg: self._deliver(m)
+                )
                 self._deliver_handles.append(handle)
             except Exception:
                 # Fallback to immediate delivery
@@ -3810,7 +4103,9 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_soon(lambda m=msg: self._deliver(m))
+            self._deliver_handle = self.hass.loop.call_soon(
+                lambda m=msg: self._deliver(m)
+            )
 
     @staticmethod
     def _parse_message(data):
@@ -3854,13 +4149,16 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         # Capture connection time and startup window
         try:
             from datetime import timezone
+
             self._t0 = datetime.now(timezone.utc)
             self._startup_cutoff = self._t0 - timedelta(seconds=30)
         except Exception:
             self._startup_cutoff = None
         # Subscribe to LiveBus
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("TrackStatus", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (
+                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            ).subscribe("TrackStatus", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -3886,10 +4184,37 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode:
+            if self._deliver_handle:
+                try:
+                    self._deliver_handle.cancel()
+                except Exception:
+                    pass
+                self._deliver_handle = None
+            if self._deliver_handles:
+                for handle in list(self._deliver_handles):
+                    try:
+                        handle.cancel()
+                    except Exception:
+                        pass
+                self._deliver_handles.clear()
         self.available = is_live
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Clear global cache so sensors don't fall back to stale data
+            try:
+                self.hass.data[LATEST_TRACK_STATUS] = None
+            except Exception:
+                pass
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
+        # In replay mode, disable startup cutoff and clear dedup state
+        if is_live and reason == "replay":
+            self._startup_cutoff = None
+            self._last_untimestamped_fingerprint = None
+            _LOGGER.debug("TrackStatus: disabled startup cutoff for replay mode")
 
 
 class SessionStatusCoordinator(DataUpdateCoordinator):
@@ -3922,6 +4247,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -3960,14 +4286,15 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
             self._deliver_handle = self.hass.loop.call_later(
-                self._delay, lambda m=msg: self._deliver(m)
+                delay, lambda m=msg: self._deliver(m)
             )
         else:
             try:
@@ -3975,7 +4302,9 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_soon(lambda m=msg: self._deliver(m))
+            self._deliver_handle = self.hass.loop.call_soon(
+                lambda m=msg: self._deliver(m)
+            )
 
     @staticmethod
     def _parse_message(data):
@@ -4011,7 +4340,9 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("SessionStatus", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (
+                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            ).subscribe("SessionStatus", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -4030,10 +4361,19 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
 
 
 class TopThreeCoordinator(DataUpdateCoordinator):
@@ -4078,6 +4418,7 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -4116,7 +4457,20 @@ class TopThreeCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
+        # Note: For replay mode, we don't schedule deliver here.
+        # The inject_message call will handle delivery with the correct initial state.
+        if is_live and reason == "replay":
+            _LOGGER.debug(
+                "TopThree: replay mode activated, waiting for initial state injection"
+            )
         if not is_live:
             try:
                 self._state = {
@@ -4124,6 +4478,8 @@ class TopThreeCoordinator(DataUpdateCoordinator):
                     "lines": [None, None, None],
                     "last_update_ts": None,
                 }
+                # Notify entities to clear their state
+                self.async_set_updated_data(self._state)
             except Exception:
                 pass
 
@@ -4140,15 +4496,14 @@ class TopThreeCoordinator(DataUpdateCoordinator):
             self._deliver_handle = None
 
     def _schedule_deliver(self) -> None:
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_later(
-                self._delay, self._deliver
-            )
+            self._deliver_handle = self.hass.loop.call_later(delay, self._deliver)
         else:
             try:
                 if self._deliver_handle:
@@ -4174,12 +4529,26 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         lines = payload.get("Lines")
         cur_lines = state.get("lines") or [None, None, None]
 
+        # Debug: Log what we received
+        _LOGGER.debug(
+            "TopThree _merge: Lines type=%s, Lines=%s",
+            type(lines).__name__,
+            str(lines)[:500] if lines else None,
+        )
+
         # Full snapshot: Lines som lista [P1, P2, P3]
         if isinstance(lines, list):
+            _LOGGER.debug("TopThree: processing as list with %d items", len(lines))
             new_lines: list[Any] = [None, None, None]
             for idx in range(3):
                 try:
                     item = lines[idx]
+                    _LOGGER.debug(
+                        "TopThree: list[%d] type=%s, value=%s",
+                        idx,
+                        type(item).__name__,
+                        str(item)[:200] if item else None,
+                    )
                 except Exception:
                     item = None
                 new_lines[idx] = item if isinstance(item, dict) else None
@@ -4217,18 +4586,30 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         try:
             self._merge_topthree(msg)
         except Exception:
+            _LOGGER.debug("TopThree: failed to merge message")
             return
+        # Log what we got after merge
+        lines = self._state.get("lines", [])
+        line_summary = [
+            (line.get("Tla") if isinstance(line, dict) else None) for line in lines
+        ]
+        _LOGGER.debug("TopThree: merged message, lines=%s", line_summary)
         self._schedule_deliver()
 
     def _deliver(self) -> None:
         # Pushar aktuellt state till sensorerna
+        lines = self._state.get("lines", [])
+        line_summary = [
+            (line.get("Tla") if isinstance(line, dict) else None) for line in lines
+        ]
+        _LOGGER.debug("TopThree: delivering state, lines=%s", line_summary)
         self.async_set_updated_data(self._state)
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         # Prenumerera på TopThree från LiveBus
         try:
-            bus = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus"))  # type: ignore[assignment]
+            bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")  # type: ignore[assignment]
         except Exception:
             bus = None
         if bus is not None:
@@ -4268,6 +4649,7 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         self._unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self._live_state_unsub: Optional[Callable[[], None]] = None
@@ -4306,14 +4688,15 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        if self._delay > 0:
+        delay = 0 if self._replay_mode else self._delay
+        if delay > 0:
             try:
                 if self._deliver_handle:
                     self._deliver_handle.cancel()
             except Exception:
                 pass
             self._deliver_handle = self.hass.loop.call_later(
-                self._delay, lambda m=msg: self._deliver(m)
+                delay, lambda m=msg: self._deliver(m)
             )
         else:
             try:
@@ -4321,7 +4704,9 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
                     self._deliver_handle.cancel()
             except Exception:
                 pass
-            self._deliver_handle = self.hass.loop.call_soon(lambda m=msg: self._deliver(m))
+            self._deliver_handle = self.hass.loop.call_soon(
+                lambda m=msg: self._deliver(m)
+            )
 
     @staticmethod
     def _parse_message(data):
@@ -4359,7 +4744,9 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         try:
-            self._unsub = (self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")).subscribe("SessionInfo", self._on_bus_message)  # type: ignore[attr-defined]
+            self._unsub = (
+                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            ).subscribe("SessionInfo", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -4378,7 +4765,16 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode and self._deliver_handle:
+            try:
+                self._deliver_handle.cancel()
+            except Exception:
+                pass
+            self._deliver_handle = None
         self.available = is_live
         if not is_live:
             self._last_message = None
             self.data_list = []
+            # Notify entities to clear their state
+            self.async_set_updated_data(self._last_message)
