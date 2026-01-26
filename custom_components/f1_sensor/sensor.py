@@ -114,6 +114,7 @@ async def async_setup_entry(
         "pitstops",
         "championship_prediction",
         "live_timing_diagnostics",
+        "tire_statistics",
     }
     raw_enabled = entry.data.get("enabled_sensors", [])
     normalized = []
@@ -159,6 +160,7 @@ async def async_setup_entry(
         ),
         "driver_list": (F1DriverListSensor, data.get("drivers_coordinator")),
         "current_tyres": (F1CurrentTyresSensor, data.get("drivers_coordinator")),
+        "tire_statistics": (F1TireStatisticsSensor, data.get("drivers_coordinator")),
         "fia_documents": (F1FiaDocumentsSensor, data.get("fia_documents_coordinator")),
         "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
         "top_three": (None, data.get("top_three_coordinator")),
@@ -4189,6 +4191,88 @@ class F1CurrentTyresSensor(F1BaseEntity, SensorEntity):
         # State is the number of drivers we expose in the list
         self._attr_native_value = len(items)
         self._attr_extra_state_attributes = {"drivers": items}
+
+    @property
+    def state(self):
+        return self._attr_native_value
+
+
+class F1TireStatisticsSensor(F1BaseEntity, SensorEntity):
+    """Live sensor exposing aggregated tire statistics per compound.
+
+    - State: fastest compound name (e.g., "SOFT")
+    - Attributes:
+        - fastest_time: Overall fastest lap time
+        - fastest_time_secs: Fastest time in seconds
+        - deltas: Delta to fastest per compound
+        - compounds: {
+            "SOFT": {
+                "best_times": [top 3 with driver info],
+                "total_laps": int,
+                "sets_used": int (new tyres only),
+                "sets_used_total": int (all stints),
+            },
+            ...
+        }
+    """
+
+    # Compound colors for UI representation
+    _COMPOUND_COLOR = {
+        "SOFT": "#FF0000",  # red
+        "MEDIUM": "#FFFF00",  # yellow
+        "HARD": "#FFFFFF",  # white
+        "INTERMEDIATE": "#00FF00",  # green
+        "WET": "#0000FF",  # blue
+    }
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:chart-bar"
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self._update_from_coordinator()
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self.async_write_ha_state()
+
+    def _handle_coordinator_update(self) -> None:
+        prev_state = self._attr_native_value
+        prev_attrs = self._attr_extra_state_attributes
+        self._update_from_coordinator()
+        if (
+            prev_state == self._attr_native_value
+            and prev_attrs == self._attr_extra_state_attributes
+        ):
+            return
+        self._safe_write_ha_state()
+
+    def _update_from_coordinator(self) -> None:
+        data = self.coordinator.data or {}
+        tire_stats = data.get("tire_statistics", {}) if isinstance(data, dict) else {}
+
+        fastest_compound = tire_stats.get("fastest_compound")
+        fastest_time = tire_stats.get("fastest_time")
+        fastest_time_secs = tire_stats.get("fastest_time_secs")
+        deltas = tire_stats.get("deltas", {})
+        compounds_raw = tire_stats.get("compounds", {})
+
+        # Enrich compounds with color info
+        compounds = {}
+        for comp_name, comp_data in compounds_raw.items():
+            comp_copy = dict(comp_data)
+            comp_copy["compound_color"] = self._COMPOUND_COLOR.get(comp_name)
+            compounds[comp_name] = comp_copy
+
+        self._attr_native_value = fastest_compound
+        self._attr_extra_state_attributes = {
+            "fastest_time": fastest_time,
+            "fastest_time_secs": fastest_time_secs,
+            "deltas": deltas,
+            "compounds": compounds,
+        }
 
     @property
     def state(self):

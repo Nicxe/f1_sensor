@@ -2662,6 +2662,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             "lap_total": None,
             "session_status": None,
             "frozen": False,
+            "tire_statistics": {},
         }
         self._live_state_unsub: Optional[Callable[[], None]] = None
         if live_state is not None:
@@ -2696,9 +2697,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         return self._state
 
-    def _merge_driverlist(self, payload: dict) -> None:
+    def _merge_driverlist(self, payload: dict) -> bool:
         # payload: { rn: {Tla, FullName, TeamName, TeamColour, ...}, ... }
         drivers = self._state["drivers"]
+        changed = False
         for rn, info in (payload or {}).items():
             if not isinstance(info, dict):
                 continue
@@ -2718,20 +2720,40 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             ident.setdefault("timing", {})
             ident.setdefault("tyres", {})
             ident.setdefault("laps", {})
-            ident["identity"].update(
-                {
-                    "racing_number": str(info.get("RacingNumber") or rn),
-                    "tla": info.get("Tla"),
-                    "name": info.get("FullName") or info.get("BroadcastName"),
-                    "team": info.get("TeamName"),
-                    "team_color": info.get("TeamColour"),
-                    "first_name": info.get("FirstName"),
-                    "last_name": info.get("LastName"),
-                    "headshot_small": headshot_small,
-                    "headshot_large": headshot_large,
-                    "reference": info.get("Reference"),
-                }
-            )
+            identity_updates: dict[str, Any] = {}
+            if "RacingNumber" in info or "racing_number" not in ident["identity"]:
+                identity_updates["racing_number"] = str(info.get("RacingNumber") or rn)
+            if "Tla" in info:
+                identity_updates["tla"] = info.get("Tla")
+            if "FullName" in info or "BroadcastName" in info:
+                name = info.get("FullName") or info.get("BroadcastName")
+                if name is not None:
+                    identity_updates["name"] = name
+            if "TeamName" in info:
+                identity_updates["team"] = info.get("TeamName")
+            if "TeamColour" in info:
+                identity_updates["team_color"] = info.get("TeamColour")
+            if "FirstName" in info:
+                identity_updates["first_name"] = info.get("FirstName")
+            if "LastName" in info:
+                identity_updates["last_name"] = info.get("LastName")
+            if headshot_small is not None:
+                identity_updates["headshot_small"] = headshot_small
+                identity_updates["headshot_large"] = headshot_large
+            if "Reference" in info:
+                identity_updates["reference"] = info.get("Reference")
+
+            if identity_updates:
+                driver_changed = False
+                for key, value in identity_updates.items():
+                    if ident["identity"].get(key) != value:
+                        driver_changed = True
+                        break
+                if driver_changed:
+                    ident["identity"].update(identity_updates)
+                    changed = True
+
+        return changed
 
     @staticmethod
     def _get_value(d: dict | None, *path, default: Any = None):
@@ -2742,12 +2764,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             cur = cur.get(p)
         return cur if cur is not None else default
 
-    def _merge_timingdata(self, payload: dict) -> None:
+    def _merge_timingdata(self, payload: dict) -> bool:
         # payload: {"Lines": { rn: {...timing...} } }
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
-            return
+            return False
         drivers = self._state["drivers"]
+        changed = False
+        position_changed = False
         # 1) Apply incremental updates to stored driver timing
         for rn, td in lines.items():
             if not isinstance(td, dict):
@@ -2757,39 +2781,75 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             entry.setdefault("timing", {})
             entry.setdefault("tyres", {})
             entry.setdefault("laps", {})
+            entry.setdefault(
+                "tire_history", {"stints": [], "current_stint_index": None}
+            )
             timing = entry["timing"]
             # IMPORTANT: Only set fields that are present in this delta payload.
             if "Position" in td:
                 pos_raw = td.get("Position")
                 pos_str = str(pos_raw).strip() if pos_raw is not None else None
-                timing["position"] = pos_str or None
+                pos_value = pos_str or None
+                if timing.get("position") != pos_value:
+                    timing["position"] = pos_value
+                    changed = True
+                    position_changed = True
             if "GapToLeader" in td:
-                timing["gap_to_leader"] = td.get("GapToLeader")
+                gap_val = td.get("GapToLeader")
+                if timing.get("gap_to_leader") != gap_val:
+                    timing["gap_to_leader"] = gap_val
+                    changed = True
             ival = self._get_value(td, "IntervalToPositionAhead", "Value")
             if ival is not None:
-                timing["interval"] = ival
+                if timing.get("interval") != ival:
+                    timing["interval"] = ival
+                    changed = True
             last_lap = self._get_value(td, "LastLapTime", "Value")
             if last_lap is not None:
-                timing["last_lap"] = last_lap
+                if timing.get("last_lap") != last_lap:
+                    timing["last_lap"] = last_lap
+                    changed = True
+                # Record lap time for tire statistics (correlate with current stint)
+                if self._record_lap_time_for_stint(rn, last_lap):
+                    changed = True
             best_lap = self._get_value(td, "BestLapTime", "Value")
             if best_lap is not None:
-                timing["best_lap"] = best_lap
+                if timing.get("best_lap") != best_lap:
+                    timing["best_lap"] = best_lap
+                    changed = True
             if "InPit" in td:
-                timing["in_pit"] = bool(td.get("InPit"))
+                in_pit = bool(td.get("InPit"))
+                if timing.get("in_pit") != in_pit:
+                    timing["in_pit"] = in_pit
+                    changed = True
             if "Retired" in td:
-                timing["retired"] = bool(td.get("Retired"))
+                retired = bool(td.get("Retired"))
+                if timing.get("retired") != retired:
+                    timing["retired"] = retired
+                    changed = True
             if "Stopped" in td:
-                timing["stopped"] = bool(td.get("Stopped"))
+                stopped = bool(td.get("Stopped"))
+                if timing.get("stopped") != stopped:
+                    timing["stopped"] = stopped
+                    changed = True
             if "Status" in td:
-                timing["status_code"] = td.get("Status")
+                status = td.get("Status")
+                if timing.get("status_code") != status:
+                    timing["status_code"] = status
+                    changed = True
         # SessionPart (for Q1/Q2/Q3 detection)
         try:
             part = payload.get("SessionPart")
             if part is not None:
                 self._state.setdefault("session", {})
-                self._state["session"]["part"] = part
+                if self._state["session"].get("part") != part:
+                    self._state["session"]["part"] = part
+                    changed = True
         except Exception:
             pass
+        if position_changed:
+            self._recompute_leader_from_state()
+        return changed
 
     def set_delay(self, seconds: int) -> None:
         new_delay = max(0, int(seconds or 0))
@@ -2825,6 +2885,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "lap_total": None,
                     "session_status": None,
                     "frozen": False,
+                    "tire_statistics": {},
                 }
                 self.async_set_updated_data(self._state)
             except Exception:
@@ -2869,7 +2930,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 pass
             self._state["leader_rn"] = leader_rn
 
-    def _merge_timingapp(self, payload: dict) -> None:
+    def _merge_timingapp(self, payload: dict) -> bool:
         """Merge TimingAppData payloads.
 
         We now use the dedicated TyreStintSeries stream for tyre information, so this
@@ -2878,14 +2939,17 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         # payload: {"Lines": { rn: {"Stints": { idx or list } } } }
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
-            return
+            return False
         drivers = self._state["drivers"]
+        changed = False
         for rn, app in lines.items():
             if not isinstance(app, dict):
                 continue
             entry = drivers.setdefault(rn, {})
             entry.setdefault("timing", {})
             stints = app.get("Stints")
+
+            # Extract the latest stint entry for lap time updates
             latest: dict | None = None
             if isinstance(stints, list) and stints:
                 latest = stints[-1] if isinstance(stints[-1], dict) else None
@@ -2900,12 +2964,15 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     latest = (
                         stints.get("0") if isinstance(stints.get("0"), dict) else None
                     )
+
             if isinstance(latest, dict):
                 # Lap times: map latest LapTime to timing.last_lap and update best_lap
                 lap_time = latest.get("LapTime")
                 if isinstance(lap_time, str) and lap_time:
                     timing = entry.setdefault("timing", {})
-                    timing["last_lap"] = lap_time
+                    if timing.get("last_lap") != lap_time:
+                        timing["last_lap"] = lap_time
+                        changed = True
                     prev_best = timing.get("best_lap")
                     try:
                         new_secs = self._parse_laptime_secs(lap_time)
@@ -2918,28 +2985,67 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                             prev_secs is None or new_secs < prev_secs
                         ):
                             timing["best_lap"] = lap_time
+                            changed = True
                     except Exception:
                         # If parsing fails, at least keep last_lap updated
                         pass
-        # Lap time changes sometimes coincide with leader changes
-        self._recompute_leader_from_state()
 
-    def _merge_tyre_stints(self, payload: dict) -> None:
+        return changed
+
+    def _merge_tyre_stints(self, payload: dict) -> bool:
         """Merge TyreStintSeries payloads into per-driver tyre state.
 
         Expected payload shape (from SignalR stream \"TyreStintSeries\"):
             {"Stints": { rn: { idx: {Compound, New, TotalLaps, ...}, ... }, ... }}
+
+        This method now tracks full stint history for tire statistics in addition
+        to maintaining the existing tyres dict for backward compatibility.
         """
         stints_root = (payload or {}).get("Stints", {})
         if not isinstance(stints_root, dict):
-            return
+            return False
         drivers = self._state["drivers"]
+        stints_changed = False
+
         for rn, stints in stints_root.items():
             if not isinstance(stints, (dict, list)):
                 continue
             entry = drivers.setdefault(rn, {})
             entry.setdefault("tyres", {})
+            entry.setdefault(
+                "tire_history", {"stints": [], "current_stint_index": None}
+            )
             tyres = entry["tyres"]
+            tire_history = entry["tire_history"]
+
+            # Process ALL stint indices to build full history
+            stint_items: list[tuple[int, dict]] = []
+            if isinstance(stints, list):
+                for i, s in enumerate(stints):
+                    if isinstance(s, dict):
+                        stint_items.append((i, s))
+            elif isinstance(stints, dict):
+                for k, v in stints.items():
+                    if isinstance(v, dict) and str(k).isdigit():
+                        try:
+                            stint_items.append((int(k), v))
+                        except ValueError:
+                            pass
+
+            for stint_idx, stint_data in stint_items:
+                if self._update_stint_history(tire_history, stint_idx, stint_data):
+                    stints_changed = True
+
+                # Update current stint tracking (highest index = current)
+                if (
+                    tire_history["current_stint_index"] is None
+                    or stint_idx >= tire_history["current_stint_index"]
+                ):
+                    if tire_history["current_stint_index"] != stint_idx:
+                        tire_history["current_stint_index"] = stint_idx
+                        stints_changed = True
+
+            # Maintain backward compatibility: update tyres dict with latest stint
             latest: dict | None = None
             if isinstance(stints, list) and stints:
                 latest = stints[-1] if isinstance(stints[-1], dict) else None
@@ -2952,30 +3058,214 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     latest = (
                         stints.get("0") if isinstance(stints.get("0"), dict) else None
                     )
-            if not isinstance(latest, dict):
-                continue
+            if isinstance(latest, dict):
+                if "Compound" in latest:
+                    compound = latest.get("Compound")
+                    if tyres.get("compound") != compound:
+                        tyres["compound"] = compound
+                        stints_changed = True
+                if "TotalLaps" in latest:
+                    stint_laps = latest.get("TotalLaps")
+                    stint_laps_val = (
+                        int(stint_laps)
+                        if str(stint_laps or "").isdigit()
+                        else stint_laps
+                    )
+                    if tyres.get("stint_laps") != stint_laps_val:
+                        tyres["stint_laps"] = stint_laps_val
+                        stints_changed = True
+                if "New" in latest:
+                    is_new = latest.get("New")
+                    s = str(is_new).lower()
+                    if s == "true":
+                        new_val: Any = True
+                    elif s == "false":
+                        new_val = False
+                    else:
+                        new_val = is_new
+                    if tyres.get("new") != new_val:
+                        tyres["new"] = new_val
+                        stints_changed = True
 
-            # Only overwrite fields that are present in this delta to avoid losing
-            # previously-known compound/new values when we receive TotalLaps-only frames.
-            if "Compound" in latest:
-                tyres["compound"] = latest.get("Compound")
-            if "TotalLaps" in latest:
-                stint_laps = latest.get("TotalLaps")
-                tyres["stint_laps"] = (
-                    int(stint_laps) if str(stint_laps or "").isdigit() else stint_laps
-                )
-            if "New" in latest:
-                is_new = latest.get("New")
-                s = str(is_new).lower()
-                if s == "true":
-                    tyres["new"] = True
-                elif s == "false":
-                    tyres["new"] = False
-                else:
-                    tyres["new"] = is_new
+        # Recompute tire statistics if any stints changed
+        if stints_changed:
+            self._recompute_tire_statistics()
 
         # Tyre changes can also interact with leader logic (pit stops etc.)
-        self._recompute_leader_from_state()
+        if stints_changed:
+            self._recompute_leader_from_state()
+        return stints_changed
+
+    def _update_stint_history(
+        self, tire_history: dict, stint_idx: int, stint_data: dict
+    ) -> bool:
+        """Update or create a stint entry in tire_history.
+
+        Handles incremental updates where only TotalLaps may be present.
+        """
+        stints_list = tire_history["stints"]
+        changed = False
+
+        # Ensure the list is large enough
+        while len(stints_list) <= stint_idx:
+            stints_list.append(
+                {
+                    "stint_index": len(stints_list),
+                    "compound": None,
+                    "new": None,
+                    "total_laps": 0,
+                    "best_lap_time": None,
+                    "best_lap_time_secs": None,
+                }
+            )
+            changed = True
+
+        stint = stints_list[stint_idx]
+
+        # Only update fields that are present in the delta
+        if "Compound" in stint_data:
+            compound = stint_data.get("Compound")
+            if stint.get("compound") != compound:
+                stint["compound"] = compound
+                changed = True
+        if "TotalLaps" in stint_data:
+            total_laps = stint_data.get("TotalLaps")
+            total_laps_val = int(total_laps) if str(total_laps or "").isdigit() else 0
+            if stint.get("total_laps") != total_laps_val:
+                stint["total_laps"] = total_laps_val
+                changed = True
+        if "New" in stint_data:
+            is_new = stint_data.get("New")
+            s = str(is_new).lower()
+            if s == "true":
+                new_val: Any = True
+            elif s == "false":
+                new_val = False
+            else:
+                new_val = is_new
+            if stint.get("new") != new_val:
+                stint["new"] = new_val
+                changed = True
+        return changed
+
+    def _record_lap_time_for_stint(self, rn: str, lap_time: str) -> bool:
+        """Associate a lap time with the driver's current stint for tire statistics."""
+        entry = self._state["drivers"].get(rn)
+        if not entry:
+            return False
+
+        tire_history = entry.get("tire_history")
+        if not tire_history:
+            return False
+
+        current_idx = tire_history.get("current_stint_index")
+        stints_list = tire_history.get("stints", [])
+
+        if current_idx is None or current_idx >= len(stints_list):
+            return False
+
+        stint = stints_list[current_idx]
+        lap_secs = self._parse_laptime_secs(lap_time)
+        if lap_secs is None:
+            return False
+
+        # Update best lap for this stint if faster
+        current_best = stint.get("best_lap_time_secs")
+        if current_best is None or lap_secs < current_best:
+            stint["best_lap_time"] = lap_time
+            stint["best_lap_time_secs"] = lap_secs
+            # Recompute statistics when a new best lap is set
+            self._recompute_tire_statistics()
+            return True
+        return False
+
+    def _recompute_tire_statistics(self) -> None:
+        """Recompute aggregated tire statistics from all driver stint history."""
+        compounds_data: dict[str, dict] = {}
+        drivers = self._state.get("drivers", {})
+
+        for rn, info in drivers.items():
+            tire_history = info.get("tire_history", {})
+            identity = info.get("identity", {})
+            driver_name = identity.get("last_name") or identity.get("name")
+            team_color = identity.get("team_color")
+
+            for stint in tire_history.get("stints", []):
+                compound = stint.get("compound")
+                if not compound or compound == "UNKNOWN":
+                    continue
+
+                comp = compounds_data.setdefault(
+                    compound,
+                    {
+                        "best_times": [],
+                        "total_laps": 0,
+                        "sets_used": 0,
+                        "sets_used_total": 0,
+                    },
+                )
+
+                # Accumulate laps
+                comp["total_laps"] += stint.get("total_laps", 0) or 0
+                comp["sets_used_total"] += 1
+                if stint.get("new") is True:
+                    comp["sets_used"] += 1
+
+                # Track best times (only if we have a recorded time)
+                if stint.get("best_lap_time_secs") is not None:
+                    comp["best_times"].append(
+                        {
+                            "time": stint["best_lap_time"],
+                            "time_secs": stint["best_lap_time_secs"],
+                            "racing_number": rn,
+                            "driver_name": driver_name,
+                            "driver_tla": identity.get("tla"),
+                            "team_color": team_color,
+                            "stint_index": stint.get("stint_index"),
+                            "new_tyre": stint.get("new"),
+                        }
+                    )
+
+        # Sort and trim to top 3 per compound
+        for comp in compounds_data.values():
+            comp["best_times"].sort(key=lambda x: x["time_secs"])
+            comp["best_times"] = comp["best_times"][:3]
+
+        # Calculate fastest compound and deltas
+        fastest_time: float | None = None
+        fastest_compound: str | None = None
+        for compound, data in compounds_data.items():
+            if data["best_times"]:
+                t = data["best_times"][0]["time_secs"]
+                if fastest_time is None or t < fastest_time:
+                    fastest_time = t
+                    fastest_compound = compound
+
+        deltas: dict[str, float] = {}
+        for compound, data in compounds_data.items():
+            if data["best_times"] and fastest_time is not None:
+                deltas[compound] = round(
+                    data["best_times"][0]["time_secs"] - fastest_time, 3
+                )
+
+        self._state["tire_statistics"] = {
+            "compounds": compounds_data,
+            "fastest_compound": fastest_compound,
+            "fastest_time": (
+                self._format_laptime(fastest_time) if fastest_time else None
+            ),
+            "fastest_time_secs": fastest_time,
+            "deltas": deltas,
+        }
+
+    @staticmethod
+    def _format_laptime(secs: float | None) -> str | None:
+        """Format seconds as M:SS.mmm lap time string."""
+        if secs is None:
+            return None
+        minutes = int(secs // 60)
+        remaining = secs - (minutes * 60)
+        return f"{minutes}:{remaining:06.3f}"
 
     def _merge_lapcount(self, payload: dict) -> None:
         # payload may be either {CurrentLap, TotalLaps} or wrapped
@@ -3066,26 +3356,29 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
     def _on_driverlist(self, dl: dict) -> None:
         # Allow DriverList merges even when frozen so identity mapping remains available
-        self._merge_driverlist(dl)
-        self._schedule_deliver()
+        changed = self._merge_driverlist(dl)
+        if changed:
+            # Recompute tire statistics to update driver names/TLAs
+            self._recompute_tire_statistics()
+            self._schedule_deliver()
 
     def _on_timingdata(self, td: dict) -> None:
-        if self._state.get("frozen"):
+        if self._state.get("frozen") and not self._replay_mode:
             return
-        self._merge_timingdata(td)
-        self._schedule_deliver()
+        if self._merge_timingdata(td):
+            self._schedule_deliver()
 
     def _on_timingapp(self, ta: dict) -> None:
-        if self._state.get("frozen"):
+        if self._state.get("frozen") and not self._replay_mode:
             return
-        self._merge_timingapp(ta)
-        self._schedule_deliver()
+        if self._merge_timingapp(ta):
+            self._schedule_deliver()
 
     def _on_tyre_stints(self, ts: dict) -> None:
-        if self._state.get("frozen"):
+        if self._state.get("frozen") and not self._replay_mode:
             return
-        self._merge_tyre_stints(ts)
-        self._schedule_deliver()
+        if self._merge_tyre_stints(ts):
+            self._schedule_deliver()
 
     def _on_lapcount(self, lc: dict) -> None:
         if self._state.get("frozen"):
