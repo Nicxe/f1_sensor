@@ -725,6 +725,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
             history_limit=10,
+            drivers_coordinator=drivers_coordinator,
         )
         await pitstop_coordinator.async_config_entry_first_refresh()
 
@@ -1757,6 +1758,7 @@ class PitStopCoordinator(DataUpdateCoordinator):
         delay_controller: LiveDelayController | None = None,
         live_state: LiveAvailabilityTracker | None = None,
         history_limit: int = 10,
+        drivers_coordinator: "LiveDriversCoordinator | None" = None,
     ) -> None:
         super().__init__(
             hass,
@@ -1771,6 +1773,7 @@ class PitStopCoordinator(DataUpdateCoordinator):
         self._bus = bus
         self._config_entry = config_entry
         self._unsubs: list[Callable[[], None]] = []
+        self._drivers_unsub: Optional[Callable[[], None]] = None
         self._delay_listener: Optional[Callable[[], None]] = None
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
@@ -1788,6 +1791,7 @@ class PitStopCoordinator(DataUpdateCoordinator):
         self._dedup: set[tuple] = set()
         self._driver_map: dict[str, dict[str, Any]] = {}
         self._deliver_handle: Optional[asyncio.Handle] = None
+        self._drivers_coord = drivers_coordinator
 
         self._state: dict[str, Any] = {
             "total_stops": 0,
@@ -1820,6 +1824,12 @@ class PitStopCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
             self._live_state_unsub = None
+        if self._drivers_unsub:
+            try:
+                self._drivers_unsub()
+            except Exception:
+                pass
+            self._drivers_unsub = None
         if self._session_unsub:
             try:
                 self._session_unsub()
@@ -1961,7 +1971,9 @@ class PitStopCoordinator(DataUpdateCoordinator):
             "timestamp": str(ts) if ts else None,
             "pit_stop_time": pit_stop_time,
             "pit_lane_time": pit_lane_time,
+            "pit_delta": None,
         }
+        self._maybe_update_pit_delta(rn, entry)
         lst = self._by_car.setdefault(rn, [])
         lst.append(entry)
         if len(lst) > self._history_limit:
@@ -2084,6 +2096,7 @@ class PitStopCoordinator(DataUpdateCoordinator):
 
     def _deliver(self) -> None:
         self.available = True
+        self._refresh_pit_deltas()
         cars: dict[str, Any] = {}
         total = 0
         try:
@@ -2150,6 +2163,98 @@ class PitStopCoordinator(DataUpdateCoordinator):
             )
         except Exception:
             pass
+        if self._drivers_coord is not None:
+            try:
+                self._drivers_unsub = self._drivers_coord.async_add_listener(
+                    self._on_drivers_update
+                )
+            except Exception:
+                self._drivers_unsub = None
+
+    def _on_drivers_update(self) -> None:
+        if self._refresh_pit_deltas():
+            self._schedule_deliver()
+
+    def _refresh_pit_deltas(self) -> bool:
+        changed = False
+        if not self._drivers_coord:
+            return False
+        for rn, stops in (self._by_car or {}).items():
+            if not isinstance(stops, list):
+                continue
+            for stop in stops:
+                if not isinstance(stop, dict):
+                    continue
+                if self._maybe_update_pit_delta(str(rn), stop):
+                    changed = True
+        return changed
+
+    def _maybe_update_pit_delta(self, rn: str, stop: dict) -> bool:
+        if stop.get("pit_delta") is not None:
+            return False
+        delta = self._compute_pit_delta(rn, stop)
+        if delta is None:
+            return False
+        stop["pit_delta"] = delta
+        return True
+
+    def _compute_pit_delta(self, rn: str, stop: dict) -> float | None:
+        lap = self._parse_int(stop.get("lap"))
+        if lap is None:
+            return None
+        laps = self._get_lap_history(rn)
+        if not laps:
+            return None
+        pit_lap_time = laps.get(str(lap))
+        pit_secs = LiveDriversCoordinator._parse_laptime_secs(pit_lap_time)
+        if pit_secs is None:
+            return None
+        normal_secs = self._select_reference_lap_secs(laps, lap)
+        if normal_secs is None:
+            return None
+        return round(pit_secs - normal_secs, 3)
+
+    def _get_lap_history(self, rn: str) -> dict[str, str] | None:
+        if not self._drivers_coord:
+            return None
+        data = self._drivers_coord.data
+        if not isinstance(data, dict):
+            return None
+        drivers = data.get("drivers")
+        if not isinstance(drivers, dict):
+            return None
+        info = drivers.get(str(rn))
+        if not isinstance(info, dict):
+            return None
+        lap_history = info.get("lap_history")
+        if not isinstance(lap_history, dict):
+            return None
+        laps = lap_history.get("laps")
+        if not isinstance(laps, dict):
+            return None
+        return laps
+
+    @staticmethod
+    def _select_reference_lap_secs(laps: dict[str, str], lap: int) -> float | None:
+        candidates: list[float] = []
+        for offset in (1, 2, 3):
+            lap_time = laps.get(str(lap - offset))
+            lap_secs = LiveDriversCoordinator._parse_laptime_secs(lap_time)
+            if lap_secs is not None:
+                candidates.append(lap_secs)
+        if not candidates:
+            for offset in (1, 2, 3):
+                lap_time = laps.get(str(lap + offset))
+                lap_secs = LiveDriversCoordinator._parse_laptime_secs(lap_time)
+                if lap_secs is not None:
+                    candidates.append(lap_secs)
+        if not candidates:
+            return None
+        candidates.sort()
+        mid = len(candidates) // 2
+        if len(candidates) % 2 == 1:
+            return candidates[mid]
+        return (candidates[mid - 1] + candidates[mid]) / 2.0
 
 
 class ChampionshipPredictionCoordinator(DataUpdateCoordinator):

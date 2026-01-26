@@ -78,6 +78,22 @@ SYMBOL_CODE_TO_MDI = {
 }
 
 
+def _extract_driver_position(info: dict | None) -> str | None:
+    if not isinstance(info, dict):
+        return None
+    timing = info.get("timing")
+    if not isinstance(timing, dict):
+        return None
+    pos = timing.get("position")
+    if pos is None:
+        return None
+    try:
+        pos_str = str(pos).strip()
+    except Exception:
+        return pos if isinstance(pos, str) else None
+    return pos_str or None
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
@@ -1977,6 +1993,7 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         await super().async_added_to_hass()
         # Initialize from coordinator if available, else restore
         init = self._extract_current()
+        updated = init is not None
         if init is not None:
             self._apply_payload(init)
             try:
@@ -1986,20 +2003,28 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             except Exception:
                 pass
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                # Restore last known state and attributes; do not clear due to age
-                self._attr_native_value = self._to_float(last.state)
-                attrs = dict(getattr(last, "attributes", {}) or {})
-                for k in ("measurement_time", "measurement_age_seconds", "received_at"):
-                    attrs.pop(k, None)
-                self._attr_extra_state_attributes = attrs
-                try:
-                    getLogger(__name__).debug(
-                        "TrackWeather: Restored last state: %s", last.state
-                    )
-                except Exception:
-                    pass
+            if self._is_stream_active():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    # Restore last known state and attributes; do not clear due to age
+                    self._attr_native_value = self._to_float(last.state)
+                    attrs = dict(getattr(last, "attributes", {}) or {})
+                    for k in (
+                        "measurement_time",
+                        "measurement_age_seconds",
+                        "received_at",
+                    ):
+                        attrs.pop(k, None)
+                    self._attr_extra_state_attributes = attrs
+                    try:
+                        getLogger(__name__).debug(
+                            "TrackWeather: Restored last state: %s", last.state
+                        )
+                    except Exception:
+                        pass
+            else:
+                self._clear_state()
+        self._handle_stream_state(updated)
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
         self._safe_write_ha_state()
@@ -2111,6 +2136,12 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
+        updated = raw is not None
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
+            self._safe_write_ha_state()
+            return
         if raw is None:
             # Keep last known values; just log an update
             try:
@@ -2124,6 +2155,12 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             return
         self._apply_payload(raw)
         self._safe_write_ha_state()
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+        self._last_timestamped_dt = None
+        self._last_received_utc = None
 
     def _safe_write_ha_state(self) -> None:
         try:
@@ -2169,7 +2206,9 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         # Prefer coordinator's latest if present, otherwise restore last state
-        initial = self._normalize(self._extract_current())
+        raw = self._extract_current()
+        initial = self._normalize(raw)
+        updated = raw is not None
         if initial is not None:
             self._attr_native_value = initial
             try:
@@ -2181,17 +2220,21 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             except Exception:
                 pass
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._attr_native_value = last.state
-                try:
-                    from logging import getLogger
+            if self._is_stream_active():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    self._attr_native_value = last.state
+                    try:
+                        from logging import getLogger
 
-                    getLogger(__name__).debug(
-                        "TrackStatus: Restored last state: %s", last.state
-                    )
-                except Exception:
-                    pass
+                        getLogger(__name__).debug(
+                            "TrackStatus: Restored last state: %s", last.state
+                        )
+                    except Exception:
+                        pass
+            else:
+                self._clear_state()
+        self._handle_stream_state(updated)
         # Listen for coordinator pushes
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
@@ -2240,6 +2283,14 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
+        updated = raw is not None
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
+            self.async_write_ha_state()
+            return
+        if raw is None:
+            return
         new_state = self._normalize(raw)
         prev = self._attr_native_value
         if prev == new_state:
@@ -2261,6 +2312,9 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         return {}
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
 
 
 class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -2293,23 +2347,29 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         # Försök initialisera från koordinatorns state; annars restaurera från historik
+        state = self._extract_state()
+        updated = isinstance(state, dict)
         self._update_from_coordinator(initial=True)
         if self._attr_native_value is None:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._attr_native_value = last.state
-                try:
-                    attrs = dict(getattr(last, "attributes", {}) or {})
-                    self._attr_extra_state_attributes = attrs
-                    from logging import getLogger
+            if self._is_stream_active():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    self._attr_native_value = last.state
+                    try:
+                        attrs = dict(getattr(last, "attributes", {}) or {})
+                        self._attr_extra_state_attributes = attrs
+                        from logging import getLogger
 
-                    getLogger(__name__).debug(
-                        "TopThree P%s: Restored last state: %s",
-                        self._position_index + 1,
-                        last.state,
-                    )
-                except Exception:
-                    pass
+                        getLogger(__name__).debug(
+                            "TopThree P%s: Restored last state: %s",
+                            self._position_index + 1,
+                            last.state,
+                        )
+                    except Exception:
+                        pass
+            else:
+                self._clear_state()
+        self._handle_stream_state(updated)
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
         self.async_write_ha_state()
@@ -2503,6 +2563,13 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self._safe_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
+        state = self._extract_state()
+        updated = isinstance(state, dict)
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
+            self._safe_write_ha_state()
+            return
         self._update_from_coordinator(initial=False)
 
     @property
@@ -2516,6 +2583,10 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         return self._attr_extra_state_attributes
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
 
 
 class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -2546,6 +2617,7 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         await super().async_added_to_hass()
         # Initialize from coordinator or restore
         init = self._extract_current()
+        updated = init is not None
         if init is not None:
             self._attr_native_value = self._map_status(init)
             try:
@@ -2557,15 +2629,19 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             except Exception:
                 pass
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._attr_native_value = last.state
-                try:
-                    getLogger(__name__).debug(
-                        "SessionStatus: Restored last state: %s", last.state
-                    )
-                except Exception:
-                    pass
+            if self._is_stream_active():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    self._attr_native_value = last.state
+                    try:
+                        getLogger(__name__).debug(
+                            "SessionStatus: Restored last state: %s", last.state
+                        )
+                    except Exception:
+                        pass
+            else:
+                self._clear_state()
+        self._handle_stream_state(updated)
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
         self.async_write_ha_state()
@@ -2656,6 +2732,14 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
+        updated = raw is not None
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
+            self.async_write_ha_state()
+            return
+        if raw is None:
+            return
         new_state = self._map_status(raw)
         prev = self._attr_native_value
         try:
@@ -2688,6 +2772,10 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         return {}
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._started_flag = None
 
 
 class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -2737,60 +2825,64 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self._status_coordinator = None
 
         # Restore last known state immediately; prevents unknown on restart mid-session
-        last = await self.async_get_last_state()
-        if last and last.state not in (None, "unknown", "unavailable"):
-            # Restore last attributes as well for better end-detection and UI context
-            attrs = dict(getattr(last, "attributes", {}) or {})
-            self._attr_extra_state_attributes = attrs
-            # If saved payload indicates the session ended long ago, clear state on startup
-            ended_by_attrs = False
-            try:
-                end_iso = attrs.get("end") or attrs.get("EndDate")
-                if end_iso:
-                    end_dt = datetime.datetime.fromisoformat(
-                        str(end_iso).replace("Z", "+00:00")
-                    )
-                    if end_dt.tzinfo is None:
-                        end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
-                    now_utc = datetime.datetime.now(datetime.timezone.utc)
-                    if now_utc >= (end_dt + datetime.timedelta(minutes=5)):
-                        # Also consider live status if available
-                        st = str(self._live_status() or "").strip()
-                        if st not in ("Started", "Green", "GreenFlag"):
-                            ended_by_attrs = True
-            except Exception:
+        if self._is_stream_active():
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                # Restore last attributes as well for better end-detection and UI context
+                attrs = dict(getattr(last, "attributes", {}) or {})
+                self._attr_extra_state_attributes = attrs
+                # If saved payload indicates the session ended long ago, clear state on startup
                 ended_by_attrs = False
-            if ended_by_attrs:
-                # Keep last label in attributes, but clear current state
-                if last.state:
-                    try:
-                        self._attr_extra_state_attributes = dict(attrs)
-                        self._attr_extra_state_attributes.setdefault(
-                            "last_label", last.state
+                try:
+                    end_iso = attrs.get("end") or attrs.get("EndDate")
+                    if end_iso:
+                        end_dt = datetime.datetime.fromisoformat(
+                            str(end_iso).replace("Z", "+00:00")
                         )
-                        self._attr_extra_state_attributes["active"] = False
+                        if end_dt.tzinfo is None:
+                            end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
+                        now_utc = datetime.datetime.now(datetime.timezone.utc)
+                        if now_utc >= (end_dt + datetime.timedelta(minutes=5)):
+                            # Also consider live status if available
+                            st = str(self._live_status() or "").strip()
+                            if st not in ("Started", "Green", "GreenFlag"):
+                                ended_by_attrs = True
+                except Exception:
+                    ended_by_attrs = False
+                if ended_by_attrs:
+                    # Keep last label in attributes, but clear current state
+                    if last.state:
+                        try:
+                            self._attr_extra_state_attributes = dict(attrs)
+                            self._attr_extra_state_attributes.setdefault(
+                                "last_label", last.state
+                            )
+                            self._attr_extra_state_attributes["active"] = False
+                        except Exception:
+                            pass
+                    self._attr_native_value = None
+                    try:
+                        getLogger(__name__).debug(
+                            "CurrentSession: Restored as ended (cleared) based on saved end=%s",
+                            attrs.get("end") or attrs.get("EndDate"),
+                        )
                     except Exception:
                         pass
-                self._attr_native_value = None
-                try:
-                    getLogger(__name__).debug(
-                        "CurrentSession: Restored as ended (cleared) based on saved end=%s",
-                        attrs.get("end") or attrs.get("EndDate"),
-                    )
-                except Exception:
-                    pass
-            else:
-                self._attr_native_value = last.state
-                try:
-                    getLogger(__name__).debug(
-                        "CurrentSession: Restored last state: %s", last.state
-                    )
-                except Exception:
-                    pass
+                else:
+                    self._attr_native_value = last.state
+                    try:
+                        getLogger(__name__).debug(
+                            "CurrentSession: Restored last state: %s", last.state
+                        )
+                    except Exception:
+                        pass
+        else:
+            self._clear_state()
 
         # Initialize from coordinator if available, but avoid clearing state at startup
         init = self._extract_current()
-        if init is not None:
+        updated = init is not None
+        if init is not None and self._is_stream_active():
             self._apply_payload(init, allow_clear=False)
             try:
                 getLogger(__name__).debug(
@@ -2799,6 +2891,8 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 )
             except Exception:
                 pass
+
+        self._handle_stream_state(updated)
 
         self.async_write_ha_state()
 
@@ -2959,6 +3053,12 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
+        updated = raw is not None
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
+            self.async_write_ha_state()
+            return
         if raw is None:
             try:
                 getLogger(__name__).debug(
@@ -2967,7 +3067,6 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 )
             except Exception:
                 pass
-            self.async_write_ha_state()
             return
         self._apply_payload(raw)
         self.async_write_ha_state()
@@ -2975,6 +3074,11 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def _handle_status_update(self) -> None:
         # Re-evaluate state based on latest status (may clear on Ends/Finished/Finalised)
         raw = self._extract_current() or {}
+        if not self._handle_stream_state(True):
+            return
+        if not self._is_stream_active():
+            self.async_write_ha_state()
+            return
         self._apply_payload(raw)
         try:
             getLogger(__name__).debug(
@@ -2990,6 +3094,10 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     @property
     def state(self):
         return self._attr_native_value
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
 
 
 class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -3012,23 +3120,30 @@ class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self.async_on_remove(removal)
 
         payload = self._extract_current()
+        updated = payload is not None
         if payload:
             self._apply_payload(payload, force=True)
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._attr_native_value = last.state
-                self._attr_extra_state_attributes = dict(
-                    getattr(last, "attributes", {}) or {}
-                )
-                self._last_event_id = self._attr_extra_state_attributes.get("event_id")
-                hist = self._attr_extra_state_attributes.get("history")
-                if isinstance(hist, list):
-                    self._history = [
-                        dict(item)
-                        for item in hist[: self._history_limit]
-                        if isinstance(item, dict)
-                    ]
+            if self._is_stream_active():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    self._attr_native_value = last.state
+                    self._attr_extra_state_attributes = dict(
+                        getattr(last, "attributes", {}) or {}
+                    )
+                    self._last_event_id = self._attr_extra_state_attributes.get(
+                        "event_id"
+                    )
+                    hist = self._attr_extra_state_attributes.get("history")
+                    if isinstance(hist, list):
+                        self._history = [
+                            dict(item)
+                            for item in hist[: self._history_limit]
+                            if isinstance(item, dict)
+                        ]
+            else:
+                self._clear_state()
+        self._handle_stream_state(updated)
         self.async_write_ha_state()
 
     def _extract_current(self) -> dict | None:
@@ -3182,8 +3297,13 @@ class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         payload = self._extract_current()
-        if payload is None:
+        updated = payload is not None
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
             self._safe_write_ha_state()
+            return
+        if payload is None:
             return
         self._apply_payload(payload)
         self._safe_write_ha_state()
@@ -3191,6 +3311,13 @@ class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     @property
     def state(self):
         return self._attr_native_value
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+        self._last_event_id = None
+        self._history = []
+        self._sequence = 0
 
 
 class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -3218,24 +3345,29 @@ class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self.async_on_remove(removal)
 
         payload = self._extract_current()
+        updated = payload is not None
         if payload:
             self._apply_payload(payload, force=True)
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                # Restore last timestamp state as string
-                self._attr_native_value = last.state
-                self._attr_extra_state_attributes = dict(
-                    getattr(last, "attributes", {}) or {}
-                )
-                hist = self._attr_extra_state_attributes.get("history")
-                if isinstance(hist, list):
-                    self._history = [
-                        dict(item)
-                        for item in hist[: self._history_limit]
-                        if isinstance(item, dict)
-                    ]
-                self._last_utc = self._attr_extra_state_attributes.get("utc")
+            if self._is_stream_active():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    # Restore last timestamp state as string
+                    self._attr_native_value = last.state
+                    self._attr_extra_state_attributes = dict(
+                        getattr(last, "attributes", {}) or {}
+                    )
+                    hist = self._attr_extra_state_attributes.get("history")
+                    if isinstance(hist, list):
+                        self._history = [
+                            dict(item)
+                            for item in hist[: self._history_limit]
+                            if isinstance(item, dict)
+                        ]
+                    self._last_utc = self._attr_extra_state_attributes.get("utc")
+            else:
+                self._clear_state()
+        self._handle_stream_state(updated)
         self.async_write_ha_state()
 
     def _extract_current(self) -> dict | None:
@@ -3356,8 +3488,13 @@ class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         payload = self._extract_current()
-        if payload is None:
+        updated = payload is not None
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
             self._safe_write_ha_state()
+            return
+        if payload is None:
             return
         self._apply_payload(payload)
         self._safe_write_ha_state()
@@ -3365,6 +3502,13 @@ class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     @property
     def state(self):
         return self._attr_native_value
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+        self._history = []
+        self._sequence = 0
+        self._last_utc = None
 
 
 class F1PitStopsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -3387,18 +3531,23 @@ class F1PitStopsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self.async_on_remove(removal)
 
         init = self._extract_current()
+        updated = init is not None
         if init is not None:
             self._apply_payload(init, force=True)
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                try:
-                    self._attr_native_value = int(float(str(last.state)))
-                except Exception:
-                    self._attr_native_value = last.state
-                self._attr_extra_state_attributes = dict(
-                    getattr(last, "attributes", {}) or {}
-                )
+            if self._is_stream_active():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    try:
+                        self._attr_native_value = int(float(str(last.state)))
+                    except Exception:
+                        self._attr_native_value = last.state
+                    self._attr_extra_state_attributes = dict(
+                        getattr(last, "attributes", {}) or {}
+                    )
+            else:
+                self._clear_state()
+        self._handle_stream_state(updated)
         self.async_write_ha_state()
 
     def _extract_current(self) -> dict | None:
@@ -3437,11 +3586,20 @@ class F1PitStopsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         payload = self._extract_current()
-        if payload is None:
+        updated = payload is not None
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
             self._safe_write_ha_state()
+            return
+        if payload is None:
             return
         self._apply_payload(payload)
         self._safe_write_ha_state()
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {"cars": {}, "last_update": None}
 
 
 class F1ChampionshipPredictionDriversSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -3463,15 +3621,20 @@ class F1ChampionshipPredictionDriversSensor(F1BaseEntity, RestoreEntity, SensorE
         self.async_on_remove(removal)
 
         init = self._extract_current()
+        updated = init is not None
         if init is not None:
             self._apply_payload(init, force=True)
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._attr_native_value = last.state
-                self._attr_extra_state_attributes = dict(
-                    getattr(last, "attributes", {}) or {}
-                )
+            if self._is_stream_active():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    self._attr_native_value = last.state
+                    self._attr_extra_state_attributes = dict(
+                        getattr(last, "attributes", {}) or {}
+                    )
+            else:
+                self._clear_state()
+        self._handle_stream_state(updated)
         self.async_write_ha_state()
 
     def _extract_current(self) -> dict | None:
@@ -3503,11 +3666,20 @@ class F1ChampionshipPredictionDriversSensor(F1BaseEntity, RestoreEntity, SensorE
 
     def _handle_coordinator_update(self) -> None:
         payload = self._extract_current()
-        if payload is None:
+        updated = payload is not None
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
             self._safe_write_ha_state()
+            return
+        if payload is None:
             return
         self._apply_payload(payload)
         self._safe_write_ha_state()
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
 
 
 class F1ChampionshipPredictionTeamsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -3529,15 +3701,20 @@ class F1ChampionshipPredictionTeamsSensor(F1BaseEntity, RestoreEntity, SensorEnt
         self.async_on_remove(removal)
 
         init = self._extract_current()
+        updated = init is not None
         if init is not None:
             self._apply_payload(init, force=True)
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._attr_native_value = last.state
-                self._attr_extra_state_attributes = dict(
-                    getattr(last, "attributes", {}) or {}
-                )
+            if self._is_stream_active():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    self._attr_native_value = last.state
+                    self._attr_extra_state_attributes = dict(
+                        getattr(last, "attributes", {}) or {}
+                    )
+            else:
+                self._clear_state()
+        self._handle_stream_state(updated)
         self.async_write_ha_state()
 
     def _extract_current(self) -> dict | None:
@@ -3569,11 +3746,20 @@ class F1ChampionshipPredictionTeamsSensor(F1BaseEntity, RestoreEntity, SensorEnt
 
     def _handle_coordinator_update(self) -> None:
         payload = self._extract_current()
-        if payload is None:
+        updated = payload is not None
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
             self._safe_write_ha_state()
+            return
+        if payload is None:
             return
         self._apply_payload(payload)
         self._safe_write_ha_state()
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
 
 
 class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -3596,6 +3782,7 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         init = self._extract_current()
+        updated = init is not None
         if init is not None:
             self._apply_payload(init)
             try:
@@ -3605,35 +3792,43 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             except Exception:
                 pass
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._attr_native_value = self._to_int(last.state)
-                attrs = dict(getattr(last, "attributes", {}) or {})
-                for k in ("measurement_time", "measurement_age_seconds", "received_at"):
-                    attrs.pop(k, None)
-                self._attr_extra_state_attributes = attrs
-                try:
-                    t_ref = None
-                    mt = self._attr_extra_state_attributes.get("measurement_time")
-                    if isinstance(mt, str) and mt:
-                        t_ref = datetime.datetime.fromisoformat(
-                            mt.replace("Z", "+00:00")
-                        )
-                        if t_ref.tzinfo is None:
-                            t_ref = t_ref.replace(tzinfo=datetime.timezone.utc)
-                        self._last_timestamped_dt = t_ref
-                    if t_ref is None:
-                        ra = self._attr_extra_state_attributes.get("received_at")
-                        if isinstance(ra, str) and ra:
+            if self._is_stream_active():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    self._attr_native_value = self._to_int(last.state)
+                    attrs = dict(getattr(last, "attributes", {}) or {})
+                    for k in (
+                        "measurement_time",
+                        "measurement_age_seconds",
+                        "received_at",
+                    ):
+                        attrs.pop(k, None)
+                    self._attr_extra_state_attributes = attrs
+                    try:
+                        t_ref = None
+                        mt = self._attr_extra_state_attributes.get("measurement_time")
+                        if isinstance(mt, str) and mt:
                             t_ref = datetime.datetime.fromisoformat(
-                                ra.replace("Z", "+00:00")
+                                mt.replace("Z", "+00:00")
                             )
                             if t_ref.tzinfo is None:
                                 t_ref = t_ref.replace(tzinfo=datetime.timezone.utc)
-                    if isinstance(t_ref, datetime.datetime):
-                        self._last_received_utc = t_ref
-                except Exception:
-                    pass
+                            self._last_timestamped_dt = t_ref
+                        if t_ref is None:
+                            ra = self._attr_extra_state_attributes.get("received_at")
+                            if isinstance(ra, str) and ra:
+                                t_ref = datetime.datetime.fromisoformat(
+                                    ra.replace("Z", "+00:00")
+                                )
+                                if t_ref.tzinfo is None:
+                                    t_ref = t_ref.replace(tzinfo=datetime.timezone.utc)
+                        if isinstance(t_ref, datetime.datetime):
+                            self._last_received_utc = t_ref
+                    except Exception:
+                        pass
+            else:
+                self._clear_state()
+        self._handle_stream_state(updated)
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
         self._safe_write_ha_state()
@@ -3815,6 +4010,12 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
+        updated = raw is not None
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
+            self._safe_write_ha_state()
+            return
         if raw is None:
             try:
                 getLogger(__name__).debug(
@@ -3823,10 +4024,21 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 )
             except Exception:
                 pass
-            self._safe_write_ha_state()
             return
         self._apply_payload(raw)
         self._safe_write_ha_state()
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+        self._last_timestamped_dt = None
+        self._last_received_utc = None
+        try:
+            if self._stale_timer:
+                self._stale_timer()
+                self._stale_timer = None
+        except Exception:
+            pass
 
 
 class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -4129,7 +4341,8 @@ class F1CurrentTyresSensor(F1BaseEntity, SensorEntity):
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         # Initialize immediately from coordinator
-        self._update_from_coordinator()
+        updated = self._update_from_coordinator()
+        self._handle_stream_state(updated)
         # Subscribe to further updates
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
@@ -4138,7 +4351,9 @@ class F1CurrentTyresSensor(F1BaseEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         prev_state = self._attr_native_value
         prev_attrs = self._attr_extra_state_attributes
-        self._update_from_coordinator()
+        updated = self._update_from_coordinator()
+        if not self._handle_stream_state(updated):
+            return
         if (
             prev_state == self._attr_native_value
             and prev_attrs == self._attr_extra_state_attributes
@@ -4147,9 +4362,13 @@ class F1CurrentTyresSensor(F1BaseEntity, SensorEntity):
         # For now, write on each effective change; live_drivers coordinator is already throttled.
         self._safe_write_ha_state()
 
-    def _update_from_coordinator(self) -> None:
+    def _update_from_coordinator(self) -> bool:
         data = self.coordinator.data or {}
-        drivers = (data.get("drivers") or {}) if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            return False
+        drivers = data.get("drivers") or {}
+        if not isinstance(drivers, dict) or not drivers:
+            return False
 
         items: list[dict] = []
 
@@ -4158,12 +4377,11 @@ class F1CurrentTyresSensor(F1BaseEntity, SensorEntity):
                 continue
             ident = (info.get("identity") or {}) if isinstance(info, dict) else {}
             tyres = (info.get("tyres") or {}) if isinstance(info, dict) else {}
-            timing = (info.get("timing") or {}) if isinstance(info, dict) else {}
 
             compound = tyres.get("compound")
             stint_laps = tyres.get("stint_laps")
             is_new = tyres.get("new")
-            position = timing.get("position")
+            position = _extract_driver_position(info)
             tla = ident.get("tla")
             team_color = ident.get("team_color")
             try:
@@ -4209,6 +4427,11 @@ class F1CurrentTyresSensor(F1BaseEntity, SensorEntity):
         # State is the number of drivers we expose in the list
         self._attr_native_value = len(items)
         self._attr_extra_state_attributes = {"drivers": items}
+        return True
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {"drivers": []}
 
     @property
     def state(self):
@@ -4251,7 +4474,8 @@ class F1TireStatisticsSensor(F1BaseEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        self._update_from_coordinator()
+        updated = self._update_from_coordinator()
+        self._handle_stream_state(updated)
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
         self.async_write_ha_state()
@@ -4259,7 +4483,9 @@ class F1TireStatisticsSensor(F1BaseEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         prev_state = self._attr_native_value
         prev_attrs = self._attr_extra_state_attributes
-        self._update_from_coordinator()
+        updated = self._update_from_coordinator()
+        if not self._handle_stream_state(updated):
+            return
         if (
             prev_state == self._attr_native_value
             and prev_attrs == self._attr_extra_state_attributes
@@ -4267,9 +4493,13 @@ class F1TireStatisticsSensor(F1BaseEntity, SensorEntity):
             return
         self._safe_write_ha_state()
 
-    def _update_from_coordinator(self) -> None:
+    def _update_from_coordinator(self) -> bool:
         data = self.coordinator.data or {}
+        if not isinstance(data, dict):
+            return False
         tire_stats = data.get("tire_statistics", {}) if isinstance(data, dict) else {}
+        if not isinstance(tire_stats, dict) or not tire_stats:
+            return False
 
         fastest_compound = tire_stats.get("fastest_compound")
         fastest_time = tire_stats.get("fastest_time")
@@ -4295,6 +4525,11 @@ class F1TireStatisticsSensor(F1BaseEntity, SensorEntity):
             if isinstance(start_compounds, list)
             else [],
         }
+        return True
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
 
     @property
     def state(self):
@@ -4341,7 +4576,12 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         # Restore if coordinator has no data
         if (not updated) and self._attr_native_value is None:
-            await self._restore_state()
+            if self._is_stream_active():
+                await self._restore_state()
+            else:
+                self._clear_state()
+
+        self._handle_stream_state(updated)
 
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
@@ -4372,8 +4612,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         prev_attrs = self._attr_extra_state_attributes
         updated = self._update_from_coordinator(initial=False)
 
-        if not updated:
-            # No driver payload: keep last value/attrs
+        if not self._handle_stream_state(updated):
             return
 
         if (
@@ -4401,7 +4640,6 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         drivers_out = {}
         for rn, info in drivers_raw.items():
             identity = info.get("identity", {})
-            timing = info.get("timing", {})
             lap_history = info.get("lap_history", {})
 
             # Normalize team color
@@ -4419,7 +4657,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "team": identity.get("team"),
                 "team_color": team_color,
                 "grid_position": lap_history.get("grid_position"),
-                "current_position": timing.get("position"),
+                "current_position": _extract_driver_position(info),
                 "laps": lap_history.get("laps", {}),
                 "completed_laps": lap_history.get(
                     "completed_laps", lap_history.get("last_recorded_lap", 0)
@@ -4432,6 +4670,10 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "total_laps": lap_total,
         }
         return True
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {"drivers": {}, "total_laps": None}
 
     def _rate_limited_write(self) -> None:
         """Write state with 1-second rate limiting."""
@@ -4454,11 +4696,6 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     self._pending_write = False
 
             async_call_later(self.hass, delay, _do_write)
-
-    @property
-    def available(self) -> bool:
-        """Always available to preserve historical data."""
-        return True
 
     @property
     def state(self):
