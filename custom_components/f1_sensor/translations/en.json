@@ -59,7 +59,8 @@
             "pitstops": {"name": "Pit stops"},
             "championship_prediction": {"name": "Championship prediction"},
             "fia_documents": {"name": "FIA decisions"},
-            "live_timing_mode": {"name": "Live timing mode"}
+            "live_timing_mode": {"name": "Live timing mode"},
+            "driver_positions": {"name": "Driver positions"}
         },
         "media_player": {
             "replay_player": {"name": "Replay player"}

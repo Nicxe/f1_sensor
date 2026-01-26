@@ -2784,7 +2784,29 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             entry.setdefault(
                 "tire_history", {"stints": [], "current_stint_index": None}
             )
+            entry.setdefault(
+                "lap_history",
+                {
+                    "laps": {},
+                    "last_recorded_lap": 0,
+                    "grid_position": None,
+                    "completed_laps": 0,
+                },
+            )
             timing = entry["timing"]
+            lap_history = entry["lap_history"]
+
+            number_of_laps: int | None = None
+            if "NumberOfLaps" in td:
+                try:
+                    num_raw = td.get("NumberOfLaps")
+                    number_of_laps = int(num_raw) if num_raw is not None else None
+                except (TypeError, ValueError):
+                    number_of_laps = None
+                if number_of_laps is not None:
+                    if lap_history.get("completed_laps") != number_of_laps:
+                        lap_history["completed_laps"] = number_of_laps
+                        changed = True
             # IMPORTANT: Only set fields that are present in this delta payload.
             if "Position" in td:
                 pos_raw = td.get("Position")
@@ -2794,6 +2816,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     timing["position"] = pos_value
                     changed = True
                     position_changed = True
+                if (
+                    pos_value
+                    and lap_history.get("grid_position") is None
+                    and (lap_history.get("completed_laps") or 0) == 0
+                ):
+                    lap_history["grid_position"] = pos_value
+                    changed = True
             if "GapToLeader" in td:
                 gap_val = td.get("GapToLeader")
                 if timing.get("gap_to_leader") != gap_val:
@@ -2807,6 +2836,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             last_lap = self._get_value(td, "LastLapTime", "Value")
             if last_lap is not None:
                 if timing.get("last_lap") != last_lap:
+                    # Record for lap history before updating timing
+                    lap_num = number_of_laps
+                    if lap_num is None:
+                        completed = lap_history.get("completed_laps")
+                        lap_num = completed if isinstance(completed, int) else None
+                    if self._record_lap_for_history(rn, last_lap, lap_num):
+                        changed = True
                     timing["last_lap"] = last_lap
                     changed = True
                 # Record lap time for tire statistics (correlate with current stint)
@@ -3060,7 +3096,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     )
             if isinstance(latest, dict):
                 if "Compound" in latest:
-                    compound = latest.get("Compound")
+                    compound = self._normalize_compound(latest.get("Compound"))
                     if tyres.get("compound") != compound:
                         tyres["compound"] = compound
                         stints_changed = True
@@ -3114,6 +3150,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "compound": None,
                     "new": None,
                     "total_laps": 0,
+                    "start_laps": None,
                     "best_lap_time": None,
                     "best_lap_time_secs": None,
                 }
@@ -3124,7 +3161,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         # Only update fields that are present in the delta
         if "Compound" in stint_data:
-            compound = stint_data.get("Compound")
+            compound = self._normalize_compound(stint_data.get("Compound"))
             if stint.get("compound") != compound:
                 stint["compound"] = compound
                 changed = True
@@ -3133,6 +3170,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             total_laps_val = int(total_laps) if str(total_laps or "").isdigit() else 0
             if stint.get("total_laps") != total_laps_val:
                 stint["total_laps"] = total_laps_val
+                changed = True
+        if "StartLaps" in stint_data:
+            start_laps = stint_data.get("StartLaps")
+            start_laps_val = (
+                int(start_laps) if str(start_laps or "").isdigit() else None
+            )
+            if stint.get("start_laps") != start_laps_val:
+                stint["start_laps"] = start_laps_val
                 changed = True
         if "New" in stint_data:
             is_new = stint_data.get("New")
@@ -3179,9 +3224,59 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             return True
         return False
 
+    def _record_lap_for_history(
+        self, rn: str, lap_time: str, lap_num: int | None = None
+    ) -> bool:
+        """Record a completed lap time in the driver's lap history.
+
+        Called when LastLapTime changes, indicating a new lap was completed.
+        """
+        entry = self._state["drivers"].get(rn)
+        if not entry:
+            return False
+
+        lap_history = entry.get("lap_history")
+        if not lap_history:
+            return False
+
+        timing = entry.get("timing", {})
+        current_position = timing.get("position")
+
+        # Determine lap number: use provided lap_num when available
+        last_lap_num = lap_history.get("last_recorded_lap", 0)
+        try:
+            use_lap_num = int(lap_num) if lap_num is not None else None
+        except (TypeError, ValueError):
+            use_lap_num = None
+        if not use_lap_num or use_lap_num <= 0:
+            use_lap_num = last_lap_num + 1
+
+        # Capture grid position on first lap if not already set
+        if use_lap_num == 1 and lap_history.get("grid_position") is None:
+            lap_history["grid_position"] = current_position
+
+        # Store the lap time (just the time, position is tracked separately)
+        lap_key = str(use_lap_num)
+        prev_time = lap_history["laps"].get(lap_key)
+        if prev_time == lap_time and last_lap_num >= use_lap_num:
+            return False
+        lap_history["laps"][lap_key] = lap_time
+        if last_lap_num < use_lap_num:
+            lap_history["last_recorded_lap"] = use_lap_num
+        # Keep completed_laps in sync with highest seen lap
+        try:
+            completed = lap_history.get("completed_laps", 0) or 0
+            if isinstance(completed, int) and completed < use_lap_num:
+                lap_history["completed_laps"] = use_lap_num
+        except Exception:
+            pass
+
+        return True
+
     def _recompute_tire_statistics(self) -> None:
         """Recompute aggregated tire statistics from all driver stint history."""
         compounds_data: dict[str, dict] = {}
+        start_compounds: set[str] = set()
         drivers = self._state.get("drivers", {})
 
         for rn, info in drivers.items():
@@ -3191,9 +3286,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             team_color = identity.get("team_color")
 
             for stint in tire_history.get("stints", []):
-                compound = stint.get("compound")
+                compound = self._normalize_compound(stint.get("compound"))
                 if not compound or compound == "UNKNOWN":
                     continue
+                if stint.get("stint_index") == 0:
+                    start_compounds.add(compound)
 
                 comp = compounds_data.setdefault(
                     compound,
@@ -3256,6 +3353,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             ),
             "fastest_time_secs": fastest_time,
             "deltas": deltas,
+            "start_compounds": self._sort_compounds(start_compounds),
         }
 
     @staticmethod
@@ -3304,6 +3402,55 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         except Exception:
             return None
 
+    @staticmethod
+    def _normalize_compound(value: Any) -> str | None:
+        if not isinstance(value, str):
+            return value if value is None else str(value)
+        comp = value.strip().upper()
+        if not comp:
+            return None
+        if comp in {"INTER", "INTERS", "INTERMEDIATES"}:
+            return "INTERMEDIATE"
+        if comp in {"WETS", "FULLWET", "FULL WET", "FULL_WET"}:
+            return "WET"
+        return comp
+
+    @staticmethod
+    def _sort_compounds(compounds: set[str]) -> list[str]:
+        order = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"]
+        order_index = {name: idx for idx, name in enumerate(order)}
+        return sorted(
+            compounds,
+            key=lambda name: (order_index.get(name, len(order_index)), name),
+        )
+
+    def _capture_grid_positions_if_needed(self) -> None:
+        """Capture current positions as grid positions on session start.
+
+        Only captures once per session (when grid_position is still None).
+        """
+        drivers = self._state.get("drivers", {})
+        for rn, entry in drivers.items():
+            lap_history = entry.get("lap_history")
+            if not lap_history:
+                continue
+            # Only capture if not already set
+            if lap_history.get("grid_position") is None:
+                current_pos = entry.get("timing", {}).get("position")
+                if current_pos:
+                    lap_history["grid_position"] = current_pos
+
+    def _clear_lap_history(self) -> None:
+        """Clear lap history for all drivers on session end."""
+        drivers = self._state.get("drivers", {})
+        for rn, entry in drivers.items():
+            entry["lap_history"] = {
+                "laps": {},
+                "last_recorded_lap": 0,
+                "grid_position": None,
+                "completed_laps": 0,
+            }
+
     def _merge_sessionstatus(self, payload: dict) -> None:
         self._state["session_status"] = payload
         try:
@@ -3315,6 +3462,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             # Unfreeze on new session start or green running
             elif started_flag is True or msg in ("Started", "Green", "GreenFlag"):
                 self._state["frozen"] = False
+                # Capture grid positions when session starts
+                self._capture_grid_positions_if_needed()
         except Exception:
             pass
 
@@ -3391,6 +3540,51 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._merge_sessionstatus(ss)
         self._schedule_deliver()
 
+    def _on_lap_history(self, lh: dict) -> None:
+        """Apply pre-built lap history from replay initial state injection."""
+        if not isinstance(lh, dict):
+            return
+        drivers = self._state.setdefault("drivers", {})
+        changed = False
+        for rn, history_data in lh.items():
+            if not isinstance(history_data, dict):
+                continue
+            # Create driver entry if it doesn't exist (LapHistory may arrive before DriverList/TimingData)
+            entry = drivers.setdefault(rn, {})
+            entry.setdefault("identity", {})
+            entry.setdefault("timing", {})
+            entry.setdefault("tyres", {})
+            entry.setdefault("laps", {})
+            entry.setdefault(
+                "tire_history", {"stints": [], "current_stint_index": None}
+            )
+            lap_history = entry.setdefault(
+                "lap_history",
+                {
+                    "laps": {},
+                    "last_recorded_lap": 0,
+                    "grid_position": None,
+                    "completed_laps": 0,
+                },
+            )
+            # Only apply if our lap_history is empty (initial load)
+            if lap_history.get("last_recorded_lap", 0) == 0:
+                laps = history_data.get("laps", {})
+                grid_pos = history_data.get("grid_position")
+                last_lap = history_data.get("last_recorded_lap", 0)
+                completed_laps = history_data.get("completed_laps")
+                if laps or grid_pos:
+                    lap_history["laps"] = dict(laps)
+                    lap_history["grid_position"] = grid_pos
+                    lap_history["last_recorded_lap"] = last_lap
+                    if isinstance(completed_laps, int):
+                        lap_history["completed_laps"] = completed_laps
+                    else:
+                        lap_history["completed_laps"] = last_lap
+                    changed = True
+        if changed:
+            self._schedule_deliver()
+
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         # Subscribe to LiveBus streams
@@ -3425,6 +3619,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 self._unsubs.append(
                     bus.subscribe("SessionStatus", self._on_sessionstatus)
                 )
+            except Exception:
+                pass
+            try:
+                self._unsubs.append(bus.subscribe("LapHistory", self._on_lap_history))
             except Exception:
                 pass
 

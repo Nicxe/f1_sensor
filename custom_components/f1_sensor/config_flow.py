@@ -125,6 +125,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "top_three": "Top three (leader, live)",
             "pitstops": "Pit stops (live)",
             "championship_prediction": "Championship prediction (live)",
+            "driver_positions": "Driver positions (live)",
         }
 
         # Keep the "live timing online" diagnostic available for power users even
@@ -239,6 +240,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "top_three": "Top three (leader, live)",
             "pitstops": "Pit stops (live)",
             "championship_prediction": "Championship prediction (live)",
+            "driver_positions": "Driver positions (live)",
         }
         allowed["live_timing_diagnostics"] = "Live timing online"
         default_enabled = [

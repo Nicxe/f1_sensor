@@ -115,6 +115,7 @@ async def async_setup_entry(
         "championship_prediction",
         "live_timing_diagnostics",
         "tire_statistics",
+        "driver_positions",
     }
     raw_enabled = entry.data.get("enabled_sensors", [])
     normalized = []
@@ -161,6 +162,7 @@ async def async_setup_entry(
         "driver_list": (F1DriverListSensor, data.get("drivers_coordinator")),
         "current_tyres": (F1CurrentTyresSensor, data.get("drivers_coordinator")),
         "tire_statistics": (F1TireStatisticsSensor, data.get("drivers_coordinator")),
+        "driver_positions": (F1DriverPositionsSensor, data.get("drivers_coordinator")),
         "fia_documents": (F1FiaDocumentsSensor, data.get("fia_documents_coordinator")),
         "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
         "top_three": (None, data.get("top_three_coordinator")),
@@ -4156,10 +4158,23 @@ class F1CurrentTyresSensor(F1BaseEntity, SensorEntity):
                 continue
             ident = (info.get("identity") or {}) if isinstance(info, dict) else {}
             tyres = (info.get("tyres") or {}) if isinstance(info, dict) else {}
+            timing = (info.get("timing") or {}) if isinstance(info, dict) else {}
 
             compound = tyres.get("compound")
             stint_laps = tyres.get("stint_laps")
             is_new = tyres.get("new")
+            position = timing.get("position")
+            tla = ident.get("tla")
+            team_color = ident.get("team_color")
+            try:
+                if (
+                    isinstance(team_color, str)
+                    and team_color
+                    and not team_color.startswith("#")
+                ):
+                    team_color = f"#{team_color}"
+            except Exception:
+                team_color = ident.get("team_color")
 
             # Derive short/colour codes
             comp_upper = str(compound).upper() if isinstance(compound, str) else None
@@ -4173,6 +4188,9 @@ class F1CurrentTyresSensor(F1BaseEntity, SensorEntity):
             items.append(
                 {
                     "racing_number": ident.get("racing_number") or rn,
+                    "tla": tla,
+                    "team_color": team_color,
+                    "position": position,
                     "compound": compound,
                     "compound_short": compound_short,
                     "compound_color": compound_color,
@@ -4257,6 +4275,7 @@ class F1TireStatisticsSensor(F1BaseEntity, SensorEntity):
         fastest_time = tire_stats.get("fastest_time")
         fastest_time_secs = tire_stats.get("fastest_time_secs")
         deltas = tire_stats.get("deltas", {})
+        start_compounds = tire_stats.get("start_compounds", [])
         compounds_raw = tire_stats.get("compounds", {})
 
         # Enrich compounds with color info
@@ -4272,7 +4291,174 @@ class F1TireStatisticsSensor(F1BaseEntity, SensorEntity):
             "fastest_time_secs": fastest_time_secs,
             "deltas": deltas,
             "compounds": compounds,
+            "start_compounds": start_compounds
+            if isinstance(start_compounds, list)
+            else [],
         }
+
+    @property
+    def state(self):
+        return self._attr_native_value
+
+
+class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Live sensor tracking driver positions and lap times.
+
+    - State: current lap number (leader's lap)
+    - Attributes:
+        - drivers: {
+            racing_number: {
+                "tla": "VER",
+                "name": "Max Verstappen",
+                "team": "Red Bull Racing",
+                "grid_position": "1",
+                "current_position": "2",
+                "laps": {
+                    "1": "1:32.456",
+                    "2": "1:31.789",
+                    ...
+                },
+                "completed_laps": 45
+            },
+            ...
+        }
+        - total_laps: 70 (race distance, if known)
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:podium"
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {"drivers": {}, "total_laps": None}
+        self._last_write_ts: float | None = None
+        self._pending_write: bool = False
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+
+        # Try coordinator first
+        updated = self._update_from_coordinator(initial=True)
+
+        # Restore if coordinator has no data
+        if (not updated) and self._attr_native_value is None:
+            await self._restore_state()
+
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self.async_write_ha_state()
+
+    async def _restore_state(self) -> None:
+        """Restore state from Home Assistant's state history."""
+        last = await self.async_get_last_state()
+        if not last or last.state in (None, "unknown", "unavailable"):
+            return
+        try:
+            self._attr_native_value = (
+                int(last.state) if last.state and last.state.isdigit() else None
+            )
+        except Exception:
+            self._attr_native_value = None
+        try:
+            attrs = dict(getattr(last, "attributes", {}) or {})
+            self._attr_extra_state_attributes = attrs
+            getLogger(__name__).debug(
+                "DriverPositions: Restored last state -> lap %s", last.state
+            )
+        except Exception:
+            pass
+
+    def _handle_coordinator_update(self) -> None:
+        prev_state = self._attr_native_value
+        prev_attrs = self._attr_extra_state_attributes
+        updated = self._update_from_coordinator(initial=False)
+
+        if not updated:
+            # No driver payload: keep last value/attrs
+            return
+
+        if (
+            prev_state == self._attr_native_value
+            and prev_attrs == self._attr_extra_state_attributes
+        ):
+            return
+
+        self._rate_limited_write()
+
+    def _update_from_coordinator(self, *, initial: bool = False) -> bool:
+        """Update sensor state from coordinator data."""
+        data = self.coordinator.data or {}
+        if not isinstance(data, dict):
+            return False
+
+        drivers_raw = data.get("drivers", {})
+        if not drivers_raw:
+            return False
+
+        lap_current = data.get("lap_current")
+        lap_total = data.get("lap_total")
+
+        # Build output structure
+        drivers_out = {}
+        for rn, info in drivers_raw.items():
+            identity = info.get("identity", {})
+            timing = info.get("timing", {})
+            lap_history = info.get("lap_history", {})
+
+            # Normalize team color
+            team_color = identity.get("team_color")
+            if (
+                isinstance(team_color, str)
+                and team_color
+                and not team_color.startswith("#")
+            ):
+                team_color = f"#{team_color}"
+
+            drivers_out[rn] = {
+                "tla": identity.get("tla"),
+                "name": identity.get("name"),
+                "team": identity.get("team"),
+                "team_color": team_color,
+                "grid_position": lap_history.get("grid_position"),
+                "current_position": timing.get("position"),
+                "laps": lap_history.get("laps", {}),
+                "completed_laps": lap_history.get(
+                    "completed_laps", lap_history.get("last_recorded_lap", 0)
+                ),
+            }
+
+        self._attr_native_value = lap_current
+        self._attr_extra_state_attributes = {
+            "drivers": drivers_out,
+            "total_laps": lap_total,
+        }
+        return True
+
+    def _rate_limited_write(self) -> None:
+        """Write state with 1-second rate limiting."""
+        import time as _time
+
+        now = _time.time()
+
+        if self._last_write_ts is None or (now - self._last_write_ts) >= 1.0:
+            self._last_write_ts = now
+            self._safe_write_ha_state()
+        elif not self._pending_write:
+            self._pending_write = True
+            delay = max(0.0, 1.0 - (now - self._last_write_ts))
+
+            def _do_write(_now):
+                try:
+                    self._last_write_ts = _time.time()
+                    self._safe_write_ha_state()
+                finally:
+                    self._pending_write = False
+
+            async_call_later(self.hass, delay, _do_write)
+
+    @property
+    def available(self) -> bool:
+        """Always available to preserve historical data."""
+        return True
 
     @property
     def state(self):
