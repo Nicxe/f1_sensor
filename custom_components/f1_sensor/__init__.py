@@ -2105,11 +2105,7 @@ class PitStopCoordinator(DataUpdateCoordinator):
                 key=lambda kv: int(str(kv[0])) if str(kv[0]).isdigit() else str(kv[0]),
             ):
                 lst = list(stops or [])
-                ident = (
-                    self._driver_map.get(str(rn), {})
-                    if isinstance(self._driver_map, dict)
-                    else {}
-                )
+                ident = self._get_identity(str(rn))
                 cars[str(rn)] = {
                     "tla": ident.get("tla"),
                     "name": ident.get("name"),
@@ -2172,8 +2168,71 @@ class PitStopCoordinator(DataUpdateCoordinator):
                 self._drivers_unsub = None
 
     def _on_drivers_update(self) -> None:
-        if self._refresh_pit_deltas():
+        changed = self._refresh_pit_deltas()
+        if self._refresh_driver_map_from_coordinator():
+            changed = True
+        if changed:
             self._schedule_deliver()
+
+    def _refresh_driver_map_from_coordinator(self) -> bool:
+        updated = False
+        if not self._drivers_coord:
+            return False
+        data = self._drivers_coord.data
+        if not isinstance(data, dict):
+            return False
+        drivers = data.get("drivers")
+        if not isinstance(drivers, dict):
+            return False
+        for rn, info in drivers.items():
+            if not isinstance(info, dict):
+                continue
+            identity = info.get("identity")
+            if not isinstance(identity, dict):
+                continue
+            key = str(rn)
+            entry = self._driver_map.setdefault(key, {})
+            new_tla = identity.get("tla")
+            new_name = identity.get("name")
+            new_team = identity.get("team")
+            if new_tla and entry.get("tla") != new_tla:
+                entry["tla"] = new_tla
+                updated = True
+            if new_name and entry.get("name") != new_name:
+                entry["name"] = new_name
+                updated = True
+            if new_team and entry.get("team") != new_team:
+                entry["team"] = new_team
+                updated = True
+        return updated
+
+    def _get_identity(self, rn: str) -> dict[str, Any]:
+        ident = (
+            self._driver_map.get(str(rn), {})
+            if isinstance(self._driver_map, dict)
+            else {}
+        )
+        if ident.get("tla") or ident.get("name") or ident.get("team"):
+            return ident
+        if not self._drivers_coord:
+            return ident
+        data = self._drivers_coord.data
+        if not isinstance(data, dict):
+            return ident
+        drivers = data.get("drivers")
+        if not isinstance(drivers, dict):
+            return ident
+        info = drivers.get(str(rn))
+        if not isinstance(info, dict):
+            return ident
+        identity = info.get("identity")
+        if not isinstance(identity, dict):
+            return ident
+        return {
+            "tla": identity.get("tla"),
+            "name": identity.get("name"),
+            "team": identity.get("team"),
+        }
 
     def _refresh_pit_deltas(self) -> bool:
         changed = False
@@ -2194,8 +2253,31 @@ class PitStopCoordinator(DataUpdateCoordinator):
             return False
         delta = self._compute_pit_delta(rn, stop)
         if delta is None:
+            try:
+                lap = self._parse_int(stop.get("lap"))
+                if lap is not None:
+                    laps = self._get_lap_history(rn) or {}
+                    if str(lap + 1) not in laps:
+                        _LOGGER.debug(
+                            "Pit delta pending for %s (lap %s): waiting for lap %s time",
+                            rn,
+                            lap,
+                            lap + 1,
+                        )
+            except Exception:
+                pass
             return False
         stop["pit_delta"] = delta
+        try:
+            lap = self._parse_int(stop.get("lap"))
+            _LOGGER.debug(
+                "Pit delta computed for %s (lap %s): %.3fs",
+                rn,
+                lap if lap is not None else "?",
+                delta,
+            )
+        except Exception:
+            pass
         return True
 
     def _compute_pit_delta(self, rn: str, stop: dict) -> float | None:
@@ -2205,8 +2287,7 @@ class PitStopCoordinator(DataUpdateCoordinator):
         laps = self._get_lap_history(rn)
         if not laps:
             return None
-        pit_lap_time = laps.get(str(lap))
-        pit_secs = LiveDriversCoordinator._parse_laptime_secs(pit_lap_time)
+        pit_secs = self._select_pit_lap_secs(laps, lap)
         if pit_secs is None:
             return None
         normal_secs = self._select_reference_lap_secs(laps, lap)
@@ -2235,6 +2316,20 @@ class PitStopCoordinator(DataUpdateCoordinator):
         return laps
 
     @staticmethod
+    def _select_pit_lap_secs(laps: dict[str, str], lap: int) -> float | None:
+        next_lap_time = laps.get(str(lap + 1))
+        if next_lap_time is None:
+            return None
+        candidates: list[float] = []
+        for lap_time in (laps.get(str(lap)), next_lap_time):
+            lap_secs = LiveDriversCoordinator._parse_laptime_secs(lap_time)
+            if lap_secs is not None:
+                candidates.append(lap_secs)
+        if not candidates:
+            return None
+        return max(candidates)
+
+    @staticmethod
     def _select_reference_lap_secs(laps: dict[str, str], lap: int) -> float | None:
         candidates: list[float] = []
         for offset in (1, 2, 3):
@@ -2243,7 +2338,7 @@ class PitStopCoordinator(DataUpdateCoordinator):
             if lap_secs is not None:
                 candidates.append(lap_secs)
         if not candidates:
-            for offset in (1, 2, 3):
+            for offset in (2, 3, 4):
                 lap_time = laps.get(str(lap + offset))
                 lap_secs = LiveDriversCoordinator._parse_laptime_secs(lap_time)
                 if lap_secs is not None:

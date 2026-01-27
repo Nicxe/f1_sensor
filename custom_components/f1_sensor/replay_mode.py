@@ -60,7 +60,7 @@ INDEX_STATUS_OK = "ok"
 INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when changing initial_state format to invalidate old caches
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 
@@ -903,6 +903,7 @@ class ReplaySessionManager:
         self, frames: List[ReplayFrame], start_ms: int
     ) -> Dict[str, Any]:
         """Return the latest stream payloads at the provided timestamp."""
+        skip_initial = {"PitStopSeries"}
         initial_state: Dict[str, Any] = {}
         topthree_state: Dict[str, Any] = {
             "lines": [None, None, None],
@@ -915,6 +916,8 @@ class ReplaySessionManager:
         for frame in frames:
             if frame.timestamp_ms > start_ms:
                 break
+            if frame.stream in skip_initial:
+                continue
             if frame.stream == "TopThree" and isinstance(frame.payload, dict):
                 self._merge_topthree_state(topthree_state, frame.payload)
             elif frame.stream == "TyreStintSeries" and isinstance(frame.payload, dict):
@@ -937,7 +940,9 @@ class ReplaySessionManager:
         if self._has_lap_history_state(lap_history_state):
             initial_state["LapHistory"] = lap_history_state
 
-        streams_needing_first = set(REPLAY_STREAMS) - set(initial_state.keys())
+        streams_needing_first = (
+            set(REPLAY_STREAMS) - set(initial_state.keys()) - skip_initial
+        )
         if streams_needing_first:
             for frame in frames:
                 if frame.stream in streams_needing_first:
