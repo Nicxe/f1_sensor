@@ -2862,7 +2862,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             "lap_total": None,
             "session_status": None,
             "frozen": False,
-            "tire_statistics": {},
+            "tyre_statistics": {},
         }
         self._live_state_unsub: Optional[Callable[[], None]] = None
         if live_state is not None:
@@ -2982,7 +2982,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             entry.setdefault("tyres", {})
             entry.setdefault("laps", {})
             entry.setdefault(
-                "tire_history", {"stints": [], "current_stint_index": None}
+                "tyre_history", {"stints": [], "current_stint_index": None}
             )
             entry.setdefault(
                 "lap_history",
@@ -3045,7 +3045,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         changed = True
                     timing["last_lap"] = last_lap
                     changed = True
-                # Record lap time for tire statistics (correlate with current stint)
+                # Record lap time for tyre statistics (correlate with current stint)
                 if self._record_lap_time_for_stint(rn, last_lap):
                     changed = True
             best_lap = self._get_value(td, "BestLapTime", "Value")
@@ -3121,7 +3121,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "lap_total": None,
                     "session_status": None,
                     "frozen": False,
-                    "tire_statistics": {},
+                    "tyre_statistics": {},
                 }
                 self.async_set_updated_data(self._state)
             except Exception:
@@ -3234,7 +3234,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         Expected payload shape (from SignalR stream \"TyreStintSeries\"):
             {"Stints": { rn: { idx: {Compound, New, TotalLaps, ...}, ... }, ... }}
 
-        This method now tracks full stint history for tire statistics in addition
+        This method now tracks full stint history for tyre statistics in addition
         to maintaining the existing tyres dict for backward compatibility.
         """
         stints_root = (payload or {}).get("Stints", {})
@@ -3249,10 +3249,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             entry = drivers.setdefault(rn, {})
             entry.setdefault("tyres", {})
             entry.setdefault(
-                "tire_history", {"stints": [], "current_stint_index": None}
+                "tyre_history", {"stints": [], "current_stint_index": None}
             )
             tyres = entry["tyres"]
-            tire_history = entry["tire_history"]
+            tyre_history = entry["tyre_history"]
 
             # Process ALL stint indices to build full history
             stint_items: list[tuple[int, dict]] = []
@@ -3269,16 +3269,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                             pass
 
             for stint_idx, stint_data in stint_items:
-                if self._update_stint_history(tire_history, stint_idx, stint_data):
+                if self._update_stint_history(tyre_history, stint_idx, stint_data):
                     stints_changed = True
 
                 # Update current stint tracking (highest index = current)
                 if (
-                    tire_history["current_stint_index"] is None
-                    or stint_idx >= tire_history["current_stint_index"]
+                    tyre_history["current_stint_index"] is None
+                    or stint_idx >= tyre_history["current_stint_index"]
                 ):
-                    if tire_history["current_stint_index"] != stint_idx:
-                        tire_history["current_stint_index"] = stint_idx
+                    if tyre_history["current_stint_index"] != stint_idx:
+                        tyre_history["current_stint_index"] = stint_idx
                         stints_changed = True
 
             # Maintain backward compatibility: update tyres dict with latest stint
@@ -3323,9 +3323,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         tyres["new"] = new_val
                         stints_changed = True
 
-        # Recompute tire statistics if any stints changed
+        # Recompute tyre statistics if any stints changed
         if stints_changed:
-            self._recompute_tire_statistics()
+            self._recompute_tyre_statistics()
 
         # Tyre changes can also interact with leader logic (pit stops etc.)
         if stints_changed:
@@ -3333,13 +3333,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         return stints_changed
 
     def _update_stint_history(
-        self, tire_history: dict, stint_idx: int, stint_data: dict
+        self, tyre_history: dict, stint_idx: int, stint_data: dict
     ) -> bool:
-        """Update or create a stint entry in tire_history.
+        """Update or create a stint entry in tyre_history.
 
         Handles incremental updates where only TotalLaps may be present.
         """
-        stints_list = tire_history["stints"]
+        stints_list = tyre_history["stints"]
         changed = False
 
         # Ensure the list is large enough
@@ -3394,17 +3394,17 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         return changed
 
     def _record_lap_time_for_stint(self, rn: str, lap_time: str) -> bool:
-        """Associate a lap time with the driver's current stint for tire statistics."""
+        """Associate a lap time with the driver's current stint for tyre statistics."""
         entry = self._state["drivers"].get(rn)
         if not entry:
             return False
 
-        tire_history = entry.get("tire_history")
-        if not tire_history:
+        tyre_history = entry.get("tyre_history")
+        if not tyre_history:
             return False
 
-        current_idx = tire_history.get("current_stint_index")
-        stints_list = tire_history.get("stints", [])
+        current_idx = tyre_history.get("current_stint_index")
+        stints_list = tyre_history.get("stints", [])
 
         if current_idx is None or current_idx >= len(stints_list):
             return False
@@ -3420,7 +3420,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             stint["best_lap_time"] = lap_time
             stint["best_lap_time_secs"] = lap_secs
             # Recompute statistics when a new best lap is set
-            self._recompute_tire_statistics()
+            self._recompute_tyre_statistics()
             return True
         return False
 
@@ -3473,19 +3473,19 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         return True
 
-    def _recompute_tire_statistics(self) -> None:
-        """Recompute aggregated tire statistics from all driver stint history."""
+    def _recompute_tyre_statistics(self) -> None:
+        """Recompute aggregated tyre statistics from all driver stint history."""
         compounds_data: dict[str, dict] = {}
         start_compounds: set[str] = set()
         drivers = self._state.get("drivers", {})
 
         for rn, info in drivers.items():
-            tire_history = info.get("tire_history", {})
+            tyre_history = info.get("tyre_history", {})
             identity = info.get("identity", {})
             driver_name = identity.get("last_name") or identity.get("name")
             team_color = identity.get("team_color")
 
-            for stint in tire_history.get("stints", []):
+            for stint in tyre_history.get("stints", []):
                 compound = self._normalize_compound(stint.get("compound"))
                 if not compound or compound == "UNKNOWN":
                     continue
@@ -3545,7 +3545,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     data["best_times"][0]["time_secs"] - fastest_time, 3
                 )
 
-        self._state["tire_statistics"] = {
+        self._state["tyre_statistics"] = {
             "compounds": compounds_data,
             "fastest_compound": fastest_compound,
             "fastest_time": (
@@ -3707,8 +3707,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         # Allow DriverList merges even when frozen so identity mapping remains available
         changed = self._merge_driverlist(dl)
         if changed:
-            # Recompute tire statistics to update driver names/TLAs
-            self._recompute_tire_statistics()
+            # Recompute tyre statistics to update driver names/TLAs
+            self._recompute_tyre_statistics()
             self._schedule_deliver()
 
     def _on_timingdata(self, td: dict) -> None:
@@ -3756,7 +3756,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             entry.setdefault("tyres", {})
             entry.setdefault("laps", {})
             entry.setdefault(
-                "tire_history", {"stints": [], "current_stint_index": None}
+                "tyre_history", {"stints": [], "current_stint_index": None}
             )
             lap_history = entry.setdefault(
                 "lap_history",

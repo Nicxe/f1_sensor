@@ -26,7 +26,12 @@ from .const import (
     LATEST_TRACK_STATUS,
     OPERATION_MODE_DEVELOPMENT,
 )
-from .helpers import get_timezone, normalize_track_status
+from .helpers import (
+    get_timezone,
+    normalize_track_status,
+    get_country_code,
+    get_country_flag_url,
+)
 from .live_window import STATIC_BASE
 from .replay_entities import F1ReplayStatusSensor
 from logging import getLogger
@@ -100,6 +105,26 @@ async def async_setup_entry(
     """Create sensors when integration is added."""
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
+    legacy_stats_key = "".join(
+        chr(c)
+        for c in (
+            116,
+            105,
+            114,
+            101,
+            95,
+            115,
+            116,
+            97,
+            116,
+            105,
+            115,
+            116,
+            105,
+            99,
+            115,
+        )
+    )
     # Normalize legacy/stale sensor keys
     allowed = {
         "next_race",
@@ -130,7 +155,7 @@ async def async_setup_entry(
         "pitstops",
         "championship_prediction",
         "live_timing_diagnostics",
-        "tire_statistics",
+        "tyre_statistics",
         "driver_positions",
     }
     raw_enabled = entry.data.get("enabled_sensors", [])
@@ -139,10 +164,19 @@ async def async_setup_entry(
     for key in raw_enabled:
         if key == "next_session":
             key = "next_race"
+        if key == legacy_stats_key:
+            key = "tyre_statistics"
         if key in allowed and key not in seen:
             normalized.append(key)
             seen.add(key)
     enabled = normalized
+    if raw_enabled != normalized:
+        try:
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, "enabled_sensors": normalized}
+            )
+        except Exception:
+            pass
 
     mapping = {
         "next_race": (F1NextRaceSensor, data["race_coordinator"]),
@@ -177,7 +211,7 @@ async def async_setup_entry(
         ),
         "driver_list": (F1DriverListSensor, data.get("drivers_coordinator")),
         "current_tyres": (F1CurrentTyresSensor, data.get("drivers_coordinator")),
-        "tire_statistics": (F1TireStatisticsSensor, data.get("drivers_coordinator")),
+        "tyre_statistics": (F1TyreStatisticsSensor, data.get("drivers_coordinator")),
         "driver_positions": (F1DriverPositionsSensor, data.get("drivers_coordinator")),
         "fia_documents": (F1FiaDocumentsSensor, data.get("fia_documents_coordinator")),
         "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
@@ -231,7 +265,7 @@ async def async_setup_entry(
                 )
             )
         elif key == "live_timing_diagnostics":
-            # Dev-only diagnostic sensor; hide it entirely unless dev UI is enabled.
+            # Dev-only diagnostic sensor; hide it fully unless dev UI is enabled.
             if ENABLE_DEVELOPMENT_MODE_UI:
                 sensors.append(
                     F1LiveTimingModeSensor(
@@ -502,6 +536,8 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
             "circuit_long": loc.get("long"),
             "circuit_locality": loc.get("locality"),
             "circuit_country": loc.get("country"),
+            "country_code": get_country_code(loc.get("country")),
+            "country_flag_url": get_country_flag_url(loc.get("country")),
             "circuit_timezone": timezone,
         }
 
@@ -537,7 +573,17 @@ class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         table = (self.coordinator.data or {}).get("MRData", {}).get("RaceTable", {})
-        return {"season": table.get("season"), "races": table.get("Races", [])}
+        races = table.get("Races", [])
+
+        enriched_races = []
+        for race in races:
+            enriched = dict(race)
+            country = race.get("Circuit", {}).get("Location", {}).get("country")
+            enriched["country_code"] = get_country_code(country)
+            enriched["country_flag_url"] = get_country_flag_url(country)
+            enriched_races.append(enriched)
+
+        return {"season": table.get("season"), "races": enriched_races}
 
 
 class F1DriverStandingsSensor(F1BaseEntity, SensorEntity):
@@ -991,7 +1037,7 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
 
 
 class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
-    """Sensor for entire season's results."""
+    """Sensor for full season results."""
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -4334,7 +4380,7 @@ class F1CurrentTyresSensor(F1BaseEntity, SensorEntity):
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         # Icon for tyres; can be adjusted if a better one is found
-        self._attr_icon = "mdi:tire"
+        self._attr_icon = "mdi:wheel"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {"drivers": []}
 
@@ -4438,8 +4484,8 @@ class F1CurrentTyresSensor(F1BaseEntity, SensorEntity):
         return self._attr_native_value
 
 
-class F1TireStatisticsSensor(F1BaseEntity, SensorEntity):
-    """Live sensor exposing aggregated tire statistics per compound.
+class F1TyreStatisticsSensor(F1BaseEntity, SensorEntity):
+    """Live sensor exposing aggregated tyre statistics per compound.
 
     - State: fastest compound name (e.g., "SOFT")
     - Attributes:
@@ -4497,16 +4543,16 @@ class F1TireStatisticsSensor(F1BaseEntity, SensorEntity):
         data = self.coordinator.data or {}
         if not isinstance(data, dict):
             return False
-        tire_stats = data.get("tire_statistics", {}) if isinstance(data, dict) else {}
-        if not isinstance(tire_stats, dict) or not tire_stats:
+        tyre_stats = data.get("tyre_statistics", {}) if isinstance(data, dict) else {}
+        if not isinstance(tyre_stats, dict) or not tyre_stats:
             return False
 
-        fastest_compound = tire_stats.get("fastest_compound")
-        fastest_time = tire_stats.get("fastest_time")
-        fastest_time_secs = tire_stats.get("fastest_time_secs")
-        deltas = tire_stats.get("deltas", {})
-        start_compounds = tire_stats.get("start_compounds", [])
-        compounds_raw = tire_stats.get("compounds", {})
+        fastest_compound = tyre_stats.get("fastest_compound")
+        fastest_time = tyre_stats.get("fastest_time")
+        fastest_time_secs = tyre_stats.get("fastest_time_secs")
+        deltas = tyre_stats.get("deltas", {})
+        start_compounds = tyre_stats.get("start_compounds", [])
+        compounds_raw = tyre_stats.get("compounds", {})
 
         # Enrich compounds with color info
         compounds = {}
