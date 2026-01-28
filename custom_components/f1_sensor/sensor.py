@@ -2643,6 +2643,8 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_icon = "mdi:timer-play"
         self._attr_native_value = None
         self._started_flag = None
+        self._session_info_coordinator = None
+        self._attr_extra_state_attributes = {}
         # Advertise as enum sensor so HA UI can suggest valid states
         try:
             self._attr_device_class = SensorDeviceClass.ENUM
@@ -2679,6 +2681,20 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 last = await self.async_get_last_state()
                 if last and last.state not in (None, "unknown", "unavailable"):
                     self._attr_native_value = last.state
+                    # Also restore session info attributes
+                    attrs = dict(getattr(last, "attributes", {}) or {})
+                    session_info_keys = {
+                        "meeting_name",
+                        "meeting_location",
+                        "meeting_country",
+                        "circuit_short_name",
+                        "gmt_offset",
+                        "start",
+                        "end",
+                    }
+                    self._attr_extra_state_attributes = {
+                        k: v for k, v in attrs.items() if k in session_info_keys
+                    }
                     try:
                         getLogger(__name__).debug(
                             "SessionStatus: Restored last state: %s", last.state
@@ -2690,6 +2706,21 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._handle_stream_state(updated)
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
+        # Subscribe to SessionInfo for meeting/session metadata
+        try:
+            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            self._session_info_coordinator = reg.get("session_info_coordinator")
+            if self._session_info_coordinator is not None:
+                rem_info = self._session_info_coordinator.async_add_listener(
+                    self._handle_session_info_update
+                )
+                self.async_on_remove(rem_info)
+                # Initialize attributes from coordinator if available
+                info_attrs = self._extract_session_info()
+                if info_attrs:
+                    self._attr_extra_state_attributes.update(info_attrs)
+        except Exception:
+            self._session_info_coordinator = None
         self.async_write_ha_state()
 
     def _extract_current(self) -> dict | None:
@@ -2702,6 +2733,45 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         if isinstance(inner, dict):
             return inner
         return None
+
+    def _extract_session_info(self) -> dict:
+        """Extract session info attributes from SessionInfoCoordinator."""
+        attrs = {}
+        try:
+            if self._session_info_coordinator is None:
+                return attrs
+            data = self._session_info_coordinator.data
+            if not isinstance(data, dict):
+                return attrs
+            meeting = data.get("Meeting") or {}
+            circuit = (
+                meeting.get("Circuit") if isinstance(meeting, dict) else None
+            ) or {}
+            attrs.update(
+                {
+                    "meeting_name": (meeting or {}).get("Name"),
+                    "meeting_location": (meeting or {}).get("Location"),
+                    "meeting_country": ((meeting or {}).get("Country") or {}).get(
+                        "Name"
+                    ),
+                    "circuit_short_name": (circuit or {}).get("ShortName"),
+                    "gmt_offset": data.get("GmtOffset"),
+                    "start": data.get("StartDate"),
+                    "end": data.get("EndDate"),
+                }
+            )
+        except Exception:
+            pass
+        return attrs
+
+    def _handle_session_info_update(self) -> None:
+        """Update attributes when SessionInfo changes."""
+        if not self._is_stream_active():
+            return
+        new_attrs = self._extract_session_info()
+        if new_attrs != self._attr_extra_state_attributes:
+            self._attr_extra_state_attributes = new_attrs
+            self.async_write_ha_state()
 
     def _map_status(self, raw: dict | None) -> str | None:
         if not raw:
@@ -2817,11 +2887,12 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        return {}
+        return self._attr_extra_state_attributes
 
     def _clear_state(self) -> None:
         self._attr_native_value = None
         self._started_flag = None
+        self._attr_extra_state_attributes = {}
 
 
 class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
