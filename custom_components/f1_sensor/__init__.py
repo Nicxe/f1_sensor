@@ -2953,6 +2953,31 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     ident["identity"].update(identity_updates)
                     changed = True
 
+            # Capture Line field as grid position (backup if DriverRaceInfo not available)
+            if "Line" in info:
+                line_raw = info.get("Line")
+                try:
+                    line_pos = str(int(line_raw)) if line_raw is not None else None
+                except (TypeError, ValueError):
+                    line_pos = None
+                if line_pos is not None:
+                    ident.setdefault(
+                        "lap_history",
+                        {
+                            "laps": {},
+                            "last_recorded_lap": 0,
+                            "grid_position": None,
+                            "completed_laps": 0,
+                        },
+                    )
+                    lap_history = ident["lap_history"]
+                    if (
+                        lap_history.get("grid_position") is None
+                        and (lap_history.get("completed_laps") or 0) == 0
+                    ):
+                        lap_history["grid_position"] = line_pos
+                        changed = True
+
         return changed
 
     @staticmethod
@@ -3745,6 +3770,55 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._merge_sessionstatus(ss)
         self._schedule_deliver()
 
+    def _on_driver_race_info(self, payload: dict) -> None:
+        """Handle DriverRaceInfo stream for early grid positions."""
+        if not isinstance(payload, dict):
+            return
+        drivers = self._state["drivers"]
+        changed = False
+        for rn, info in payload.items():
+            if not isinstance(info, dict):
+                continue
+            pos_raw = info.get("Position")
+            if pos_raw is None:
+                continue
+            try:
+                grid_pos = str(pos_raw).strip()
+                if not grid_pos:
+                    continue
+            except (TypeError, ValueError):
+                continue
+
+            entry = drivers.setdefault(rn, {})
+            entry.setdefault("identity", {})
+            entry.setdefault("timing", {})
+            entry.setdefault("tyres", {})
+            entry.setdefault("laps", {})
+            entry.setdefault(
+                "tyre_history", {"stints": [], "current_stint_index": None}
+            )
+            entry.setdefault(
+                "lap_history",
+                {
+                    "laps": {},
+                    "last_recorded_lap": 0,
+                    "grid_position": None,
+                    "completed_laps": 0,
+                },
+            )
+
+            lap_history = entry["lap_history"]
+            # Set grid_position only if not already set and no laps completed
+            if (
+                lap_history.get("grid_position") is None
+                and (lap_history.get("completed_laps") or 0) == 0
+            ):
+                lap_history["grid_position"] = grid_pos
+                changed = True
+
+        if changed:
+            self._schedule_deliver()
+
     def _on_lap_history(self, lh: dict) -> None:
         """Apply pre-built lap history from replay initial state injection."""
         if not isinstance(lh, dict):
@@ -3828,6 +3902,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 pass
             try:
                 self._unsubs.append(bus.subscribe("LapHistory", self._on_lap_history))
+            except Exception:
+                pass
+            try:
+                self._unsubs.append(
+                    bus.subscribe("DriverRaceInfo", self._on_driver_race_info)
+                )
             except Exception:
                 pass
 

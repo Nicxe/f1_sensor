@@ -4617,7 +4617,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:podium"
         self._attr_native_value = None
-        self._attr_extra_state_attributes = {"drivers": {}, "total_laps": None}
+        self._attr_extra_state_attributes = {"drivers": [], "total_laps": None}
         self._last_write_ts: float | None = None
         self._pending_write: bool = False
         self._pit_out_until: dict[str, float] = {}
@@ -4712,6 +4712,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 rn, timing, default_on_track=default_on_track
             )
             drivers_out[rn] = {
+                "racing_number": rn,
                 "tla": identity.get("tla"),
                 "name": identity.get("name"),
                 "team": identity.get("team"),
@@ -4726,9 +4727,24 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 **status_attrs,
             }
 
+        # Sort drivers by position: current_position if available, else grid_position
+        def position_sort_key(drv: dict) -> tuple:
+            current = drv.get("current_position")
+            grid = drv.get("grid_position")
+            # Use current_position if available, otherwise grid_position
+            pos = current if current is not None else grid
+            # Convert to int for proper numeric sorting, fallback to high value
+            try:
+                return (0, int(pos))
+            except (TypeError, ValueError):
+                return (1, 0)  # Drivers without position go last
+
+        # Convert to list and sort to preserve order in Home Assistant
+        drivers_list = sorted(drivers_out.values(), key=position_sort_key)
+
         self._attr_native_value = lap_current
         self._attr_extra_state_attributes = {
-            "drivers": drivers_out,
+            "drivers": drivers_list,
             "total_laps": lap_total,
         }
         return True
@@ -4817,7 +4833,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _clear_state(self) -> None:
         self._attr_native_value = None
-        self._attr_extra_state_attributes = {"drivers": {}, "total_laps": None}
+        self._attr_extra_state_attributes = {"drivers": [], "total_laps": None}
 
     def _rate_limited_write(self) -> None:
         """Write state with 1-second rate limiting."""

@@ -49,6 +49,7 @@ REPLAY_STREAMS = [
     "TeamRadio",
     "PitStopSeries",
     "ChampionshipPrediction",
+    "DriverRaceInfo",
 ]
 
 STATIC_BASE = "https://livetiming.formula1.com/static"
@@ -899,6 +900,78 @@ class ReplaySessionManager:
     def _has_lap_history_state(state: Dict[str, Any]) -> bool:
         return isinstance(state, dict) and bool(state)
 
+    def _extract_grid_from_driver_race_info(
+        self,
+        state: Dict[str, Any],
+        payload: dict,
+    ) -> None:
+        """Extract grid positions from DriverRaceInfo Position field."""
+        if not isinstance(payload, dict):
+            return
+        for rn, info in payload.items():
+            if not isinstance(info, dict):
+                continue
+            pos_raw = info.get("Position")
+            if pos_raw is None:
+                continue
+            try:
+                grid_pos = str(pos_raw).strip()
+                if not grid_pos:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            rn_key = str(rn)
+            driver_entry = state.setdefault(
+                rn_key,
+                {
+                    "laps": {},
+                    "last_recorded_lap": 0,
+                    "grid_position": None,
+                    "completed_laps": 0,
+                    "_last_lap_time": None,
+                },
+            )
+            if (
+                driver_entry.get("grid_position") is None
+                and (driver_entry.get("completed_laps") or 0) == 0
+            ):
+                driver_entry["grid_position"] = grid_pos
+
+    def _extract_grid_from_driverlist(
+        self,
+        state: Dict[str, Any],
+        payload: dict,
+    ) -> None:
+        """Extract grid positions from DriverList Line field (backup)."""
+        if not isinstance(payload, dict):
+            return
+        for rn, info in payload.items():
+            if not isinstance(info, dict):
+                continue
+            line_raw = info.get("Line")
+            if line_raw is None:
+                continue
+            try:
+                line_pos = str(int(line_raw))
+            except (TypeError, ValueError):
+                continue
+            rn_key = str(rn)
+            driver_entry = state.setdefault(
+                rn_key,
+                {
+                    "laps": {},
+                    "last_recorded_lap": 0,
+                    "grid_position": None,
+                    "completed_laps": 0,
+                    "_last_lap_time": None,
+                },
+            )
+            if (
+                driver_entry.get("grid_position") is None
+                and (driver_entry.get("completed_laps") or 0) == 0
+            ):
+                driver_entry["grid_position"] = line_pos
+
     def _build_initial_state(
         self, frames: List[ReplayFrame], start_ms: int
     ) -> Dict[str, Any]:
@@ -926,6 +999,14 @@ class ReplaySessionManager:
                 self._merge_lap_history_state(
                     lap_history_state, last_lap_times, frame.payload
                 )
+                initial_state[frame.stream] = frame.payload
+            elif frame.stream == "DriverRaceInfo" and isinstance(frame.payload, dict):
+                self._extract_grid_from_driver_race_info(
+                    lap_history_state, frame.payload
+                )
+                initial_state[frame.stream] = frame.payload
+            elif frame.stream == "DriverList" and isinstance(frame.payload, dict):
+                self._extract_grid_from_driverlist(lap_history_state, frame.payload)
                 initial_state[frame.stream] = frame.payload
             else:
                 initial_state[frame.stream] = frame.payload
