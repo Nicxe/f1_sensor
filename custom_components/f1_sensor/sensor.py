@@ -4599,12 +4599,19 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     "2": "1:31.789",
                     ...
                 },
-                "completed_laps": 45
+                "completed_laps": 45,
+                "status": "on_track",
+                "in_pit": False,
+                "pit_out": False,
+                "retired": False,
+                "stopped": False,
             },
             ...
         }
         - total_laps: 70 (race distance, if known)
     """
+
+    _PIT_OUT_HOLD_SECONDS = 6.0
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -4613,6 +4620,8 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_extra_state_attributes = {"drivers": {}, "total_laps": None}
         self._last_write_ts: float | None = None
         self._pending_write: bool = False
+        self._pit_out_until: dict[str, float] = {}
+        self._pit_out_last: dict[str, bool] = {}
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -4681,12 +4690,14 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         lap_current = data.get("lap_current")
         lap_total = data.get("lap_total")
+        default_on_track = self._is_replay_active()
 
         # Build output structure
         drivers_out = {}
         for rn, info in drivers_raw.items():
             identity = info.get("identity", {})
             lap_history = info.get("lap_history", {})
+            timing = info.get("timing", {})
 
             # Normalize team color
             team_color = identity.get("team_color")
@@ -4697,6 +4708,9 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             ):
                 team_color = f"#{team_color}"
 
+            status, status_attrs = self._derive_driver_status(
+                rn, timing, default_on_track=default_on_track
+            )
             drivers_out[rn] = {
                 "tla": identity.get("tla"),
                 "name": identity.get("name"),
@@ -4708,6 +4722,8 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "completed_laps": lap_history.get(
                     "completed_laps", lap_history.get("last_recorded_lap", 0)
                 ),
+                "status": status,
+                **status_attrs,
             }
 
         self._attr_native_value = lap_current
@@ -4716,6 +4732,88 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "total_laps": lap_total,
         }
         return True
+
+    def _is_replay_active(self) -> bool:
+        """Return True when replay mode is playing/paused."""
+        reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(
+            self._entry_id, {}
+        ) or {}
+        replay_controller = reg.get("replay_controller")
+        if replay_controller is None:
+            return False
+        try:
+            from .replay_mode import ReplayState
+
+            return replay_controller.state in (
+                ReplayState.PLAYING,
+                ReplayState.PAUSED,
+            )
+        except Exception:
+            return False
+
+    def _derive_driver_status(
+        self,
+        rn: str,
+        timing: dict | None,
+        now: float | None = None,
+        default_on_track: bool = False,
+    ) -> tuple[str | None, dict[str, object]]:
+        """Derive a dashboard-friendly status and raw flags for a driver."""
+        if not isinstance(timing, dict):
+            timing = {}
+
+        import time as _time
+
+        if now is None:
+            now = _time.monotonic()
+
+        has_timing = bool(timing)
+        in_pit = timing.get("in_pit") if "in_pit" in timing else None
+        pit_out_raw = timing.get("pit_out") if "pit_out" in timing else None
+        retired = timing.get("retired") if "retired" in timing else None
+        stopped = timing.get("stopped") if "stopped" in timing else None
+        if default_on_track and not has_timing:
+            self._pit_out_until.pop(rn, None)
+            self._pit_out_last.pop(rn, None)
+            in_pit = False
+            retired = False
+            stopped = False
+
+        pit_out_recent = False
+        last_raw = self._pit_out_last.get(rn)
+        if pit_out_raw is True and last_raw is not True:
+            self._pit_out_until[rn] = now + self._PIT_OUT_HOLD_SECONDS
+        if pit_out_raw is not None:
+            self._pit_out_last[rn] = pit_out_raw
+
+        until = self._pit_out_until.get(rn)
+        if until is not None:
+            if until >= now:
+                pit_out_recent = True
+            else:
+                self._pit_out_until.pop(rn, None)
+
+        status: str | None = None
+        if default_on_track:
+            in_pit = bool(in_pit) if in_pit is not None else False
+            retired = bool(retired) if retired is not None else False
+            stopped = bool(stopped) if stopped is not None else False
+        if has_timing or default_on_track:
+            if retired is True or stopped is True:
+                status = "out"
+            elif in_pit is True:
+                status = "pit_in"
+            elif pit_out_recent is True:
+                status = "pit_out"
+            else:
+                status = "on_track"
+
+        return status, {
+            "in_pit": in_pit if (has_timing or default_on_track) else None,
+            "pit_out": pit_out_recent if (has_timing or default_on_track) else None,
+            "retired": retired if (has_timing or default_on_track) else None,
+            "stopped": stopped if (has_timing or default_on_track) else None,
+        }
 
     def _clear_state(self) -> None:
         self._attr_native_value = None

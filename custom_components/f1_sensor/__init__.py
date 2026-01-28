@@ -2814,7 +2814,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
       "drivers": {
          rn: {
             "identity": {"tla","name","team","team_color","racing_number"},
-            "timing": {"position","gap_to_leader","interval","last_lap","best_lap","in_pit","retired","stopped","status_code"},
+            "timing": {"position","gap_to_leader","interval","last_lap","best_lap","in_pit","pit_out","retired","stopped","status_code"},
             "tyres": {"compound","stint_laps","new"},
             "laps": {"lap_current","lap_total"},
          },
@@ -3057,6 +3057,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 in_pit = bool(td.get("InPit"))
                 if timing.get("in_pit") != in_pit:
                     timing["in_pit"] = in_pit
+                    changed = True
+            if "PitOut" in td:
+                pit_out = bool(td.get("PitOut"))
+                if timing.get("pit_out") != pit_out:
+                    timing["pit_out"] = pit_out
                     changed = True
             if "Retired" in td:
                 retired = bool(td.get("Retired"))
