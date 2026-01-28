@@ -148,6 +148,7 @@ async def async_setup_entry(
         "session_status",
         "current_session",
         "safety_car",
+        "formation_start",
         "fia_documents",
         "race_control",
         "top_three",
