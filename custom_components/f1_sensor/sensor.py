@@ -158,6 +158,8 @@ async def async_setup_entry(
         "live_timing_diagnostics",
         "tyre_statistics",
         "driver_positions",
+        "track_limits",
+        "investigations",
     }
     raw_enabled = entry.data.get("enabled_sensors", [])
     normalized = []
@@ -216,6 +218,11 @@ async def async_setup_entry(
         "driver_positions": (F1DriverPositionsSensor, data.get("drivers_coordinator")),
         "fia_documents": (F1FiaDocumentsSensor, data.get("fia_documents_coordinator")),
         "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
+        "track_limits": (F1TrackLimitsSensor, data.get("race_control_coordinator")),
+        "investigations": (
+            F1InvestigationsSensor,
+            data.get("race_control_coordinator"),
+        ),
         "top_three": (None, data.get("top_three_coordinator")),
         "team_radio": (F1TeamRadioSensor, data.get("team_radio_coordinator")),
         "pitstops": (F1PitStopsSensor, data.get("pitstop_coordinator")),
@@ -2645,6 +2652,7 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_native_value = None
         self._started_flag = None
         self._session_info_coordinator = None
+        self._race_control_coordinator = None
         self._attr_extra_state_attributes = {}
         # Advertise as enum sensor so HA UI can suggest valid states
         try:
@@ -2722,6 +2730,20 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     self._attr_extra_state_attributes.update(info_attrs)
         except Exception:
             self._session_info_coordinator = None
+        # Subscribe to RaceControlCoordinator for track grip detection
+        try:
+            self._race_control_coordinator = reg.get("race_control_coordinator")
+            if self._race_control_coordinator is not None:
+                rem_race_ctrl = self._race_control_coordinator.async_add_listener(
+                    self._handle_race_control_update
+                )
+                self.async_on_remove(rem_race_ctrl)
+                # Initialize track_grip attribute
+                self._attr_extra_state_attributes["track_grip"] = (
+                    self._detect_track_grip()
+                )
+        except Exception:
+            self._race_control_coordinator = None
         self.async_write_ha_state()
 
     def _extract_current(self) -> dict | None:
@@ -2772,6 +2794,43 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         new_attrs = self._extract_session_info()
         if new_attrs != self._attr_extra_state_attributes:
             self._attr_extra_state_attributes = new_attrs
+            self.async_write_ha_state()
+
+    def _detect_track_grip(self) -> str | None:
+        """Detect current track grip condition from Race Control messages.
+
+        Returns:
+            "low": LOW GRIP CONDITIONS declared
+            "normal": NORMAL GRIP CONDITIONS declared or no declaration
+            None: No data available
+        """
+        if self._race_control_coordinator is None:
+            return None
+
+        messages = getattr(self._race_control_coordinator, "data_list", None)
+        if not isinstance(messages, list) or not messages:
+            return None
+
+        # Find the most recent grip-related message
+        latest_grip = None
+        for msg in messages:
+            message_text = (msg.get("Message") or "").upper()
+            if "LOW GRIP CONDITIONS" in message_text:
+                latest_grip = "low"
+            elif "NORMAL GRIP CONDITIONS" in message_text:
+                latest_grip = "normal"
+
+        # Default to "normal" if no grip message found (dry race)
+        return latest_grip if latest_grip else "normal"
+
+    def _handle_race_control_update(self) -> None:
+        """Update track_grip attribute when race control messages change."""
+        if not self._is_stream_active():
+            return
+        grip = self._detect_track_grip()
+        current = self._attr_extra_state_attributes.get("track_grip")
+        if current != grip:
+            self._attr_extra_state_attributes["track_grip"] = grip
             self.async_write_ha_state()
 
     def _map_status(self, raw: dict | None) -> str | None:
@@ -3436,6 +3495,662 @@ class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._last_event_id = None
         self._history = []
         self._sequence = 0
+
+
+# Regex patterns for track limits parsing
+_TRACK_LIMITS_DELETED = re.compile(
+    r"CAR (\d+) \(([A-Z]{2,3})\) (?:TIME [0-9:.]+|LAP) DELETED - "
+    r"TRACK LIMITS AT TURN (\d+) LAP (\d+)",
+    re.IGNORECASE,
+)
+_TRACK_LIMITS_WARNING = re.compile(
+    r"BLACK AND WHITE FLAG FOR CAR (\d+) \(([A-Z]{2,3})\) - TRACK LIMITS",
+    re.IGNORECASE,
+)
+_TRACK_LIMITS_PENALTY = re.compile(
+    r"(\d+ SECOND TIME PENALTY) FOR CAR (\d+) \(([A-Z]{2,3})\) - TRACK LIMITS",
+    re.IGNORECASE,
+)
+
+
+class F1TrackLimitsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Sensor tracking track limits violations per driver.
+
+    State: Total number of track limit violations in this session.
+    Attributes:
+        - by_driver: Dict keyed by TLA with violations per driver
+        - total_deletions: Count of deleted times/laps
+        - total_warnings: Count of BLACK AND WHITE flags
+        - total_penalties: Count of track limits penalties
+        - last_update: ISO timestamp of last update
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:map-marker-off"
+        self._attr_native_value = 0
+        self._by_driver: dict[str, dict] = {}
+        self._processed_ids: set[str] = set()
+        self._attr_extra_state_attributes = {
+            "by_driver": {},
+            "total_deletions": 0,
+            "total_warnings": 0,
+            "total_penalties": 0,
+            "last_update": None,
+        }
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+
+        # Process existing messages
+        stream_active = self._is_stream_active()
+        if stream_active:
+            self._process_all_messages()
+            if not self._by_driver:
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    try:
+                        self._attr_native_value = int(last.state)
+                    except (ValueError, TypeError):
+                        self._attr_native_value = 0
+                    attrs = dict(getattr(last, "attributes", {}) or {})
+                    self._attr_extra_state_attributes = attrs
+                    by_driver = attrs.get("by_driver")
+                    if isinstance(by_driver, dict):
+                        self._by_driver = by_driver
+        else:
+            self._clear_state()
+
+        # Signal stream state - treat as updated when stream is active
+        self._handle_stream_state(stream_active)
+        self.async_write_ha_state()
+
+    def _build_message_id(self, msg: dict) -> str:
+        utc = msg.get("Utc") or msg.get("utc") or ""
+        message = msg.get("Message") or ""
+        return f"{utc}|{message}"
+
+    def _process_message(self, msg: dict) -> bool:
+        """Process a single race control message for track limits data.
+
+        Returns True if a new violation was detected.
+        """
+        message_text = msg.get("Message") or ""
+        if "TRACK LIMITS" not in message_text.upper():
+            return False
+
+        msg_id = self._build_message_id(msg)
+        if msg_id in self._processed_ids:
+            return False
+        self._processed_ids.add(msg_id)
+
+        utc = msg.get("Utc") or msg.get("utc")
+        lap = msg.get("Lap")
+
+        # Check for time/lap deleted
+        match = _TRACK_LIMITS_DELETED.search(message_text)
+        if match:
+            racing_number, tla, turn, violation_lap = match.groups()
+            self._add_violation(
+                tla=tla.upper(),
+                racing_number=racing_number,
+                violation_type="time_deleted",
+                utc=utc,
+                lap=lap,
+                turn=int(turn),
+            )
+            return True
+
+        # Check for BLACK AND WHITE flag warning
+        match = _TRACK_LIMITS_WARNING.search(message_text)
+        if match:
+            racing_number, tla = match.groups()
+            self._add_violation(
+                tla=tla.upper(),
+                racing_number=racing_number,
+                violation_type="warning",
+                utc=utc,
+                lap=lap,
+                turn=None,
+            )
+            return True
+
+        # Check for penalty
+        match = _TRACK_LIMITS_PENALTY.search(message_text)
+        if match:
+            penalty_text, racing_number, tla = match.groups()
+            self._add_violation(
+                tla=tla.upper(),
+                racing_number=racing_number,
+                violation_type="penalty",
+                utc=utc,
+                lap=lap,
+                turn=None,
+                penalty=penalty_text.upper(),
+            )
+            return True
+
+        return False
+
+    def _add_violation(
+        self,
+        *,
+        tla: str,
+        racing_number: str,
+        violation_type: str,
+        utc: str | None,
+        lap: int | None,
+        turn: int | None,
+        penalty: str | None = None,
+    ) -> None:
+        """Add a violation to the driver's record."""
+        if tla not in self._by_driver:
+            self._by_driver[tla] = {
+                "racing_number": racing_number,
+                "deletions": 0,
+                "warning": False,
+                "penalty": None,
+                "violations": [],
+            }
+
+        driver_data = self._by_driver[tla]
+        violation = {
+            "utc": utc,
+            "lap": lap,
+            "turn": turn,
+            "type": violation_type,
+        }
+
+        if violation_type == "time_deleted":
+            driver_data["deletions"] += 1
+        elif violation_type == "warning":
+            driver_data["warning"] = True
+        elif violation_type == "penalty":
+            driver_data["penalty"] = penalty
+            violation["penalty"] = penalty
+
+        driver_data["violations"].append(violation)
+
+    def _process_all_messages(self) -> None:
+        """Process all messages from the coordinator."""
+        messages = getattr(self.coordinator, "data_list", None)
+        if not isinstance(messages, list):
+            return
+
+        for msg in messages:
+            if isinstance(msg, dict):
+                self._process_message(msg)
+
+        self._update_attributes()
+
+    def _update_attributes(self) -> None:
+        """Update sensor attributes and state."""
+        total_deletions = sum(d.get("deletions", 0) for d in self._by_driver.values())
+        total_warnings = sum(1 for d in self._by_driver.values() if d.get("warning"))
+        total_penalties = sum(
+            1 for d in self._by_driver.values() if d.get("penalty") is not None
+        )
+
+        self._attr_native_value = total_deletions + total_warnings
+        self._attr_extra_state_attributes = {
+            "by_driver": dict(self._by_driver),
+            "total_deletions": total_deletions,
+            "total_warnings": total_warnings,
+            "total_penalties": total_penalties,
+            "last_update": dt_util.utcnow().isoformat(timespec="seconds"),
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        messages = getattr(self.coordinator, "data_list", None)
+        updated = isinstance(messages, list) and len(messages) > 0
+
+        if not self._handle_stream_state(updated):
+            return
+
+        if not self._is_stream_active():
+            self._safe_write_ha_state()
+            return
+
+        if not isinstance(messages, list):
+            return
+
+        # Process any new messages
+        changed = False
+        for msg in messages:
+            if isinstance(msg, dict) and self._process_message(msg):
+                changed = True
+
+        if changed:
+            self._update_attributes()
+            self._safe_write_ha_state()
+
+    @property
+    def state(self):
+        return self._attr_native_value
+
+    @property
+    def available(self) -> bool:
+        """Always available - shows 0 when no violations have occurred."""
+        return True
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = 0
+        self._by_driver = {}
+        self._processed_ids = set()
+        self._attr_extra_state_attributes = {
+            "by_driver": {},
+            "total_deletions": 0,
+            "total_warnings": 0,
+            "total_penalties": 0,
+            "last_update": None,
+        }
+
+
+# Regex patterns for investigations/penalties parsing
+_DRIVER_PATTERN = re.compile(r"CAR (\d+) \(([A-Z]{2,3})\)")
+_INCIDENT_NOTED = re.compile(
+    r"(?:(?:TURN \d+|PIT LANE|START/FINISH STRAIGHT) )?"
+    r"INCIDENT INVOLVING (?:CARS? )?.+ NOTED",
+    re.IGNORECASE,
+)
+_UNDER_INVESTIGATION = re.compile(
+    r"FIA STEWARDS: .+ UNDER INVESTIGATION",
+    re.IGNORECASE,
+)
+_NO_FURTHER_INVESTIGATION = re.compile(
+    r"FIA STEWARDS: .+ (?:REVIEWED )?NO FURTHER INVESTIGATION",
+    re.IGNORECASE,
+)
+_PENALTY_ISSUED = re.compile(
+    r"FIA STEWARDS: (\d+ SECOND TIME PENALTY|DRIVE THROUGH PENALTY|"
+    r"\d+ (?:SECOND )?STOP/?GO PENALTY|REPRIMAND \([^)]+\)) "
+    r"FOR CAR (\d+) \(([A-Z]{2,3})\)",
+    re.IGNORECASE,
+)
+_PENALTY_SERVED = re.compile(
+    r"FIA STEWARDS: PENALTY SERVED",
+    re.IGNORECASE,
+)
+_WILL_BE_INVESTIGATED_AFTER = re.compile(
+    r"WILL BE INVESTIGATED AFTER THE RACE",
+    re.IGNORECASE,
+)
+_LOCATION_PATTERN = re.compile(
+    r"(TURN \d+|PIT LANE|START/FINISH STRAIGHT)",
+    re.IGNORECASE,
+)
+_REASON_PATTERN = re.compile(
+    r"(?:NOTED|UNDER INVESTIGATION|NO FURTHER INVESTIGATION) - (.+?)$",
+    re.IGNORECASE,
+)
+
+
+class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Sensor tracking investigations and penalties per driver.
+
+    State: Number of active investigations (NOTED or UNDER INVESTIGATION).
+    Attributes:
+        - active: List of active investigations
+        - by_driver: Dict keyed by TLA with investigation history per driver
+        - penalties_pending: List of pending penalties
+        - penalties_served: Count of served penalties
+        - total_investigations: Count of all investigations
+        - last_update: ISO timestamp of last update
+    """
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:account-search"
+        self._attr_native_value = 0
+        self._active: list[dict] = []
+        self._by_driver: dict[str, dict] = {}
+        self._penalties_pending: list[dict] = []
+        self._penalties_served: int = 0
+        self._processed_ids: set[str] = set()
+        self._attr_extra_state_attributes = {
+            "active": [],
+            "by_driver": {},
+            "penalties_pending": [],
+            "penalties_served": 0,
+            "total_investigations": 0,
+            "last_update": None,
+        }
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+
+        # Process existing messages
+        stream_active = self._is_stream_active()
+        if stream_active:
+            self._process_all_messages()
+            if not self._by_driver:
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    try:
+                        self._attr_native_value = int(last.state)
+                    except (ValueError, TypeError):
+                        self._attr_native_value = 0
+                    attrs = dict(getattr(last, "attributes", {}) or {})
+                    self._attr_extra_state_attributes = attrs
+                    by_driver = attrs.get("by_driver")
+                    if isinstance(by_driver, dict):
+                        self._by_driver = by_driver
+                    active = attrs.get("active")
+                    if isinstance(active, list):
+                        self._active = active
+        else:
+            self._clear_state()
+
+        # Signal stream state - treat as updated when stream is active
+        self._handle_stream_state(stream_active)
+        self.async_write_ha_state()
+
+    def _build_message_id(self, msg: dict) -> str:
+        utc = msg.get("Utc") or msg.get("utc") or ""
+        message = msg.get("Message") or ""
+        return f"{utc}|{message}"
+
+    def _extract_drivers(self, message: str) -> list[tuple[str, str]]:
+        """Extract all drivers (racing_number, tla) from a message."""
+        return [
+            (m.group(1), m.group(2).upper()) for m in _DRIVER_PATTERN.finditer(message)
+        ]
+
+    def _extract_location(self, message: str) -> str | None:
+        """Extract location (TURN X, PIT LANE, etc.) from message."""
+        match = _LOCATION_PATTERN.search(message)
+        return match.group(1).upper() if match else None
+
+    def _extract_reason(self, message: str) -> str | None:
+        """Extract reason from message."""
+        match = _REASON_PATTERN.search(message)
+        return match.group(1).strip().upper() if match else None
+
+    def _process_message(self, msg: dict) -> bool:
+        """Process a single race control message for investigation/penalty data.
+
+        Returns True if state changed.
+        """
+        message_text = msg.get("Message") or ""
+        message_upper = message_text.upper()
+
+        # Skip messages without investigation/penalty keywords
+        if not any(
+            kw in message_upper
+            for kw in [
+                "NOTED",
+                "INVESTIGATION",
+                "PENALTY",
+                "REPRIMAND",
+                "NO FURTHER",
+            ]
+        ):
+            return False
+
+        # Skip track limits (handled by TrackLimitsSensor) unless it's a penalty
+        if "TRACK LIMITS" in message_upper and "PENALTY" not in message_upper:
+            return False
+
+        msg_id = self._build_message_id(msg)
+        if msg_id in self._processed_ids:
+            return False
+        self._processed_ids.add(msg_id)
+
+        utc = msg.get("Utc") or msg.get("utc")
+        lap = msg.get("Lap")
+        drivers = self._extract_drivers(message_text)
+        location = self._extract_location(message_text)
+        reason = self._extract_reason(message_text)
+
+        # Check for PENALTY SERVED
+        if _PENALTY_SERVED.search(message_text):
+            self._penalties_served += 1
+            # Remove from pending if we can match it
+            if drivers:
+                tlas = [d[1] for d in drivers]
+                self._penalties_pending = [
+                    p for p in self._penalties_pending if p.get("driver") not in tlas
+                ]
+            # Update driver history to mark as served
+            for racing_number, tla in drivers:
+                if tla in self._by_driver:
+                    history = self._by_driver[tla].get("history", [])
+                    for h in reversed(history):
+                        if h.get("outcome") and not h.get("served"):
+                            h["served"] = True
+                            break
+            return True
+
+        # Check for penalty issued
+        match = _PENALTY_ISSUED.search(message_text)
+        if match:
+            penalty_text = match.group(1).upper()
+            racing_number = match.group(2)
+            tla = match.group(3).upper()
+
+            # Remove from active investigations
+            self._active = [
+                inv
+                for inv in self._active
+                if tla not in inv.get("drivers", [])
+                or (reason and inv.get("reason") != reason)
+            ]
+
+            # Add to pending penalties
+            self._penalties_pending.append(
+                {
+                    "driver": tla,
+                    "racing_number": racing_number,
+                    "penalty": penalty_text,
+                    "reason": reason,
+                    "utc": utc,
+                }
+            )
+
+            # Add to driver history
+            self._ensure_driver(tla, racing_number)
+            self._by_driver[tla]["penalties"] += 1
+            self._by_driver[tla]["history"].append(
+                {
+                    "utc": utc,
+                    "lap": lap,
+                    "location": location,
+                    "reason": reason,
+                    "outcome": penalty_text,
+                    "served": False,
+                }
+            )
+            return True
+
+        # Check for NO FURTHER INVESTIGATION
+        if _NO_FURTHER_INVESTIGATION.search(message_text):
+            # Remove from active
+            if drivers:
+                driver_tlas = [d[1] for d in drivers]
+                self._active = [
+                    inv
+                    for inv in self._active
+                    if not any(tla in inv.get("drivers", []) for tla in driver_tlas)
+                    or (reason and inv.get("reason") != reason)
+                ]
+                # Update driver history
+                for racing_number, tla in drivers:
+                    if tla in self._by_driver:
+                        history = self._by_driver[tla].get("history", [])
+                        for h in reversed(history):
+                            if h.get("outcome") is None:
+                                h["outcome"] = "NO FURTHER INVESTIGATION"
+                                break
+            return True
+
+        # Check for UNDER INVESTIGATION
+        if _UNDER_INVESTIGATION.search(message_text):
+            if drivers:
+                # Update existing active investigation to under_investigation
+                driver_tlas = [d[1] for d in drivers]
+                for inv in self._active:
+                    if any(tla in inv.get("drivers", []) for tla in driver_tlas):
+                        inv["status"] = "under_investigation"
+                        return True
+            return False
+
+        # Check for WILL BE INVESTIGATED AFTER THE RACE
+        if _WILL_BE_INVESTIGATED_AFTER.search(message_text):
+            if drivers:
+                driver_tlas = [d[1] for d in drivers]
+                racing_numbers = [d[0] for d in drivers]
+                self._active.append(
+                    {
+                        "utc": utc,
+                        "lap": lap,
+                        "drivers": driver_tlas,
+                        "racing_numbers": racing_numbers,
+                        "location": location,
+                        "reason": reason,
+                        "status": "after_race",
+                    }
+                )
+                for racing_number, tla in drivers:
+                    self._ensure_driver(tla, racing_number)
+                    self._by_driver[tla]["investigations"] += 1
+                    self._by_driver[tla]["history"].append(
+                        {
+                            "utc": utc,
+                            "lap": lap,
+                            "location": location,
+                            "reason": reason,
+                            "outcome": None,
+                            "served": False,
+                        }
+                    )
+            return True
+
+        # Check for INCIDENT NOTED
+        if _INCIDENT_NOTED.search(message_text):
+            if drivers:
+                driver_tlas = [d[1] for d in drivers]
+                racing_numbers = [d[0] for d in drivers]
+                self._active.append(
+                    {
+                        "utc": utc,
+                        "lap": lap,
+                        "drivers": driver_tlas,
+                        "racing_numbers": racing_numbers,
+                        "location": location,
+                        "reason": reason,
+                        "status": "noted",
+                    }
+                )
+                for racing_number, tla in drivers:
+                    self._ensure_driver(tla, racing_number)
+                    self._by_driver[tla]["investigations"] += 1
+                    self._by_driver[tla]["history"].append(
+                        {
+                            "utc": utc,
+                            "lap": lap,
+                            "location": location,
+                            "reason": reason,
+                            "outcome": None,
+                            "served": False,
+                        }
+                    )
+            return True
+
+        return False
+
+    def _ensure_driver(self, tla: str, racing_number: str) -> None:
+        """Ensure a driver entry exists."""
+        if tla not in self._by_driver:
+            self._by_driver[tla] = {
+                "racing_number": racing_number,
+                "investigations": 0,
+                "penalties": 0,
+                "history": [],
+            }
+
+    def _process_all_messages(self) -> None:
+        """Process all messages from the coordinator."""
+        messages = getattr(self.coordinator, "data_list", None)
+        if not isinstance(messages, list):
+            return
+
+        for msg in messages:
+            if isinstance(msg, dict):
+                self._process_message(msg)
+
+        self._update_attributes()
+
+    def _update_attributes(self) -> None:
+        """Update sensor attributes and state."""
+        active_count = len(
+            [inv for inv in self._active if inv.get("status") != "after_race"]
+        )
+        total_investigations = sum(
+            d.get("investigations", 0) for d in self._by_driver.values()
+        )
+
+        self._attr_native_value = active_count
+        self._attr_extra_state_attributes = {
+            "active": list(self._active),
+            "by_driver": dict(self._by_driver),
+            "penalties_pending": list(self._penalties_pending),
+            "penalties_served": self._penalties_served,
+            "total_investigations": total_investigations,
+            "last_update": dt_util.utcnow().isoformat(timespec="seconds"),
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        messages = getattr(self.coordinator, "data_list", None)
+        updated = isinstance(messages, list) and len(messages) > 0
+
+        if not self._handle_stream_state(updated):
+            return
+
+        if not self._is_stream_active():
+            self._safe_write_ha_state()
+            return
+
+        if not isinstance(messages, list):
+            return
+
+        # Process any new messages
+        changed = False
+        for msg in messages:
+            if isinstance(msg, dict) and self._process_message(msg):
+                changed = True
+
+        if changed:
+            self._update_attributes()
+            self._safe_write_ha_state()
+
+    @property
+    def state(self):
+        return self._attr_native_value
+
+    @property
+    def available(self) -> bool:
+        """Always available - shows 0 when no investigations have occurred."""
+        return True
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = 0
+        self._active = []
+        self._by_driver = {}
+        self._penalties_pending = []
+        self._penalties_served = 0
+        self._processed_ids = set()
+        self._attr_extra_state_attributes = {
+            "active": [],
+            "by_driver": {},
+            "penalties_pending": [],
+            "penalties_served": 0,
+            "total_investigations": 0,
+            "last_update": None,
+        }
 
 
 class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
