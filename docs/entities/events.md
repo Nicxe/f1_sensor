@@ -57,8 +57,10 @@ data:
 ```
 
 :::info
-Race Control is now exposed both as a [sensor](/entities/live-data#race-control) (for dashboards and history) and as events (for real-time automations and triggers).  
+Race Control is now exposed both as a [sensor](/entities/live-data#race-control) (for dashboards and history) and as events (for real-time automations and triggers).
 The event stream remains available as a complementary, low-latency feed alongside the sensor.
+
+For example automations using these events, see the [Automation](/automation) page.
 :::
 
 ## Future Event Streams

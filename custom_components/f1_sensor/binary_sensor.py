@@ -214,17 +214,22 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
         self.coordinator.async_add_listener(self._handle_coordinator_update)
         # Prefer coordinator's latest if present
         payload, ts = self._extract_payload()
+        updated = payload is not None
         if payload is not None:
             self._update_from_track_status()
         else:
-            # Restore last state
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._attr_is_on = last.state in (True, "on", "True", "true")
-                self._attr_extra_state_attributes = {
-                    **(self._attr_extra_state_attributes or {}),
-                    "restored": True,
-                }
+            if self._is_stream_active():
+                # Restore last state
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    self._attr_is_on = last.state in (True, "on", "True", "true")
+                    self._attr_extra_state_attributes = {
+                        **(self._attr_extra_state_attributes or {}),
+                        "restored": True,
+                    }
+            else:
+                self._clear_state()
+        self._handle_stream_state(updated)
         self.async_write_ha_state()
 
     def _extract_payload(self) -> tuple[dict | None, datetime.datetime | None]:
@@ -280,12 +285,26 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
             self._last_ts = ts
 
     def _handle_coordinator_update(self) -> None:
+        payload, _ = self._extract_payload()
+        updated = payload is not None
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
+            self.async_write_ha_state()
+            return
+        if payload is None:
+            return
         self._update_from_track_status()
         self.async_write_ha_state()
 
     @property
     def is_on(self) -> bool:
         return self._attr_is_on
+
+    def _clear_state(self) -> None:
+        self._attr_is_on = False
+        self._attr_extra_state_attributes = {}
+        self._last_ts = None
 
 
 class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
@@ -319,7 +338,7 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
         if live_state is not None and hasattr(live_state, "add_listener"):
             try:
                 self._unsub_live_state = live_state.add_listener(
-                    lambda *_: self._safe_write_ha_state()
+                    self._handle_live_state
                 )
                 self.async_on_remove(self._unsub_live_state)
             except Exception:  # noqa: BLE001
@@ -359,6 +378,10 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
         return self._attrs
 
     def _handle_update(self, snapshot: dict[str, Any]) -> None:
+        if not self._is_stream_active():
+            self._clear_state()
+            self._safe_write_ha_state()
+            return
         self._is_on = snapshot.get("status") == "ready"
         self._attrs = {
             "status": snapshot.get("status"),
@@ -371,6 +394,15 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
             "error": snapshot.get("error"),
         }
         self._safe_write_ha_state()
+
+    def _handle_live_state(self, is_live: bool, _reason: str | None) -> None:
+        if not is_live and not self._is_stream_active():
+            self._clear_state()
+        self._safe_write_ha_state()
+
+    def _clear_state(self) -> None:
+        self._is_on = False
+        self._attrs = {}
 
 
 class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):

@@ -76,3 +76,35 @@ FIA_SEASON_LIST_URL = f"{FIA_DOCUMENTS_BASE_URL}/season"
 FIA_SEASON_FALLBACK_URL = f"{FIA_DOCUMENTS_BASE_URL}/season/season-2025-2071"
 FIA_DOCS_POLL_INTERVAL = 900  # seconds
 FIA_DOCS_FETCH_TIMEOUT = 15
+
+# Country flag support
+FLAG_CDN_BASE_URL = "https://flagcdn.com/w80"
+
+F1_COUNTRY_CODES: dict[str, str] = {
+    "Bahrain": "bh",
+    "Saudi Arabia": "sa",
+    "Australia": "au",
+    "Japan": "jp",
+    "China": "cn",
+    "USA": "us",
+    "Monaco": "mc",
+    "Canada": "ca",
+    "Spain": "es",
+    "Austria": "at",
+    "UK": "gb",
+    "Hungary": "hu",
+    "Belgium": "be",
+    "Netherlands": "nl",
+    "Italy": "it",
+    "Azerbaijan": "az",
+    "Singapore": "sg",
+    "Mexico": "mx",
+    "Brazil": "br",
+    "Qatar": "qa",
+    "UAE": "ae",
+    # Variants used by API
+    "United States": "us",
+    "United Arab Emirates": "ae",
+    "United Kingdom": "gb",
+    "Great Britain": "gb",
+}

@@ -58,7 +58,8 @@
       "pitstops": { "name": "Depåstopp" },
       "championship_prediction": { "name": "Mästerskapsprognos" },
       "fia_documents": { "name": "FIA-beslut" },
-      "live_timing_mode": { "name": "Live timing-läge" }
+      "live_timing_mode": { "name": "Live timing-läge" },
+      "driver_positions": { "name": "Förarpositioner" }
     },
     "media_player": {
       "replay_player": { "name": "Replay player" }

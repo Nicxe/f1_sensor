@@ -89,6 +89,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_lap_count",
             "driver_list",
             "current_tyres",
+            "tyre_statistics",
             "track_status",
             "session_status",
             "safety_car",
@@ -114,6 +115,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_lap_count": "Race lap count (live)",
             "driver_list": "Driver list (live)",
             "current_tyres": "Current tyres (live)",
+            "tyre_statistics": "Tyre statistics (live)",
             "track_status": "Track status (live)",
             "session_status": "Session status (live)",
             "safety_car": "Safety car (live)",
@@ -123,6 +125,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "top_three": "Top three (leader, live)",
             "pitstops": "Pit stops (live)",
             "championship_prediction": "Championship prediction (live)",
+            "driver_positions": "Driver positions (live)",
         }
 
         # Keep the "live timing online" diagnostic available for power users even
@@ -227,6 +230,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_lap_count": "Race lap count (live)",
             "driver_list": "Driver list (live)",
             "current_tyres": "Current tyres (live)",
+            "tyre_statistics": "Tyre statistics (live)",
             "track_status": "Track status (live)",
             "session_status": "Session status (live)",
             "safety_car": "Safety car (live)",
@@ -236,6 +240,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "top_three": "Top three (leader, live)",
             "pitstops": "Pit stops (live)",
             "championship_prediction": "Championship prediction (live)",
+            "driver_positions": "Driver positions (live)",
         }
         allowed["live_timing_diagnostics"] = "Live timing online"
         default_enabled = [
@@ -257,6 +262,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "race_lap_count",
             "driver_list",
             "current_tyres",
+            "tyre_statistics",
             "track_status",
             "session_status",
             "race_control",

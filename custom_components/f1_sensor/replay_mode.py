@@ -49,6 +49,7 @@ REPLAY_STREAMS = [
     "TeamRadio",
     "PitStopSeries",
     "ChampionshipPrediction",
+    "DriverRaceInfo",
 ]
 
 STATIC_BASE = "https://livetiming.formula1.com/static"
@@ -60,7 +61,7 @@ INDEX_STATUS_OK = "ok"
 INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when changing initial_state format to invalidate old caches
-CACHE_VERSION = 3
+CACHE_VERSION = 5
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 
@@ -764,21 +765,249 @@ class ReplaySessionManager:
                 cur_lines[idx] = base
             state["lines"] = cur_lines
 
+    def _merge_tyre_stints_state(self, state: Dict[str, Any], payload: dict) -> None:
+        stints = payload.get("Stints")
+        if not isinstance(stints, dict):
+            return
+        cur_stints = state.setdefault("Stints", {})
+        for rn, stints_data in stints.items():
+            if not isinstance(stints_data, (dict, list)):
+                continue
+            rn_key = str(rn)
+            entry = cur_stints.setdefault(rn_key, {})
+            if isinstance(stints_data, list):
+                for idx, stint in enumerate(stints_data):
+                    if not isinstance(stint, dict):
+                        continue
+                    key = str(idx)
+                    base = entry.get(key)
+                    if not isinstance(base, dict):
+                        base = {}
+                    base.update(stint)
+                    entry[key] = base
+            else:
+                for idx, stint in stints_data.items():
+                    if not isinstance(stint, dict):
+                        continue
+                    key = str(idx)
+                    base = entry.get(key)
+                    if not isinstance(base, dict):
+                        base = {}
+                    base.update(stint)
+                    entry[key] = base
+
+    @staticmethod
+    def _has_tyre_stints_state(state: Dict[str, Any]) -> bool:
+        stints = state.get("Stints")
+        return isinstance(stints, dict) and bool(stints)
+
+    def _merge_lap_history_state(
+        self,
+        state: Dict[str, Any],
+        last_lap_times: Dict[str, str],
+        payload: dict,
+    ) -> None:
+        """Accumulate lap history from TimingData frames.
+
+        Tracks LastLapTime changes to build lap-by-lap history for each driver.
+        """
+        lines = payload.get("Lines")
+        if not isinstance(lines, dict):
+            return
+
+        for rn, td in lines.items():
+            if not isinstance(td, dict):
+                continue
+
+            rn_key = str(rn)
+
+            # Get or create driver entry
+            driver_entry = state.setdefault(
+                rn_key,
+                {
+                    "laps": {},
+                    "last_recorded_lap": 0,
+                    "grid_position": None,
+                    "completed_laps": 0,
+                    "_last_lap_time": None,
+                },
+            )
+
+            # Track completed laps when provided
+            number_of_laps: int | None = None
+            if "NumberOfLaps" in td:
+                try:
+                    num_raw = td.get("NumberOfLaps")
+                    number_of_laps = int(num_raw) if num_raw is not None else None
+                except (TypeError, ValueError):
+                    number_of_laps = None
+                if number_of_laps is not None:
+                    driver_entry["completed_laps"] = number_of_laps
+
+            # Track position updates
+            if "Position" in td:
+                pos_raw = td.get("Position")
+                pos_str = str(pos_raw).strip() if pos_raw is not None else None
+                driver_entry["_current_position"] = pos_str or None
+                if (
+                    driver_entry.get("grid_position") is None
+                    and (driver_entry.get("completed_laps") or 0) == 0
+                ):
+                    driver_entry["grid_position"] = driver_entry.get(
+                        "_current_position"
+                    )
+
+            # Check for LastLapTime change (new lap completed)
+            last_lap_value = None
+            last_lap_data = td.get("LastLapTime")
+            if isinstance(last_lap_data, dict):
+                last_lap_value = last_lap_data.get("Value")
+            elif isinstance(last_lap_data, str):
+                last_lap_value = last_lap_data
+
+            if last_lap_value is not None:
+                prev_lap_time = last_lap_times.get(rn_key)
+                if prev_lap_time != last_lap_value:
+                    # New lap completed
+                    last_lap_times[rn_key] = last_lap_value
+
+                    last_lap_num = driver_entry.get("last_recorded_lap", 0)
+                    use_lap_num = number_of_laps
+                    if use_lap_num is None:
+                        completed = driver_entry.get("completed_laps")
+                        use_lap_num = completed if isinstance(completed, int) else None
+                    if not use_lap_num or use_lap_num <= 0:
+                        use_lap_num = last_lap_num + 1
+                    current_pos = driver_entry.get("_current_position")
+
+                    # Capture grid position on first lap
+                    if use_lap_num == 1 and driver_entry.get("grid_position") is None:
+                        driver_entry["grid_position"] = current_pos
+
+                    # Record the lap time
+                    lap_key = str(use_lap_num)
+                    driver_entry["laps"][lap_key] = last_lap_value
+                    if last_lap_num < use_lap_num:
+                        driver_entry["last_recorded_lap"] = use_lap_num
+                    try:
+                        completed = driver_entry.get("completed_laps", 0) or 0
+                        if isinstance(completed, int) and completed < use_lap_num:
+                            driver_entry["completed_laps"] = use_lap_num
+                    except Exception:
+                        pass
+
+    @staticmethod
+    def _has_lap_history_state(state: Dict[str, Any]) -> bool:
+        return isinstance(state, dict) and bool(state)
+
+    def _extract_grid_from_driver_race_info(
+        self,
+        state: Dict[str, Any],
+        payload: dict,
+    ) -> None:
+        """Extract grid positions from DriverRaceInfo Position field."""
+        if not isinstance(payload, dict):
+            return
+        for rn, info in payload.items():
+            if not isinstance(info, dict):
+                continue
+            pos_raw = info.get("Position")
+            if pos_raw is None:
+                continue
+            try:
+                grid_pos = str(pos_raw).strip()
+                if not grid_pos:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            rn_key = str(rn)
+            driver_entry = state.setdefault(
+                rn_key,
+                {
+                    "laps": {},
+                    "last_recorded_lap": 0,
+                    "grid_position": None,
+                    "completed_laps": 0,
+                    "_last_lap_time": None,
+                },
+            )
+            if (
+                driver_entry.get("grid_position") is None
+                and (driver_entry.get("completed_laps") or 0) == 0
+            ):
+                driver_entry["grid_position"] = grid_pos
+
+    def _extract_grid_from_driverlist(
+        self,
+        state: Dict[str, Any],
+        payload: dict,
+    ) -> None:
+        """Extract grid positions from DriverList Line field (backup)."""
+        if not isinstance(payload, dict):
+            return
+        for rn, info in payload.items():
+            if not isinstance(info, dict):
+                continue
+            line_raw = info.get("Line")
+            if line_raw is None:
+                continue
+            try:
+                line_pos = str(int(line_raw))
+            except (TypeError, ValueError):
+                continue
+            rn_key = str(rn)
+            driver_entry = state.setdefault(
+                rn_key,
+                {
+                    "laps": {},
+                    "last_recorded_lap": 0,
+                    "grid_position": None,
+                    "completed_laps": 0,
+                    "_last_lap_time": None,
+                },
+            )
+            if (
+                driver_entry.get("grid_position") is None
+                and (driver_entry.get("completed_laps") or 0) == 0
+            ):
+                driver_entry["grid_position"] = line_pos
+
     def _build_initial_state(
         self, frames: List[ReplayFrame], start_ms: int
     ) -> Dict[str, Any]:
         """Return the latest stream payloads at the provided timestamp."""
+        skip_initial = {"PitStopSeries"}
         initial_state: Dict[str, Any] = {}
         topthree_state: Dict[str, Any] = {
             "lines": [None, None, None],
             "withheld": False,
         }
+        tyre_stints_state: Dict[str, Any] = {"Stints": {}}
+        lap_history_state: Dict[str, Any] = {}
+        last_lap_times: Dict[str, str] = {}
 
         for frame in frames:
             if frame.timestamp_ms > start_ms:
                 break
+            if frame.stream in skip_initial:
+                continue
             if frame.stream == "TopThree" and isinstance(frame.payload, dict):
                 self._merge_topthree_state(topthree_state, frame.payload)
+            elif frame.stream == "TyreStintSeries" and isinstance(frame.payload, dict):
+                self._merge_tyre_stints_state(tyre_stints_state, frame.payload)
+            elif frame.stream == "TimingData" and isinstance(frame.payload, dict):
+                self._merge_lap_history_state(
+                    lap_history_state, last_lap_times, frame.payload
+                )
+                initial_state[frame.stream] = frame.payload
+            elif frame.stream == "DriverRaceInfo" and isinstance(frame.payload, dict):
+                self._extract_grid_from_driver_race_info(
+                    lap_history_state, frame.payload
+                )
+                initial_state[frame.stream] = frame.payload
+            elif frame.stream == "DriverList" and isinstance(frame.payload, dict):
+                self._extract_grid_from_driverlist(lap_history_state, frame.payload)
+                initial_state[frame.stream] = frame.payload
             else:
                 initial_state[frame.stream] = frame.payload
 
@@ -787,8 +1016,14 @@ class ReplaySessionManager:
                 "Withheld": topthree_state.get("withheld", False),
                 "Lines": topthree_state["lines"],
             }
+        if self._has_tyre_stints_state(tyre_stints_state):
+            initial_state["TyreStintSeries"] = tyre_stints_state
+        if self._has_lap_history_state(lap_history_state):
+            initial_state["LapHistory"] = lap_history_state
 
-        streams_needing_first = set(REPLAY_STREAMS) - set(initial_state.keys())
+        streams_needing_first = (
+            set(REPLAY_STREAMS) - set(initial_state.keys()) - skip_initial
+        )
         if streams_needing_first:
             for frame in frames:
                 if frame.stream in streams_needing_first:
@@ -802,6 +1037,13 @@ class ReplaySessionManager:
                                 "Lines": lines,
                             }
                             streams_needing_first.discard("TopThree")
+                    elif frame.stream == "TyreStintSeries" and isinstance(
+                        frame.payload, dict
+                    ):
+                        self._merge_tyre_stints_state(tyre_stints_state, frame.payload)
+                        if self._has_tyre_stints_state(tyre_stints_state):
+                            initial_state["TyreStintSeries"] = tyre_stints_state
+                            streams_needing_first.discard("TyreStintSeries")
                     else:
                         initial_state[frame.stream] = frame.payload
                         streams_needing_first.discard(frame.stream)
@@ -816,6 +1058,10 @@ class ReplaySessionManager:
                     "Withheld": topthree_state.get("withheld", False),
                     "Lines": topthree_state["lines"],
                 }
+            if "TyreStintSeries" not in initial_state and self._has_tyre_stints_state(
+                tyre_stints_state
+            ):
+                initial_state["TyreStintSeries"] = tyre_stints_state
 
         return initial_state
 

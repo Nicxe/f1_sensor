@@ -20,6 +20,7 @@ class F1BaseEntity(CoordinatorEntity):
         self._attr_unique_id = unique_id
         self._entry_id = entry_id
         self._device_name = device_name
+        self._stream_last_active: bool | None = None
 
     @property
     def device_info(self):
@@ -149,6 +150,60 @@ class F1BaseEntity(CoordinatorEntity):
         except Exception:
             pass
 
+    def _is_stream_active(self) -> bool:
+        reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(
+            self._entry_id, {}
+        ) or {}
+        live_state = reg.get("live_state")
+        if live_state is not None and bool(getattr(live_state, "is_live", False)):
+            return True
+        replay_controller = reg.get("replay_controller")
+        if replay_controller is not None:
+            try:
+                from .replay_mode import ReplayState
+
+                return replay_controller.state in (
+                    ReplayState.PLAYING,
+                    ReplayState.PAUSED,
+                )
+            except Exception:
+                return False
+        return False
+
+    def _clear_state_if_possible(self) -> None:
+        clear = getattr(self, "_clear_state", None)
+        if callable(clear):
+            try:
+                clear()
+            except Exception:
+                pass
+
+    def _handle_stream_state(self, updated: bool) -> bool:
+        """Handle live/replay stream inactivity and transitions.
+
+        Returns True when state should be written (updated or cleared).
+        """
+        stream_active = self._is_stream_active()
+        if not updated:
+            if not stream_active:
+                self._clear_state_if_possible()
+                self._stream_last_active = stream_active
+                return True
+            return False
+
+        if self._stream_last_active is None:
+            self._stream_last_active = stream_active
+        elif self._stream_last_active is True and stream_active is False:
+            self._clear_state_if_possible()
+            self._stream_last_active = stream_active
+            return True
+
+        self._stream_last_active = stream_active
+        if not stream_active:
+            self._clear_state_if_possible()
+            return True
+        return True
+
 
 class F1AuxEntity(Entity):
     """Helper base for entities that do not use a coordinator but share device info."""
@@ -159,6 +214,7 @@ class F1AuxEntity(Entity):
         self._attr_unique_id = unique_id
         self._entry_id = entry_id
         self._device_name = device_name
+        self._stream_last_active: bool | None = None
 
     def _safe_write_ha_state(self, *_args) -> None:
         """Thread-safe request to write entity state (see F1BaseEntity)."""
@@ -187,6 +243,26 @@ class F1AuxEntity(Entity):
             loop.call_soon_threadsafe(self.async_schedule_update_ha_state, False)
         except Exception:
             pass
+
+    def _is_stream_active(self) -> bool:
+        reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(
+            self._entry_id, {}
+        ) or {}
+        live_state = reg.get("live_state")
+        if live_state is not None and bool(getattr(live_state, "is_live", False)):
+            return True
+        replay_controller = reg.get("replay_controller")
+        if replay_controller is not None:
+            try:
+                from .replay_mode import ReplayState
+
+                return replay_controller.state in (
+                    ReplayState.PLAYING,
+                    ReplayState.PAUSED,
+                )
+            except Exception:
+                return False
+        return False
 
     @property
     def device_info(self):

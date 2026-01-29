@@ -40,6 +40,7 @@ SUBSCRIBE_MSG = {
             "TeamRadio",
             "PitStopSeries",
             "ChampionshipPrediction",
+            "DriverRaceInfo",
         ]
     ],
     "I": 1,

@@ -17,7 +17,12 @@ from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.loader import async_get_integration
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN, ENABLE_DEVELOPMENT_MODE_UI
+from .const import (
+    DOMAIN,
+    ENABLE_DEVELOPMENT_MODE_UI,
+    F1_COUNTRY_CODES,
+    FLAG_CDN_BASE_URL,
+)
 
 try:
     from tzfpy import get_tz as _tzfpy_get_tz
@@ -153,6 +158,21 @@ def get_timezone(lat: Any, lon: Any) -> Optional[str]:
             )
         return None
     return tz
+
+
+def get_country_code(country_name: str | None) -> str | None:
+    """Return ISO 3166-1 alpha-2 code for F1 circuit country name."""
+    if not country_name:
+        return None
+    return F1_COUNTRY_CODES.get(country_name)
+
+
+def get_country_flag_url(country_name: str | None) -> str | None:
+    """Return flag CDN URL for F1 circuit country name."""
+    code = get_country_code(country_name)
+    if not code:
+        return None
+    return f"{FLAG_CDN_BASE_URL}/{code}.png"
 
 
 async def build_user_agent(hass) -> str:
