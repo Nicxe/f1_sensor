@@ -27,10 +27,11 @@ from .const import (
     OPERATION_MODE_DEVELOPMENT,
 )
 from .helpers import (
-    get_timezone,
-    normalize_track_status,
+    get_circuit_map_url,
     get_country_code,
     get_country_flag_url,
+    get_timezone,
+    normalize_track_status,
 )
 from .live_window import STATIC_BASE
 from .replay_entities import F1ReplayStatusSensor
@@ -546,6 +547,7 @@ class F1NextRaceSensor(F1BaseEntity, SensorEntity):
             "circuit_country": loc.get("country"),
             "country_code": get_country_code(loc.get("country")),
             "country_flag_url": get_country_flag_url(loc.get("country")),
+            "circuit_map_url": get_circuit_map_url(circuit.get("circuitId")),
             "circuit_timezone": timezone,
         }
 
@@ -586,9 +588,11 @@ class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
         enriched_races = []
         for race in races:
             enriched = dict(race)
-            country = race.get("Circuit", {}).get("Location", {}).get("country")
+            circuit = race.get("Circuit", {})
+            country = circuit.get("Location", {}).get("country")
             enriched["country_code"] = get_country_code(country)
             enriched["country_flag_url"] = get_country_flag_url(country)
+            enriched["circuit_map_url"] = get_circuit_map_url(circuit.get("circuitId"))
             enriched_races.append(enriched)
 
         return {"season": table.get("season"), "races": enriched_races}
@@ -3730,11 +3734,6 @@ class F1TrackLimitsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def state(self):
         return self._attr_native_value
 
-    @property
-    def available(self) -> bool:
-        """Always available - shows 0 when no violations have occurred."""
-        return True
-
     def _clear_state(self) -> None:
         self._attr_native_value = 0
         self._by_driver = {}
@@ -3749,74 +3748,141 @@ class F1TrackLimitsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
 
 # Regex patterns for investigations/penalties parsing
-_DRIVER_PATTERN = re.compile(r"CAR (\d+) \(([A-Z]{2,3})\)")
+# Matches both "CAR 43 (COL)", "CARS 44 (HAM)", and "23 (ALB)" (second driver without prefix)
+_DRIVER_PATTERN = re.compile(r"(?:CARS? )?(\d+) \(([A-Z]{2,3})\)")
+
+# NOTED patterns - handles many prefix variants:
+# - Location: TURN X, TURNS X TO Y, LAP X TURN X, PIT LANE, PIT EXIT, PIT ENTRY, START/FINISH STRAIGHT
+# - Session: Q1, Q2, Q3, SQ1, SQ2, SQ3
+# - Prefix: FIA STEWARDS:, UPDATE:, CORRECTION:
 _INCIDENT_NOTED = re.compile(
-    r"(?:(?:TURN \d+|PIT LANE|START/FINISH STRAIGHT) )?"
-    r"INCIDENT INVOLVING (?:CARS? )?.+ NOTED",
+    r"(?:(?:UPDATE|CORRECTION):?\s*)?"
+    r"(?:FIA STEWARDS:\s*)?"
+    r"(?:(?:S?Q[123]|LAP \d+)\s+)?"
+    r"(?:(?:TURNS? \d+(?:\s+TO\s+\d+)?|PIT (?:LANE|EXIT|ENTRY)|START/FINISH STRAIGHT)\s+)?"
+    r"INCIDENT(?: INVOLVING)? .+ NOTED",
     re.IGNORECASE,
 )
+
+# UNDER INVESTIGATION - also handles CORRECTION:: (with double colon typo in data)
 _UNDER_INVESTIGATION = re.compile(
-    r"FIA STEWARDS: .+ UNDER INVESTIGATION",
+    r"(?:FIA STEWARDS:|CORRECTION::?)\s*.+ UNDER INVESTIGATION",
     re.IGNORECASE,
 )
+
+# NO FURTHER - handles both INVESTIGATION and ACTION variants
 _NO_FURTHER_INVESTIGATION = re.compile(
-    r"FIA STEWARDS: .+ (?:REVIEWED )?NO FURTHER INVESTIGATION",
+    r"FIA STEWARDS:\s*.+ (?:REVIEWED\s+)?NO FURTHER (?:INVESTIGATION|ACTION)",
     re.IGNORECASE,
 )
+
+# PENALTY patterns - X SECOND TIME PENALTY, DRIVE THROUGH, STOP/GO, REPRIMAND
 _PENALTY_ISSUED = re.compile(
-    r"FIA STEWARDS: (\d+ SECOND TIME PENALTY|DRIVE THROUGH PENALTY|"
-    r"\d+ (?:SECOND )?STOP/?GO PENALTY|REPRIMAND \([^)]+\)) "
+    r"FIA STEWARDS:\s*(\d+ SECOND TIME PENALTY|DRIVE THROUGH PENALTY|"
+    r"\d+ (?:SECOND )?STOP/?GO PENALTY|REPRIMAND \([^)]+\))\s+"
     r"FOR CAR (\d+) \(([A-Z]{2,3})\)",
     re.IGNORECASE,
 )
+
 _PENALTY_SERVED = re.compile(
-    r"FIA STEWARDS: PENALTY SERVED",
+    r"FIA STEWARDS:\s*PENALTY SERVED",
     re.IGNORECASE,
 )
+
 _WILL_BE_INVESTIGATED_AFTER = re.compile(
     r"WILL BE INVESTIGATED AFTER THE RACE",
     re.IGNORECASE,
 )
+
+# Location extraction - extended to include PIT EXIT, PIT ENTRY, TURNS X TO Y
 _LOCATION_PATTERN = re.compile(
-    r"(TURN \d+|PIT LANE|START/FINISH STRAIGHT)",
+    r"(TURNS? \d+(?:\s+TO\s+\d+)?|PIT (?:LANE|EXIT|ENTRY)|START/FINISH STRAIGHT)",
     re.IGNORECASE,
 )
+
 _REASON_PATTERN = re.compile(
-    r"(?:NOTED|UNDER INVESTIGATION|NO FURTHER INVESTIGATION) - (.+?)$",
+    r"(?:NOTED|UNDER INVESTIGATION|NO FURTHER (?:INVESTIGATION|ACTION))\s*-\s*(.+?)$",
     re.IGNORECASE,
 )
 
 
 class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
-    """Sensor tracking investigations and penalties per driver.
+    """Sensor tracking current investigations and penalties.
 
-    State: Number of active investigations (NOTED or UNDER INVESTIGATION).
+    Shows only currently relevant information:
+    - NOTED incidents stay until resolved (NFI/UNDER INVESTIGATION/PENALTY)
+    - UNDER INVESTIGATION items stay until resolved (NFI/PENALTY)
+    - NO FURTHER ACTION items auto-expire after 5 minutes
+    - PENALTY items stay until SERVED message received
+
+    State: Count of actionable items (noted + under_investigation + penalties).
     Attributes:
-        - active: List of active investigations
-        - by_driver: Dict keyed by TLA with investigation history per driver
-        - penalties_pending: List of pending penalties
-        - penalties_served: Count of served penalties
-        - total_investigations: Count of all investigations
+        - noted: List of incidents noted but not yet under investigation
+        - under_investigation: List of active investigations
+        - no_further_action: List of recent NFI decisions (auto-expire)
+        - penalties: List of pending penalties awaiting service
         - last_update: ISO timestamp of last update
     """
+
+    # NFI decisions expire after this many seconds
+    NFI_EXPIRY_SECONDS = 300  # 5 minutes
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:account-search"
         self._attr_native_value = 0
-        self._active: list[dict] = []
-        self._by_driver: dict[str, dict] = {}
-        self._penalties_pending: list[dict] = []
-        self._penalties_served: int = 0
+        # Internal state: keyed by incident key for matching
+        self._noted: dict[str, dict] = {}
+        self._under_investigation: dict[str, dict] = {}
+        self._nfi: dict[str, dict] = {}  # Includes nfi_utc for expiry
+        self._penalties: list[dict] = []
         self._processed_ids: set[str] = set()
+        self._session_time: datetime.datetime | None = (
+            None  # Track latest message time for NFI expiry
+        )
         self._attr_extra_state_attributes = {
-            "active": [],
-            "by_driver": {},
-            "penalties_pending": [],
-            "penalties_served": 0,
-            "total_investigations": 0,
+            "noted": [],
+            "under_investigation": [],
+            "no_further_action": [],
+            "penalties": [],
             "last_update": None,
         }
+
+    def _make_incident_key(
+        self, drivers: list[str], location: str | None, reason: str | None
+    ) -> str:
+        """Create a unique key for matching incidents.
+
+        Uses sorted drivers so BEA/LAW matches LAW/BEA.
+        """
+        sorted_drivers = tuple(sorted(drivers))
+        return f"{sorted_drivers}|{location or ''}|{reason or ''}"
+
+    def _find_incident_by_drivers(
+        self, driver_tlas: list[str], collection: dict[str, dict]
+    ) -> str | None:
+        """Find an incident key in a collection by matching drivers exactly (any order).
+
+        Returns the key if found, None otherwise.
+        """
+        sorted_input = set(driver_tlas)
+        for key, incident in collection.items():
+            if set(incident.get("drivers", [])) == sorted_input:
+                return key
+        return None
+
+    def _find_incident_containing_driver(
+        self, driver_tla: str, collection: dict[str, dict]
+    ) -> str | None:
+        """Find an incident where the driver is involved (partial match).
+
+        Used for penalty matching where only one driver is mentioned.
+        Returns the key if found, None otherwise.
+        """
+        for key, incident in collection.items():
+            if driver_tla in incident.get("drivers", []):
+                return key
+        return None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -3827,25 +3893,10 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         stream_active = self._is_stream_active()
         if stream_active:
             self._process_all_messages()
-            if not self._by_driver:
-                last = await self.async_get_last_state()
-                if last and last.state not in (None, "unknown", "unavailable"):
-                    try:
-                        self._attr_native_value = int(last.state)
-                    except (ValueError, TypeError):
-                        self._attr_native_value = 0
-                    attrs = dict(getattr(last, "attributes", {}) or {})
-                    self._attr_extra_state_attributes = attrs
-                    by_driver = attrs.get("by_driver")
-                    if isinstance(by_driver, dict):
-                        self._by_driver = by_driver
-                    active = attrs.get("active")
-                    if isinstance(active, list):
-                        self._active = active
         else:
             self._clear_state()
 
-        # Signal stream state - treat as updated when stream is active
+        # Signal stream state
         self._handle_stream_state(stream_active)
         self.async_write_ha_state()
 
@@ -3870,6 +3921,33 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         match = _REASON_PATTERN.search(message)
         return match.group(1).strip().upper() if match else None
 
+    def _expire_nfi_items(self) -> bool:
+        """Remove NFI items older than NFI_EXPIRY_SECONDS.
+
+        Uses session time (latest message timestamp) for comparison,
+        so expiry works correctly during replay mode.
+        Returns True if any removed.
+        """
+        if self._session_time is None:
+            return False
+        expired_keys = []
+        for key, item in self._nfi.items():
+            nfi_utc = item.get("nfi_utc")
+            if nfi_utc:
+                try:
+                    nfi_time = dt_util.parse_datetime(nfi_utc)
+                    if (
+                        nfi_time
+                        and (self._session_time - nfi_time).total_seconds()
+                        > self.NFI_EXPIRY_SECONDS
+                    ):
+                        expired_keys.append(key)
+                except (ValueError, TypeError):
+                    pass
+        for key in expired_keys:
+            del self._nfi[key]
+        return len(expired_keys) > 0
+
     def _process_message(self, msg: dict) -> bool:
         """Process a single race control message for investigation/penalty data.
 
@@ -3891,9 +3969,18 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         ):
             return False
 
-        # Skip track limits (handled by TrackLimitsSensor) unless it's a penalty
-        if "TRACK LIMITS" in message_upper and "PENALTY" not in message_upper:
-            return False
+        # Skip track limits deletions/warnings (handled by TrackLimitsSensor)
+        # But process track limits PENALTY and track limits NOTED/INVESTIGATION
+        if "TRACK LIMITS" in message_upper:
+            if (
+                "PENALTY" not in message_upper
+                and "INVESTIGATION" not in message_upper
+                and "NOTED" not in message_upper
+            ):
+                return False
+            # Skip track limits deletions (TIME DELETED, LAP DELETED)
+            if "DELETED" in message_upper:
+                return False
 
         msg_id = self._build_message_id(msg)
         if msg_id in self._processed_ids:
@@ -3902,27 +3989,31 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         utc = msg.get("Utc") or msg.get("utc")
         lap = msg.get("Lap")
+
+        # Track session time for NFI expiry (works correctly during replay)
+        if utc:
+            try:
+                msg_time = dt_util.parse_datetime(utc)
+                if msg_time and (
+                    self._session_time is None or msg_time > self._session_time
+                ):
+                    self._session_time = msg_time
+            except (ValueError, TypeError):
+                pass
+
         drivers = self._extract_drivers(message_text)
         location = self._extract_location(message_text)
         reason = self._extract_reason(message_text)
+        driver_tlas = [d[1] for d in drivers]
+        racing_numbers = [d[0] for d in drivers]
 
-        # Check for PENALTY SERVED
+        # Check for PENALTY SERVED - remove from penalties list
         if _PENALTY_SERVED.search(message_text):
-            self._penalties_served += 1
-            # Remove from pending if we can match it
             if drivers:
-                tlas = [d[1] for d in drivers]
-                self._penalties_pending = [
-                    p for p in self._penalties_pending if p.get("driver") not in tlas
+                tlas_set = set(driver_tlas)
+                self._penalties = [
+                    p for p in self._penalties if p.get("driver") not in tlas_set
                 ]
-            # Update driver history to mark as served
-            for racing_number, tla in drivers:
-                if tla in self._by_driver:
-                    history = self._by_driver[tla].get("history", [])
-                    for h in reversed(history):
-                        if h.get("outcome") and not h.get("served"):
-                            h["served"] = True
-                            break
             return True
 
         # Check for penalty issued
@@ -3932,145 +4023,169 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             racing_number = match.group(2)
             tla = match.group(3).upper()
 
-            # Remove from active investigations
-            self._active = [
-                inv
-                for inv in self._active
-                if tla not in inv.get("drivers", [])
-                or (reason and inv.get("reason") != reason)
-            ]
+            # Remove from noted and under_investigation
+            # Use partial match since penalty message only mentions one driver
+            # but original incident might have multiple (e.g., BEA/LAW collision)
+            key_noted = self._find_incident_containing_driver(tla, self._noted)
+            if key_noted:
+                del self._noted[key_noted]
 
-            # Add to pending penalties
-            self._penalties_pending.append(
+            key_inv = self._find_incident_containing_driver(
+                tla, self._under_investigation
+            )
+            if key_inv:
+                del self._under_investigation[key_inv]
+
+            # Add to penalties list
+            self._penalties.append(
                 {
                     "driver": tla,
                     "racing_number": racing_number,
                     "penalty": penalty_text,
                     "reason": reason,
                     "utc": utc,
-                }
-            )
-
-            # Add to driver history
-            self._ensure_driver(tla, racing_number)
-            self._by_driver[tla]["penalties"] += 1
-            self._by_driver[tla]["history"].append(
-                {
-                    "utc": utc,
                     "lap": lap,
-                    "location": location,
-                    "reason": reason,
-                    "outcome": penalty_text,
-                    "served": False,
                 }
             )
             return True
 
-        # Check for NO FURTHER INVESTIGATION
+        # Check for NO FURTHER INVESTIGATION / NO FURTHER ACTION
         if _NO_FURTHER_INVESTIGATION.search(message_text):
-            # Remove from active
             if drivers:
-                driver_tlas = [d[1] for d in drivers]
-                self._active = [
-                    inv
-                    for inv in self._active
-                    if not any(tla in inv.get("drivers", []) for tla in driver_tlas)
-                    or (reason and inv.get("reason") != reason)
-                ]
-                # Update driver history
-                for racing_number, tla in drivers:
-                    if tla in self._by_driver:
-                        history = self._by_driver[tla].get("history", [])
-                        for h in reversed(history):
-                            if h.get("outcome") is None:
-                                h["outcome"] = "NO FURTHER INVESTIGATION"
-                                break
+                # Find and move from noted or under_investigation to nfi
+                key = self._find_incident_by_drivers(driver_tlas, self._noted)
+                incident = None
+                if key:
+                    incident = self._noted.pop(key)
+                else:
+                    key = self._find_incident_by_drivers(
+                        driver_tlas, self._under_investigation
+                    )
+                    if key:
+                        incident = self._under_investigation.pop(key)
+
+                # Create NFI entry with expiry timestamp
+                nfi_key = self._make_incident_key(driver_tlas, location, reason)
+                self._nfi[nfi_key] = {
+                    "utc": incident.get("utc") if incident else utc,
+                    "lap": incident.get("lap") if incident else lap,
+                    "drivers": sorted(driver_tlas),
+                    "racing_numbers": racing_numbers,
+                    "location": location,
+                    "reason": reason,
+                    "nfi_utc": utc,  # When NFI was issued, for expiry
+                }
             return True
 
         # Check for UNDER INVESTIGATION
         if _UNDER_INVESTIGATION.search(message_text):
             if drivers:
-                # Update existing active investigation to under_investigation
-                driver_tlas = [d[1] for d in drivers]
-                for inv in self._active:
-                    if any(tla in inv.get("drivers", []) for tla in driver_tlas):
-                        inv["status"] = "under_investigation"
-                        return True
+                # Find in noted and move to under_investigation
+                key = self._find_incident_by_drivers(driver_tlas, self._noted)
+                if key:
+                    incident = self._noted.pop(key)
+                    new_key = self._make_incident_key(
+                        driver_tlas, location, reason or incident.get("reason")
+                    )
+                    self._under_investigation[new_key] = {
+                        "utc": incident.get("utc"),
+                        "lap": incident.get("lap"),
+                        "drivers": sorted(driver_tlas),
+                        "racing_numbers": racing_numbers,
+                        "location": location or incident.get("location"),
+                        "reason": reason or incident.get("reason"),
+                    }
+                    return True
+                # If not found in noted, might be a direct "UNDER INVESTIGATION"
+                # (shouldn't happen normally, but handle it)
+                new_key = self._make_incident_key(driver_tlas, location, reason)
+                if new_key not in self._under_investigation:
+                    self._under_investigation[new_key] = {
+                        "utc": utc,
+                        "lap": lap,
+                        "drivers": sorted(driver_tlas),
+                        "racing_numbers": racing_numbers,
+                        "location": location,
+                        "reason": reason,
+                    }
+                    return True
             return False
 
         # Check for WILL BE INVESTIGATED AFTER THE RACE
         if _WILL_BE_INVESTIGATED_AFTER.search(message_text):
             if drivers:
-                driver_tlas = [d[1] for d in drivers]
-                racing_numbers = [d[0] for d in drivers]
-                self._active.append(
-                    {
+                # Find and move to under_investigation with after_race flag
+                key = self._find_incident_by_drivers(driver_tlas, self._noted)
+                if key:
+                    incident = self._noted.pop(key)
+                    new_key = self._make_incident_key(
+                        driver_tlas, location, reason or incident.get("reason")
+                    )
+                    self._under_investigation[new_key] = {
+                        "utc": incident.get("utc"),
+                        "lap": incident.get("lap"),
+                        "drivers": sorted(driver_tlas),
+                        "racing_numbers": racing_numbers,
+                        "location": location or incident.get("location"),
+                        "reason": reason or incident.get("reason"),
+                        "after_race": True,
+                    }
+                else:
+                    # Direct after-race investigation
+                    new_key = self._make_incident_key(driver_tlas, location, reason)
+                    self._under_investigation[new_key] = {
                         "utc": utc,
                         "lap": lap,
-                        "drivers": driver_tlas,
+                        "drivers": sorted(driver_tlas),
                         "racing_numbers": racing_numbers,
                         "location": location,
                         "reason": reason,
-                        "status": "after_race",
+                        "after_race": True,
                     }
-                )
-                for racing_number, tla in drivers:
-                    self._ensure_driver(tla, racing_number)
-                    self._by_driver[tla]["investigations"] += 1
-                    self._by_driver[tla]["history"].append(
-                        {
-                            "utc": utc,
-                            "lap": lap,
-                            "location": location,
-                            "reason": reason,
-                            "outcome": None,
-                            "served": False,
-                        }
-                    )
             return True
 
-        # Check for INCIDENT NOTED
+        # Check for UPDATE: INCIDENT NOTED - update existing noted incident
+        is_update = message_upper.startswith("UPDATE:")
         if _INCIDENT_NOTED.search(message_text):
             if drivers:
-                driver_tlas = [d[1] for d in drivers]
-                racing_numbers = [d[0] for d in drivers]
-                self._active.append(
-                    {
-                        "utc": utc,
-                        "lap": lap,
-                        "drivers": driver_tlas,
-                        "racing_numbers": racing_numbers,
-                        "location": location,
-                        "reason": reason,
-                        "status": "noted",
-                    }
-                )
-                for racing_number, tla in drivers:
-                    self._ensure_driver(tla, racing_number)
-                    self._by_driver[tla]["investigations"] += 1
-                    self._by_driver[tla]["history"].append(
-                        {
-                            "utc": utc,
-                            "lap": lap,
-                            "location": location,
-                            "reason": reason,
-                            "outcome": None,
-                            "served": False,
+                if is_update:
+                    # Find existing incident by drivers and update reason
+                    key = self._find_incident_by_drivers(driver_tlas, self._noted)
+                    if key:
+                        incident = self._noted.pop(key)
+                        new_key = self._make_incident_key(
+                            driver_tlas, location or incident.get("location"), reason
+                        )
+                        self._noted[new_key] = {
+                            "utc": incident.get("utc"),
+                            "lap": incident.get("lap"),
+                            "drivers": sorted(driver_tlas),
+                            "racing_numbers": racing_numbers,
+                            "location": location or incident.get("location"),
+                            "reason": reason,  # Updated reason
                         }
-                    )
+                        return True
+
+                # New NOTED incident
+                new_key = self._make_incident_key(driver_tlas, location, reason)
+                # Check if already exists (avoid duplicates)
+                existing = self._find_incident_by_drivers(driver_tlas, self._noted)
+                if existing and reason is None:
+                    # Don't overwrite existing with reason-less entry
+                    return False
+                if existing:
+                    del self._noted[existing]
+                self._noted[new_key] = {
+                    "utc": utc,
+                    "lap": lap,
+                    "drivers": sorted(driver_tlas),
+                    "racing_numbers": racing_numbers,
+                    "location": location,
+                    "reason": reason,
+                }
             return True
 
         return False
-
-    def _ensure_driver(self, tla: str, racing_number: str) -> None:
-        """Ensure a driver entry exists."""
-        if tla not in self._by_driver:
-            self._by_driver[tla] = {
-                "racing_number": racing_number,
-                "investigations": 0,
-                "penalties": 0,
-                "history": [],
-            }
 
     def _process_all_messages(self) -> None:
         """Process all messages from the coordinator."""
@@ -4082,24 +4197,25 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             if isinstance(msg, dict):
                 self._process_message(msg)
 
+        self._expire_nfi_items()
         self._update_attributes()
 
     def _update_attributes(self) -> None:
         """Update sensor attributes and state."""
-        active_count = len(
-            [inv for inv in self._active if inv.get("status") != "after_race"]
-        )
-        total_investigations = sum(
-            d.get("investigations", 0) for d in self._by_driver.values()
+        # Expire old NFI items
+        self._expire_nfi_items()
+
+        # State = actionable items count
+        actionable_count = (
+            len(self._noted) + len(self._under_investigation) + len(self._penalties)
         )
 
-        self._attr_native_value = active_count
+        self._attr_native_value = actionable_count
         self._attr_extra_state_attributes = {
-            "active": list(self._active),
-            "by_driver": dict(self._by_driver),
-            "penalties_pending": list(self._penalties_pending),
-            "penalties_served": self._penalties_served,
-            "total_investigations": total_investigations,
+            "noted": list(self._noted.values()),
+            "under_investigation": list(self._under_investigation.values()),
+            "no_further_action": list(self._nfi.values()),
+            "penalties": list(self._penalties),
             "last_update": dt_util.utcnow().isoformat(timespec="seconds"),
         }
 
@@ -4123,6 +4239,10 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             if isinstance(msg, dict) and self._process_message(msg):
                 changed = True
 
+        # Check for NFI expiry even if no new messages
+        if self._expire_nfi_items():
+            changed = True
+
         if changed:
             self._update_attributes()
             self._safe_write_ha_state()
@@ -4131,24 +4251,19 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def state(self):
         return self._attr_native_value
 
-    @property
-    def available(self) -> bool:
-        """Always available - shows 0 when no investigations have occurred."""
-        return True
-
     def _clear_state(self) -> None:
         self._attr_native_value = 0
-        self._active = []
-        self._by_driver = {}
-        self._penalties_pending = []
-        self._penalties_served = 0
+        self._noted = {}
+        self._under_investigation = {}
+        self._nfi = {}
+        self._penalties = []
         self._processed_ids = set()
+        self._session_time = None
         self._attr_extra_state_attributes = {
-            "active": [],
-            "by_driver": {},
-            "penalties_pending": [],
-            "penalties_served": 0,
-            "total_investigations": 0,
+            "noted": [],
+            "under_investigation": [],
+            "no_further_action": [],
+            "penalties": [],
             "last_update": None,
         }
 

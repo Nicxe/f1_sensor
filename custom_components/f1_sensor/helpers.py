@@ -18,8 +18,10 @@ from homeassistant.loader import async_get_integration
 from homeassistant.helpers.storage import Store
 
 from .const import (
+    CIRCUIT_MAP_CDN_BASE_URL,
     DOMAIN,
     ENABLE_DEVELOPMENT_MODE_UI,
+    F1_CIRCUIT_MAP_NAMES,
     F1_COUNTRY_CODES,
     FLAG_CDN_BASE_URL,
 )
@@ -173,6 +175,16 @@ def get_country_flag_url(country_name: str | None) -> str | None:
     if not code:
         return None
     return f"{FLAG_CDN_BASE_URL}/{code}.png"
+
+
+def get_circuit_map_url(circuit_id: str | None) -> str | None:
+    """Return F1 circuit map CDN URL for Ergast circuit ID."""
+    if not circuit_id:
+        return None
+    circuit_name = F1_CIRCUIT_MAP_NAMES.get(circuit_id)
+    if not circuit_name:
+        return None
+    return f"{CIRCUIT_MAP_CDN_BASE_URL}/{circuit_name}_Circuit.webp"
 
 
 async def build_user_agent(hass) -> str:
