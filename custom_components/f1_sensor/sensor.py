@@ -2631,6 +2631,7 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._started_flag = None
         self._session_info_coordinator = None
         self._race_control_coordinator = None
+        self._track_grip_state: str | None = None
         self._attr_extra_state_attributes = {}
         # Advertise as enum sensor so HA UI can suggest valid states
         try:
@@ -2773,27 +2774,29 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         Returns:
             "low": LOW GRIP CONDITIONS declared
-            "normal": NORMAL GRIP CONDITIONS declared or no declaration
-            None: No data available
+            "normal": NORMAL GRIP CONDITIONS declared or default when unset
+            None: No data available yet
         """
         if self._race_control_coordinator is None:
-            return None
+            return self._track_grip_state
 
         messages = getattr(self._race_control_coordinator, "data_list", None)
         if not isinstance(messages, list) or not messages:
-            return None
+            return self._track_grip_state
 
         # Find the most recent grip-related message
-        latest_grip = None
-        for msg in messages:
-            message_text = (msg.get("Message") or "").upper()
+        for msg in reversed(messages):
+            message_text = (msg.get("Message") or msg.get("Text") or "").upper()
             if "LOW GRIP CONDITIONS" in message_text:
-                latest_grip = "low"
-            elif "NORMAL GRIP CONDITIONS" in message_text:
-                latest_grip = "normal"
+                self._track_grip_state = "low"
+                return "low"
+            if "NORMAL GRIP CONDITIONS" in message_text:
+                self._track_grip_state = "normal"
+                return "normal"
 
-        # Default to "normal" if no grip message found (dry race)
-        return latest_grip if latest_grip else "normal"
+        if self._track_grip_state is None:
+            self._track_grip_state = "normal"
+        return self._track_grip_state
 
     def _handle_race_control_update(self) -> None:
         """Update track_grip attribute when race control messages change."""
@@ -2920,6 +2923,7 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def _clear_state(self) -> None:
         self._attr_native_value = None
         self._started_flag = None
+        self._track_grip_state = None
         self._attr_extra_state_attributes = {}
 
 
