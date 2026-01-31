@@ -26,6 +26,76 @@ RACE_WEEK_START_OPTIONS = {
     RACE_WEEK_START_SATURDAY: "Saturday",
 }
 
+DEFAULT_ENABLED_SENSORS = [
+    "next_race",
+    "race_week",
+    "current_season",
+    "driver_standings",
+    "constructor_standings",
+    "weather",
+    "last_race_results",
+    "season_results",
+    "sprint_results",
+    "driver_points_progression",
+    "constructor_points_progression",
+    "fia_documents",
+    # Live timing / SignalR backed
+    "current_session",
+    "track_weather",
+    "race_lap_count",
+    "driver_list",
+    "current_tyres",
+    "tyre_statistics",
+    "track_status",
+    "session_status",
+    "safety_car",
+    "race_control",
+]
+
+SENSOR_OPTIONS = {
+    # Jolpica / schedule / standings / results (non-live)
+    "next_race": "Next race",
+    "track_time": "Track time",
+    "race_week": "Race week",
+    "current_season": "Current season",
+    "driver_standings": "Driver standings",
+    "constructor_standings": "Constructor standings",
+    "weather": "Weather",
+    "last_race_results": "Last race results",
+    "season_results": "Season results",
+    "sprint_results": "Sprint results",
+    "driver_points_progression": "Driver points progression",
+    "constructor_points_progression": "Constructor points progression",
+    "fia_documents": "FIA decisions",
+    # Live timing / SignalR backed (live)
+    "current_session": "Current session (live)",
+    "track_weather": "Track weather (live)",
+    "race_lap_count": "Race lap count (live)",
+    "driver_list": "Driver list (live)",
+    "current_tyres": "Current tyres (live)",
+    "tyre_statistics": "Tyre statistics (live)",
+    "track_status": "Track status (live)",
+    "session_status": "Session status (live)",
+    "safety_car": "Safety car (live)",
+    "formation_start": "Formation start (race/sprint)",
+    "race_control": "Race control (live)",
+    "team_radio": "Team radio (latest clip)",
+    "top_three": "Top three (leader, live)",
+    "pitstops": "Pit stops (live)",
+    "championship_prediction": "Championship prediction (live)",
+    "driver_positions": "Driver positions (live)",
+    "track_limits": "Track limits (live)",
+    "investigations": "Investigations & penalties (live)",
+}
+
+
+def _build_sensor_options() -> dict:
+    options = dict(SENSOR_OPTIONS)
+    # Keep the "live timing online" diagnostic available for power users even
+    # when dev UI is disabled (useful for automations).
+    options["live_timing_diagnostics"] = "Live timing online"
+    return options
+
 
 class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -70,69 +140,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     title=user_input["sensor_name"], data=user_input
                 )
 
-        default_enabled = [
-            "next_race",
-            "race_week",
-            "current_season",
-            "driver_standings",
-            "constructor_standings",
-            "weather",
-            "last_race_results",
-            "season_results",
-            "sprint_results",
-            "driver_points_progression",
-            "constructor_points_progression",
-            "fia_documents",
-            # Live timing / SignalR backed
-            "current_session",
-            "track_weather",
-            "race_lap_count",
-            "driver_list",
-            "current_tyres",
-            "tyre_statistics",
-            "track_status",
-            "session_status",
-            "safety_car",
-            "race_control",
-        ]
-        sensor_options = {
-            # Jolpica / schedule / standings / results (non-live)
-            "next_race": "Next race",
-            "race_week": "Race week",
-            "current_season": "Current season",
-            "driver_standings": "Driver standings",
-            "constructor_standings": "Constructor standings",
-            "weather": "Weather",
-            "last_race_results": "Last race results",
-            "season_results": "Season results",
-            "sprint_results": "Sprint results",
-            "driver_points_progression": "Driver points progression",
-            "constructor_points_progression": "Constructor points progression",
-            "fia_documents": "FIA decisions",
-            # Live timing / SignalR backed (live)
-            "current_session": "Current session (live)",
-            "track_weather": "Track weather (live)",
-            "race_lap_count": "Race lap count (live)",
-            "driver_list": "Driver list (live)",
-            "current_tyres": "Current tyres (live)",
-            "tyre_statistics": "Tyre statistics (live)",
-            "track_status": "Track status (live)",
-            "session_status": "Session status (live)",
-            "safety_car": "Safety car (live)",
-            "formation_start": "Formation start (race/sprint)",
-            "race_control": "Race control (live)",
-            "team_radio": "Team radio (latest clip)",
-            "top_three": "Top three (leader, live)",
-            "pitstops": "Pit stops (live)",
-            "championship_prediction": "Championship prediction (live)",
-            "driver_positions": "Driver positions (live)",
-            "track_limits": "Track limits (live)",
-            "investigations": "Investigations & penalties (live)",
-        }
-
-        # Keep the "live timing online" diagnostic available for power users even
-        # when dev UI is disabled (useful for automations).
-        sensor_options["live_timing_diagnostics"] = "Live timing online"
+        default_enabled = list(DEFAULT_ENABLED_SENSORS)
+        sensor_options = _build_sensor_options()
 
         # Build base schema
         schema_fields: dict = {
@@ -212,66 +221,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
         # Normalize/clean any stale enabled_sensors keys (e.g. legacy 'next_session')
-        allowed = {
-            # Jolpica / schedule / standings / results (non-live)
-            "next_race": "Next race",
-            "race_week": "Race week",
-            "current_season": "Current season",
-            "driver_standings": "Driver standings",
-            "constructor_standings": "Constructor standings",
-            "weather": "Weather",
-            "last_race_results": "Last race results",
-            "season_results": "Season results",
-            "sprint_results": "Sprint results",
-            "driver_points_progression": "Driver points progression",
-            "constructor_points_progression": "Constructor points progression",
-            "fia_documents": "FIA decisions",
-            # Live timing / SignalR backed (live)
-            "current_session": "Current session (live)",
-            "track_weather": "Track weather (live)",
-            "race_lap_count": "Race lap count (live)",
-            "driver_list": "Driver list (live)",
-            "current_tyres": "Current tyres (live)",
-            "tyre_statistics": "Tyre statistics (live)",
-            "track_status": "Track status (live)",
-            "session_status": "Session status (live)",
-            "safety_car": "Safety car (live)",
-            "formation_start": "Formation start (race/sprint)",
-            "race_control": "Race control (live)",
-            "team_radio": "Team radio (latest clip)",
-            "top_three": "Top three (leader, live)",
-            "pitstops": "Pit stops (live)",
-            "championship_prediction": "Championship prediction (live)",
-            "driver_positions": "Driver positions (live)",
-            "track_limits": "Track limits (live)",
-            "investigations": "Investigations & penalties (live)",
-        }
-        allowed["live_timing_diagnostics"] = "Live timing online"
-        default_enabled = [
-            "next_race",
-            "race_week",
-            "current_season",
-            "driver_standings",
-            "constructor_standings",
-            "weather",
-            "last_race_results",
-            "season_results",
-            "sprint_results",
-            "driver_points_progression",
-            "constructor_points_progression",
-            "fia_documents",
-            # Live timing / SignalR backed
-            "current_session",
-            "track_weather",
-            "race_lap_count",
-            "driver_list",
-            "current_tyres",
-            "tyre_statistics",
-            "track_status",
-            "session_status",
-            "race_control",
-            "safety_car",
-        ]
+        allowed = _build_sensor_options()
+        default_enabled = list(DEFAULT_ENABLED_SENSORS)
         raw_enabled = current.get("enabled_sensors", default_enabled)
         normalized_enabled = []
         seen = set()

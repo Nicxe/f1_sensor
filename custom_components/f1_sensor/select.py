@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
+
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -125,10 +127,8 @@ class F1LiveDelayReferenceSelect(F1AuxEntity, SelectEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub:
-            try:
+            with suppress(Exception):
                 self._unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._unsub = None
 
     @property

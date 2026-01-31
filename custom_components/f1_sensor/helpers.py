@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 import asyncio
 import json
@@ -58,9 +59,12 @@ def parse_racecontrol(text: str):
         if "{" not in line:
             continue
         _, json_part = line.split("{", 1)
+        obj = None
         try:
             obj = json.loads("{" + json_part)
         except JSONDecodeError:
+            obj = None
+        if obj is None:
             continue
         msgs = obj.get("Messages")
         if isinstance(msgs, list) and msgs:
@@ -342,10 +346,8 @@ async def fetch_json(
 
             loop.create_task(_cleanup_later())
         except Exception:
-            try:
+            with suppress(Exception):
                 inflight_map.pop(key, None)
-            except Exception:
-                pass
 
 
 async def fetch_text(
@@ -471,10 +473,8 @@ async def fetch_text(
 
             loop.create_task(_cleanup_later())
         except Exception:
-            try:
+            with suppress(Exception):
                 inflight_map.pop(key, None)
-            except Exception:
-                pass
 
 
 class PersistentCache:
@@ -507,19 +507,15 @@ class PersistentCache:
                 return
 
             async def _save_later():
-                try:
+                with suppress(Exception):
                     await asyncio.sleep(delay)
                     await self._store.async_save(self._data)
-                except Exception:
-                    pass
 
             self._save_task = self._hass.loop.create_task(_save_later())
         except Exception:
             # Fallback to immediate save
-            try:
+            with suppress(Exception):
                 self._hass.loop.create_task(self._store.async_save(self._data))
-            except Exception:
-                pass
 
 
 _PDF_ANCHOR_RE = re.compile(

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 import datetime
 import logging
@@ -148,9 +149,12 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
             # don't drop out of "race week" early on race day.
             time = race.get("time") or "23:59:59Z"
             dt_str = f"{date}T{time}".replace("Z", "+00:00")
+            dt = None
             try:
                 dt = datetime.datetime.fromisoformat(dt_str)
             except ValueError:
+                dt = None
+            if dt is None:
                 continue
             # Consider the current race as "next" until a short grace period
             # after the scheduled start, matching `sensor.f1_next_race`.
@@ -346,16 +350,12 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub:
-            try:
+            with suppress(Exception):
                 self._unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._unsub = None
         if self._unsub_live_state:
-            try:
+            with suppress(Exception):
                 self._unsub_live_state()
-            except Exception:  # noqa: BLE001
-                pass
             self._unsub_live_state = None
 
     @property
@@ -443,15 +443,13 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
                 self._unsub_live_state = None
 
         # Periodic update to refresh age-related attributes while running
-        try:
+        with suppress(Exception):
             unsub = async_track_time_interval(
                 self.hass,
                 lambda *_: self._safe_write_ha_state(),
                 datetime.timedelta(seconds=10),
             )
             self.async_on_remove(unsub)
-        except Exception:
-            pass
 
     def _compute_mode_and_ages(
         self,

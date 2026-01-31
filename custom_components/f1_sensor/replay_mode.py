@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
+
 import asyncio
 import base64
 import json
@@ -459,10 +461,8 @@ class ReplaySessionManager:
         """Subscribe to state changes. Returns unsubscribe function."""
         self._listeners.append(callback)
         # Immediately notify with current state
-        try:
+        with suppress(Exception):
             callback(self._get_snapshot())
-        except Exception:
-            pass
 
         def _unsub():
             if callback in self._listeners:
@@ -474,10 +474,8 @@ class ReplaySessionManager:
         """Notify all listeners of state change."""
         snapshot = self._get_snapshot()
         for listener in list(self._listeners):
-            try:
+            with suppress(Exception):
                 listener(snapshot)
-            except Exception:
-                pass
 
     def _get_snapshot(self) -> dict:
         """Get current state snapshot."""
@@ -702,6 +700,7 @@ class ReplaySessionManager:
             timestamp_str = line[:json_start].strip()
             json_str = line[json_start:]
 
+            skip = False
             try:
                 timestamp_ms = self._parse_timestamp_to_ms(timestamp_str)
                 payload = json.loads(json_str)
@@ -718,6 +717,8 @@ class ReplaySessionManager:
                     )
                 )
             except (json.JSONDecodeError, ValueError):
+                skip = True
+            if skip:
                 continue
 
         _LOGGER.debug("Downloaded %d frames from %s", len(frames), stream_name)
@@ -750,9 +751,12 @@ class ReplaySessionManager:
         # Delta: Lines as dict {"0": {...}, "1": {...}, "2": {...}}
         elif isinstance(lines, dict):
             for key, delta in lines.items():
+                idx = None
                 try:
                     idx = int(key)
                 except (ValueError, TypeError):
+                    idx = None
+                if idx is None:
                     continue
                 if idx < 0 or idx > 2:
                     continue
@@ -889,12 +893,10 @@ class ReplaySessionManager:
                     driver_entry["laps"][lap_key] = last_lap_value
                     if last_lap_num < use_lap_num:
                         driver_entry["last_recorded_lap"] = use_lap_num
-                    try:
+                    with suppress(Exception):
                         completed = driver_entry.get("completed_laps", 0) or 0
                         if isinstance(completed, int) and completed < use_lap_num:
                             driver_entry["completed_laps"] = use_lap_num
-                    except Exception:
-                        pass
 
     @staticmethod
     def _has_lap_history_state(state: Dict[str, Any]) -> bool:
@@ -914,11 +916,12 @@ class ReplaySessionManager:
             pos_raw = info.get("Position")
             if pos_raw is None:
                 continue
+            grid_pos = None
             try:
                 grid_pos = str(pos_raw).strip()
-                if not grid_pos:
-                    continue
             except (TypeError, ValueError):
+                grid_pos = None
+            if not grid_pos:
                 continue
             rn_key = str(rn)
             driver_entry = state.setdefault(
@@ -951,9 +954,12 @@ class ReplaySessionManager:
             line_raw = info.get("Line")
             if line_raw is None:
                 continue
+            line_pos = None
             try:
                 line_pos = str(int(line_raw))
             except (TypeError, ValueError):
+                line_pos = None
+            if line_pos is None:
                 continue
             rn_key = str(rn)
             driver_entry = state.setdefault(
@@ -1269,15 +1275,12 @@ class ReplaySessionManager:
             if not index_file.exists():
                 continue
 
-            try:
+            with suppress(Exception):
                 stat = index_file.stat()
                 if stat.st_mtime < cutoff:
                     shutil.rmtree(session_dir)
                     cleaned += 1
                     _LOGGER.debug("Cleaned old replay cache: %s", session_dir.name)
-            except Exception:
-                pass
-
         return cleaned
 
     @staticmethod
@@ -1407,12 +1410,15 @@ class ReplayTransport:
                 if self._closed:
                     return
 
+                skip = False
                 try:
                     frame = json.loads(line.strip())
                     frame_ms = frame["t"]
                     stream = frame["s"]
                     payload = frame["p"]
                 except (json.JSONDecodeError, KeyError):
+                    skip = True
+                if skip:
                     continue
 
                 # Skip frames before start point
@@ -1536,10 +1542,8 @@ class ReplayTransport:
             "elapsed_s": self._get_elapsed_playback_time(),
         }
         for listener in list(self._listeners):
-            try:
+            with suppress(Exception):
                 listener(snapshot)
-            except Exception:
-                pass
 
 
 class ReplayController:
@@ -1730,10 +1734,8 @@ class ReplayController:
 
         if self._playback_task:
             self._playback_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._playback_task
-            except asyncio.CancelledError:
-                pass
             self._playback_task = None
 
         # Restore live state to idle - let LiveSessionSupervisor control it
@@ -1753,7 +1755,7 @@ class ReplayController:
             while self._transport and not self._transport._closed:
                 await asyncio.sleep(0.25)
         except asyncio.CancelledError:
-            pass
+            return
         except Exception as err:
             _LOGGER.error("Replay playback error: %s", err)
         finally:

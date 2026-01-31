@@ -44,6 +44,7 @@
     "entity": {
         "sensor": {
             "next_race": {"name": "Next race"},
+            "track_time": {"name": "Track time"},
             "current_season": {"name": "Current season"},
             "driver_standings": {"name": "Driver standings"},
             "constructor_standings": {"name": "Constructor standings"},

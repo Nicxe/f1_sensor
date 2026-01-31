@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 import asyncio
 import logging
@@ -89,10 +90,8 @@ class LiveDelayController:
 
         @callback
         def _remove() -> None:
-            try:
+            with suppress(ValueError):
                 self._listeners.remove(listener)
-            except ValueError:
-                pass
 
         return _remove
 
@@ -194,10 +193,8 @@ class LiveDelayReferenceController:
 
         @callback
         def _remove() -> None:
-            try:
+            with suppress(ValueError):
                 self._listeners.remove(listener)
-            except ValueError:
-                pass
 
         return _remove
 

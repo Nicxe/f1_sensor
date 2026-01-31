@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 import asyncio
 import logging
@@ -346,7 +347,7 @@ class LiveSessionSupervisor:
             self._task = None
 
     async def _runner(self) -> None:
-        try:
+        with suppress(asyncio.CancelledError):
             while not self._stopped:
                 window, allow_fallback = await self._resolve_window()
                 fallback = False
@@ -388,8 +389,6 @@ class LiveSessionSupervisor:
                     await asyncio.sleep(wait)
                     continue
                 await self._activate_window(window, fallback=fallback)
-        except asyncio.CancelledError:
-            pass
 
     def _make_fallback_window(self) -> SessionWindow:
         now = dt_util.utcnow()

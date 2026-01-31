@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
+
 import asyncio
 import base64
 import json
@@ -227,16 +229,12 @@ class FormationStartTracker:
 
     def _detach_bus(self) -> None:
         if self._session_unsub is not None:
-            try:
+            with suppress(Exception):
                 self._session_unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._session_unsub = None
         if self._status_unsub is not None:
-            try:
+            with suppress(Exception):
                 self._status_unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._status_unsub = None
 
     def _notify_listeners(self) -> None:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 from typing import Any, Callable
 
@@ -70,16 +71,12 @@ class F1LiveDelayNumber(F1AuxEntity, NumberEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._controller_unsub:
-            try:
+            with suppress(Exception):
                 self._controller_unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._controller_unsub = None
         if self._calibration_unsub:
-            try:
+            with suppress(Exception):
                 self._calibration_unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._calibration_unsub = None
 
     async def async_set_native_value(self, value: float) -> None:
