@@ -1,62 +1,112 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "F1-anturin määritys",
-        "data": {
-          "sensor_name": "Laitteen nimi",
-          "enabled_sensors": "Käytössä olevat anturit",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
-          "race_week_start_day": "Kilpailuviikon ensimmäinen päivä"
+    "config": {
+        "step": {
+            "user": {
+                "title": "F1-anturin määritys",
+                "data": {
+                    "sensor_name": "Laitteen nimi",
+                    "enabled_sensors": "Käytössä olevat anturit",
+                    "operation_mode": "Operation mode",
+                    "replay_file": "Replay dump path",
+                    "race_week_start_day": "Kilpailuviikon ensimmäinen päivä"
+                }
+            },
+            "reconfigure": {
+                "title": "Määritä F1-anturi uudelleen",
+                "data": {
+                    "sensor_name": "Laitteen nimi",
+                    "enabled_sensors": "Käytössä olevat anturit",
+                    "operation_mode": "Operation mode",
+                    "replay_file": "Replay dump path",
+                    "race_week_start_day": "Kilpailuviikon ensimmäinen päivä"
+                }
+            }
+        },
+        "error": {
+            "replay_required": "Select a replay dump file when Development mode is enabled.",
+            "replay_missing": "Replay dump file not found or unreadable."
         }
-      },
-      "reconfigure": {
-        "title": "Määritä F1-anturi uudelleen",
-        "data": {
-          "sensor_name": "Laitteen nimi",
-          "enabled_sensors": "Käytössä olevat anturit",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
-          "race_week_start_day": "Kilpailuviikon ensimmäinen päivä"
+    },
+    "entity": {
+        "sensor": {
+            "next_race": {
+                "name": "Seuraava kilpailu"
+            },
+            "current_season": {
+                "name": "Nykyinen kausi"
+            },
+            "driver_standings": {
+                "name": "Kuljettajien pisteet"
+            },
+            "constructor_standings": {
+                "name": "Valmistajien pisteet"
+            },
+            "weather": {
+                "name": "Sää"
+            },
+            "current_session": {
+                "name": "Käynnissä oleva sessio"
+            },
+            "last_race_results": {
+                "name": "Edellisen kilpailun tulokset"
+            },
+            "season_results": {
+                "name": "Kausitulokset"
+            },
+            "sprint_results": {
+                "name": "Sprinttulokset"
+            },
+            "race_control": {
+                "name": "Kisavalvonta"
+            },
+            "safety_car": {
+                "name": "Turva-auto"
+            },
+            "pitstops": {
+                "name": "Varikkopysähdykset"
+            },
+            "fia_documents": {
+                "name": "FIA-päätökset"
+            },
+            "live_timing_mode": {
+                "name": "Live timing -tila"
+            },
+            "track_limits": {
+                "name": "Track limits"
+            },
+            "investigations": {
+                "name": "Investigations & penalties"
+            }
+        },
+        "media_player": {
+            "replay_player": {
+                "name": "Replay player"
+            }
+        },
+        "select": {
+            "live_delay_reference": {
+                "name": "Live delay reference"
+            },
+            "replay_year": {
+                "name": "Replay year"
+            },
+            "replay_session": {
+                "name": "Replay session"
+            },
+            "replay_start_reference": {
+                "name": "Replay start reference"
+            }
+        },
+        "binary_sensor": {
+            "race_week": {
+                "name": "Kilpailuviikko"
+            },
+            "live_timing_online": {
+                "name": "Live timing online"
+            },
+            "formation_start": {
+                "name": "Formation start"
+            }
         }
-      }
-    },
-    "error": {
-      "replay_required": "Select a replay dump file when Development mode is enabled.",
-      "replay_missing": "Replay dump file not found or unreadable."
     }
-  },
-  "entity": {
-    "sensor": {
-      "next_race": { "name": "Seuraava kilpailu" },
-      "current_season": { "name": "Nykyinen kausi" },
-      "driver_standings": { "name": "Kuljettajien pisteet" },
-      "constructor_standings": { "name": "Valmistajien pisteet" },
-      "weather": { "name": "Sää" },
-      "current_session": { "name": "Käynnissä oleva sessio" },
-      "last_race_results": { "name": "Edellisen kilpailun tulokset" },
-      "season_results": { "name": "Kausitulokset" },
-      "sprint_results": { "name": "Sprinttulokset" },
-      "race_control": { "name": "Kisavalvonta" },
-      "safety_car": { "name": "Turva-auto" },
-      "pitstops": { "name": "Varikkopysähdykset" },
-      "fia_documents": { "name": "FIA-päätökset" },
-      "live_timing_mode": { "name": "Live timing -tila" }
-    },
-    "media_player": {
-      "replay_player": { "name": "Replay player" }
-    },
-    "select": {
-      "live_delay_reference": { "name": "Live delay reference" },
-      "replay_year": { "name": "Replay year" },
-      "replay_session": { "name": "Replay session" },
-      "replay_start_reference": { "name": "Replay start reference" }
-    },
-    "binary_sensor": {
-      "race_week": { "name": "Kilpailuviikko" },
-      "live_timing_online": { "name": "Live timing online" },
-      "formation_start": { "name": "Formation start" }
-    }
-  }
 }

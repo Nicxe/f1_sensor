@@ -1,62 +1,112 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "Configuração do sensor F1",
-        "data": {
-          "sensor_name": "Nome do dispositivo",
-          "enabled_sensors": "Sensores habilitados",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
-          "race_week_start_day": "Primeiro dia da semana de corrida"
+    "config": {
+        "step": {
+            "user": {
+                "title": "Configuração do sensor F1",
+                "data": {
+                    "sensor_name": "Nome do dispositivo",
+                    "enabled_sensors": "Sensores habilitados",
+                    "operation_mode": "Operation mode",
+                    "replay_file": "Replay dump path",
+                    "race_week_start_day": "Primeiro dia da semana de corrida"
+                }
+            },
+            "reconfigure": {
+                "title": "Reconfigurar sensor F1",
+                "data": {
+                    "sensor_name": "Nome do dispositivo",
+                    "enabled_sensors": "Sensores habilitados",
+                    "operation_mode": "Operation mode",
+                    "replay_file": "Replay dump path",
+                    "race_week_start_day": "Primeiro dia da semana de corrida"
+                }
+            }
+        },
+        "error": {
+            "replay_required": "Select a replay dump file when Development mode is enabled.",
+            "replay_missing": "Replay dump file not found or unreadable."
         }
-      },
-      "reconfigure": {
-        "title": "Reconfigurar sensor F1",
-        "data": {
-          "sensor_name": "Nome do dispositivo",
-          "enabled_sensors": "Sensores habilitados",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
-          "race_week_start_day": "Primeiro dia da semana de corrida"
+    },
+    "entity": {
+        "sensor": {
+            "next_race": {
+                "name": "Próxima corrida"
+            },
+            "current_season": {
+                "name": "Temporada atual"
+            },
+            "driver_standings": {
+                "name": "Classificação de pilotos"
+            },
+            "constructor_standings": {
+                "name": "Classificação de equipes"
+            },
+            "weather": {
+                "name": "Clima"
+            },
+            "current_session": {
+                "name": "Sessão atual"
+            },
+            "last_race_results": {
+                "name": "Resultados da última corrida"
+            },
+            "season_results": {
+                "name": "Resultados da temporada"
+            },
+            "sprint_results": {
+                "name": "Resultados da sprint"
+            },
+            "race_control": {
+                "name": "Controle de corrida"
+            },
+            "safety_car": {
+                "name": "Safety car"
+            },
+            "pitstops": {
+                "name": "Pit stops"
+            },
+            "fia_documents": {
+                "name": "Decisões da FIA"
+            },
+            "live_timing_mode": {
+                "name": "Modo Live Timing"
+            },
+            "track_limits": {
+                "name": "Track limits"
+            },
+            "investigations": {
+                "name": "Investigations & penalties"
+            }
+        },
+        "media_player": {
+            "replay_player": {
+                "name": "Replay player"
+            }
+        },
+        "select": {
+            "live_delay_reference": {
+                "name": "Live delay reference"
+            },
+            "replay_year": {
+                "name": "Replay year"
+            },
+            "replay_session": {
+                "name": "Replay session"
+            },
+            "replay_start_reference": {
+                "name": "Replay start reference"
+            }
+        },
+        "binary_sensor": {
+            "race_week": {
+                "name": "Semana de corrida"
+            },
+            "live_timing_online": {
+                "name": "Live Timing online"
+            },
+            "formation_start": {
+                "name": "Formation start"
+            }
         }
-      }
-    },
-    "error": {
-      "replay_required": "Select a replay dump file when Development mode is enabled.",
-      "replay_missing": "Replay dump file not found or unreadable."
     }
-  },
-  "entity": {
-    "sensor": {
-      "next_race": { "name": "Próxima corrida" },
-      "current_season": { "name": "Temporada atual" },
-      "driver_standings": { "name": "Classificação de pilotos" },
-      "constructor_standings": { "name": "Classificação de equipes" },
-      "weather": { "name": "Clima" },
-      "current_session": { "name": "Sessão atual" },
-      "last_race_results": { "name": "Resultados da última corrida" },
-      "season_results": { "name": "Resultados da temporada" },
-      "sprint_results": { "name": "Resultados da sprint" },
-      "race_control": { "name": "Controle de corrida" },
-      "safety_car": { "name": "Safety car" },
-      "pitstops": { "name": "Pit stops" },
-      "fia_documents": { "name": "Decisões da FIA" },
-      "live_timing_mode": { "name": "Modo Live Timing" }
-    },
-    "media_player": {
-      "replay_player": { "name": "Replay player" }
-    },
-    "select": {
-      "live_delay_reference": { "name": "Live delay reference" },
-      "replay_year": { "name": "Replay year" },
-      "replay_session": { "name": "Replay session" },
-      "replay_start_reference": { "name": "Replay start reference" }
-    },
-    "binary_sensor": {
-      "race_week": { "name": "Semana de corrida" },
-      "live_timing_online": { "name": "Live Timing online" },
-      "formation_start": { "name": "Formation start" }
-    }
-  }
 }

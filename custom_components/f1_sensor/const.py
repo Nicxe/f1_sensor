@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from homeassistant.const import Platform
 
 DOMAIN = "f1_sensor"
@@ -30,6 +32,9 @@ OPERATION_MODE_LIVE = "live"
 OPERATION_MODE_DEVELOPMENT = "development"
 DEFAULT_OPERATION_MODE = OPERATION_MODE_LIVE
 
+# Race schedule grace period: keep a session "current" briefly after start.
+RACE_SWITCH_GRACE = timedelta(hours=3)
+
 # Live delay calibration reference
 CONF_LIVE_DELAY_REFERENCE = "live_delay_reference"
 LIVE_DELAY_REFERENCE_SESSION = "session_live"
@@ -48,6 +53,44 @@ DEFAULT_REPLAY_START_REFERENCE = REPLAY_START_REFERENCE_FORMATION
 ENABLE_DEVELOPMENT_MODE_UI = True
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
+
+# All supported sensor keys (used for normalization and config entry filtering).
+SUPPORTED_SENSOR_KEYS = frozenset(
+    {
+        "next_race",
+        "track_time",
+        "current_season",
+        "driver_standings",
+        "constructor_standings",
+        "weather",
+        "track_weather",
+        "race_lap_count",
+        "driver_list",
+        "current_tyres",
+        "last_race_results",
+        "season_results",
+        "sprint_results",
+        "driver_points_progression",
+        "constructor_points_progression",
+        "race_week",
+        "track_status",
+        "session_status",
+        "current_session",
+        "safety_car",
+        "formation_start",
+        "fia_documents",
+        "race_control",
+        "top_three",
+        "team_radio",
+        "pitstops",
+        "championship_prediction",
+        "live_timing_diagnostics",
+        "tyre_statistics",
+        "driver_positions",
+        "track_limits",
+        "investigations",
+    }
+)
 
 API_URL = "https://api.jolpi.ca/ergast/f1/current.json"
 DRIVER_STANDINGS_URL = "https://api.jolpi.ca/ergast/f1/current/driverstandings.json"

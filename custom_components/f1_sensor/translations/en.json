@@ -43,39 +43,99 @@
     },
     "entity": {
         "sensor": {
-            "next_race": {"name": "Next race"},
-            "track_time": {"name": "Track time"},
-            "current_season": {"name": "Current season"},
-            "driver_standings": {"name": "Driver standings"},
-            "constructor_standings": {"name": "Constructor standings"},
-            "weather": {"name": "Weather"},
-            "track_weather": {"name": "Track weather"},
-            "current_session": {"name": "Current session"},
-            "last_race_results": {"name": "Last race results"},
-            "season_results": {"name": "Season results"},
-            "sprint_results": {"name": "Sprint results"},
-            "race_control": {"name": "Race control"},
-            "safety_car": {"name": "Safety car"},
-            "top_three": {"name": "Top three (leader)"},
-            "pitstops": {"name": "Pit stops"},
-            "championship_prediction": {"name": "Championship prediction"},
-            "fia_documents": {"name": "FIA decisions"},
-            "live_timing_mode": {"name": "Live timing mode"},
-            "driver_positions": {"name": "Driver positions"}
+            "next_race": {
+                "name": "Next race"
+            },
+            "track_time": {
+                "name": "Track time"
+            },
+            "current_season": {
+                "name": "Current season"
+            },
+            "driver_standings": {
+                "name": "Driver standings"
+            },
+            "constructor_standings": {
+                "name": "Constructor standings"
+            },
+            "weather": {
+                "name": "Weather"
+            },
+            "track_weather": {
+                "name": "Track weather"
+            },
+            "current_session": {
+                "name": "Current session"
+            },
+            "last_race_results": {
+                "name": "Last race results"
+            },
+            "season_results": {
+                "name": "Season results"
+            },
+            "sprint_results": {
+                "name": "Sprint results"
+            },
+            "race_control": {
+                "name": "Race control"
+            },
+            "safety_car": {
+                "name": "Safety car"
+            },
+            "top_three": {
+                "name": "Top three (leader)"
+            },
+            "pitstops": {
+                "name": "Pit stops"
+            },
+            "championship_prediction": {
+                "name": "Championship prediction"
+            },
+            "fia_documents": {
+                "name": "FIA decisions"
+            },
+            "live_timing_mode": {
+                "name": "Live timing mode"
+            },
+            "driver_positions": {
+                "name": "Driver positions"
+            },
+            "track_limits": {
+                "name": "Track limits"
+            },
+            "investigations": {
+                "name": "Investigations & penalties"
+            }
         },
         "media_player": {
-            "replay_player": {"name": "Replay player"}
+            "replay_player": {
+                "name": "Replay player"
+            }
         },
         "select": {
-            "live_delay_reference": {"name": "Live delay reference"},
-            "replay_year": {"name": "Replay year"},
-            "replay_session": {"name": "Replay session"},
-            "replay_start_reference": {"name": "Replay start reference"}
+            "live_delay_reference": {
+                "name": "Live delay reference"
+            },
+            "replay_year": {
+                "name": "Replay year"
+            },
+            "replay_session": {
+                "name": "Replay session"
+            },
+            "replay_start_reference": {
+                "name": "Replay start reference"
+            }
         },
         "binary_sensor": {
-            "race_week": {"name": "Race week"},
-            "live_timing_online": {"name": "Live timing online"},
-            "formation_start": {"name": "Formation start"}
+            "race_week": {
+                "name": "Race week"
+            },
+            "live_timing_online": {
+                "name": "Live timing online"
+            },
+            "formation_start": {
+                "name": "Formation start"
+            }
         }
     }
 }

@@ -46,6 +46,8 @@ from .const import (
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
     ENABLE_DEVELOPMENT_MODE_UI,
+    RACE_SWITCH_GRACE,
+    SUPPORTED_SENSOR_KEYS,
 )
 from .signalr import LiveBus
 from .replay import ReplaySignalRClient
@@ -54,6 +56,7 @@ from .helpers import (
     build_user_agent,
     fetch_json,
     fetch_text,
+    get_next_race,
     parse_fia_documents,
     PersistentCache,
 )
@@ -159,6 +162,36 @@ def _apply_delay_simple(instance: Any, seconds: int) -> None:
     instance._deliver_handle = _cancel_handle(instance._deliver_handle)
 
 
+def _init_stream_delay_state(
+    instance: Any,
+    delay_seconds: int,
+    *,
+    bus: LiveBus | None,
+    delay_controller: LiveDelayController | None,
+    live_state: LiveAvailabilityTracker | None,
+) -> None:
+    instance._deliver_handle = None
+    instance._bus = bus
+    instance._unsub = None
+    instance._delay_listener = None
+    instance._delay = max(0, int(delay_seconds or 0))
+    instance._replay_mode = False
+    if delay_controller is not None:
+        instance._delay_listener = delay_controller.add_listener(instance.set_delay)
+    instance._live_state_unsub = None
+    if live_state is not None:
+        instance._live_state_unsub = live_state.add_listener(
+            instance._handle_live_state
+        )
+
+
+def _close_stream_delay_state(instance: Any) -> None:
+    instance._unsub = _call_unsub(instance._unsub)
+    instance._deliver_handle = _cancel_handle(instance._deliver_handle)
+    instance._delay_listener = _call_unsub(instance._delay_listener)
+    instance._live_state_unsub = _call_unsub(instance._live_state_unsub)
+
+
 def _apply_delay_handles_only(
     instance: Any, seconds: int, handles: list[asyncio.Handle]
 ) -> None:
@@ -225,6 +258,64 @@ class _SessionFingerprintMixin:
             self._reset_store()
 
 
+def _seed_driver_map_from_ergast(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry | None,
+    driver_map: dict[str, dict[str, Any]],
+) -> None:
+    """Fallback identity mapping using Ergast/Jolpica driver standings."""
+    try:
+        if not config_entry:
+            return
+        reg = hass.data.get(DOMAIN, {}).get(config_entry.entry_id)
+        if not isinstance(reg, dict):
+            return
+        driver_coord = reg.get("driver_coordinator")
+        data = getattr(driver_coord, "data", None) or {}
+        standings = (
+            (data.get("MRData") or {})
+            .get("StandingsTable", {})
+            .get("StandingsLists", [])
+        )
+        if not isinstance(standings, list) or not standings:
+            return
+        ds = (standings[0] or {}).get("DriverStandings", [])
+        if not isinstance(ds, list):
+            return
+        for item in ds:
+            if not isinstance(item, dict):
+                continue
+            driver = item.get("Driver") or {}
+            if not isinstance(driver, dict):
+                continue
+            rn = str(driver.get("permanentNumber") or "").strip()
+            if not rn:
+                continue
+            existing = driver_map.get(rn)
+            if isinstance(existing, dict) and (
+                existing.get("tla") or existing.get("name") or existing.get("team")
+            ):
+                continue
+            code = driver.get("code") or driver.get("driverId")
+            given = driver.get("givenName")
+            family = driver.get("familyName")
+            name = None
+            try:
+                parts = [p for p in (given, family) if p]
+                name = " ".join(parts) if parts else None
+            except Exception:
+                name = None
+            constructors = item.get("Constructors") or []
+            team = None
+            if isinstance(constructors, list) and constructors:
+                c0 = constructors[0]
+                if isinstance(c0, dict):
+                    team = c0.get("name")
+            driver_map[rn] = {"tla": code, "name": name, "team": team}
+    except Exception:
+        return
+
+
 def _ensure_jolpica_stats_reporting(hass: HomeAssistant) -> None:
     """Register a dev-only periodic log of Jolpica network MISS counts."""
     if not ENABLE_DEVELOPMENT_MODE_UI:
@@ -285,7 +376,6 @@ def _ensure_jolpica_stats_reporting(hass: HomeAssistant) -> None:
 # Keep treating the current Grand Prix as "next" for a short period after
 # lights out, so helpers and sensors do not jump to the following weekend
 # immediately when a race starts.
-RACE_SWITCH_GRACE = timedelta(hours=3)
 
 
 class CoordinatorLogger(logging.LoggerAdapter):
@@ -325,35 +415,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Dev-only: periodically report how many Jolpica requests actually hit the network.
     _ensure_jolpica_stats_reporting(hass)
     # Normalize enabled sensors early so we can avoid unnecessary Jolpica calls.
-    allowed_enabled = {
-        "next_race",
-        "current_season",
-        "driver_standings",
-        "constructor_standings",
-        "weather",
-        "track_weather",
-        "race_lap_count",
-        "driver_list",
-        "current_tyres",
-        "last_race_results",
-        "season_results",
-        "sprint_results",
-        "driver_points_progression",
-        "constructor_points_progression",
-        "race_week",
-        "track_status",
-        "session_status",
-        "current_session",
-        "safety_car",
-        "formation_start",
-        "fia_documents",
-        "race_control",
-        "top_three",
-        "team_radio",
-        "pitstops",
-        "championship_prediction",
-        "live_timing_diagnostics",
-    }
+    allowed_enabled = SUPPORTED_SENSOR_KEYS
     raw_enabled = entry.data.get("enabled_sensors") or []
     enabled: list[str] = []
     seen_enabled: set[str] = set()
@@ -375,6 +437,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "current_season",
             "weather",
             "race_week",
+            "track_time",
             "fia_documents",
             "driver_points_progression",
             "constructor_points_progression",
@@ -1188,9 +1251,11 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                             result.append(item)
                     if result:
                         return result
-                except Exception:
-                    # Fall through to wrapper-as-item if something unexpected happens
-                    pass
+                except Exception:  # noqa: BLE001
+                    _LOGGER.debug(
+                        "RaceControlMessages: failed to normalize Messages dict",
+                        exc_info=True,
+                    )
             # Or a single message
             return [msg]
         return []
@@ -1888,64 +1953,11 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         This is especially important in replay mode where only one stream dump
         (e.g. PitStopSeries) is replayed, meaning DriverList frames are absent.
         """
-        try:
-            if not self._config_entry:
-                return
-            reg = self.hass.data.get(DOMAIN, {}).get(self._config_entry.entry_id)
-            if not isinstance(reg, dict):
-                return
-            driver_coord = reg.get("driver_coordinator")
-            data = getattr(driver_coord, "data", None) or {}
-            standings = (
-                (data.get("MRData") or {})
-                .get("StandingsTable", {})
-                .get("StandingsLists", [])
-            )
-            if not isinstance(standings, list) or not standings:
-                return
-            ds = (standings[0] or {}).get("DriverStandings", [])
-            if not isinstance(ds, list):
-                return
-            for item in ds:
-                if not isinstance(item, dict):
-                    continue
-                driver = item.get("Driver") or {}
-                if not isinstance(driver, dict):
-                    continue
-                rn = str(driver.get("permanentNumber") or "").strip()
-                if not rn:
-                    continue
-                code = driver.get("code") or driver.get("driverId")
-                given = driver.get("givenName")
-                family = driver.get("familyName")
-                name = None
-                try:
-                    parts = [p for p in (given, family) if p]
-                    name = " ".join(parts) if parts else None
-                except Exception:
-                    name = None
-                constructors = item.get("Constructors") or []
-                team = None
-                if isinstance(constructors, list) and constructors:
-                    c0 = constructors[0]
-                    if isinstance(c0, dict):
-                        team = c0.get("name")
-                # Do not overwrite non-null values from DriverList
-                existing = (
-                    self._driver_map.get(rn)
-                    if isinstance(self._driver_map, dict)
-                    else None
-                )
-                if isinstance(existing, dict):
-                    if (
-                        existing.get("tla")
-                        or existing.get("name")
-                        or existing.get("team")
-                    ):
-                        continue
-                self._driver_map[rn] = {"tla": code, "name": name, "team": team}
-        except Exception:
-            return
+        _seed_driver_map_from_ergast(
+            self.hass,
+            self._config_entry,
+            self._driver_map,
+        )
 
     def _on_bus_pitstopseries(self, msg: dict) -> None:
         if not isinstance(msg, dict):
@@ -2391,56 +2403,11 @@ class ChampionshipPredictionCoordinator(
 
     def _seed_driver_map_from_ergast(self) -> None:
         """Fallback identity mapping using Ergast/Jolpica driver standings (replay-friendly)."""
-        try:
-            if not self._config_entry:
-                return
-            reg = self.hass.data.get(DOMAIN, {}).get(self._config_entry.entry_id)
-            if not isinstance(reg, dict):
-                return
-            driver_coord = reg.get("driver_coordinator")
-            data = getattr(driver_coord, "data", None) or {}
-            standings = (
-                (data.get("MRData") or {})
-                .get("StandingsTable", {})
-                .get("StandingsLists", [])
-            )
-            if not isinstance(standings, list) or not standings:
-                return
-            ds = (standings[0] or {}).get("DriverStandings", [])
-            if not isinstance(ds, list):
-                return
-            for item in ds:
-                if not isinstance(item, dict):
-                    continue
-                driver = item.get("Driver") or {}
-                if not isinstance(driver, dict):
-                    continue
-                rn = str(driver.get("permanentNumber") or "").strip()
-                if not rn:
-                    continue
-                existing = self._driver_map.get(rn)
-                if isinstance(existing, dict) and (
-                    existing.get("tla") or existing.get("name") or existing.get("team")
-                ):
-                    continue
-                code = driver.get("code") or driver.get("driverId")
-                given = driver.get("givenName")
-                family = driver.get("familyName")
-                name = None
-                try:
-                    parts = [p for p in (given, family) if p]
-                    name = " ".join(parts) if parts else None
-                except Exception:
-                    name = None
-                constructors = item.get("Constructors") or []
-                team = None
-                if isinstance(constructors, list) and constructors:
-                    c0 = constructors[0]
-                    if isinstance(c0, dict):
-                        team = c0.get("name")
-                self._driver_map[rn] = {"tla": code, "name": name, "team": team}
-        except Exception:
-            return
+        _seed_driver_map_from_ergast(
+            self.hass,
+            self._config_entry,
+            self._driver_map,
+        )
 
     @staticmethod
     def _to_int(value: Any) -> int | None:
@@ -2986,21 +2953,17 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         timing["last_lap"] = lap_time
                         changed = True
                     prev_best = timing.get("best_lap")
-                    try:
-                        new_secs = self._parse_laptime_secs(lap_time)
-                        prev_secs = (
-                            self._parse_laptime_secs(prev_best)
-                            if isinstance(prev_best, str)
-                            else None
-                        )
-                        if new_secs is not None and (
-                            prev_secs is None or new_secs < prev_secs
-                        ):
-                            timing["best_lap"] = lap_time
-                            changed = True
-                    except Exception:
-                        # If parsing fails, at least keep last_lap updated
-                        pass
+                    new_secs = self._parse_laptime_secs(lap_time)
+                    prev_secs = (
+                        self._parse_laptime_secs(prev_best)
+                        if isinstance(prev_best, str)
+                        else None
+                    )
+                    if new_secs is not None and (
+                        prev_secs is None or new_secs < prev_secs
+                    ):
+                        timing["best_lap"] = lap_time
+                        changed = True
 
         return changed
 
@@ -4281,23 +4244,12 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
         races = (data.get("MRData") or {}).get("RaceTable", {}).get("Races", [])
         if not isinstance(races, list):
             return None
-        now = datetime.utcnow().replace(tzinfo=None)
-        for race in races:
-            date = race.get("date")
-            time_str = race.get("time") or "00:00:00Z"
-            dt_str = f"{date}T{time_str}".replace("Z", "+00:00")
-            dt = None
-            with suppress(Exception):
-                dt = datetime.fromisoformat(dt_str)
-            if dt is None:
-                continue
-            # Treat a race as ongoing for a grace period after the scheduled
-            # start time so that "next race" style helpers don't jump ahead
-            # too early.
-            end_dt = dt + RACE_SWITCH_GRACE
-            if end_dt.replace(tzinfo=None) > now:
-                return race
-        return races[-1] if races else None
+        _, race = get_next_race(
+            races,
+            grace=RACE_SWITCH_GRACE,
+            fallback_last=True,
+        )
+        return race
 
 
 class LiveSessionCoordinator(DataUpdateCoordinator):
@@ -4793,35 +4745,16 @@ class TopThreeCoordinator(DataUpdateCoordinator):
             "lines": [None, None, None],
             "last_update_ts": None,
         }
-        self._deliver_handle: Optional[asyncio.Handle] = None
-        self._bus = bus
-        self._unsub: Optional[Callable[[], None]] = None
-        self._delay_listener: Optional[Callable[[], None]] = None
-        self._delay = max(0, int(delay_seconds or 0))
-        self._replay_mode = False
-        if delay_controller is not None:
-            self._delay_listener = delay_controller.add_listener(self.set_delay)
-        self._live_state_unsub: Optional[Callable[[], None]] = None
-        if live_state is not None:
-            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+        _init_stream_delay_state(
+            self,
+            delay_seconds,
+            bus=bus,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
 
     async def async_close(self, *_):
-        if self._unsub:
-            with suppress(Exception):
-                self._unsub()
-            self._unsub = None
-        if self._deliver_handle:
-            with suppress(Exception):
-                self._deliver_handle.cancel()
-            self._deliver_handle = None
-        if self._delay_listener:
-            with suppress(Exception):
-                self._delay_listener()
-            self._delay_listener = None
-        if self._live_state_unsub:
-            with suppress(Exception):
-                self._live_state_unsub()
-            self._live_state_unsub = None
+        _close_stream_delay_state(self)
 
     async def _async_update_data(self):
         return self._state
@@ -4915,9 +4848,12 @@ class TopThreeCoordinator(DataUpdateCoordinator):
                     base = {}
                 try:
                     base.update(delta)
-                except Exception:
-                    # Sista försvarslinje – hellre lämna base opåverkad än krascha
-                    pass
+                except Exception:  # noqa: BLE001
+                    _LOGGER.debug(
+                        "TopThree: failed to merge delta for line %s",
+                        key,
+                        exc_info=True,
+                    )
                 cur_lines[idx] = base
             state["lines"] = cur_lines
 
@@ -4990,35 +4926,16 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         self.available = True
         self._last_message = None
         self.data_list: list[dict] = []
-        self._deliver_handle: Optional[asyncio.Handle] = None
-        self._bus = bus
-        self._unsub: Optional[Callable[[], None]] = None
-        self._delay_listener: Optional[Callable[[], None]] = None
-        self._delay = max(0, int(delay_seconds or 0))
-        self._replay_mode = False
-        if delay_controller is not None:
-            self._delay_listener = delay_controller.add_listener(self.set_delay)
-        self._live_state_unsub: Optional[Callable[[], None]] = None
-        if live_state is not None:
-            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+        _init_stream_delay_state(
+            self,
+            delay_seconds,
+            bus=bus,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
 
     async def async_close(self, *_):
-        if self._unsub:
-            with suppress(Exception):
-                self._unsub()
-            self._unsub = None
-        if self._deliver_handle:
-            with suppress(Exception):
-                self._deliver_handle.cancel()
-            self._deliver_handle = None
-        if self._delay_listener:
-            with suppress(Exception):
-                self._delay_listener()
-            self._delay_listener = None
-        if self._live_state_unsub:
-            with suppress(Exception):
-                self._live_state_unsub()
-            self._live_state_unsub = None
+        _close_stream_delay_state(self)
 
     async def _async_update_data(self):
         return self._last_message
