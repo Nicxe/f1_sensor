@@ -3540,12 +3540,18 @@ class F1TrackLimitsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         match = _TRACK_LIMITS_DELETED.search(message_text)
         if match:
             racing_number, tla, turn, violation_lap = match.groups()
+            lap_value = lap
+            try:
+                if violation_lap:
+                    lap_value = int(violation_lap)
+            except (TypeError, ValueError):
+                lap_value = lap
             self._add_violation(
                 tla=tla.upper(),
                 racing_number=racing_number,
                 violation_type="time_deleted",
                 utc=utc,
-                lap=lap,
+                lap=lap_value,
                 turn=int(turn),
             )
             return True
