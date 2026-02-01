@@ -2564,6 +2564,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
       "lap_total": int | None,
       "session_status": dict | None,
       "frozen": bool,
+      "fastest_lap": {
+         "racing_number": str | None,
+         "lap": int | None,
+         "time": str | None,
+         "time_secs": float | None,
+         "tla": str | None,
+         "name": str | None,
+         "team": str | None,
+         "team_color": str | None,
+      },
     }
     """
 
@@ -2603,6 +2613,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             "session_status": None,
             "frozen": False,
             "tyre_statistics": {},
+            "fastest_lap": self._empty_fastest_lap(),
         }
         self._live_state_unsub: Optional[Callable[[], None]] = None
         if live_state is not None:
@@ -2636,6 +2647,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         for rn, info in (payload or {}).items():
             if not isinstance(info, dict):
                 continue
+            rn_key = str(rn)
             # Derive headshot URLs in both small (transform) and large (original) forms
             headshot_raw = info.get("HeadshotUrl")
             headshot_small = headshot_raw if isinstance(headshot_raw, str) else None
@@ -2647,14 +2659,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         headshot_large = headshot_raw[:idx]
             except Exception:
                 headshot_large = headshot_small
-            ident = drivers.setdefault(rn, {})
+            ident = drivers.setdefault(rn_key, {})
             ident.setdefault("identity", {})
             ident.setdefault("timing", {})
             ident.setdefault("tyres", {})
             ident.setdefault("laps", {})
             identity_updates: dict[str, Any] = {}
             if "RacingNumber" in info or "racing_number" not in ident["identity"]:
-                identity_updates["racing_number"] = str(info.get("RacingNumber") or rn)
+                identity_updates["racing_number"] = str(
+                    info.get("RacingNumber") or rn_key
+                )
             if "Tla" in info:
                 identity_updates["tla"] = info.get("Tla")
             if "FullName" in info or "BroadcastName" in info:
@@ -2683,6 +2697,21 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         break
                 if driver_changed:
                     ident["identity"].update(identity_updates)
+                    changed = True
+
+            fastest = self._state.get("fastest_lap")
+            if isinstance(fastest, dict) and fastest.get("racing_number") == rn_key:
+                team_color = self._normalize_team_color(
+                    ident["identity"].get("team_color")
+                )
+                fastest_updates = {
+                    "tla": ident["identity"].get("tla"),
+                    "name": ident["identity"].get("name"),
+                    "team": ident["identity"].get("team"),
+                    "team_color": team_color,
+                }
+                if any(fastest.get(k) != v for k, v in fastest_updates.items()):
+                    fastest.update(fastest_updates)
                     changed = True
 
             # Capture Line field as grid position (backup if DriverRaceInfo not available)
@@ -2806,9 +2835,20 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if self._record_lap_time_for_stint(rn, last_lap):
                     changed = True
             best_lap = self._get_value(td, "BestLapTime", "Value")
+            best_lap_num_raw = self._get_value(td, "BestLapTime", "Lap")
+            best_lap_num: int | None = None
+            if best_lap_num_raw is not None:
+                try:
+                    best_lap_num = int(best_lap_num_raw)
+                except (TypeError, ValueError):
+                    best_lap_num = None
             if best_lap is not None:
                 if timing.get("best_lap") != best_lap:
                     timing["best_lap"] = best_lap
+                    changed = True
+                if best_lap_num is not None and self._update_fastest_lap(
+                    rn, best_lap_num, best_lap
+                ):
                     changed = True
             if "InPit" in td:
                 in_pit = bool(td.get("InPit"))
@@ -2869,6 +2909,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "session_status": None,
                     "frozen": False,
                     "tyre_statistics": {},
+                    "fastest_lap": self._empty_fastest_lap(),
                 }
                 self.async_set_updated_data(self._state)
             return
@@ -3204,7 +3245,97 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             completed = lap_history.get("completed_laps", 0) or 0
             if isinstance(completed, int) and completed < use_lap_num:
                 lap_history["completed_laps"] = use_lap_num
+
+        self._update_fastest_lap(rn, use_lap_num, lap_time)
         return True
+
+    def _update_fastest_lap(self, rn: str, lap_num: int | None, lap_time: str) -> bool:
+        """Update overall fastest lap if the provided lap is quicker."""
+        lap_secs = self._parse_laptime_secs(lap_time)
+        if lap_secs is None:
+            return False
+
+        fastest = self._state.get("fastest_lap")
+        if not isinstance(fastest, dict):
+            fastest = self._empty_fastest_lap()
+
+        prev_secs = fastest.get("time_secs")
+        if prev_secs is not None and lap_secs >= prev_secs:
+            return False
+
+        rn_key = str(rn)
+        entry = self._state.get("drivers", {}).get(rn_key, {}) or {}
+        identity = entry.get("identity", {}) if isinstance(entry, dict) else {}
+        team_color = self._normalize_team_color(identity.get("team_color"))
+
+        self._state["fastest_lap"] = {
+            "racing_number": rn_key,
+            "lap": lap_num,
+            "time": lap_time,
+            "time_secs": lap_secs,
+            "tla": identity.get("tla"),
+            "name": identity.get("name"),
+            "team": identity.get("team"),
+            "team_color": team_color,
+        }
+        return True
+
+    def _recompute_fastest_lap_from_history(self) -> bool:
+        """Recompute fastest lap by scanning lap history (replay init)."""
+        drivers = self._state.get("drivers", {}) or {}
+        best_secs: float | None = None
+        best_rn: str | None = None
+        best_lap: int | None = None
+        best_time: str | None = None
+
+        for rn in sorted(drivers.keys(), key=str):
+            entry = drivers.get(rn, {}) or {}
+            lap_history = entry.get("lap_history", {}) or {}
+            laps = lap_history.get("laps", {})
+            if not isinstance(laps, dict):
+                continue
+            for lap_key, lap_time in laps.items():
+                if not isinstance(lap_time, str) or not lap_time:
+                    continue
+                lap_secs = self._parse_laptime_secs(lap_time)
+                if lap_secs is None:
+                    continue
+                if best_secs is not None and lap_secs >= best_secs:
+                    continue
+                try:
+                    lap_num = int(lap_key)
+                except (TypeError, ValueError):
+                    lap_num = None
+                best_secs = lap_secs
+                best_rn = str(rn)
+                best_lap = lap_num
+                best_time = lap_time
+
+        if best_secs is None or best_rn is None or best_time is None:
+            empty = self._empty_fastest_lap()
+            if self._state.get("fastest_lap") != empty:
+                self._state["fastest_lap"] = empty
+                return True
+            return False
+
+        entry = drivers.get(best_rn, {}) or {}
+        identity = entry.get("identity", {}) if isinstance(entry, dict) else {}
+        team_color = self._normalize_team_color(identity.get("team_color"))
+
+        fastest = {
+            "racing_number": best_rn,
+            "lap": best_lap,
+            "time": best_time,
+            "time_secs": best_secs,
+            "tla": identity.get("tla"),
+            "name": identity.get("name"),
+            "team": identity.get("team"),
+            "team_color": team_color,
+        }
+        if self._state.get("fastest_lap") != fastest:
+            self._state["fastest_lap"] = fastest
+            return True
+        return False
 
     def _recompute_tyre_statistics(self) -> None:
         """Recompute aggregated tyre statistics from all driver stint history."""
@@ -3297,6 +3428,27 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         minutes = int(secs // 60)
         remaining = secs - (minutes * 60)
         return f"{minutes}:{remaining:06.3f}"
+
+    @staticmethod
+    def _empty_fastest_lap() -> dict[str, Any]:
+        return {
+            "racing_number": None,
+            "lap": None,
+            "time": None,
+            "time_secs": None,
+            "tla": None,
+            "name": None,
+            "team": None,
+            "team_color": None,
+        }
+
+    @staticmethod
+    def _normalize_team_color(value: Any) -> Any:
+        if not isinstance(value, str) or not value:
+            return value
+        if value.startswith("#"):
+            return value
+        return f"#{value}"
 
     def _merge_lapcount(self, payload: dict) -> None:
         # payload may be either {CurrentLap, TotalLaps} or wrapped
