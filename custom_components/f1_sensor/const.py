@@ -93,16 +93,20 @@ SUPPORTED_SENSOR_KEYS = frozenset(
 )
 
 API_URL = "https://api.jolpi.ca/ergast/f1/current.json"
-DRIVER_STANDINGS_URL = "https://api.jolpi.ca/ergast/f1/current/driverstandings.json"
-CONSTRUCTOR_STANDINGS_URL = (
-    "https://api.jolpi.ca/ergast/f1/current/constructorstandings.json"
+DRIVER_STANDINGS_URL = (
+    "https://api.jolpi.ca/ergast/f1/current/driverstandings.json?limit=100"
 )
-LAST_RACE_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/last/results.json"
+CONSTRUCTOR_STANDINGS_URL = (
+    "https://api.jolpi.ca/ergast/f1/current/constructorstandings.json?limit=100"
+)
+LAST_RACE_RESULTS_URL = (
+    "https://api.jolpi.ca/ergast/f1/current/last/results.json?limit=100"
+)
 # Base URL for season results; pagination will be handled by the coordinator
 SEASON_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/results.json"
 
 # Sprint results across the current season
-SPRINT_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/sprint.json"
+SPRINT_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/sprint.json?limit=100"
 
 LIVETIMING_INDEX_URL = "https://livetiming.formula1.com/static/{year}/Index.json"
 

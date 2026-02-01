@@ -3995,11 +3995,16 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             except Exception:
                 last_page_offset = offset_used
 
+            # Defensive cap for pagination loop, based on server-reported totals.
+            max_loops = 50
+            if total > 0 and limit_used > 0:
+                max_loops = max(1, ((total + limit_used - 1) // limit_used) + 1)
+
             # Iterate deterministically using server-reported paging
             next_offset = offset_used + limit_used
             # Cap loop iterations defensively
             safety = 0
-            while next_offset < total and safety < 50:
+            while next_offset < total and safety < max_loops:
                 page_ttl = self._ttl_for_offset(
                     next_offset, last_page_offset, limit_used
                 )
@@ -4013,6 +4018,11 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
                     limit_used = int(pmr.get("limit") or limit_used)
                     offset_used = int(pmr.get("offset") or next_offset)
                     total = int(pmr.get("total") or total)
+                    if total > 0 and limit_used > 0:
+                        max_loops = max(
+                            max_loops,
+                            max(1, ((total + limit_used - 1) // limit_used) + 1),
+                        )
                 next_offset = offset_used + limit_used
                 safety += 1
 
@@ -4021,6 +4031,12 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             assembled_races.sort(
                 key=lambda r: (str(r.get("season")), int(str(r.get("round") or 0)))
             )
+            if total > 0 and len(assembled_races) < total:
+                _LOGGER.warning(
+                    "Season results pagination incomplete: expected %s races, got %s",
+                    total,
+                    len(assembled_races),
+                )
             return {
                 "MRData": {
                     "RaceTable": {
