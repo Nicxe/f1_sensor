@@ -9,7 +9,6 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
-
 from .const import (
     DOMAIN,
     REPLAY_START_REFERENCE_FORMATION,

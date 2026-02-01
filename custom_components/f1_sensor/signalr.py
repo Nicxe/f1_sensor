@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 import json
 import logging
@@ -126,9 +127,12 @@ class SignalRClient:
         index = 0
         async for msg in self._ws:
             if msg.type == WSMsgType.TEXT:
+                payload = None
                 try:
                     payload = json.loads(msg.data)
                 except json.JSONDecodeError:
+                    payload = None
+                if payload is None:
                     continue
                 # Per-message payload logging suppressed to reduce verbosity
 
@@ -214,25 +218,19 @@ class LiveBus:
         lst.append(callback)
 
         # Immediately replay last payload for this stream (if available)
-        try:
+        with suppress(Exception):
             if stream in self._last_payload:
                 data = self._last_payload.get(stream)
                 if isinstance(data, dict):
-                    try:
+                    with suppress(Exception):
                         callback(data)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
 
         def _unsub() -> None:
-            try:
+            with suppress(Exception):
                 if stream in self._subs and callback in self._subs[stream]:
                     self._subs[stream].remove(callback)
                     if not self._subs[stream]:
                         self._subs.pop(stream, None)
-            except Exception:
-                pass
 
         return _unsub
 
@@ -253,7 +251,7 @@ class LiveBus:
             )
 
     async def _run(self) -> None:
-        try:
+        with suppress(asyncio.CancelledError):
             while self._running:
                 try:
                     if self._client is None:
@@ -263,13 +261,13 @@ class LiveBus:
                     _LOGGER.info("LiveBus connected to SignalR")
                     async for payload in self._client.messages():
                         # Dispatch feed messages by stream name
-                        try:
+                        with suppress(Exception):
                             if isinstance(payload, dict):
                                 # Live feed frames under "M" with hub messages
                                 msgs = payload.get("M")
                                 if isinstance(msgs, list):
                                     for hub_msg in msgs:
-                                        try:
+                                        with suppress(Exception):
                                             if hub_msg.get("M") == "feed":
                                                 args = hub_msg.get("A", [])
                                                 if len(args) >= 2:
@@ -283,8 +281,6 @@ class LiveBus:
                                                     # Always dispatch so heartbeat/activity bookkeeping
                                                     # works even when there are no explicit subscribers
                                                     self._dispatch(stream, data)
-                                        except Exception:  # noqa: BLE001
-                                            continue
                                 # RPC results under "R" (rare)
                                 result = payload.get("R")
                                 if isinstance(result, dict):
@@ -295,8 +291,6 @@ class LiveBus:
                                         # Dispatch if there are subscribers now
                                         if key in self._subs:
                                             self._dispatch(key, value)
-                        except Exception:  # noqa: BLE001
-                            continue
                 except Exception as err:  # pragma: no cover - network errors
                     # Log replay-related errors at DEBUG since they're expected during replay stop
                     err_str = str(err)
@@ -313,11 +307,9 @@ class LiveBus:
                         self._client = None
                 # Periodic compact DEBUG summary
                 self._maybe_log_summary()
-        except asyncio.CancelledError:
-            pass
 
     def _dispatch(self, stream: str, data: dict) -> None:
-        try:
+        with suppress(Exception):
             # Update counters
             self._cnt[stream] = self._cnt.get(stream, 0) + 1
             self._last_ts[stream] = time.time()
@@ -328,12 +320,8 @@ class LiveBus:
                 self._last_payload[stream] = data
             callbacks = list(self._subs.get(stream, []) or [])
             for cb in callbacks:
-                try:
+                with suppress(Exception):
                     cb(data)
-                except Exception:  # noqa: BLE001
-                    continue
-        except Exception:  # noqa: BLE001
-            pass
 
     def _maybe_log_summary(self) -> None:
         if not _LOGGER.isEnabledFor(logging.DEBUG):
@@ -342,7 +330,7 @@ class LiveBus:
         if (now - self._last_logged) < self._log_interval:
             return
         self._last_logged = now
-        try:
+        with suppress(Exception):
             parts: List[str] = []
             for stream, count in sorted(self._cnt.items()):
                 last_age = None
@@ -363,8 +351,6 @@ class LiveBus:
             # Reset window counters
             for k in list(self._cnt.keys()):
                 self._cnt[k] = 0
-        except Exception:
-            pass
 
     # Debug helpers removed to keep options surface minimal
 
@@ -373,17 +359,13 @@ class LiveBus:
         _LOGGER.info("LiveBus shutting down")
         if self._task:
             self._task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._task  # Wait for task to actually finish
-            except asyncio.CancelledError:
-                pass
             self._task = None
         if self._heartbeat_guard:
             self._heartbeat_guard.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._heartbeat_guard
-            except asyncio.CancelledError:
-                pass
             self._heartbeat_guard = None
         if self._client:
             await self._client.close()
@@ -395,7 +377,7 @@ class LiveBus:
         return SignalRClient(self._hass, self._session)
 
     async def _monitor_heartbeat(self) -> None:
-        try:
+        with suppress(asyncio.CancelledError):
             while self._running:
                 await asyncio.sleep(self._heartbeat_check_interval)
                 if not self._running:
@@ -421,8 +403,6 @@ class LiveBus:
                 if self._client:
                     await self._client.close()
                     self._client = None
-        except asyncio.CancelledError:
-            pass
 
     def set_heartbeat_expectation(self, enabled: bool) -> None:
         self._expect_heartbeat = bool(enabled)

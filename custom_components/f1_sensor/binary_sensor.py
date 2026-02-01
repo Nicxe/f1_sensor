@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 import datetime
 import logging
@@ -22,18 +23,17 @@ from .const import (
     DEFAULT_OPERATION_MODE,
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
+    RACE_SWITCH_GRACE,
     RACE_WEEK_START_MONDAY,
     RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
 )
 from .entity import F1BaseEntity, F1AuxEntity
 from .formation_start import FormationStartTracker
-from .helpers import normalize_track_status
+from .helpers import get_next_race, normalize_track_status
 from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
-
-RACE_SWITCH_GRACE = datetime.timedelta(hours=3)
 
 
 def _normalize_race_week_start(data: dict) -> str:
@@ -138,25 +138,11 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
             return None, None
 
         races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
-        now = dt_util.utcnow()
-
-        for race in races:
-            date = race.get("date")
-            if not date:
-                continue
-            # If the source omits time for some reason, assume end-of-day so we
-            # don't drop out of "race week" early on race day.
-            time = race.get("time") or "23:59:59Z"
-            dt_str = f"{date}T{time}".replace("Z", "+00:00")
-            try:
-                dt = datetime.datetime.fromisoformat(dt_str)
-            except ValueError:
-                continue
-            # Consider the current race as "next" until a short grace period
-            # after the scheduled start, matching `sensor.f1_next_race`.
-            if (dt + RACE_SWITCH_GRACE) > now:
-                return dt, race
-        return None, None
+        return get_next_race(
+            races,
+            grace=RACE_SWITCH_GRACE,
+            default_time="23:59:59Z",
+        )
 
     @property
     def is_on(self):
@@ -346,16 +332,12 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub:
-            try:
+            with suppress(Exception):
                 self._unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._unsub = None
         if self._unsub_live_state:
-            try:
+            with suppress(Exception):
                 self._unsub_live_state()
-            except Exception:  # noqa: BLE001
-                pass
             self._unsub_live_state = None
 
     @property
@@ -443,15 +425,13 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
                 self._unsub_live_state = None
 
         # Periodic update to refresh age-related attributes while running
-        try:
+        with suppress(Exception):
             unsub = async_track_time_interval(
                 self.hass,
                 lambda *_: self._safe_write_ha_state(),
                 datetime.timedelta(seconds=10),
             )
             self.async_on_remove(unsub)
-        except Exception:
-            pass
 
     def _compute_mode_and_ages(
         self,

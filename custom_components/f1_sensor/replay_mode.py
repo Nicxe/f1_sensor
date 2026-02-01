@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
+
 import asyncio
-import base64
 import json
 import logging
 import shutil
 import time
-import zlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -28,6 +28,7 @@ from .const import (
 )
 from .formation_start import FormationStartTracker
 from .replay_start import ReplayStartReferenceController
+from .helpers import parse_cardata_lines
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -152,6 +153,7 @@ class ReplaySessionManager:
         self._listeners: List[Callable[[dict], None]] = []
         self._download_progress: float = 0.0
         self._download_error: str | None = None
+        self._fetch_task: asyncio.Task | None = None
 
     @property
     def state(self) -> ReplayState:
@@ -217,7 +219,10 @@ class ReplaySessionManager:
         await self._cleanup_old_cache()
         # Fetch sessions at startup so the list is populated immediately
         # Run in background to avoid blocking integration startup
-        self._hass.async_create_task(self._fetch_sessions_background())
+        if self._fetch_task is None or self._fetch_task.done():
+            self._fetch_task = self._hass.async_create_task(
+                self._fetch_sessions_background()
+            )
 
     def _ensure_cache_dir(self) -> None:
         """Create cache directory if it doesn't exist (called via executor)."""
@@ -428,6 +433,11 @@ class ReplaySessionManager:
 
     async def async_unload(self) -> None:
         """Return to idle state and clean up session cache."""
+        if self._fetch_task and not self._fetch_task.done():
+            self._fetch_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._fetch_task
+        self._fetch_task = None
         # Delete the session cache to save disk space (replay is typically one-time use)
         if self._loaded_index is not None:
             await self._delete_session_cache(self._loaded_index.session_id)
@@ -459,10 +469,8 @@ class ReplaySessionManager:
         """Subscribe to state changes. Returns unsubscribe function."""
         self._listeners.append(callback)
         # Immediately notify with current state
-        try:
+        with suppress(Exception):
             callback(self._get_snapshot())
-        except Exception:
-            pass
 
         def _unsub():
             if callback in self._listeners:
@@ -474,10 +482,8 @@ class ReplaySessionManager:
         """Notify all listeners of state change."""
         snapshot = self._get_snapshot()
         for listener in list(self._listeners):
-            try:
+            with suppress(Exception):
                 listener(snapshot)
-            except Exception:
-                pass
 
     def _get_snapshot(self) -> dict:
         """Get current state snapshot."""
@@ -702,6 +708,7 @@ class ReplaySessionManager:
             timestamp_str = line[:json_start].strip()
             json_str = line[json_start:]
 
+            skip = False
             try:
                 timestamp_ms = self._parse_timestamp_to_ms(timestamp_str)
                 payload = json.loads(json_str)
@@ -718,6 +725,8 @@ class ReplaySessionManager:
                     )
                 )
             except (json.JSONDecodeError, ValueError):
+                skip = True
+            if skip:
                 continue
 
         _LOGGER.debug("Downloaded %d frames from %s", len(frames), stream_name)
@@ -750,9 +759,12 @@ class ReplaySessionManager:
         # Delta: Lines as dict {"0": {...}, "1": {...}, "2": {...}}
         elif isinstance(lines, dict):
             for key, delta in lines.items():
+                idx = None
                 try:
                     idx = int(key)
                 except (ValueError, TypeError):
+                    idx = None
+                if idx is None:
                     continue
                 if idx < 0 or idx > 2:
                     continue
@@ -889,12 +901,10 @@ class ReplaySessionManager:
                     driver_entry["laps"][lap_key] = last_lap_value
                     if last_lap_num < use_lap_num:
                         driver_entry["last_recorded_lap"] = use_lap_num
-                    try:
+                    with suppress(Exception):
                         completed = driver_entry.get("completed_laps", 0) or 0
                         if isinstance(completed, int) and completed < use_lap_num:
                             driver_entry["completed_laps"] = use_lap_num
-                    except Exception:
-                        pass
 
     @staticmethod
     def _has_lap_history_state(state: Dict[str, Any]) -> bool:
@@ -914,11 +924,12 @@ class ReplaySessionManager:
             pos_raw = info.get("Position")
             if pos_raw is None:
                 continue
+            grid_pos = None
             try:
                 grid_pos = str(pos_raw).strip()
-                if not grid_pos:
-                    continue
             except (TypeError, ValueError):
+                grid_pos = None
+            if not grid_pos:
                 continue
             rn_key = str(rn)
             driver_entry = state.setdefault(
@@ -951,9 +962,12 @@ class ReplaySessionManager:
             line_raw = info.get("Line")
             if line_raw is None:
                 continue
+            line_pos = None
             try:
                 line_pos = str(int(line_raw))
             except (TypeError, ValueError):
+                line_pos = None
+            if line_pos is None:
                 continue
             rn_key = str(rn)
             driver_entry = state.setdefault(
@@ -1124,37 +1138,6 @@ class ReplaySessionManager:
             return None
         return best_ms
 
-    @staticmethod
-    def _parse_cardata_line(line: str) -> list[datetime]:
-        if not line or line.startswith("URL:"):
-            return []
-        if '"' not in line:
-            return []
-        try:
-            _, rest = line.split('"', 1)
-            encoded = rest.split('"', 1)[0]
-        except ValueError:
-            return []
-        if not encoded:
-            return []
-        try:
-            raw = base64.b64decode(encoded)
-            payload = zlib.decompress(raw, wbits=-15)
-            data = json.loads(payload)
-        except Exception:  # noqa: BLE001
-            return []
-        entries = data.get("Entries") if isinstance(data, dict) else None
-        if not isinstance(entries, list):
-            return []
-        utcs: list[datetime] = []
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            dt_val = ReplaySessionManager._parse_utc(entry.get("Utc"))
-            if dt_val is not None:
-                utcs.append(dt_val)
-        return utcs
-
     async def _find_formation_start_utc(
         self, session: ReplaySession
     ) -> datetime | None:
@@ -1166,6 +1149,7 @@ class ReplaySessionManager:
         best_delta: float | None = None
         max_seen: datetime | None = None
         stop_scan = False
+        batch: list[str] = []
         try:
             async with async_timeout.timeout(FORMATION_HTTP_TIMEOUT):
                 async with self._http.get(url) as resp:
@@ -1173,16 +1157,9 @@ class ReplaySessionManager:
                         return None
                     if resp.status != 200:
                         return None
-                    while not stop_scan:
-                        raw = await resp.content.readline()
-                        if not raw:
-                            break
-                        line = raw.decode("utf-8", errors="ignore").strip()
-                        if not line:
-                            continue
-                        utcs = await self._hass.async_add_executor_job(
-                            self._parse_cardata_line, line
-                        )
+
+                    def _process_utcs(utcs: list[datetime]) -> None:
+                        nonlocal best_delta, best_utc, max_seen, stop_scan
                         for utc_val in utcs:
                             if max_seen is None or utc_val > max_seen:
                                 max_seen = utc_val
@@ -1193,6 +1170,32 @@ class ReplaySessionManager:
                             if utc_val > target + FORMATION_SEARCH_WINDOW:
                                 stop_scan = True
                                 break
+
+                    while not stop_scan:
+                        raw = await resp.content.readline()
+                        if not raw:
+                            break
+                        line = raw.decode("utf-8", errors="ignore").strip()
+                        if not line:
+                            continue
+                        batch.append(line)
+                        if len(batch) >= 50:
+                            utcs = await self._hass.async_add_executor_job(
+                                parse_cardata_lines,
+                                list(batch),
+                                ReplaySessionManager._parse_utc,
+                            )
+                            batch.clear()
+                            _process_utcs(utcs)
+                        if stop_scan:
+                            break
+                    if batch and not stop_scan:
+                        utcs = await self._hass.async_add_executor_job(
+                            parse_cardata_lines,
+                            list(batch),
+                            ReplaySessionManager._parse_utc,
+                        )
+                        _process_utcs(utcs)
         except asyncio.TimeoutError:
             return None
         except Exception:  # noqa: BLE001
@@ -1269,15 +1272,12 @@ class ReplaySessionManager:
             if not index_file.exists():
                 continue
 
-            try:
+            with suppress(Exception):
                 stat = index_file.stat()
                 if stat.st_mtime < cutoff:
                     shutil.rmtree(session_dir)
                     cleaned += 1
                     _LOGGER.debug("Cleaned old replay cache: %s", session_dir.name)
-            except Exception:
-                pass
-
         return cleaned
 
     @staticmethod
@@ -1388,24 +1388,44 @@ class ReplayTransport:
             self._index.session_started_at_ms,
         )
 
+        reader_task = None
         try:
-            # Read file content in executor (sync I/O off event loop)
-            def _read_frames():
-                with open(self._index.frames_file, "r", encoding="utf-8") as f:
-                    return f.readlines()
+            queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=500)
+            loop = self._hass.loop
 
-            lines = await self._hass.async_add_executor_job(_read_frames)
-            _LOGGER.debug("Replay: loaded %d lines from cache file", len(lines))
+            def _read_frames_stream() -> None:
+                try:
+                    with open(self._index.frames_file, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if self._closed:
+                                break
+                            try:
+                                fut = asyncio.run_coroutine_threadsafe(
+                                    queue.put(line), loop
+                                )
+                                fut.result()
+                            except Exception:
+                                break
+                finally:
+                    with suppress(Exception):
+                        fut = asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+                        fut.result()
+
+            reader_task = self._hass.async_add_executor_job(_read_frames_stream)
+            _LOGGER.debug("Replay: streaming cache file from disk")
 
             yielded_count = 0
-            for line in lines:
+            while True:
+                line = await queue.get()
+                if line is None:
+                    break
                 if self._closed:
-                    return
+                    continue
 
                 # Handle pause
                 await self._pause_event.wait()
                 if self._closed:
-                    return
+                    continue
 
                 try:
                     frame = json.loads(line.strip())
@@ -1455,6 +1475,10 @@ class ReplayTransport:
         except asyncio.CancelledError:
             _LOGGER.debug("Replay transport cancelled")
             raise
+        finally:
+            if reader_task is not None:
+                with suppress(Exception):
+                    await reader_task
 
         # All frames exhausted - mark as closed so playback stops (don't restart)
         _LOGGER.info("Replay playback completed - all frames played")
@@ -1536,10 +1560,8 @@ class ReplayTransport:
             "elapsed_s": self._get_elapsed_playback_time(),
         }
         for listener in list(self._listeners):
-            try:
+            with suppress(Exception):
                 listener(snapshot)
-            except Exception:
-                pass
 
 
 class ReplayController:
@@ -1730,10 +1752,8 @@ class ReplayController:
 
         if self._playback_task:
             self._playback_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._playback_task
-            except asyncio.CancelledError:
-                pass
             self._playback_task = None
 
         # Restore live state to idle - let LiveSessionSupervisor control it
@@ -1753,7 +1773,7 @@ class ReplayController:
             while self._transport and not self._transport._closed:
                 await asyncio.sleep(0.25)
         except asyncio.CancelledError:
-            pass
+            return
         except Exception as err:
             _LOGGER.error("Replay playback error: %s", err)
         finally:

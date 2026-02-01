@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 from typing import Any, Callable
 
@@ -56,10 +57,8 @@ class F1DelayCalibrationSwitch(F1AuxEntity, SwitchEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub:
-            try:
+            with suppress(Exception):
                 self._unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._unsub = None
 
     async def async_turn_on(self, **kwargs: Any) -> None:

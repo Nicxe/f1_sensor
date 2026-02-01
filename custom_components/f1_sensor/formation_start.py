@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
+
 import asyncio
-import base64
-import json
 import logging
-import zlib
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
@@ -16,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .signalr import LiveBus
+from .helpers import parse_cardata_lines
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,37 +86,6 @@ def _is_race_or_sprint(session_type: str | None, session_name: str | None) -> bo
 def _build_static_url(path: str, resource: str) -> str:
     normalized = str(path or "").strip().strip("/")
     return f"https://livetiming.formula1.com/static/{normalized}/{resource}"
-
-
-def _parse_cardata_line(line: str) -> list[datetime]:
-    if not line or line.startswith("URL:"):
-        return []
-    if '"' not in line:
-        return []
-    try:
-        _, rest = line.split('"', 1)
-        encoded = rest.split('"', 1)[0]
-    except ValueError:
-        return []
-    if not encoded:
-        return []
-    try:
-        raw = base64.b64decode(encoded)
-        payload = zlib.decompress(raw, wbits=-15)
-        data = json.loads(payload)
-    except Exception:  # noqa: BLE001
-        return []
-    entries = data.get("Entries") if isinstance(data, dict) else None
-    if not isinstance(entries, list):
-        return []
-    utcs: list[datetime] = []
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        dt_val = _parse_utc(entry.get("Utc"))
-        if dt_val is not None:
-            utcs.append(dt_val)
-    return utcs
 
 
 class FormationStartTracker:
@@ -227,16 +196,12 @@ class FormationStartTracker:
 
     def _detach_bus(self) -> None:
         if self._session_unsub is not None:
-            try:
+            with suppress(Exception):
                 self._session_unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._session_unsub = None
         if self._status_unsub is not None:
-            try:
+            with suppress(Exception):
                 self._status_unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._status_unsub = None
 
     def _notify_listeners(self) -> None:
@@ -360,6 +325,7 @@ class FormationStartTracker:
         best_delta: float | None = None
         max_seen: datetime | None = None
         stop_scan = False
+        batch: list[str] = []
         try:
             async with async_timeout.timeout(_CARDATA_TIMEOUT):
                 async with self._http.get(url) as resp:
@@ -367,16 +333,9 @@ class FormationStartTracker:
                         self._last_error = "not_found"
                         return False
                     resp.raise_for_status()
-                    while not stop_scan:
-                        raw = await resp.content.readline()
-                        if not raw:
-                            break
-                        line = raw.decode("utf-8", errors="ignore").strip()
-                        if not line:
-                            continue
-                        utcs = await self._hass.async_add_executor_job(
-                            _parse_cardata_line, line
-                        )
+
+                    def _process_utcs(utcs: list[datetime]) -> bool:
+                        nonlocal best_delta, best_utc, max_seen, stop_scan
                         for utc_val in utcs:
                             if session_id != self._session_id:
                                 return False
@@ -389,6 +348,31 @@ class FormationStartTracker:
                             if utc_val > target + _CARDATA_SEARCH_WINDOW:
                                 stop_scan = True
                                 break
+                        return True
+
+                    while not stop_scan:
+                        raw = await resp.content.readline()
+                        if not raw:
+                            break
+                        line = raw.decode("utf-8", errors="ignore").strip()
+                        if not line:
+                            continue
+                        batch.append(line)
+                        if len(batch) >= 50:
+                            utcs = await self._hass.async_add_executor_job(
+                                parse_cardata_lines, list(batch), _parse_utc
+                            )
+                            batch.clear()
+                            if not _process_utcs(utcs):
+                                return False
+                        if stop_scan:
+                            break
+                    if batch and not stop_scan:
+                        utcs = await self._hass.async_add_executor_job(
+                            parse_cardata_lines, list(batch), _parse_utc
+                        )
+                        if not _process_utcs(utcs):
+                            return False
         except asyncio.TimeoutError:
             self._last_error = "timeout"
             return False

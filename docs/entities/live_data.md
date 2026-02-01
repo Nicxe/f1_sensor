@@ -118,6 +118,8 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_driver_positions](#driver-positions)       | Driver positions and lap times |
 | [sensor.f1_top_three_p1](#top-three)                  | Dedicated sensors for current P1, P2 and P3 |
 | [sensor.f1_race_control](#race-control)               | Race Control messages feed (flags, incidents, key updates) |
+| [sensor.f1_track_limits](#track-limits)               | Track limits violations per driver (deletions, warnings, penalties) |
+| [sensor.f1_investigations](#investigations)           | Active steward investigations and pending penalties |
 | [binary_sensor.f1_formation_start](#formation-start)  | Indicates when formation start procedure is ready |
 | [sensor.f1_championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) |
 | [sensor.f1_championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) |
@@ -983,6 +985,334 @@ YELLOW FLAG IN TURN 4
 | sequence | number | Message counter |
 | history | list | Rolling list of recent messages (up to 5), each with `event_id`, `utc`, `category`, `flag`, and `message` |
 | raw_message | object | Original payload from the live feed |
+
+---
+
+## Track Limits
+
+`sensor.f1_track_limits` - Aggregated track limits violations per driver, including deleted lap times, black and white flag warnings, and penalties.
+
+**State**
+- Integer: total number of track limit violations (deletions + warnings) in this session.
+
+**Example**
+```text
+12
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| by_driver | object | Map of driver TLAs to their violation data |
+| total_deletions | number | Total count of deleted times/laps across all drivers |
+| total_warnings | number | Count of BLACK AND WHITE flags issued for track limits |
+| total_penalties | number | Count of track limits penalties issued |
+| last_update | string | ISO-8601 timestamp of last update |
+
+Each entry in `by_driver` (keyed by driver TLA) contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| racing_number | string | Car number |
+| deletions | number | Number of times/laps deleted for this driver |
+| warning | boolean | Whether a BLACK AND WHITE flag has been shown |
+| penalty | string | Penalty text if issued (e.g., "5 SECOND TIME PENALTY"), or null |
+| violations | list | Detailed list of all violations |
+
+Each entry in `violations` contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| utc | string | ISO-8601 timestamp of the violation |
+| lap | number | Lap number when violation occurred |
+| turn | number | Turn number where violation occurred (for deletions) |
+| type | string | Violation type: `time_deleted`, `warning`, or `penalty` |
+| penalty | string | Penalty text (only present when type is `penalty`) |
+
+<details>
+<summary>JSON Structure Example</summary>
+
+```json
+{
+  "by_driver": {
+    "HAM": {
+      "racing_number": "44",
+      "deletions": 3,
+      "warning": true,
+      "penalty": null,
+      "violations": [
+        { "utc": "2025-12-07T13:09:47Z", "lap": 5, "turn": 1, "type": "time_deleted" },
+        { "utc": "2025-12-07T13:40:05Z", "lap": 25, "turn": 1, "type": "time_deleted" },
+        { "utc": "2025-12-07T13:43:05Z", "lap": 27, "turn": 1, "type": "time_deleted" },
+        { "utc": "2025-12-07T13:48:58Z", "lap": 31, "turn": null, "type": "warning" }
+      ]
+    },
+    "GAS": {
+      "racing_number": "10",
+      "deletions": 4,
+      "warning": true,
+      "penalty": "5 SECOND TIME PENALTY",
+      "violations": [
+        { "utc": "2025-12-07T13:11:44Z", "lap": 6, "turn": 6, "type": "time_deleted" },
+        { "utc": "2025-12-07T13:38:57Z", "lap": 24, "turn": 4, "type": "time_deleted" },
+        { "utc": "2025-12-07T13:49:07Z", "lap": 31, "turn": null, "type": "warning" },
+        { "utc": "2025-12-07T14:09:18Z", "lap": 44, "turn": 4, "type": "time_deleted" },
+        { "utc": "2025-12-07T14:11:25Z", "lap": 46, "turn": null, "type": "penalty", "penalty": "5 SECOND TIME PENALTY" }
+      ]
+    },
+    "LAW": {
+      "racing_number": "30",
+      "deletions": 4,
+      "warning": true,
+      "penalty": null,
+      "violations": [
+        { "utc": "2025-12-07T13:10:33Z", "lap": 5, "turn": 1, "type": "time_deleted" },
+        { "utc": "2025-12-07T13:14:11Z", "lap": 8, "turn": 1, "type": "time_deleted" },
+        { "utc": "2025-12-07T13:34:40Z", "lap": 21, "turn": 7, "type": "time_deleted" },
+        { "utc": "2025-12-07T13:37:38Z", "lap": 23, "turn": null, "type": "warning" }
+      ]
+    }
+  },
+  "total_deletions": 11,
+  "total_warnings": 3,
+  "total_penalties": 1,
+  "last_update": "2025-12-07T14:11:25Z"
+}
+```
+
+</details>
+
+<details>
+<summary>Jinja2 Template Examples</summary>
+
+**Get a driver's track limits count:**
+```jinja2
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
+{% set ham = by_driver.get('HAM') %}
+{% if ham %}
+  HAM: {{ ham.deletions }} deletions{% if ham.warning %}, WARNING{% endif %}
+{% endif %}
+```
+
+**List drivers with warnings:**
+```jinja2
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
+{% for tla, data in by_driver.items() if data.warning %}
+  {{ tla }} (#{{ data.racing_number }}) - {{ data.deletions }} deletions
+{% endfor %}
+```
+
+**Find drivers at risk (3+ deletions, no warning yet):**
+```jinja2
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
+{% for tla, data in by_driver.items() if data.deletions >= 3 and not data.warning %}
+  {{ tla }}: {{ data.deletions }} deletions - at risk!
+{% endfor %}
+```
+
+**Get total session track limits:**
+```jinja2
+{% set deletions = state_attr('sensor.f1_track_limits', 'total_deletions') %}
+{% set warnings = state_attr('sensor.f1_track_limits', 'total_warnings') %}
+{% set penalties = state_attr('sensor.f1_track_limits', 'total_penalties') %}
+Deletions: {{ deletions }}, Warnings: {{ warnings }}, Penalties: {{ penalties }}
+```
+
+**List drivers with penalties:**
+```jinja2
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
+{% for tla, data in by_driver.items() if data.penalty %}
+  {{ tla }}: {{ data.penalty }}
+{% endfor %}
+```
+
+</details>
+
+:::tip Track Limits Progression
+The typical track limits progression is: 3 deleted lap times → BLACK AND WHITE flag warning → penalty on the next violation. Use the `deletions` count and `warning` flag to identify drivers at risk.
+:::
+
+---
+
+## Investigations
+
+`sensor.f1_investigations` - Active steward investigations and pending penalties. Shows only currently relevant information with automatic lifecycle management.
+
+**State**
+- Integer: count of actionable items (noted incidents + under investigation + pending penalties).
+
+**Example**
+```text
+3
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| noted | list | Incidents noted but not yet under investigation |
+| under_investigation | list | Active steward investigations |
+| no_further_action | list | Recent NFI decisions (auto-expire after 5 minutes) |
+| penalties | list | Penalties issued but not yet served |
+| last_update | string | ISO-8601 timestamp of last update |
+
+Each entry in `noted` and `under_investigation` contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| utc | string | ISO-8601 timestamp when the incident was noted |
+| lap | number | Lap number when the incident occurred |
+| drivers | list | Driver TLAs involved (sorted alphabetically) |
+| racing_numbers | list | Car numbers involved |
+| location | string | Location such as "TURN 7", "PIT LANE" (or null) |
+| reason | string | Reason such as "CAUSING A COLLISION", "LEAVING THE TRACK AND GAINING AN ADVANTAGE" (or null) |
+| after_race | boolean | Whether the investigation will happen after the race (only in `under_investigation`) |
+
+Each entry in `no_further_action` contains the same fields plus:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| nfi_utc | string | ISO-8601 timestamp when NFI was decided (used for auto-expiry) |
+
+Each entry in `penalties` contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| driver | string | Driver TLA who received the penalty |
+| racing_number | string | Car number |
+| penalty | string | Penalty type (e.g., "5 SECOND TIME PENALTY", "DRIVE THROUGH PENALTY") |
+| reason | string | Reason for the penalty |
+| utc | string | ISO-8601 timestamp when penalty was issued |
+| lap | number | Lap number when penalty was issued |
+
+<details>
+<summary>JSON Structure Example</summary>
+
+```json
+{
+  "noted": [
+    {
+      "utc": "2025-12-07T13:30:57Z",
+      "lap": 19,
+      "drivers": ["LEC", "RUS"],
+      "racing_numbers": ["16", "63"],
+      "location": "TURN 9",
+      "reason": "MOVING UNDER BRAKING"
+    }
+  ],
+  "under_investigation": [
+    {
+      "utc": "2025-12-07T13:40:46Z",
+      "lap": 25,
+      "drivers": ["NOR", "TSU"],
+      "racing_numbers": ["4", "22"],
+      "location": "TURN 5",
+      "reason": "FORCING ANOTHER DRIVER OFF THE TRACK",
+      "after_race": false
+    }
+  ],
+  "no_further_action": [
+    {
+      "utc": "2025-12-07T13:06:50Z",
+      "lap": 3,
+      "drivers": ["ALB", "HAM"],
+      "racing_numbers": ["23", "44"],
+      "location": "TURN 7",
+      "reason": "LEAVING THE TRACK AND GAINING AN ADVANTAGE",
+      "nfi_utc": "2025-12-07T13:12:53Z"
+    }
+  ],
+  "penalties": [
+    {
+      "driver": "TSU",
+      "racing_number": "22",
+      "penalty": "5 SECOND TIME PENALTY",
+      "reason": "MORE THAN ONE CHANGE OF DIRECTION",
+      "utc": "2025-12-07T13:46:38Z",
+      "lap": 29
+    },
+    {
+      "driver": "ALB",
+      "racing_number": "23",
+      "penalty": "5 SECOND TIME PENALTY",
+      "reason": "SPEEDING IN THE PIT LANE",
+      "utc": "2025-12-07T14:00:05Z",
+      "lap": 38
+    }
+  ],
+  "last_update": "2025-12-07T14:00:05Z"
+}
+```
+
+</details>
+
+<details>
+<summary>Jinja2 Template Examples</summary>
+
+**Check if a driver is under investigation:**
+```jinja2
+{% set investigations = state_attr('sensor.f1_investigations', 'under_investigation') %}
+{% set ver_involved = investigations | selectattr('drivers', 'contains', 'VER') | list %}
+{% if ver_involved | length > 0 %}
+  VER is under investigation!
+{% endif %}
+```
+
+**List all pending penalties:**
+```jinja2
+{% set penalties = state_attr('sensor.f1_investigations', 'penalties') %}
+{% for p in penalties %}
+  {{ p.driver }}: {{ p.penalty }} ({{ p.reason }})
+{% endfor %}
+```
+
+**Count active investigations:**
+```jinja2
+{% set noted = state_attr('sensor.f1_investigations', 'noted') | length %}
+{% set investigating = state_attr('sensor.f1_investigations', 'under_investigation') | length %}
+Noted: {{ noted }}, Under Investigation: {{ investigating }}
+```
+
+**Get post-race investigations:**
+```jinja2
+{% set investigations = state_attr('sensor.f1_investigations', 'under_investigation') %}
+{% for inv in investigations if inv.after_race %}
+  {{ inv.drivers | join(' vs ') }} - {{ inv.reason }} (after race)
+{% endfor %}
+```
+
+**Show recent NFI decisions:**
+```jinja2
+{% set nfi = state_attr('sensor.f1_investigations', 'no_further_action') %}
+{% for item in nfi %}
+  {{ item.drivers | join('/') }}: No Further Action ({{ item.reason }})
+{% endfor %}
+```
+
+**Create investigation summary:**
+```jinja2
+{% set sensor = 'sensor.f1_investigations' %}
+{% set total = states(sensor) | int %}
+{% if total > 0 %}
+  {{ total }} active matter{{ 's' if total > 1 else '' }}:
+  {% set penalties = state_attr(sensor, 'penalties') %}
+  {% for p in penalties %}
+    - {{ p.driver }}: {{ p.penalty }}
+  {% endfor %}
+{% else %}
+  No active investigations
+{% endif %}
+```
+
+</details>
+
+:::info Incident Lifecycle
+- **NOTED** → Stays until escalated to UNDER INVESTIGATION, resolved as NFI, or penalized
+- **UNDER INVESTIGATION** → Stays until resolved as NFI or penalty issued
+- **NO FURTHER ACTION** → Auto-expires after 5 minutes of session time
+- **PENALTY** → Stays until PENALTY SERVED message received
+:::
 
 ---
 

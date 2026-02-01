@@ -1,3 +1,4 @@
+from contextlib import suppress
 import asyncio
 
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -9,6 +10,33 @@ from .const import (
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
 )
+
+
+def _safe_write_ha_state(entity: Entity) -> None:
+    """Thread-safe request to write entity state."""
+    hass = getattr(entity, "hass", None)
+    if hass is None:
+        return
+
+    try:
+        loop = hass.loop
+    except Exception:
+        return
+
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+
+    # `async_schedule_update_ha_state` is a @callback (not a coroutine) and will
+    # perform the write on the loop safely.
+    if running is loop:
+        with suppress(Exception):
+            entity.async_schedule_update_ha_state(False)
+        return
+
+    with suppress(Exception):
+        loop.call_soon_threadsafe(entity.async_schedule_update_ha_state, False)
 
 
 class F1BaseEntity(CoordinatorEntity):
@@ -39,7 +67,7 @@ class F1BaseEntity(CoordinatorEntity):
         LiveAvailabilityTracker. When not available, entities should be
         `unavailable` instead of keeping stale values for days/weeks.
         """
-        try:
+        with suppress(Exception):
             coord = getattr(self, "coordinator", None)
             if coord is not None and hasattr(coord, "available"):
                 coord_available = bool(getattr(coord, "available"))
@@ -50,7 +78,7 @@ class F1BaseEntity(CoordinatorEntity):
                 #
                 # This prevents sensors from staying available with restored/stale
                 # values when the supervisor is idle or the upstream is quiet.
-                try:
+                with suppress(Exception):
                     reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(
                         self._entry_id, {}
                     ) or {}
@@ -74,15 +102,13 @@ class F1BaseEntity(CoordinatorEntity):
                     replay_controller = reg.get("replay_controller")
                     replay_active = False
                     if replay_controller is not None:
-                        try:
+                        with suppress(Exception):
                             from .replay_mode import ReplayState
 
                             replay_active = replay_controller.state in (
                                 ReplayState.PLAYING,
                                 ReplayState.PAUSED,
                             )
-                        except Exception:
-                            pass
 
                     # If we're in a live window, require actual stream activity.
                     # If we have seen no activity at all, treat as offline.
@@ -95,11 +121,9 @@ class F1BaseEntity(CoordinatorEntity):
                     ):
                         bus = reg.get("live_bus")
                         activity_age = None
-                        try:
+                        with suppress(Exception):
                             if bus is not None:
                                 activity_age = bus.last_stream_activity_age()
-                        except Exception:
-                            activity_age = None
                         if activity_age is None:
                             return False
                         # Treat prolonged inactivity as offline/unavailable.
@@ -107,12 +131,7 @@ class F1BaseEntity(CoordinatorEntity):
                         if activity_age > 90.0:
                             return False
 
-                except Exception:
-                    pass
-
                 return coord_available
-        except Exception:
-            pass
         return super().available
 
     def _safe_write_ha_state(self, *_args) -> None:
@@ -122,33 +141,7 @@ class F1BaseEntity(CoordinatorEntity):
         threads. Calling `async_write_ha_state` directly from those threads is not
         safe. This helper always schedules the write on Home Assistant's event loop.
         """
-        hass = getattr(self, "hass", None)
-        if hass is None:
-            return
-
-        try:
-            loop = hass.loop
-        except Exception:
-            return
-
-        try:
-            running = asyncio.get_running_loop()
-        except RuntimeError:
-            running = None
-
-        # `async_schedule_update_ha_state` is a @callback (not a coroutine) and will
-        # perform the write on the loop safely.
-        if running is loop:
-            try:
-                self.async_schedule_update_ha_state(False)
-            except Exception:
-                pass
-            return
-
-        try:
-            loop.call_soon_threadsafe(self.async_schedule_update_ha_state, False)
-        except Exception:
-            pass
+        _safe_write_ha_state(self)
 
     def _is_stream_active(self) -> bool:
         reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(
@@ -173,10 +166,8 @@ class F1BaseEntity(CoordinatorEntity):
     def _clear_state_if_possible(self) -> None:
         clear = getattr(self, "_clear_state", None)
         if callable(clear):
-            try:
+            with suppress(Exception):
                 clear()
-            except Exception:
-                pass
 
     def _handle_stream_state(self, updated: bool) -> bool:
         """Handle live/replay stream inactivity and transitions.
@@ -218,31 +209,7 @@ class F1AuxEntity(Entity):
 
     def _safe_write_ha_state(self, *_args) -> None:
         """Thread-safe request to write entity state (see F1BaseEntity)."""
-        hass = getattr(self, "hass", None)
-        if hass is None:
-            return
-
-        try:
-            loop = hass.loop
-        except Exception:
-            return
-
-        try:
-            running = asyncio.get_running_loop()
-        except RuntimeError:
-            running = None
-
-        if running is loop:
-            try:
-                self.async_schedule_update_ha_state(False)
-            except Exception:
-                pass
-            return
-
-        try:
-            loop.call_soon_threadsafe(self.async_schedule_update_ha_state, False)
-        except Exception:
-            pass
+        _safe_write_ha_state(self)
 
     def _is_stream_active(self) -> bool:
         reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 import asyncio
 import logging
@@ -77,22 +78,16 @@ class LiveDelayCalibrationManager:
     async def async_close(self) -> None:
         self._cancel_handles()
         if self._session_unsub:
-            try:
+            with suppress(Exception):
                 self._session_unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._session_unsub = None
         if self._reference_unsub:
-            try:
+            with suppress(Exception):
                 self._reference_unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._reference_unsub = None
         if self._formation_unsub:
-            try:
+            with suppress(Exception):
                 self._formation_unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._formation_unsub = None
 
     async def async_prepare(self, *, source: str = "button") -> dict[str, Any]:
@@ -186,10 +181,8 @@ class LiveDelayCalibrationManager:
 
         @callback
         def _remove() -> None:
-            try:
+            with suppress(ValueError):
                 self._listeners.remove(listener)
-            except ValueError:
-                pass
 
         return _remove
 
@@ -242,10 +235,8 @@ class LiveDelayCalibrationManager:
 
     def _cancel_tick(self) -> None:
         if self._tick_handle:
-            try:
+            with suppress(Exception):
                 self._tick_handle.cancel()
-            except Exception:  # noqa: BLE001
-                pass
             self._tick_handle = None
 
     def _on_tick(self) -> None:
@@ -262,10 +253,8 @@ class LiveDelayCalibrationManager:
 
     def _cancel_timeout(self) -> None:
         if self._timeout_handle:
-            try:
+            with suppress(Exception):
                 self._timeout_handle.cancel()
-            except Exception:  # noqa: BLE001
-                pass
             self._timeout_handle = None
 
     def _on_timeout(self) -> None:
@@ -381,10 +370,8 @@ class LiveDelayCalibrationManager:
     def _remove_formation_listener(self) -> None:
         if self._formation_unsub is None:
             return
-        try:
+        with suppress(Exception):
             self._formation_unsub()
-        except Exception:  # noqa: BLE001
-            pass
         self._formation_unsub = None
 
     def _handle_formation_update(self, snapshot: dict[str, Any]) -> None:

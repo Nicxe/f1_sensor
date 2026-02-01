@@ -1,10 +1,13 @@
 from __future__ import annotations
+from contextlib import suppress
 
 import asyncio
+import base64
 import json
 import logging
 import time
 import re
+import zlib
 from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
 
@@ -16,10 +19,13 @@ from json import JSONDecodeError
 from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.loader import async_get_integration
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import (
+    CIRCUIT_MAP_CDN_BASE_URL,
     DOMAIN,
     ENABLE_DEVELOPMENT_MODE_UI,
+    F1_CIRCUIT_MAP_NAMES,
     F1_COUNTRY_CODES,
     FLAG_CDN_BASE_URL,
 )
@@ -56,9 +62,12 @@ def parse_racecontrol(text: str):
         if "{" not in line:
             continue
         _, json_part = line.split("{", 1)
+        obj = None
         try:
             obj = json.loads("{" + json_part)
         except JSONDecodeError:
+            obj = None
+        if obj is None:
             continue
         msgs = obj.get("Messages")
         if isinstance(msgs, list) and msgs:
@@ -173,6 +182,16 @@ def get_country_flag_url(country_name: str | None) -> str | None:
     if not code:
         return None
     return f"{FLAG_CDN_BASE_URL}/{code}.png"
+
+
+def get_circuit_map_url(circuit_id: str | None) -> str | None:
+    """Return F1 circuit map CDN URL for Ergast circuit ID."""
+    if not circuit_id:
+        return None
+    circuit_name = F1_CIRCUIT_MAP_NAMES.get(circuit_id)
+    if not circuit_name:
+        return None
+    return f"{CIRCUIT_MAP_CDN_BASE_URL}/{circuit_name}_Circuit.webp"
 
 
 async def build_user_agent(hass) -> str:
@@ -330,10 +349,8 @@ async def fetch_json(
 
             loop.create_task(_cleanup_later())
         except Exception:
-            try:
+            with suppress(Exception):
                 inflight_map.pop(key, None)
-            except Exception:
-                pass
 
 
 async def fetch_text(
@@ -459,10 +476,8 @@ async def fetch_text(
 
             loop.create_task(_cleanup_later())
         except Exception:
-            try:
+            with suppress(Exception):
                 inflight_map.pop(key, None)
-            except Exception:
-                pass
 
 
 class PersistentCache:
@@ -495,19 +510,15 @@ class PersistentCache:
                 return
 
             async def _save_later():
-                try:
+                with suppress(Exception):
                     await asyncio.sleep(delay)
                     await self._store.async_save(self._data)
-                except Exception:
-                    pass
 
             self._save_task = self._hass.loop.create_task(_save_later())
         except Exception:
             # Fallback to immediate save
-            try:
+            with suppress(Exception):
                 self._hass.loop.create_task(self._store.async_save(self._data))
-            except Exception:
-                pass
 
 
 _PDF_ANCHOR_RE = re.compile(
@@ -529,6 +540,112 @@ _TZ_OFFSETS = {
 
 def _normalize_text(text: str) -> str:
     return _WS_RE.sub(" ", (text or "").replace("\xa0", " ")).strip()
+
+
+def _parse_race_datetime(
+    date_str: str | None,
+    time_str: str | None,
+    *,
+    default_time: str,
+) -> datetime | None:
+    if not date_str:
+        return None
+    time_val = time_str or default_time
+    dt_text = f"{date_str}T{time_val}"
+    dt_val = dt_util.parse_datetime(dt_text)
+    if dt_val is None:
+        try:
+            dt_val = datetime.fromisoformat(dt_text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if dt_val.tzinfo is None:
+        dt_val = dt_val.replace(tzinfo=timezone.utc)
+    return dt_val.astimezone(timezone.utc)
+
+
+def get_next_race(
+    races: list[dict] | None,
+    *,
+    now: datetime | None = None,
+    grace: timedelta,
+    default_time: str = "00:00:00Z",
+    fallback_last: bool = False,
+) -> tuple[datetime | None, dict | None]:
+    """Return (datetime_utc, race_dict) for the next/current race.
+
+    If fallback_last is True and no future/current race is found, return the last race.
+    """
+    if not isinstance(races, list) or not races:
+        return None, None
+    now_utc = now or dt_util.utcnow()
+    for race in races:
+        if not isinstance(race, dict):
+            continue
+        dt_val = _parse_race_datetime(
+            race.get("date"),
+            race.get("time"),
+            default_time=default_time,
+        )
+        if dt_val is None:
+            continue
+        if dt_val + grace > now_utc:
+            return dt_val, race
+    if not fallback_last:
+        return None, None
+    for race in reversed(races):
+        if not isinstance(race, dict):
+            continue
+        dt_val = _parse_race_datetime(
+            race.get("date"),
+            race.get("time"),
+            default_time=default_time,
+        )
+        return dt_val, race
+    return None, None
+
+
+def parse_cardata_line(
+    line: str, parse_utc: Callable[[Any], datetime | None]
+) -> list[datetime]:
+    """Decode a CarData.z.jsonStream line into UTC datetimes."""
+    if not line or line.startswith("URL:"):
+        return []
+    if '"' not in line:
+        return []
+    try:
+        _, rest = line.split('"', 1)
+        encoded = rest.split('"', 1)[0]
+    except ValueError:
+        return []
+    if not encoded:
+        return []
+    try:
+        raw = base64.b64decode(encoded)
+        payload = zlib.decompress(raw, wbits=-15)
+        data = json.loads(payload)
+    except Exception:  # noqa: BLE001
+        return []
+    entries = data.get("Entries") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        return []
+    utcs: list[datetime] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        dt_val = parse_utc(entry.get("Utc"))
+        if dt_val is not None:
+            utcs.append(dt_val)
+    return utcs
+
+
+def parse_cardata_lines(
+    lines: list[str], parse_utc: Callable[[Any], datetime | None]
+) -> list[datetime]:
+    """Decode multiple CarData.z.jsonStream lines into UTC datetimes."""
+    utcs: list[datetime] = []
+    for line in lines:
+        utcs.extend(parse_cardata_line(line, parse_utc))
+    return utcs
 
 
 def _strip_html(text: str) -> str:
