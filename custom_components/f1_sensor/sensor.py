@@ -517,6 +517,16 @@ class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
         self._handle_stream_state(updated)
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
+        try:
+            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            self._session_info_coordinator = reg.get("session_info_coordinator")
+            if self._session_info_coordinator is not None:
+                rem_info = self._session_info_coordinator.async_add_listener(
+                    self._handle_session_info_update
+                )
+                self.async_on_remove(rem_info)
+        except Exception:
+            self._session_info_coordinator = None
         self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
@@ -5356,10 +5366,24 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "pit_out": False,
                 "retired": False,
                 "stopped": False,
+                "fastest_lap": False,
+                "fastest_lap_time": "1:29.123",
+                "fastest_lap_time_secs": 89.123,
+                "fastest_lap_lap": 42,
             },
             ...
         }
         - total_laps: 70 (race distance, if known)
+        - fastest_lap: {
+            "racing_number": "16",
+            "tla": "LEC",
+            "name": "Charles Leclerc",
+            "team": "Ferrari",
+            "team_color": "#DC0000",
+            "lap": 42,
+            "time": "1:29.123",
+            "time_secs": 89.123,
+          }
     """
 
     _PIT_OUT_HOLD_SECONDS = 6.0
@@ -5368,14 +5392,31 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:podium"
         self._attr_native_value = None
-        self._attr_extra_state_attributes = {"drivers": [], "total_laps": None}
+        self._attr_extra_state_attributes = {
+            "drivers": [],
+            "total_laps": None,
+            "fastest_lap": None,
+        }
         self._last_write_ts: float | None = None
         self._pending_write: bool = False
         self._pit_out_until: dict[str, float] = {}
         self._pit_out_last: dict[str, bool] = {}
+        self._session_info_coordinator = None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+
+        # Subscribe to SessionInfo for accurate session type/name gating
+        try:
+            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            self._session_info_coordinator = reg.get("session_info_coordinator")
+            if self._session_info_coordinator is not None:
+                rem_info = self._session_info_coordinator.async_add_listener(
+                    self._handle_session_info_update
+                )
+                self.async_on_remove(rem_info)
+        except Exception:
+            self._session_info_coordinator = None
 
         # Try coordinator first
         updated = self._update_from_coordinator(initial=True)
@@ -5406,7 +5447,9 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self._attr_native_value = None
         with suppress(Exception):
             attrs = dict(getattr(last, "attributes", {}) or {})
-            self._attr_extra_state_attributes = attrs
+            self._attr_extra_state_attributes = self._normalize_restored_attributes(
+                attrs
+            )
             getLogger(__name__).debug(
                 "DriverPositions: Restored last state -> lap %s", last.state
             )
@@ -5427,6 +5470,110 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         self._rate_limited_write()
 
+    def _handle_session_info_update(self) -> None:
+        prev_state = self._attr_native_value
+        prev_attrs = self._attr_extra_state_attributes
+        updated = self._update_from_coordinator(initial=False)
+
+        if not self._handle_stream_state(updated):
+            return
+
+        if (
+            prev_state == self._attr_native_value
+            and prev_attrs == self._attr_extra_state_attributes
+        ):
+            return
+
+        self._rate_limited_write()
+
+    def _get_session_type_and_name(self) -> tuple[str | None, str | None]:
+        try:
+            coord = self._session_info_coordinator
+            if coord is None:
+                replay = self._get_session_from_replay()
+                if replay != (None, None):
+                    return replay
+                return self._get_session_name_from_window()
+            data = coord.data
+            if not isinstance(data, dict):
+                replay = self._get_session_from_replay()
+                if replay != (None, None):
+                    return replay
+                return self._get_session_name_from_window()
+            session_type = data.get("Type")
+            session_name = data.get("Name")
+            if session_type or session_name:
+                return session_type, session_name
+            replay = self._get_session_from_replay()
+            if replay != (None, None):
+                return replay
+            return self._get_session_name_from_window()
+        except Exception:
+            replay = self._get_session_from_replay()
+            if replay != (None, None):
+                return replay
+            return self._get_session_name_from_window()
+
+    def _get_session_from_replay(self) -> tuple[str | None, str | None]:
+        """Fallback to replay session metadata when replay is active."""
+        try:
+            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            replay_controller = (
+                reg.get("replay_controller") if isinstance(reg, dict) else None
+            )
+            if replay_controller is None:
+                return None, None
+            session_manager = getattr(replay_controller, "session_manager", None)
+            if session_manager is None:
+                return None, None
+            selected = getattr(session_manager, "selected_session", None)
+            if selected is None:
+                return None, None
+            session_type = getattr(selected, "session_type", None)
+            session_name = getattr(selected, "session_name", None)
+            if session_type or session_name:
+                return session_type, session_name
+        except Exception:
+            return None, None
+        return None, None
+
+    def _get_session_name_from_window(self) -> tuple[str | None, str | None]:
+        """Fallback to live window metadata when SessionInfo is unavailable."""
+        try:
+            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            live_supervisor = (
+                reg.get("live_supervisor") if isinstance(reg, dict) else None
+            )
+            window = getattr(live_supervisor, "current_window", None)
+            session_name = getattr(window, "session_name", None)
+            if isinstance(session_name, str) and session_name:
+                return None, session_name
+        except Exception:
+            return None, None
+        return None, None
+
+    @staticmethod
+    def _is_race_or_sprint(session_type: str | None, session_name: str | None) -> bool:
+        joined = f"{session_type or ''} {session_name or ''}".lower()
+        if "sprint" in joined and "qualifying" not in joined:
+            return True
+        return "race" in joined
+
+    def _normalize_restored_attributes(self, attrs: dict) -> dict:
+        attrs.setdefault("drivers", [])
+        attrs.setdefault("total_laps", None)
+        attrs.setdefault("fastest_lap", None)
+        drivers = attrs.get("drivers")
+        if isinstance(drivers, list):
+            for drv in drivers:
+                if not isinstance(drv, dict):
+                    continue
+                drv.setdefault("fastest_lap", False)
+                drv.setdefault("fastest_lap_time", None)
+                drv.setdefault("fastest_lap_time_secs", None)
+                drv.setdefault("fastest_lap_lap", None)
+        return attrs
+
     def _update_from_coordinator(self, *, initial: bool = False) -> bool:
         """Update sensor state from coordinator data."""
         data = self.coordinator.data or {}
@@ -5440,6 +5587,14 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         lap_current = data.get("lap_current")
         lap_total = data.get("lap_total")
         default_on_track = self._is_replay_active()
+        session_type, session_name = self._get_session_type_and_name()
+        allow_fastest = self._is_race_or_sprint(session_type, session_name)
+        fastest = data.get("fastest_lap") if allow_fastest else None
+        fastest_rn = None
+        if isinstance(fastest, dict):
+            fastest_rn = str(fastest.get("racing_number") or "").strip() or None
+        if fastest_rn is None:
+            fastest = None
 
         # Build output structure
         drivers_out = {}
@@ -5460,6 +5615,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             status, status_attrs = self._derive_driver_status(
                 rn, timing, default_on_track=default_on_track
             )
+            is_fastest = bool(allow_fastest and fastest_rn == rn)
             drivers_out[rn] = {
                 "racing_number": rn,
                 "tla": identity.get("tla"),
@@ -5473,6 +5629,12 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     "completed_laps", lap_history.get("last_recorded_lap", 0)
                 ),
                 "status": status,
+                "fastest_lap": is_fastest,
+                "fastest_lap_time": fastest.get("time") if is_fastest else None,
+                "fastest_lap_time_secs": (
+                    fastest.get("time_secs") if is_fastest else None
+                ),
+                "fastest_lap_lap": fastest.get("lap") if is_fastest else None,
                 **status_attrs,
             }
 
@@ -5495,6 +5657,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_extra_state_attributes = {
             "drivers": drivers_list,
             "total_laps": lap_total,
+            "fastest_lap": dict(fastest) if isinstance(fastest, dict) else None,
         }
         return True
 
@@ -5582,7 +5745,11 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _clear_state(self) -> None:
         self._attr_native_value = None
-        self._attr_extra_state_attributes = {"drivers": [], "total_laps": None}
+        self._attr_extra_state_attributes = {
+            "drivers": [],
+            "total_laps": None,
+            "fastest_lap": None,
+        }
 
     def _rate_limited_write(self) -> None:
         """Write state with 1-second rate limiting."""
