@@ -5406,6 +5406,18 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
 
+        # Subscribe to SessionInfo for accurate session type/name gating
+        try:
+            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            self._session_info_coordinator = reg.get("session_info_coordinator")
+            if self._session_info_coordinator is not None:
+                rem_info = self._session_info_coordinator.async_add_listener(
+                    self._handle_session_info_update
+                )
+                self.async_on_remove(rem_info)
+        except Exception:
+            self._session_info_coordinator = None
+
         # Try coordinator first
         updated = self._update_from_coordinator(initial=True)
 
