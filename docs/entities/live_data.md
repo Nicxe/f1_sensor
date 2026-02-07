@@ -111,7 +111,7 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_race_lap_count](#race-lap)                 | Current race lap number|
 | [sensor.f1_track_weather](#track-weather)             | Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)|
 | [sensor.f1_driver_list](#driver-list)                 | Show list and details on all drivers, including team color, headshot URL etc| 
-| [sensor.f1_pit_stops](#pit-stops)                      | Live pit stop events and aggregated pit stop series per car |
+| [sensor.f1_pitstops](#pit-stops)                      | Live pit stop events and aggregated pit stop series per car |
 | [sensor.f1_team_radio](#team-radio)                   | Latest team radio message and rolling history |
 | [sensor.f1_current_tyres](#current-tyres)             | Current tyre compound per driver |
 | [sensor.f1_tyre_statistics](#tyre-statistics)         | Aggregated tyre statistics per compound |
@@ -422,7 +422,7 @@ The headshot URLs are provided by F1 and may change between sessions. This senso
 
 ## Pit Stops
 
-Live pit stop information from the F1 Live Timing feed, aggregated per car.
+`sensor.f1_pitstops` - Live pit stop information from the F1 Live Timing feed, aggregated per car.
 
 **State**
 - Integer: total number of pit stops recorded in the current session, or `0` when none are available.
@@ -436,8 +436,28 @@ Live pit stop information from the F1 Live Timing feed, aggregated per car.
 
 | Attribute | Type | Description |
 | --- | --- | --- |
-| cars | object | Map of racing numbers to pit stop details. Each entry contains a list of stops with timestamp, lap, and duration |
+| cars | object | Map of racing numbers to pit stop details |
 | last_update | string | ISO‑8601 timestamp of the last received pit stop event |
+
+Each entry in `cars` (keyed by racing number) contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| tla | string | Driver code (TLA) when available |
+| name | string | Driver name when available |
+| team | string | Team name when available |
+| count | number | Number of pit stops recorded for the car |
+| stops | list | List of pit stops (most recent stops kept, best effort) |
+
+Each entry in `stops` contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| lap | number | Lap number when the stop happened |
+| timestamp | string | Timestamp from the feed when available |
+| pit_stop_time | number | Stationary time (seconds), when available |
+| pit_lane_time | number | Total pit lane time (seconds), when available |
+| pit_delta | number | Estimated loss vs a normal lap (seconds), when available |
 
 ::::info INFO
 Active during race and sprint sessions.
@@ -778,10 +798,11 @@ Use the `compound_color` field to style your dashboard elements. The colors matc
 
 | Attribute | Type | Description |
 | --- | --- | --- |
-| drivers | object | Map of racing numbers to driver position and timing data |
+| drivers | list | List of drivers, sorted by position when available |
 | total_laps | number | Total race distance in laps, when known |
+| fastest_lap | object | Fastest lap details during races and sprints; `null` in other session types |
 
-Each entry in `drivers` (keyed by racing number) contains:
+Each entry in `drivers` contains:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -799,14 +820,18 @@ Each entry in `drivers` (keyed by racing number) contains:
 | pit_out | boolean | Whether driver just exited pits |
 | retired | boolean | Whether driver has retired from the session |
 | stopped | boolean | Whether driver has stopped on track |
+| fastest_lap | boolean | True if this driver currently holds fastest lap (race/sprint only) |
+| fastest_lap_time | string | Fastest lap time (race/sprint only) |
+| fastest_lap_time_secs | number | Fastest lap time in seconds (race/sprint only) |
+| fastest_lap_lap | number | Lap number of the fastest lap (race/sprint only) |
 
 <details>
 <summary>JSON Structure Example</summary>
 
 ```json
 {
-  "drivers": {
-    "1": {
+  "drivers": [
+    {
       "racing_number": "1",
       "tla": "VER",
       "name": "Max Verstappen",
@@ -824,9 +849,13 @@ Each entry in `drivers` (keyed by racing number) contains:
       "in_pit": false,
       "pit_out": false,
       "retired": false,
-      "stopped": false
+      "stopped": false,
+      "fastest_lap": true,
+      "fastest_lap_time": "1:29.123",
+      "fastest_lap_time_secs": 89.123,
+      "fastest_lap_lap": 42
     },
-    "44": {
+    {
       "racing_number": "44",
       "tla": "HAM",
       "name": "Lewis Hamilton",
@@ -844,10 +873,24 @@ Each entry in `drivers` (keyed by racing number) contains:
       "in_pit": false,
       "pit_out": false,
       "retired": false,
-      "stopped": false
+      "stopped": false,
+      "fastest_lap": false,
+      "fastest_lap_time": null,
+      "fastest_lap_time_secs": null,
+      "fastest_lap_lap": null
     }
-  },
-  "total_laps": 70
+  ],
+  "total_laps": 70,
+  "fastest_lap": {
+    "racing_number": "1",
+    "tla": "VER",
+    "name": "Max Verstappen",
+    "team": "Red Bull Racing",
+    "team_color": "#3671C6",
+    "lap": 42,
+    "time": "1:29.123",
+    "time_secs": 89.123
+  }
 }
 ```
 
@@ -860,7 +903,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 ```jinja2
 {% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
 {% if drivers %}
-  {% set leader = drivers.values() | selectattr('current_position', 'eq', '1') | first %}
+  {% set leader = drivers | selectattr('current_position', 'eq', '1') | first %}
   {% if leader %}
     Leader: {{ leader.tla }} ({{ leader.name }})
   {% endif %}
@@ -870,7 +913,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 **Get a specific driver by number:**
 ```jinja2
 {% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
-{% set driver = drivers.get('44') %}
+{% set driver = drivers | selectattr('racing_number', 'eq', '44') | first %}
 {% if driver %}
   {{ driver.name }} is in P{{ driver.current_position }}
 {% endif %}
@@ -879,7 +922,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 **Get driver's last lap time:**
 ```jinja2
 {% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
-{% set driver = drivers.get('1') %}
+{% set driver = drivers | selectattr('racing_number', 'eq', '1') | first %}
 {% if driver and driver.laps %}
   {% set last_lap = driver.completed_laps | string %}
   Last lap: {{ driver.laps.get(last_lap, 'N/A') }}
@@ -889,7 +932,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 **List all drivers in pit lane:**
 ```jinja2
 {% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
-{% for num, d in drivers.items() if d.status == 'pit_in' %}
+{% for d in drivers if d.status == 'pit_in' %}
   {{ d.tla }} is in the pits
 {% endfor %}
 ```
@@ -906,7 +949,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 **Get position changes from grid:**
 ```jinja2
 {% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
-{% for num, d in drivers.items() %}
+{% for d in drivers %}
   {% set change = d.grid_position | int - d.current_position | int %}
   {{ d.tla }}: {% if change > 0 %}+{% endif %}{{ change }}
 {% endfor %}
@@ -914,9 +957,9 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 </details>
 
-::::info INFO
-This sensor retains its last known state between sessions to support dashboard displays.
-::::
+:::info
+Fastest lap details are only exposed during races and sprints. In practice and qualifying, `fastest_lap` is `null` and each driver has `fastest_lap: false`.
+:::
 
 ---
 
@@ -1603,5 +1646,3 @@ on
 ::::info INFO
 Active only during race and sprint sessions.
 ::::
-
-
