@@ -36,6 +36,12 @@ It’s accurate, fast, and easy to set up , designed for both live excitement an
 
 Ready to give it a try? Start with the [**installation guide**](/getting-started/installation), then jump into the [**configuration**](/getting-started/add-integration) to set up the integration.
 
+### Features
+
+Take your setup to the next level:
+- [**Live Delay**](/features/live-delay) – Sync live data with your TV broadcast
+- [**Replay Mode**](/features/replay-mode) – Relive historical sessions with full Home Assistant integration
+
 ### Showcase
 
 Want inspiration? Visit our **examples showcase** to see what's possible with F1 Sensor.

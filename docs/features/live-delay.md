@@ -55,6 +55,35 @@ It uses these helper entities:
 
 ![Manual Live Auto](/img/live_delay_auto.png)
 
+### Entity reference
+
+The calibration workflow publishes additional attributes so you can see what it is doing.
+
+The `number.f1_live_delay` entity also exposes:
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| calibration_mode | string | Calibration mode such as `idle`, `waiting`, or `running` (best effort) |
+| calibration_reference | string | Selected reference used for calibration (best effort) |
+| calibration_waiting_since | string | ISO‑8601 timestamp when calibration started waiting (best effort) |
+| calibration_started_at | string | ISO‑8601 timestamp when the timer started (best effort) |
+| calibration_elapsed | number | Elapsed seconds since start (best effort) |
+| calibration_timeout_at | string | ISO‑8601 timestamp when calibration times out (best effort) |
+| calibration_last_result | number | Most recent saved delay value in seconds (best effort) |
+| calibration_message | string | Human-readable status message (best effort) |
+
+The `switch.f1_delay_calibration` entity exposes:
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| mode | string | Calibration mode such as `idle`, `waiting`, or `running` (best effort) |
+| reference | string | Selected reference used for calibration (best effort) |
+| message | string | Human-readable status message (best effort) |
+| waiting_since | string | ISO‑8601 timestamp when calibration started waiting (best effort) |
+| started_at | string | ISO‑8601 timestamp when the timer started (best effort) |
+| elapsed | number | Elapsed seconds since start (best effort) |
+| timeout_at | string | ISO‑8601 timestamp when calibration times out (best effort) |
+
 ### Choose the calibration reference
 
 Use `select.f1_live_delay_reference` to choose when the calibration timer starts:

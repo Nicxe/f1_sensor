@@ -20,7 +20,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Entities',
-      items: ['entities/static-data', 'entities/live-data', 'entities/events'],
+      items: ['entities/static-data', 'entities/live-data', 'entities/diagnostics', 'entities/events'],
     },
 
    {

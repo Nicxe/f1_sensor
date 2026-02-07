@@ -6,12 +6,13 @@ title: Static Data
 Information that rarely changes, such as schedules, drivers, circuits, and championship standings.
 
 
-### Entities Summary
+## Entities Summary
 
 | Entity                                                                            | Info                                              | 
 | ----------------------------------------------------------------------------------| --------------------------------------------------| 
 | [sensor.f1_next_race](#next-race)                                                 | Next race info                                    | 
-| [sensor.f1_season_calendar](#current-season-race)                                 | Full race schedule                                | 
+| [sensor.f1_track_time](#track-time)                                               | Current local time at the next race circuit       |
+| [sensor.f1_current_season](#current-season)                                       | Full race schedule                                | 
 | [sensor.f1_driver_standings](#driver-standings)                                   | Current driver championship standings             | 
 | [sensor.f1_constructor_standings](#constructor-standings)                         | Current constructor standings                     | 
 | [sensor.f1_weather](#weather-summary)                                             | Weather forecast at next race circuit             | 
@@ -25,16 +26,16 @@ Information that rarely changes, such as schedules, drivers, circuits, and champ
 
 
 ::::info
-Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In addition, a `_local` variant such as `race_start_local` is available. These values use the circuit's timezone so you can easily create automations at the correct local time.
+Many schedule timestamps are provided in three variants: an explicit UTC value (for example `race_start_utc`), a Home Assistant local-time value (for example `race_start`), and a circuit-local value (for example `race_start_local`). The circuit-local timestamps use the circuit's timezone so you can build automations against local session times.
 ::::
 
 ---
 
-### Next Race 
-`sensor.f1_next_race` - Human‑readable schedule for the next race; state is the start time (ISO‑8601).
+## Next Race 
+`sensor.f1_next_race` - Schedule for the next race; state is the race start timestamp (ISO‑8601).
 
 **State**
-  - ISO‑8601 timestamp of the race start, or `unknown` if not available.
+  - ISO‑8601 timestamp (UTC) of the race start, or `unknown` if not available.
 
 **Attributes**
 
@@ -51,26 +52,60 @@ Each timestamp attribute (e.g. `race_start`) is still provided in UTC. In additi
 | circuit_long | string | Longitude |
 | circuit_locality | string | City/area |
 | circuit_country | string | Country |
+| country_code | string | ISO country code (e.g., "GB", "IT", "US") |
+| country_flag_url | string | URL to country flag image |
+| circuit_map_url | string | URL to official circuit map image |
 | circuit_timezone | string | Local timezone (best effort) |
-| race_start | string | Race start (UTC ISO‑8601) |
-| race_start_local | string | Race start in local circuit time |
-| first_practice_start | string | FP1 start (UTC) |
-| first_practice_start_local | string | FP1 start (local) |
-| second_practice_start | string | FP2 start (UTC) |
-| second_practice_start_local | string | FP2 start (local) |
-| third_practice_start | string | FP3 start (UTC) |
-| third_practice_start_local | string | FP3 start (local) |
-| qualifying_start | string | Qualifying start (UTC) |
-| qualifying_start_local | string | Qualifying start (local) |
-| sprint_qualifying_start | string | Sprint Qualifying/Shootout start (UTC) |
-| sprint_qualifying_start_local | string | Sprint Qualifying/Shootout start (local) |
-| sprint_start | string | Sprint start (UTC) |
-| sprint_start_local | string | Sprint start (local) |
+| race_start_utc | string | Race start (UTC ISO‑8601) |
+| race_start | string | Race start in Home Assistant local time |
+| race_start_local | string | Race start in circuit local time |
+| first_practice_start_utc | string | FP1 start (UTC ISO‑8601) |
+| first_practice_start | string | FP1 start in Home Assistant local time |
+| first_practice_start_local | string | FP1 start in circuit local time |
+| second_practice_start_utc | string | FP2 start (UTC ISO‑8601) |
+| second_practice_start | string | FP2 start in Home Assistant local time |
+| second_practice_start_local | string | FP2 start in circuit local time |
+| third_practice_start_utc | string | FP3 start (UTC ISO‑8601) |
+| third_practice_start | string | FP3 start in Home Assistant local time |
+| third_practice_start_local | string | FP3 start in circuit local time |
+| qualifying_start_utc | string | Qualifying start (UTC ISO‑8601) |
+| qualifying_start | string | Qualifying start in Home Assistant local time |
+| qualifying_start_local | string | Qualifying start in circuit local time |
+| sprint_qualifying_start_utc | string | Sprint Qualifying/Shootout start (UTC ISO‑8601) |
+| sprint_qualifying_start | string | Sprint Qualifying/Shootout start in Home Assistant local time |
+| sprint_qualifying_start_local | string | Sprint Qualifying/Shootout start in circuit local time |
+| sprint_start_utc | string | Sprint start (UTC ISO‑8601) |
+| sprint_start | string | Sprint start in Home Assistant local time |
+| sprint_start_local | string | Sprint start in circuit local time |
 
 ---
 
-### Current Season Race
-`sensor.f1_season_calendar` - Number of races in the current season.
+## Track Time
+`sensor.f1_track_time` - Current local time at the next race circuit.
+
+**State**
+- String: local time at the circuit, formatted as `HH:MM`, or `unknown`.
+
+**Example**
+```text
+14:05
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| timezone | string | Circuit timezone (IANA, best effort) |
+| utc_offset | string | UTC offset at the circuit, formatted as `+HHMM` |
+| offset_from_home | string | Difference between circuit time and Home Assistant time (best effort) |
+| circuit_name | string | Circuit name |
+| circuit_locality | string | City/area |
+| circuit_country | string | Country |
+
+---
+
+## Current Season
+`sensor.f1_current_season` - Number of races in the current season.
 
 **State**
 
@@ -94,11 +129,12 @@ Each entry in `races` contains the standard Ergast race data plus:
 | --- | --- | --- |
 | country_code | string | ISO country code (e.g., "GB", "IT", "US") |
 | country_flag_url | string | URL to country flag image |
+| circuit_map_url | string | URL to official circuit map image |
 
 ---
 
 
-### Driver Standings
+## Driver Standings
 `sensor.f1_driver_standings` - Driver standings snapshot from Ergast.
 
 **State**
@@ -265,7 +301,7 @@ Each entry in `Constructors` contains:
 
 ---
 
-### Constructor Standings
+## Constructor Standings
 `sensor.f1_constructor_standings` - Constructor standings snapshot from Ergast.
 
 **State**
@@ -286,7 +322,7 @@ Each entry in `Constructors` contains:
 | constructor_standings | list | Ergast “ConstructorStandings” array (positions, points, wins, constructor info) |
 
 
-### Weather (Summary)
+## Weather (Summary)
 `sensor.f1_weather` - Compact weather for the circuit location: current and projected at race start.
 
 **State**
@@ -301,15 +337,28 @@ Each entry in `Constructors` contains:
 
 | Attribute | Type | Description |
 | --- | --- | --- |
+| season | string | Season year for the next race |
+| round | string | Round number for the next race |
+| race_name | string | Grand Prix name |
+| race_url | string | Ergast race URL |
+| circuit_id | string | Circuit identifier |
+| circuit_name | string | Circuit name |
+| circuit_url | string | Circuit URL |
+| circuit_lat | string | Latitude |
+| circuit_long | string | Longitude |
+| circuit_locality | string | City/area |
+| circuit_country | string | Country |
 | current_temperature | number | Current air temperature (°C) |
 | current_temperature_unit | string | “celsius” |
 | current_humidity | number | % RH |
 | current_humidity_unit | string | “%” |
 | current_cloud_cover | number | % cloud cover |
 | current_cloud_cover_unit | string | “%” |
-| current_precipitation | number | Selected precipitation amount (mm, from best of 1/6/12h blocks) |
+| current_precipitation | number | Selected precipitation amount (mm, best effort) |
 | current_precipitation_amount_min | number | Min precip amount (mm) if provided |
 | current_precipitation_amount_max | number | Max precip amount (mm) if provided |
+| current_precipitation_probability | number | Probability of precipitation (%) when provided |
+| current_precipitation_probability_unit | string | “%” |
 | current_precipitation_unit | string | “mm” |
 | current_wind_speed | number | Wind speed (m/s) |
 | current_wind_speed_unit | string | “m/s” |
@@ -325,6 +374,8 @@ Each entry in `Constructors` contains:
 | race_precipitation | number | Selected precipitation at race start (mm) |
 | race_precipitation_amount_min | number | Min precip amount (mm) if provided |
 | race_precipitation_amount_max | number | Max precip amount (mm) if provided |
+| race_precipitation_probability | number | Probability of precipitation (%) when provided |
+| race_precipitation_probability_unit | string | “%” |
 | race_precipitation_unit | string | “mm” |
 | race_wind_speed | number | Wind speed at race start (m/s) |
 | race_wind_speed_unit | string | “m/s” |
@@ -335,7 +386,7 @@ Each entry in `Constructors` contains:
 
 ---
 
-### Last Race Results
+## Last Race Results
 `sensor.f1_last_race_results` - Results of the most recent race; state is the winner’s family name.
 
 **State**
@@ -361,14 +412,15 @@ Verstappen
 | circuit_locality | string | City/area |
 | circuit_country | string | Country |
 | circuit_timezone | string | Local timezone (best effort) |
-| race_start | string | Race start (UTC ISO‑8601) |
-| race_start_local | string | Race start (local) |
+| race_start_utc | string | Race start (UTC ISO‑8601) |
+| race_start | string | Race start in Home Assistant local time |
+| race_start_local | string | Race start in circuit local time |
 | results | list | Cleaned results array: `{number, position, points, status, driver{permanentNumber, code, givenName, familyName}, constructor{constructorId, name}}` |
 
 
 ---
 
-### Season Results
+## Season Results
 `sensor.f1_season_results` - All results across the current season.
 
 **State**
@@ -410,7 +462,7 @@ recorder:
 
 
 
-### Driver Points Progression
+## Driver Points Progression
 `sensor.f1_driver_points_progression` - Per‑round driver points (including sprint) with cumulative series, suitable for charts.
 
 **State**
@@ -581,7 +633,7 @@ The `series` attribute is pre-formatted for use with charting libraries like Ape
 
 ---
 
-### Constructor Points Progression
+## Constructor Points Progression
 `sensor.f1_constructor_points_progression` - Per‑round constructor points (including sprint) with cumulative series, suitable for charts.
 
 **State**
@@ -758,7 +810,7 @@ Each entry in `series.series` contains:
 The `series` attribute is pre-formatted for use with charting libraries like ApexCharts. See the [Season Progression Charts](/example/season-progression-charts) example for a complete implementation.
 :::
 
-### Race Week 
+## Race Week 
 `binary_sensor.f1_race_week` - True when the next race is scheduled in the current calendar week.
 
 **State (on/off)**
@@ -844,5 +896,4 @@ Collects FIA decisions and official documents for the current race weekend.
 | published | string | ISO‑8601 timestamp when the document was published |
 
 The sensor maintains a history of up to 100 documents internally. When a new race weekend starts (detected by "Document 1"), the history is reset.
-
 

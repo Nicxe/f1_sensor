@@ -30,7 +30,7 @@ Replay Mode adds several control entities to Home Assistant.
 | `button.f1_replay_play` | Start or resume playback |
 | `button.f1_replay_pause` | Pause playback |
 | `button.f1_replay_stop` | Stop playback and return to idle |
-| `button.f1_replay_refresh` | Refresh the session list |
+| `button.f1_replay_refresh_sessions` | Refresh the session list |
 
 ### Media player
 
@@ -121,10 +121,13 @@ The `media_player.f1_replay_player` entity provides standard media player contro
 | media_title | string | Name of the selected session |
 | media_position | number | Current position in seconds |
 | media_duration | number | Total duration in seconds |
-| replay_state | string | Internal replay state |
+| replay_state | string | Replay state (`idle`, `selected`, `loading`, `ready`, `playing`, `paused`) |
+| selected_session | string | Name of the selected session |
+| selected_session_id | string | Internal session identifier (best effort) |
 | playback_position_s | number | Current position in seconds |
 | playback_remaining_s | number | Remaining time in seconds |
 | playback_total_s | number | Total playback duration in seconds |
+| session_start_offset_s | number | Start offset in seconds from the underlying session archive (best effort) |
 
 ---
 
@@ -149,6 +152,9 @@ The `sensor.f1_replay_status` entity tracks the current state and provides detai
 | paused | boolean | True when playback is paused |
 | sessions_available | number | Number of sessions available for the selected year |
 | selected_year | number | Currently selected year |
+| index_year | number | Year that the session index was loaded from (best effort) |
+| index_status | string | Index status such as `ok`, `no_data`, or `error` (best effort) |
+| index_error | string | Error details when index fetch fails (best effort) |
 
 ---
 

@@ -50,7 +50,7 @@ DEFAULT_REPLAY_START_REFERENCE = REPLAY_START_REFERENCE_FORMATION
 # Gate for exposing development mode controls in the UI.
 # Keep this False in released versions to avoid confusing users;
 # flip to True locally when you want to work with replay/development mode.
-ENABLE_DEVELOPMENT_MODE_UI = True
+ENABLE_DEVELOPMENT_MODE_UI = False
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 

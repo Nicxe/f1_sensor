@@ -31,16 +31,10 @@ If the button above does not work, you can also perform the following steps manu
 
 ## Live data setup
 
-- **Live update delay (seconds)**  
-  Lets you delay delivery of live messages to better align with what you see on TV or streaming.  
+When enabling live data, you can set an initial delay to better align live updates with your TV broadcast.
 
-  Typical broadcast delays:  
-  - Broadcast TV (satellite/cable/terrestrial): ~5–10 seconds behind  
-  - Streaming services: ~20–45 seconds behind, sometimes more  
-  - Sports cable/OTT providers: 45–60 seconds or more depending on provider  
+For detailed instructions on syncing with your TV, including guided calibration, see [Live Delay](/features/live-delay).
 
-  By setting the delay accordingly, your Home Assistant automations (for example flashing lights on a red flag) can sync more closely with the live pictures you are watching.
-
-  ::::tip 
-  During the broadcast, they always show the moment the race clock flips to the start time, for example 15:00:00. If you look up an [atomic clock online](https://time.is/), you’ll have an exact reference. Watch the time when the broadcast clock hits the start. So when the broadcast clock shows 15:00:00 and the formation lap starts, the atomic clock reads 15:00:30. Then set a 30-second delay in the configuration.
-  ::::
+:::tip Quick start
+A typical streaming delay is 30–45 seconds. You can always fine-tune this later using the [Live Delay](/features/live-delay) feature.
+:::
