@@ -17,7 +17,7 @@
     "@docusaurus/core": "3.9.2",
     "@docusaurus/plugin-content-docs": "^3.9.2",
     "@docusaurus/preset-classic": "3.9.2",
-    "@easyops-cn/docusaurus-search-local": "^0.53.0",
+    "@easyops-cn/docusaurus-search-local": "^0.54.0",
     "@mdx-js/react": "^3.0.0",
     "clsx": "^2.0.0",
     "prism-react-renderer": "^2.3.0",
