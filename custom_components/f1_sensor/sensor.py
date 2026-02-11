@@ -1209,6 +1209,8 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
 class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
     """Sensor for full season results."""
 
+    _unrecorded_attributes = frozenset({"races"})
+
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:podium"
@@ -1263,6 +1265,8 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
 
 class F1SprintResultsSensor(F1BaseEntity, SensorEntity):
     """Sensor exposing sprint results across the current season."""
+
+    _unrecorded_attributes = frozenset({"races"})
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -1566,6 +1570,8 @@ class F1DriverPointsProgressionSensor(_PointsProgressionBase):
     - Attributes: season, rounds[], drivers{}, series{} for charting.
     """
 
+    _unrecorded_attributes = frozenset({"drivers", "series"})
+
     def _get_full_schedule(self) -> list:
         """Return full season schedule (all planned rounds) from race_coordinator if available."""
         try:
@@ -1810,6 +1816,8 @@ class F1DriverPointsProgressionSensor(_PointsProgressionBase):
 
 class F1ConstructorPointsProgressionSensor(_PointsProgressionBase):
     """Constructor points per team by round, including sprint; cumulative series for charts."""
+
+    _unrecorded_attributes = frozenset({"constructors", "series"})
 
     def _recompute(self) -> None:
         data = self.coordinator.data or {}
@@ -4518,6 +4526,8 @@ class F1PitStopsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - Attributes: cars (dict keyed by racing number), last_update
     """
 
+    _unrecorded_attributes = frozenset({"cars"})
+
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:car-wrench"
@@ -5408,6 +5418,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
           }
     """
 
+    _unrecorded_attributes = frozenset({"drivers"})
     _PIT_OUT_HOLD_SECONDS = 6.0
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
