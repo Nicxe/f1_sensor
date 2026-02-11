@@ -10,12 +10,17 @@ const sidebars = {
     {
       type: 'category',
       label: 'Getting Started',
-      items: ['getting-started/installation', 'getting-started/live-delay'],
+      items: ['getting-started/installation', 'getting-started/add-integration'],
+    },
+    {
+      type: 'category',
+      label: 'Features',
+      items: ['features/live-delay', 'features/replay-mode'],
     },
     {
       type: 'category',
       label: 'Entities',
-      items: ['entities/static-data', 'entities/live-data', 'entities/events'],
+      items: ['entities/static-data', 'entities/live-data', 'entities/diagnostics', 'entities/events'],
     },
 
    {

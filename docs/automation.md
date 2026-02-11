@@ -3,10 +3,17 @@ id: automation
 title: Automation
 ---
 
+Automate your home based on live F1 data. These examples use [live data sensors](/entities/live-data) and [events](/entities/events) to trigger actions during sessions.
+
+:::tip Sync with your TV
+For automations to match what you see on screen, configure the [Live Delay](/features/live-delay) to match your broadcast delay.
+:::
+
+---
 
 ### Synchronize your lights with the flag status
 
-The Formula 1 Track Status Blueprint for Home Assistant lets you synchronize your lights with the live race flag status. 
+The Formula 1 Track Status Blueprint for Home Assistant lets you synchronize your lights with the live [Track Status](/entities/live-data#track-status). 
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FEvertJob%2FF1-Blueprint%2Fblob%2Fmain%2Fblueprint%2Ff1.yaml)
 
@@ -18,7 +25,9 @@ The Formula 1 Track Status Blueprint for Home Assistant lets you synchronize you
 
 ### Race Control Event Notifications
 
-This automation listens for f1_sensor_race_control_event events and sends the Message field from each event as a notification in Home Assistant. It provides real-time updates from Race Control, such as flag changes or incident reports.
+This automation listens for [Race Control events](/entities/events) and sends notifications in Home Assistant. It provides real-time updates such as flag changes or incident reports.
+
+You can also use the [Race Control sensor](/entities/live-data#race-control) for template-based automations.
 
 ```yaml
 alias: F1 - Race Control Notification

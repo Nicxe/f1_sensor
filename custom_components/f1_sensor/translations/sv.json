@@ -1,64 +1,135 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "Inställning av F1-sensor",
-        "data": {
-          "sensor_name": "Enhetsnamn",
-          "enabled_sensors": "Aktiverade sensorer",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
-          "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)"
+    "config": {
+        "step": {
+            "user": {
+                "title": "Inställning av F1-sensor",
+                "data": {
+                    "sensor_name": "Enhetsnamn",
+                    "enabled_sensors": "Aktiverade sensorer",
+                    "operation_mode": "Operation mode",
+                    "replay_file": "Replay dump path",
+                    "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
+                    "race_week_start_day": "Första dagen i tävlingsveckan"
+                },
+                "data_description": {
+                    "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
+                    "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
+                    "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
+                    "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag."
+                }
+            },
+            "reconfigure": {
+                "title": "Konfigurera om F1-sensor",
+                "data": {
+                    "sensor_name": "Enhetsnamn",
+                    "enabled_sensors": "Aktiverade sensorer",
+                    "operation_mode": "Operation mode",
+                    "replay_file": "Replay dump path",
+                    "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
+                    "race_week_start_day": "Första dagen i tävlingsveckan"
+                },
+                "data_description": {
+                    "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
+                    "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
+                    "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
+                    "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag."
+                }
+            }
         },
-        "data_description": {
-          "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
-          "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
-          "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer."
+        "error": {
+            "replay_required": "Select a replay dump file when Development mode is enabled.",
+            "replay_missing": "Replay dump file not found or unreadable."
         }
-      },
-      "reconfigure": {
-        "title": "Konfigurera om F1-sensor",
-        "data": {
-          "sensor_name": "Enhetsnamn",
-          "enabled_sensors": "Aktiverade sensorer",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
-          "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)"
+    },
+    "entity": {
+        "sensor": {
+            "next_race": {
+                "name": "Nästa lopp"
+            },
+            "current_season": {
+                "name": "Aktuell säsong"
+            },
+            "driver_standings": {
+                "name": "Förarställning"
+            },
+            "constructor_standings": {
+                "name": "Konstruktorställning"
+            },
+            "weather": {
+                "name": "Väder"
+            },
+            "track_weather": {
+                "name": "Bana väder"
+            },
+            "current_session": {
+                "name": "Aktuell session"
+            },
+            "last_race_results": {
+                "name": "Resultat från senaste loppet"
+            },
+            "season_results": {
+                "name": "Säsongsresultat"
+            },
+            "sprint_results": {
+                "name": "Sprintresultat"
+            },
+            "race_control": {
+                "name": "Tävlingskontroll"
+            },
+            "safety_car": {
+                "name": "Säkerhetsbil"
+            },
+            "pitstops": {
+                "name": "Depåstopp"
+            },
+            "championship_prediction": {
+                "name": "Mästerskapsprognos"
+            },
+            "fia_documents": {
+                "name": "FIA-beslut"
+            },
+            "live_timing_mode": {
+                "name": "Live timing-läge"
+            },
+            "driver_positions": {
+                "name": "Förarpositioner"
+            },
+            "track_limits": {
+                "name": "Track limits"
+            },
+            "investigations": {
+                "name": "Investigations & penalties"
+            }
         },
-        "data_description": {
-          "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
-          "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
-          "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer."
+        "media_player": {
+            "replay_player": {
+                "name": "Replay player"
+            }
+        },
+        "select": {
+            "live_delay_reference": {
+                "name": "Live delay reference"
+            },
+            "replay_year": {
+                "name": "Replay year"
+            },
+            "replay_session": {
+                "name": "Replay session"
+            },
+            "replay_start_reference": {
+                "name": "Replay start reference"
+            }
+        },
+        "binary_sensor": {
+            "race_week": {
+                "name": "Tävlingsvecka"
+            },
+            "live_timing_online": {
+                "name": "Live timing online"
+            },
+            "formation_start": {
+                "name": "Formation start"
+            }
         }
-      }
-    },
-    "error": {
-      "replay_required": "Select a replay dump file when Development mode is enabled.",
-      "replay_missing": "Replay dump file not found or unreadable."
     }
-  },
-  "entity": {
-    "sensor": {
-      "next_race": { "name": "Nästa lopp" },
-      "current_season": { "name": "Aktuell säsong" },
-      "driver_standings": { "name": "Förarställning" },
-      "constructor_standings": { "name": "Konstruktorställning" },
-      "weather": { "name": "Väder" },
-      "track_weather": { "name": "Bana väder" },
-      "current_session": { "name": "Aktuell session" },
-      "last_race_results": { "name": "Resultat från senaste loppet" },
-      "season_results": { "name": "Säsongsresultat" },
-      "sprint_results": { "name": "Sprintresultat" },
-      "race_control": { "name": "Tävlingskontroll" },
-      "safety_car": { "name": "Säkerhetsbil" },
-      "pitstops": { "name": "Depåstopp" },
-      "championship_prediction": { "name": "Mästerskapsprognos" },
-      "fia_documents": { "name": "FIA-beslut" },
-      "live_timing_mode": { "name": "Live timing-läge" }
-    },
-    "binary_sensor": {
-      "race_week": { "name": "Tävlingsvecka" },
-      "live_timing_online": { "name": "Live timing online" }
-    }
-  }
 }

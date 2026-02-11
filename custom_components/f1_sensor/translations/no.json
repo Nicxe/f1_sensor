@@ -1,50 +1,112 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "F1-sensoroppsett",
-        "data": {
-          "sensor_name": "Enhetsnavn",
-          "enabled_sensors": "Aktiverte sensorer",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path"
+    "config": {
+        "step": {
+            "user": {
+                "title": "F1-sensoroppsett",
+                "data": {
+                    "sensor_name": "Enhetsnavn",
+                    "enabled_sensors": "Aktiverte sensorer",
+                    "operation_mode": "Operation mode",
+                    "replay_file": "Replay dump path",
+                    "race_week_start_day": "Første dag i raceuken"
+                }
+            },
+            "reconfigure": {
+                "title": "Konfigurer F1-sensor på nytt",
+                "data": {
+                    "sensor_name": "Enhetsnavn",
+                    "enabled_sensors": "Aktiverte sensorer",
+                    "operation_mode": "Operation mode",
+                    "replay_file": "Replay dump path",
+                    "race_week_start_day": "Første dag i raceuken"
+                }
+            }
+        },
+        "error": {
+            "replay_required": "Select a replay dump file when Development mode is enabled.",
+            "replay_missing": "Replay dump file not found or unreadable."
         }
-      },
-      "reconfigure": {
-        "title": "Konfigurer F1-sensor på nytt",
-        "data": {
-          "sensor_name": "Enhetsnavn",
-          "enabled_sensors": "Aktiverte sensorer",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path"
+    },
+    "entity": {
+        "sensor": {
+            "next_race": {
+                "name": "Neste løp"
+            },
+            "current_season": {
+                "name": "Nåværende sesong"
+            },
+            "driver_standings": {
+                "name": "Førerstilling"
+            },
+            "constructor_standings": {
+                "name": "Konstruktørstilling"
+            },
+            "weather": {
+                "name": "Vær"
+            },
+            "current_session": {
+                "name": "Gjeldende økt"
+            },
+            "last_race_results": {
+                "name": "Resultater fra forrige løp"
+            },
+            "season_results": {
+                "name": "Sesongresultater"
+            },
+            "sprint_results": {
+                "name": "Sprintresultater"
+            },
+            "race_control": {
+                "name": "Racekontroll"
+            },
+            "safety_car": {
+                "name": "Sikkerhetsbil"
+            },
+            "pitstops": {
+                "name": "Pitstopp"
+            },
+            "fia_documents": {
+                "name": "FIA-beslutninger"
+            },
+            "live_timing_mode": {
+                "name": "Live timing-modus"
+            },
+            "track_limits": {
+                "name": "Track limits"
+            },
+            "investigations": {
+                "name": "Investigations & penalties"
+            }
+        },
+        "media_player": {
+            "replay_player": {
+                "name": "Replay player"
+            }
+        },
+        "select": {
+            "live_delay_reference": {
+                "name": "Live delay reference"
+            },
+            "replay_year": {
+                "name": "Replay year"
+            },
+            "replay_session": {
+                "name": "Replay session"
+            },
+            "replay_start_reference": {
+                "name": "Replay start reference"
+            }
+        },
+        "binary_sensor": {
+            "race_week": {
+                "name": "Raceuke"
+            },
+            "live_timing_online": {
+                "name": "Live timing online"
+            },
+            "formation_start": {
+                "name": "Formation start"
+            }
         }
-      }
-    },
-    "error": {
-      "replay_required": "Select a replay dump file when Development mode is enabled.",
-      "replay_missing": "Replay dump file not found or unreadable."
     }
-  },
-  "entity": {
-    "sensor": {
-      "next_race": { "name": "Neste løp" },
-      "current_season": { "name": "Nåværende sesong" },
-      "driver_standings": { "name": "Førerstilling" },
-      "constructor_standings": { "name": "Konstruktørstilling" },
-      "weather": { "name": "Vær" },
-      "current_session": { "name": "Gjeldende økt" },
-      "last_race_results": { "name": "Resultater fra forrige løp" },
-      "season_results": { "name": "Sesongresultater" },
-      "sprint_results": { "name": "Sprintresultater" },
-      "race_control": { "name": "Racekontroll" },
-      "safety_car": { "name": "Sikkerhetsbil" },
-      "pitstops": { "name": "Pitstopp" },
-      "fia_documents": { "name": "FIA-beslutninger" },
-      "live_timing_mode": { "name": "Live timing-modus" }
-    },
-    "binary_sensor": {
-      "race_week": { "name": "Raceuke" },
-      "live_timing_online": { "name": "Live timing online" }
-    }
-  }
 }

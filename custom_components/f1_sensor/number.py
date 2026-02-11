@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 from typing import Any, Callable
 
@@ -20,7 +21,9 @@ async def async_setup_entry(
     if not registry:
         return
     controller: LiveDelayController | None = registry.get("live_delay_controller")
-    calibration: LiveDelayCalibrationManager | None = registry.get("calibration_manager")
+    calibration: LiveDelayCalibrationManager | None = registry.get(
+        "calibration_manager"
+    )
     if controller is None:
         return
     entity = F1LiveDelayNumber(
@@ -68,16 +71,12 @@ class F1LiveDelayNumber(F1AuxEntity, NumberEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._controller_unsub:
-            try:
+            with suppress(Exception):
                 self._controller_unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._controller_unsub = None
         if self._calibration_unsub:
-            try:
+            with suppress(Exception):
                 self._calibration_unsub()
-            except Exception:  # noqa: BLE001
-                pass
             self._calibration_unsub = None
 
     async def async_set_native_value(self, value: float) -> None:
@@ -95,6 +94,7 @@ class F1LiveDelayNumber(F1AuxEntity, NumberEntity):
     def _handle_calibration_update(self, snapshot: dict[str, Any]) -> None:
         self._attr_extra_state_attributes = {
             "calibration_mode": snapshot.get("mode"),
+            "calibration_reference": snapshot.get("reference"),
             "calibration_waiting_since": snapshot.get("waiting_since"),
             "calibration_started_at": snapshot.get("started_at"),
             "calibration_elapsed": round(snapshot.get("elapsed", 0.0), 1),

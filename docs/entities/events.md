@@ -9,7 +9,7 @@ Home Assistant provides an **Event Bus** that integrations can use to publish re
 Events are ideal for transient signals and instantaneous state changes that should be reacted to immediately, rather than stored as long-lived sensor states.
 
 For a general introduction to how events work in Home Assistant, see:  
-https://www.home-assistant.io/integrations/event/
+[Home Assistant Event integration documentation](https://www.home-assistant.io/integrations/event/).
 
 ## Event Streams
 
@@ -57,13 +57,15 @@ data:
 ```
 
 :::info
-Race Control is now exposed both as a [sensor](/entities/live-data#race-control) (for dashboards and history) and as events (for real-time automations and triggers).  
+Race Control is now exposed both as a [sensor](/entities/live-data#race-control) (for dashboards and history) and as events (for real-time automations and triggers).
 The event stream remains available as a complementary, low-latency feed alongside the sensor.
+
+For example automations using these events, see the [Automation](/automation) page.
 :::
 
 ## Future Event Streams
 
 The Event Bus support in F1 Sensor is designed to be extensible.  
-While Race Control is the first published stream, additional real-time events may be added in future releases, such as:
+While Race Control is the first published stream, additional real-time events may be added in future releases.
 
 This page will be extended as new event types are introduced.

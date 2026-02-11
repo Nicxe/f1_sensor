@@ -56,17 +56,21 @@ This is expected behavior. The live sensors only update shortly before, during, 
 <details>
 <summary>Will the live data work if I watch a race replay later (not live)?</summary>
 
-No, the integration’s live features only work during actual live sessions. The sensors are driven by real-time data from live timing. They won’t synchronize with a “watch later” replay, since the integration isn’t aware of replay timings. (You would only use the live delay for actual live broadcasts, not recordings.)
+Yes! The integration includes [**Replay Mode**](/features/replay-mode) which lets you play back historical sessions with full Home Assistant integration. When you watch a recorded race from F1 TV or another service, you can sync all your automations and dashboards to work exactly as they would during a live broadcast.
+
+See the [Replay Mode documentation](/features/replay-mode) for setup instructions.
 </details>
 
 
 <details>
 <summary>How do I adjust the live update delay to sync with my broadcast? Where is that setting?</summary>
 
-You can change the delay in the integration’s options. In Home Assistant, go to 
-**Settings → Devices & Services → F1 Sensor → click the ⋮ (options menu) and choose “Reconfigure”**. 
+The integration provides multiple ways to adjust the live delay:
 
-There you’ll find the **“Live update delay (seconds)”** option. Set the number of seconds to roughly match your TV/stream delay (you do not need to restart Home Assistant for this change to take effect).
+1. **Direct adjustment**: Change `number.f1_live_delay` to set the delay in seconds
+2. **Guided calibration**: Use the built-in calibration workflow with `switch.f1_delay_calibration`
+
+For detailed instructions including automatic calibration during a live session, see [**Live Delay**](/features/live-delay).
 </details>
 
 
@@ -74,13 +78,13 @@ There you’ll find the **“Live update delay (seconds)”** option. Set the nu
 <details>
 <summary>Where can I find the Race Control messages (like flag notices, safety car deploy messages)?</summary>
 
-Race Control messages are not exposed as regular sensors, instead, they are emitted as events in Home Assistant. Look for events of type `f1_sensor_race_control_event`. 
+Race Control messages are available in two ways:
 
-You can listen to these events in Developer Tools (Events tab) by entering that event type, or create an automation that triggers on `f1_sensor_race_control_event`. The event data contains fields (e.g. Message, Category) with the information from race control. 
+1. **Sensor**: `sensor.f1_race_control` shows the latest message and maintains a history. See [Race Control](/entities/live-data#race-control) for details.
 
-For example, you could trigger an automation to send a notification with `{{ trigger.event.data.message['Message'] }}` to get the text of each race control message. 
+2. **Events**: Messages are also emitted as `f1_sensor_race_control_event` events for automation triggers. See [Events](/entities/events) for the event format.
 
-*(Note: In the event data, keys like “Message” are capitalized, so access them with the exact casing.)*
+For example automations, check the [Automation](/automation) page.
 </details>
 
 

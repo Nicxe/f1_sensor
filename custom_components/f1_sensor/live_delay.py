@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 import asyncio
 import logging
@@ -8,7 +9,13 @@ from typing import Any
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN
+from .const import (
+    DEFAULT_LIVE_DELAY_REFERENCE,
+    DOMAIN,
+    LIVE_DELAY_REFERENCE_FORMATION,
+    LIVE_DELAY_REFERENCE_SESSION,
+)
+from .reference_controller import StoredReferenceController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,14 +85,14 @@ class LiveDelayController:
         try:
             listener(self._value)
         except Exception:  # noqa: BLE001 - defensive
-            _LOGGER.debug("LiveDelay listener raised during initial sync", exc_info=True)
+            _LOGGER.debug(
+                "LiveDelay listener raised during initial sync", exc_info=True
+            )
 
         @callback
         def _remove() -> None:
-            try:
+            with suppress(ValueError):
                 self._listeners.remove(listener)
-            except ValueError:
-                pass
 
         return _remove
 
@@ -121,3 +128,27 @@ class LiveDelayController:
 
     def _clamp(self, value: int) -> int:
         return max(self._min, min(self._max, int(value)))
+
+
+class LiveDelayReferenceController(StoredReferenceController):
+    """Persists the chosen reference for live delay calibration."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry_id: str,
+        *,
+        storage_version: int = 1,
+    ) -> None:
+        super().__init__(
+            hass,
+            entry_id,
+            storage_key=f"{DOMAIN}_{entry_id}_live_delay_reference_v{storage_version}",
+            default=DEFAULT_LIVE_DELAY_REFERENCE,
+            allowed={
+                LIVE_DELAY_REFERENCE_SESSION,
+                LIVE_DELAY_REFERENCE_FORMATION,
+            },
+            log_label="Live delay reference",
+            storage_version=storage_version,
+        )
