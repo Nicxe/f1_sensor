@@ -51,7 +51,11 @@ from .const import (
 )
 from .signalr import LiveBus
 from .replay import ReplaySignalRClient
-from .live_window import LiveSessionSupervisor, LiveAvailabilityTracker
+from .live_window import (
+    EventTrackerScheduleSource,
+    LiveAvailabilityTracker,
+    LiveSessionSupervisor,
+)
 from .helpers import (
     build_user_agent,
     fetch_json,
@@ -740,13 +744,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
     live_bus = LiveBus(hass, session, transport_factory=transport_factory)
     live_supervisor: LiveSessionSupervisor | None = None
+    event_tracker_source: EventTrackerScheduleSource | None = None
     live_state: LiveAvailabilityTracker
     if operation_mode == OPERATION_MODE_LIVE:
+        event_tracker_source = EventTrackerScheduleSource(session)
         live_supervisor = LiveSessionSupervisor(
             hass,
             session_coordinator,
             live_bus,
             http_session=session,
+            fallback_source=event_tracker_source,
         )
         await live_supervisor.async_start()
         live_state = live_supervisor.availability
@@ -976,6 +983,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "fia_documents_coordinator": fia_documents_coordinator,
         "live_bus": live_bus,
         "live_supervisor": live_supervisor,
+        "live_schedule_fallback_source": event_tracker_source,
         "live_state": live_state,
         "operation_mode": operation_mode,
         "replay_file": replay_source,

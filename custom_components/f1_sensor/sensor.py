@@ -442,6 +442,26 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
         attrs = {
             "reason": reason,
             "window": window,
+            "schedule_source": (
+                getattr(live_supervisor, "schedule_source", "none")
+                if live_supervisor is not None
+                else "none"
+            ),
+            "index_http_status": (
+                getattr(live_supervisor, "index_http_status", None)
+                if live_supervisor is not None
+                else None
+            ),
+            "fallback_active": (
+                bool(getattr(live_supervisor, "fallback_active", False))
+                if live_supervisor is not None
+                else False
+            ),
+            "last_schedule_error": (
+                getattr(live_supervisor, "last_schedule_error", None)
+                if live_supervisor is not None
+                else None
+            ),
             "heartbeat_age_s": (round(hb_age, 1) if hb_age is not None else None),
             "activity_age_s": (
                 round(activity_age, 1) if activity_age is not None else None
