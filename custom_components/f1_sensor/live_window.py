@@ -100,6 +100,11 @@ class LiveAvailabilityTracker:
     def reason(self) -> str | None:
         return self._reason
 
+    @property
+    def replay_locked(self) -> bool:
+        """True when replay controls the state and the supervisor should stay idle."""
+        return self._replay_locked
+
     def set_state(self, is_live: bool, reason: str | None = None) -> None:
         is_replay_reason = reason in self._REPLAY_REASONS
 
@@ -888,6 +893,10 @@ class LiveSessionSupervisor:
                         False, f"waiting-{window.session_name}"
                     )
                     await self._interruptible_sleep(wait)
+                    continue
+                # Defer activation while replay controls the bus
+                if self._availability.replay_locked:
+                    await self._interruptible_sleep(ACTIVE_REFRESH.total_seconds())
                     continue
                 await self._activate_window(window, source=source)
 
