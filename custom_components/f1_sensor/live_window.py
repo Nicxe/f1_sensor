@@ -113,7 +113,7 @@ class LiveAvailabilityTracker:
             return
 
         # Update replay lock based on reason
-        if reason == "replay":
+        if reason in ("replay", "replay-preparing"):
             self._replay_locked = True
         elif reason in ("replay-completed", "replay-stopped"):
             self._replay_locked = False
