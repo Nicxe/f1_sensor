@@ -491,7 +491,14 @@ class EventTrackerScheduleSource:
             prefix = f"{prefix}/"
         return f"{prefix}{meeting_key}"
 
-    async def _fetch_tracker_json(self, endpoint: str, *, allow_retry: bool = True) -> dict:
+    async def _fetch_tracker_json(
+        self,
+        endpoint: str,
+        *,
+        allow_retry: bool = True,
+        endpoint_kind: str = "direct",
+        meeting_key: int | None = None,
+    ) -> dict:
         headers = {
             "apiKey": self._api_key,
             "locale": self._locale,
@@ -503,8 +510,24 @@ class EventTrackerScheduleSource:
                 if resp.status != 200:
                     preview = (text or "").strip()[:200]
                     if allow_retry and resp.status in (401, 403):
+                        old_endpoint = self._endpoint
+                        old_meeting_prefix = self._meeting_endpoint_prefix
                         await self._refresh_dynamic_config(force=True)
-                        return await self._fetch_tracker_json(endpoint, allow_retry=False)
+                        retry_endpoint = endpoint
+                        if endpoint_kind == "root" and old_endpoint == endpoint:
+                            retry_endpoint = self._endpoint
+                        elif (
+                            endpoint_kind == "meeting"
+                            and meeting_key is not None
+                            and old_meeting_prefix
+                        ):
+                            retry_endpoint = self._meeting_endpoint(meeting_key)
+                        return await self._fetch_tracker_json(
+                            retry_endpoint,
+                            allow_retry=False,
+                            endpoint_kind=endpoint_kind,
+                            meeting_key=meeting_key,
+                        )
                     raise _EventTrackerHttpError(resp.status, preview or "unknown-error")
         payload = json.loads((text or "null").lstrip("\ufeff"))
         if not isinstance(payload, dict):
@@ -540,7 +563,9 @@ class EventTrackerScheduleSource:
             meeting_ctx.get("timetables"),
         ):
             if isinstance(candidate, list):
-                return [item for item in candidate if isinstance(item, dict)]
+                rows = [item for item in candidate if isinstance(item, dict)]
+                if rows:
+                    return rows
         return []
 
     @staticmethod
@@ -628,7 +653,10 @@ class EventTrackerScheduleSource:
         meeting_key: int | None = None
 
         try:
-            root_payload = await self._fetch_tracker_json(self._endpoint)
+            root_payload = await self._fetch_tracker_json(
+                self._endpoint,
+                endpoint_kind="root",
+            )
             meeting_key = self._extract_meeting_key(root_payload)
             windows = self._windows_from_payload(
                 root_payload,
@@ -645,7 +673,9 @@ class EventTrackerScheduleSource:
         if not windows and meeting_key is not None:
             try:
                 meeting_payload = await self._fetch_tracker_json(
-                    self._meeting_endpoint(meeting_key)
+                    self._meeting_endpoint(meeting_key),
+                    endpoint_kind="meeting",
+                    meeting_key=meeting_key,
                 )
                 windows = self._windows_from_payload(
                     meeting_payload,
