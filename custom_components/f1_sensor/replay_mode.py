@@ -1653,13 +1653,13 @@ class ReplayController:
         if self._session_manager.state != ReplayState.SELECTED:
             raise RuntimeError("No session selected for loading")
 
-        # Stop live bus to prevent further live data from arriving
-        await self._live_bus.async_close()
-
-        # Signal coordinators to clear their state; locks tracker
-        # so LiveSessionSupervisor cannot restart the bus during download
+        # Lock replay state first so the supervisor cannot re-arm the bus
+        # while we await async_close below
         if self._live_state is not None:
             self._live_state.set_state(False, "replay-preparing")
+
+        # Now safe to stop the live bus
+        await self._live_bus.async_close()
 
         # Download and index the session
         await self._session_manager.async_load_session()
