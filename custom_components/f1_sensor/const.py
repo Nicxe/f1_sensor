@@ -110,6 +110,20 @@ SPRINT_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/current/sprint.json?limit=1
 
 LIVETIMING_INDEX_URL = "https://livetiming.formula1.com/static/{year}/Index.json"
 
+# Secondary live schedule source (fallback only when Index.json is unavailable/invalid)
+EVENT_TRACKER_FALLBACK_ENABLED = True
+EVENT_TRACKER_ENV_SOURCE_URL = "https://www.formula1.com/en/timing/f1-live-lite"
+EVENT_TRACKER_API_BASE_URL = "https://api.formula1.com"
+EVENT_TRACKER_ENDPOINT = "/v1/event-tracker"
+EVENT_TRACKER_MEETING_ENDPOINT_PREFIX = "/v1/event-tracker/meeting/"
+# Public key used by the official F1 live-lite frontend; refreshed dynamically from processEnv.
+EVENT_TRACKER_DEFAULT_API_KEY = "lfjBG5SiokAAND3ucpnE9BcPjO74SpUz"
+EVENT_TRACKER_DEFAULT_LOCALE = "en"
+EVENT_TRACKER_REQUEST_TIMEOUT = 10
+EVENT_TRACKER_ACTIVE_CACHE_TTL = 60
+EVENT_TRACKER_IDLE_CACHE_TTL = 900
+EVENT_TRACKER_ENV_REFRESH_TTL = 6 * 3600
+
 # Reconnection back-off settings for the SignalR client
 FAST_RETRY_SEC = 5
 MAX_RETRY_SEC = 60
