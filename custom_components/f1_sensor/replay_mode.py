@@ -1661,16 +1661,16 @@ class ReplayController:
         if self._live_state is not None:
             self._live_state.set_state(False, "replay-preparing")
 
-        # Download and index the session; release lock on failure
-        # so the supervisor can resume live data
-        try:
-            await self._session_manager.async_load_session()
-        except Exception:
+        # Download and index the session
+        await self._session_manager.async_load_session()
+
+        # If loading failed (state reverted to SELECTED), release the
+        # replay lock so the supervisor can resume live data
+        if self._session_manager.state != ReplayState.READY:
             if self._live_state is not None:
                 self._live_state.set_state(False, "replay-stopped")
             if self._on_replay_ended is not None:
                 self._on_replay_ended()
-            raise
 
     async def async_initialize(self) -> None:
         """Initialize the controller."""
