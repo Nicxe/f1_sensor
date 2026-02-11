@@ -920,6 +920,17 @@ class LiveSessionSupervisor:
             self._last_schedule_error = primary.last_error
         return await self._select_window(primary.windows, source="index")
 
+    @staticmethod
+    def _index_unavailable(primary: ScheduleFetchResult) -> tuple[bool, str]:
+        if primary.last_error:
+            return True, f"index error: {primary.last_error}"
+        status = primary.index_http_status
+        if status is not None and status != 200:
+            return True, f"index unavailable: HTTP {status}"
+        if not primary.windows:
+            return True, "index unavailable: no valid session windows"
+        return False, "index healthy"
+
     async def _resolve_window(self) -> tuple[SessionWindow | None, str]:
         primary = await self._index_source.async_fetch_windows(
             pre_window=self._pre_window,
@@ -940,11 +951,16 @@ class LiveSessionSupervisor:
             return primary_window, "index"
 
         status = primary.index_http_status
-        fallback_context = (
-            f"index unavailable: HTTP {status}"
-            if status is not None
-            else "index unavailable"
-        )
+        index_unavailable, fallback_context = self._index_unavailable(primary)
+        if not index_unavailable:
+            self._set_schedule_state(
+                source="none",
+                fallback_active=False,
+                index_http_status=status,
+                error=primary.last_error,
+            )
+            return None, "none"
+
         if self._fallback_source is None:
             self._set_schedule_state(
                 source="none",
