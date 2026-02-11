@@ -800,6 +800,8 @@ class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
 class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
     """Sensor showing number of races this season."""
 
+    _unrecorded_attributes = frozenset({"races"})
+
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:calendar-month"

@@ -840,12 +840,13 @@ class LiveSessionSupervisor:
 
     async def _interruptible_sleep(self, seconds: float) -> None:
         """Sleep that can be interrupted by wake()."""
-        self._wake_event.clear()
         try:
             async with asyncio.timeout(seconds):
                 await self._wake_event.wait()
         except TimeoutError:
             pass
+        finally:
+            self._wake_event.clear()
 
     async def async_start(self) -> None:
         if self._task is None or self._task.done():
