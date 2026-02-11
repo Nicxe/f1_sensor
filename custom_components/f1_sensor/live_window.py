@@ -60,6 +60,7 @@ LIVE_ACTIVITY_STREAMS: tuple[str, ...] = (
     "WeatherData",
 )
 
+
 @dataclass
 class SessionWindow:
     meeting_name: str
@@ -81,7 +82,9 @@ class LiveAvailabilityTracker:
     """Fan-out tracker so coordinators can react to live/offline transitions."""
 
     # Reasons that indicate replay mode is controlling state
-    _REPLAY_REASONS = frozenset({"replay", "replay-completed", "replay-stopped"})
+    _REPLAY_REASONS = frozenset(
+        {"replay", "replay-preparing", "replay-completed", "replay-stopped"}
+    )
 
     def __init__(self) -> None:
         self._listeners: list[Callable[[bool, str | None], None]] = []
@@ -401,14 +404,18 @@ class EventTrackerScheduleSource:
         self._enabled = bool(fallback_enabled)
         self._base_url = str(base_url).rstrip("/")
         self._endpoint = self._normalize_endpoint(endpoint)
-        self._meeting_endpoint_prefix = self._normalize_endpoint(meeting_endpoint_prefix)
+        self._meeting_endpoint_prefix = self._normalize_endpoint(
+            meeting_endpoint_prefix
+        )
         self._api_key = str(api_key or "").strip()
         self._locale = str(locale or "en").strip() or "en"
         self._timeout = int(10 if request_timeout is None else request_timeout)
         self._active_cache_ttl = max(
             0, int(60 if active_cache_ttl is None else active_cache_ttl)
         )
-        self._idle_cache_ttl = max(0, int(900 if idle_cache_ttl is None else idle_cache_ttl))
+        self._idle_cache_ttl = max(
+            0, int(900 if idle_cache_ttl is None else idle_cache_ttl)
+        )
         self._env_refresh_ttl = max(
             60, int(3600 if env_refresh_ttl is None else env_refresh_ttl)
         )
@@ -528,7 +535,9 @@ class EventTrackerScheduleSource:
                             endpoint_kind=endpoint_kind,
                             meeting_key=meeting_key,
                         )
-                    raise _EventTrackerHttpError(resp.status, preview or "unknown-error")
+                    raise _EventTrackerHttpError(
+                        resp.status, preview or "unknown-error"
+                    )
         payload = json.loads((text or "null").lstrip("\ufeff"))
         if not isinstance(payload, dict):
             raise RuntimeError("event-tracker payload is not a dict")
@@ -753,6 +762,8 @@ class LiveSessionSupervisor:
         self._last_primary_recovery_check = 0.0
         # Throttle noisy logs (e.g. missing index at season rollover)
         self._log_throttle: dict[str, float] = {}
+        # Event used to interrupt sleep cycles (e.g. after replay ends)
+        self._wake_event = asyncio.Event()
 
     def _should_log(self, key: str, *, interval_seconds: float) -> bool:
         now = time.monotonic()
@@ -823,6 +834,19 @@ class LiveSessionSupervisor:
         if source == "none" and prev_source != "none":
             _LOGGER.info("schedule source selected: none (fail-closed idle)")
 
+    def wake(self) -> None:
+        """Interrupt the supervisor sleep cycle so it re-evaluates immediately."""
+        self._wake_event.set()
+
+    async def _interruptible_sleep(self, seconds: float) -> None:
+        """Sleep that can be interrupted by wake()."""
+        self._wake_event.clear()
+        try:
+            async with asyncio.timeout(seconds):
+                await self._wake_event.wait()
+        except TimeoutError:
+            pass
+
     async def async_start(self) -> None:
         if self._task is None or self._task.done():
             self._task = self._hass.loop.create_task(self._runner())
@@ -841,7 +865,7 @@ class LiveSessionSupervisor:
                 window, source = await self._resolve_window()
                 if window is None:
                     self._availability.set_state(False, "no-session-found")
-                    await asyncio.sleep(IDLE_REFRESH.total_seconds())
+                    await self._interruptible_sleep(IDLE_REFRESH.total_seconds())
                     continue
                 now = dt_util.utcnow()
                 if now < window.connect_at:
@@ -862,7 +886,7 @@ class LiveSessionSupervisor:
                     self._availability.set_state(
                         False, f"waiting-{window.session_name}"
                     )
-                    await asyncio.sleep(wait)
+                    await self._interruptible_sleep(wait)
                     continue
                 await self._activate_window(window, source=source)
 
@@ -890,7 +914,9 @@ class LiveSessionSupervisor:
                     extended.disconnect_at.isoformat(),
                 )
                 return extended
-            if self._should_log(f"all_sessions_finished_{source}", interval_seconds=1800):
+            if self._should_log(
+                f"all_sessions_finished_{source}", interval_seconds=1800
+            ):
                 _LOGGER.info(
                     "All sessions for source %s are finished (last disconnect %s UTC)",
                     source,
@@ -1104,7 +1130,7 @@ class LiveSessionSupervisor:
             else window.disconnect_at
         )
         while not self._stopped:
-            await asyncio.sleep(ACTIVE_REFRESH.total_seconds())
+            await self._interruptible_sleep(ACTIVE_REFRESH.total_seconds())
             now = dt_util.utcnow()
             hb_age = self._bus.last_heartbeat_age()
             activity_age = self._bus.last_stream_activity_age(LIVE_ACTIVITY_STREAMS)

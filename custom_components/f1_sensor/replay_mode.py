@@ -1576,6 +1576,7 @@ class ReplayController:
         live_state: Any = None,
         start_reference_controller: ReplayStartReferenceController | None = None,
         formation_tracker: FormationStartTracker | None = None,
+        on_replay_ended: Callable[[], None] | None = None,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
@@ -1585,6 +1586,7 @@ class ReplayController:
         self._session_manager = ReplaySessionManager(hass, entry_id, http_session)
         self._start_reference_controller = start_reference_controller
         self._formation_tracker = formation_tracker
+        self._on_replay_ended = on_replay_ended
         self._transport: ReplayTransport | None = None
         self._original_transport_factory: Callable | None = None
         self._replay_active = False  # Track if replay transport is active
@@ -1641,6 +1643,26 @@ class ReplayController:
             _LOGGER.debug(
                 "Failed to reset formation tracker after replay", exc_info=True
             )
+
+    async def async_prepare_and_load_session(self) -> None:
+        """Stop live data, clear all sensors, then load the selected session.
+
+        Called by the Load button so that sensors are empty and ready
+        before the user presses Play.
+        """
+        if self._session_manager.state != ReplayState.SELECTED:
+            raise RuntimeError("No session selected for loading")
+
+        # Stop live bus to prevent further live data from arriving
+        await self._live_bus.async_close()
+
+        # Signal coordinators to clear their state; locks tracker
+        # so LiveSessionSupervisor cannot restart the bus during download
+        if self._live_state is not None:
+            self._live_state.set_state(False, "replay-preparing")
+
+        # Download and index the session
+        await self._session_manager.async_load_session()
 
     async def async_initialize(self) -> None:
         """Initialize the controller."""
@@ -1763,6 +1785,10 @@ class ReplayController:
 
         self._reset_formation_tracker()
 
+        # Wake the supervisor so it can reconnect if a live session is active
+        if self._on_replay_ended is not None:
+            self._on_replay_ended()
+
         await self._session_manager.async_unload()
 
     async def _run_playback(self) -> None:
@@ -1806,6 +1832,10 @@ class ReplayController:
                     self._live_state.set_state(False, "replay-completed")
 
                 self._reset_formation_tracker()
+
+                # Wake the supervisor so it can reconnect if a live session is active
+                if self._on_replay_ended is not None:
+                    self._on_replay_ended()
 
                 # Update session state to IDLE (not READY - session is done)
                 self._session_manager._state = ReplayState.IDLE

@@ -275,7 +275,7 @@ class F1ReplayLoadButton(F1AuxEntity, ButtonEntity):
         await self._block_calibration_for_replay("load")
         if self._controller.state == ReplayState.SELECTED:
             try:
-                await self._controller.session_manager.async_load_session()
+                await self._controller.async_prepare_and_load_session()
             except RuntimeError as err:
                 _LOGGER.warning("Failed to load session: %s", err)
 

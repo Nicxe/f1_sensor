@@ -73,7 +73,7 @@ from .replay_mode import ReplayController
 _LOGGER = logging.getLogger(__name__)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
-_REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode"})
+_REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode", "replay-preparing"})
 
 
 def _is_replay_delay_reason(reason: str | None) -> bool:
@@ -782,6 +782,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_state=live_state,
         start_reference_controller=replay_start_reference_controller,
         formation_tracker=formation_tracker,
+        on_replay_ended=live_supervisor.wake if live_supervisor else None,
     )
     await replay_controller.async_initialize()
 
