@@ -3,14 +3,10 @@ from __future__ import annotations
 import logging
 
 import pytest
-from homeassistant.components.recorder.db_schema import (
-    MAX_STATE_ATTRS_BYTES,
-    StateAttributes,
-)
 from homeassistant.const import STATE_UNAVAILABLE
-from homeassistant.core import Event
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.json import json_bytes
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util.json import json_loads
 
@@ -33,6 +29,7 @@ from custom_components.f1_sensor.sensor import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+MAX_STATE_ATTRS_BYTES = 16384
 
 
 class _LiveState:
@@ -69,8 +66,18 @@ async def _add_sensor_and_get_state(hass, sensor):
 
 
 def _recorder_shared_attrs(state) -> tuple[dict, int]:
-    event = Event("state_changed", {"new_state": state})
-    shared_attrs_bytes = StateAttributes.shared_attrs_bytes_from_event(event, None)
+    unrecorded_attributes = frozenset()
+    if state.state_info is not None:
+        unrecorded_attributes = state.state_info.get(
+            "unrecorded_attributes", frozenset()
+        )
+
+    recorded = {
+        key: value
+        for key, value in state.attributes.items()
+        if key not in unrecorded_attributes
+    }
+    shared_attrs_bytes = json_bytes(recorded)
     return json_loads(shared_attrs_bytes), len(shared_attrs_bytes)
 
 
@@ -293,9 +300,7 @@ async def test_current_season_sensor_excludes_races_from_recorder(hass) -> None:
     assert state.state_info is not None
     assert "races" in state.state_info["unrecorded_attributes"]
 
-    event = Event("state_changed", {"new_state": state})
-    shared_attrs_bytes = StateAttributes.shared_attrs_bytes_from_event(event, None)
-    shared_attrs = json_loads(shared_attrs_bytes)
+    shared_attrs, _ = _recorder_shared_attrs(state)
 
     assert "season" in shared_attrs
     assert "races" not in shared_attrs
