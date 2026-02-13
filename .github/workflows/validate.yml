@@ -55,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-asyncio pytest-homeassistant-custom-component
-          pip install -r custom_components/f1_sensor/requirements.txt
+          pip install 'tzfpy>=1.1.0' 'python-dateutil>=2.8'
 
       - name: Run pytest
         run: pytest custom_components/f1_sensor/tests/ -v
@@ -84,7 +84,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-cov pytest-asyncio pytest-homeassistant-custom-component
-          pip install -r custom_components/f1_sensor/requirements.txt
+          pip install 'tzfpy>=1.1.0' 'python-dateutil>=2.8'
 
       - name: Run tests with coverage
         run: |
