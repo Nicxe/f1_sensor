@@ -47,7 +47,6 @@ def mock_config_entry(hass, replay_file: str) -> MockConfigEntry:
         domain=DOMAIN,
         data={
             "sensor_name": "F1",
-            "enabled_sensors": [],
             "enable_race_control": False,
             CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
             CONF_REPLAY_FILE: replay_file,

@@ -418,22 +418,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up integration via config flow."""
     # Dev-only: periodically report how many Jolpica requests actually hit the network.
     _ensure_jolpica_stats_reporting(hass)
-    # Normalize enabled sensors early so we can avoid unnecessary Jolpica calls.
-    allowed_enabled = SUPPORTED_SENSOR_KEYS
-    raw_enabled = entry.data.get("enabled_sensors") or []
-    enabled: list[str] = []
-    seen_enabled: set[str] = set()
-    for key in raw_enabled:
-        if key == "next_session":
-            key = "next_race"
-        if key in allowed_enabled and key not in seen_enabled:
-            enabled.append(key)
-            seen_enabled.add(key)
+    # Build the effective set of enabled sensors.
+    # ``disabled_sensors`` stores the keys the user explicitly unchecked.
+    # Everything else (including new keys added in future versions) is enabled.
+    raw_disabled = entry.data.get("disabled_sensors") or []
+    disabled: set[str] = {k for k in raw_disabled if k in SUPPORTED_SENSOR_KEYS}
+    enabled = SUPPORTED_SENSOR_KEYS - disabled
 
     # Determine which Jolpica/Ergast coordinators are actually required.
-    # Note: we also create the "current season" coordinator when season/sprint results
-    # are enabled, because it is used to detect season rollovers and to derive the
-    # authoritative season for season-scoped endpoints.
     need_race = any(
         k in enabled
         for k in (
@@ -881,8 +873,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if lap_count_coordinator:
         await lap_count_coordinator.async_config_entry_first_refresh()
 
-    # Conditionally create live drivers coordinator only if any drivers-related sensors are enabled
-    # Only create drivers coordinator if driver_list is enabled (TEMP: race_order/driver_favorites disabled)
+    # Conditionally create live-stream coordinators (require enable_rc + sensor enabled).
     need_drivers = any(k in enabled for k in ("driver_list",))
     need_top_three = any(k in enabled for k in ("top_three",))
     need_team_radio = any(k in enabled for k in ("team_radio",))
@@ -891,7 +882,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         k in enabled for k in ("championship_prediction",)
     )
     drivers_coordinator = None
-    if need_drivers:
+    if enable_rc and need_drivers:
         drivers_coordinator = LiveDriversCoordinator(
             hass,
             session_coordinator,
@@ -903,7 +894,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         await drivers_coordinator.async_config_entry_first_refresh()
 
-    # Conditionally create TopThree coordinator only if sensor is enabled
     if enable_rc and need_top_three:
         top_three_coordinator = TopThreeCoordinator(
             hass,
@@ -917,7 +907,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await top_three_coordinator.async_config_entry_first_refresh()
 
     team_radio_coordinator = None
-    if need_team_radio:
+    if enable_rc and need_team_radio:
         team_radio_coordinator = TeamRadioCoordinator(
             hass,
             session_coordinator,
@@ -930,7 +920,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await team_radio_coordinator.async_config_entry_first_refresh()
 
     pitstop_coordinator = None
-    if need_pitstops:
+    if enable_rc and need_pitstops:
         pitstop_coordinator = PitStopCoordinator(
             hass,
             session_coordinator,
@@ -945,7 +935,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await pitstop_coordinator.async_config_entry_first_refresh()
 
     championship_prediction_coordinator = None
-    if need_championship_prediction:
+    if enable_rc and need_championship_prediction:
         championship_prediction_coordinator = ChampionshipPredictionCoordinator(
             hass,
             session_coordinator,

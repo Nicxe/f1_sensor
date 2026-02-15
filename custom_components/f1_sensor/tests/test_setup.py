@@ -60,6 +60,25 @@ class FakeLiveSupervisor:
         return None
 
 
+def _coordinator_patches():
+    """Return context managers that replace all coordinator classes with DummyCoordinator."""
+    return (
+        patch("custom_components.f1_sensor.F1DataCoordinator", DummyCoordinator),
+        patch(
+            "custom_components.f1_sensor.F1SeasonResultsCoordinator",
+            DummyCoordinator,
+        ),
+        patch(
+            "custom_components.f1_sensor.F1SprintResultsCoordinator",
+            DummyCoordinator,
+        ),
+        patch(
+            "custom_components.f1_sensor.FiaDocumentsCoordinator",
+            DummyCoordinator,
+        ),
+    )
+
+
 @pytest.mark.asyncio
 async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:
     with (
@@ -76,6 +95,7 @@ async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:
             "custom_components.f1_sensor.ReplayController",
             FakeReplayController,
         ),
+        *_coordinator_patches(),
     ):
         hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
 
@@ -98,7 +118,6 @@ async def test_async_setup_entry_live_mode_wires_event_tracker_fallback(hass) ->
         domain=DOMAIN,
         data={
             "sensor_name": "F1",
-            "enabled_sensors": [],
             "enable_race_control": False,
             CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
             CONF_REPLAY_FILE: "",
@@ -129,6 +148,7 @@ async def test_async_setup_entry_live_mode_wires_event_tracker_fallback(hass) ->
             "custom_components.f1_sensor.LiveSessionSupervisor",
             FakeLiveSupervisor,
         ),
+        *_coordinator_patches(),
     ):
         hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
         result = await async_setup_entry(hass, entry)

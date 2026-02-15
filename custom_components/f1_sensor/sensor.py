@@ -31,7 +31,6 @@ from .const import (
     LATEST_TRACK_STATUS,
     OPERATION_MODE_DEVELOPMENT,
     RACE_SWITCH_GRACE,
-    SUPPORTED_SENSOR_KEYS,
 )
 from .helpers import (
     get_circuit_map_url,
@@ -189,45 +188,7 @@ async def async_setup_entry(
     """Create sensors when integration is added."""
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
-    legacy_stats_key = "".join(
-        chr(c)
-        for c in (
-            116,
-            105,
-            114,
-            101,
-            95,
-            115,
-            116,
-            97,
-            116,
-            105,
-            115,
-            116,
-            105,
-            99,
-            115,
-        )
-    )
-    # Normalize legacy/stale sensor keys
-    allowed = SUPPORTED_SENSOR_KEYS
-    raw_enabled = entry.data.get("enabled_sensors", [])
-    normalized = []
-    seen = set()
-    for key in raw_enabled:
-        if key == "next_session":
-            key = "next_race"
-        if key == legacy_stats_key:
-            key = "tyre_statistics"
-        if key in allowed and key not in seen:
-            normalized.append(key)
-            seen.add(key)
-    enabled = normalized
-    if raw_enabled != normalized:
-        with suppress(Exception):
-            hass.config_entries.async_update_entry(
-                entry, data={**entry.data, "enabled_sensors": normalized}
-            )
+    disabled: set[str] = set(entry.data.get("disabled_sensors") or [])
     mapping = {
         "next_race": (F1NextRaceSensor, data["race_coordinator"]),
         "track_time": (F1TrackTimeSensor, data["race_coordinator"]),
@@ -282,8 +243,9 @@ async def async_setup_entry(
     }
 
     sensors = []
-    for key in enabled:
-        cls, coord = mapping.get(key, (None, None))
+    for key, (cls, coord) in mapping.items():
+        if key in disabled:
+            continue
         if key == "top_three":
             # Expandera till tre separata sensorer: P1, P2, P3
             if not coord:

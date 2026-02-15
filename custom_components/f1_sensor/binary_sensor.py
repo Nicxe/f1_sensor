@@ -61,12 +61,11 @@ async def async_setup_entry(
 ):
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
-    enabled = entry.data.get("enabled_sensors", [])
+    disabled: set[str] = set(entry.data.get("disabled_sensors") or [])
     race_week_start = _normalize_race_week_start(entry.data)
 
     sensors = []
-    # Useful for power users/automations even when dev UI is disabled.
-    if "live_timing_diagnostics" in enabled:
+    if "live_timing_diagnostics" not in disabled:
         sensors.append(
             F1LiveTimingOnlineBinarySensor(
                 hass,
@@ -74,7 +73,7 @@ async def async_setup_entry(
                 base,
             )
         )
-    if "race_week" in enabled:
+    if "race_week" not in disabled:
         sensors.append(
             F1RaceWeekSensor(
                 data["race_coordinator"],
@@ -85,7 +84,7 @@ async def async_setup_entry(
                 race_week_start=race_week_start,
             )
         )
-    if "safety_car" in enabled:
+    if "safety_car" not in disabled:
         coord = data.get("track_status_coordinator")
         if coord:
             sensors.append(
@@ -97,7 +96,7 @@ async def async_setup_entry(
                     base,
                 )
             )
-    if "formation_start" in enabled:
+    if "formation_start" not in disabled:
         tracker: FormationStartTracker | None = data.get("formation_start_tracker")
         if tracker is not None:
             sensors.append(

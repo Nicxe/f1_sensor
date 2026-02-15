@@ -26,32 +26,6 @@ RACE_WEEK_START_OPTIONS = {
     RACE_WEEK_START_SATURDAY: "Saturday",
 }
 
-DEFAULT_ENABLED_SENSORS = [
-    "next_race",
-    "race_week",
-    "current_season",
-    "driver_standings",
-    "constructor_standings",
-    "weather",
-    "last_race_results",
-    "season_results",
-    "sprint_results",
-    "driver_points_progression",
-    "constructor_points_progression",
-    "fia_documents",
-    # Live timing / SignalR backed
-    "current_session",
-    "track_weather",
-    "race_lap_count",
-    "driver_list",
-    "current_tyres",
-    "tyre_statistics",
-    "track_status",
-    "session_status",
-    "safety_car",
-    "race_control",
-]
-
 SENSOR_OPTIONS = {
     # Jolpica / schedule / standings / results (non-live)
     "next_race": "Next race",
@@ -91,8 +65,6 @@ SENSOR_OPTIONS = {
 
 def _build_sensor_options() -> dict:
     options = dict(SENSOR_OPTIONS)
-    # Keep the "live timing online" diagnostic available for power users even
-    # when dev UI is disabled (useful for automations).
     options["live_timing_diagnostics"] = "Live timing online"
     return options
 
@@ -136,12 +108,18 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input[CONF_REPLAY_FILE] = ""
 
             if not errors:
+                # Store disabled_sensors (what the user unchecked) instead of
+                # enabled_sensors so that new sensors added in future versions
+                # are automatically enabled.
+                all_keys = set(_build_sensor_options().keys())
+                checked = set(user_input.pop("enabled_sensors", all_keys))
+                user_input["disabled_sensors"] = sorted(all_keys - checked)
                 return self.async_create_entry(
                     title=user_input["sensor_name"], data=user_input
                 )
 
-        default_enabled = list(DEFAULT_ENABLED_SENSORS)
         sensor_options = _build_sensor_options()
+        all_sensor_keys = list(sensor_options.keys())
 
         # Build base schema
         schema_fields: dict = {
@@ -150,7 +128,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             ): cv.string,
             vol.Required(
                 "enabled_sensors",
-                default=current.get("enabled_sensors", default_enabled),
+                default=current.get("enabled_sensors", all_sensor_keys),
             ): cv.multi_select(sensor_options),
             vol.Optional("enable_race_control", default=False): cv.boolean,
             vol.Optional(
@@ -215,32 +193,53 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input[CONF_REPLAY_FILE] = ""
 
             if not errors:
+                all_keys = set(_build_sensor_options().keys())
+                checked = set(user_input.pop("enabled_sensors", all_keys))
+                user_input["disabled_sensors"] = sorted(all_keys - checked)
                 return self.async_update_reload_and_abort(
                     entry,
                     data_updates=user_input,
                 )
 
-        # Normalize/clean any stale enabled_sensors keys (e.g. legacy 'next_session')
-        allowed = _build_sensor_options()
-        default_enabled = list(DEFAULT_ENABLED_SENSORS)
-        raw_enabled = current.get("enabled_sensors", default_enabled)
-        normalized_enabled = []
-        seen = set()
-        for key in raw_enabled:
-            # Legacy alias support
-            if key == "next_session":
-                key = "next_race"
-            if key in allowed and key not in seen:
-                normalized_enabled.append(key)
-                seen.add(key)
+        sensor_options = _build_sensor_options()
+        all_sensor_keys = set(sensor_options.keys())
+
+        # Build the default enabled list for reconfigure:
+        # Use disabled_sensors (new format) if available, fall back to
+        # enabled_sensors (legacy format), otherwise enable everything.
+        raw_disabled = current.get("disabled_sensors")
+        raw_enabled = current.get("enabled_sensors")
+        if raw_disabled is not None:
+            # New format: disabled_sensors stores what the user unchecked.
+            # New sensor keys not in disabled are automatically checked.
+            disabled_set = set(raw_disabled) & all_sensor_keys
+            default_enabled = [k for k in sensor_options if k not in disabled_set]
+        elif raw_enabled is not None:
+            # Legacy format: enabled_sensors stores what was checked.
+            # New sensor keys are auto-enabled.
+            normalized: list[str] = []
+            seen: set[str] = set()
+            for key in raw_enabled:
+                if key == "next_session":
+                    key = "next_race"
+                if key in all_sensor_keys and key not in seen:
+                    normalized.append(key)
+                    seen.add(key)
+            for key in sensor_options:
+                if key not in seen:
+                    normalized.append(key)
+            default_enabled = normalized
+        else:
+            default_enabled = list(sensor_options.keys())
+
         schema_fields: dict = {
             vol.Required(
                 "sensor_name", default=current.get("sensor_name", "F1")
             ): cv.string,
             vol.Required(
                 "enabled_sensors",
-                default=normalized_enabled,
-            ): cv.multi_select(allowed),
+                default=default_enabled,
+            ): cv.multi_select(sensor_options),
             vol.Optional(
                 "enable_race_control",
                 default=current.get("enable_race_control", False),
