@@ -86,6 +86,7 @@ class F1DelayCalibrationSwitch(F1AuxEntity, SwitchEntity):
             "started_at": snapshot.get("started_at"),
             "elapsed": snapshot.get("elapsed"),
             "timeout_at": snapshot.get("timeout_at"),
+            "recorded_lap": snapshot.get("recorded_lap"),
         }
         self._attrs = attrs
         changed = next_state != self._is_on

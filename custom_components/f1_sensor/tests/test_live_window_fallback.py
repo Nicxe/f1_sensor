@@ -520,7 +520,7 @@ async def test_no_legacy_blind_fallback_when_both_down(monkeypatch, hass) -> Non
         supervisor._stopped = True
         return None
 
-    monkeypatch.setattr(supervisor, "_interruptible_sleep", _stop_sleep)
+    monkeypatch.setattr(live_window.asyncio, "sleep", _stop_sleep)
     await supervisor._runner()
 
     assert bus.started is False

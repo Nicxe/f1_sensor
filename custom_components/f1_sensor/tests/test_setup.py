@@ -59,9 +59,6 @@ class FakeLiveSupervisor:
     async def async_start(self) -> None:
         return None
 
-    def wake(self) -> None:
-        return None
-
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:

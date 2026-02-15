@@ -13,6 +13,7 @@ from .const import (
     DEFAULT_LIVE_DELAY_REFERENCE,
     DOMAIN,
     LIVE_DELAY_REFERENCE_FORMATION,
+    LIVE_DELAY_REFERENCE_LAP_SYNC,
     LIVE_DELAY_REFERENCE_SESSION,
 )
 from .reference_controller import StoredReferenceController
@@ -148,6 +149,7 @@ class LiveDelayReferenceController(StoredReferenceController):
             allowed={
                 LIVE_DELAY_REFERENCE_SESSION,
                 LIVE_DELAY_REFERENCE_FORMATION,
+                LIVE_DELAY_REFERENCE_LAP_SYNC,
             },
             log_label="Live delay reference",
             storage_version=storage_version,
