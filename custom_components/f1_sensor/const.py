@@ -11,6 +11,7 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SWITCH,
     Platform.SELECT,
+    Platform.CALENDAR,
 ]
 
 # Replay Mode
@@ -90,6 +91,7 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "driver_positions",
         "track_limits",
         "investigations",
+        "calendar",
     }
 )
 

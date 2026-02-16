@@ -439,6 +439,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "constructor_points_progression",
             "season_results",
             "sprint_results",
+            "calendar",
         )
     )
     need_driver = any(

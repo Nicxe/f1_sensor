@@ -41,6 +41,7 @@ SENSOR_OPTIONS = {
     "driver_points_progression": "Driver points progression",
     "constructor_points_progression": "Constructor points progression",
     "fia_documents": "FIA decisions",
+    "calendar": "Season calendar",
     # Live timing / SignalR backed (live)
     "current_session": "Current session (live)",
     "track_weather": "Track weather (live)",
