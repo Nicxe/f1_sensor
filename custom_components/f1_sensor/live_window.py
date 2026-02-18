@@ -957,15 +957,15 @@ class LiveSessionSupervisor:
         return await self._select_window(primary.windows, source="index")
 
     @staticmethod
-    def _index_unavailable(primary: ScheduleFetchResult) -> tuple[bool, str]:
+    def _fallback_context(primary: ScheduleFetchResult) -> str:
         if primary.last_error:
-            return True, f"index error: {primary.last_error}"
+            return "index-error"
         status = primary.index_http_status
         if status is not None and status != 200:
-            return True, f"index unavailable: HTTP {status}"
+            return f"index-unavailable-http-{status}"
         if not primary.windows:
-            return True, "index unavailable: no valid session windows"
-        return False, "index healthy"
+            return "index-empty"
+        return "index-stale"
 
     async def _resolve_window(self) -> tuple[SessionWindow | None, str]:
         primary = await self._index_source.async_fetch_windows(
@@ -987,16 +987,7 @@ class LiveSessionSupervisor:
             return primary_window, "index"
 
         status = primary.index_http_status
-        index_unavailable, fallback_context = self._index_unavailable(primary)
-        if not index_unavailable:
-            self._set_schedule_state(
-                source="none",
-                fallback_active=False,
-                index_http_status=status,
-                error=primary.last_error,
-            )
-            return None, "none"
-
+        fallback_context = self._fallback_context(primary)
         if self._fallback_source is None:
             self._set_schedule_state(
                 source="none",
@@ -1005,6 +996,14 @@ class LiveSessionSupervisor:
                 error=primary.last_error,
             )
             return None, "none"
+
+        if self._should_log(
+            f"fallback_probe_{fallback_context}", interval_seconds=300
+        ):
+            _LOGGER.info(
+                "Index has no selectable session window; trying event-tracker fallback (%s)",
+                fallback_context,
+            )
 
         fallback_result = await self._fallback_source.async_fetch_windows(
             pre_window=self._pre_window,
@@ -1204,6 +1203,8 @@ class LiveSessionSupervisor:
             data = await self._fetch_json(url)
         except Exception:  # noqa: BLE001
             return False
+        if not isinstance(data, dict):
+            return False
         status = (data or {}).get("Status")
         started = (data or {}).get("Started")
         if status in SESSION_END_STATES:
@@ -1219,4 +1220,39 @@ class LiveSessionSupervisor:
                     return None
                 resp.raise_for_status()
                 text = await resp.text()
-        return json.loads(text.lstrip("\ufeff"))
+        payload = (text or "").lstrip("\ufeff").strip()
+        if not payload:
+            return None
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError:
+            # Some jsonStream endpoints may return concatenated values.
+            decoder = json.JSONDecoder()
+            cursor = 0
+            last_structured: Any = None
+            while cursor < len(payload):
+                while cursor < len(payload) and payload[cursor].isspace():
+                    cursor += 1
+                if cursor >= len(payload):
+                    break
+                try:
+                    parsed, end = decoder.raw_decode(payload, cursor)
+                except json.JSONDecodeError:
+                    next_candidates = [
+                        pos
+                        for pos in (
+                            payload.find("{", cursor + 1),
+                            payload.find("[", cursor + 1),
+                        )
+                        if pos != -1
+                    ]
+                    if not next_candidates:
+                        break
+                    cursor = min(next_candidates)
+                    continue
+                if isinstance(parsed, (dict, list)):
+                    last_structured = parsed
+                cursor = end
+            if last_structured is not None:
+                return last_structured
+            raise
