@@ -4,6 +4,8 @@
 ![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/nicxe/f1_sensor/latest/total)
 <br>
 <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/f1_sensor">
+[![Validate](https://github.com/Nicxe/f1_sensor/actions/workflows/validate.yml/badge.svg)](https://github.com/Nicxe/f1_sensor/actions/workflows/validate.yml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/Nicxe/f1_sensor/validate.yml?label=tests)](https://github.com/Nicxe/f1_sensor/actions/workflows/validate.yml)
 
 ## Your home, in sync with Formula 1
 

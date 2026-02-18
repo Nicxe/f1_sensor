@@ -11,6 +11,7 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SWITCH,
     Platform.SELECT,
+    Platform.CALENDAR,
 ]
 
 # Replay Mode
@@ -39,6 +40,7 @@ RACE_SWITCH_GRACE = timedelta(hours=3)
 CONF_LIVE_DELAY_REFERENCE = "live_delay_reference"
 LIVE_DELAY_REFERENCE_SESSION = "session_live"
 LIVE_DELAY_REFERENCE_FORMATION = "formation_start"
+LIVE_DELAY_REFERENCE_LAP_SYNC = "lap_sync"
 DEFAULT_LIVE_DELAY_REFERENCE = LIVE_DELAY_REFERENCE_SESSION
 
 # Replay start reference
@@ -89,6 +91,7 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "driver_positions",
         "track_limits",
         "investigations",
+        "calendar",
     }
 )
 

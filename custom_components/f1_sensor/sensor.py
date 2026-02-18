@@ -31,7 +31,6 @@ from .const import (
     LATEST_TRACK_STATUS,
     OPERATION_MODE_DEVELOPMENT,
     RACE_SWITCH_GRACE,
-    SUPPORTED_SENSOR_KEYS,
 )
 from .helpers import (
     get_circuit_map_url,
@@ -46,47 +45,35 @@ from .replay_entities import F1ReplayStatusSensor
 from logging import getLogger
 from homeassistant.util import dt as dt_util
 
-SYMBOL_CODE_TO_MDI = {
-    "clearsky_day": "mdi:weather-sunny",
-    "clearsky_night": "mdi:weather-night",
-    "fair_day": "mdi:weather-partly-cloudy",
-    "fair_night": "mdi:weather-night-partly-cloudy",
-    "partlycloudy_day": "mdi:weather-partly-cloudy",
-    "partlycloudy_night": "mdi:weather-night-partly-cloudy",
-    "cloudy": "mdi:weather-cloudy",
-    "fog": "mdi:weather-fog",
-    "rainshowers_day": "mdi:weather-rainy",
-    "rainshowers_night": "mdi:weather-rainy",
-    "rainshowersandthunder_day": "mdi:weather-lightning-rainy",
-    "rainshowersandthunder_night": "mdi:weather-lightning-rainy",
-    "heavyrainshowers_day": "mdi:weather-pouring",
-    "heavyrainshowers_night": "mdi:weather-pouring",
-    "sleetshowers_day": "mdi:weather-snowy-rainy",
-    "sleetshowers_night": "mdi:weather-snowy-rainy",
-    "snowshowers_day": "mdi:weather-snowy",
-    "snowshowers_night": "mdi:weather-snowy",
-    "rain": "mdi:weather-pouring",
-    "heavyrain": "mdi:weather-pouring",
-    "heavyrainandthunder": "mdi:weather-lightning-rainy",
-    "sleet": "mdi:weather-snowy-rainy",
-    "snow": "mdi:weather-snowy",
-    "snowandthunder": "mdi:weather-snowy-heavy",
-    "rainandthunder": "mdi:weather-lightning-rainy",
-    "sleetandthunder": "mdi:weather-lightning-rainy",
-    "lightrainshowers_day": "mdi:weather-rainy",
-    "lightrainshowers_night": "mdi:weather-rainy",
-    "lightrainshowersandthunder_day": "mdi:weather-lightning-rainy",
-    "lightrainshowersandthunder_night": "mdi:weather-lightning-rainy",
-    "lightsleetshowers_day": "mdi:weather-snowy-rainy",
-    "lightsleetshowers_night": "mdi:weather-snowy-rainy",
-    "lightsnowshowers_day": "mdi:weather-snowy",
-    "lightsnowshowers_night": "mdi:weather-snowy",
-    "lightsnowshowersandthunder_day": "mdi:weather-lightning-snowy",
-    "lightsnowshowersandthunder_night": "mdi:weather-lightning-snowy",
-    "lightssleetshowersandthunder_day": "mdi:weather-lightning-snowy-rainy",
-    "lightssleetshowersandthunder_night": "mdi:weather-lightning-snowy-rainy",
-    "lightssnowshowersandthunder_day": "mdi:weather-lightning-snowy",
-    "lightssnowshowersandthunder_night": "mdi:weather-lightning-snowy",
+WMO_CODE_TO_MDI = {
+    0: "mdi:weather-sunny",
+    1: "mdi:weather-partly-cloudy",
+    2: "mdi:weather-partly-cloudy",
+    3: "mdi:weather-cloudy",
+    45: "mdi:weather-fog",
+    48: "mdi:weather-fog",
+    51: "mdi:weather-rainy",
+    53: "mdi:weather-rainy",
+    55: "mdi:weather-rainy",
+    56: "mdi:weather-snowy-rainy",
+    57: "mdi:weather-snowy-rainy",
+    61: "mdi:weather-rainy",
+    63: "mdi:weather-rainy",
+    65: "mdi:weather-pouring",
+    66: "mdi:weather-snowy-rainy",
+    67: "mdi:weather-snowy-rainy",
+    71: "mdi:weather-snowy",
+    73: "mdi:weather-snowy",
+    75: "mdi:weather-snowy",
+    77: "mdi:weather-snowy",
+    80: "mdi:weather-rainy",
+    81: "mdi:weather-rainy",
+    82: "mdi:weather-pouring",
+    85: "mdi:weather-snowy",
+    86: "mdi:weather-snowy",
+    95: "mdi:weather-lightning",
+    96: "mdi:weather-lightning-rainy",
+    99: "mdi:weather-lightning-rainy",
 }
 
 
@@ -189,45 +176,7 @@ async def async_setup_entry(
     """Create sensors when integration is added."""
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
-    legacy_stats_key = "".join(
-        chr(c)
-        for c in (
-            116,
-            105,
-            114,
-            101,
-            95,
-            115,
-            116,
-            97,
-            116,
-            105,
-            115,
-            116,
-            105,
-            99,
-            115,
-        )
-    )
-    # Normalize legacy/stale sensor keys
-    allowed = SUPPORTED_SENSOR_KEYS
-    raw_enabled = entry.data.get("enabled_sensors", [])
-    normalized = []
-    seen = set()
-    for key in raw_enabled:
-        if key == "next_session":
-            key = "next_race"
-        if key == legacy_stats_key:
-            key = "tyre_statistics"
-        if key in allowed and key not in seen:
-            normalized.append(key)
-            seen.add(key)
-    enabled = normalized
-    if raw_enabled != normalized:
-        with suppress(Exception):
-            hass.config_entries.async_update_entry(
-                entry, data={**entry.data, "enabled_sensors": normalized}
-            )
+    disabled: set[str] = set(entry.data.get("disabled_sensors") or [])
     mapping = {
         "next_race": (F1NextRaceSensor, data["race_coordinator"]),
         "track_time": (F1TrackTimeSensor, data["race_coordinator"]),
@@ -282,8 +231,9 @@ async def async_setup_entry(
     }
 
     sensors = []
-    for key in enabled:
-        cls, coord = mapping.get(key, (None, None))
+    for key, (cls, coord) in mapping.items():
+        if key in disabled:
+            continue
         if key == "top_three":
             # Expandera till tre separata sensorer: P1, P2, P3
             if not coord:
@@ -945,11 +895,33 @@ class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         if lat is None or lon is None:
             return
         session = async_get_clientsession(self.hass)
-        url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
-        headers = {"User-Agent": "homeassistant-f1_sensor"}
+        current_vars = ",".join(
+            [
+                "temperature_2m",
+                "relative_humidity_2m",
+                "precipitation",
+                "precipitation_probability",
+                "cloud_cover",
+                "wind_speed_10m",
+                "wind_direction_10m",
+                "wind_gusts_10m",
+                "visibility",
+                "weather_code",
+            ]
+        )
+        hourly_vars = current_vars
+        url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            f"&current={current_vars}"
+            f"&hourly={hourly_vars}"
+            f"&wind_speed_unit=ms"
+            f"&timezone=UTC"
+            f"&forecast_days=16"
+        )
         try:
             async with async_timeout.timeout(10):
-                async with session.get(url, headers=headers) as resp:
+                async with session.get(url) as resp:
                     resp.raise_for_status()
                     data = await resp.json()
         except Exception:
@@ -959,134 +931,89 @@ class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
             self._attr_icon = "mdi:weather-partly-cloudy"
             self.async_write_ha_state()
             return
-        times = data.get("properties", {}).get("timeseries", [])
-        if not times:
-            return
-        curr = times[0].get("data", {}).get("instant", {}).get("details", {})
-        # Derive current precipitation from forecast blocks (prefer max of 1h/6h/12h)
-        data0 = times[0].get("data", {})
-        block1 = data0.get("next_1_hours") or {}
-        block6 = data0.get("next_6_hours") or {}
-        block12 = data0.get("next_12_hours") or {}
 
-        def _precip_triplet(block: dict):
-            details = (block or {}).get("details", {}) or {}
-            amt = details.get("precipitation_amount")
-            if amt is None:
-                amt = details.get("precipitation_amount_min")
-            if amt is None:
-                amt = details.get("precipitation_amount_max")
-            if amt is None:
-                amt = 0
-            return (
-                amt,
-                details.get("precipitation_amount_min"),
-                details.get("precipitation_amount_max"),
-            )
+        # Parse current conditions from the dedicated current block.
+        current_block = data.get("current", {})
+        self._current = self._extract(current_block)
+        current_code = current_block.get("weather_code")
+        self._attr_icon = WMO_CODE_TO_MDI.get(current_code, "mdi:weather-partly-cloudy")
 
-        def _precip_probability(block: dict):
-            details = (block or {}).get("details", {}) or {}
-            return details.get("probability_of_precipitation")
-
-        p1, p1min, p1max = _precip_triplet(block1)
-        p6, p6min, p6max = _precip_triplet(block6)
-        p12, p12min, p12max = _precip_triplet(block12)
-        candidates = [
-            (p1, p1min, p1max, block1),
-            (p6, p6min, p6max, block6),
-            (p12, p12min, p12max, block12),
+        # Build an index over the hourly time series for race-start lookup.
+        hourly = data.get("hourly", {})
+        hourly_times = hourly.get("time", [])
+        hourly_vars_keys = [
+            "temperature_2m",
+            "relative_humidity_2m",
+            "precipitation",
+            "precipitation_probability",
+            "cloud_cover",
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "wind_gusts_10m",
+            "visibility",
+            "weather_code",
         ]
-        sel_amt, sel_min, sel_max, sel_block = max(candidates, key=lambda t: t[0])
-        curr_with_precip = dict(curr)
-        curr_with_precip["precipitation_amount"] = sel_amt
-        curr_with_precip["probability_of_precipitation"] = _precip_probability(
-            sel_block
-        )
-        # Also expose min/max precipitation; fallback to selected amount when missing
-        _cur_min = sel_min
-        _cur_max = sel_max
-        curr_with_precip["precipitation_amount_min"] = (
-            _cur_min if _cur_min is not None else sel_amt
-        )
-        curr_with_precip["precipitation_amount_max"] = (
-            _cur_max if _cur_max is not None else sel_amt
-        )
-        self._current = self._extract(curr_with_precip)
-        current_symbol = (sel_block or {}).get("summary", {}).get("symbol_code")
-        current_icon = SYMBOL_CODE_TO_MDI.get(current_symbol, self._attr_icon)
-        self._attr_icon = current_icon
+        hourly_entries = []
+        for i, t in enumerate(hourly_times):
+            entry = {"time": t}
+            for key in hourly_vars_keys:
+                vals = hourly.get(key, [])
+                entry[key] = vals[i] if i < len(vals) else None
+            hourly_entries.append(entry)
+
         start_iso = (
             _combine_date_time(race.get("date"), race.get("time")) if race else None
         )
         self._race = {k: None for k in self._current}
-        if start_iso:
+        if start_iso and hourly_entries:
             start_dt = datetime.datetime.fromisoformat(start_iso)
-            same_day = [
-                t
-                for t in times
-                if datetime.datetime.fromisoformat(t["time"]).date() == start_dt.date()
-            ]
-            if same_day:
-                closest = min(
-                    same_day,
-                    key=lambda t: abs(
-                        datetime.datetime.fromisoformat(t["time"]) - start_dt
-                    ),
-                )
-                data_entry = closest.get("data", {})
-                instant_details = data_entry.get("instant", {}).get("details", {})
-                # Choose race precipitation as max of 1h/6h/12h around start time
-                r1 = data_entry.get("next_1_hours") or {}
-                r6 = data_entry.get("next_6_hours") or {}
-                r12 = data_entry.get("next_12_hours") or {}
-                rp1, rp1min, rp1max = _precip_triplet(r1)
-                rp6, rp6min, rp6max = _precip_triplet(r6)
-                rp12, rp12min, rp12max = _precip_triplet(r12)
-                rcandidates = [
-                    (rp1, rp1min, rp1max, r1),
-                    (rp6, rp6min, rp6max, r6),
-                    (rp12, rp12min, rp12max, r12),
-                ]
-                r_sel_amt, r_sel_min, r_sel_max, r_sel_block = max(
-                    rcandidates, key=lambda t: t[0]
-                )
-                rd = dict(instant_details)
-                rd["precipitation_amount"] = r_sel_amt
-                rd["probability_of_precipitation"] = _precip_probability(r_sel_block)
-                # Also expose min/max precipitation at race time; fallback to selected amount
-                rd["precipitation_amount_min"] = (
-                    r_sel_min if r_sel_min is not None else r_sel_amt
-                )
-                rd["precipitation_amount_max"] = (
-                    r_sel_max if r_sel_max is not None else r_sel_amt
-                )
-                self._race = self._extract(rd)
-                forecast_block = r_sel_block or {}
-                race_symbol = forecast_block.get("summary", {}).get("symbol_code")
-                race_icon = SYMBOL_CODE_TO_MDI.get(race_symbol, self._attr_icon)
-                self._race["weather_icon"] = race_icon
+            # Ensure start_dt is UTC-aware for comparison.
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=datetime.timezone.utc)
+            closest = min(
+                hourly_entries,
+                key=lambda e: abs(
+                    datetime.datetime.fromisoformat(e["time"]).replace(
+                        tzinfo=datetime.timezone.utc
+                    )
+                    - start_dt
+                ),
+            )
+            self._race = self._extract(closest)
+            race_code = closest.get("weather_code")
+            race_icon = WMO_CODE_TO_MDI.get(race_code, self._attr_icon)
+            self._race["weather_icon"] = race_icon
         self.async_write_ha_state()
 
     def _extract(self, d):
-        wd = d.get("wind_from_direction")
+        wd = d.get("wind_direction_10m")
+        precip = d.get("precipitation", 0) or 0
         return {
-            "temperature": d.get("air_temperature"),
+            "temperature": d.get("temperature_2m"),
             "temperature_unit": "celsius",
-            "humidity": d.get("relative_humidity"),
+            "humidity": d.get("relative_humidity_2m"),
             "humidity_unit": "%",
-            "cloud_cover": d.get("cloud_area_fraction"),
+            "cloud_cover": d.get("cloud_cover"),
             "cloud_cover_unit": "%",
-            "precipitation": d.get("precipitation_amount", 0),
-            "precipitation_amount_min": d.get("precipitation_amount_min"),
-            "precipitation_amount_max": d.get("precipitation_amount_max"),
-            "precipitation_probability": d.get("probability_of_precipitation"),
+            "precipitation": precip,
+            # open-meteo gives an exact forecast value, not a range; expose the
+            # same value for min/max to preserve backwards compatibility.
+            "precipitation_amount_min": precip,
+            "precipitation_amount_max": precip,
+            "precipitation_probability": d.get("precipitation_probability"),
             "precipitation_probability_unit": "%",
             "precipitation_unit": "mm",
-            "wind_speed": d.get("wind_speed"),
+            "wind_speed": d.get("wind_speed_10m"),
             "wind_speed_unit": "m/s",
             "wind_direction": self._abbr(wd),
             "wind_from_direction_degrees": wd,
             "wind_from_direction_unit": "degrees",
+            "wind_gusts": d.get("wind_gusts_10m"),
+            "wind_gusts_unit": "m/s",
+            "visibility": d.get("visibility"),
+            "visibility_unit": "m",
+            "weather_code": d.get("weather_code"),
+            "weather_source": "open-meteo",
         }
 
     def _abbr(self, deg):
