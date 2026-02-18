@@ -1,0 +1,422 @@
+blueprint:
+  homeassistant:
+    min_version: 2024.6.0
+  name: F1 Sensor - Race Control Notifications
+  description: >
+    Skicka notiser från F1 Sensor race control på ett enkelt sätt, med valfria filter.
+
+    Välj race control-sensor, lägg till valfria filter, och definiera sedan egna notifierings-actions
+    (till exempel mobilnotis, TTS, script eller andra Home Assistant-tjänster).
+
+    Tillgängliga template-variabler i dina actions:
+    {{ notification_title }}, {{ notification_message }},
+    {{ race_control_message }}, {{ race_control_category }}, {{ race_control_flag }},
+    {{ race_control_scope }}, {{ race_control_sector }}, {{ race_control_car_number }},
+    {{ race_control_utc }}, {{ race_control_event_id }}, {{ race_control_session_phase }}.
+  domain: automation
+  source_url: https://github.com/Nicxe/f1_sensor
+  author: Nicxe
+  input:
+    source_section:
+      name: Source
+      icon: mdi:source-branch
+      collapsed: false
+      description: Select the race control sensor to monitor.
+      input:
+        race_control_sensor:
+          name: Race Control Sensor
+          description: Sensor from F1 Sensor integration (typically *_race_control).
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+              multiple: false
+        require_active_phase:
+          name: Require Active Session Phase
+          description: If enabled, notifications are sent only when session is in selected phases.
+          default: false
+          selector:
+            boolean: {}
+        session_status_sensor:
+          name: Session Status Sensor (optional)
+          description: Needed only when Require Active Session Phase is enabled.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+              multiple: false
+        active_session_phases:
+          name: Active Session Phases
+          description: Used when Require Active Session Phase is enabled.
+          default:
+            - live
+            - suspended
+          selector:
+            select:
+              mode: dropdown
+              multiple: true
+              options:
+                - label: Pre-session
+                  value: pre
+                - label: Live
+                  value: live
+                - label: Suspended
+                  value: suspended
+                - label: Break
+                  value: break
+                - label: Finished
+                  value: finished
+                - label: Finalised
+                  value: finalised
+                - label: Ended
+                  value: ended
+
+    filters_section:
+      name: Filters (Optional)
+      icon: mdi:filter-variant
+      collapsed: true
+      description: Narrow down which race control messages should trigger a notification.
+      input:
+        allowed_flags:
+          name: Allowed Flags
+          description: If empty, all flags are allowed.
+          default: []
+          selector:
+            select:
+              mode: dropdown
+              multiple: true
+              options:
+                - label: CLEAR
+                  value: CLEAR
+                - label: GREEN
+                  value: GREEN
+                - label: YELLOW
+                  value: YELLOW
+                - label: DOUBLE YELLOW
+                  value: DOUBLE YELLOW
+                - label: VSC
+                  value: VSC
+                - label: SC
+                  value: SC
+                - label: RED
+                  value: RED
+                - label: BLUE
+                  value: BLUE
+                - label: WHITE
+                  value: WHITE
+                - label: BLACK
+                  value: BLACK
+                - label: CHEQUERED
+                  value: CHEQUERED
+        allowed_categories:
+          name: Allowed Categories
+          description: Comma or semicolon separated category names. Empty means all categories.
+          default: ""
+          selector:
+            text: {}
+        include_keywords:
+          name: Include Keywords
+          description: Comma or semicolon separated keywords. If set, at least one must match.
+          default: ""
+          selector:
+            text: {}
+        exclude_keywords:
+          name: Exclude Keywords
+          description: Comma or semicolon separated keywords. If any match, notification is skipped.
+          default: ""
+          selector:
+            text: {}
+
+    notification_section:
+      name: Notification Setup
+      icon: mdi:bell-badge
+      collapsed: false
+      description: Define how notifications should be sent.
+      input:
+        title_prefix:
+          name: Title Prefix
+          description: Prefix used for notification_title.
+          default: "F1 Race Control"
+          selector:
+            text: {}
+        include_fields:
+          name: Include Fields In notification_message
+          description: Optional extra lines included in the generated notification message.
+          default:
+            - category
+            - flag
+            - scope
+            - sector
+            - car_number
+            - utc
+          selector:
+            select:
+              mode: dropdown
+              multiple: true
+              options:
+                - label: Category
+                  value: category
+                - label: Flag
+                  value: flag
+                - label: Scope
+                  value: scope
+                - label: Sector
+                  value: sector
+                - label: Car number
+                  value: car_number
+                - label: UTC
+                  value: utc
+                - label: Event ID
+                  value: event_id
+                - label: Session phase
+                  value: session_phase
+        cooldown_seconds:
+          name: Cooldown (seconds)
+          description: Keeps automation busy after send to reduce alert spam.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 600
+              step: 1
+              unit_of_measurement: s
+        notification_actions:
+          name: Notification Actions
+          description: >
+            Add one or more actions for delivery (mobile app, notify service, TTS, script, etc).
+            Use templates like {{ notification_title }} and {{ notification_message }} in those actions.
+          default: []
+          selector:
+            action: {}
+
+variables:
+  session_status_entity: !input session_status_sensor
+  active_phases: !input active_session_phases
+  require_phase_gate: !input require_active_phase
+  allowed_flags_input: !input allowed_flags
+  allowed_categories_raw: !input allowed_categories
+  include_keywords_raw: !input include_keywords
+  exclude_keywords_raw: !input exclude_keywords
+  include_fields_input: !input include_fields
+  title_prefix_input: !input title_prefix
+  notification_actions_input: !input notification_actions
+  cooldown_input: !input cooldown_seconds
+
+  race_control_message: >-
+    {% if trigger.to_state is not none %}
+      {{ trigger.to_state.attributes.message | default(trigger.to_state.state, true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  race_control_category: >-
+    {% if trigger.to_state is not none %}
+      {{ trigger.to_state.attributes.category | default('', true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  race_control_flag: >-
+    {% if trigger.to_state is not none %}
+      {{ trigger.to_state.attributes.flag | default('', true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  race_control_scope: >-
+    {% if trigger.to_state is not none %}
+      {{ trigger.to_state.attributes.scope | default('', true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  race_control_sector: >-
+    {% if trigger.to_state is not none %}
+      {{ trigger.to_state.attributes.sector | default('', true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  race_control_car_number: >-
+    {% if trigger.to_state is not none %}
+      {{ trigger.to_state.attributes.car_number | default('', true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  race_control_utc: >-
+    {% if trigger.to_state is not none %}
+      {{ trigger.to_state.attributes.utc | default('', true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  race_control_event_id: >-
+    {% if trigger.to_state is not none %}
+      {{ trigger.to_state.attributes.event_id | default('', true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  race_control_session_phase: >-
+    {% if session_status_entity | string | length > 0 %}
+      {{ states(session_status_entity) | lower }}
+    {% else %}
+      unknown
+    {% endif %}
+  previous_event_id: >-
+    {% if trigger.from_state is not none %}
+      {{ trigger.from_state.attributes.event_id | default('', true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+
+  category_tokens: >-
+    {% set s = (allowed_categories_raw | default('') | string).replace(';', ',') %}
+    {% set ns = namespace(out=[]) %}
+    {% for part in s.split(',') %}
+      {% set t = part | trim | lower %}
+      {% if t %}
+        {% set ns.out = ns.out + [t] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.out }}
+  include_tokens: >-
+    {% set s = (include_keywords_raw | default('') | string).replace(';', ',') %}
+    {% set ns = namespace(out=[]) %}
+    {% for part in s.split(',') %}
+      {% set t = part | trim | lower %}
+      {% if t %}
+        {% set ns.out = ns.out + [t] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.out }}
+  exclude_tokens: >-
+    {% set s = (exclude_keywords_raw | default('') | string).replace(';', ',') %}
+    {% set ns = namespace(out=[]) %}
+    {% for part in s.split(',') %}
+      {% set t = part | trim | lower %}
+      {% if t %}
+        {% set ns.out = ns.out + [t] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.out }}
+  search_text: >-
+    {{ (
+      race_control_message ~ ' ' ~ race_control_category ~ ' ' ~ race_control_flag ~ ' ' ~
+      race_control_scope ~ ' ' ~ race_control_sector ~ ' ' ~ race_control_car_number
+    ) | lower }}
+  phase_ok: >-
+    {% if not require_phase_gate %}
+      true
+    {% elif session_status_entity | string | length == 0 %}
+      false
+    {% else %}
+      {{ (states(session_status_entity) | lower) in active_phases }}
+    {% endif %}
+  event_ok: >-
+    {% if race_control_event_id | length > 0 and previous_event_id | length > 0 %}
+      {{ race_control_event_id != previous_event_id }}
+    {% else %}
+      true
+    {% endif %}
+  flag_ok: >-
+    {% if allowed_flags_input | count == 0 %}
+      true
+    {% else %}
+      {{ race_control_flag | upper in allowed_flags_input }}
+    {% endif %}
+  category_ok: >-
+    {% if category_tokens | count == 0 %}
+      true
+    {% else %}
+      {{ race_control_category | lower in category_tokens }}
+    {% endif %}
+  include_ok: >-
+    {% if include_tokens | count == 0 %}
+      true
+    {% else %}
+      {% set ns = namespace(match=false) %}
+      {% for token in include_tokens %}
+        {% if token in search_text %}
+          {% set ns.match = true %}
+        {% endif %}
+      {% endfor %}
+      {{ ns.match }}
+    {% endif %}
+  exclude_ok: >-
+    {% if exclude_tokens | count == 0 %}
+      true
+    {% else %}
+      {% set ns = namespace(match=false) %}
+      {% for token in exclude_tokens %}
+        {% if token in search_text %}
+          {% set ns.match = true %}
+        {% endif %}
+      {% endfor %}
+      {{ not ns.match }}
+    {% endif %}
+  notification_title: >-
+    {% set p = title_prefix_input | default('', true) | string | trim %}
+    {% set f = race_control_flag | trim %}
+    {% if p and f %}
+      {{ p ~ ': ' ~ f }}
+    {% elif p %}
+      {{ p }}
+    {% elif f %}
+      {{ 'F1 Race Control: ' ~ f }}
+    {% else %}
+      F1 Race Control
+    {% endif %}
+  notification_message: >-
+    {% set fields = include_fields_input | default([]) %}
+    {% if fields is string %}{% set fields = [fields] %}{% endif %}
+    {% set ns = namespace(lines=[]) %}
+    {% set base_msg = race_control_message | trim %}
+    {% if base_msg %}
+      {% set ns.lines = ns.lines + [base_msg] %}
+    {% endif %}
+    {% if 'category' in fields and (race_control_category | trim) %}
+      {% set ns.lines = ns.lines + ['Category: ' ~ race_control_category] %}
+    {% endif %}
+    {% if 'flag' in fields and (race_control_flag | trim) %}
+      {% set ns.lines = ns.lines + ['Flag: ' ~ race_control_flag] %}
+    {% endif %}
+    {% if 'scope' in fields and (race_control_scope | trim) %}
+      {% set ns.lines = ns.lines + ['Scope: ' ~ race_control_scope] %}
+    {% endif %}
+    {% if 'sector' in fields and (race_control_sector | trim) %}
+      {% set ns.lines = ns.lines + ['Sector: ' ~ race_control_sector] %}
+    {% endif %}
+    {% if 'car_number' in fields and (race_control_car_number | trim) %}
+      {% set ns.lines = ns.lines + ['Car: ' ~ race_control_car_number] %}
+    {% endif %}
+    {% if 'utc' in fields and (race_control_utc | trim) %}
+      {% set ns.lines = ns.lines + ['UTC: ' ~ race_control_utc] %}
+    {% endif %}
+    {% if 'event_id' in fields and (race_control_event_id | trim) %}
+      {% set ns.lines = ns.lines + ['Event ID: ' ~ race_control_event_id] %}
+    {% endif %}
+    {% if 'session_phase' in fields and (race_control_session_phase | trim) %}
+      {% set ns.lines = ns.lines + ['Session phase: ' ~ race_control_session_phase] %}
+    {% endif %}
+    {{ ns.lines | join('\n') }}
+
+trigger:
+  - platform: state
+    entity_id: !input race_control_sensor
+
+condition:
+  - condition: template
+    value_template: "{{ trigger.to_state is not none }}"
+  - condition: template
+    value_template: "{{ trigger.to_state.state not in ['unknown', 'unavailable', 'none', 'None', ''] }}"
+  - condition: template
+    value_template: "{{ notification_actions_input | count > 0 }}"
+  - condition: template
+    value_template: "{{ phase_ok and event_ok and flag_ok and category_ok and include_ok and exclude_ok }}"
+
+action:
+  - sequence: !input notification_actions
+  - if:
+      - condition: template
+        value_template: "{{ cooldown_input | int(0) > 0 }}"
+    then:
+      - delay:
+          seconds: !input cooldown_seconds
+
+mode: single
+max_exceeded: silent
