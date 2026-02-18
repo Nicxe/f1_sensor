@@ -23,6 +23,7 @@ Information that rarely changes, such as schedules, drivers, circuits, and champ
 | [binary_sensor.f1_race_week](#race-week)                                          | `on` during race week                             | 
 | [sensor.f1_sprint_results](#sprint-results)                                       | Sprint classification results |
 | [sensor.f1_fia_documents](#fia-decision-documents)                                | FIA decisions and documents for the current weekend |
+| [calendar.f1_season](#season-calendar)                                            | Full season calendar with all sessions              |
 
 
 ::::info
@@ -362,9 +363,15 @@ Each entry in `Constructors` contains:
 | current_precipitation_unit | string | “mm” |
 | current_wind_speed | number | Wind speed (m/s) |
 | current_wind_speed_unit | string | “m/s” |
-| current_wind_direction | string | Cardinal abbreviation (e.g., “NW”) |
+| current_wind_direction | string | Cardinal abbreviation (e.g., "NW") |
 | current_wind_from_direction_degrees | number | Wind direction (degrees) |
-| current_wind_from_direction_unit | string | “degrees” |
+| current_wind_from_direction_unit | string | "degrees" |
+| current_wind_gusts | number | Wind gust speed (m/s) |
+| current_wind_gusts_unit | string | "m/s" |
+| current_visibility | number | Visibility (m) |
+| current_visibility_unit | string | "m" |
+| current_weather_code | number | WMO weather interpretation code |
+| current_weather_source | string | "open-meteo" |
 | race_temperature | number | Projected air temperature at race start (°C) |
 | race_temperature_unit | string | “celsius” |
 | race_humidity | number | % RH at race start |
@@ -381,7 +388,13 @@ Each entry in `Constructors` contains:
 | race_wind_speed_unit | string | “m/s” |
 | race_wind_direction | string | Cardinal abbreviation |
 | race_wind_from_direction_degrees | number | Wind direction (degrees) |
-| race_wind_from_direction_unit | string | “degrees” |
+| race_wind_from_direction_unit | string | "degrees" |
+| race_wind_gusts | number | Projected wind gust speed at race start (m/s) |
+| race_wind_gusts_unit | string | "m/s" |
+| race_visibility | number | Projected visibility at race start (m) |
+| race_visibility_unit | string | "m" |
+| race_weather_code | number | WMO weather interpretation code at race start |
+| race_weather_source | string | "open-meteo" |
 | race_weather_icon | string | MDI icon name matching weather symbol |
 
 ---
@@ -896,4 +909,65 @@ Collects FIA decisions and official documents for the current race weekend.
 | published | string | ISO‑8601 timestamp when the document was published |
 
 The sensor maintains a history of up to 100 documents internally. When a new race weekend starts (detected by "Document 1"), the history is reset.
+
+---
+
+## Season Calendar
+
+`calendar.f1_season` - Native Home Assistant calendar showing every session of the current Formula 1 season.
+
+The calendar appears in the Home Assistant calendar panel and shows each session as a separate event: Practice 1, Practice 2, Practice 3, Qualifying, Sprint Qualifying, Sprint, and Race. On sprint weekends, Practice 3 is replaced by Sprint Qualifying and Sprint.
+
+**State**
+- `on` when a session is currently in progress; otherwise `off`.
+
+**Event fields**
+
+| Field | Description |
+| --- | --- |
+| summary | Session name, e.g. "Monaco Grand Prix - Qualifying" |
+| description | Round context, e.g. "Round 7 of the 2025 Formula 1 Season" |
+| location | Circuit name, city, and country |
+| start | Session start time (UTC) |
+| end | Estimated session end time (UTC) |
+
+**Estimated session durations**
+
+| Session | Duration |
+| --- | --- |
+| Practice 1 | 60 min |
+| Practice 2 | 60 min |
+| Practice 3 | 60 min |
+| Qualifying | 60 min |
+| Sprint Qualifying | 45 min |
+| Sprint | 35 min |
+| Race | 120 min |
+
+::::info
+Session end times are estimated based on standard session lengths. Actual sessions may run shorter or longer due to red flags or delays.
+::::
+
+**Automation example**
+
+Trigger an automation 30 minutes before any F1 session starts:
+
+```yaml
+alias: F1 - Session Starting Soon
+description: Notify before any F1 session begins
+trigger:
+  - platform: calendar
+    event: start
+    entity_id: calendar.f1_season
+    offset: "-00:30:00"
+action:
+  - service: notify.persistent_notification
+    data:
+      title: "F1 Session Starting Soon"
+      message: "{{ trigger.calendar_event.summary }} starts in 30 minutes"
+mode: single
+```
+
+::::tip
+The calendar entity complements `sensor.f1_current_season`. Use the sensor when you need race data in templates and attributes. Use the calendar when you want a visual schedule or calendar-based automations.
+::::
 
