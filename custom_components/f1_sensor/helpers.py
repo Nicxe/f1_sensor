@@ -40,6 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 # Avoid log spam: only log Jolpica cache-hit UA once per cache key per runtime.
 _JOLPICA_UA_HIT_LOGGED: set[str] = set()
 _JOLPICA_UA_TEXT_HIT_LOGGED: set[str] = set()
+_ENTITY_NAME_ACRONYMS = {"f1": "F1", "fia": "FIA"}
 
 
 def _record_jolpica_miss(hass, key: str) -> None:
@@ -192,6 +193,29 @@ def get_circuit_map_url(circuit_id: str | None) -> str | None:
     if not circuit_name:
         return None
     return f"{CIRCUIT_MAP_CDN_BASE_URL}/{circuit_name}_Circuit.webp"
+
+
+def format_entity_name(
+    base_name: str | None, key: str | None, *, include_base: bool = True
+) -> str:
+    """Return a readable default entity name from a sensor key."""
+    base = str(base_name or "").strip()
+    raw_key = str(key or "").strip().replace("-", "_").lower()
+    words = [part for part in raw_key.replace("_", " ").split() if part]
+    formatted_words: list[str] = []
+    for idx, word in enumerate(words):
+        acronym = _ENTITY_NAME_ACRONYMS.get(word)
+        if acronym:
+            formatted_words.append(acronym)
+            continue
+        formatted_words.append(word.capitalize() if idx == 0 else word)
+
+    label = " ".join(formatted_words).strip()
+    if include_base and base and label:
+        return f"{base} {label}"
+    if not include_base and label:
+        return label
+    return base or label
 
 
 async def build_user_agent(hass) -> str:
