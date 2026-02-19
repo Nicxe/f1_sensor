@@ -5,7 +5,7 @@ import json
 import logging
 import asyncio
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 from collections import deque
 from urllib.parse import urljoin
@@ -728,6 +728,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     track_status_coordinator = None
     session_status_coordinator = None
     session_info_coordinator = None
+    session_clock_coordinator = None
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
@@ -882,6 +883,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     need_championship_prediction = any(
         k in enabled for k in ("championship_prediction",)
     )
+    need_session_clock = any(
+        k in enabled
+        for k in (
+            "session_time_remaining",
+            "session_time_elapsed",
+            "race_time_to_three_hour_limit",
+        )
+    )
+    if enable_rc and need_session_clock:
+        session_clock_coordinator = SessionClockCoordinator(
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
+            live_state=live_state,
+            live_supervisor=live_supervisor,
+        )
+        await session_clock_coordinator.async_config_entry_first_refresh()
+
     drivers_coordinator = None
     if enable_rc and need_drivers:
         drivers_coordinator = LiveDriversCoordinator(
@@ -964,6 +986,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "track_status_coordinator": track_status_coordinator,
         "session_status_coordinator": session_status_coordinator,
         "session_info_coordinator": session_info_coordinator,
+        "session_clock_coordinator": session_clock_coordinator,
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
@@ -5182,3 +5205,767 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
             self.data_list = []
             # Notify entities to clear their state
             self.async_set_updated_data(self._last_message)
+
+
+class SessionClockCoordinator(DataUpdateCoordinator):
+    """Coordinator deriving official timer values from live timing clock streams."""
+
+    _FINAL_STATES = frozenset({"Finalised", "Ends"})
+    _ACTIVE_OR_ENDED_STATES = frozenset(
+        {"Started", "Resumed", "Inactive", "Aborted", "Finished", "Finalised", "Ends"}
+    )
+    _QUALI_TOTALS = {1: 18 * 60, 2: 15 * 60, 3: 12 * 60}
+    _SPRINT_QUALI_TOTALS = {1: 12 * 60, 2: 10 * 60, 3: 8 * 60}
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: LiveSessionCoordinator,
+        delay_seconds: int = 0,
+        bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+        live_supervisor: LiveSessionSupervisor | None = None,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator_logger("session_clock", suppress_manual=True),
+            name="F1 Session Clock Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._session = async_get_clientsession(hass)
+        self._session_coord = session_coord
+        self.available = True
+        self._state = self._empty_state()
+        self.data_list: list[dict] = [self._state]
+        _init_stream_delay_state(
+            self,
+            delay_seconds,
+            bus=bus,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
+        self._live_supervisor = live_supervisor
+        self._tick_unsub: Callable[[], None] | None = None
+        self._reset_runtime()
+
+    async def async_close(self, *_):
+        self._stop_tick()
+        _close_stream_delay_state(self)
+
+    async def _async_update_data(self):
+        return self._state
+
+    @staticmethod
+    def _empty_state() -> dict[str, Any]:
+        return {
+            "clock_remaining_s": None,
+            "clock_elapsed_s": None,
+            "clock_total_s": None,
+            "race_start_utc": None,
+            "race_three_hour_cap_utc": None,
+            "race_three_hour_remaining_s": None,
+            "session_part": None,
+            "session_type": None,
+            "session_name": None,
+            "session_status": None,
+            "session_start_utc": None,
+            "clock_running": False,
+            "clock_phase": "idle",
+            "source_quality": "unavailable",
+            "reference_utc": None,
+            "last_server_utc": None,
+        }
+
+    def _reset_runtime(self) -> None:
+        self._session_info: dict[str, Any] = {}
+        self._session_status: dict[str, Any] = {}
+        self._clock_anchor_utc: datetime | None = None
+        self._clock_anchor_remaining_s: int | None = None
+        self._clock_anchor_extrapolating = False
+        self._clock_totals: dict[int, int] = {}
+        self._session_part_events: list[tuple[datetime, int]] = []
+        self._session_part_event_keys: set[tuple[str, int]] = set()
+        self._session_status_events: list[tuple[datetime, str]] = []
+        self._session_status_event_keys: set[tuple[str, str]] = set()
+        self._session_start_utc: datetime | None = None
+        self._race_start_utc: datetime | None = None
+        self._last_heartbeat_utc: datetime | None = None
+        self._last_heartbeat_mono: float | None = None
+
+    @staticmethod
+    def _parse_utc(value: Any) -> datetime | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            dt_val = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if dt_val.tzinfo is None:
+            dt_val = dt_val.replace(tzinfo=timezone.utc)
+        return dt_val.astimezone(timezone.utc)
+
+    @staticmethod
+    def _iso(value: datetime | None) -> str | None:
+        if not isinstance(value, datetime):
+            return None
+        return value.isoformat(timespec="seconds")
+
+    @staticmethod
+    def _parse_remaining(value: Any) -> int | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        parts = text.split(":")
+        if len(parts) != 3:
+            return None
+        try:
+            hours = int(parts[0])
+            minutes = int(parts[1])
+            seconds = float(parts[2])
+        except ValueError:
+            return None
+        total = int(hours * 3600 + minutes * 60 + seconds)
+        return max(0, total)
+
+    @staticmethod
+    def _iter_series_items(value: Any) -> list[dict[str, Any]]:
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        if isinstance(value, dict):
+            result: list[dict[str, Any]] = []
+            try:
+                keys = sorted(
+                    value.keys(),
+                    key=lambda k: int(k) if str(k).isdigit() else str(k),
+                )
+            except Exception:
+                keys = list(value.keys())
+            for key in keys:
+                item = value.get(key)
+                if isinstance(item, dict):
+                    result.append(item)
+            return result
+        return []
+
+    def _on_extrapolated_clock(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        remaining_s = self._parse_remaining(msg.get("Remaining"))
+        anchor_utc = self._parse_utc(msg.get("Utc"))
+        if remaining_s is not None:
+            self._clock_anchor_remaining_s = remaining_s
+        if anchor_utc is not None:
+            self._clock_anchor_utc = anchor_utc
+        if "Extrapolating" in msg:
+            self._clock_anchor_extrapolating = bool(msg.get("Extrapolating"))
+        segment_id = self._segment_id(
+            self._resolve_session_part(self._server_now_utc())
+        )
+        self._update_clock_total(segment_id, remaining_s)
+        self._schedule_deliver()
+
+    def _on_heartbeat(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        hb_utc = self._parse_utc(
+            msg.get("Utc") or msg.get("utc") or msg.get("processedAt")
+        )
+        if hb_utc is None:
+            return
+        self._last_heartbeat_utc = hb_utc
+        self._last_heartbeat_mono = time.monotonic()
+        self._schedule_deliver()
+
+    def _on_session_status(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        self._session_status = msg
+        self._schedule_deliver()
+
+    def _on_session_info(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        self._session_info = msg
+        self._schedule_deliver()
+
+    def _on_session_data(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        self._ingest_session_data(msg)
+        self._schedule_deliver()
+
+    def _ingest_session_data(self, payload: dict[str, Any]) -> None:
+        for item in self._iter_series_items(payload.get("Series")):
+            part_raw = item.get("QualifyingPart")
+            if part_raw is None:
+                continue
+            utc = self._parse_utc(item.get("Utc"))
+            if utc is None:
+                continue
+            try:
+                part = int(part_raw)
+            except (TypeError, ValueError):
+                continue
+            key = (utc.isoformat(), part)
+            if key in self._session_part_event_keys:
+                continue
+            self._session_part_event_keys.add(key)
+            self._session_part_events.append((utc, part))
+            self._session_part_events.sort(key=lambda x: x[0])
+
+        for item in self._iter_series_items(payload.get("StatusSeries")):
+            status = str(item.get("SessionStatus") or "").strip()
+            if not status:
+                continue
+            utc = self._parse_utc(item.get("Utc"))
+            if utc is None:
+                continue
+            key = (utc.isoformat(), status)
+            if key in self._session_status_event_keys:
+                continue
+            self._session_status_event_keys.add(key)
+            self._session_status_events.append((utc, status))
+            self._session_status_events.sort(key=lambda x: x[0])
+            if status == "Started":
+                if self._session_start_utc is None or utc < self._session_start_utc:
+                    self._session_start_utc = utc
+                if self._race_start_utc is None or utc < self._race_start_utc:
+                    self._race_start_utc = utc
+
+    def _schedule_deliver(self) -> None:
+        delay = 0 if self._replay_mode else self._delay
+        self._deliver_handle = _schedule_deliver_handle(
+            self.hass.loop,
+            self._deliver_handle,
+            delay,
+            self._deliver,
+        )
+
+    def _server_now_utc(self) -> datetime:
+        if (
+            isinstance(self._last_heartbeat_utc, datetime)
+            and self._last_heartbeat_mono is not None
+        ):
+            elapsed = max(0.0, time.monotonic() - self._last_heartbeat_mono)
+            return self._last_heartbeat_utc + timedelta(seconds=elapsed)
+        return dt_util.utcnow()
+
+    def _current_live_window(self):
+        live_supervisor = self._live_supervisor
+        if live_supervisor is None:
+            entry_id = getattr(getattr(self, "config_entry", None), "entry_id", None)
+            reg = (
+                self.hass.data.get(DOMAIN, {}).get(entry_id, {})
+                if entry_id is not None
+                else {}
+            )
+            live_supervisor = reg.get("live_supervisor")
+        if live_supervisor is None:
+            return None
+        return getattr(live_supervisor, "current_window", None)
+
+    def _resolve_session_type_and_name(self) -> tuple[str | None, str | None]:
+        info = self._session_info if isinstance(self._session_info, dict) else {}
+        session_type = str(info.get("Type") or "").strip() or None
+        session_name = str(info.get("Name") or "").strip() or None
+        if session_type and session_name:
+            return session_type, session_name
+
+        # Fallback: infer from current live window when SessionInfo has not arrived yet.
+        try:
+            window = self._current_live_window()
+            inferred_name = (
+                str(getattr(window, "session_name", "")).strip()
+                if window is not None
+                else ""
+            )
+            if inferred_name:
+                if not session_name:
+                    session_name = inferred_name
+                if not session_type:
+                    lower = inferred_name.lower()
+                    if "qualifying" in lower or "shootout" in lower:
+                        session_type = "Qualifying"
+                    elif "practice" in lower:
+                        session_type = "Practice"
+                    elif "sprint" in lower:
+                        # Sprint is usually emitted under Type "Race".
+                        session_type = "Race"
+                    elif "race" in lower:
+                        session_type = "Race"
+        except Exception:
+            pass
+        return session_type, session_name
+
+    def _session_duration_from_live_window(self) -> int | None:
+        window = self._current_live_window()
+        if window is None:
+            return None
+        start = getattr(window, "start_utc", None)
+        end = getattr(window, "end_utc", None)
+        if not (isinstance(start, datetime) and isinstance(end, datetime)):
+            return None
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        duration = int(
+            (
+                end.astimezone(timezone.utc) - start.astimezone(timezone.utc)
+            ).total_seconds()
+        )
+        if duration <= 0:
+            return None
+        if duration > (4 * 3600):
+            return None
+        return duration
+
+    def _session_start_from_live_window(self) -> datetime | None:
+        window = self._current_live_window()
+        if window is None:
+            return None
+        start = getattr(window, "start_utc", None)
+        if not isinstance(start, datetime):
+            return None
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        return start.astimezone(timezone.utc)
+
+    def _is_qualifying_like(self) -> bool:
+        session_type, session_name = self._resolve_session_type_and_name()
+        type_l = str(session_type or "").lower()
+        name_l = str(session_name or "").lower()
+        return type_l == "qualifying" or "qualifying" in name_l or "shootout" in name_l
+
+    def _is_main_race(self) -> bool:
+        session_type, session_name = self._resolve_session_type_and_name()
+        type_l = str(session_type or "").lower()
+        if type_l != "race":
+            return False
+        name_l = str(session_name or "").lower()
+        return "sprint" not in name_l
+
+    def _status_is_terminal(self, status: str | None) -> bool:
+        if not status:
+            return False
+        if status in self._FINAL_STATES:
+            return True
+        if status == "Finished":
+            return not self._is_qualifying_like()
+        return False
+
+    def _status_from_events(self, now_utc: datetime) -> str | None:
+        latest: str | None = None
+        for ts, status in self._session_status_events:
+            if ts <= now_utc:
+                latest = status
+            else:
+                break
+        if latest is not None:
+            return latest
+        if self._session_status_events:
+            return self._session_status_events[-1][1]
+        return None
+
+    def _current_status(self, now_utc: datetime) -> str | None:
+        if isinstance(self._session_status, dict):
+            status = str(
+                self._session_status.get("Status")
+                or self._session_status.get("Message")
+                or ""
+            ).strip()
+            if status:
+                return status
+        return self._status_from_events(now_utc)
+
+    def _resolve_session_part(self, now_utc: datetime) -> int | None:
+        if not self._session_part_events:
+            return None
+        current: int | None = None
+        for ts, part in self._session_part_events:
+            if ts <= now_utc:
+                current = part
+            else:
+                break
+        if current is not None:
+            return current
+        return self._session_part_events[-1][1]
+
+    def _segment_id(self, part: int | None) -> int:
+        if self._is_qualifying_like() and isinstance(part, int) and part > 0:
+            return part
+        return 0
+
+    def _session_duration_from_info(self) -> int | None:
+        info = self._session_info if isinstance(self._session_info, dict) else {}
+        start = self._parse_utc(info.get("StartDate"))
+        end = self._parse_utc(info.get("EndDate"))
+        if not (isinstance(start, datetime) and isinstance(end, datetime)):
+            return None
+        duration = int((end - start).total_seconds())
+        if duration <= 0:
+            return None
+        # Keep this conservative to avoid accidentally treating weekends as one session.
+        if duration > (4 * 3600):
+            return None
+        return duration
+
+    def _default_clock_total(
+        self, segment_id: int, remaining_s: int | None = None
+    ) -> int | None:
+        if self._is_main_race():
+            return 2 * 3600
+        if self._is_qualifying_like():
+            _session_type, session_name = self._resolve_session_type_and_name()
+            name_l = str(session_name or "").lower()
+            table = (
+                self._SPRINT_QUALI_TOTALS
+                if ("sprint" in name_l or "shootout" in name_l)
+                else self._QUALI_TOTALS
+            )
+            if segment_id in table:
+                return table[segment_id]
+            if isinstance(remaining_s, int) and remaining_s > 0:
+                ordered = sorted(table.values())
+                for candidate in ordered:
+                    if remaining_s <= candidate:
+                        return candidate
+            return max(table.values())
+        session_duration = self._session_duration_from_info()
+        if isinstance(session_duration, int):
+            return session_duration
+        session_duration = self._session_duration_from_live_window()
+        if isinstance(session_duration, int):
+            return session_duration
+        session_type, _session_name = self._resolve_session_type_and_name()
+        if str(session_type or "").lower() == "practice":
+            return 3600
+
+        # Last-resort inference when metadata has not arrived yet.
+        if isinstance(remaining_s, int) and remaining_s > 0:
+            if remaining_s > 3600:
+                # Only races normally run on a 2h session clock.
+                return 2 * 3600
+            if remaining_s > 3000:
+                # Practice-like 1h clock.
+                return 3600
+        return None
+
+    def _set_clock_total_floor(self, segment_id: int, total_s: int | None) -> None:
+        if total_s is None or total_s <= 0:
+            return
+        prev = self._clock_totals.get(segment_id)
+        if prev is None or total_s > prev:
+            self._clock_totals[segment_id] = int(total_s)
+
+    def _update_clock_total(self, segment_id: int, remaining_s: int | None) -> None:
+        if remaining_s is None or remaining_s <= 0:
+            return
+        self._set_clock_total_floor(
+            segment_id,
+            self._default_clock_total(segment_id, remaining_s),
+        )
+
+    def _clock_remaining_seconds(self, now_utc: datetime) -> int | None:
+        if self._clock_anchor_remaining_s is None:
+            return None
+        remaining = int(self._clock_anchor_remaining_s)
+        if self._clock_anchor_extrapolating and isinstance(
+            self._clock_anchor_utc, datetime
+        ):
+            delta = int((now_utc - self._clock_anchor_utc).total_seconds())
+            remaining = remaining - max(0, delta)
+        return max(0, remaining)
+
+    def _infer_race_start_from_clock(self) -> datetime | None:
+        if not self._is_main_race():
+            return None
+        if not self._clock_anchor_extrapolating:
+            return None
+        if not isinstance(self._clock_anchor_utc, datetime):
+            return None
+        remaining = self._clock_anchor_remaining_s
+        if remaining is None:
+            return None
+        if not (7190 <= remaining <= 7200):
+            return None
+        offset = max(0, 7200 - remaining)
+        return self._clock_anchor_utc - timedelta(seconds=offset)
+
+    def _resolve_race_start(self) -> datetime | None:
+        if not self._is_main_race():
+            return None
+        if isinstance(self._race_start_utc, datetime):
+            return self._race_start_utc
+        for ts, status in self._session_status_events:
+            if status == "Started":
+                self._race_start_utc = ts
+                return ts
+        inferred = self._infer_race_start_from_clock()
+        if isinstance(inferred, datetime):
+            self._race_start_utc = inferred
+        return inferred
+
+    def _resolve_session_start(
+        self, clock_total: int | None, clock_remaining: int | None
+    ) -> tuple[datetime | None, str | None]:
+        if isinstance(self._session_start_utc, datetime):
+            return self._session_start_utc, "sessiondata"
+        for ts, status in self._session_status_events:
+            if status != "Started":
+                continue
+            if self._session_start_utc is None or ts < self._session_start_utc:
+                self._session_start_utc = ts
+        if isinstance(self._session_start_utc, datetime):
+            return self._session_start_utc, "sessiondata"
+
+        if (
+            isinstance(self._clock_anchor_utc, datetime)
+            and isinstance(clock_total, int)
+            and isinstance(clock_remaining, int)
+        ):
+            offset = max(0, int(clock_total) - int(clock_remaining))
+            return self._clock_anchor_utc - timedelta(seconds=offset), "clock_inferred"
+
+        info = self._session_info if isinstance(self._session_info, dict) else {}
+        info_start = self._parse_utc(info.get("StartDate"))
+        if isinstance(info_start, datetime):
+            return info_start, "sessioninfo"
+
+        window_start = self._session_start_from_live_window()
+        if isinstance(window_start, datetime):
+            return window_start, "live_window"
+
+        return None, None
+
+    def _source_quality(
+        self, has_clock: bool, has_elapsed: bool, has_race_cap: bool
+    ) -> str:
+        if has_clock:
+            return (
+                "official"
+                if self._last_heartbeat_utc is not None
+                else "official_no_heartbeat"
+            )
+        if has_elapsed:
+            return "sessiondata_fallback"
+        if has_race_cap:
+            return "sessiondata_fallback"
+        return "unavailable"
+
+    def _build_state(self) -> dict[str, Any]:
+        now_utc = self._server_now_utc()
+        session_type, session_name = self._resolve_session_type_and_name()
+        status = self._current_status(now_utc)
+        session_part = self._resolve_session_part(now_utc)
+        segment_id = self._segment_id(session_part)
+
+        clock_remaining = self._clock_remaining_seconds(now_utc)
+        self._set_clock_total_floor(
+            segment_id,
+            self._default_clock_total(segment_id, clock_remaining),
+        )
+        self._update_clock_total(segment_id, clock_remaining)
+        clock_total = self._clock_totals.get(segment_id)
+        if clock_total is None and segment_id != 0:
+            clock_total = self._clock_totals.get(0)
+        clock_elapsed_from_clock = (
+            max(0, int(clock_total) - int(clock_remaining))
+            if clock_total is not None and clock_remaining is not None
+            else None
+        )
+
+        session_start_utc, session_start_source = self._resolve_session_start(
+            clock_total,
+            clock_remaining,
+        )
+        clock_elapsed_from_start: int | None = None
+        if isinstance(session_start_utc, datetime):
+            allow_start_fallback = (
+                session_start_source in {"sessiondata", "clock_inferred"}
+                or clock_remaining is not None
+                or status in self._ACTIVE_OR_ENDED_STATES
+            )
+            if allow_start_fallback and now_utc >= session_start_utc:
+                clock_elapsed_from_start = max(
+                    0,
+                    int((now_utc - session_start_utc).total_seconds()),
+                )
+
+        clock_elapsed = clock_elapsed_from_clock
+        if isinstance(clock_elapsed_from_start, int):
+            if session_start_source == "sessiondata":
+                clock_elapsed = (
+                    clock_elapsed_from_start
+                    if clock_elapsed is None
+                    else max(clock_elapsed, clock_elapsed_from_start)
+                )
+            elif clock_elapsed is None:
+                clock_elapsed = clock_elapsed_from_start
+
+        terminal = self._status_is_terminal(status)
+        clock_running = bool(
+            self._clock_anchor_extrapolating
+            and clock_remaining is not None
+            and clock_remaining > 0
+            and not terminal
+        )
+        if terminal or (
+            clock_remaining == 0 and status in {"Finished", "Finalised", "Ends"}
+        ):
+            clock_phase = "finished"
+        elif clock_running:
+            clock_phase = "running"
+        elif (
+            clock_remaining is not None
+            and clock_remaining > 0
+            and status
+            in {
+                "Started",
+                "Resumed",
+                "Inactive",
+                "Aborted",
+            }
+        ):
+            clock_phase = "paused"
+        else:
+            clock_phase = "idle"
+
+        race_start_utc = self._resolve_race_start()
+        race_cap_utc = (
+            race_start_utc + timedelta(hours=3)
+            if isinstance(race_start_utc, datetime)
+            else None
+        )
+        race_remaining = (
+            max(0, int((race_cap_utc - now_utc).total_seconds()))
+            if isinstance(race_cap_utc, datetime)
+            else None
+        )
+
+        has_clock = clock_remaining is not None
+        has_elapsed = clock_elapsed is not None
+        has_race_cap = race_remaining is not None
+
+        return {
+            "clock_remaining_s": clock_remaining,
+            "clock_elapsed_s": clock_elapsed,
+            "clock_total_s": clock_total,
+            "session_start_utc": self._iso(session_start_utc),
+            "race_start_utc": self._iso(race_start_utc),
+            "race_three_hour_cap_utc": self._iso(race_cap_utc),
+            "race_three_hour_remaining_s": race_remaining,
+            "session_part": session_part,
+            "session_type": session_type,
+            "session_name": session_name,
+            "session_status": status,
+            "clock_running": clock_running,
+            "clock_phase": clock_phase,
+            "source_quality": self._source_quality(
+                has_clock, has_elapsed, has_race_cap
+            ),
+            "reference_utc": self._iso(self._clock_anchor_utc),
+            "last_server_utc": self._iso(now_utc),
+        }
+
+    def _stop_tick(self) -> None:
+        if self._tick_unsub:
+            with suppress(Exception):
+                self._tick_unsub()
+            self._tick_unsub = None
+
+    def _on_tick(self, _now: datetime | None = None) -> None:
+        if not self.available:
+            self._stop_tick()
+            return
+        self._deliver()
+
+    def _should_tick(self, state: dict[str, Any]) -> bool:
+        if not self.available:
+            return False
+        if bool(state.get("clock_running")):
+            return True
+        status = str(state.get("session_status") or "").strip() or None
+        elapsed = state.get("clock_elapsed_s")
+        if isinstance(elapsed, int) and not self._status_is_terminal(status):
+            return True
+        race_remaining = state.get("race_three_hour_remaining_s")
+        return (
+            isinstance(race_remaining, int)
+            and race_remaining > 0
+            and not self._status_is_terminal(status)
+        )
+
+    def _ensure_tick(self, state: dict[str, Any]) -> None:
+        should_tick = self._should_tick(state)
+        if should_tick and self._tick_unsub is None:
+            self._tick_unsub = async_track_time_interval(
+                self.hass,
+                self._on_tick,
+                timedelta(seconds=1),
+            )
+        elif not should_tick and self._tick_unsub is not None:
+            self._stop_tick()
+
+    def _deliver(self) -> None:
+        self.available = True
+        self._state = self._build_state()
+        self.data_list = [self._state]
+        self.async_set_updated_data(self._state)
+        self._ensure_tick(self._state)
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        try:
+            bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        except Exception:
+            bus = None
+        if bus is None:
+            self._unsub = None
+            return
+        unsubs: list[Callable[[], None]] = []
+        for stream, callback in (
+            ("ExtrapolatedClock", self._on_extrapolated_clock),
+            ("Heartbeat", self._on_heartbeat),
+            ("SessionStatus", self._on_session_status),
+            ("SessionInfo", self._on_session_info),
+            ("SessionData", self._on_session_data),
+        ):
+            with suppress(Exception):
+                unsubs.append(bus.subscribe(stream, callback))
+        if not unsubs:
+            self._unsub = None
+            return
+
+        def _unsub_all() -> None:
+            for unsub in list(unsubs):
+                with suppress(Exception):
+                    unsub()
+            unsubs.clear()
+
+        self._unsub = _unsub_all
+
+    def set_delay(self, seconds: int) -> None:
+        _apply_delay_simple(self, seconds)
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode:
+            self._deliver_handle = _cancel_handle(self._deliver_handle)
+        self.available = is_live
+        if not is_live:
+            self._stop_tick()
+            self._reset_runtime()
+            self._state = self._empty_state()
+            self.data_list = [self._state]
+            self.async_set_updated_data(self._state)

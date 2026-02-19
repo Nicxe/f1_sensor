@@ -4,8 +4,7 @@
 ![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/nicxe/f1_sensor/latest/total)
 <br>
 <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/f1_sensor">
-[![Validate](https://github.com/Nicxe/f1_sensor/actions/workflows/validate.yml/badge.svg)](https://github.com/Nicxe/f1_sensor/actions/workflows/validate.yml)
-[![Tests](https://img.shields.io/github/actions/workflow/status/Nicxe/f1_sensor/validate.yml?label=tests)](https://github.com/Nicxe/f1_sensor/actions/workflows/validate.yml)
+
 
 ## Your home, in sync with Formula 1
 
@@ -21,6 +20,16 @@ Whether you want your lights to react to a safety car or build dashboards that v
 ![F1SensorFlag-ezgif com-video-to-gif-converter (5)](https://github.com/user-attachments/assets/18a74679-76e2-4d10-8a0d-d3f111c42593)
 
 <br/>
+
+---
+
+### 🃏 Live Data Cards
+
+A companion collection of custom Lovelace cards is available for displaying live session data directly on your dashboards — tyre strategy, pit stops, lap times, investigations, race control, and more.
+
+<img alt="F1 Sensor Live Data Cards" src="https://github.com/user-attachments/assets/94346421-347e-4807-8a9f-185982c5697c" />
+
+👉 **[github.com/Nicxe/f1-sensor-live-data-card](https://github.com/Nicxe/f1-sensor-live-data-card)**
 
 ---
 

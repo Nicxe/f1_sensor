@@ -205,6 +205,18 @@ async def async_setup_entry(
             F1SessionStatusSensor,
             data.get("session_status_coordinator"),
         ),
+        "session_time_remaining": (
+            F1SessionTimeRemainingSensor,
+            data.get("session_clock_coordinator"),
+        ),
+        "session_time_elapsed": (
+            F1SessionTimeElapsedSensor,
+            data.get("session_clock_coordinator"),
+        ),
+        "race_time_to_three_hour_limit": (
+            F1RaceTimeToThreeHourLimitSensor,
+            data.get("session_clock_coordinator"),
+        ),
         "current_session": (
             F1CurrentSessionSensor,
             data.get("session_info_coordinator"),
@@ -2866,6 +2878,174 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._started_flag = None
         self._track_grip_state = None
         self._attr_extra_state_attributes = {}
+
+
+class F1SessionClockBaseSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Base sensor for derived session clock values."""
+
+    _value_key: str = ""
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last and last.state not in (None, "unknown", "unavailable"):
+            self._attr_native_value = last.state
+            self._attr_extra_state_attributes = dict(
+                getattr(last, "attributes", {}) or {}
+            )
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self._handle_coordinator_update()
+
+    @staticmethod
+    def _format_hms(value: int | None) -> str | None:
+        if not isinstance(value, int) or value < 0:
+            return None
+        hours = value // 3600
+        minutes = (value % 3600) // 60
+        seconds = value % 60
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+
+    def _extract_state(self) -> dict | None:
+        data = getattr(self.coordinator, "data", None)
+        return data if isinstance(data, dict) else None
+
+    def _extract_value(self, state: dict) -> int | None:
+        raw = state.get(self._value_key)
+        try:
+            if raw is None:
+                return None
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def _is_value_available(self, state: dict, value: int | None) -> bool:
+        source_quality = str(state.get("source_quality") or "").strip()
+        return value is not None and source_quality != "unavailable"
+
+    def _build_attrs(self, state: dict, value: int | None) -> dict:
+        return {
+            "session_type": state.get("session_type"),
+            "session_name": state.get("session_name"),
+            "session_part": state.get("session_part"),
+            "session_status": state.get("session_status"),
+            "clock_phase": state.get("clock_phase"),
+            "clock_running": state.get("clock_running"),
+            "source_quality": state.get("source_quality"),
+            "session_start_utc": state.get("session_start_utc"),
+            "reference_utc": state.get("reference_utc"),
+            "last_server_utc": state.get("last_server_utc"),
+            "value_seconds": value,
+            "formatted_hms": self._format_hms(value),
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        state = self._extract_state()
+        if not isinstance(state, dict):
+            return
+
+        value = self._extract_value(state)
+        source_quality = str(state.get("source_quality") or "").strip()
+        if value is None and source_quality == "unavailable":
+            # Keep restored value during startup/reconnect until a useful payload arrives.
+            self._safe_write_ha_state()
+            return
+
+        value_text = self._format_hms(value)
+        attrs = self._build_attrs(state, value)
+        if (
+            self._attr_native_value == value_text
+            and self._attr_extra_state_attributes == attrs
+        ):
+            return
+        self._attr_native_value = value_text
+        self._attr_extra_state_attributes = attrs
+        self._safe_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        state = self._extract_state()
+        if not isinstance(state, dict):
+            return False
+        value = self._extract_value(state)
+        return self._is_value_available(state, value)
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def extra_state_attributes(self):
+        return self._attr_extra_state_attributes
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+
+
+class F1SessionTimeRemainingSensor(F1SessionClockBaseSensor):
+    """Official session time remaining based on ExtrapolatedClock."""
+
+    _value_key = "clock_remaining_s"
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:timer-sand"
+
+    def _build_attrs(self, state: dict, value: int | None) -> dict:
+        attrs = super()._build_attrs(state, value)
+        attrs["clock_total_s"] = state.get("clock_total_s")
+        return attrs
+
+
+class F1SessionTimeElapsedSensor(F1SessionClockBaseSensor):
+    """Official session elapsed time based on ExtrapolatedClock."""
+
+    _value_key = "clock_elapsed_s"
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:timer-outline"
+
+    def _build_attrs(self, state: dict, value: int | None) -> dict:
+        attrs = super()._build_attrs(state, value)
+        attrs["clock_total_s"] = state.get("clock_total_s")
+        attrs["clock_remaining_s"] = state.get("clock_remaining_s")
+        return attrs
+
+
+class F1RaceTimeToThreeHourLimitSensor(F1SessionClockBaseSensor):
+    """Time remaining until the FIA 3-hour race duration cap."""
+
+    _value_key = "race_three_hour_remaining_s"
+
+    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:flag-clock"
+
+    @staticmethod
+    def _is_main_race(state: dict) -> bool:
+        session_type = str(state.get("session_type") or "").strip().lower()
+        session_name = str(state.get("session_name") or "").strip().lower()
+        return session_type == "race" and "sprint" not in session_name
+
+    def _is_value_available(self, state: dict, value: int | None) -> bool:
+        if not self._is_main_race(state):
+            return False
+        return super()._is_value_available(state, value)
+
+    def _build_attrs(self, state: dict, value: int | None) -> dict:
+        attrs = super()._build_attrs(state, value)
+        attrs["race_start_utc"] = state.get("race_start_utc")
+        attrs["race_three_hour_cap_utc"] = state.get("race_three_hour_cap_utc")
+        return attrs
 
 
 class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):

@@ -31,6 +31,7 @@ SUBSCRIBE_MSG = {
             "WeatherData",
             "LapCount",
             "SessionInfo",
+            "SessionData",
             "Heartbeat",
             "ExtrapolatedClock",
             "TimingData",
@@ -100,7 +101,7 @@ class SignalRClient:
         _LOGGER.debug("SignalR connection established")
         _LOGGER.debug(
             "Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, "
-            "LapCount, SessionInfo, TimingData, DriverList, TimingAppData, TopThree, "
+            "LapCount, SessionInfo, SessionData, TimingData, DriverList, TimingAppData, TopThree, "
             "TyreStintSeries, TeamRadio"
         )
 
