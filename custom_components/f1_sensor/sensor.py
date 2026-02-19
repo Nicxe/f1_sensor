@@ -31,6 +31,9 @@ from .const import (
     LATEST_TRACK_STATUS,
     OPERATION_MODE_DEVELOPMENT,
     RACE_SWITCH_GRACE,
+    STRAIGHT_MODE_NORMAL,
+    STRAIGHT_MODE_LOW,
+    STRAIGHT_MODE_DISABLED,
 )
 from .helpers import (
     format_entity_name,
@@ -176,6 +179,12 @@ def _set_suggested_object_id(entity, object_id: str) -> None:
     entity._attr_suggested_object_id = object_id
 
 
+def _default_object_id(key: str) -> str:
+    """Build a stable default object_id for new entities."""
+    normalized_key = str(key).strip().replace("-", "_").lower()
+    return f"f1_{normalized_key}"
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
@@ -233,6 +242,7 @@ async def async_setup_entry(
         "driver_positions": (F1DriverPositionsSensor, data.get("drivers_coordinator")),
         "fia_documents": (F1FiaDocumentsSensor, data.get("fia_documents_coordinator")),
         "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
+        "straight_mode": (F1StraightModeSensor, data.get("live_mode_coordinator")),
         "track_limits": (F1TrackLimitsSensor, data.get("race_control_coordinator")),
         "investigations": (
             F1InvestigationsSensor,
@@ -257,7 +267,7 @@ async def async_setup_entry(
             if not coord:
                 continue
             for pos in range(3):
-                object_id = f"{base}_top_three_p{pos + 1}"
+                object_id = _default_object_id(f"top_three_p{pos + 1}")
                 sensor = F1TopThreePositionSensor(
                     coord,
                     format_entity_name(
@@ -283,7 +293,7 @@ async def async_setup_entry(
                 base,
             )
             _set_suggested_object_id(
-                drivers_sensor, f"{base}_championship_prediction_drivers"
+                drivers_sensor, _default_object_id("championship_prediction_drivers")
             )
             sensors.append(drivers_sensor)
             teams_sensor = F1ChampionshipPredictionTeamsSensor(
@@ -296,7 +306,7 @@ async def async_setup_entry(
                 base,
             )
             _set_suggested_object_id(
-                teams_sensor, f"{base}_championship_prediction_teams"
+                teams_sensor, _default_object_id("championship_prediction_teams")
             )
             sensors.append(teams_sensor)
         elif key == "live_timing_diagnostics":
@@ -307,7 +317,7 @@ async def async_setup_entry(
                     entry.entry_id,
                     base,
                 )
-                _set_suggested_object_id(sensor, f"{base}_live_timing_mode")
+                _set_suggested_object_id(sensor, _default_object_id("live_timing_mode"))
                 sensors.append(sensor)
         elif cls and coord:
             sensor = cls(
@@ -317,7 +327,7 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            _set_suggested_object_id(sensor, f"{base}_{key}")
+            _set_suggested_object_id(sensor, _default_object_id(key))
             sensors.append(sensor)
 
     # Replay status sensor
@@ -330,7 +340,7 @@ async def async_setup_entry(
             entry.entry_id,
             base,
         )
-        _set_suggested_object_id(sensor, f"{base}_replay_status")
+        _set_suggested_object_id(sensor, _default_object_id("replay_status"))
         sensors.append(sensor)
 
     async_add_entities(sensors, True)
@@ -353,7 +363,7 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
             entry_id=entry_id,
             device_name=device_name,
         )
-        self._attr_suggested_object_id = f"{device_name}_live_timing_mode"
+        self._attr_suggested_object_id = _default_object_id("live_timing_mode")
         self.hass = hass
         self._entry_id = entry_id
         self._unsub_live_state = None
@@ -5935,3 +5945,35 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     @property
     def state(self):
         return self._attr_native_value
+
+
+class F1StraightModeSensor(F1BaseEntity, SensorEntity):
+    """Sensor for the 2026 Straight Mode (active aero) state.
+
+    Reflects the track-wide active aerodynamic permission broadcasted via
+    Race Control messages. Three states are possible: normal grip (full aero
+    allowed), low grip (limited aero), and disabled (aero off).
+    """
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [STRAIGHT_MODE_NORMAL, STRAIGHT_MODE_LOW, STRAIGHT_MODE_DISABLED]
+    _attr_icon = "mdi:car-speed-limiter"
+    _attr_translation_key = "straight_mode"
+
+    def __init__(self, coordinator, name, unique_id, entry_id, device_name):
+        super().__init__(coordinator, name, unique_id, entry_id, device_name)
+        self._attr_suggested_object_id = f"{device_name}_straight_mode"
+
+    @property
+    def native_value(self):
+        data = self.coordinator.data
+        if not data or not isinstance(data, dict):
+            return None
+        return data.get("straight_mode")
+
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data
+        if not data or not isinstance(data, dict):
+            return {}
+        return {"overtake_enabled": data.get("overtake_enabled")}

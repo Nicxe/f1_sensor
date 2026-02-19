@@ -105,6 +105,14 @@
             },
             "investigations": {
                 "name": "Investigations & penalties"
+            },
+            "straight_mode": {
+                "name": "Straight mode",
+                "state": {
+                    "normal_grip": "Normal grip",
+                    "low_grip": "Low grip",
+                    "disabled": "Disabled"
+                }
             }
         },
         "media_player": {
@@ -135,6 +143,9 @@
             },
             "formation_start": {
                 "name": "Formation start"
+            },
+            "overtake_mode": {
+                "name": "Overtake mode"
             }
         }
     }

@@ -203,12 +203,12 @@ def format_entity_name(
     raw_key = str(key or "").strip().replace("-", "_").lower()
     words = [part for part in raw_key.replace("_", " ").split() if part]
     formatted_words: list[str] = []
-    for idx, word in enumerate(words):
+    for word in words:
         acronym = _ENTITY_NAME_ACRONYMS.get(word)
         if acronym:
             formatted_words.append(acronym)
             continue
-        formatted_words.append(word.capitalize() if idx == 0 else word)
+        formatted_words.append(word.capitalize())
 
     label = " ".join(formatted_words).strip()
     if include_base and base and label:

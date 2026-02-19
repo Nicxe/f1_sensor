@@ -49,6 +49,14 @@ from .const import (
     ENABLE_DEVELOPMENT_MODE_UI,
     RACE_SWITCH_GRACE,
     SUPPORTED_SENSOR_KEYS,
+    RCM_OVERTAKE_ENABLED,
+    RCM_OVERTAKE_DISABLED,
+    RCM_STRAIGHT_NORMAL,
+    RCM_STRAIGHT_LOW,
+    RCM_STRAIGHT_DISABLED,
+    STRAIGHT_MODE_NORMAL,
+    STRAIGHT_MODE_LOW,
+    STRAIGHT_MODE_DISABLED,
 )
 from .signalr import LiveBus
 from .replay import ReplaySignalRClient
@@ -880,6 +888,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
+    live_mode_coordinator = None
     top_three_coordinator = None
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
@@ -994,6 +1003,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        live_mode_coordinator = LiveModeCoordinator(
+            hass,
+            race_control_coordinator,
+            config_entry=entry,
+            live_state=live_state,
+        )
 
     if race_coordinator:
         await race_coordinator.async_config_entry_first_refresh()
@@ -1018,6 +1033,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await session_info_coordinator.async_config_entry_first_refresh()
     if race_control_coordinator:
         await race_control_coordinator.async_config_entry_first_refresh()
+    if live_mode_coordinator:
+        await live_mode_coordinator.async_config_entry_first_refresh()
     if weather_data_coordinator:
         await weather_data_coordinator.async_config_entry_first_refresh()
     if lap_count_coordinator:
@@ -1136,6 +1153,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "session_info_coordinator": session_info_coordinator,
         "session_clock_coordinator": session_clock_coordinator,
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
+        "live_mode_coordinator": live_mode_coordinator if enable_rc else None,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
         "top_three_coordinator": top_three_coordinator,
@@ -1599,6 +1617,97 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             ).subscribe("RaceControlMessages", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
+
+
+class LiveModeCoordinator(DataUpdateCoordinator):
+    """Tracks the current 2026 active aero (Straight Mode) and Overtake Mode states.
+
+    Subscribes to RaceControlCoordinator updates to derive cumulative mode state.
+    Automatically resets when the live session window closes.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        race_control_coordinator: RaceControlCoordinator,
+        config_entry: ConfigEntry | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+    ):
+        super().__init__(
+            hass,
+            coordinator_logger("live_mode", suppress_manual=True),
+            name="F1 Live Mode Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._rc_coordinator = race_control_coordinator
+        self.available = True
+        self._state: dict = {"overtake_enabled": None, "straight_mode": None}
+        self._rc_unsub: Optional[Callable[[], None]] = None
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+
+    async def async_close(self, *_):
+        if self._rc_unsub:
+            with suppress(Exception):
+                self._rc_unsub()
+            self._rc_unsub = None
+        if self._live_state_unsub:
+            with suppress(Exception):
+                self._live_state_unsub()
+            self._live_state_unsub = None
+
+    async def _async_update_data(self):
+        return (
+            dict(self._state)
+            if any(v is not None for v in self._state.values())
+            else None
+        )
+
+    def _on_race_control_update(self) -> None:
+        item = self._rc_coordinator.data
+        if not item or not isinstance(item, dict):
+            return
+        if item.get("Category") != "Other":
+            return
+        message = item.get("Message", "")
+        prev = dict(self._state)
+        if message == RCM_OVERTAKE_ENABLED:
+            self._state["overtake_enabled"] = True
+        elif message == RCM_OVERTAKE_DISABLED:
+            self._state["overtake_enabled"] = False
+        elif message == RCM_STRAIGHT_NORMAL:
+            self._state["straight_mode"] = STRAIGHT_MODE_NORMAL
+        elif message == RCM_STRAIGHT_LOW:
+            self._state["straight_mode"] = STRAIGHT_MODE_LOW
+        elif message == RCM_STRAIGHT_DISABLED:
+            self._state["straight_mode"] = STRAIGHT_MODE_DISABLED
+        else:
+            return
+        if self._state != prev:
+            self.available = True
+            self.async_set_updated_data(dict(self._state))
+            if _LOGGER.isEnabledFor(logging.DEBUG):
+                _LOGGER.debug(
+                    "LiveMode: state updated overtake_enabled=%s straight_mode=%s",
+                    self._state["overtake_enabled"],
+                    self._state["straight_mode"],
+                )
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
+        self.available = is_live
+        if not is_live:
+            self._state = {"overtake_enabled": None, "straight_mode": None}
+            self.async_set_updated_data(None)
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        self._rc_unsub = self._rc_coordinator.async_add_listener(
+            self._on_race_control_update
+        )
 
 
 class LapCountCoordinator(DataUpdateCoordinator):
