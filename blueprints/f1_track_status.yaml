@@ -1,7 +1,7 @@
 blueprint:
   homeassistant:
     min_version: 2024.6.0
-  name: F1 Sensor - Track Status Light
+  name: F1 Sensor - Track Status Light (Modern)
   description: >
     Turn a light into an F1 race-status indicator with sensible defaults and advanced options.
 
@@ -408,7 +408,7 @@ variables:
   notification_actions_list: !input notification_actions
   has_notification_actions: "{{ notification_actions_list | count > 0 }}"
 
-  automation_slug: "{{ (this.entity_id | default('automation.f1_track_status_modern') | replace('.', '_') | replace('-', '_')) }}"
+  automation_slug: "{{ (this.entity_id | default('f1_track_status_light') | replace('.', '_') | replace('-', '_')) }}"
   pre_race_scene_id: "{{ automation_slug ~ '_pre_race' }}"
   pre_alert_scene_id: "{{ automation_slug ~ '_pre_alert' }}"
 
