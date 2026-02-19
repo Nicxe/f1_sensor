@@ -1,6 +1,7 @@
 {
     "domain": "f1_sensor",
     "name": "F1 Sensor",
+    "after_dependencies": ["logbook", "recorder"],
     "codeowners": ["@Nicxe"],
     "config_flow": true,
     "documentation": "https://github.com/Nicxe/f1_sensor",

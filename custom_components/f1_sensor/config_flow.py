@@ -64,6 +64,8 @@ SENSOR_OPTIONS = {
     "driver_positions": "Driver positions (live)",
     "track_limits": "Track limits (live)",
     "investigations": "Investigations & penalties (live)",
+    "overtake_mode": "Overtake mode (live)",
+    "straight_mode": "Straight mode (live)",
 }
 
 

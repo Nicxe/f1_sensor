@@ -13,8 +13,9 @@ from pathlib import Path
 import time
 
 import async_timeout
+from homeassistant.const import EVENT_COMPONENT_LOADED
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback as ha_callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -48,6 +49,14 @@ from .const import (
     ENABLE_DEVELOPMENT_MODE_UI,
     RACE_SWITCH_GRACE,
     SUPPORTED_SENSOR_KEYS,
+    RCM_OVERTAKE_ENABLED,
+    RCM_OVERTAKE_DISABLED,
+    RCM_STRAIGHT_NORMAL,
+    RCM_STRAIGHT_LOW,
+    RCM_STRAIGHT_DISABLED,
+    STRAIGHT_MODE_NORMAL,
+    STRAIGHT_MODE_LOW,
+    STRAIGHT_MODE_DISABLED,
 )
 from .signalr import LiveBus
 from .replay import ReplaySignalRClient
@@ -74,10 +83,157 @@ _LOGGER = logging.getLogger(__name__)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
 _REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode", "replay-preparing"})
+_ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES = (
+    "_track_time",
+    "_session_time_remaining",
+    "_session_time_elapsed",
+)
+_ACTIVITY_FILTER_MARKER = "__f1_sensor_activity_filter__"
+_ACTIVITY_FILTER_REBIND_MARKER = "__f1_sensor_activity_filter_rebound__"
+_ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER = "__f1_sensor_activity_logbook_subscribe__"
+_ACTIVITY_FILTER_COMPONENTS = frozenset({"recorder", "logbook"})
 
 
 def _is_replay_delay_reason(reason: str | None) -> bool:
     return reason in _REPLAY_DELAY_REASONS
+
+
+def _is_activity_log_excluded_entity(entity_id: str | None) -> bool:
+    """Return True for high-frequency timer entities we do not want in activity log."""
+    if not entity_id or not isinstance(entity_id, str):
+        return False
+    entity_id_l = entity_id.lower()
+    if not entity_id_l.startswith("sensor."):
+        return False
+    return entity_id_l.endswith(_ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES)
+
+
+def _wrap_activity_filter(
+    existing_filter: Callable[[str], bool] | None,
+) -> Callable[[str], bool]:
+    """Wrap a recorder/logbook entity filter with f1 high-frequency excludes."""
+    if existing_filter is not None and getattr(
+        existing_filter, _ACTIVITY_FILTER_MARKER, False
+    ):
+        return existing_filter
+
+    def _wrapped(entity_id: str) -> bool:
+        if _is_activity_log_excluded_entity(entity_id):
+            return False
+        if existing_filter is None:
+            return True
+        return bool(existing_filter(entity_id))
+
+    setattr(_wrapped, _ACTIVITY_FILTER_MARKER, True)
+    return _wrapped
+
+
+def _refresh_recorder_entity_filter(instance: Any) -> None:
+    """Apply wrapped entity filter and rebind event listener when needed."""
+    current = getattr(instance, "entity_filter", None)
+    wrapped = _wrap_activity_filter(current)
+    changed = wrapped is not current
+    instance.entity_filter = wrapped
+    rebound = bool(getattr(instance, _ACTIVITY_FILTER_REBIND_MARKER, False))
+    needs_rebind = changed or not rebound
+    if not bool(getattr(instance, "recording", False)):
+        return
+    if not needs_rebind:
+        return
+    stop_listener = getattr(
+        instance, "_async_stop_queue_watcher_and_event_listener", None
+    )
+    init_listener = getattr(instance, "async_initialize", None)
+    if callable(stop_listener) and callable(init_listener):
+        stop_listener()
+        init_listener()
+        setattr(instance, _ACTIVITY_FILTER_REBIND_MARKER, True)
+
+
+def _wrap_logbook_subscribe_events(
+    existing_subscribe: Callable[..., Any] | None,
+) -> Callable[..., Any] | None:
+    """Wrap logbook live subscription so excluded entities never emit activity rows."""
+    if not callable(existing_subscribe):
+        return existing_subscribe
+    if getattr(existing_subscribe, _ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER, False):
+        return existing_subscribe
+
+    def _wrapped_subscribe(
+        hass: HomeAssistant,
+        subscriptions: list[Callable[[], None]],
+        target: Callable[[Any], None],
+        event_types: Any,
+        entities_filter: Callable[[str], bool] | None,
+        entity_ids: list[str] | None,
+        device_ids: list[str] | None,
+    ) -> None:
+        @ha_callback
+        def _filtered_target(event: Any) -> None:
+            data = getattr(event, "data", None)
+            if isinstance(data, dict):
+                raw_entity = data.get("entity_id")
+                if isinstance(raw_entity, str) and _is_activity_log_excluded_entity(
+                    raw_entity
+                ):
+                    return
+                if isinstance(raw_entity, list):
+                    if any(
+                        _is_activity_log_excluded_entity(entity_id)
+                        for entity_id in raw_entity
+                    ):
+                        return
+                new_state = data.get("new_state")
+                if _is_activity_log_excluded_entity(
+                    getattr(new_state, "entity_id", None)
+                ):
+                    return
+            target(event)
+
+        existing_subscribe(
+            hass,
+            subscriptions,
+            _filtered_target,
+            event_types,
+            entities_filter,
+            entity_ids,
+            device_ids,
+        )
+
+    setattr(_wrapped_subscribe, _ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER, True)
+    return _wrapped_subscribe
+
+
+def _apply_activity_log_filter_excludes(hass: HomeAssistant) -> None:
+    """Exclude noisy timer entities from recorder/logbook filters."""
+    with suppress(Exception):
+        from homeassistant.components import recorder as recorder_component  # noqa: PLC0415
+
+        instance = recorder_component.get_instance(hass)
+        if instance is not None:
+            _refresh_recorder_entity_filter(instance)
+
+    with suppress(Exception):
+        from homeassistant.components.logbook import DOMAIN as LOGBOOK_DOMAIN  # noqa: PLC0415
+        from homeassistant.components.logbook import (  # noqa: PLC0415
+            helpers as logbook_helpers,
+        )
+        from homeassistant.components.logbook import (  # noqa: PLC0415
+            websocket_api as logbook_websocket_api,
+        )
+
+        logbook_data = hass.data.get(LOGBOOK_DOMAIN)
+        if logbook_data is not None and hasattr(logbook_data, "entity_filter"):
+            logbook_data.entity_filter = _wrap_activity_filter(
+                getattr(logbook_data, "entity_filter", None)
+            )
+
+        wrapped_subscribe = _wrap_logbook_subscribe_events(
+            getattr(logbook_helpers, "async_subscribe_events", None)
+        )
+        if callable(wrapped_subscribe):
+            logbook_helpers.async_subscribe_events = wrapped_subscribe
+            logbook_websocket_api.async_subscribe_events = wrapped_subscribe
 
 
 def _compute_session_fingerprint(index_payload: Any) -> str | None:
@@ -732,6 +888,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
+    live_mode_coordinator = None
     top_three_coordinator = None
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
@@ -846,6 +1003,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        live_mode_coordinator = LiveModeCoordinator(
+            hass,
+            race_control_coordinator,
+            config_entry=entry,
+            live_state=live_state,
+        )
 
     if race_coordinator:
         await race_coordinator.async_config_entry_first_refresh()
@@ -870,6 +1033,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await session_info_coordinator.async_config_entry_first_refresh()
     if race_control_coordinator:
         await race_control_coordinator.async_config_entry_first_refresh()
+    if live_mode_coordinator:
+        await live_mode_coordinator.async_config_entry_first_refresh()
     if weather_data_coordinator:
         await weather_data_coordinator.async_config_entry_first_refresh()
     if lap_count_coordinator:
@@ -988,6 +1153,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "session_info_coordinator": session_info_coordinator,
         "session_clock_coordinator": session_clock_coordinator,
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
+        "live_mode_coordinator": live_mode_coordinator if enable_rc else None,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
         "top_three_coordinator": top_three_coordinator,
@@ -1008,7 +1174,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "calibration_manager": calibration_manager,
         "formation_start_tracker": formation_tracker,
         "replay_controller": replay_controller,
+        "activity_filter_unsub": None,
     }
+
+    _apply_activity_log_filter_excludes(hass)
+    hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
+    if isinstance(hass_data, dict):
+
+        def _on_component_loaded(event):
+            component = str((getattr(event, "data", {}) or {}).get("component") or "")
+            if component in _ACTIVITY_FILTER_COMPONENTS:
+                _apply_activity_log_filter_excludes(hass)
+
+        hass_data["activity_filter_unsub"] = hass.bus.async_listen(
+            EVENT_COMPONENT_LOADED,
+            _on_component_loaded,
+        )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -1436,6 +1617,97 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             ).subscribe("RaceControlMessages", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
+
+
+class LiveModeCoordinator(DataUpdateCoordinator):
+    """Tracks the current 2026 active aero (Straight Mode) and Overtake Mode states.
+
+    Subscribes to RaceControlCoordinator updates to derive cumulative mode state.
+    Automatically resets when the live session window closes.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        race_control_coordinator: RaceControlCoordinator,
+        config_entry: ConfigEntry | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+    ):
+        super().__init__(
+            hass,
+            coordinator_logger("live_mode", suppress_manual=True),
+            name="F1 Live Mode Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._rc_coordinator = race_control_coordinator
+        self.available = True
+        self._state: dict = {"overtake_enabled": None, "straight_mode": None}
+        self._rc_unsub: Optional[Callable[[], None]] = None
+        self._live_state_unsub: Optional[Callable[[], None]] = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+
+    async def async_close(self, *_):
+        if self._rc_unsub:
+            with suppress(Exception):
+                self._rc_unsub()
+            self._rc_unsub = None
+        if self._live_state_unsub:
+            with suppress(Exception):
+                self._live_state_unsub()
+            self._live_state_unsub = None
+
+    async def _async_update_data(self):
+        return (
+            dict(self._state)
+            if any(v is not None for v in self._state.values())
+            else None
+        )
+
+    def _on_race_control_update(self) -> None:
+        item = self._rc_coordinator.data
+        if not item or not isinstance(item, dict):
+            return
+        if item.get("Category") != "Other":
+            return
+        message = item.get("Message", "")
+        prev = dict(self._state)
+        if message == RCM_OVERTAKE_ENABLED:
+            self._state["overtake_enabled"] = True
+        elif message == RCM_OVERTAKE_DISABLED:
+            self._state["overtake_enabled"] = False
+        elif message == RCM_STRAIGHT_NORMAL:
+            self._state["straight_mode"] = STRAIGHT_MODE_NORMAL
+        elif message == RCM_STRAIGHT_LOW:
+            self._state["straight_mode"] = STRAIGHT_MODE_LOW
+        elif message == RCM_STRAIGHT_DISABLED:
+            self._state["straight_mode"] = STRAIGHT_MODE_DISABLED
+        else:
+            return
+        if self._state != prev:
+            self.available = True
+            self.async_set_updated_data(dict(self._state))
+            if _LOGGER.isEnabledFor(logging.DEBUG):
+                _LOGGER.debug(
+                    "LiveMode: state updated overtake_enabled=%s straight_mode=%s",
+                    self._state["overtake_enabled"],
+                    self._state["straight_mode"],
+                )
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
+        self.available = is_live
+        if not is_live:
+            self._state = {"overtake_enabled": None, "straight_mode": None}
+            self.async_set_updated_data(None)
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        self._rc_unsub = self._rc_coordinator.async_add_listener(
+            self._on_race_control_update
+        )
 
 
 class LapCountCoordinator(DataUpdateCoordinator):
@@ -3771,6 +4043,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if isinstance(data_root, dict):
             data = data_root.pop(entry.entry_id, None)
         if isinstance(data, dict):
+            activity_filter_unsub = data.pop("activity_filter_unsub", None)
+            if callable(activity_filter_unsub):
+                with suppress(Exception):
+                    activity_filter_unsub()
             for name, obj in list(data.items()):
                 if obj is None:
                     continue
@@ -5455,8 +5731,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             and self._last_heartbeat_mono is not None
         ):
             elapsed = max(0.0, time.monotonic() - self._last_heartbeat_mono)
-            return self._last_heartbeat_utc + timedelta(seconds=elapsed)
-        return dt_util.utcnow()
+            now_utc = self._last_heartbeat_utc + timedelta(seconds=elapsed)
+        else:
+            now_utc = dt_util.utcnow()
+        delay_seconds = 0 if self._replay_mode else max(0, int(self._delay or 0))
+        if delay_seconds > 0:
+            now_utc = now_utc - timedelta(seconds=delay_seconds)
+        return now_utc
 
     def _current_live_window(self):
         live_supervisor = self._live_supervisor

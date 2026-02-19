@@ -95,8 +95,22 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "track_limits",
         "investigations",
         "calendar",
+        "overtake_mode",
+        "straight_mode",
     }
 )
+
+# 2026 regulation: RaceControlMessages strings for mode changes
+RCM_OVERTAKE_ENABLED = "OVERTAKE ENABLED"
+RCM_OVERTAKE_DISABLED = "OVERTAKE DISABLED"
+RCM_STRAIGHT_NORMAL = "STRAIGHT MODE - NORMAL GRIP"
+RCM_STRAIGHT_LOW = "STRAIGHT MODE - LOW GRIP"
+RCM_STRAIGHT_DISABLED = "STRAIGHT MODE - DISABLED"
+
+# Straight mode state values (used as sensor state and enum options)
+STRAIGHT_MODE_NORMAL = "normal_grip"
+STRAIGHT_MODE_LOW = "low_grip"
+STRAIGHT_MODE_DISABLED = "disabled"
 
 API_URL = "https://api.jolpi.ca/ergast/f1/current.json"
 DRIVER_STANDINGS_URL = (
