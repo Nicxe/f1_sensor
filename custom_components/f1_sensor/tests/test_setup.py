@@ -94,6 +94,7 @@ def test_activity_log_exclude_entity_matcher() -> None:
     assert _is_activity_log_excluded_entity("sensor.f1_track_time")
     assert _is_activity_log_excluded_entity("sensor.f1_session_time_remaining")
     assert _is_activity_log_excluded_entity("sensor.f1_session_time_elapsed")
+    assert _is_activity_log_excluded_entity("sensor.f1_race_time_to_three_hour_limit")
     assert not _is_activity_log_excluded_entity("sensor.f1_next_race")
     assert not _is_activity_log_excluded_entity("binary_sensor.f1_track_time")
 
@@ -177,6 +178,11 @@ def test_logbook_subscribe_wrapper_filters_excluded_entities() -> None:
     # Excluded timer entity should never reach target.
     filtered_target(  # type: ignore[operator]
         SimpleNamespace(data={"entity_id": "sensor.f1_session_time_elapsed"})
+    )
+    assert seen == []
+
+    filtered_target(  # type: ignore[operator]
+        SimpleNamespace(data={"entity_id": "sensor.f1_race_time_to_three_hour_limit"})
     )
     assert seen == []
 

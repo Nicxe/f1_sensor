@@ -87,6 +87,7 @@ _ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES = (
     "_track_time",
     "_session_time_remaining",
     "_session_time_elapsed",
+    "_race_time_to_three_hour_limit",
 )
 _ACTIVITY_FILTER_MARKER = "__f1_sensor_activity_filter__"
 _ACTIVITY_FILTER_REBIND_MARKER = "__f1_sensor_activity_filter_rebound__"
