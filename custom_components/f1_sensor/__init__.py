@@ -5455,8 +5455,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             and self._last_heartbeat_mono is not None
         ):
             elapsed = max(0.0, time.monotonic() - self._last_heartbeat_mono)
-            return self._last_heartbeat_utc + timedelta(seconds=elapsed)
-        return dt_util.utcnow()
+            now_utc = self._last_heartbeat_utc + timedelta(seconds=elapsed)
+        else:
+            now_utc = dt_util.utcnow()
+        delay_seconds = 0 if self._replay_mode else max(0, int(self._delay or 0))
+        if delay_seconds > 0:
+            now_utc = now_utc - timedelta(seconds=delay_seconds)
+        return now_utc
 
     def _current_live_window(self):
         live_supervisor = self._live_supervisor
