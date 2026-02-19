@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.f1_sensor import async_setup_entry
+from custom_components.f1_sensor import (
+    _is_activity_log_excluded_entity,
+    _refresh_recorder_entity_filter,
+    _wrap_logbook_subscribe_events,
+    _wrap_activity_filter,
+    async_setup_entry,
+)
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
@@ -81,6 +88,103 @@ def _coordinator_patches():
             DummyCoordinator,
         ),
     )
+
+
+def test_activity_log_exclude_entity_matcher() -> None:
+    assert _is_activity_log_excluded_entity("sensor.f1_track_time")
+    assert _is_activity_log_excluded_entity("sensor.f1_session_time_remaining")
+    assert _is_activity_log_excluded_entity("sensor.f1_session_time_elapsed")
+    assert not _is_activity_log_excluded_entity("sensor.f1_next_race")
+    assert not _is_activity_log_excluded_entity("binary_sensor.f1_track_time")
+
+
+def test_activity_log_filter_wrapper() -> None:
+    def base_filter(entity_id: str) -> bool:
+        return entity_id != "sensor.block_me"
+
+    wrapped = _wrap_activity_filter(base_filter)
+
+    assert not wrapped("sensor.f1_track_time")
+    assert not wrapped("sensor.f1_session_time_remaining")
+    assert not wrapped("sensor.block_me")
+    assert wrapped("sensor.f1_next_race")
+    assert _wrap_activity_filter(wrapped) is wrapped
+
+
+def test_refresh_recorder_entity_filter_rebinds_listener() -> None:
+    class _FakeRecorder:
+        def __init__(self) -> None:
+            self.entity_filter = None
+            self.recording = True
+            self.stop_calls = 0
+            self.init_calls = 0
+
+        def _async_stop_queue_watcher_and_event_listener(self) -> None:
+            self.stop_calls += 1
+
+        def async_initialize(self) -> None:
+            self.init_calls += 1
+
+    fake = _FakeRecorder()
+    _refresh_recorder_entity_filter(fake)
+    assert fake.stop_calls == 1
+    assert fake.init_calls == 1
+
+    # Migration case: filter is already wrapped but listener has not been rebound yet.
+    fake2 = _FakeRecorder()
+
+    def allow_all(_entity_id: str) -> bool:
+        return True
+
+    fake2.entity_filter = _wrap_activity_filter(allow_all)
+    _refresh_recorder_entity_filter(fake2)
+    assert fake2.stop_calls == 1
+    assert fake2.init_calls == 1
+    assert fake.entity_filter is not None
+
+    # Idempotent once wrapped
+    _refresh_recorder_entity_filter(fake)
+    assert fake.stop_calls == 1
+    assert fake.init_calls == 1
+
+
+def test_logbook_subscribe_wrapper_filters_excluded_entities() -> None:
+    captured: dict[str, object] = {}
+
+    def _base_subscribe(
+        _hass,
+        _subscriptions,
+        target,
+        _event_types,
+        _entities_filter,
+        _entity_ids,
+        _device_ids,
+    ) -> None:
+        captured["target"] = target
+
+    wrapped = _wrap_logbook_subscribe_events(_base_subscribe)
+    assert callable(wrapped)
+    assert _wrap_logbook_subscribe_events(wrapped) is wrapped
+
+    seen: list[str] = []
+
+    def _target(_event) -> None:
+        seen.append("called")
+
+    wrapped(None, [], _target, (), None, None, None)
+    filtered_target = captured["target"]
+
+    # Excluded timer entity should never reach target.
+    filtered_target(  # type: ignore[operator]
+        SimpleNamespace(data={"entity_id": "sensor.f1_session_time_elapsed"})
+    )
+    assert seen == []
+
+    # Non-excluded entity should pass through.
+    filtered_target(  # type: ignore[operator]
+        SimpleNamespace(data={"entity_id": "sensor.f1_next_race"})
+    )
+    assert seen == ["called"]
 
 
 @pytest.mark.asyncio

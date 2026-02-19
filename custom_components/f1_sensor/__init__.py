@@ -13,8 +13,9 @@ from pathlib import Path
 import time
 
 import async_timeout
+from homeassistant.const import EVENT_COMPONENT_LOADED
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback as ha_callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -74,10 +75,157 @@ _LOGGER = logging.getLogger(__name__)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
 _REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode", "replay-preparing"})
+_ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES = (
+    "_track_time",
+    "_session_time_remaining",
+    "_session_time_elapsed",
+)
+_ACTIVITY_FILTER_MARKER = "__f1_sensor_activity_filter__"
+_ACTIVITY_FILTER_REBIND_MARKER = "__f1_sensor_activity_filter_rebound__"
+_ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER = "__f1_sensor_activity_logbook_subscribe__"
+_ACTIVITY_FILTER_COMPONENTS = frozenset({"recorder", "logbook"})
 
 
 def _is_replay_delay_reason(reason: str | None) -> bool:
     return reason in _REPLAY_DELAY_REASONS
+
+
+def _is_activity_log_excluded_entity(entity_id: str | None) -> bool:
+    """Return True for high-frequency timer entities we do not want in activity log."""
+    if not entity_id or not isinstance(entity_id, str):
+        return False
+    entity_id_l = entity_id.lower()
+    if not entity_id_l.startswith("sensor."):
+        return False
+    return entity_id_l.endswith(_ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES)
+
+
+def _wrap_activity_filter(
+    existing_filter: Callable[[str], bool] | None,
+) -> Callable[[str], bool]:
+    """Wrap a recorder/logbook entity filter with f1 high-frequency excludes."""
+    if existing_filter is not None and getattr(
+        existing_filter, _ACTIVITY_FILTER_MARKER, False
+    ):
+        return existing_filter
+
+    def _wrapped(entity_id: str) -> bool:
+        if _is_activity_log_excluded_entity(entity_id):
+            return False
+        if existing_filter is None:
+            return True
+        return bool(existing_filter(entity_id))
+
+    setattr(_wrapped, _ACTIVITY_FILTER_MARKER, True)
+    return _wrapped
+
+
+def _refresh_recorder_entity_filter(instance: Any) -> None:
+    """Apply wrapped entity filter and rebind event listener when needed."""
+    current = getattr(instance, "entity_filter", None)
+    wrapped = _wrap_activity_filter(current)
+    changed = wrapped is not current
+    instance.entity_filter = wrapped
+    rebound = bool(getattr(instance, _ACTIVITY_FILTER_REBIND_MARKER, False))
+    needs_rebind = changed or not rebound
+    if not bool(getattr(instance, "recording", False)):
+        return
+    if not needs_rebind:
+        return
+    stop_listener = getattr(
+        instance, "_async_stop_queue_watcher_and_event_listener", None
+    )
+    init_listener = getattr(instance, "async_initialize", None)
+    if callable(stop_listener) and callable(init_listener):
+        stop_listener()
+        init_listener()
+        setattr(instance, _ACTIVITY_FILTER_REBIND_MARKER, True)
+
+
+def _wrap_logbook_subscribe_events(
+    existing_subscribe: Callable[..., Any] | None,
+) -> Callable[..., Any] | None:
+    """Wrap logbook live subscription so excluded entities never emit activity rows."""
+    if not callable(existing_subscribe):
+        return existing_subscribe
+    if getattr(existing_subscribe, _ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER, False):
+        return existing_subscribe
+
+    def _wrapped_subscribe(
+        hass: HomeAssistant,
+        subscriptions: list[Callable[[], None]],
+        target: Callable[[Any], None],
+        event_types: Any,
+        entities_filter: Callable[[str], bool] | None,
+        entity_ids: list[str] | None,
+        device_ids: list[str] | None,
+    ) -> None:
+        @ha_callback
+        def _filtered_target(event: Any) -> None:
+            data = getattr(event, "data", None)
+            if isinstance(data, dict):
+                raw_entity = data.get("entity_id")
+                if isinstance(raw_entity, str) and _is_activity_log_excluded_entity(
+                    raw_entity
+                ):
+                    return
+                if isinstance(raw_entity, list):
+                    if any(
+                        _is_activity_log_excluded_entity(entity_id)
+                        for entity_id in raw_entity
+                    ):
+                        return
+                new_state = data.get("new_state")
+                if _is_activity_log_excluded_entity(
+                    getattr(new_state, "entity_id", None)
+                ):
+                    return
+            target(event)
+
+        existing_subscribe(
+            hass,
+            subscriptions,
+            _filtered_target,
+            event_types,
+            entities_filter,
+            entity_ids,
+            device_ids,
+        )
+
+    setattr(_wrapped_subscribe, _ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER, True)
+    return _wrapped_subscribe
+
+
+def _apply_activity_log_filter_excludes(hass: HomeAssistant) -> None:
+    """Exclude noisy timer entities from recorder/logbook filters."""
+    with suppress(Exception):
+        from homeassistant.components import recorder as recorder_component  # noqa: PLC0415
+
+        instance = recorder_component.get_instance(hass)
+        if instance is not None:
+            _refresh_recorder_entity_filter(instance)
+
+    with suppress(Exception):
+        from homeassistant.components.logbook import DOMAIN as LOGBOOK_DOMAIN  # noqa: PLC0415
+        from homeassistant.components.logbook import (  # noqa: PLC0415
+            helpers as logbook_helpers,
+        )
+        from homeassistant.components.logbook import (  # noqa: PLC0415
+            websocket_api as logbook_websocket_api,
+        )
+
+        logbook_data = hass.data.get(LOGBOOK_DOMAIN)
+        if logbook_data is not None and hasattr(logbook_data, "entity_filter"):
+            logbook_data.entity_filter = _wrap_activity_filter(
+                getattr(logbook_data, "entity_filter", None)
+            )
+
+        wrapped_subscribe = _wrap_logbook_subscribe_events(
+            getattr(logbook_helpers, "async_subscribe_events", None)
+        )
+        if callable(wrapped_subscribe):
+            logbook_helpers.async_subscribe_events = wrapped_subscribe
+            logbook_websocket_api.async_subscribe_events = wrapped_subscribe
 
 
 def _compute_session_fingerprint(index_payload: Any) -> str | None:
@@ -1008,7 +1156,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "calibration_manager": calibration_manager,
         "formation_start_tracker": formation_tracker,
         "replay_controller": replay_controller,
+        "activity_filter_unsub": None,
     }
+
+    _apply_activity_log_filter_excludes(hass)
+    hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
+    if isinstance(hass_data, dict):
+
+        def _on_component_loaded(event):
+            component = str((getattr(event, "data", {}) or {}).get("component") or "")
+            if component in _ACTIVITY_FILTER_COMPONENTS:
+                _apply_activity_log_filter_excludes(hass)
+
+        hass_data["activity_filter_unsub"] = hass.bus.async_listen(
+            EVENT_COMPONENT_LOADED,
+            _on_component_loaded,
+        )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -3771,6 +3934,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if isinstance(data_root, dict):
             data = data_root.pop(entry.entry_id, None)
         if isinstance(data, dict):
+            activity_filter_unsub = data.pop("activity_filter_unsub", None)
+            if callable(activity_filter_unsub):
+                with suppress(Exception):
+                    activity_filter_unsub()
             for name, obj in list(data.items()):
                 if obj is None:
                     continue
