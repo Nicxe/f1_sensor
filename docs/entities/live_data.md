@@ -104,8 +104,10 @@ Use this section to understand the possible values for enum-type states and attr
 
 | Entity                                                | Info                                                                                                                 |  
 | --------                                              | --------                                                                                                              |  
-| [sensor.f1_session_status](#session-status)           | Current session phase| 
-| [sensor.f1_current_session](#current-session)         | Current ongoing session, like Practice 1, Qualification, Race| 
+| [sensor.f1_session_status](#session-status)           | Current session phase|
+| [sensor.f1_current_session](#current-session)         | Current ongoing session, like Practice 1, Qualification, Race|
+| [sensor.f1_session_time_elapsed](#session-time-elapsed) | Time elapsed in the current session `(beta)` |
+| [sensor.f1_session_time_remaining](#session-time-remaining) | Time remaining in the current session `(beta)` |
 | [sensor.f1_track_status](#track-status)               | Current track status |
 | [binary_sensor.f1_safety_car](#safety-car)            | Safety Car (SC) or Virtual Safety Car (VSC) is active|  
 | [sensor.f1_race_lap_count](#race-lap)                 | Current race lap number|
@@ -193,6 +195,92 @@ Qualifying
 | live_status | string | Raw `SessionStatus` message (`Started`, `Finished`, etc.) |
 | active | boolean | True when live running is active |
 | last_label | string | Last resolved label when not active |
+
+---
+
+## Session Time Elapsed
+
+:::caution Beta
+This sensor is currently in beta. The behavior has not been verified across all session types, edge cases (red flags, suspensions, qualifying segments), and timing scenarios. Treat the values as indicative rather than definitive until further testing is complete.
+:::
+
+`sensor.f1_session_time_elapsed` - How much of the scheduled session time has passed, based on the F1 ExtrapolatedClock feed. The clock advances in real time while a session is running and pauses during interruptions such as red flags or safety car delays.
+
+**State**
+- String: elapsed time formatted as `H:MM:SS` (e.g., `0:23:45`), or `unavailable` when no data is available.
+
+**Example**
+```text
+0:23:45
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| session_type | string | Session type (e.g., "Practice", "Qualifying", "Race") |
+| session_name | string | Session name (e.g., "Practice 1", "Race") |
+| session_part | number | Session part, for example the qualifying segment (Q1/Q2/Q3) |
+| session_status | string | Current session status from the feed |
+| clock_phase | string | Clock state: `idle`, `running`, `paused`, or `finished` |
+| clock_running | boolean | Whether the clock is actively counting |
+| source_quality | string | Data source reliability (see below) |
+| session_start_utc | string | ISO‑8601 timestamp of the session start |
+| reference_utc | string | ISO‑8601 timestamp used as the clock reference point |
+| last_server_utc | string | ISO‑8601 timestamp of the last server heartbeat |
+| value_seconds | number | Elapsed time in whole seconds |
+| formatted_hms | string | Elapsed time formatted as `H:MM:SS` |
+| clock_total_s | number | Total scheduled session duration in seconds, when known |
+| clock_remaining_s | number | Remaining time in seconds, when known |
+
+**`source_quality` values**
+
+| Value | Description |
+| --- | --- |
+| `official` | Clock data from ExtrapolatedClock with server heartbeat confirmation |
+| `official_no_heartbeat` | Clock data from ExtrapolatedClock, but no heartbeat received yet |
+| `sessiondata_fallback` | Elapsed time estimated from session schedule data, not from the live clock feed |
+| `unavailable` | No usable timing data available |
+
+---
+
+## Session Time Remaining
+
+:::caution Beta
+This sensor is currently in beta. The behavior has not been verified across all session types, edge cases (red flags, suspensions, qualifying segments), and timing scenarios. Treat the values as indicative rather than definitive until further testing is complete.
+:::
+
+`sensor.f1_session_time_remaining` - How much scheduled session time is left, based on the F1 ExtrapolatedClock feed. Like the elapsed sensor, this clock pauses during interruptions and resumes when the session restarts.
+
+**State**
+- String: remaining time formatted as `H:MM:SS` (e.g., `0:36:15`), or `unavailable` when no data is available.
+
+**Example**
+```text
+0:36:15
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| session_type | string | Session type (e.g., "Practice", "Qualifying", "Race") |
+| session_name | string | Session name (e.g., "Practice 1", "Race") |
+| session_part | number | Session part, for example the qualifying segment (Q1/Q2/Q3) |
+| session_status | string | Current session status from the feed |
+| clock_phase | string | Clock state: `idle`, `running`, `paused`, or `finished` |
+| clock_running | boolean | Whether the clock is actively counting |
+| source_quality | string | Data source reliability (see `source_quality` values above) |
+| session_start_utc | string | ISO‑8601 timestamp of the session start |
+| reference_utc | string | ISO‑8601 timestamp used as the clock reference point |
+| last_server_utc | string | ISO‑8601 timestamp of the last server heartbeat |
+| value_seconds | number | Remaining time in whole seconds |
+| formatted_hms | string | Remaining time formatted as `H:MM:SS` |
+| clock_total_s | number | Total scheduled session duration in seconds, when known |
+
+:::info Session clock behavior
+The session clock counts down the scheduled duration of the session. It does not account for race laps — in a race, the session ends when the leader completes the required number of laps, which may happen before or (rarely) after the scheduled time expires. Use `sensor.f1_race_lap_count` for lap-based progress.
+:::
 
 ---
 
