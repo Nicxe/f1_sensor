@@ -1,0 +1,78 @@
+name: 🧩 Blueprint
+description: Report a problem or ask a question about an F1 Sensor blueprint
+title: "[Blueprint]: "
+labels: ["blueprint"]
+assignees: ["Nicxe"]
+body:
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I am running the latest version of F1 Sensor
+          required: true
+        - label: I have searched existing issues for similar blueprint problems
+          required: true
+        - label: I have read the blueprint documentation
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: F1 Sensor Version
+      placeholder: e.g. 3.0.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: blueprint_name
+    attributes:
+      label: Blueprint
+      description: Which blueprint does this relate to?
+      options:
+        - Race Notification
+        - Session Notification
+        - Track Status Light
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: blueprint_other
+    attributes:
+      label: Blueprint name (if Other)
+      description: If you selected Other above, specify which blueprint.
+      placeholder: e.g. My custom blueprint
+
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Type
+      description: Is this a bug or a question?
+      options:
+        - Bug – the blueprint is not working as expected
+        - Question – I need help configuring or using the blueprint
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the problem or question in detail. What did you expect to happen, and what actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Blueprint Configuration
+      description: Paste your blueprint configuration (YAML) or describe how you have set it up.
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant Home Assistant logs, if applicable.
+      render: shell
