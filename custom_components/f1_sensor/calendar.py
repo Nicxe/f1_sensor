@@ -132,11 +132,15 @@ class F1SeasonCalendar(F1BaseEntity, CalendarEntity):
     ) -> list[CalendarEvent]:
         """Return calendar events within a datetime range."""
         events = self._build_events()
+<<<<<<< Updated upstream
         return [
             ev
             for ev in events
             if ev.end > start_date and ev.start < end_date
         ]
+=======
+        return [ev for ev in events if ev.end > start_date and ev.start < end_date]
+>>>>>>> Stashed changes
 
     # -- internal ------------------------------------------------------------
 
@@ -179,9 +183,13 @@ class F1SeasonCalendar(F1BaseEntity, CalendarEntity):
 
             for key in SESSION_ORDER:
                 if key == "Race":
+<<<<<<< Updated upstream
                     dt = _parse_session_datetime(
                         race.get("date"), race.get("time")
                     )
+=======
+                    dt = _parse_session_datetime(race.get("date"), race.get("time"))
+>>>>>>> Stashed changes
                 else:
                     session_data = race.get(key)
                     if not session_data or not isinstance(session_data, dict):

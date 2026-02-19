@@ -20,6 +20,7 @@ KNOWN_STREAMS = {
     "WeatherData",
     "LapCount",
     "SessionInfo",
+    "SessionData",
     "TimingData",
     "DriverList",
     "TimingAppData",
