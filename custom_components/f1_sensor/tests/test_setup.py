@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -59,6 +60,9 @@ class FakeLiveSupervisor:
     async def async_start(self) -> None:
         return None
 
+    def wake(self) -> None:
+        return None
+
 
 def _coordinator_patches():
     """Return context managers that replace all coordinator classes with DummyCoordinator."""
@@ -81,22 +85,28 @@ def _coordinator_patches():
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:
-    with (
-        patch(
-            "custom_components.f1_sensor.build_user_agent",
-            AsyncMock(return_value="ua"),
-        ),
-        patch("custom_components.f1_sensor.LiveBus", FakeLiveBus),
-        patch(
-            "custom_components.f1_sensor.LiveSessionCoordinator",
-            DummyCoordinator,
-        ),
-        patch(
-            "custom_components.f1_sensor.ReplayController",
-            FakeReplayController,
-        ),
-        *_coordinator_patches(),
-    ):
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        for cm in _coordinator_patches():
+            stack.enter_context(cm)
         hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
 
         result = await async_setup_entry(hass, mock_config_entry)
@@ -126,30 +136,40 @@ async def test_async_setup_entry_live_mode_wires_event_tracker_fallback(hass) ->
     entry.add_to_hass(hass)
     sentinel_source = object()
 
-    with (
-        patch(
-            "custom_components.f1_sensor.build_user_agent",
-            AsyncMock(return_value="ua"),
-        ),
-        patch("custom_components.f1_sensor.LiveBus", FakeLiveBus),
-        patch(
-            "custom_components.f1_sensor.LiveSessionCoordinator",
-            DummyCoordinator,
-        ),
-        patch(
-            "custom_components.f1_sensor.ReplayController",
-            FakeReplayController,
-        ),
-        patch(
-            "custom_components.f1_sensor.EventTrackerScheduleSource",
-            lambda *_args, **_kwargs: sentinel_source,
-        ),
-        patch(
-            "custom_components.f1_sensor.LiveSessionSupervisor",
-            FakeLiveSupervisor,
-        ),
-        *_coordinator_patches(),
-    ):
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.EventTrackerScheduleSource",
+                lambda *_args, **_kwargs: sentinel_source,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionSupervisor",
+                FakeLiveSupervisor,
+            )
+        )
+        for cm in _coordinator_patches():
+            stack.enter_context(cm)
         hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
         result = await async_setup_entry(hass, entry)
 

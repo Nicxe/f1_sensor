@@ -163,7 +163,7 @@ async def test_index_403_uses_event_tracker(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_index_healthy_past_schedule_does_not_use_fallback(hass) -> None:
+async def test_index_healthy_past_schedule_uses_fallback(hass) -> None:
     now = dt_util.utcnow()
     payload = {
         "Meetings": [
@@ -201,11 +201,11 @@ async def test_index_healthy_past_schedule_does_not_use_fallback(hass) -> None:
 
     window, source = await supervisor._resolve_window()
 
-    assert window is None
-    assert source == "none"
-    assert fallback.calls == 0
-    assert supervisor.schedule_source == "none"
-    assert supervisor.fallback_active is False
+    assert window is not None
+    assert source == "event_tracker"
+    assert fallback.calls == 1
+    assert supervisor.schedule_source == "event_tracker"
+    assert supervisor.fallback_active is True
 
 
 @pytest.mark.asyncio
@@ -520,7 +520,7 @@ async def test_no_legacy_blind_fallback_when_both_down(monkeypatch, hass) -> Non
         supervisor._stopped = True
         return None
 
-    monkeypatch.setattr(live_window.asyncio, "sleep", _stop_sleep)
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _stop_sleep)
     await supervisor._runner()
 
     assert bus.started is False
