@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 
 import pytest
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.const import STATE_UNAVAILABLE, UnitOfTemperature
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.json import json_bytes
@@ -26,6 +27,7 @@ from custom_components.f1_sensor.sensor import (
     F1PitStopsSensor,
     F1SeasonResultsSensor,
     F1SprintResultsSensor,
+    F1WeatherSensor,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -572,6 +574,23 @@ async def test_standings_sensor_counts_expandable(hass) -> None:
     assert state is not None
     assert state.state == "11"
     assert len(state.attributes["constructor_standings"]) == 11
+
+
+def test_weather_sensor_uses_celsius_unit(hass) -> None:
+    coordinator = _build_coordinator(hass, {"MRData": {"RaceTable": {"Races": []}}})
+    entry_id = "test_entry"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1WeatherSensor(
+        coordinator,
+        "F1 Weather",
+        f"{entry_id}_weather",
+        entry_id,
+        "F1",
+    )
+
+    assert sensor.device_class == SensorDeviceClass.TEMPERATURE
+    assert sensor.native_unit_of_measurement == UnitOfTemperature.CELSIUS
 
 
 @pytest.mark.asyncio

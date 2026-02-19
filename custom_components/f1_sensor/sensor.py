@@ -19,6 +19,7 @@ from homeassistant.helpers.event import (
     async_track_utc_time_change,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import EntityCategory
@@ -898,6 +899,8 @@ class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:weather-partly-cloudy"
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._current = {}
         self._race = {}
         self._circuit = {}
