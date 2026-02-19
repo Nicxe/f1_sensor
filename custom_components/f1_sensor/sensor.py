@@ -3028,7 +3028,7 @@ class F1RaceTimeToThreeHourLimitSensor(F1SessionClockBaseSensor):
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
-        self._attr_icon = "mdi:flag-clock"
+        self._attr_icon = "mdi:car-clock"
 
     @staticmethod
     def _is_main_race(state: dict) -> bool:
@@ -5324,8 +5324,7 @@ class F1CurrentTyresSensor(_CoordinatorStreamSensorBase):
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
-        # Icon for tyres; can be adjusted if a better one is found
-        self._attr_icon = "mdi:wheel"
+        self._attr_icon = "mdi:tire"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {"drivers": []}
 
