@@ -40,6 +40,7 @@ async def async_setup_entry(
 class F1LiveDelayNumber(F1AuxEntity, NumberEntity):
     """Configurable number entity that mirrors the calibrated live delay."""
 
+    _device_category = "system"
     _attr_native_min_value = 0
     _attr_native_max_value = 300
     _attr_native_step = 1

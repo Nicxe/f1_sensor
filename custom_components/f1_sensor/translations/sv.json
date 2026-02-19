@@ -1,4 +1,27 @@
 {
+    "device_automation": {
+        "trigger_type": {
+            "race_week_started": "Tävlingsveckan har börjat",
+            "race_week_ended": "Tävlingsveckan har avslutats",
+            "safety_car_deployed": "Safety car utsänd",
+            "safety_car_cleared": "Safety car indragen",
+            "formation_start_ready": "Formationsstart redo",
+            "overtake_mode_enabled": "Omkörningstillstånd aktiverat",
+            "overtake_mode_disabled": "Omkörningstillstånd inaktiverat",
+            "session_live": "Session startad live",
+            "track_status_clear": "Banstatus: Klar",
+            "track_status_yellow": "Banstatus: Gul flagg",
+            "track_status_safety_car": "Banstatus: Safety car",
+            "track_status_vsc": "Banstatus: Virtuell safety car",
+            "track_status_red_flag": "Banstatus: Röd flagg",
+            "new_race_control_message": "Nytt Race Control-meddelande",
+            "new_fia_document": "Nytt FIA-dokument publicerat",
+            "investigation_changed": "Utredningsstatus ändrad",
+            "new_team_radio": "Nytt teamradio-meddelande",
+            "live_timing_online": "Live timing online",
+            "live_timing_offline": "Live timing offline"
+        }
+    },
     "config": {
         "step": {
             "user": {

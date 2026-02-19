@@ -11,6 +11,15 @@ from .const import (
     OPERATION_MODE_DEVELOPMENT,
 )
 
+DEVICE_CATEGORIES: dict[str, str] = {
+    "race": "Race",
+    "championship": "Championship",
+    "session": "Session",
+    "drivers": "Drivers",
+    "officials": "Officials",
+    "system": "System",
+}
+
 
 def _safe_write_ha_state(entity: Entity) -> None:
     """Thread-safe request to write entity state."""
@@ -42,6 +51,8 @@ def _safe_write_ha_state(entity: Entity) -> None:
 class F1BaseEntity(CoordinatorEntity):
     """Common base entity for F1 sensors."""
 
+    _device_category: str = "system"
+
     def __init__(self, coordinator, name, unique_id, entry_id, device_name):
         super().__init__(coordinator)
         self._attr_name = name
@@ -52,11 +63,12 @@ class F1BaseEntity(CoordinatorEntity):
 
     @property
     def device_info(self):
+        label = DEVICE_CATEGORIES.get(self._device_category, "System")
         return {
-            "identifiers": {(DOMAIN, self._entry_id)},
-            "name": self._device_name,
+            "identifiers": {(DOMAIN, f"{self._entry_id}_{self._device_category}")},
+            "name": f"{self._device_name} - {label}",
             "manufacturer": "Nicxe",
-            "model": "F1 Sensor",
+            "model": f"F1 Sensor - {label}",
         }
 
     @property
@@ -199,6 +211,8 @@ class F1BaseEntity(CoordinatorEntity):
 class F1AuxEntity(Entity):
     """Helper base for entities that do not use a coordinator but share device info."""
 
+    _device_category: str = "system"
+
     def __init__(self, name: str, unique_id: str, entry_id: str, device_name: str):
         super().__init__()
         self._attr_name = name
@@ -233,9 +247,10 @@ class F1AuxEntity(Entity):
 
     @property
     def device_info(self):
+        label = DEVICE_CATEGORIES.get(self._device_category, "System")
         return {
-            "identifiers": {(DOMAIN, self._entry_id)},
-            "name": self._device_name,
+            "identifiers": {(DOMAIN, f"{self._entry_id}_{self._device_category}")},
+            "name": f"{self._device_name} - {label}",
             "manufacturer": "Nicxe",
-            "model": "F1 Sensor",
+            "model": f"F1 Sensor - {label}",
         }

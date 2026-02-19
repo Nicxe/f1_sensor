@@ -53,6 +53,7 @@ async def async_setup_entry(
 class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
     """Media player entity exposing replay progress and controls."""
 
+    _device_category = "system"
     _attr_supported_features = (
         MediaPlayerEntityFeature.PLAY
         | MediaPlayerEntityFeature.PAUSE

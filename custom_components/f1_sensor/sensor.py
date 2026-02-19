@@ -350,6 +350,7 @@ async def async_setup_entry(
 class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
     """Diagnostic mode sensor for the live timing transport (idle/live/replay)."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:information-outline"
     _attr_device_class = SensorDeviceClass.ENUM
@@ -492,6 +493,8 @@ class _NextRaceMixin:
 class _PointsProgressionBase(F1BaseEntity, RestoreEntity, SensorEntity):
     """Base for points progression sensors with shared setup/refresh logic."""
 
+    _device_category = "championship"
+
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:chart-line"
@@ -523,6 +526,8 @@ class _PointsProgressionBase(F1BaseEntity, RestoreEntity, SensorEntity):
 
 class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
     """Base class for coordinator-driven live sensors with change detection."""
+
+    _device_category = "drivers"
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -562,6 +567,7 @@ class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
 class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
     """Base for championship prediction sensors with shared restore logic."""
 
+    _device_category = "championship"
     _DEFAULT_ICON = "mdi:trophy"
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
@@ -621,6 +627,8 @@ class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
 
 class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
     """Sensor that returns date/time (ISO8601) for the next race in 'state'."""
+
+    _device_category = "race"
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -712,6 +720,8 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
 class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
     """Sensor showing current local time at the circuit."""
 
+    _device_category = "race"
+
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:clock-outline"
@@ -793,6 +803,7 @@ class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
 class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
     """Sensor showing number of races this season."""
 
+    _device_category = "race"
     _unrecorded_attributes = frozenset({"races"})
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
@@ -825,6 +836,8 @@ class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
 
 class F1DriverStandingsSensor(F1BaseEntity, SensorEntity):
     """Sensor for driver standings."""
+
+    _device_category = "championship"
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -861,6 +874,8 @@ class F1DriverStandingsSensor(F1BaseEntity, SensorEntity):
 class F1ConstructorStandingsSensor(F1BaseEntity, SensorEntity):
     """Sensor for constructor standings."""
 
+    _device_category = "championship"
+
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:factory"
@@ -895,6 +910,8 @@ class F1ConstructorStandingsSensor(F1BaseEntity, SensorEntity):
 
 class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
     """Sensor for current and race-start weather."""
+
+    _device_category = "race"
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -1105,6 +1122,8 @@ class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
 class F1LastRaceSensor(F1BaseEntity, SensorEntity):
     """Sensor for results of the latest race."""
 
+    _device_category = "race"
+
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:trophy"
@@ -1181,6 +1200,7 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
 class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
     """Sensor for full season results."""
 
+    _device_category = "race"
     _unrecorded_attributes = frozenset({"races"})
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
@@ -1238,6 +1258,7 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
 class F1SprintResultsSensor(F1BaseEntity, SensorEntity):
     """Sensor exposing sprint results across the current season."""
 
+    _device_category = "race"
     _unrecorded_attributes = frozenset({"races"})
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
@@ -1297,6 +1318,7 @@ class F1SprintResultsSensor(F1BaseEntity, SensorEntity):
 class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Sensor that tracks FIA decision documents per race weekend."""
 
+    _device_category = "officials"
     _DOC1_RESET_PATTERN = re.compile(
         r"\bdoc(?:ument)?(?:\s+(?:no\.?|number))?\s*0*1\b",
         re.IGNORECASE,
@@ -2022,6 +2044,8 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     wind speed and direction, with units. Restores last value on restart if no live data yet.
     """
 
+    _device_category = "session"
+
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:thermometer"
@@ -2218,6 +2242,8 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Track status sensor independent from flag logic."""
 
+    _device_category = "session"
+
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
@@ -2346,6 +2372,8 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - State: TLA (t.ex. VER) för vald position när Withheld är False.
     - Attribut: withhold-flagga och fält för just den positionen.
     """
+
+    _device_category = "drivers"
 
     def __init__(
         self,
@@ -2609,6 +2637,8 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
 class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Sensor mapping SessionStatus to semantic states for automations."""
+
+    _device_category = "session"
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -2916,6 +2946,7 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 class F1SessionClockBaseSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Base sensor for derived session clock values."""
 
+    _device_category = "session"
     _value_key: str = ""
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
@@ -3089,6 +3120,8 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                   session_part (numeric), resolved_label, and raw payloads; includes live status from SessionStatus if available.
     - Behavior: restores last state on restart; respects global live delay via coordinator.
     """
+
+    _device_category = "session"
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -3385,6 +3418,7 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Expose the latest Race Control message as an easy-to-use sensor."""
 
+    _device_category = "officials"
     _history_limit = 5
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
@@ -3629,6 +3663,8 @@ class F1TrackLimitsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         - total_penalties: Count of track limits penalties
         - last_update: ISO timestamp of last update
     """
+
+    _device_category = "officials"
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -3952,6 +3988,8 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         - penalties: List of pending penalties awaiting service
         - last_update: ISO timestamp of last update
     """
+
+    _device_category = "officials"
 
     # NFI decisions expire after this many seconds
     NFI_EXPIRY_SECONDS = 300  # 5 minutes
@@ -4475,6 +4513,7 @@ class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - Attributes: racing_number, path, received_at, sequence, history, raw_message
     """
 
+    _device_category = "drivers"
     _history_limit = 20
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
@@ -4666,6 +4705,7 @@ class F1PitStopsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - Attributes: cars (dict keyed by racing number), last_update
     """
 
+    _device_category = "drivers"
     _unrecorded_attributes = frozenset({"cars"})
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
@@ -4820,6 +4860,8 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - Attributes: total_laps (if present), measurement_time, measurement_age_seconds, received_at, raw
     - Restore: Remembers last value/attributes on restart and keeps them until new feed data arrives.
     """
+
+    _device_category = "session"
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -5078,6 +5120,8 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - Attributes: drivers: [ { racing_number, tla, name, first_name, last_name, team, team_color, headshot_small, headshot_large, reference } ]
     - Behavior: restores last known state; logs only on change; respects consolidated drivers coordinator.
     """
+
+    _device_category = "drivers"
 
     def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
         super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
@@ -5557,6 +5601,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
           }
     """
 
+    _device_category = "drivers"
     _unrecorded_attributes = frozenset({"drivers"})
     _PIT_OUT_HOLD_SECONDS = 6.0
 
@@ -5958,6 +6003,7 @@ class F1StraightModeSensor(F1BaseEntity, SensorEntity):
     allowed), low grip (limited aero), and disabled (aero off).
     """
 
+    _device_category = "session"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = [STRAIGHT_MODE_NORMAL, STRAIGHT_MODE_LOW, STRAIGHT_MODE_DISABLED]
     _attr_icon = "mdi:car-speed-limiter"

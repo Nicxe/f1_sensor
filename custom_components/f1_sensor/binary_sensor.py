@@ -137,6 +137,8 @@ async def async_setup_entry(
 class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
     """Binary sensor indicating if it's currently race week."""
 
+    _device_category = "race"
+
     def __init__(
         self,
         coordinator,
@@ -206,6 +208,8 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
 
 class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     """Binary sensor indicating if the Safety Car or VSC is active."""
+
+    _device_category = "session"
 
     def __init__(self, coordinator, name, unique_id, entry_id, device_name):
         super().__init__(coordinator, name, unique_id, entry_id, device_name)
@@ -318,6 +322,7 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
 class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
     """Binary sensor indicating the formation start marker for races/sprints."""
 
+    _device_category = "session"
     _attr_device_class = None
 
     def __init__(
@@ -416,6 +421,7 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
     - OFF: outside window / idle.
     """
 
+    _device_category = "system"
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:access-point"
@@ -532,6 +538,7 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, BinarySensorEntity):
     message to signal availability.
     """
 
+    _device_category = "session"
     _attr_device_class = None
     _attr_icon = "mdi:lightning-bolt"
 

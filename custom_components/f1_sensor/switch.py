@@ -36,6 +36,7 @@ async def async_setup_entry(
 class F1DelayCalibrationSwitch(F1AuxEntity, SwitchEntity):
     """Toggle to arm/cancel the live delay calibration workflow."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(

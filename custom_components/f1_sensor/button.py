@@ -109,6 +109,7 @@ async def async_setup_entry(
 class F1MatchDelayButton(F1AuxEntity, ButtonEntity):
     """Button that captures the elapsed calibration time and applies it."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
@@ -170,6 +171,7 @@ class F1MatchDelayButton(F1AuxEntity, ButtonEntity):
 class F1JolpicaUserAgentTestButton(F1AuxEntity, ButtonEntity):
     """Diagnostic button that performs a single Jolpica call and logs the UA used."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:bug"
 

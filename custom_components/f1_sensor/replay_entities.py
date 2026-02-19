@@ -25,6 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 class F1ReplayYearSelect(F1AuxEntity, SelectEntity):
     """Select entity for choosing replay year."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_should_poll = False
 
@@ -107,6 +108,7 @@ class F1ReplayYearSelect(F1AuxEntity, SelectEntity):
 class F1ReplaySessionSelect(F1AuxEntity, SelectEntity):
     """Select entity for choosing replay session."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_should_poll = False
 
@@ -193,6 +195,7 @@ class F1ReplaySessionSelect(F1AuxEntity, SelectEntity):
 class F1ReplayStartReferenceSelect(F1AuxEntity, SelectEntity):
     """Select entity for choosing replay playback start reference."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_should_poll = False
 
@@ -255,6 +258,7 @@ class F1ReplayStartReferenceSelect(F1AuxEntity, SelectEntity):
 class F1ReplayLoadButton(F1AuxEntity, ButtonEntity):
     """Button to load selected session."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
@@ -294,6 +298,7 @@ class F1ReplayLoadButton(F1AuxEntity, ButtonEntity):
 class F1ReplayPlayButton(F1AuxEntity, ButtonEntity):
     """Button to start or resume playback."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
@@ -336,6 +341,7 @@ class F1ReplayPlayButton(F1AuxEntity, ButtonEntity):
 class F1ReplayPauseButton(F1AuxEntity, ButtonEntity):
     """Button to pause playback."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
@@ -360,6 +366,7 @@ class F1ReplayPauseButton(F1AuxEntity, ButtonEntity):
 class F1ReplayStopButton(F1AuxEntity, ButtonEntity):
     """Button to stop replay and return to idle mode."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
@@ -383,6 +390,7 @@ class F1ReplayStopButton(F1AuxEntity, ButtonEntity):
 class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
     """Sensor showing replay status and progress."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_should_poll = False
 
@@ -483,6 +491,7 @@ class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
 class F1ReplayRefreshButton(F1AuxEntity, ButtonEntity):
     """Button to refresh the session list."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(

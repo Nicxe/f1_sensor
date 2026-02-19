@@ -1,4 +1,27 @@
 {
+    "device_automation": {
+        "trigger_type": {
+            "race_week_started": "Race week has started",
+            "race_week_ended": "Race week has ended",
+            "safety_car_deployed": "Safety car deployed",
+            "safety_car_cleared": "Safety car cleared",
+            "formation_start_ready": "Formation start ready",
+            "overtake_mode_enabled": "Overtake mode enabled",
+            "overtake_mode_disabled": "Overtake mode disabled",
+            "session_live": "Session went live",
+            "track_status_clear": "Track status: Clear",
+            "track_status_yellow": "Track status: Yellow flag",
+            "track_status_safety_car": "Track status: Safety car",
+            "track_status_vsc": "Track status: Virtual safety car",
+            "track_status_red_flag": "Track status: Red flag",
+            "new_race_control_message": "New race control message",
+            "new_fia_document": "New FIA document published",
+            "investigation_changed": "Investigation status changed",
+            "new_team_radio": "New team radio message",
+            "live_timing_online": "Live timing came online",
+            "live_timing_offline": "Live timing went offline"
+        }
+    },
     "config": {
         "step": {
             "user": {

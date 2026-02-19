@@ -97,6 +97,7 @@ async def async_setup_entry(
 class F1LiveDelayReferenceSelect(F1AuxEntity, SelectEntity):
     """Select entity to choose the live delay calibration reference."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:clock-sync"
 

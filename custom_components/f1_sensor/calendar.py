@@ -95,6 +95,7 @@ async def async_setup_entry(
 class F1SeasonCalendar(F1BaseEntity, CalendarEntity):
     """Calendar entity showing all F1 sessions for the current season."""
 
+    _device_category = "race"
     _attr_icon = "mdi:calendar-month"
 
     def __init__(self, coordinator, name, unique_id, entry_id, device_name):
