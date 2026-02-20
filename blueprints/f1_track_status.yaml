@@ -7,6 +7,8 @@ blueprint:
 
     Core behavior: choose session and track sensors, then map track states to colors.
 
+    Requires F1 Sensor live entities for track/session status to be enabled in integration settings.
+
     Advanced options include scene snapshots, timed or continuous flashing, clear-state auto-restore,
     and flexible session-end behavior.
 
@@ -414,6 +416,14 @@ variables:
 
   track_state: "{{ states(track_status_entity) | upper }}"
   session_phase: "{{ states(session_status_entity) | lower }}"
+  valid_session_phases:
+    - pre
+    - live
+    - suspended
+    - break
+    - finished
+    - finalised
+    - ended
   is_active_phase: "{{ session_phase in active_phases }}"
 
   session_entered_active: >
@@ -422,7 +432,7 @@ variables:
     {% else %}
       {% set from_phase = (trigger.from_state.state if trigger.from_state is not none else '') | lower %}
       {% set to_phase = (trigger.to_state.state if trigger.to_state is not none else '') | lower %}
-      {{ from_phase not in active_phases and to_phase in active_phases }}
+      {{ to_phase in valid_session_phases and from_phase not in active_phases and to_phase in active_phases }}
     {% endif %}
 
   session_left_active: >
@@ -431,7 +441,7 @@ variables:
     {% else %}
       {% set from_phase = (trigger.from_state.state if trigger.from_state is not none else '') | lower %}
       {% set to_phase = (trigger.to_state.state if trigger.to_state is not none else '') | lower %}
-      {{ from_phase in active_phases and to_phase not in active_phases }}
+      {{ to_phase in valid_session_phases and from_phase in active_phases and to_phase not in active_phases }}
     {% endif %}
 
   presence_ok: >
