@@ -41,7 +41,6 @@ async def async_setup_entry(
         [
             F1ReplayMediaPlayer(
                 replay_controller,
-                f"{name} Replay Player",
                 f"{entry.entry_id}_replay_player",
                 entry.entry_id,
                 name,
@@ -61,16 +60,16 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
     )
     _attr_icon = "mdi:play-circle"
     _attr_should_poll = False
+    _attr_translation_key = "replay_player"
 
     def __init__(
         self,
         controller: ReplayController,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         MediaPlayerEntity.__init__(self)
         self._controller = controller
         self._unsub_state = None

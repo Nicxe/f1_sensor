@@ -29,7 +29,6 @@ async def async_setup_entry(
     entity = F1LiveDelayNumber(
         controller=controller,
         calibration=calibration,
-        sensor_name=f"{entry.data.get('sensor_name', 'F1')} live delay",
         unique_id=f"{entry.entry_id}_live_delay_number",
         entry_id=entry.entry_id,
         device_name=entry.data.get("sensor_name", "F1"),
@@ -46,17 +45,17 @@ class F1LiveDelayNumber(F1AuxEntity, NumberEntity):
     _attr_native_step = 1
     _attr_mode = NumberMode.BOX
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "live_delay"
 
     def __init__(
         self,
         controller: LiveDelayController,
         calibration: LiveDelayCalibrationManager | None,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         NumberEntity.__init__(self)
         self._controller = controller
         self._attr_native_value = controller.current

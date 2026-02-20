@@ -39,7 +39,6 @@ async def async_setup_entry(
         entities.append(
             F1MatchDelayButton(
                 manager,
-                f"{name} match live delay",
                 f"{entry.entry_id}_delay_calibration_match",
                 entry.entry_id,
                 name,
@@ -54,7 +53,6 @@ async def async_setup_entry(
                 hass=hass,
                 entry_id=entry.entry_id,
                 device_name=name,
-                sensor_name=f"{name} Jolpica user-agent test",
                 unique_id=f"{entry.entry_id}_jolpica_user_agent_test",
             )
         )
@@ -66,35 +64,30 @@ async def async_setup_entry(
             [
                 F1ReplayLoadButton(
                     replay_controller,
-                    f"{name} Replay Load",
                     f"{entry.entry_id}_replay_load",
                     entry.entry_id,
                     name,
                 ),
                 F1ReplayPlayButton(
                     replay_controller,
-                    f"{name} Replay Play",
                     f"{entry.entry_id}_replay_play",
                     entry.entry_id,
                     name,
                 ),
                 F1ReplayPauseButton(
                     replay_controller,
-                    f"{name} Replay Pause",
                     f"{entry.entry_id}_replay_pause",
                     entry.entry_id,
                     name,
                 ),
                 F1ReplayStopButton(
                     replay_controller,
-                    f"{name} Replay Stop",
                     f"{entry.entry_id}_replay_stop",
                     entry.entry_id,
                     name,
                 ),
                 F1ReplayRefreshButton(
                     replay_controller,
-                    f"{name} Replay Refresh Sessions",
                     f"{entry.entry_id}_replay_refresh",
                     entry.entry_id,
                     name,
@@ -111,16 +104,16 @@ class F1MatchDelayButton(F1AuxEntity, ButtonEntity):
 
     _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "delay_calibration_match"
 
     def __init__(
         self,
         manager: LiveDelayCalibrationManager,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         ButtonEntity.__init__(self)
         self._manager = manager
         self._attr_icon = "mdi:check"
@@ -174,17 +167,17 @@ class F1JolpicaUserAgentTestButton(F1AuxEntity, ButtonEntity):
     _device_category = "system"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:bug"
+    _attr_translation_key = "jolpica_ua_test"
 
     def __init__(
         self,
         *,
         hass: HomeAssistant,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         ButtonEntity.__init__(self)
         self.hass = hass
         self._entry_id = entry_id

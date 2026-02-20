@@ -105,14 +105,23 @@
             "safety_car": {
                 "name": "Safety car"
             },
-            "top_three": {
-                "name": "Top three (leader)"
+            "top_three_p1": {
+                "name": "Top three (P1)"
+            },
+            "top_three_p2": {
+                "name": "Top three (P2)"
+            },
+            "top_three_p3": {
+                "name": "Top three (P3)"
             },
             "pitstops": {
                 "name": "Pit stops"
             },
-            "championship_prediction": {
-                "name": "Championship prediction"
+            "championship_prediction_drivers": {
+                "name": "Championship prediction (drivers)"
+            },
+            "championship_prediction_teams": {
+                "name": "Championship prediction (teams)"
             },
             "fia_documents": {
                 "name": "FIA decisions"
@@ -136,6 +145,78 @@
                     "low_grip": "Low grip",
                     "disabled": "Disabled"
                 }
+            },
+            "track_status": {
+                "name": "Track status"
+            },
+            "session_status": {
+                "name": "Session status"
+            },
+            "session_time_remaining": {
+                "name": "Session time remaining"
+            },
+            "session_time_elapsed": {
+                "name": "Session time elapsed"
+            },
+            "race_time_to_three_hour_limit": {
+                "name": "Time to 3-hour limit"
+            },
+            "driver_list": {
+                "name": "Driver list"
+            },
+            "current_tyres": {
+                "name": "Current tyres"
+            },
+            "tyre_statistics": {
+                "name": "Tyre statistics"
+            },
+            "team_radio": {
+                "name": "Team radio"
+            },
+            "race_lap_count": {
+                "name": "Race lap count"
+            },
+            "driver_points_progression": {
+                "name": "Driver points progression"
+            },
+            "constructor_points_progression": {
+                "name": "Constructor points progression"
+            },
+            "replay_status": {
+                "name": "Replay status"
+            }
+        },
+        "button": {
+            "delay_calibration_match": {
+                "name": "Match live delay"
+            },
+            "replay_load": {
+                "name": "Load session"
+            },
+            "replay_play": {
+                "name": "Play"
+            },
+            "replay_pause": {
+                "name": "Pause"
+            },
+            "replay_stop": {
+                "name": "Stop"
+            },
+            "replay_refresh": {
+                "name": "Refresh sessions"
+            },
+            "jolpica_ua_test": {
+                "name": "Jolpica user-agent test"
+            }
+        },
+        "switch": {
+            "delay_calibration": {
+                "name": "Delay calibration"
+            }
+        },
+        "number": {
+            "live_delay": {
+                "name": "Live delay"
             }
         },
         "media_player": {
@@ -169,6 +250,11 @@
             },
             "overtake_mode": {
                 "name": "Overtake mode"
+            }
+        },
+        "calendar": {
+            "season_calendar": {
+                "name": "Season calendar"
             }
         }
     }

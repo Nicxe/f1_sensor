@@ -1,6 +1,7 @@
 from contextlib import suppress
 import asyncio
 
+from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import Entity
 
@@ -52,10 +53,10 @@ class F1BaseEntity(CoordinatorEntity):
     """Common base entity for F1 sensors."""
 
     _device_category: str = "system"
+    _attr_has_entity_name = True
 
-    def __init__(self, coordinator, name, unique_id, entry_id, device_name):
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator)
-        self._attr_name = name
         self._attr_unique_id = unique_id
         self._entry_id = entry_id
         self._device_name = device_name
@@ -69,6 +70,7 @@ class F1BaseEntity(CoordinatorEntity):
             "name": f"{self._device_name} - {label}",
             "manufacturer": "Nicxe",
             "model": f"F1 Sensor - {label}",
+            "entry_type": DeviceEntryType.SERVICE,
         }
 
     @property
@@ -212,10 +214,10 @@ class F1AuxEntity(Entity):
     """Helper base for entities that do not use a coordinator but share device info."""
 
     _device_category: str = "system"
+    _attr_has_entity_name = True
 
-    def __init__(self, name: str, unique_id: str, entry_id: str, device_name: str):
+    def __init__(self, unique_id: str, entry_id: str, device_name: str):
         super().__init__()
-        self._attr_name = name
         self._attr_unique_id = unique_id
         self._entry_id = entry_id
         self._device_name = device_name
@@ -253,4 +255,5 @@ class F1AuxEntity(Entity):
             "name": f"{self._device_name} - {label}",
             "manufacturer": "Nicxe",
             "model": f"F1 Sensor - {label}",
+            "entry_type": DeviceEntryType.SERVICE,
         }

@@ -28,16 +28,16 @@ class F1ReplayYearSelect(F1AuxEntity, SelectEntity):
     _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_should_poll = False
+    _attr_translation_key = "replay_year"
 
     def __init__(
         self,
         controller: ReplayController,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         SelectEntity.__init__(self)
         self._controller = controller
         self._unsub: Callable[[], None] | None = None
@@ -111,16 +111,16 @@ class F1ReplaySessionSelect(F1AuxEntity, SelectEntity):
     _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_should_poll = False
+    _attr_translation_key = "replay_session"
 
     def __init__(
         self,
         controller: ReplayController,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         SelectEntity.__init__(self)
         self._controller = controller
         self._unsub: Callable[[], None] | None = None
@@ -198,16 +198,16 @@ class F1ReplayStartReferenceSelect(F1AuxEntity, SelectEntity):
     _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_should_poll = False
+    _attr_translation_key = "replay_start_reference"
 
     def __init__(
         self,
         controller: ReplayStartReferenceController,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         SelectEntity.__init__(self)
         self._controller = controller
         self._option_to_value = {
@@ -260,16 +260,16 @@ class F1ReplayLoadButton(F1AuxEntity, ButtonEntity):
 
     _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "replay_load"
 
     def __init__(
         self,
         controller: ReplayController,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         ButtonEntity.__init__(self)
         self._controller = controller
         self._attr_icon = "mdi:download"
@@ -300,16 +300,16 @@ class F1ReplayPlayButton(F1AuxEntity, ButtonEntity):
 
     _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "replay_play"
 
     def __init__(
         self,
         controller: ReplayController,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         ButtonEntity.__init__(self)
         self._controller = controller
         self._attr_icon = "mdi:play"
@@ -343,16 +343,16 @@ class F1ReplayPauseButton(F1AuxEntity, ButtonEntity):
 
     _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "replay_pause"
 
     def __init__(
         self,
         controller: ReplayController,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         ButtonEntity.__init__(self)
         self._controller = controller
         self._attr_icon = "mdi:pause"
@@ -368,16 +368,16 @@ class F1ReplayStopButton(F1AuxEntity, ButtonEntity):
 
     _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "replay_stop"
 
     def __init__(
         self,
         controller: ReplayController,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         ButtonEntity.__init__(self)
         self._controller = controller
         self._attr_icon = "mdi:stop"
@@ -393,16 +393,16 @@ class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
     _device_category = "system"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_should_poll = False
+    _attr_translation_key = "replay_status"
 
     def __init__(
         self,
         controller: ReplayController,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         SensorEntity.__init__(self)
         self._controller = controller
         self._unsub: Callable[[], None] | None = None
@@ -493,16 +493,16 @@ class F1ReplayRefreshButton(F1AuxEntity, ButtonEntity):
 
     _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "replay_refresh"
 
     def __init__(
         self,
         controller: ReplayController,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         ButtonEntity.__init__(self)
         self._controller = controller
         self._attr_icon = "mdi:refresh"

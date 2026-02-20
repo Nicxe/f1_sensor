@@ -30,7 +30,7 @@ from .const import (
 )
 from .entity import F1BaseEntity, F1AuxEntity
 from .formation_start import FormationStartTracker
-from .helpers import format_entity_name, get_next_race, normalize_track_status
+from .helpers import get_next_race, normalize_track_status
 from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
@@ -87,7 +87,6 @@ async def async_setup_entry(
     if "race_week" not in disabled:
         sensor = F1RaceWeekSensor(
             data["race_coordinator"],
-            format_entity_name(base, "race_week", include_base=False),
             f"{entry.entry_id}_race_week",
             entry.entry_id,
             base,
@@ -100,7 +99,6 @@ async def async_setup_entry(
         if coord:
             sensor = F1SafetyCarBinarySensor(
                 coord,
-                format_entity_name(base, "safety_car", include_base=False),
                 f"{entry.entry_id}_safety_car",
                 entry.entry_id,
                 base,
@@ -112,7 +110,6 @@ async def async_setup_entry(
         if tracker is not None:
             sensor = F1FormationStartBinarySensor(
                 tracker,
-                format_entity_name(base, "formation_start", include_base=False),
                 f"{entry.entry_id}_formation_start",
                 entry.entry_id,
                 base,
@@ -124,7 +121,6 @@ async def async_setup_entry(
         if coord:
             sensor = F1OvertakeModeBinarySensor(
                 coord,
-                format_entity_name(base, "overtake_mode", include_base=False),
                 f"{entry.entry_id}_overtake_mode",
                 entry.entry_id,
                 base,
@@ -138,18 +134,18 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
     """Binary sensor indicating if it's currently race week."""
 
     _device_category = "race"
+    _attr_translation_key = "race_week"
 
     def __init__(
         self,
         coordinator,
-        name,
         unique_id,
         entry_id,
         device_name,
         *,
         race_week_start: str = DEFAULT_RACE_WEEK_START_DAY,
     ):
-        super().__init__(coordinator, name, unique_id, entry_id, device_name)
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:calendar-range"
         # No device class: this is not a physical presence/occupancy type sensor.
         # Using a device class here can lead to misleading UI semantics/translations.
@@ -210,9 +206,10 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     """Binary sensor indicating if the Safety Car or VSC is active."""
 
     _device_category = "session"
+    _attr_translation_key = "safety_car"
 
-    def __init__(self, coordinator, name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, name, unique_id, entry_id, device_name)
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:car"
         # No device class: BinarySensorDeviceClass.SAFETY maps to "safe/unsafe"
         # semantics (OFF="safe"), which is misleading for "safety car deployed".
@@ -324,16 +321,16 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
 
     _device_category = "session"
     _attr_device_class = None
+    _attr_translation_key = "formation_start"
 
     def __init__(
         self,
         tracker: FormationStartTracker,
-        name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         BinarySensorEntity.__init__(self)
         self._tracker = tracker
         self._is_on = False
@@ -425,12 +422,10 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:access-point"
+    _attr_translation_key = "live_timing_online"
 
     def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
         super().__init__(
-            name=format_entity_name(
-                device_name, "live_timing_online", include_base=False
-            ),
             unique_id=f"{entry_id}_live_timing_online",
             entry_id=entry_id,
             device_name=device_name,
@@ -541,9 +536,10 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, BinarySensorEntity):
     _device_category = "session"
     _attr_device_class = None
     _attr_icon = "mdi:lightning-bolt"
+    _attr_translation_key = "overtake_mode"
 
-    def __init__(self, coordinator, name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, name, unique_id, entry_id, device_name)
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_suggested_object_id = f"{device_name}_overtake_mode"
         self._attr_extra_state_attributes: dict = {}
 

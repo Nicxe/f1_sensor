@@ -25,7 +25,6 @@ async def async_setup_entry(
     name = entry.data.get("sensor_name", "F1")
     entity = F1DelayCalibrationSwitch(
         manager,
-        f"{name} delay calibration",
         f"{entry.entry_id}_delay_calibration_switch",
         entry.entry_id,
         name,
@@ -38,16 +37,16 @@ class F1DelayCalibrationSwitch(F1AuxEntity, SwitchEntity):
 
     _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "delay_calibration"
 
     def __init__(
         self,
         manager: LiveDelayCalibrationManager,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         SwitchEntity.__init__(self)
         self._manager = manager
         self._is_on = False

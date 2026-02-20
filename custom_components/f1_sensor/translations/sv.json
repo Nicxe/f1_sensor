@@ -29,15 +29,15 @@
                 "data": {
                     "sensor_name": "Enhetsnamn",
                     "enabled_sensors": "Aktiverade sensorer",
-                    "operation_mode": "Operation mode",
-                    "replay_file": "Replay dump path",
+                    "operation_mode": "Driftläge",
+                    "replay_file": "Sökväg till replay-dump",
                     "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
                     "race_week_start_day": "Första dagen i tävlingsveckan"
                 },
                 "data_description": {
-                    "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
-                    "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
-                    "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
+                    "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
+                    "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
+                    "enable_race_control": "Ansluter till Formula 1 Live Timing via SignalR för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
                     "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag."
                 }
             },
@@ -46,28 +46,31 @@
                 "data": {
                     "sensor_name": "Enhetsnamn",
                     "enabled_sensors": "Aktiverade sensorer",
-                    "operation_mode": "Operation mode",
-                    "replay_file": "Replay dump path",
-                    "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
+                    "operation_mode": "Driftläge",
+                    "replay_file": "Sökväg till replay-dump",
+                    "enable_race_control": "Aktivera live F1 API",
                     "race_week_start_day": "Första dagen i tävlingsveckan"
                 },
                 "data_description": {
-                    "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
-                    "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
-                    "enable_race_control": "Ansluter till Formula 1 Live Timing API för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
+                    "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
+                    "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
+                    "enable_race_control": "Ansluter till Formula 1 Live Timing för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
                     "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag."
                 }
             }
         },
         "error": {
-            "replay_required": "Select a replay dump file when Development mode is enabled.",
-            "replay_missing": "Replay dump file not found or unreadable."
+            "replay_required": "Välj en replay-dumpfil när utvecklingsläge är aktiverat.",
+            "replay_missing": "Replay-dumpfilen hittades inte eller är oläsbar."
         }
     },
     "entity": {
         "sensor": {
             "next_race": {
                 "name": "Nästa lopp"
+            },
+            "track_time": {
+                "name": "Bantid"
             },
             "current_season": {
                 "name": "Aktuell säsong"
@@ -82,13 +85,13 @@
                 "name": "Väder"
             },
             "track_weather": {
-                "name": "Bana väder"
+                "name": "Banväder"
             },
             "current_session": {
                 "name": "Aktuell session"
             },
             "last_race_results": {
-                "name": "Resultat från senaste loppet"
+                "name": "Senaste loppets resultat"
             },
             "season_results": {
                 "name": "Säsongsresultat"
@@ -102,11 +105,23 @@
             "safety_car": {
                 "name": "Säkerhetsbil"
             },
+            "top_three_p1": {
+                "name": "Topp tre (P1)"
+            },
+            "top_three_p2": {
+                "name": "Topp tre (P2)"
+            },
+            "top_three_p3": {
+                "name": "Topp tre (P3)"
+            },
             "pitstops": {
                 "name": "Depåstopp"
             },
-            "championship_prediction": {
-                "name": "Mästerskapsprognos"
+            "championship_prediction_drivers": {
+                "name": "Mästerskapsprognos (förare)"
+            },
+            "championship_prediction_teams": {
+                "name": "Mästerskapsprognos (lag)"
             },
             "fia_documents": {
                 "name": "FIA-beslut"
@@ -118,29 +133,109 @@
                 "name": "Förarpositioner"
             },
             "track_limits": {
-                "name": "Track limits"
+                "name": "Spårgränser"
             },
             "investigations": {
-                "name": "Investigations & penalties"
+                "name": "Utredningar & straff"
+            },
+            "straight_mode": {
+                "name": "Raksträckeläge",
+                "state": {
+                    "normal_grip": "Normalt grepp",
+                    "low_grip": "Lågt grepp",
+                    "disabled": "Inaktiverat"
+                }
+            },
+            "track_status": {
+                "name": "Banstatus"
+            },
+            "session_status": {
+                "name": "Sessionsstatus"
+            },
+            "session_time_remaining": {
+                "name": "Återstående sessionstid"
+            },
+            "session_time_elapsed": {
+                "name": "Förfluten sessionstid"
+            },
+            "race_time_to_three_hour_limit": {
+                "name": "Tid till 3-timmarsgräns"
+            },
+            "driver_list": {
+                "name": "Förarlista"
+            },
+            "current_tyres": {
+                "name": "Aktuella däck"
+            },
+            "tyre_statistics": {
+                "name": "Däckstatistik"
+            },
+            "team_radio": {
+                "name": "Teamradio"
+            },
+            "race_lap_count": {
+                "name": "Varvsräkning"
+            },
+            "driver_points_progression": {
+                "name": "Förarpoängsutveckling"
+            },
+            "constructor_points_progression": {
+                "name": "Konstruktorpoängsutveckling"
+            },
+            "replay_status": {
+                "name": "Replay-status"
+            }
+        },
+        "button": {
+            "delay_calibration_match": {
+                "name": "Matcha livefördröjning"
+            },
+            "replay_load": {
+                "name": "Ladda session"
+            },
+            "replay_play": {
+                "name": "Spela"
+            },
+            "replay_pause": {
+                "name": "Pausa"
+            },
+            "replay_stop": {
+                "name": "Stoppa"
+            },
+            "replay_refresh": {
+                "name": "Uppdatera sessioner"
+            },
+            "jolpica_ua_test": {
+                "name": "Jolpica user-agent-test"
+            }
+        },
+        "switch": {
+            "delay_calibration": {
+                "name": "Fördröjningskalibrering"
+            }
+        },
+        "number": {
+            "live_delay": {
+                "name": "Livefördröjning"
             }
         },
         "media_player": {
             "replay_player": {
-                "name": "Replay player"
+                "name": "Replay-spelare"
             }
         },
         "select": {
             "live_delay_reference": {
-                "name": "Live delay reference"
+                "name": "Livefördröjningsreferens"
             },
             "replay_year": {
-                "name": "Replay year"
+                "name": "Replay-år"
             },
             "replay_session": {
-                "name": "Replay session"
+                "name": "Replay-session"
             },
             "replay_start_reference": {
-                "name": "Replay start reference"
+                "name": "Replay-startreferens"
             }
         },
         "binary_sensor": {
@@ -151,7 +246,15 @@
                 "name": "Live timing online"
             },
             "formation_start": {
-                "name": "Formation start"
+                "name": "Formationsstart"
+            },
+            "overtake_mode": {
+                "name": "Omkörningstillstånd"
+            }
+        },
+        "calendar": {
+            "season_calendar": {
+                "name": "Säsongskalender"
             }
         }
     }
