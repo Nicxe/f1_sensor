@@ -4037,7 +4037,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    # Proceed with best-effort cleanup even if unload_ok is False, but keep return value
+    if not unload_ok:
+        _LOGGER.warning(
+            "Skipping runtime cleanup because one or more platforms failed to unload for entry %s",
+            entry.entry_id,
+        )
+        return False
+
     try:
         data_root = hass.data.get(DOMAIN)
         data = None
