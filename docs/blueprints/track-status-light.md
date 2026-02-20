@@ -60,7 +60,23 @@ The session goes through a sequence of phases during an event. During `pre`, `br
 
 ---
 
-### Step 3 — Light Behavior
+### Step 3 — Session Scope (Optional)
+
+Limit the automation to specific session types, for example only during Race and Qualifying, while ignoring Practice sessions.
+
+| Setting | Description |
+| --- | --- |
+| **Enable Current Session Filter** | When enabled, the light only updates during the selected session types. Disabled by default |
+| **Current Session Sensor** | Select the `*_current_session` sensor. Required when the filter is enabled |
+| **Allowed Current Sessions** | Which session types should activate the light. Defaults to all sessions |
+
+:::info
+When this filter is enabled, the automation checks the [Current Session](/entities/live-data#current-session) sensor to decide whether to run. If the session type is not in the allowed list, light updates are suppressed entirely for that session.
+:::
+
+---
+
+### Step 4 — Light Behavior
 
 | Setting | Description |
 | --- | --- |
@@ -76,7 +92,7 @@ Snapshots are temporary scenes stored in Home Assistant for the duration of the 
 
 ---
 
-### Step 4 — Flag Colors
+### Step 5 — Flag Colors
 
 Set the RGB color for each track status. These settings are collapsed by default and come with sensible defaults.
 
@@ -90,7 +106,7 @@ Set the RGB color for each track status. These settings are collapsed by default
 
 ---
 
-### Step 5 — Alert Behavior
+### Step 6 — Alert Behavior
 
 Configure how the light behaves during flag alerts. YELLOW and RED share one set of options, while SC and VSC share another. All settings in this section are collapsed by default.
 
@@ -129,7 +145,7 @@ Configure how the light behaves during flag alerts. YELLOW and RED share one set
 
 ---
 
-### Step 6 — CLEAR Behavior
+### Step 7 — CLEAR Behavior
 
 Configure what the light does when the track status returns to CLEAR. This section is collapsed by default.
 
@@ -152,7 +168,7 @@ The restore options require **Snapshot Before Alerts** to be enabled in the Ligh
 
 ---
 
-### Step 7 — Activation Conditions (Optional)
+### Step 8 — Activation Conditions (Optional)
 
 These optional gates must all pass before the light updates. All are disabled by default.
 
@@ -166,7 +182,7 @@ These optional gates must all pass before the light updates. All are disabled by
 
 ---
 
-### Step 8 — Session End Behavior (Optional)
+### Step 9 — Session End Behavior (Optional)
 
 Configure what happens to the light after the session leaves the active phases. This section is collapsed by default.
 
@@ -188,7 +204,7 @@ Configure what happens to the light after the session leaves the active phases. 
 
 ---
 
-### Step 9 — Notifications (Optional)
+### Step 10 — Notifications (Optional)
 
 The blueprint can also send notifications on track status changes and session end. This section is collapsed and disabled by default.
 

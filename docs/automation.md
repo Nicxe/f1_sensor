@@ -15,6 +15,64 @@ Looking for an easy starting point? The [Blueprints](/blueprints/track-status-li
 
 ---
 
+## Device Automation Triggers
+
+The easiest way to build automations is through the Home Assistant UI using device triggers. Go to **Settings > Devices & Services > Devices**, select any F1 Sensor sub-device, and choose **Automations > Add trigger** to see the available triggers without writing any YAML.
+
+:::info
+Device triggers are the recommended starting point. They automatically reference the correct entity and are always kept in sync with the integration. YAML examples further down on this page show what happens under the hood.
+:::
+
+Triggers are organized per sub-device. Only triggers whose backing entity is enabled will appear.
+
+### Race device
+
+| Trigger | Fires when |
+| --- | --- |
+| Race week started | The race week indicator turns on |
+| Race week ended | The race week indicator turns off |
+
+### Session device
+
+| Trigger | Fires when |
+| --- | --- |
+| Safety car deployed | Safety car or Virtual Safety Car becomes active |
+| Safety car cleared | Safety car or Virtual Safety Car is cleared |
+| Formation start ready | Formation start procedure is ready |
+| Overtake mode enabled | Track-wide overtake mode is enabled (2026 regulation) |
+| Overtake mode disabled | Track-wide overtake mode is disabled (2026 regulation) |
+| Session live | Session status changes (any state transition) |
+| Track status: CLEAR | Track status becomes CLEAR |
+| Track status: YELLOW | Track status becomes YELLOW |
+| Track status: Safety Car | Track status becomes SC |
+| Track status: VSC | Track status becomes VSC |
+| Track status: Red Flag | Track status becomes RED |
+
+### Officials device
+
+| Trigger | Fires when |
+| --- | --- |
+| New race control message | A new race control message is received |
+| New FIA document | A new FIA document is published |
+| Investigation changed | An investigation or penalty status changes |
+
+### Drivers device
+
+| Trigger | Fires when |
+| --- | --- |
+| New team radio | A new team radio clip is available |
+
+### System device
+
+| Trigger | Fires when |
+| --- | --- |
+| Live timing online | Live timing connection is established |
+| Live timing offline | Live timing connection is lost |
+
+---
+
+## YAML Examples
+
 ### Notify when race week begins
 
 Uses the [Race Week sensor](/entities/static-data#race-week) to send a notification the moment race week starts. Useful for kicking off any weekly routines — changing dashboard views, enabling presence modes, or just a heads-up.

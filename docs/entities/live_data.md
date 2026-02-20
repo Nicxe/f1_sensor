@@ -98,6 +98,17 @@ Use this section to understand the possible values for enum-type states and attr
 
 </details>
 
+<details>
+<summary>Straight Mode (2026 regulation)</summary>
+
+| Value | Description |
+| --- | --- |
+| `normal_grip` | Normal aerodynamic configuration permitted on straight sections |
+| `low_grip` | Restricted aerodynamic configuration on straight sections |
+| `disabled` | Straight mode system is not active |
+
+</details>
+
 ---
 
 ### Entities Summary
@@ -125,6 +136,8 @@ Use this section to understand the possible values for enum-type states and attr
 | [binary_sensor.f1_formation_start](#formation-start)  | Indicates when formation start procedure is ready |
 | [sensor.f1_championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) |
 | [sensor.f1_championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) |
+| [binary_sensor.f1_overtake_mode](#overtake-mode)      | ON when track-wide overtake mode is enabled (2026 regulation, experimental) |
+| [sensor.f1_straight_mode](#straight-mode)             | Active aerodynamic straight mode state (2026 regulation, experimental) |
 
 
 ---
@@ -1733,4 +1746,68 @@ on
 
 ::::info INFO
 Active only during race and sprint sessions.
+::::
+
+---
+
+## Overtake Mode
+
+:::caution Experimental — 2026 regulation
+This sensor is based on data observed during 2026 pre-season testing. It should be considered experimental until confirmed against live race conditions. The exact message format from Formula 1 may be adjusted in a future update once the first race weekend has been evaluated.
+:::
+
+`binary_sensor.f1_overtake_mode` - Indicates whether the track-wide overtake mode is currently enabled. This is a 2026 Formula 1 regulation feature that allows a driver who was within one second of the car ahead at the final corner detection point to deploy an additional 0.5 MJ of electrical energy on the following straight.
+
+**State (on/off)**
+- `on` when overtake mode is enabled track-wide; otherwise `off`.
+
+**Example**
+```text
+on
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| straight_mode | string | Current straight mode state (`normal_grip`, `low_grip`, or `disabled`) |
+| restored | boolean | True if the state was restored from history after a Home Assistant restart |
+
+::::info INFO
+Active only during sessions where the 2026 overtake mode regulation applies. The state is restored from history when Home Assistant restarts during an active session.
+::::
+
+---
+
+## Straight Mode
+
+:::caution Experimental — 2026 regulation
+This sensor is based on data observed during 2026 pre-season testing. It should be considered experimental until confirmed against live race conditions. The exact message format from Formula 1 may be adjusted in a future update once the first race weekend has been evaluated.
+:::
+
+`sensor.f1_straight_mode` - Shows the track-wide active aerodynamic permission for straight sections, broadcasted via Race Control messages. This is a 2026 Formula 1 regulation feature where the car's aerodynamic profile on designated straight sections of the circuit is regulated by the FIA.
+
+**State (enum)**
+- One of: `normal_grip`, `low_grip`, `disabled`.
+
+| Value | Description |
+| --- | --- |
+| `normal_grip` | Normal aerodynamic configuration permitted on straight sections |
+| `low_grip` | Restricted aerodynamic configuration on straight sections |
+| `disabled` | Straight mode system is not active |
+
+**Example**
+```text
+normal_grip
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| overtake_enabled | boolean | Whether overtake mode is currently enabled |
+| restored | boolean | True if the state was restored from history after a Home Assistant restart |
+
+::::info INFO
+Active only during sessions where the 2026 straight mode regulation applies. The state is restored from history when Home Assistant restarts during an active session.
 ::::
