@@ -87,6 +87,7 @@ _ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES = (
     "_track_time",
     "_session_time_remaining",
     "_session_time_elapsed",
+    "_race_time_to_three_hour_limit",
 )
 _ACTIVITY_FILTER_MARKER = "__f1_sensor_activity_filter__"
 _ACTIVITY_FILTER_REBIND_MARKER = "__f1_sensor_activity_filter_rebound__"
@@ -1702,6 +1703,12 @@ class LiveModeCoordinator(DataUpdateCoordinator):
         if not is_live:
             self._state = {"overtake_enabled": None, "straight_mode": None}
             self.async_set_updated_data(None)
+            return
+        self.async_set_updated_data(
+            dict(self._state)
+            if any(v is not None for v in self._state.values())
+            else None
+        )
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
@@ -4036,7 +4043,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    # Proceed with best-effort cleanup even if unload_ok is False, but keep return value
+    if not unload_ok:
+        _LOGGER.warning(
+            "Skipping runtime cleanup because one or more platforms failed to unload for entry %s",
+            entry.entry_id,
+        )
+        return False
+
     try:
         data_root = hass.data.get(DOMAIN)
         data = None

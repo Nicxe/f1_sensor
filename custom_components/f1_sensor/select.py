@@ -49,7 +49,6 @@ async def async_setup_entry(
         entities.append(
             F1LiveDelayReferenceSelect(
                 reference_controller,
-                f"{name} live delay reference",
                 f"{entry.entry_id}_live_delay_reference",
                 entry.entry_id,
                 name,
@@ -62,7 +61,6 @@ async def async_setup_entry(
         entities.append(
             F1ReplayYearSelect(
                 replay_controller,
-                f"{name} Replay Year",
                 f"{entry.entry_id}_replay_year_select",
                 entry.entry_id,
                 name,
@@ -71,7 +69,6 @@ async def async_setup_entry(
         entities.append(
             F1ReplaySessionSelect(
                 replay_controller,
-                f"{name} Replay Session",
                 f"{entry.entry_id}_replay_session_select",
                 entry.entry_id,
                 name,
@@ -82,7 +79,6 @@ async def async_setup_entry(
             entities.append(
                 F1ReplayStartReferenceSelect(
                     start_reference_controller,
-                    f"{name} Replay start reference",
                     f"{entry.entry_id}_replay_start_reference",
                     entry.entry_id,
                     name,
@@ -97,18 +93,19 @@ async def async_setup_entry(
 class F1LiveDelayReferenceSelect(F1AuxEntity, SelectEntity):
     """Select entity to choose the live delay calibration reference."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:clock-sync"
+    _attr_translation_key = "live_delay_reference"
 
     def __init__(
         self,
         controller: LiveDelayReferenceController,
-        sensor_name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, sensor_name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         SelectEntity.__init__(self)
         self._controller = controller
         self._option_to_value = {

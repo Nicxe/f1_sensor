@@ -7,6 +7,8 @@ blueprint:
 
     Core behavior: choose session and track sensors, then map track states to colors.
 
+    Requires F1 Sensor live entities for track/session status to be enabled in integration settings.
+
     Advanced options include scene snapshots, timed or continuous flashing, clear-state auto-restore,
     and flexible session-end behavior.
 
@@ -66,6 +68,58 @@ blueprint:
                   value: finalised
                 - label: Ended
                   value: ended
+
+    session_scope:
+      name: Session Scope
+      icon: mdi:flag-checkered
+      collapsed: false
+      description: Limit automation behavior to selected values from F1 Current Session.
+      input:
+        enable_current_session_filter:
+          name: Enable Current Session Filter
+          description: When enabled, automation runs only for selected current sessions.
+          default: false
+          selector:
+            boolean: {}
+        current_session_entity:
+          name: Current Session Sensor (optional)
+          description: Select your F1 current session sensor (typically *_current_session).
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+              multiple: false
+        allowed_current_sessions:
+          name: Allowed Current Sessions
+          description: Select which sessions should use this automation.
+          default:
+            - Practice 1
+            - Practice 2
+            - Practice 3
+            - Qualifying
+            - Sprint Qualifying
+            - Sprint
+            - Race
+          selector:
+            select:
+              mode: dropdown
+              multiple: true
+              options:
+                - label: Practice 1
+                  value: Practice 1
+                - label: Practice 2
+                  value: Practice 2
+                - label: Practice 3
+                  value: Practice 3
+                - label: Qualifying
+                  value: Qualifying
+                - label: Sprint Qualifying
+                  value: Sprint Qualifying
+                - label: Sprint
+                  value: Sprint
+                - label: Race
+                  value: Race
 
     activation_conditions:
       name: Activation Conditions
@@ -377,6 +431,10 @@ blueprint:
             action: {}
 
 variables:
+  current_session_filter_enabled: !input enable_current_session_filter
+  current_session_entity: !input current_session_entity
+  allowed_current_sessions: !input allowed_current_sessions
+
   track_status_entity: !input track_status_entity
   session_status_entity: !input session_status_entity
   active_phases: !input active_session_phases
@@ -414,6 +472,54 @@ variables:
 
   track_state: "{{ states(track_status_entity) | upper }}"
   session_phase: "{{ states(session_status_entity) | lower }}"
+  current_session_now: >-
+    {% if current_session_entity | string | length > 0 %}
+      {{ states(current_session_entity) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  current_session_last: >-
+    {% if current_session_entity | string | length > 0 %}
+      {{ state_attr(current_session_entity, 'last_label') | default('', true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  current_session_effective: >-
+    {% set now_label = current_session_now | trim %}
+    {% if now_label in ['', 'unknown', 'unavailable', 'none', 'None'] %}
+      {{ current_session_last | trim }}
+    {% else %}
+      {{ now_label }}
+    {% endif %}
+  session_scope_now_ok: >-
+    {% if not current_session_filter_enabled %}
+      true
+    {% elif current_session_entity | string | length == 0 %}
+      false
+    {% else %}
+      {% set now_label = current_session_now | trim %}
+      {% if now_label in ['', 'unknown', 'unavailable', 'none', 'None'] %}
+        false
+      {% else %}
+        {{ now_label in allowed_current_sessions }}
+      {% endif %}
+    {% endif %}
+  session_scope_ok: >-
+    {% if not current_session_filter_enabled %}
+      true
+    {% elif current_session_entity | string | length == 0 %}
+      false
+    {% else %}
+      {{ (current_session_effective | trim) in allowed_current_sessions }}
+    {% endif %}
+  valid_session_phases:
+    - pre
+    - live
+    - suspended
+    - break
+    - finished
+    - finalised
+    - ended
   is_active_phase: "{{ session_phase in active_phases }}"
 
   session_entered_active: >
@@ -422,7 +528,7 @@ variables:
     {% else %}
       {% set from_phase = (trigger.from_state.state if trigger.from_state is not none else '') | lower %}
       {% set to_phase = (trigger.to_state.state if trigger.to_state is not none else '') | lower %}
-      {{ from_phase not in active_phases and to_phase in active_phases }}
+      {{ session_scope_now_ok and to_phase in valid_session_phases and from_phase not in active_phases and to_phase in active_phases }}
     {% endif %}
 
   session_left_active: >
@@ -431,7 +537,7 @@ variables:
     {% else %}
       {% set from_phase = (trigger.from_state.state if trigger.from_state is not none else '') | lower %}
       {% set to_phase = (trigger.to_state.state if trigger.to_state is not none else '') | lower %}
-      {{ from_phase in active_phases and to_phase not in active_phases }}
+      {{ session_scope_ok and to_phase in valid_session_phases and from_phase in active_phases and to_phase not in active_phases }}
     {% endif %}
 
   presence_ok: >
@@ -461,7 +567,7 @@ variables:
     {% endif %}
 
   can_apply_track_light: >
-    {{ is_active_phase and presence_ok and media_ok and not dnd_blocked }}
+    {{ session_scope_now_ok and is_active_phase and presence_ok and media_ok and not dnd_blocked }}
 
 trigger:
   - platform: state

@@ -13,6 +13,7 @@ from custom_components.f1_sensor import (
     _wrap_logbook_subscribe_events,
     _wrap_activity_filter,
     async_setup_entry,
+    async_unload_entry,
 )
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.const import (
@@ -94,6 +95,7 @@ def test_activity_log_exclude_entity_matcher() -> None:
     assert _is_activity_log_excluded_entity("sensor.f1_track_time")
     assert _is_activity_log_excluded_entity("sensor.f1_session_time_remaining")
     assert _is_activity_log_excluded_entity("sensor.f1_session_time_elapsed")
+    assert _is_activity_log_excluded_entity("sensor.f1_race_time_to_three_hour_limit")
     assert not _is_activity_log_excluded_entity("sensor.f1_next_race")
     assert not _is_activity_log_excluded_entity("binary_sensor.f1_track_time")
 
@@ -177,6 +179,11 @@ def test_logbook_subscribe_wrapper_filters_excluded_entities() -> None:
     # Excluded timer entity should never reach target.
     filtered_target(  # type: ignore[operator]
         SimpleNamespace(data={"entity_id": "sensor.f1_session_time_elapsed"})
+    )
+    assert seen == []
+
+    filtered_target(  # type: ignore[operator]
+        SimpleNamespace(data={"entity_id": "sensor.f1_race_time_to_three_hour_limit"})
     )
     assert seen == []
 
@@ -280,3 +287,73 @@ async def test_async_setup_entry_live_mode_wires_event_tracker_fallback(hass) ->
     assert result is True
     assert FakeLiveSupervisor.last_instance is not None
     assert FakeLiveSupervisor.last_instance.fallback_source is sentinel_source
+
+
+@pytest.mark.asyncio
+async def test_async_unload_entry_cleans_up_runtime_data_on_success(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    closed = []
+    unsubscribed = []
+
+    class _Closable:
+        async def async_close(self) -> None:
+            closed.append("ok")
+
+    def _activity_unsub() -> None:
+        unsubscribed.append("ok")
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "activity_filter_unsub": _activity_unsub,
+        "live_bus": _Closable(),
+    }
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+
+    result = await async_unload_entry(hass, entry)
+
+    assert result is True
+    assert entry.entry_id not in hass.data[DOMAIN]
+    assert unsubscribed == ["ok"]
+    assert closed == ["ok"]
+
+
+@pytest.mark.asyncio
+async def test_async_unload_entry_keeps_runtime_data_on_failed_platform_unload(
+    hass,
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    closed = []
+    unsubscribed = []
+
+    class _Closable:
+        async def async_close(self) -> None:
+            closed.append("ok")
+
+    def _activity_unsub() -> None:
+        unsubscribed.append("ok")
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "activity_filter_unsub": _activity_unsub,
+        "live_bus": _Closable(),
+    }
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=False)
+
+    result = await async_unload_entry(hass, entry)
+
+    assert result is False
+    assert entry.entry_id in hass.data[DOMAIN]
+    assert unsubscribed == []
+    assert closed == []

@@ -83,10 +83,9 @@ async def async_setup_entry(
         [
             F1SeasonCalendar(
                 coordinator=race_coordinator,
-                name=f"{base} Season",
                 unique_id=f"{entry.entry_id}_f1_season_calendar",
                 entry_id=entry.entry_id,
-                device_name=f"{base} Sensor",
+                device_name=base,
             )
         ]
     )
@@ -95,10 +94,12 @@ async def async_setup_entry(
 class F1SeasonCalendar(F1BaseEntity, CalendarEntity):
     """Calendar entity showing all F1 sessions for the current season."""
 
+    _device_category = "race"
     _attr_icon = "mdi:calendar-month"
+    _attr_translation_key = "season_calendar"
 
-    def __init__(self, coordinator, name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, name, unique_id, entry_id, device_name)
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._cached_events: list[CalendarEvent] = []
         self._cached_data_id: int | None = None
 
