@@ -145,6 +145,7 @@
                     "low_grip": "Lågt grepp",
                     "disabled": "Inaktiverat"
                 }
+ 
             },
             "track_status": {
                 "name": "Banstatus"
