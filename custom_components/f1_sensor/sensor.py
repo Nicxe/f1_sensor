@@ -2650,6 +2650,63 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_extra_state_attributes = {}
 
 
+def _map_session_status_payload(
+    raw: dict | None, hass: HomeAssistant | None
+) -> str | None:
+    """Map raw SessionStatus payloads to semantic states."""
+    if not raw:
+        return None
+
+    message = str(raw.get("Status") or raw.get("Message") or "").strip()
+    started_hint = str(raw.get("Started") or "").strip()
+
+    if message == "Started":
+        return "live"
+
+    if message == "Finished":
+        return "finished"
+
+    if message == "Finalised":
+        return "finalised"
+
+    if message == "Ends":
+        return "ended"
+
+    if message == "Inactive":
+        if started_hint == "Finished":
+            return "break"
+        if started_hint == "Started":
+            track_state = None
+            try:
+                cache = hass.data.get(LATEST_TRACK_STATUS) if hass is not None else None
+                track_state = (
+                    normalize_track_status(cache) if isinstance(cache, dict) else None
+                )
+            except Exception:
+                track_state = None
+            if track_state and track_state != "RED":
+                return "live"
+            return "suspended"
+        return "pre"
+
+    if message == "Aborted":
+        if started_hint == "Started":
+            track_state = None
+            try:
+                cache = hass.data.get(LATEST_TRACK_STATUS) if hass is not None else None
+                track_state = (
+                    normalize_track_status(cache) if isinstance(cache, dict) else None
+                )
+            except Exception:
+                track_state = None
+            if track_state and track_state != "RED":
+                return "live"
+            return "suspended"
+        return "pre"
+
+    return "pre"
+
+
 class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Sensor mapping SessionStatus to semantic states for automations."""
 
@@ -2842,77 +2899,7 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self.async_write_ha_state()
 
     def _map_status(self, raw: dict | None) -> str | None:
-        if not raw:
-            return None
-        # Prefer explicit string in Status, fall back to Message
-        message = str(raw.get("Status") or raw.get("Message") or "").strip()
-        started_hint = str(raw.get("Started") or "").strip()
-
-        # Stateless mapping based only on this payload.
-        if message == "Started":
-            return "live"
-
-        if message == "Finished":
-            # A qualifying part or the session segment ended.
-            # Reset internal memory defensively.
-            self._started_flag = None
-            return "finished"
-
-        if message == "Finalised":
-            # Session finalised without requiring a prior "Finished".
-            self._started_flag = None
-            return "finalised"
-
-        if message == "Ends":
-            # Session officially ends. Clear any sticky state.
-            self._started_flag = None
-            return "ended"
-
-        if message == "Inactive":
-            # Planned qualifying break vs. suspension vs. pre-session
-            if started_hint == "Finished":
-                # Planned pause between quali segments
-                self._started_flag = None
-                return "break"
-            if started_hint == "Started":
-                # Tie-break using latest TrackStatus: if not RED, treat as live
-                try:
-                    cache = self.hass.data.get(LATEST_TRACK_STATUS)
-                    track_state = (
-                        normalize_track_status(cache)
-                        if isinstance(cache, dict)
-                        else None
-                    )
-                except Exception:
-                    track_state = None
-                if track_state and track_state != "RED":
-                    return "live"
-                # Red flag / suspended while session is considered started
-                return "suspended"
-            # Not started yet
-            return "pre"
-
-        if message == "Aborted":
-            # Aborted within an already started session is a suspension-like state
-            if started_hint == "Started":
-                # Tie-break using latest TrackStatus: if not RED, treat as live
-                try:
-                    cache = self.hass.data.get(LATEST_TRACK_STATUS)
-                    track_state = (
-                        normalize_track_status(cache)
-                        if isinstance(cache, dict)
-                        else None
-                    )
-                except Exception:
-                    track_state = None
-                if track_state and track_state != "RED":
-                    return "live"
-                return "suspended"
-            # Otherwise treat like pre (no live running yet)
-            return "pre"
-
-        # Fallback: unknown values behave like pre-session
-        return "pre"
+        return _map_session_status_payload(raw, self.hass)
 
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
@@ -3317,22 +3304,31 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         }
         return label, meta
 
-    def _live_status(self) -> str | None:
+    def _live_status_payload(self) -> dict | None:
         try:
             if self._status_coordinator and isinstance(
                 self._status_coordinator.data, dict
             ):
-                d = self._status_coordinator.data
-                return str(d.get("Status") or d.get("Message") or "").strip()
+                return self._status_coordinator.data
         except Exception:
             return None
         return None
 
+    def _live_status(self) -> str | None:
+        payload = self._live_status_payload()
+        if isinstance(payload, dict):
+            return str(payload.get("Status") or payload.get("Message") or "").strip()
+        return None
+
+    def _mapped_live_status(self) -> str | None:
+        return _map_session_status_payload(self._live_status_payload(), self.hass)
+
     def _apply_payload(self, raw: dict, allow_clear: bool = True) -> None:
         label, meta = self._resolve_label(raw or {})
         status = self._live_status()
+        mapped_status = self._mapped_live_status()
         # Treat session as ended by explicit status; only use EndDate as a soft fallback with grace
-        ended = str(status or "").strip() in ("Finished", "Finalised", "Ends")
+        ended = mapped_status in ("finished", "finalised", "ended")
         with suppress(Exception):
             end_iso = raw.get("EndDate")
             if end_iso and not ended:
@@ -3347,7 +3343,7 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     st = str(status or "").strip()
                     if st not in ("Started", "Green", "GreenFlag"):
                         ended = True
-        active = str(status or "").strip() == "Started"
+        active = mapped_status == "live"
         desired_state = None
         if label in ("Qualifying", "Sprint Qualifying"):
             desired_state = None if ended else label
@@ -3388,9 +3384,10 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_extra_state_attributes = attrs
         with suppress(Exception):
             getLogger(__name__).debug(
-                "CurrentSession apply: label=%s status=%s ended=%s active=%s",
+                "CurrentSession apply: label=%s status=%s mapped=%s ended=%s active=%s",
                 label,
                 status,
+                mapped_status,
                 ended,
                 active,
             )
