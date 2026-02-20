@@ -72,6 +72,58 @@ blueprint:
                 - label: Ended
                   value: ended
 
+    session_scope:
+      name: Session Scope
+      icon: mdi:flag-checkered
+      collapsed: false
+      description: Limit notifications to selected values from F1 Current Session.
+      input:
+        enable_current_session_filter:
+          name: Enable Current Session Filter
+          description: When enabled, notifications are sent only for selected current sessions.
+          default: false
+          selector:
+            boolean: {}
+        current_session_sensor:
+          name: Current Session Sensor (optional)
+          description: Select your F1 current session sensor (typically *_current_session).
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+              multiple: false
+        allowed_current_sessions:
+          name: Allowed Current Sessions
+          description: Select which sessions should send race control notifications.
+          default:
+            - Practice 1
+            - Practice 2
+            - Practice 3
+            - Qualifying
+            - Sprint Qualifying
+            - Sprint
+            - Race
+          selector:
+            select:
+              mode: dropdown
+              multiple: true
+              options:
+                - label: Practice 1
+                  value: Practice 1
+                - label: Practice 2
+                  value: Practice 2
+                - label: Practice 3
+                  value: Practice 3
+                - label: Qualifying
+                  value: Qualifying
+                - label: Sprint Qualifying
+                  value: Sprint Qualifying
+                - label: Sprint
+                  value: Sprint
+                - label: Race
+                  value: Race
+
     filters_section:
       name: Filters (Optional)
       icon: mdi:filter-variant
@@ -191,6 +243,10 @@ blueprint:
             action: {}
 
 variables:
+  current_session_filter_enabled: !input enable_current_session_filter
+  current_session_entity: !input current_session_sensor
+  allowed_current_sessions_input: !input allowed_current_sessions
+
   session_status_entity: !input session_status_sensor
   active_phases: !input active_session_phases
   require_phase_gate: !input require_active_phase
@@ -256,6 +312,33 @@ variables:
       {{ states(session_status_entity) | lower }}
     {% else %}
       unknown
+    {% endif %}
+  current_session_now: >-
+    {% if current_session_entity | string | length > 0 %}
+      {{ states(current_session_entity) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  current_session_last: >-
+    {% if current_session_entity | string | length > 0 %}
+      {{ state_attr(current_session_entity, 'last_label') | default('', true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  current_session_effective: >-
+    {% set now_label = current_session_now | trim %}
+    {% if now_label in ['', 'unknown', 'unavailable', 'none', 'None'] %}
+      {{ current_session_last | trim }}
+    {% else %}
+      {{ now_label }}
+    {% endif %}
+  session_scope_ok: >-
+    {% if not current_session_filter_enabled %}
+      true
+    {% elif current_session_entity | string | length == 0 %}
+      false
+    {% else %}
+      {{ (current_session_effective | trim) in allowed_current_sessions_input }}
     {% endif %}
   previous_event_id: >-
     {% if trigger.from_state is not none %}
@@ -407,7 +490,7 @@ condition:
   - condition: template
     value_template: "{{ notification_actions_input | count > 0 }}"
   - condition: template
-    value_template: "{{ phase_ok and event_ok and flag_ok and category_ok and include_ok and exclude_ok }}"
+    value_template: "{{ session_scope_ok and phase_ok and event_ok and flag_ok and category_ok and include_ok and exclude_ok }}"
 
 action:
   - sequence: !input notification_actions
