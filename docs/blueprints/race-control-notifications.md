@@ -59,7 +59,23 @@ The Session Status Sensor is only needed when **Require Active Session Phase** i
 
 ---
 
-### Step 3 — Configure Filters (Optional)
+### Step 3 — Session Scope (Optional)
+
+Limit notifications to specific session types. This is useful if you only want to receive race control messages during the Race and Qualifying sessions, while ignoring Practice sessions.
+
+| Setting | Description |
+| --- | --- |
+| **Enable Current Session Filter** | When enabled, notifications are only sent during the selected session types. Disabled by default |
+| **Current Session Sensor** | Select the `*_current_session` sensor. Required when the filter is enabled |
+| **Allowed Current Sessions** | Which session types should send notifications. Defaults to all sessions |
+
+:::info
+When this filter is enabled, the automation checks the [Current Session](/entities/live-data#current-session) sensor to decide whether to send a notification. If the current session is not in the allowed list, the notification is suppressed regardless of other filter settings.
+:::
+
+---
+
+### Step 4 — Configure Filters (Optional)
 
 All filters are optional and collapsed by default. Leave them empty to receive every race control message.
 
@@ -88,7 +104,7 @@ All filters are optional and collapsed by default. Leave them empty to receive e
 
 ---
 
-### Step 4 — Configure Notifications
+### Step 5 — Configure Notifications
 
 | Setting | Description |
 | --- | --- |
@@ -112,7 +128,7 @@ All filters are optional and collapsed by default. Leave them empty to receive e
 
 ---
 
-### Step 5 — Add a Notification Action
+### Step 6 — Add a Notification Action
 
 In the **Notification Actions** field, add your delivery action. Below are examples for the most common services.
 

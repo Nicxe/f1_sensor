@@ -65,7 +65,7 @@ For example automations using these events, see the [Automation](/automation) pa
 
 ## Future Event Streams
 
-The Event Bus support in F1 Sensor is designed to be extensible.  
+The Event Bus support in F1 Sensor is designed to be extensible.
 While Race Control is the first published stream, additional real-time events may be added in future releases.
 
 This page will be extended as new event types are introduced.
