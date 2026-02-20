@@ -6044,7 +6044,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         return self._attr_native_value
 
 
-class F1StraightModeSensor(F1BaseEntity, SensorEntity):
+class F1StraightModeSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Sensor for the 2026 Straight Mode (active aero) state.
 
     Reflects the track-wide active aerodynamic permission broadcasted via
@@ -6061,17 +6061,78 @@ class F1StraightModeSensor(F1BaseEntity, SensorEntity):
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_suggested_object_id = f"{device_name}_straight_mode"
+        self._attr_native_value: str | None = None
+        self._attr_extra_state_attributes: dict[str, object] = {}
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        data = self._extract_data()
+        updated = self._has_straight_mode_state(data)
+        restored = False
+        if updated and data is not None:
+            self._apply_data(data)
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                restored_state = str(last.state)
+                if restored_state in self._attr_options:
+                    self._attr_native_value = restored_state
+                    attrs = dict(last.attributes or {})
+                    self._attr_extra_state_attributes = {
+                        "overtake_enabled": attrs.get("overtake_enabled"),
+                        "restored": True,
+                    }
+                    restored = True
+            if not restored and not self._is_stream_active():
+                self._clear_state()
+        self._stream_last_active = self._is_stream_active()
+        self.async_write_ha_state()
+
+    def _extract_data(self) -> dict | None:
+        data = self.coordinator.data
+        if not isinstance(data, dict):
+            return None
+        return data
+
+    def _has_straight_mode_state(self, data: dict | None) -> bool:
+        if not isinstance(data, dict):
+            return False
+        value = data.get("straight_mode")
+        return isinstance(value, str) and value in self._attr_options
+
+    def _apply_data(self, data: dict) -> None:
+        self._attr_native_value = data.get("straight_mode")
+        self._attr_extra_state_attributes = {
+            "overtake_enabled": data.get("overtake_enabled"),
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        data = self._extract_data()
+        updated = self._has_straight_mode_state(data)
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
+            self.async_write_ha_state()
+            return
+        if not updated or data is None:
+            return
+        self._apply_data(data)
+        self.async_write_ha_state()
 
     @property
     def native_value(self):
-        data = self.coordinator.data
-        if not data or not isinstance(data, dict):
-            return None
-        return data.get("straight_mode")
+        return self._attr_native_value
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        return self._attr_native_value is not None
 
     @property
     def extra_state_attributes(self):
-        data = self.coordinator.data
-        if not data or not isinstance(data, dict):
-            return {}
-        return {"overtake_enabled": data.get("overtake_enabled")}
+        return self._attr_extra_state_attributes
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}

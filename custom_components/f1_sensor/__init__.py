@@ -1703,6 +1703,12 @@ class LiveModeCoordinator(DataUpdateCoordinator):
         if not is_live:
             self._state = {"overtake_enabled": None, "straight_mode": None}
             self.async_set_updated_data(None)
+            return
+        self.async_set_updated_data(
+            dict(self._state)
+            if any(v is not None for v in self._state.values())
+            else None
+        )
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()

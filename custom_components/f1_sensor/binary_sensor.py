@@ -523,7 +523,7 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
         }
 
 
-class F1OvertakeModeBinarySensor(F1BaseEntity, BinarySensorEntity):
+class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     """Binary sensor indicating whether Overtake Mode is currently enabled.
 
     Overtake Mode is a 2026 F1 regulation feature that allows a driver who
@@ -541,28 +541,81 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, BinarySensorEntity):
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_suggested_object_id = f"{device_name}_overtake_mode"
-        self._attr_extra_state_attributes: dict = {}
+        self._attr_is_on: bool | None = None
+        self._attr_extra_state_attributes: dict[str, Any] = {}
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        data = self._extract_data()
+        updated = self._has_overtake_state(data)
+        restored = False
+        if updated and data is not None:
+            self._apply_data(data)
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                last_state = last.state
+                if isinstance(last_state, bool):
+                    self._attr_is_on = last_state
+                else:
+                    self._attr_is_on = str(last_state).lower() in (
+                        "on",
+                        "true",
+                        "1",
+                    )
+                attrs = dict(last.attributes or {})
+                self._attr_extra_state_attributes = {
+                    "straight_mode": attrs.get("straight_mode"),
+                    "restored": True,
+                }
+                restored = True
+            if not restored and not self._is_stream_active():
+                self._clear_state()
+        self._stream_last_active = self._is_stream_active()
+        self.async_write_ha_state()
+
+    def _extract_data(self) -> dict[str, Any] | None:
+        data = self.coordinator.data
+        if not isinstance(data, dict):
+            return None
+        return data
+
+    def _has_overtake_state(self, data: dict[str, Any] | None) -> bool:
+        return isinstance(data, dict) and isinstance(data.get("overtake_enabled"), bool)
+
+    def _apply_data(self, data: dict[str, Any]) -> None:
+        self._attr_is_on = bool(data.get("overtake_enabled"))
+        self._attr_extra_state_attributes = {
+            "straight_mode": data.get("straight_mode"),
+        }
 
     def _handle_coordinator_update(self) -> None:
-        data = self.coordinator.data
-        updated = data is not None and isinstance(data, dict)
+        data = self._extract_data()
+        updated = self._has_overtake_state(data)
         if not self._handle_stream_state(updated):
             return
         if not self._is_stream_active():
             self.async_write_ha_state()
             return
+        if not updated or data is None:
+            return
+        self._apply_data(data)
         self.async_write_ha_state()
 
     @property
     def is_on(self) -> bool | None:
-        data = self.coordinator.data
-        if not data or not isinstance(data, dict):
-            return None
-        return data.get("overtake_enabled")
+        return self._attr_is_on
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        return self._attr_is_on is not None
 
     @property
     def extra_state_attributes(self):
-        data = self.coordinator.data
-        if not data or not isinstance(data, dict):
-            return {}
-        return {"straight_mode": data.get("straight_mode")}
+        return self._attr_extra_state_attributes
+
+    def _clear_state(self) -> None:
+        self._attr_is_on = None
+        self._attr_extra_state_attributes = {}
