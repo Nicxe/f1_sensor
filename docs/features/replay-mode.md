@@ -23,20 +23,20 @@ Replay Mode adds several control entities to Home Assistant.
 
 | Entity | Purpose |
 | --- | --- |
-| `select.f1_replay_year` | Select the season year |
-| `select.f1_replay_session` | Select which session to replay |
-| `select.f1_replay_start_reference` | Choose where playback starts |
-| `button.f1_replay_load` | Download and prepare the selected session |
-| `button.f1_replay_play` | Start or resume playback |
-| `button.f1_replay_pause` | Pause playback |
-| `button.f1_replay_stop` | Stop playback and return to idle |
-| `button.f1_replay_refresh_sessions` | Refresh the session list |
+| `select.f1_system_replay_year` | Select the season year |
+| `select.f1_system_replay_session` | Select which session to replay |
+| `select.f1_system_replay_start_reference` | Choose where playback starts |
+| `button.f1_system_load_session` | Download and prepare the selected session |
+| `button.f1_system_play` | Start or resume playback |
+| `button.f1_system_pause` | Pause playback |
+| `button.f1_system_stop` | Stop playback and return to idle |
+| `button.f1_system_refresh_sessions` | Refresh the session list |
 
 ### Media player
 
 | Entity | Purpose |
 | --- | --- |
-| `media_player.f1_replay_player` | Standard media player with play, pause, stop and position tracking |
+| `media_player.f1_system_replay_player` | Standard media player with play, pause, stop and position tracking |
 
 The media player entity lets you control replay using any media player integration or remote control. It reports current position, duration, and playback state, making it easy to integrate with other media players in your setup.
 
@@ -52,8 +52,8 @@ The media player entity lets you control replay using any media player integrati
 
 ### Step 1 - Select a session
 
-1. Use `select.f1_replay_year` to choose the season
-2. Use `select.f1_replay_session` to pick a session from that year
+1. Use `select.f1_system_replay_year` to choose the season
+2. Use `select.f1_system_replay_session` to pick a session from that year
 
 The session list shows all completed sessions from the selected year, with the most recent first.
 
@@ -63,7 +63,7 @@ Session data is typically available 15–60 minutes after a session ends. If you
 
 ### Step 2 - Choose the start reference
 
-Use `select.f1_replay_start_reference` to choose where playback begins:
+Use `select.f1_system_replay_start_reference` to choose where playback begins:
 
 - **Formation start (race/sprint)** - Playback starts from the formation lap. This is the default and recommended for races and sprints, since you can focus on watching the start rather than pressing a button at lights out.
 - **Session live** - Playback starts from lights out (races) or pit exit open (practice/qualifying). This is the most precise option but requires you to press play at the exact moment.
@@ -78,13 +78,13 @@ The formation lap start point is estimated with approximately one second accurac
 
 ### Step 3 - Load the session
 
-Press `button.f1_replay_load` to download the session data.
+Press `button.f1_system_load_session` to download the session data.
 
 The `sensor.f1_replay_status` shows download progress. Session data is cached locally, so loading the same session again is faster.
 
 ### Step 4 - Sync with your broadcast
 
-Start the session on your TV or streaming service. When you see the session begin, press `button.f1_replay_play` or use `media_player.f1_replay_player` at that exact moment.
+Start the session on your TV or streaming service. When you see the session begin, press `button.f1_system_play` or use `media_player.f1_system_replay_player` at that exact moment.
 
 **For races and sprints** (with formation start reference): Press play when the formation lap begins.
 
@@ -96,15 +96,15 @@ From this point, all live sensors update in sync with what you see on screen.
 
 If you pause your TV, pause the replay to stay in sync. When you resume, resume the replay.
 
-- **Pause** - Press `button.f1_replay_pause` or pause `media_player.f1_replay_player`
-- **Resume** - Press `button.f1_replay_play` or play `media_player.f1_replay_player`
-- **Stop** - Press `button.f1_replay_stop` to end playback and return to idle
+- **Pause** - Press `button.f1_system_pause` or pause `media_player.f1_system_replay_player`
+- **Resume** - Press `button.f1_system_play` or play `media_player.f1_system_replay_player`
+- **Stop** - Press `button.f1_system_stop` to end playback and return to idle
 
 ---
 
 ## Media Player Entity
 
-The `media_player.f1_replay_player` entity provides standard media player controls for replay.
+The `media_player.f1_system_replay_player` entity provides standard media player controls for replay.
 
 **State (enum)**
 - One of: `idle`, `buffering`, `playing`, `paused`
@@ -171,12 +171,12 @@ automation:
         to: "paused"
     condition:
       - condition: state
-        entity_id: media_player.f1_replay_player
+        entity_id: media_player.f1_system_replay_player
         state: "playing"
     action:
       - service: media_player.media_pause
         target:
-          entity_id: media_player.f1_replay_player
+          entity_id: media_player.f1_system_replay_player
 
   - alias: "Resume F1 replay when Apple TV plays"
     trigger:
@@ -185,12 +185,12 @@ automation:
         to: "playing"
     condition:
       - condition: state
-        entity_id: media_player.f1_replay_player
+        entity_id: media_player.f1_system_replay_player
         state: "paused"
     action:
       - service: media_player.media_play
         target:
-          entity_id: media_player.f1_replay_player
+          entity_id: media_player.f1_system_replay_player
 ```
 
 Replace `media_player.apple_tv` with your actual media player entity. This works with any media player that reports play and pause states.
