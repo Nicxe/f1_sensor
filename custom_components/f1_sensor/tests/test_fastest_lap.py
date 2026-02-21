@@ -114,7 +114,7 @@ def _driver_positions_payload() -> dict:
 
 def test_driver_positions_fastest_lap_race(hass) -> None:
     coord = DummyCoordinator(data=_driver_positions_payload())
-    sensor = F1DriverPositionsSensor(coord, "F1", "uid", "entry", "F1")
+    sensor = F1DriverPositionsSensor(coord, "uid", "entry", "F1")
     sensor.hass = hass
     sensor._session_info_coordinator = SimpleNamespace(
         data={"Type": "Race", "Name": "Race"}
@@ -132,7 +132,7 @@ def test_driver_positions_fastest_lap_race(hass) -> None:
 
 def test_driver_positions_fastest_lap_hidden_non_race(hass) -> None:
     coord = DummyCoordinator(data=_driver_positions_payload())
-    sensor = F1DriverPositionsSensor(coord, "F1", "uid", "entry", "F1")
+    sensor = F1DriverPositionsSensor(coord, "uid", "entry", "F1")
     sensor.hass = hass
     sensor._session_info_coordinator = SimpleNamespace(
         data={"Type": "Practice", "Name": "Practice 1"}

@@ -11,3 +11,6 @@ ignore = [
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
 combine-as-imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

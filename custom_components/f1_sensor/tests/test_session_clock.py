@@ -298,7 +298,6 @@ async def test_session_time_remaining_sensor_uses_coordinator_data(hass) -> None
 
     sensor = F1SessionTimeRemainingSensor(
         coordinator,
-        "F1 session remaining",
         f"{entry_id}_session_remaining",
         entry_id,
         "F1",
@@ -353,7 +352,6 @@ async def test_race_three_hour_sensor_hidden_for_sprint(hass) -> None:
 
     sensor = F1RaceTimeToThreeHourLimitSensor(
         coordinator,
-        "F1 race to cap",
         f"{entry_id}_race_cap",
         entry_id,
         "F1",
