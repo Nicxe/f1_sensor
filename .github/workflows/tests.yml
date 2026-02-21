@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+    branches: [dev, beta, main]
+    paths:
+      - "custom_components/**/*.py"
+      - "custom_components/**/tests/**"
+  pull_request:
+    paths:
+      - "custom_components/**/*.py"
+      - "custom_components/**/tests/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Run pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
+        run: pip install pytest-homeassistant-custom-component pytest-cov
+
+      - name: Run tests
+        run: >
+          python -m pytest
+          custom_components/f1_sensor/tests/
+          --cov=custom_components.f1_sensor
+          --cov-report=term-missing
+          -q
