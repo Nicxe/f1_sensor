@@ -5175,7 +5175,7 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         #
         # LiveDriversCoordinator intentionally clears its consolidated state when
         # the live window ends to avoid briefly showing stale timing data at the
-        # start of a new session. For `sensor.f1_driver_list` we *do* want to keep
+        # start of a new session. For `sensor.f1_drivers_driver_list` we *do* want to keep
         # the last known list for dashboards/UI, so we treat an empty coordinator
         # payload as "no update" and keep/restored state.
         updated = self._update_from_coordinator()

@@ -10,7 +10,7 @@ Information that rarely changes, such as schedules, drivers, circuits, and champ
 
 | Entity                                                                            | Info                                              | 
 | ----------------------------------------------------------------------------------| --------------------------------------------------| 
-| [sensor.f1_next_race](#next-race)                                                 | Next race info                                    | 
+| [sensor.f1_race_next_race](#next-race)                                                 | Next race info                                    | 
 | [sensor.f1_track_time](#track-time)                                               | Current local time at the next race circuit       |
 | [sensor.f1_current_season](#current-season)                                       | Full race schedule                                | 
 | [sensor.f1_driver_standings](#driver-standings)                                   | Current driver championship standings             | 
@@ -33,7 +33,7 @@ Many schedule timestamps are provided in three variants: an explicit UTC value (
 ---
 
 ## Next Race 
-`sensor.f1_next_race` - Schedule for the next race; state is the race start timestamp (ISO‑8601).
+`sensor.f1_race_next_race` - Schedule for the next race; state is the race start timestamp (ISO‑8601).
 
 **State**
   - ISO‑8601 timestamp (UTC) of the race start, or `unknown` if not available.
