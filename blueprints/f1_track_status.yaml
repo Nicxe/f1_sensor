@@ -464,7 +464,7 @@ variables:
   notification_actions_list: !input notification_actions
   has_notification_actions: "{{ notification_actions_list | count > 0 }}"
 
-  automation_slug: "{{ (this.entity_id | default('f1_track_status_light') | replace('.', '_') | replace('-', '_')) }}"
+  automation_slug: "{{ (this.entity_id | default('f1_session_track_status_light') | replace('.', '_') | replace('-', '_')) }}"
   pre_race_scene_id: "{{ automation_slug ~ '_pre_race' }}"
   pre_alert_scene_id: "{{ automation_slug ~ '_pre_alert' }}"
 
