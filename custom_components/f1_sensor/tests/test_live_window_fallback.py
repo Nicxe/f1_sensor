@@ -3,15 +3,16 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
-import custom_components.f1_sensor.live_window as live_window
+from homeassistant.util import dt as dt_util
 import pytest
+
+import custom_components.f1_sensor.live_window as live_window
 from custom_components.f1_sensor.live_window import (
     EventTrackerScheduleSource,
     LiveSessionSupervisor,
     ScheduleFetchResult,
     SessionWindow,
 )
-from homeassistant.util import dt as dt_util
 
 
 class _DummySessionCoordinator:
