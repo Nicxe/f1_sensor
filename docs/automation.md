@@ -90,8 +90,8 @@ action:
     data:
       title: "Formula 1"
       message: >
-        Race week is here! Next up: {{ state_attr('sensor.f1_race_next_race', 'race_name') }}
-        at {{ state_attr('sensor.f1_race_next_race', 'circuit_name') }}.
+        Race week is here! Next up: {{ state_attr('sensor.f1_next_race', 'race_name') }}
+        at {{ state_attr('sensor.f1_next_race', 'circuit_name') }}.
 mode: single
 ```
 
@@ -133,7 +133,7 @@ alias: F1 - Session is live
 description: Trigger when a session goes live
 trigger:
   - platform: state
-    entity_id: sensor.f1_session_session_status
+    entity_id: sensor.f1_session_status
     to: "live"
 condition: []
 action:
@@ -141,8 +141,8 @@ action:
     data:
       title: "F1 is live"
       message: >
-        {{ state_attr('sensor.f1_session_session_status', 'session_name') }} at
-        {{ state_attr('sensor.f1_session_session_status', 'meeting_name') }} has started.
+        {{ state_attr('sensor.f1_session_status', 'session_name') }} at
+        {{ state_attr('sensor.f1_session_status', 'meeting_name') }} has started.
 mode: single
 ```
 
@@ -157,7 +157,7 @@ alias: F1 - Formation lap started
 description: Notify when the formation lap begins
 trigger:
   - platform: state
-    entity_id: binary_sensor.f1_session_formation_start
+    entity_id: binary_sensor.f1_formation_start
     to: "on"
 condition: []
 action:
