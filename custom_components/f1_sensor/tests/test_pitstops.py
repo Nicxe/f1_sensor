@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 from unittest.mock import MagicMock
 
 import pytest
-
 from custom_components.f1_sensor.__init__ import PitStopCoordinator
 
 

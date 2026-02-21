@@ -4,22 +4,21 @@ import logging
 from unittest.mock import AsyncMock
 
 import pytest
-from homeassistant.const import STATE_UNAVAILABLE
-from homeassistant.core import State
-from homeassistant.helpers.entity_component import EntityComponent
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-
 from custom_components.f1_sensor import LiveModeCoordinator
 from custom_components.f1_sensor.binary_sensor import F1OvertakeModeBinarySensor
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     DOMAIN,
-    OPERATION_MODE_LIVE,
     OPERATION_MODE_DEVELOPMENT,
+    OPERATION_MODE_LIVE,
     STRAIGHT_MODE_LOW,
 )
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.sensor import F1StraightModeSensor
+from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.core import State
+from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 

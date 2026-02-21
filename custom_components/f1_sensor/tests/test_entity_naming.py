@@ -3,12 +3,11 @@ from __future__ import annotations
 from unittest.mock import Mock
 
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.f1_sensor import binary_sensor as binary_sensor_platform
 from custom_components.f1_sensor import sensor as sensor_platform
 from custom_components.f1_sensor.const import DOMAIN, SUPPORTED_SENSOR_KEYS
 from custom_components.f1_sensor.helpers import format_entity_name
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
 def test_format_entity_name_humanizes_sensor_keys() -> None:

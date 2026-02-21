@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 import types
+from pathlib import Path
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry

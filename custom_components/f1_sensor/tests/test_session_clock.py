@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import logging
 import time
+from datetime import UTC, datetime
 
 import pytest
-from homeassistant.helpers.entity_component import EntityComponent
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-
 from custom_components.f1_sensor.__init__ import SessionClockCoordinator
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
@@ -18,6 +15,8 @@ from custom_components.f1_sensor.sensor import (
     F1RaceTimeToThreeHourLimitSensor,
     F1SessionTimeRemainingSensor,
 )
+from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,7 +44,7 @@ class _LiveSupervisor:
 
 
 def _utc(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
 
 
 @pytest.mark.asyncio

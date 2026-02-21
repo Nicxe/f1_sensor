@@ -3,7 +3,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-
 from custom_components.f1_sensor.__init__ import LiveDriversCoordinator
 from custom_components.f1_sensor.sensor import F1DriverPositionsSensor
 
