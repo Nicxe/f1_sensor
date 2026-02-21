@@ -1,16 +1,17 @@
 from __future__ import annotations
-from contextlib import suppress
 
-from typing import Any, Callable
+from collections.abc import Callable
+from contextlib import suppress
+from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 
+from .calibration import LiveDelayCalibrationManager
 from .const import DOMAIN
 from .entity import F1AuxEntity
-from .calibration import LiveDelayCalibrationManager
 from .live_delay import LiveDelayController
 
 

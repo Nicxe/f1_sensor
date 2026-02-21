@@ -1,21 +1,21 @@
 from __future__ import annotations
-from contextlib import suppress
 
 import asyncio
-import logging
-from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
 import contextlib
 import json
+import logging
 import re
 import time
-from typing import Any, Callable, Iterable, Protocol, TYPE_CHECKING
+from collections.abc import Callable, Iterable
+from contextlib import suppress
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any, Protocol
 
 import async_timeout
 from aiohttp import ClientSession
 from homeassistant.util import dt as dt_util
 
-from .signalr import LiveBus
 from .const import (
     DOMAIN,
     EVENT_TRACKER_ACTIVE_CACHE_TTL,
@@ -30,6 +30,7 @@ from .const import (
     EVENT_TRACKER_MEETING_ENDPOINT_PREFIX,
     EVENT_TRACKER_REQUEST_TIMEOUT,
 )
+from .signalr import LiveBus
 
 if TYPE_CHECKING:
     from . import LiveSessionCoordinator
@@ -197,10 +198,10 @@ def _to_utc(date_str: str | None, gmt_offset: str | None) -> datetime | None:
         offset = _parse_offset(gmt_offset)
         tzinfo = timezone(offset)
     except Exception:  # noqa: BLE001
-        tzinfo = timezone.utc
+        tzinfo = UTC
     if dt_val.tzinfo is None:
         dt_val = dt_val.replace(tzinfo=tzinfo)
-    return dt_val.astimezone(timezone.utc)
+    return dt_val.astimezone(UTC)
 
 
 def _normalize_path(path: str | None) -> str | None:
@@ -345,7 +346,7 @@ class LiveScheduleSource(Protocol):
 class IndexScheduleSource:
     """Primary schedule source backed by LiveTiming Index.json."""
 
-    def __init__(self, session_coord: "LiveSessionCoordinator") -> None:
+    def __init__(self, session_coord: LiveSessionCoordinator) -> None:
         self._session_coord = session_coord
 
     async def async_fetch_windows(
@@ -738,7 +739,7 @@ class LiveSessionSupervisor:
     def __init__(
         self,
         hass,
-        session_coord: "LiveSessionCoordinator",
+        session_coord: LiveSessionCoordinator,
         bus: LiveBus,
         *,
         http_session: ClientSession,

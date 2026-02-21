@@ -1,9 +1,9 @@
-from contextlib import suppress
 import asyncio
+from contextlib import suppress
 
 from homeassistant.helpers.device_registry import DeviceEntryType
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_OPERATION_MODE,
@@ -84,7 +84,7 @@ class F1BaseEntity(CoordinatorEntity):
         with suppress(Exception):
             coord = getattr(self, "coordinator", None)
             if coord is not None and hasattr(coord, "available"):
-                coord_available = bool(getattr(coord, "available"))
+                coord_available = bool(coord.available)
 
                 # Additional guard: for live timing coordinators, only consider them
                 # available when the integration's live_state says we are in a live

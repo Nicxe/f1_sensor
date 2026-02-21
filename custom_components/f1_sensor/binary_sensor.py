@@ -1,26 +1,28 @@
 from __future__ import annotations
-from contextlib import suppress
 
 import datetime
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from contextlib import suppress
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_OPERATION_MODE,
     CONF_RACE_WEEK_START_DAY,
     CONF_RACE_WEEK_SUNDAY_START,
-    DEFAULT_RACE_WEEK_START_DAY,
     DEFAULT_OPERATION_MODE,
+    DEFAULT_RACE_WEEK_START_DAY,
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
     RACE_SWITCH_GRACE,
@@ -28,10 +30,9 @@ from .const import (
     RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
 )
-from .entity import F1BaseEntity, F1AuxEntity
+from .entity import F1AuxEntity, F1BaseEntity
 from .formation_start import FormationStartTracker
 from .helpers import get_next_race, normalize_track_status
-from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -264,7 +265,7 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
             try:
                 ts = datetime.datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
                 if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=datetime.timezone.utc)
+                    ts = ts.replace(tzinfo=datetime.UTC)
             except Exception:  # noqa: BLE001
                 ts = None
         return payload, ts

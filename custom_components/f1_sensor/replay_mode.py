@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
-
 import asyncio
 import json
 import logging
 import shutil
 import time
+from collections.abc import AsyncGenerator, Callable
+from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, AsyncGenerator, Callable, Dict, List
+from typing import Any
 
 import async_timeout
 from aiohttp import ClientSession
@@ -27,8 +27,8 @@ from .const import (
     REPLAY_START_REFERENCE_FORMATION,
 )
 from .formation_start import FormationStartTracker
-from .replay_start import ReplayStartReferenceController
 from .helpers import parse_cardata_lines
+from .replay_start import ReplayStartReferenceController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -126,8 +126,8 @@ class ReplayIndex:
     index_file: Path
     formation_started_at_ms: int | None = None
     # Snapshot of all streams at session_started_at_ms for initial state
-    initial_state: Dict[str, Any] | None = None
-    formation_initial_state: Dict[str, Any] | None = None
+    initial_state: dict[str, Any] | None = None
+    formation_initial_state: dict[str, Any] | None = None
 
 
 class ReplaySessionManager:
@@ -146,12 +146,12 @@ class ReplaySessionManager:
         self._state = ReplayState.IDLE
         self._selected_session: ReplaySession | None = None
         self._loaded_index: ReplayIndex | None = None
-        self._available_sessions: List[ReplaySession] = []
+        self._available_sessions: list[ReplaySession] = []
         self._selected_year = dt_util.utcnow().year
         self._index_year: int | None = None
         self._index_status: str | None = None
         self._index_error: str | None = None
-        self._listeners: List[Callable[[dict], None]] = []
+        self._listeners: list[Callable[[dict], None]] = []
         self._download_progress: float = 0.0
         self._download_error: str | None = None
         self._fetch_task: asyncio.Task | None = None
@@ -167,7 +167,7 @@ class ReplaySessionManager:
         return self._selected_session
 
     @property
-    def available_sessions(self) -> List[ReplaySession]:
+    def available_sessions(self) -> list[ReplaySession]:
         """List of available sessions for replay."""
         return self._available_sessions
 
@@ -242,14 +242,14 @@ class ReplaySessionManager:
 
     async def async_fetch_sessions(
         self, year: int | None = None
-    ) -> List[ReplaySession]:
+    ) -> list[ReplaySession]:
         """Fetch available sessions from F1 Live Timing Index."""
         if year is None:
             year = self._selected_year
         else:
             self._selected_year = year
 
-        sessions: List[ReplaySession] = []
+        sessions: list[ReplaySession] = []
         previous_index_year = self._index_year
         year_changed = previous_index_year != year
         self._index_year = year
@@ -288,7 +288,7 @@ class ReplaySessionManager:
                         return sessions
                     text = await resp.text()
                     data = json.loads(text.lstrip("\ufeff"))
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._index_status = INDEX_STATUS_ERROR
             self._index_error = "timeout"
             if year_changed:
@@ -552,7 +552,7 @@ class ReplaySessionManager:
                 _LOGGER.warning("Failed to load cached index, re-downloading: %s", err)
 
         # Download all streams
-        all_frames: List[ReplayFrame] = []
+        all_frames: list[ReplayFrame] = []
         total_streams = len(REPLAY_STREAMS)
         static_root = f"{STATIC_BASE}/{session.path}"
 
@@ -592,7 +592,7 @@ class ReplaySessionManager:
         )
 
         formation_started_at_ms: int | None = None
-        formation_initial_state: Dict[str, Any] | None = None
+        formation_initial_state: dict[str, Any] | None = None
 
         if self._is_race_or_sprint_session(session):
             formation_start_utc = await self._find_formation_start_utc(session)
@@ -674,9 +674,9 @@ class ReplaySessionManager:
 
     async def _download_stream(
         self, url: str, stream_name: str, static_root: str
-    ) -> List[ReplayFrame]:
+    ) -> list[ReplayFrame]:
         """Download a single .jsonStream file and parse into frames."""
-        frames: List[ReplayFrame] = []
+        frames: list[ReplayFrame] = []
 
         try:
             async with async_timeout.timeout(60):
@@ -688,7 +688,7 @@ class ReplaySessionManager:
                         _LOGGER.debug("Stream %s returned %s", stream_name, resp.status)
                         return frames
                     text = await resp.text()
-        except asyncio.TimeoutError:
+        except TimeoutError:
             _LOGGER.debug("Timeout downloading %s", stream_name)
             return frames
         except Exception as err:
@@ -733,7 +733,7 @@ class ReplaySessionManager:
         _LOGGER.debug("Downloaded %d frames from %s", len(frames), stream_name)
         return frames
 
-    def _merge_topthree_state(self, state: Dict[str, Any], payload: dict) -> None:
+    def _merge_topthree_state(self, state: dict[str, Any], payload: dict) -> None:
         """Merge a TopThree payload into accumulated state.
 
         TopThree sends an initial full snapshot with Lines as a list,
@@ -778,7 +778,7 @@ class ReplaySessionManager:
                 cur_lines[idx] = base
             state["lines"] = cur_lines
 
-    def _merge_tyre_stints_state(self, state: Dict[str, Any], payload: dict) -> None:
+    def _merge_tyre_stints_state(self, state: dict[str, Any], payload: dict) -> None:
         stints = payload.get("Stints")
         if not isinstance(stints, dict):
             return
@@ -810,14 +810,14 @@ class ReplaySessionManager:
                     entry[key] = base
 
     @staticmethod
-    def _has_tyre_stints_state(state: Dict[str, Any]) -> bool:
+    def _has_tyre_stints_state(state: dict[str, Any]) -> bool:
         stints = state.get("Stints")
         return isinstance(stints, dict) and bool(stints)
 
     def _merge_lap_history_state(
         self,
-        state: Dict[str, Any],
-        last_lap_times: Dict[str, str],
+        state: dict[str, Any],
+        last_lap_times: dict[str, str],
         payload: dict,
     ) -> None:
         """Accumulate lap history from TimingData frames.
@@ -908,12 +908,12 @@ class ReplaySessionManager:
                             driver_entry["completed_laps"] = use_lap_num
 
     @staticmethod
-    def _has_lap_history_state(state: Dict[str, Any]) -> bool:
+    def _has_lap_history_state(state: dict[str, Any]) -> bool:
         return isinstance(state, dict) and bool(state)
 
     def _extract_grid_from_driver_race_info(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         payload: dict,
     ) -> None:
         """Extract grid positions from DriverRaceInfo Position field."""
@@ -951,7 +951,7 @@ class ReplaySessionManager:
 
     def _extract_grid_from_driverlist(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         payload: dict,
     ) -> None:
         """Extract grid positions from DriverList Line field (backup)."""
@@ -988,18 +988,18 @@ class ReplaySessionManager:
                 driver_entry["grid_position"] = line_pos
 
     def _build_initial_state(
-        self, frames: List[ReplayFrame], start_ms: int
-    ) -> Dict[str, Any]:
+        self, frames: list[ReplayFrame], start_ms: int
+    ) -> dict[str, Any]:
         """Return the latest stream payloads at the provided timestamp."""
         skip_initial = {"PitStopSeries"}
-        initial_state: Dict[str, Any] = {}
-        topthree_state: Dict[str, Any] = {
+        initial_state: dict[str, Any] = {}
+        topthree_state: dict[str, Any] = {
             "lines": [None, None, None],
             "withheld": False,
         }
-        tyre_stints_state: Dict[str, Any] = {"Stints": {}}
-        lap_history_state: Dict[str, Any] = {}
-        last_lap_times: Dict[str, str] = {}
+        tyre_stints_state: dict[str, Any] = {"Stints": {}}
+        lap_history_state: dict[str, Any] = {}
+        last_lap_times: dict[str, str] = {}
 
         for frame in frames:
             if frame.timestamp_ms > start_ms:
@@ -1099,8 +1099,8 @@ class ReplaySessionManager:
         except ValueError:
             return None
         if dt_val.tzinfo is None:
-            dt_val = dt_val.replace(tzinfo=timezone.utc)
-        return dt_val.astimezone(timezone.utc)
+            dt_val = dt_val.replace(tzinfo=UTC)
+        return dt_val.astimezone(UTC)
 
     def _extract_frame_utc(self, payload: dict | None) -> datetime | None:
         if not isinstance(payload, dict):
@@ -1119,7 +1119,7 @@ class ReplaySessionManager:
         return None
 
     def _find_closest_frame_ms(
-        self, frames: List[ReplayFrame], target_utc: datetime
+        self, frames: list[ReplayFrame], target_utc: datetime
     ) -> int | None:
         best_ms: int | None = None
         best_delta: float | None = None
@@ -1197,7 +1197,7 @@ class ReplaySessionManager:
                             ReplaySessionManager._parse_utc,
                         )
                         _process_utcs(utcs)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return None
         except Exception:  # noqa: BLE001
             return None
@@ -1231,7 +1231,7 @@ class ReplaySessionManager:
             return 0
 
     async def _validate_session_availability(
-        self, sessions: List[ReplaySession]
+        self, sessions: list[ReplaySession]
     ) -> None:
         """Check which sessions have data available via HEAD requests."""
         # Batch validation - check SessionStatus.jsonStream existence
@@ -1284,7 +1284,7 @@ class ReplaySessionManager:
     @staticmethod
     def _read_json_file(file_path: Path) -> dict:
         """Read and parse a JSON file (called via executor)."""
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             return json.load(f)
 
     @staticmethod
@@ -1294,7 +1294,7 @@ class ReplaySessionManager:
             json.dump(data, f, indent=2)
 
     @staticmethod
-    def _write_lines_file(file_path: Path, lines: List[str]) -> None:
+    def _write_lines_file(file_path: Path, lines: list[str]) -> None:
         """Write lines to a file (called via executor)."""
         with open(file_path, "w", encoding="utf-8") as f:
             for line in lines:
@@ -1325,13 +1325,13 @@ class ReplaySessionManager:
                     from datetime import timedelta
 
                     offset = timedelta(hours=offset_hours, minutes=offset_mins)
-                    dt = dt.replace(tzinfo=timezone.utc) - offset
+                    dt = dt.replace(tzinfo=UTC) - offset
                 except Exception:
-                    dt = dt.replace(tzinfo=timezone.utc)
+                    dt = dt.replace(tzinfo=UTC)
             elif dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.replace(tzinfo=UTC)
 
-            return dt.astimezone(timezone.utc)
+            return dt.astimezone(UTC)
         except ValueError:
             return None
 
@@ -1362,13 +1362,13 @@ class ReplayTransport:
         self._playback_started_at: float | None = None
         self._pause_started_at: float | None = None
         self._total_paused_duration: float = 0.0
-        self._listeners: List[Callable[[dict], None]] = []
+        self._listeners: list[Callable[[dict], None]] = []
 
     async def ensure_connection(self) -> None:
         """No-op for replay transport - data is already local."""
         pass
 
-    async def messages(self) -> AsyncGenerator[dict, None]:
+    async def messages(self) -> AsyncGenerator[dict]:
         """Yield replay frames as SignalR-compatible messages."""
         if self._start_from_ms is not None:
             start_ms = self._start_from_ms
@@ -1396,7 +1396,7 @@ class ReplayTransport:
 
             def _read_frames_stream() -> None:
                 try:
-                    with open(self._index.frames_file, "r", encoding="utf-8") as f:
+                    with open(self._index.frames_file, encoding="utf-8") as f:
                         for line in f:
                             if self._closed:
                                 break
@@ -1592,7 +1592,7 @@ class ReplayController:
         self._original_transport_factory: Callable | None = None
         self._replay_active = False  # Track if replay transport is active
         self._playback_task: asyncio.Task | None = None
-        self._listeners: List[Callable[[dict], None]] = []
+        self._listeners: list[Callable[[dict], None]] = []
 
     @property
     def session_manager(self) -> ReplaySessionManager:
@@ -1616,7 +1616,7 @@ class ReplayController:
 
     def _resolve_playback_start(
         self, index: ReplayIndex, *, log: bool
-    ) -> tuple[int, Dict[str, Any] | None]:
+    ) -> tuple[int, dict[str, Any] | None]:
         start_from_ms = index.session_started_at_ms
         initial_state = index.initial_state
         if self._get_start_reference() == REPLAY_START_REFERENCE_FORMATION:

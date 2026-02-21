@@ -1,9 +1,10 @@
 from __future__ import annotations
-from contextlib import suppress
 
-import datetime
 import asyncio
+import datetime
 import re
+from contextlib import suppress
+from logging import getLogger
 from zoneinfo import ZoneInfo
 
 import async_timeout
@@ -12,30 +13,32 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.event import (
-    async_call_later,
-    async_track_time_interval,
-    async_track_utc_time_change,
-)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.event import (
+    async_call_later,
+    async_track_time_interval,
+    async_track_utc_time_change,
+)
+from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, ENABLE_DEVELOPMENT_MODE_UI
-from .entity import F1AuxEntity, F1BaseEntity
 from .const import (
     CONF_OPERATION_MODE,
     DEFAULT_OPERATION_MODE,
+    DOMAIN,
+    ENABLE_DEVELOPMENT_MODE_UI,
     LATEST_TRACK_STATUS,
     OPERATION_MODE_DEVELOPMENT,
     RACE_SWITCH_GRACE,
-    STRAIGHT_MODE_NORMAL,
-    STRAIGHT_MODE_LOW,
     STRAIGHT_MODE_DISABLED,
+    STRAIGHT_MODE_LOW,
+    STRAIGHT_MODE_NORMAL,
 )
+from .entity import F1AuxEntity, F1BaseEntity
 from .helpers import (
     get_circuit_map_url,
     get_country_code,
@@ -46,8 +49,6 @@ from .helpers import (
 )
 from .live_window import STATIC_BASE
 from .replay_entities import F1ReplayStatusSensor
-from logging import getLogger
-from homeassistant.util import dt as dt_util
 
 WMO_CODE_TO_MDI = {
     0: "mdi:weather-sunny",
@@ -108,7 +109,7 @@ def _combine_date_time(
     try:
         dt = datetime.datetime.fromisoformat(dt_str)
         if force_utc and dt.tzinfo is not None:
-            dt = dt.astimezone(datetime.timezone.utc)
+            dt = dt.astimezone(datetime.UTC)
         return dt.isoformat()
     except Exception:
         return None
@@ -754,7 +755,7 @@ class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         tz_name = self._get_circuit_timezone(race)
         if not tz_name:
             return None
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        now_utc = datetime.datetime.now(datetime.UTC)
         now_track = now_utc.astimezone(ZoneInfo(tz_name))
         return now_track.strftime("%H:%M")
 
@@ -768,7 +769,7 @@ class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
             return {}
 
         circuit = race.get("Circuit", {})
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        now_utc = datetime.datetime.now(datetime.UTC)
         now_track = now_utc.astimezone(ZoneInfo(tz_name))
 
         home_tz_name = getattr(self.hass.config, "time_zone", None)
@@ -1025,17 +1026,17 @@ class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         start_iso = (
             _combine_date_time(race.get("date"), race.get("time")) if race else None
         )
-        self._race = {k: None for k in self._current}
+        self._race = dict.fromkeys(self._current)
         if start_iso and hourly_entries:
             start_dt = datetime.datetime.fromisoformat(start_iso)
             # Ensure start_dt is UTC-aware for comparison.
             if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=datetime.timezone.utc)
+                start_dt = start_dt.replace(tzinfo=datetime.UTC)
             closest = min(
                 hourly_entries,
                 key=lambda e: abs(
                     datetime.datetime.fromisoformat(e["time"]).replace(
-                        tzinfo=datetime.timezone.utc
+                        tzinfo=datetime.UTC
                     )
                     - start_dt
                 ),
@@ -1486,7 +1487,7 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         try:
             dt = datetime.datetime.fromisoformat(published.replace("Z", "+00:00"))
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=datetime.timezone.utc)
+                dt = dt.replace(tzinfo=datetime.UTC)
             return dt.timestamp()
         except Exception:
             return None
@@ -2167,7 +2168,7 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     str(utc_raw).replace("Z", "+00:00")
                 )
                 if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=datetime.timezone.utc)
+                    ts = ts.replace(tzinfo=datetime.UTC)
                 self._last_timestamped_dt = ts
             else:
                 # No explicit timestamp; do not assign measurement_time
@@ -2604,20 +2605,20 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             lw = getattr(self, "_last_write_ts", None)
             now = _time.time()
             if lw is None or (now - lw) >= 5.0:
-                setattr(self, "_last_write_ts", now)
+                self._last_write_ts = now
                 self._safe_write_ha_state()
             else:
                 pending = getattr(self, "_pending_write", False)
                 if not pending:
-                    setattr(self, "_pending_write", True)
+                    self._pending_write = True
                     delay = max(0.0, 5.0 - (now - lw)) if lw is not None else 5.0
 
                     def _do_write(_):
                         try:
-                            setattr(self, "_last_write_ts", _time.time())
+                            self._last_write_ts = _time.time()
                             self._safe_write_ha_state()
                         finally:
-                            setattr(self, "_pending_write", False)
+                            self._pending_write = False
 
                     async_call_later(self.hass, delay, _do_write)
         except Exception:
@@ -3188,8 +3189,8 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                             str(end_iso).replace("Z", "+00:00")
                         )
                         if end_dt.tzinfo is None:
-                            end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
-                        now_utc = datetime.datetime.now(datetime.timezone.utc)
+                            end_dt = end_dt.replace(tzinfo=datetime.UTC)
+                        now_utc = datetime.datetime.now(datetime.UTC)
                         if now_utc >= (end_dt + datetime.timedelta(minutes=5)):
                             # Also consider live status if available
                             st = str(self._live_status() or "").strip()
@@ -3336,8 +3337,8 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     str(end_iso).replace("Z", "+00:00")
                 )
                 if end_dt.tzinfo is None:
-                    end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
-                now_utc = datetime.datetime.now(datetime.timezone.utc)
+                    end_dt = end_dt.replace(tzinfo=datetime.UTC)
+                now_utc = datetime.datetime.now(datetime.UTC)
                 # Consider EndDate only if we are well past it and no active/green status is present
                 if now_utc >= (end_dt + datetime.timedelta(minutes=5)):
                     st = str(status or "").strip()
@@ -3577,10 +3578,8 @@ class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             if utc_str:
                 dt = datetime.datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=datetime.timezone.utc)
-                utc_str = dt.astimezone(datetime.timezone.utc).isoformat(
-                    timespec="seconds"
-                )
+                    dt = dt.replace(tzinfo=datetime.UTC)
+                utc_str = dt.astimezone(datetime.UTC).isoformat(timespec="seconds")
         except Exception:
             utc_str = self._cleanup_string(utc_str)
 
@@ -4609,8 +4608,8 @@ class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         try:
             dt = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=datetime.timezone.utc)
-            return dt.astimezone(datetime.timezone.utc).isoformat(timespec="seconds")
+                dt = dt.replace(tzinfo=datetime.UTC)
+            return dt.astimezone(datetime.UTC).isoformat(timespec="seconds")
         except Exception:
             return text
 
@@ -4941,7 +4940,7 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                                 mt.replace("Z", "+00:00")
                             )
                             if t_ref.tzinfo is None:
-                                t_ref = t_ref.replace(tzinfo=datetime.timezone.utc)
+                                t_ref = t_ref.replace(tzinfo=datetime.UTC)
                             self._last_timestamped_dt = t_ref
                         if t_ref is None:
                             ra = self._attr_extra_state_attributes.get("received_at")
@@ -4950,7 +4949,7 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                                     ra.replace("Z", "+00:00")
                                 )
                                 if t_ref.tzinfo is None:
-                                    t_ref = t_ref.replace(tzinfo=datetime.timezone.utc)
+                                    t_ref = t_ref.replace(tzinfo=datetime.UTC)
                         if isinstance(t_ref, datetime.datetime):
                             self._last_received_utc = t_ref
             else:
@@ -5014,7 +5013,7 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     str(utc_raw).replace("Z", "+00:00")
                 )
                 if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=datetime.timezone.utc)
+                    ts = ts.replace(tzinfo=datetime.UTC)
                 self._last_timestamped_dt = ts
         self._attr_native_value = curr
         self._last_received_utc = now_utc
@@ -5049,7 +5048,7 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                             mt.replace("Z", "+00:00")
                         )
                         if t_ref.tzinfo is None:
-                            t_ref = t_ref.replace(tzinfo=datetime.timezone.utc)
+                            t_ref = t_ref.replace(tzinfo=datetime.UTC)
                     except Exception:
                         t_ref = None
                 if t_ref is None and isinstance(
@@ -5084,7 +5083,7 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 try:
                     t_ref = datetime.datetime.fromisoformat(mt.replace("Z", "+00:00"))
                     if t_ref.tzinfo is None:
-                        t_ref = t_ref.replace(tzinfo=datetime.timezone.utc)
+                        t_ref = t_ref.replace(tzinfo=datetime.UTC)
                 except Exception:
                     t_ref = None
             if t_ref is None and isinstance(
@@ -5175,7 +5174,7 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         #
         # LiveDriversCoordinator intentionally clears its consolidated state when
         # the live window ends to avoid briefly showing stale timing data at the
-        # start of a new session. For `sensor.f1_drivers_driver_list` we *do* want to keep
+        # start of a new session. For `sensor.f1_driver_list` we *do* want to keep
         # the last known list for dashboards/UI, so we treat an empty coordinator
         # payload as "no update" and keep/restored state.
         updated = self._update_from_coordinator()
@@ -5243,22 +5242,22 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             lw = getattr(self, "_last_write_ts", None)
             now = _time.time()
             if lw is None or (now - lw) >= 60.0:
-                setattr(self, "_last_write_ts", now)
+                self._last_write_ts = now
                 self._safe_write_ha_state()
             else:
                 # Schedule a delayed write at the 60s boundary if not already pending
                 pending = getattr(self, "_pending_write", False)
                 if not pending:
-                    setattr(self, "_pending_write", True)
+                    self._pending_write = True
                     delay = max(0.0, 60.0 - (now - lw)) if lw is not None else 60.0
                     from homeassistant.helpers.event import async_call_later as _later
 
                     def _do_write(_):
                         try:
-                            setattr(self, "_last_write_ts", _time.time())
+                            self._last_write_ts = _time.time()
                             self._safe_write_ha_state()
                         finally:
-                            setattr(self, "_pending_write", False)
+                            self._pending_write = False
 
                     _later(self.hass, delay, _do_write)
         except Exception:

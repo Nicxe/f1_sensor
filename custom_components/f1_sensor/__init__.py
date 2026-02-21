@@ -1,83 +1,85 @@
 from __future__ import annotations
-from contextlib import suppress
 
+import asyncio
 import json
 import logging
-import asyncio
 import re
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Optional
-from collections import deque
-from urllib.parse import urljoin
-from pathlib import Path
 import time
+from collections import deque
+from collections.abc import Callable
+from contextlib import suppress
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+from urllib.parse import urljoin
 
 import async_timeout
-from homeassistant.const import EVENT_COMPONENT_LOADED
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback as ha_callback
+from homeassistant.const import EVENT_COMPONENT_LOADED
+from homeassistant.core import HomeAssistant
+from homeassistant.core import callback as ha_callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from .calibration import LiveDelayCalibrationManager
 from .const import (
     API_URL,
-    CONSTRUCTOR_STANDINGS_URL,
-    DOMAIN,
-    DRIVER_STANDINGS_URL,
-    LAST_RACE_RESULTS_URL,
-    LIVETIMING_INDEX_URL,
-    PLATFORMS,
-    SEASON_RESULTS_URL,
-    SPRINT_RESULTS_URL,
-    LATEST_TRACK_STATUS,
-    FIA_DOCUMENTS_BASE_URL,
-    FIA_SEASON_LIST_URL,
-    FIA_SEASON_FALLBACK_URL,
-    FIA_DOCS_POLL_INTERVAL,
-    FIA_DOCS_FETCH_TIMEOUT,
     CONF_LIVE_DELAY_REFERENCE,
     CONF_OPERATION_MODE,
     CONF_REPLAY_FILE,
     CONF_REPLAY_START_REFERENCE,
+    CONSTRUCTOR_STANDINGS_URL,
     DEFAULT_LIVE_DELAY_REFERENCE,
     DEFAULT_OPERATION_MODE,
     DEFAULT_REPLAY_START_REFERENCE,
+    DOMAIN,
+    DRIVER_STANDINGS_URL,
+    ENABLE_DEVELOPMENT_MODE_UI,
+    FIA_DOCS_FETCH_TIMEOUT,
+    FIA_DOCS_POLL_INTERVAL,
+    FIA_DOCUMENTS_BASE_URL,
+    FIA_SEASON_FALLBACK_URL,
+    FIA_SEASON_LIST_URL,
+    LAST_RACE_RESULTS_URL,
+    LATEST_TRACK_STATUS,
+    LIVETIMING_INDEX_URL,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
-    ENABLE_DEVELOPMENT_MODE_UI,
+    PLATFORMS,
     RACE_SWITCH_GRACE,
-    SUPPORTED_SENSOR_KEYS,
-    RCM_OVERTAKE_ENABLED,
     RCM_OVERTAKE_DISABLED,
-    RCM_STRAIGHT_NORMAL,
-    RCM_STRAIGHT_LOW,
+    RCM_OVERTAKE_ENABLED,
     RCM_STRAIGHT_DISABLED,
-    STRAIGHT_MODE_NORMAL,
-    STRAIGHT_MODE_LOW,
+    RCM_STRAIGHT_LOW,
+    RCM_STRAIGHT_NORMAL,
+    SEASON_RESULTS_URL,
+    SPRINT_RESULTS_URL,
     STRAIGHT_MODE_DISABLED,
+    STRAIGHT_MODE_LOW,
+    STRAIGHT_MODE_NORMAL,
+    SUPPORTED_SENSOR_KEYS,
 )
-from .signalr import LiveBus
-from .replay import ReplaySignalRClient
-from .live_window import (
-    EventTrackerScheduleSource,
-    LiveAvailabilityTracker,
-    LiveSessionSupervisor,
-)
+from .formation_start import FormationStartTracker
 from .helpers import (
+    PersistentCache,
     build_user_agent,
     fetch_json,
     fetch_text,
     get_next_race,
     parse_fia_documents,
-    PersistentCache,
 )
-from .formation_start import FormationStartTracker
 from .live_delay import LiveDelayController, LiveDelayReferenceController
-from .replay_start import ReplayStartReferenceController
-from .calibration import LiveDelayCalibrationManager
+from .live_window import (
+    EventTrackerScheduleSource,
+    LiveAvailabilityTracker,
+    LiveSessionSupervisor,
+)
+from .replay import ReplaySignalRClient
 from .replay_mode import ReplayController
+from .replay_start import ReplayStartReferenceController
+from .signalr import LiveBus
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -208,14 +210,18 @@ def _wrap_logbook_subscribe_events(
 def _apply_activity_log_filter_excludes(hass: HomeAssistant) -> None:
     """Exclude noisy timer entities from recorder/logbook filters."""
     with suppress(Exception):
-        from homeassistant.components import recorder as recorder_component  # noqa: PLC0415
+        from homeassistant.components import (
+            recorder as recorder_component,  # noqa: PLC0415
+        )
 
         instance = recorder_component.get_instance(hass)
         if instance is not None:
             _refresh_recorder_entity_filter(instance)
 
     with suppress(Exception):
-        from homeassistant.components.logbook import DOMAIN as LOGBOOK_DOMAIN  # noqa: PLC0415
+        from homeassistant.components.logbook import (
+            DOMAIN as LOGBOOK_DOMAIN,  # noqa: PLC0415
+        )
         from homeassistant.components.logbook import (  # noqa: PLC0415
             helpers as logbook_helpers,
         )
@@ -654,8 +660,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Seed in-memory cache from persisted content with conservative startup TTLs
     with suppress(Exception):
-        from yarl import URL
         from time import monotonic as _mono
+
+        from yarl import URL
 
         now = _mono()
         wall_now = time.time()
@@ -1202,7 +1209,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        session_coord: "LiveSessionCoordinator",
+        session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
@@ -1305,7 +1312,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         self.async_set_updated_data(msg)
         if _LOGGER.isEnabledFor(logging.DEBUG):
             with suppress(Exception):
-                keys = [k for k in (msg or {}).keys()][:6]
+                keys = list((msg or {}).keys())[:6]
                 _LOGGER.debug(
                     "WeatherData delivered at %s keys=%s",
                     dt_util.utcnow().isoformat(timespec="seconds"),
@@ -1351,7 +1358,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        session_coord: "LiveSessionCoordinator",
+        session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
@@ -1372,8 +1379,8 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self.data_list: list[dict] = []
         self._deliver_handles: list[asyncio.Handle] = []
         self._bus = bus
-        self._unsub: Optional[Callable[[], None]] = None
-        self._delay_listener: Optional[Callable[[], None]] = None
+        self._unsub: Callable[[], None] | None = None
+        self._delay_listener: Callable[[], None] | None = None
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         if delay_controller is not None:
@@ -1387,7 +1394,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             and config_entry.data.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
             == OPERATION_MODE_DEVELOPMENT
         )
-        self._live_state_unsub: Optional[Callable[[], None]] = None
+        self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
@@ -1502,9 +1509,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 if ts_raw:
                     ts = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
                     if ts.tzinfo is None:
-                        from datetime import timezone as _tz
-
-                        ts = ts.replace(tzinfo=_tz.utc)
+                        ts = ts.replace(tzinfo=UTC)
                     if self._startup_cutoff and ts < self._startup_cutoff:
                         continue
             ident = self._message_id(item)
@@ -1605,9 +1610,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             self._startup_cutoff = None
         else:
             try:
-                from datetime import timezone
-
-                t0 = datetime.now(timezone.utc)
+                t0 = datetime.now(UTC)
                 self._startup_cutoff = t0 - timedelta(seconds=30)
             except Exception:
                 self._startup_cutoff = None
@@ -1644,8 +1647,8 @@ class LiveModeCoordinator(DataUpdateCoordinator):
         self._rc_coordinator = race_control_coordinator
         self.available = True
         self._state: dict = {"overtake_enabled": None, "straight_mode": None}
-        self._rc_unsub: Optional[Callable[[], None]] = None
-        self._live_state_unsub: Optional[Callable[[], None]] = None
+        self._rc_unsub: Callable[[], None] | None = None
+        self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
@@ -1723,7 +1726,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        session_coord: "LiveSessionCoordinator",
+        session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
@@ -1832,7 +1835,7 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        session_coord: "LiveSessionCoordinator",
+        session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
@@ -1855,10 +1858,10 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
             "history": [],
         }
         self._history_limit = max(1, int(history_limit or 20))
-        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._deliver_handle: asyncio.Handle | None = None
         self._bus = bus
-        self._unsub: Optional[Callable[[], None]] = None
-        self._delay_listener: Optional[Callable[[], None]] = None
+        self._unsub: Callable[[], None] | None = None
+        self._delay_listener: Callable[[], None] | None = None
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         if delay_controller is not None:
@@ -1870,7 +1873,7 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
             == OPERATION_MODE_DEVELOPMENT
         )
         self._replay_static_root: str | None = None
-        self._live_state_unsub: Optional[Callable[[], None]] = None
+        self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
@@ -2059,14 +2062,14 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        session_coord: "LiveSessionCoordinator",
+        session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
         live_state: LiveAvailabilityTracker | None = None,
         history_limit: int = 10,
-        drivers_coordinator: "LiveDriversCoordinator | None" = None,
+        drivers_coordinator: LiveDriversCoordinator | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -2081,24 +2084,24 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._bus = bus
         self._config_entry = config_entry
         self._unsubs: list[Callable[[], None]] = []
-        self._drivers_unsub: Optional[Callable[[], None]] = None
-        self._delay_listener: Optional[Callable[[], None]] = None
+        self._drivers_unsub: Callable[[], None] | None = None
+        self._delay_listener: Callable[[], None] | None = None
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
-        self._live_state_unsub: Optional[Callable[[], None]] = None
+        self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
-        self._session_unsub: Optional[Callable[[], None]] = None
+        self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
 
         self._history_limit = max(1, int(history_limit or 10))
         self._by_car: dict[str, list[dict]] = {}
         self._dedup: set[tuple] = set()
         self._driver_map: dict[str, dict[str, Any]] = {}
-        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._deliver_handle: asyncio.Handle | None = None
         self._drivers_coord = drivers_coordinator
 
         self._state: dict[str, Any] = {
@@ -2535,7 +2538,7 @@ class ChampionshipPredictionCoordinator(
     def __init__(
         self,
         hass: HomeAssistant,
-        session_coord: "LiveSessionCoordinator",
+        session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
@@ -2556,24 +2559,24 @@ class ChampionshipPredictionCoordinator(
         self._config_entry = config_entry
 
         self._unsubs: list[Callable[[], None]] = []
-        self._delay_listener: Optional[Callable[[], None]] = None
+        self._delay_listener: Callable[[], None] | None = None
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
 
-        self._live_state_unsub: Optional[Callable[[], None]] = None
+        self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
-        self._session_unsub: Optional[Callable[[], None]] = None
+        self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
 
         self._drivers: dict[str, dict[str, Any]] = {}
         self._teams: dict[str, dict[str, Any]] = {}
         self._driver_map: dict[str, dict[str, Any]] = {}
 
-        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._deliver_handle: asyncio.Handle | None = None
         self._state: dict[str, Any] = {
             "drivers": {},
             "teams": {},
@@ -2882,7 +2885,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
-        session_coord: "LiveSessionCoordinator",
+        session_coord: LiveSessionCoordinator,
         delay_seconds: int = 0,
         bus: LiveBus | None = None,
         config_entry: ConfigEntry | None = None,
@@ -2898,10 +2901,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
-        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._deliver_handle: asyncio.Handle | None = None
         self._bus = bus
         self._unsubs: list[Callable[[], None]] = []
-        self._delay_listener: Optional[Callable[[], None]] = None
+        self._delay_listener: Callable[[], None] | None = None
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         if delay_controller is not None:
@@ -2917,7 +2920,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             "tyre_statistics": {},
             "fastest_lap": self._empty_fastest_lap(),
         }
-        self._live_state_unsub: Optional[Callable[[], None]] = None
+        self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
@@ -3817,7 +3820,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         Only captures once per session (when grid_position is still None).
         """
         drivers = self._state.get("drivers", {})
-        for rn, entry in drivers.items():
+        for _rn, entry in drivers.items():
             lap_history = entry.get("lap_history")
             if not lap_history:
                 continue
@@ -3830,7 +3833,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _clear_lap_history(self) -> None:
         """Clear lap history for all drivers on session end."""
         drivers = self._state.get("drivers", {})
-        for rn, entry in drivers.items():
+        for _rn, entry in drivers.items():
             entry["lap_history"] = {
                 "laps": {},
                 "last_recorded_lap": 0,
@@ -4445,11 +4448,11 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
                 request_limit, offset, ttl_seconds=self._ttl_recent
             )
             mr = (first or {}).get("MRData", {})
-            total = int((mr.get("total") or "0"))
-            limit_used = int((mr.get("limit") or request_limit))
-            offset_used = int((mr.get("offset") or offset))
+            total = int(mr.get("total") or "0")
+            limit_used = int(mr.get("limit") or request_limit)
+            offset_used = int(mr.get("offset") or offset)
 
-            merge_page(((mr.get("RaceTable", {}) or {}).get("Races", []) or []))
+            merge_page((mr.get("RaceTable", {}) or {}).get("Races", []) or [])
 
             # Determine last page offset for TTL selection
             try:
@@ -4891,11 +4894,11 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         self.available = True
         self._last_message = None
         self.data_list: list[dict] = []
-        self._deliver_handle: Optional[asyncio.Handle] = None
+        self._deliver_handle: asyncio.Handle | None = None
         self._deliver_handles: list[asyncio.Handle] = []
         self._bus = bus
-        self._unsub: Optional[Callable[[], None]] = None
-        self._delay_listener: Optional[Callable[[], None]] = None
+        self._unsub: Callable[[], None] | None = None
+        self._delay_listener: Callable[[], None] | None = None
         self._t0 = None
         self._startup_cutoff = None
         self._delay = max(0, int(delay_seconds or 0))
@@ -4904,7 +4907,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         # Lightweight dedupe of untimestamped repeats
         self._last_untimestamped_fingerprint: str | None = None
-        self._live_state_unsub: Optional[Callable[[], None]] = None
+        self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
@@ -4946,9 +4949,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             if utc_str:
                 ts = datetime.fromisoformat(str(utc_str).replace("Z", "+00:00"))
                 if ts.tzinfo is None:
-                    from datetime import timezone as _tz
-
-                    ts = ts.replace(tzinfo=_tz.utc)
+                    ts = ts.replace(tzinfo=UTC)
                 if self._startup_cutoff and ts < self._startup_cutoff:
                     return
         # Dedupe untimestamped exact repeats to avoid flooding when delayed
@@ -5027,9 +5028,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         await super().async_config_entry_first_refresh()
         # Capture connection time and startup window
         try:
-            from datetime import timezone
-
-            self._t0 = datetime.now(timezone.utc)
+            self._t0 = datetime.now(UTC)
             self._startup_cutoff = self._t0 - timedelta(seconds=30)
         except Exception:
             self._startup_cutoff = None
@@ -5596,8 +5595,8 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         except ValueError:
             return None
         if dt_val.tzinfo is None:
-            dt_val = dt_val.replace(tzinfo=timezone.utc)
-        return dt_val.astimezone(timezone.utc)
+            dt_val = dt_val.replace(tzinfo=UTC)
+        return dt_val.astimezone(UTC)
 
     @staticmethod
     def _iso(value: datetime | None) -> str | None:
@@ -5808,14 +5807,10 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         if not (isinstance(start, datetime) and isinstance(end, datetime)):
             return None
         if start.tzinfo is None:
-            start = start.replace(tzinfo=timezone.utc)
+            start = start.replace(tzinfo=UTC)
         if end.tzinfo is None:
-            end = end.replace(tzinfo=timezone.utc)
-        duration = int(
-            (
-                end.astimezone(timezone.utc) - start.astimezone(timezone.utc)
-            ).total_seconds()
-        )
+            end = end.replace(tzinfo=UTC)
+        duration = int((end.astimezone(UTC) - start.astimezone(UTC)).total_seconds())
         if duration <= 0:
             return None
         if duration > (4 * 3600):
@@ -5830,8 +5825,8 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         if not isinstance(start, datetime):
             return None
         if start.tzinfo is None:
-            start = start.replace(tzinfo=timezone.utc)
-        return start.astimezone(timezone.utc)
+            start = start.replace(tzinfo=UTC)
+        return start.astimezone(UTC)
 
     def _is_qualifying_like(self) -> bool:
         session_type, session_name = self._resolve_session_type_and_name()

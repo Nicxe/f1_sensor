@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
-
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from collections.abc import Callable
+from contextlib import suppress
+from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
 import async_timeout
 from aiohttp import ClientSession
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .signalr import LiveBus
 from .helpers import parse_cardata_lines
+from .signalr import LiveBus
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,8 +37,8 @@ def _parse_utc(value: str | None) -> datetime | None:
     except ValueError:
         return None
     if dt_val.tzinfo is None:
-        dt_val = dt_val.replace(tzinfo=timezone.utc)
-    return dt_val.astimezone(timezone.utc)
+        dt_val = dt_val.replace(tzinfo=UTC)
+    return dt_val.astimezone(UTC)
 
 
 def _parse_offset(offset: str | None) -> timedelta:
@@ -73,7 +73,7 @@ def _session_start_utc(payload: dict | None) -> datetime | None:
     tzinfo = timezone(offset)
     if dt_val.tzinfo is None:
         dt_val = dt_val.replace(tzinfo=tzinfo)
-    return dt_val.astimezone(timezone.utc)
+    return dt_val.astimezone(UTC)
 
 
 def _is_race_or_sprint(session_type: str | None, session_name: str | None) -> bool:
@@ -373,7 +373,7 @@ class FormationStartTracker:
                         )
                         if not _process_utcs(utcs):
                             return False
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._last_error = "timeout"
             return False
         except Exception:  # noqa: BLE001

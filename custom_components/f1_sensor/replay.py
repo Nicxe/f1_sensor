@@ -4,10 +4,10 @@ import asyncio
 import inspect
 import json
 import logging
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator, List
 
 from homeassistant.core import HomeAssistant
 
@@ -60,7 +60,7 @@ class ReplaySignalRClient:
         self._stream_hint = stream_hint or self._guess_stream_from_name(self._path)
         self._loop_forever = loop_forever
         self._speed = max(0.01, float(speed_multiplier or 1.0))
-        self._frames: List[ReplayFrame] = []
+        self._frames: list[ReplayFrame] = []
         self._closed = False
         self._loaded = False
 
@@ -75,7 +75,7 @@ class ReplaySignalRClient:
             )
         self._loaded = True
 
-    async def messages(self) -> AsyncGenerator[dict, None]:
+    async def messages(self) -> AsyncGenerator[dict]:
         """Yield fake SignalR frames matching the recorded dump."""
         if not self._loaded:
             await self.ensure_connection()
@@ -104,10 +104,10 @@ class ReplaySignalRClient:
     async def close(self) -> None:
         self._closed = True
 
-    def _load_frames(self) -> List[ReplayFrame]:
+    def _load_frames(self) -> list[ReplayFrame]:
         if not self._path.exists():
             raise FileNotFoundError(f"Replay dump not found: {self._path}")
-        frames: List[ReplayFrame] = []
+        frames: list[ReplayFrame] = []
         prev_ts: float | None = None
         stream_hint = self._stream_hint
         static_root: str | None = None

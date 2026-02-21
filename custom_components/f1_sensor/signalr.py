@@ -1,12 +1,13 @@
 from __future__ import annotations
-from contextlib import suppress
 
+import asyncio
+import datetime as dt
 import json
 import logging
-import datetime as dt
-import asyncio
 import time
-from typing import AsyncGenerator, Callable, Dict, Iterable, List, Optional, Protocol
+from collections.abc import AsyncGenerator, Callable, Iterable
+from contextlib import suppress
+from typing import Protocol
 
 from aiohttp import ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
@@ -51,7 +52,7 @@ SUBSCRIBE_MSG = {
 
 class LiveTransport(Protocol):
     async def ensure_connection(self) -> None: ...
-    async def messages(self) -> AsyncGenerator[dict, None]: ...
+    async def messages(self) -> AsyncGenerator[dict]: ...
     async def close(self) -> None: ...
 
 
@@ -62,7 +63,7 @@ class SignalRClient:
         self._hass = hass
         self._session = session
         self._ws = None
-        self._t0 = dt.datetime.now(dt.timezone.utc)
+        self._t0 = dt.datetime.now(dt.UTC)
         self._startup_cutoff = None
         self._heartbeat_task: asyncio.Task | None = None
 
@@ -96,7 +97,7 @@ class SignalRClient:
         # inte stänger grupp‑anslutningen (20 min timeout).
         if self._heartbeat_task is None or self._heartbeat_task.done():
             self._heartbeat_task = asyncio.create_task(self._heartbeat())
-        self._t0 = dt.datetime.now(dt.timezone.utc)
+        self._t0 = dt.datetime.now(dt.UTC)
         self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
         _LOGGER.debug(
@@ -108,7 +109,8 @@ class SignalRClient:
     async def ensure_connection(self) -> None:
         """Try to (re)connect using exponential back-off."""
         import asyncio
-        from .const import FAST_RETRY_SEC, MAX_RETRY_SEC, BACK_OFF_FACTOR
+
+        from .const import BACK_OFF_FACTOR, FAST_RETRY_SEC, MAX_RETRY_SEC
 
         delay = FAST_RETRY_SEC
         while True:
@@ -122,7 +124,7 @@ class SignalRClient:
                 await asyncio.sleep(delay)
                 delay = min(delay * BACK_OFF_FACTOR, MAX_RETRY_SEC)
 
-    async def messages(self) -> AsyncGenerator[dict, None]:
+    async def messages(self) -> AsyncGenerator[dict]:
         if not self._ws:
             return
         index = 0
@@ -195,20 +197,20 @@ class LiveBus:
         self._hass = hass
         self._session = session
         self._transport_factory = transport_factory
-        self._client: Optional[LiveTransport] = None
-        self._task: Optional[asyncio.Task] = None
-        self._subs: Dict[str, List[Callable[[dict], None]]] = {}
+        self._client: LiveTransport | None = None
+        self._task: asyncio.Task | None = None
+        self._subs: dict[str, list[Callable[[dict], None]]] = {}
         self._running = False
         # Lightweight per-stream counters for DEBUG summaries
-        self._cnt: Dict[str, int] = {}
-        self._last_ts: Dict[str, float] = {}
+        self._cnt: dict[str, int] = {}
+        self._last_ts: dict[str, float] = {}
         self._last_logged: float = time.time()
         self._log_interval: float = 10.0  # seconds
         # Cache last payload per stream so new subscribers receive latest snapshot immediately
-        self._last_payload: Dict[str, dict] = {}
+        self._last_payload: dict[str, dict] = {}
         self._expect_heartbeat = False
         self._last_heartbeat_at: float | None = None
-        self._heartbeat_guard: Optional[asyncio.Task] = None
+        self._heartbeat_guard: asyncio.Task | None = None
         self._heartbeat_timeout = 45.0
         self._heartbeat_check_interval = 5.0
 
@@ -332,7 +334,7 @@ class LiveBus:
             return
         self._last_logged = now
         with suppress(Exception):
-            parts: List[str] = []
+            parts: list[str] = []
             for stream, count in sorted(self._cnt.items()):
                 last_age = None
                 try:

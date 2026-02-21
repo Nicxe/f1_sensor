@@ -2,24 +2,24 @@ from __future__ import annotations
 
 import logging
 import time
-
-from homeassistant.components import persistent_notification
 from inspect import isawaitable
+
+import async_timeout
+from homeassistant.components import persistent_notification
 from homeassistant.components.button import ButtonEntity
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-import async_timeout
+from homeassistant.helpers.entity import EntityCategory
 
-from .const import DOMAIN, API_URL, ENABLE_DEVELOPMENT_MODE_UI
-from .entity import F1AuxEntity
 from .calibration import LiveDelayCalibrationManager
+from .const import API_URL, DOMAIN, ENABLE_DEVELOPMENT_MODE_UI
+from .entity import F1AuxEntity
 from .replay_entities import (
     F1ReplayLoadButton,
-    F1ReplayPlayButton,
     F1ReplayPauseButton,
-    F1ReplayStopButton,
+    F1ReplayPlayButton,
     F1ReplayRefreshButton,
+    F1ReplayStopButton,
 )
 
 _LOGGER = logging.getLogger(__name__)
