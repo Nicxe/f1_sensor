@@ -1,0 +1,38 @@
+integration:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "custom_components/f1_sensor/*.py"
+          - "custom_components/f1_sensor/translations/**"
+          - "custom_components/f1_sensor/manifest.json"
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "custom_components/f1_sensor/tests/**"
+
+blueprint:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "blueprints/**"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "*.md"
+          - ".github/*.md"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "custom_components/f1_sensor/manifest.json"
+          - "package.json"
+          - "package-lock.json"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - ".github/dependabot.yml"
+          - "pyproject.toml"
+          - "pytest.ini"
