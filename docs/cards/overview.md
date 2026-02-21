@@ -104,7 +104,7 @@ Displays an at-a-glance overview of the current session: session name and status
 
 ![Placeholder — F1 Live Session card screenshot](/img/placeholder_card_live_session.png)
 
-**Required entities:** `sensor.f1_session_current_session`, `sensor.f1_session_session_status`, `binary_sensor.f1_session_formation_start`, `sensor.f1_session_race_lap_count`, `sensor.f1_session_track_status`, `sensor.f1_session_track_weather`, `sensor.f1_race_next_race`
+**Required entities:** `sensor.f1_current_session`, `sensor.f1_session_status`, `binary_sensor.f1_formation_start`, `sensor.f1_race_lap_count`, `sensor.f1_track_status`, `sensor.f1_track_weather`, `sensor.f1_next_race`
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -123,7 +123,7 @@ Shows the latest race control message with flag type and category. Automatically
 
 ![Placeholder — F1 Race Control card screenshot](/img/placeholder_card_race_control.png)
 
-**Required entity:** `sensor.f1_officials_race_control`
+**Required entity:** `sensor.f1_race_control`
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -140,7 +140,7 @@ Displays the current tyre compound for each driver along with stint history and 
 
 ![Placeholder — F1 Tyre Statistics card screenshot](/img/placeholder_card_tyres.png)
 
-**Required entities:** `sensor.f1_drivers_tyre_statistics`, `sensor.f1_drivers_driver_list`
+**Required entities:** `sensor.f1_tyre_statistics`, `sensor.f1_driver_list`
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -163,7 +163,7 @@ Shows a full pit stop history for all drivers: stop number, tyre fitted, pit tim
 
 ![Placeholder — F1 Pit Stop Overview card screenshot](/img/placeholder_card_pitstops.png)
 
-**Required entities:** `sensor.f1_drivers_pit_stops`, `sensor.f1_drivers_current_tyres`, `sensor.f1_drivers_driver_positions`, `sensor.f1_drivers_driver_list`
+**Required entities:** `sensor.f1_pitstops`, `sensor.f1_current_tyres`, `sensor.f1_driver_positions`, `sensor.f1_driver_list`
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -188,7 +188,7 @@ Displays the current race order with each driver's last lap time, current status
 
 ![Placeholder — F1 Driver Lap Times card screenshot](/img/placeholder_card_lap_times.png)
 
-**Required entities:** `sensor.f1_drivers_driver_positions`, `sensor.f1_drivers_driver_list`
+**Required entities:** `sensor.f1_driver_positions`, `sensor.f1_driver_list`
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -209,7 +209,7 @@ Lists all steward investigations and their outcomes for the current session. Sho
 
 ![Placeholder — F1 Investigations card screenshot](/img/placeholder_card_investigations.png)
 
-**Required entities:** `sensor.f1_officials_investigations_penalties`, `sensor.f1_drivers_driver_list`, `sensor.f1_drivers_driver_positions`
+**Required entities:** `sensor.f1_investigations`, `sensor.f1_driver_list`, `sensor.f1_driver_positions`
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -227,7 +227,7 @@ Shows how many track limit violations each driver has accumulated during the ses
 
 ![Placeholder — F1 Track Limits card screenshot](/img/placeholder_card_track_limits.png)
 
-**Required entities:** `sensor.f1_officials_track_limits`, `sensor.f1_drivers_driver_list`, `sensor.f1_drivers_driver_positions`
+**Required entities:** `sensor.f1_track_limits`, `sensor.f1_driver_list`, `sensor.f1_driver_positions`
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -245,7 +245,7 @@ Displays the driver championship standings with predicted final points alongside
 
 ![Placeholder — F1 Championship Prediction Drivers card screenshot](/img/placeholder_card_prediction_drivers.png)
 
-**Required entities:** `sensor.f1_championship_championship_prediction_drivers`, `sensor.f1_drivers_driver_list`
+**Required entities:** `sensor.f1_championship_prediction_drivers`, `sensor.f1_driver_list`
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -268,7 +268,7 @@ Displays the constructor championship standings with predicted final points and 
 
 ![Placeholder — F1 Championship Prediction Teams card screenshot](/img/placeholder_card_prediction_teams.png)
 
-**Required entity:** `sensor.f1_championship_championship_prediction_teams`
+**Required entity:** `sensor.f1_championship_prediction_teams`
 
 | Option | Default | Description |
 | --- | --- | --- |

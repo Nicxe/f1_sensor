@@ -5,8 +5,8 @@ from unittest.mock import Mock
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor import binary_sensor as binary_sensor_platform
+from custom_components.f1_sensor.const import DOMAIN
 
 
 @pytest.mark.asyncio

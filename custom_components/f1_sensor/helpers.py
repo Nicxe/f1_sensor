@@ -1,24 +1,24 @@
 from __future__ import annotations
-from contextlib import suppress
 
 import asyncio
 import base64
-import json
-import logging
-import time
-import re
-import zlib
-from datetime import datetime, timezone, timedelta
+from collections.abc import Callable
+from contextlib import suppress
+from datetime import UTC, datetime, timedelta, timezone
 from html.parser import HTMLParser
+import json
+from json import JSONDecodeError
+import logging
+import re
+import time
+from typing import Any
+from urllib.parse import urlencode, urljoin
+import zlib
 
 import async_timeout
-from typing import Any, Dict, Optional, Callable, List
-from urllib.parse import urlencode, urljoin
-from json import JSONDecodeError
-
 from homeassistant.const import __version__ as HA_VERSION
-from homeassistant.loader import async_get_integration
 from homeassistant.helpers.storage import Store
+from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -139,7 +139,7 @@ def normalize_track_status(raw: dict | None) -> str | None:
 _TZFPY_WARNED = False
 
 
-def get_timezone(lat: Any, lon: Any) -> Optional[str]:
+def get_timezone(lat: Any, lon: Any) -> str | None:
     """Return an IANA timezone name for the provided coordinates via tzfpy."""
     if lat is None or lon is None:
         return None
@@ -224,7 +224,7 @@ async def build_user_agent(hass) -> str:
     return f"HomeAssistantF1Sensor/{integration.version} HomeAssistant/{HA_VERSION}"
 
 
-def _make_cache_key(url: str, params: Optional[Dict[str, Any]] = None) -> str:
+def _make_cache_key(url: str, params: dict[str, Any] | None = None) -> str:
     if params:
         try:
             # Stable ordering of query params
@@ -240,13 +240,13 @@ async def fetch_json(
     session,
     url: str,
     *,
-    params: Optional[Dict[str, Any]] = None,
-    headers: Optional[Dict[str, str]] = None,
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
     ttl_seconds: int = 30,
-    cache: Optional[Dict[str, tuple[float, Any]]] = None,
-    inflight: Optional[Dict[str, asyncio.Future]] = None,
-    persist_map: Optional[Dict[str, Any]] = None,
-    persist_save: Optional[Callable[[], None]] = None,
+    cache: dict[str, tuple[float, Any]] | None = None,
+    inflight: dict[str, asyncio.Future] | None = None,
+    persist_map: dict[str, Any] | None = None,
+    persist_save: Callable[[], None] | None = None,
 ) -> Any:
     """Fetch JSON with TTL cache and in-flight request de-duplication.
 
@@ -255,11 +255,11 @@ async def fetch_json(
     """
     key = _make_cache_key(url, params)
     now = time.monotonic()
-    cache_map: Dict[str, tuple[float, Any]] = cache if isinstance(cache, dict) else {}
-    inflight_map: Dict[str, asyncio.Future] = (
+    cache_map: dict[str, tuple[float, Any]] = cache if isinstance(cache, dict) else {}
+    inflight_map: dict[str, asyncio.Future] = (
         inflight if isinstance(inflight, dict) else {}
     )
-    persist_store: Dict[str, Any] = persist_map if isinstance(persist_map, dict) else {}
+    persist_store: dict[str, Any] = persist_map if isinstance(persist_map, dict) else {}
 
     # Cache hit
     try:
@@ -382,23 +382,23 @@ async def fetch_text(
     session,
     url: str,
     *,
-    params: Optional[Dict[str, Any]] = None,
-    headers: Optional[Dict[str, str]] = None,
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
     ttl_seconds: int = 30,
-    cache: Optional[Dict[str, tuple[float, Any]]] = None,
-    inflight: Optional[Dict[str, asyncio.Future]] = None,
-    persist_map: Optional[Dict[str, Any]] = None,
-    persist_save: Optional[Callable[[], None]] = None,
+    cache: dict[str, tuple[float, Any]] | None = None,
+    inflight: dict[str, asyncio.Future] | None = None,
+    persist_map: dict[str, Any] | None = None,
+    persist_save: Callable[[], None] | None = None,
 ) -> str:
     """Fetch raw text with TTL cache and in-flight de-duplication."""
     base_key = _make_cache_key(url, params)
     key = f"text::{base_key}"
     now = time.monotonic()
-    cache_map: Dict[str, tuple[float, Any]] = cache if isinstance(cache, dict) else {}
-    inflight_map: Dict[str, asyncio.Future] = (
+    cache_map: dict[str, tuple[float, Any]] = cache if isinstance(cache, dict) else {}
+    inflight_map: dict[str, asyncio.Future] = (
         inflight if isinstance(inflight, dict) else {}
     )
-    persist_store: Dict[str, Any] = persist_map if isinstance(persist_map, dict) else {}
+    persist_store: dict[str, Any] = persist_map if isinstance(persist_map, dict) else {}
 
     try:
         exp, data = cache_map.get(key, (0.0, None))
@@ -511,10 +511,10 @@ class PersistentCache:
         self._hass = hass
         self._entry_id = entry_id
         self._store = Store(hass, version, f"{DOMAIN}_{entry_id}_http_cache_v1")
-        self._data: Dict[str, Any] = {}
+        self._data: dict[str, Any] = {}
         self._save_task: asyncio.Task | None = None
 
-    async def load(self) -> Dict[str, Any]:
+    async def load(self) -> dict[str, Any]:
         try:
             data = await self._store.async_load()
             if isinstance(data, dict):
@@ -525,7 +525,7 @@ class PersistentCache:
             self._data = {}
         return self._data
 
-    def map(self) -> Dict[str, Any]:
+    def map(self) -> dict[str, Any]:
         return self._data
 
     def schedule_save(self, delay: float = 0.1) -> None:
@@ -583,8 +583,8 @@ def _parse_race_datetime(
         except ValueError:
             return None
     if dt_val.tzinfo is None:
-        dt_val = dt_val.replace(tzinfo=timezone.utc)
-    return dt_val.astimezone(timezone.utc)
+        dt_val = dt_val.replace(tzinfo=UTC)
+    return dt_val.astimezone(UTC)
 
 
 def get_next_race(
@@ -679,7 +679,7 @@ def _strip_html(text: str) -> str:
     ).strip()
 
 
-def _extract_published(text: str) -> tuple[Optional[str], str]:
+def _extract_published(text: str) -> tuple[str | None, str]:
     if not text:
         return None, text
     match = _PUBLISHED_ON_RE.search(text)
@@ -700,7 +700,7 @@ def _extract_published(text: str) -> tuple[Optional[str], str]:
         offset = _TZ_OFFSETS.get(zone, 0)
         tzinfo = timezone(timedelta(hours=offset))
         dt = dt.replace(tzinfo=tzinfo)
-        iso = dt.astimezone(timezone.utc).isoformat()
+        iso = dt.astimezone(UTC).isoformat()
     except Exception:
         iso = None
     cleaned = text.replace(match.group(0), "").strip()
@@ -849,7 +849,7 @@ def _parse_fia_documents_regex(html: str) -> list[dict[str, Any]]:
     return _build_fia_documents(entries)
 
 
-def parse_fia_documents(html: str) -> List[Dict[str, Any]]:
+def parse_fia_documents(html: str) -> list[dict[str, Any]]:
     """Extract FIA PDF links from HTML."""
     if not isinstance(html, str) or not html:
         return []

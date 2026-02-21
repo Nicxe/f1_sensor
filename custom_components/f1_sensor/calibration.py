@@ -1,11 +1,11 @@
 from __future__ import annotations
-from contextlib import suppress
 
 import asyncio
-import logging
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import timedelta
 from inspect import isawaitable
+import logging
 from typing import Any
 
 from homeassistant.components import persistent_notification
@@ -13,8 +13,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    DOMAIN,
     DEFAULT_LIVE_DELAY_REFERENCE,
+    DOMAIN,
     LIVE_DELAY_REFERENCE_FORMATION,
     LIVE_DELAY_REFERENCE_LAP_SYNC,
     LIVE_DELAY_REFERENCE_SESSION,

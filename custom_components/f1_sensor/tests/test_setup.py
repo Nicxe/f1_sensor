@@ -10,12 +10,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.f1_sensor import (
     _is_activity_log_excluded_entity,
     _refresh_recorder_entity_filter,
-    _wrap_logbook_subscribe_events,
     _wrap_activity_filter,
+    _wrap_logbook_subscribe_events,
     async_setup_entry,
     async_unload_entry,
 )
-from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     CONF_REPLAY_FILE,
@@ -24,6 +23,7 @@ from custom_components.f1_sensor.const import (
     OPERATION_MODE_LIVE,
     PLATFORMS,
 )
+from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 
 
 class FakeLiveBus:

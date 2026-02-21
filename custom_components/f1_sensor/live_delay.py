@@ -1,9 +1,9 @@
 from __future__ import annotations
-from contextlib import suppress
 
 import asyncio
-import logging
 from collections.abc import Callable
+from contextlib import suppress
+import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback

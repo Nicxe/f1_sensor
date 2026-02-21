@@ -3,8 +3,8 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
-import pytest
 from homeassistant.util import dt as dt_util
+import pytest
 
 import custom_components.f1_sensor.live_window as live_window
 from custom_components.f1_sensor.live_window import (
@@ -67,7 +67,7 @@ class _StaticSource:
 
 
 def _iso_z(value: dt.datetime) -> str:
-    return value.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+    return value.astimezone(dt.UTC).isoformat().replace("+00:00", "Z")
 
 
 def _mk_window(
@@ -280,13 +280,9 @@ def test_event_tracker_parses_offset_correctly() -> None:
     )
 
     assert len(windows) == 1
-    assert windows[0].start_utc == dt.datetime(
-        2026, 2, 11, 7, 0, tzinfo=dt.timezone.utc
-    )
-    assert windows[0].end_utc == dt.datetime(2026, 2, 11, 16, 0, tzinfo=dt.timezone.utc)
-    assert windows[0].connect_at == dt.datetime(
-        2026, 2, 11, 6, 0, tzinfo=dt.timezone.utc
-    )
+    assert windows[0].start_utc == dt.datetime(2026, 2, 11, 7, 0, tzinfo=dt.UTC)
+    assert windows[0].end_utc == dt.datetime(2026, 2, 11, 16, 0, tzinfo=dt.UTC)
+    assert windows[0].connect_at == dt.datetime(2026, 2, 11, 6, 0, tzinfo=dt.UTC)
     assert windows[0].meeting_key == 1304
     assert windows[0].session_key == 11465
 
@@ -404,7 +400,7 @@ async def test_event_tracker_retry_uses_refreshed_root_endpoint(monkeypatch) -> 
             self.status = status
             self._body = body
 
-        async def __aenter__(self) -> "_FakeResponse":
+        async def __aenter__(self) -> _FakeResponse:
             return self
 
         async def __aexit__(self, exc_type, exc, tb) -> bool:
