@@ -1,0 +1,37 @@
+name: Redirect misrouted PRs
+
+on:
+  pull_request_target:
+    branches: [main, beta]
+    types: [opened]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  redirect:
+    runs-on: ubuntu-latest
+    if: >
+      github.actor != 'Nicxe' &&
+      github.actor != 'dependabot[bot]'
+    steps:
+      - name: Post redirect comment and close PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Hi @${{ github.actor }}, thank you for your contribution!
+
+          This PR targets the \`$BASE_BRANCH\` branch, which is reserved for internal releases and managed exclusively by the maintainer.
+
+          Please open a new PR targeting the \`dev\` branch instead. The branch workflow for this project is:
+          - \`dev\` — where all contributions are merged and tested
+          - \`beta\` — pre-release testing, promoted from \`dev\` by the maintainer
+          - \`main\` — stable releases, promoted from \`beta\` by the maintainer
+
+          You can change the base branch in GitHub's UI when creating the PR. See [CONTRIBUTING.md](../CONTRIBUTING.md) for details. Thank you!"
+
+          gh pr close "$PR_NUMBER" --repo "$REPO"
