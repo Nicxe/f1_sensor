@@ -8,8 +8,6 @@ blueprint:
     Välj race control-sensor, lägg till valfria filter, och definiera sedan egna notifierings-actions
     (till exempel mobilnotis, TTS, script eller andra Home Assistant-tjänster).
 
-    Kräver att race control live-sensorn är aktiverad i F1 Sensor-inställningarna.
-
     Tillgängliga template-variabler i dina actions:
     {{ notification_title }}, {{ notification_message }},
     {{ race_control_message }}, {{ race_control_category }}, {{ race_control_flag }},

@@ -7,8 +7,6 @@ blueprint:
 
     Core behavior: choose session and track sensors, then map track states to colors.
 
-    Requires F1 Sensor live entities for track/session status to be enabled in integration settings.
-
     Advanced options include scene snapshots, timed or continuous flashing, clear-state auto-restore,
     and flexible session-end behavior.
 
