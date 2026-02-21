@@ -40,6 +40,7 @@ REPLAY_STREAMS = [
     "WeatherData",
     "LapCount",
     "SessionInfo",
+    "SessionData",
     "Heartbeat",
     "ExtrapolatedClock",
     "TimingData",
@@ -62,7 +63,7 @@ INDEX_STATUS_OK = "ok"
 INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when changing initial_state format to invalidate old caches
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 

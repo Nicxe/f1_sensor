@@ -11,6 +11,7 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SWITCH,
     Platform.SELECT,
+    Platform.CALENDAR,
 ]
 
 # Replay Mode
@@ -39,6 +40,7 @@ RACE_SWITCH_GRACE = timedelta(hours=3)
 CONF_LIVE_DELAY_REFERENCE = "live_delay_reference"
 LIVE_DELAY_REFERENCE_SESSION = "session_live"
 LIVE_DELAY_REFERENCE_FORMATION = "formation_start"
+LIVE_DELAY_REFERENCE_LAP_SYNC = "lap_sync"
 DEFAULT_LIVE_DELAY_REFERENCE = LIVE_DELAY_REFERENCE_SESSION
 
 # Replay start reference
@@ -76,6 +78,9 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "track_status",
         "session_status",
         "current_session",
+        "session_time_remaining",
+        "session_time_elapsed",
+        "race_time_to_three_hour_limit",
         "safety_car",
         "formation_start",
         "fia_documents",
@@ -89,8 +94,23 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "driver_positions",
         "track_limits",
         "investigations",
+        "calendar",
+        "overtake_mode",
+        "straight_mode",
     }
 )
+
+# 2026 regulation: RaceControlMessages strings for mode changes
+RCM_OVERTAKE_ENABLED = "OVERTAKE ENABLED"
+RCM_OVERTAKE_DISABLED = "OVERTAKE DISABLED"
+RCM_STRAIGHT_NORMAL = "STRAIGHT MODE - NORMAL GRIP"
+RCM_STRAIGHT_LOW = "STRAIGHT MODE - LOW GRIP"
+RCM_STRAIGHT_DISABLED = "STRAIGHT MODE - DISABLED"
+
+# Straight mode state values (used as sensor state and enum options)
+STRAIGHT_MODE_NORMAL = "normal_grip"
+STRAIGHT_MODE_LOW = "low_grip"
+STRAIGHT_MODE_DISABLED = "disabled"
 
 API_URL = "https://api.jolpi.ca/ergast/f1/current.json"
 DRIVER_STANDINGS_URL = (

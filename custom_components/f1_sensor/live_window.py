@@ -997,9 +997,7 @@ class LiveSessionSupervisor:
             )
             return None, "none"
 
-        if self._should_log(
-            f"fallback_probe_{fallback_context}", interval_seconds=300
-        ):
+        if self._should_log(f"fallback_probe_{fallback_context}", interval_seconds=300):
             _LOGGER.info(
                 "Index has no selectable session window; trying event-tracker fallback (%s)",
                 fallback_context,

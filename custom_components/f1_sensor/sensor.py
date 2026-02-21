@@ -19,6 +19,7 @@ from homeassistant.helpers.event import (
     async_track_utc_time_change,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import EntityCategory
@@ -31,7 +32,9 @@ from .const import (
     LATEST_TRACK_STATUS,
     OPERATION_MODE_DEVELOPMENT,
     RACE_SWITCH_GRACE,
-    SUPPORTED_SENSOR_KEYS,
+    STRAIGHT_MODE_NORMAL,
+    STRAIGHT_MODE_LOW,
+    STRAIGHT_MODE_DISABLED,
 )
 from .helpers import (
     get_circuit_map_url,
@@ -46,47 +49,35 @@ from .replay_entities import F1ReplayStatusSensor
 from logging import getLogger
 from homeassistant.util import dt as dt_util
 
-SYMBOL_CODE_TO_MDI = {
-    "clearsky_day": "mdi:weather-sunny",
-    "clearsky_night": "mdi:weather-night",
-    "fair_day": "mdi:weather-partly-cloudy",
-    "fair_night": "mdi:weather-night-partly-cloudy",
-    "partlycloudy_day": "mdi:weather-partly-cloudy",
-    "partlycloudy_night": "mdi:weather-night-partly-cloudy",
-    "cloudy": "mdi:weather-cloudy",
-    "fog": "mdi:weather-fog",
-    "rainshowers_day": "mdi:weather-rainy",
-    "rainshowers_night": "mdi:weather-rainy",
-    "rainshowersandthunder_day": "mdi:weather-lightning-rainy",
-    "rainshowersandthunder_night": "mdi:weather-lightning-rainy",
-    "heavyrainshowers_day": "mdi:weather-pouring",
-    "heavyrainshowers_night": "mdi:weather-pouring",
-    "sleetshowers_day": "mdi:weather-snowy-rainy",
-    "sleetshowers_night": "mdi:weather-snowy-rainy",
-    "snowshowers_day": "mdi:weather-snowy",
-    "snowshowers_night": "mdi:weather-snowy",
-    "rain": "mdi:weather-pouring",
-    "heavyrain": "mdi:weather-pouring",
-    "heavyrainandthunder": "mdi:weather-lightning-rainy",
-    "sleet": "mdi:weather-snowy-rainy",
-    "snow": "mdi:weather-snowy",
-    "snowandthunder": "mdi:weather-snowy-heavy",
-    "rainandthunder": "mdi:weather-lightning-rainy",
-    "sleetandthunder": "mdi:weather-lightning-rainy",
-    "lightrainshowers_day": "mdi:weather-rainy",
-    "lightrainshowers_night": "mdi:weather-rainy",
-    "lightrainshowersandthunder_day": "mdi:weather-lightning-rainy",
-    "lightrainshowersandthunder_night": "mdi:weather-lightning-rainy",
-    "lightsleetshowers_day": "mdi:weather-snowy-rainy",
-    "lightsleetshowers_night": "mdi:weather-snowy-rainy",
-    "lightsnowshowers_day": "mdi:weather-snowy",
-    "lightsnowshowers_night": "mdi:weather-snowy",
-    "lightsnowshowersandthunder_day": "mdi:weather-lightning-snowy",
-    "lightsnowshowersandthunder_night": "mdi:weather-lightning-snowy",
-    "lightssleetshowersandthunder_day": "mdi:weather-lightning-snowy-rainy",
-    "lightssleetshowersandthunder_night": "mdi:weather-lightning-snowy-rainy",
-    "lightssnowshowersandthunder_day": "mdi:weather-lightning-snowy",
-    "lightssnowshowersandthunder_night": "mdi:weather-lightning-snowy",
+WMO_CODE_TO_MDI = {
+    0: "mdi:weather-sunny",
+    1: "mdi:weather-partly-cloudy",
+    2: "mdi:weather-partly-cloudy",
+    3: "mdi:weather-cloudy",
+    45: "mdi:weather-fog",
+    48: "mdi:weather-fog",
+    51: "mdi:weather-rainy",
+    53: "mdi:weather-rainy",
+    55: "mdi:weather-rainy",
+    56: "mdi:weather-snowy-rainy",
+    57: "mdi:weather-snowy-rainy",
+    61: "mdi:weather-rainy",
+    63: "mdi:weather-rainy",
+    65: "mdi:weather-pouring",
+    66: "mdi:weather-snowy-rainy",
+    67: "mdi:weather-snowy-rainy",
+    71: "mdi:weather-snowy",
+    73: "mdi:weather-snowy",
+    75: "mdi:weather-snowy",
+    77: "mdi:weather-snowy",
+    80: "mdi:weather-rainy",
+    81: "mdi:weather-rainy",
+    82: "mdi:weather-pouring",
+    85: "mdi:weather-snowy",
+    86: "mdi:weather-snowy",
+    95: "mdi:weather-lightning",
+    96: "mdi:weather-lightning-rainy",
+    99: "mdi:weather-lightning-rainy",
 }
 
 
@@ -183,51 +174,24 @@ async def _async_setup_points_progression(sensor) -> None:
     sensor.async_write_ha_state()
 
 
+def _set_suggested_object_id(entity, object_id: str) -> None:
+    """Keep stable entity_id/object_id independent of user-facing name."""
+    entity._attr_suggested_object_id = object_id
+
+
+def _default_object_id(key: str) -> str:
+    """Build a stable default object_id for new entities."""
+    normalized_key = str(key).strip().replace("-", "_").lower()
+    return f"f1_{normalized_key}"
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
     """Create sensors when integration is added."""
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
-    legacy_stats_key = "".join(
-        chr(c)
-        for c in (
-            116,
-            105,
-            114,
-            101,
-            95,
-            115,
-            116,
-            97,
-            116,
-            105,
-            115,
-            116,
-            105,
-            99,
-            115,
-        )
-    )
-    # Normalize legacy/stale sensor keys
-    allowed = SUPPORTED_SENSOR_KEYS
-    raw_enabled = entry.data.get("enabled_sensors", [])
-    normalized = []
-    seen = set()
-    for key in raw_enabled:
-        if key == "next_session":
-            key = "next_race"
-        if key == legacy_stats_key:
-            key = "tyre_statistics"
-        if key in allowed and key not in seen:
-            normalized.append(key)
-            seen.add(key)
-    enabled = normalized
-    if raw_enabled != normalized:
-        with suppress(Exception):
-            hass.config_entries.async_update_entry(
-                entry, data={**entry.data, "enabled_sensors": normalized}
-            )
+    disabled: set[str] = set(entry.data.get("disabled_sensors") or [])
     mapping = {
         "next_race": (F1NextRaceSensor, data["race_coordinator"]),
         "track_time": (F1TrackTimeSensor, data["race_coordinator"]),
@@ -256,6 +220,18 @@ async def async_setup_entry(
             F1SessionStatusSensor,
             data.get("session_status_coordinator"),
         ),
+        "session_time_remaining": (
+            F1SessionTimeRemainingSensor,
+            data.get("session_clock_coordinator"),
+        ),
+        "session_time_elapsed": (
+            F1SessionTimeElapsedSensor,
+            data.get("session_clock_coordinator"),
+        ),
+        "race_time_to_three_hour_limit": (
+            F1RaceTimeToThreeHourLimitSensor,
+            data.get("session_clock_coordinator"),
+        ),
         "current_session": (
             F1CurrentSessionSensor,
             data.get("session_info_coordinator"),
@@ -266,6 +242,7 @@ async def async_setup_entry(
         "driver_positions": (F1DriverPositionsSensor, data.get("drivers_coordinator")),
         "fia_documents": (F1FiaDocumentsSensor, data.get("fia_documents_coordinator")),
         "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
+        "straight_mode": (F1StraightModeSensor, data.get("live_mode_coordinator")),
         "track_limits": (F1TrackLimitsSensor, data.get("race_control_coordinator")),
         "investigations": (
             F1InvestigationsSensor,
@@ -282,77 +259,78 @@ async def async_setup_entry(
     }
 
     sensors = []
-    for key in enabled:
-        cls, coord = mapping.get(key, (None, None))
+    for key, (cls, coord) in mapping.items():
+        if key in disabled:
+            continue
         if key == "top_three":
             # Expandera till tre separata sensorer: P1, P2, P3
             if not coord:
                 continue
             for pos in range(3):
-                sensors.append(
-                    F1TopThreePositionSensor(
-                        coord,
-                        f"{base}_top_three_p{pos + 1}",
-                        f"{entry.entry_id}_top_three_p{pos + 1}",
-                        entry.entry_id,
-                        base,
-                        pos,
-                    )
+                object_id = _default_object_id(f"top_three_p{pos + 1}")
+                sensor = F1TopThreePositionSensor(
+                    coord,
+                    f"{entry.entry_id}_top_three_p{pos + 1}",
+                    entry.entry_id,
+                    base,
+                    pos,
                 )
+                _set_suggested_object_id(sensor, object_id)
+                sensors.append(sensor)
         elif key == "championship_prediction":
             if not coord:
                 continue
-            sensors.append(
-                F1ChampionshipPredictionDriversSensor(
-                    coord,
-                    f"{base}_championship_prediction_drivers",
-                    f"{entry.entry_id}_championship_prediction_drivers",
-                    entry.entry_id,
-                    base,
-                )
+            drivers_sensor = F1ChampionshipPredictionDriversSensor(
+                coord,
+                f"{entry.entry_id}_championship_prediction_drivers",
+                entry.entry_id,
+                base,
             )
-            sensors.append(
-                F1ChampionshipPredictionTeamsSensor(
-                    coord,
-                    f"{base}_championship_prediction_teams",
-                    f"{entry.entry_id}_championship_prediction_teams",
-                    entry.entry_id,
-                    base,
-                )
+            _set_suggested_object_id(
+                drivers_sensor, _default_object_id("championship_prediction_drivers")
             )
+            sensors.append(drivers_sensor)
+            teams_sensor = F1ChampionshipPredictionTeamsSensor(
+                coord,
+                f"{entry.entry_id}_championship_prediction_teams",
+                entry.entry_id,
+                base,
+            )
+            _set_suggested_object_id(
+                teams_sensor, _default_object_id("championship_prediction_teams")
+            )
+            sensors.append(teams_sensor)
         elif key == "live_timing_diagnostics":
             # Dev-only diagnostic sensor; hide it fully unless dev UI is enabled.
             if ENABLE_DEVELOPMENT_MODE_UI:
-                sensors.append(
-                    F1LiveTimingModeSensor(
-                        hass,
-                        entry.entry_id,
-                        base,
-                    )
-                )
-        elif cls and coord:
-            sensors.append(
-                cls(
-                    coord,
-                    f"{base}_{key}",
-                    f"{entry.entry_id}_{key}",
+                sensor = F1LiveTimingModeSensor(
+                    hass,
                     entry.entry_id,
                     base,
                 )
+                _set_suggested_object_id(sensor, _default_object_id("live_timing_mode"))
+                sensors.append(sensor)
+        elif cls and coord:
+            sensor = cls(
+                coord,
+                f"{entry.entry_id}_{key}",
+                entry.entry_id,
+                base,
             )
+            _set_suggested_object_id(sensor, _default_object_id(key))
+            sensors.append(sensor)
 
     # Replay status sensor
     replay_controller = data.get("replay_controller")
     if replay_controller is not None:
-        sensors.append(
-            F1ReplayStatusSensor(
-                replay_controller,
-                f"{base}_replay_status",
-                f"{entry.entry_id}_replay_status",
-                entry.entry_id,
-                base,
-            )
+        sensor = F1ReplayStatusSensor(
+            replay_controller,
+            f"{entry.entry_id}_replay_status",
+            entry.entry_id,
+            base,
         )
+        _set_suggested_object_id(sensor, _default_object_id("replay_status"))
+        sensors.append(sensor)
 
     async_add_entities(sensors, True)
 
@@ -360,18 +338,21 @@ async def async_setup_entry(
 class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
     """Diagnostic mode sensor for the live timing transport (idle/live/replay)."""
 
+    _device_category = "system"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:information-outline"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = ["idle", "live", "replay"]
 
+    _attr_translation_key = "live_timing_mode"
+
     def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
         super().__init__(
-            name=f"{device_name}_live_timing_mode",
             unique_id=f"{entry_id}_live_timing_mode",
             entry_id=entry_id,
             device_name=device_name,
         )
+        self._attr_suggested_object_id = _default_object_id("live_timing_mode")
         self.hass = hass
         self._entry_id = entry_id
         self._unsub_live_state = None
@@ -499,8 +480,10 @@ class _NextRaceMixin:
 class _PointsProgressionBase(F1BaseEntity, RestoreEntity, SensorEntity):
     """Base for points progression sensors with shared setup/refresh logic."""
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "championship"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:chart-line"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
@@ -530,6 +513,8 @@ class _PointsProgressionBase(F1BaseEntity, RestoreEntity, SensorEntity):
 
 class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
     """Base class for coordinator-driven live sensors with change detection."""
+
+    _device_category = "drivers"
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -569,10 +554,11 @@ class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
 class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
     """Base for championship prediction sensors with shared restore logic."""
 
+    _device_category = "championship"
     _DEFAULT_ICON = "mdi:trophy"
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = self._DEFAULT_ICON
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
@@ -629,8 +615,12 @@ class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
 class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
     """Sensor that returns date/time (ISO8601) for the next race in 'state'."""
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "race"
+
+    _attr_translation_key = "next_race"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
@@ -719,8 +709,12 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
 class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
     """Sensor showing current local time at the circuit."""
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "race"
+
+    _attr_translation_key = "track_time"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:clock-outline"
         self._unsub_timer = None
 
@@ -800,10 +794,13 @@ class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
 class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
     """Sensor showing number of races this season."""
 
+    _device_category = "race"
     _unrecorded_attributes = frozenset({"races"})
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _attr_translation_key = "current_season"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:calendar-month"
 
     @property
@@ -833,8 +830,12 @@ class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
 class F1DriverStandingsSensor(F1BaseEntity, SensorEntity):
     """Sensor for driver standings."""
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "championship"
+
+    _attr_translation_key = "driver_standings"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:account-multiple-check"
 
     @property
@@ -868,8 +869,12 @@ class F1DriverStandingsSensor(F1BaseEntity, SensorEntity):
 class F1ConstructorStandingsSensor(F1BaseEntity, SensorEntity):
     """Sensor for constructor standings."""
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "championship"
+
+    _attr_translation_key = "constructor_standings"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:factory"
 
     @property
@@ -903,9 +908,15 @@ class F1ConstructorStandingsSensor(F1BaseEntity, SensorEntity):
 class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
     """Sensor for current and race-start weather."""
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "race"
+
+    _attr_translation_key = "weather"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:weather-partly-cloudy"
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._current = {}
         self._race = {}
         self._circuit = {}
@@ -945,11 +956,33 @@ class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         if lat is None or lon is None:
             return
         session = async_get_clientsession(self.hass)
-        url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
-        headers = {"User-Agent": "homeassistant-f1_sensor"}
+        current_vars = ",".join(
+            [
+                "temperature_2m",
+                "relative_humidity_2m",
+                "precipitation",
+                "precipitation_probability",
+                "cloud_cover",
+                "wind_speed_10m",
+                "wind_direction_10m",
+                "wind_gusts_10m",
+                "visibility",
+                "weather_code",
+            ]
+        )
+        hourly_vars = current_vars
+        url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            f"&current={current_vars}"
+            f"&hourly={hourly_vars}"
+            f"&wind_speed_unit=ms"
+            f"&timezone=UTC"
+            f"&forecast_days=16"
+        )
         try:
             async with async_timeout.timeout(10):
-                async with session.get(url, headers=headers) as resp:
+                async with session.get(url) as resp:
                     resp.raise_for_status()
                     data = await resp.json()
         except Exception:
@@ -959,134 +992,89 @@ class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
             self._attr_icon = "mdi:weather-partly-cloudy"
             self.async_write_ha_state()
             return
-        times = data.get("properties", {}).get("timeseries", [])
-        if not times:
-            return
-        curr = times[0].get("data", {}).get("instant", {}).get("details", {})
-        # Derive current precipitation from forecast blocks (prefer max of 1h/6h/12h)
-        data0 = times[0].get("data", {})
-        block1 = data0.get("next_1_hours") or {}
-        block6 = data0.get("next_6_hours") or {}
-        block12 = data0.get("next_12_hours") or {}
 
-        def _precip_triplet(block: dict):
-            details = (block or {}).get("details", {}) or {}
-            amt = details.get("precipitation_amount")
-            if amt is None:
-                amt = details.get("precipitation_amount_min")
-            if amt is None:
-                amt = details.get("precipitation_amount_max")
-            if amt is None:
-                amt = 0
-            return (
-                amt,
-                details.get("precipitation_amount_min"),
-                details.get("precipitation_amount_max"),
-            )
+        # Parse current conditions from the dedicated current block.
+        current_block = data.get("current", {})
+        self._current = self._extract(current_block)
+        current_code = current_block.get("weather_code")
+        self._attr_icon = WMO_CODE_TO_MDI.get(current_code, "mdi:weather-partly-cloudy")
 
-        def _precip_probability(block: dict):
-            details = (block or {}).get("details", {}) or {}
-            return details.get("probability_of_precipitation")
-
-        p1, p1min, p1max = _precip_triplet(block1)
-        p6, p6min, p6max = _precip_triplet(block6)
-        p12, p12min, p12max = _precip_triplet(block12)
-        candidates = [
-            (p1, p1min, p1max, block1),
-            (p6, p6min, p6max, block6),
-            (p12, p12min, p12max, block12),
+        # Build an index over the hourly time series for race-start lookup.
+        hourly = data.get("hourly", {})
+        hourly_times = hourly.get("time", [])
+        hourly_vars_keys = [
+            "temperature_2m",
+            "relative_humidity_2m",
+            "precipitation",
+            "precipitation_probability",
+            "cloud_cover",
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "wind_gusts_10m",
+            "visibility",
+            "weather_code",
         ]
-        sel_amt, sel_min, sel_max, sel_block = max(candidates, key=lambda t: t[0])
-        curr_with_precip = dict(curr)
-        curr_with_precip["precipitation_amount"] = sel_amt
-        curr_with_precip["probability_of_precipitation"] = _precip_probability(
-            sel_block
-        )
-        # Also expose min/max precipitation; fallback to selected amount when missing
-        _cur_min = sel_min
-        _cur_max = sel_max
-        curr_with_precip["precipitation_amount_min"] = (
-            _cur_min if _cur_min is not None else sel_amt
-        )
-        curr_with_precip["precipitation_amount_max"] = (
-            _cur_max if _cur_max is not None else sel_amt
-        )
-        self._current = self._extract(curr_with_precip)
-        current_symbol = (sel_block or {}).get("summary", {}).get("symbol_code")
-        current_icon = SYMBOL_CODE_TO_MDI.get(current_symbol, self._attr_icon)
-        self._attr_icon = current_icon
+        hourly_entries = []
+        for i, t in enumerate(hourly_times):
+            entry = {"time": t}
+            for key in hourly_vars_keys:
+                vals = hourly.get(key, [])
+                entry[key] = vals[i] if i < len(vals) else None
+            hourly_entries.append(entry)
+
         start_iso = (
             _combine_date_time(race.get("date"), race.get("time")) if race else None
         )
         self._race = {k: None for k in self._current}
-        if start_iso:
+        if start_iso and hourly_entries:
             start_dt = datetime.datetime.fromisoformat(start_iso)
-            same_day = [
-                t
-                for t in times
-                if datetime.datetime.fromisoformat(t["time"]).date() == start_dt.date()
-            ]
-            if same_day:
-                closest = min(
-                    same_day,
-                    key=lambda t: abs(
-                        datetime.datetime.fromisoformat(t["time"]) - start_dt
-                    ),
-                )
-                data_entry = closest.get("data", {})
-                instant_details = data_entry.get("instant", {}).get("details", {})
-                # Choose race precipitation as max of 1h/6h/12h around start time
-                r1 = data_entry.get("next_1_hours") or {}
-                r6 = data_entry.get("next_6_hours") or {}
-                r12 = data_entry.get("next_12_hours") or {}
-                rp1, rp1min, rp1max = _precip_triplet(r1)
-                rp6, rp6min, rp6max = _precip_triplet(r6)
-                rp12, rp12min, rp12max = _precip_triplet(r12)
-                rcandidates = [
-                    (rp1, rp1min, rp1max, r1),
-                    (rp6, rp6min, rp6max, r6),
-                    (rp12, rp12min, rp12max, r12),
-                ]
-                r_sel_amt, r_sel_min, r_sel_max, r_sel_block = max(
-                    rcandidates, key=lambda t: t[0]
-                )
-                rd = dict(instant_details)
-                rd["precipitation_amount"] = r_sel_amt
-                rd["probability_of_precipitation"] = _precip_probability(r_sel_block)
-                # Also expose min/max precipitation at race time; fallback to selected amount
-                rd["precipitation_amount_min"] = (
-                    r_sel_min if r_sel_min is not None else r_sel_amt
-                )
-                rd["precipitation_amount_max"] = (
-                    r_sel_max if r_sel_max is not None else r_sel_amt
-                )
-                self._race = self._extract(rd)
-                forecast_block = r_sel_block or {}
-                race_symbol = forecast_block.get("summary", {}).get("symbol_code")
-                race_icon = SYMBOL_CODE_TO_MDI.get(race_symbol, self._attr_icon)
-                self._race["weather_icon"] = race_icon
+            # Ensure start_dt is UTC-aware for comparison.
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=datetime.timezone.utc)
+            closest = min(
+                hourly_entries,
+                key=lambda e: abs(
+                    datetime.datetime.fromisoformat(e["time"]).replace(
+                        tzinfo=datetime.timezone.utc
+                    )
+                    - start_dt
+                ),
+            )
+            self._race = self._extract(closest)
+            race_code = closest.get("weather_code")
+            race_icon = WMO_CODE_TO_MDI.get(race_code, self._attr_icon)
+            self._race["weather_icon"] = race_icon
         self.async_write_ha_state()
 
     def _extract(self, d):
-        wd = d.get("wind_from_direction")
+        wd = d.get("wind_direction_10m")
+        precip = d.get("precipitation", 0) or 0
         return {
-            "temperature": d.get("air_temperature"),
+            "temperature": d.get("temperature_2m"),
             "temperature_unit": "celsius",
-            "humidity": d.get("relative_humidity"),
+            "humidity": d.get("relative_humidity_2m"),
             "humidity_unit": "%",
-            "cloud_cover": d.get("cloud_area_fraction"),
+            "cloud_cover": d.get("cloud_cover"),
             "cloud_cover_unit": "%",
-            "precipitation": d.get("precipitation_amount", 0),
-            "precipitation_amount_min": d.get("precipitation_amount_min"),
-            "precipitation_amount_max": d.get("precipitation_amount_max"),
-            "precipitation_probability": d.get("probability_of_precipitation"),
+            "precipitation": precip,
+            # open-meteo gives an exact forecast value, not a range; expose the
+            # same value for min/max to preserve backwards compatibility.
+            "precipitation_amount_min": precip,
+            "precipitation_amount_max": precip,
+            "precipitation_probability": d.get("precipitation_probability"),
             "precipitation_probability_unit": "%",
             "precipitation_unit": "mm",
-            "wind_speed": d.get("wind_speed"),
+            "wind_speed": d.get("wind_speed_10m"),
             "wind_speed_unit": "m/s",
             "wind_direction": self._abbr(wd),
             "wind_from_direction_degrees": wd,
             "wind_from_direction_unit": "degrees",
+            "wind_gusts": d.get("wind_gusts_10m"),
+            "wind_gusts_unit": "m/s",
+            "visibility": d.get("visibility"),
+            "visibility_unit": "m",
+            "weather_code": d.get("weather_code"),
+            "weather_source": "open-meteo",
         }
 
     def _abbr(self, deg):
@@ -1133,8 +1121,12 @@ class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
 class F1LastRaceSensor(F1BaseEntity, SensorEntity):
     """Sensor for results of the latest race."""
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "race"
+
+    _attr_translation_key = "last_race_results"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:trophy"
 
     @property
@@ -1209,10 +1201,13 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
 class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
     """Sensor for full season results."""
 
+    _device_category = "race"
     _unrecorded_attributes = frozenset({"races"})
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _attr_translation_key = "season_results"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:podium"
 
     @property
@@ -1266,10 +1261,13 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
 class F1SprintResultsSensor(F1BaseEntity, SensorEntity):
     """Sensor exposing sprint results across the current season."""
 
+    _device_category = "race"
     _unrecorded_attributes = frozenset({"races"})
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _attr_translation_key = "sprint_results"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-variant"
 
     def _get_races(self):
@@ -1325,6 +1323,7 @@ class F1SprintResultsSensor(F1BaseEntity, SensorEntity):
 class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Sensor that tracks FIA decision documents per race weekend."""
 
+    _device_category = "officials"
     _DOC1_RESET_PATTERN = re.compile(
         r"\bdoc(?:ument)?(?:\s+(?:no\.?|number))?\s*0*1\b",
         re.IGNORECASE,
@@ -1334,8 +1333,10 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         re.IGNORECASE,
     )
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _attr_translation_key = "fia_documents"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:file-document-alert"
         self._attr_native_value = 0
         self._attr_extra_state_attributes = {"documents": []}
@@ -1569,6 +1570,8 @@ class F1DriverPointsProgressionSensor(_PointsProgressionBase):
     - State: number of rounds included.
     - Attributes: season, rounds[], drivers{}, series{} for charting.
     """
+
+    _attr_translation_key = "driver_points_progression"
 
     _unrecorded_attributes = frozenset({"drivers", "series"})
 
@@ -1817,6 +1820,8 @@ class F1DriverPointsProgressionSensor(_PointsProgressionBase):
 class F1ConstructorPointsProgressionSensor(_PointsProgressionBase):
     """Constructor points per team by round, including sprint; cumulative series for charts."""
 
+    _attr_translation_key = "constructor_points_progression"
+
     _unrecorded_attributes = frozenset({"constructors", "series"})
 
     def _recompute(self) -> None:
@@ -2050,8 +2055,12 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     wind speed and direction, with units. Restores last value on restart if no live data yet.
     """
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "session"
+
+    _attr_translation_key = "track_weather"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:thermometer"
         try:
             self._attr_device_class = SensorDeviceClass.TEMPERATURE
@@ -2246,8 +2255,12 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Track status sensor independent from flag logic."""
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "session"
+
+    _attr_translation_key = "track_status"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_native_value = None
         # Advertise as enum sensor so HA UI can suggest valid states
@@ -2375,18 +2388,20 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - Attribut: withhold-flagga och fält för just den positionen.
     """
 
+    _device_category = "drivers"
+
     def __init__(
         self,
         coordinator,
-        sensor_name,
         unique_id,
         entry_id,
         device_name,
         position_index: int,
     ):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         # 0-baserat index: 0=P1, 1=P2, 2=P3
         self._position_index = max(0, min(2, int(position_index or 0)))
+        self._attr_translation_key = f"top_three_p{self._position_index + 1}"
         # Enkelt ikonval; P1 kan få "full" trophy
         if self._position_index == 0:
             self._attr_icon = "mdi:trophy"
@@ -2635,11 +2650,72 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_extra_state_attributes = {}
 
 
+def _map_session_status_payload(
+    raw: dict | None, hass: HomeAssistant | None
+) -> str | None:
+    """Map raw SessionStatus payloads to semantic states."""
+    if not raw:
+        return None
+
+    message = str(raw.get("Status") or raw.get("Message") or "").strip()
+    started_hint = str(raw.get("Started") or "").strip()
+
+    if message == "Started":
+        return "live"
+
+    if message == "Finished":
+        return "finished"
+
+    if message == "Finalised":
+        return "finalised"
+
+    if message == "Ends":
+        return "ended"
+
+    if message == "Inactive":
+        if started_hint == "Finished":
+            return "break"
+        if started_hint == "Started":
+            track_state = None
+            try:
+                cache = hass.data.get(LATEST_TRACK_STATUS) if hass is not None else None
+                track_state = (
+                    normalize_track_status(cache) if isinstance(cache, dict) else None
+                )
+            except Exception:
+                track_state = None
+            if track_state and track_state != "RED":
+                return "live"
+            return "suspended"
+        return "pre"
+
+    if message == "Aborted":
+        if started_hint == "Started":
+            track_state = None
+            try:
+                cache = hass.data.get(LATEST_TRACK_STATUS) if hass is not None else None
+                track_state = (
+                    normalize_track_status(cache) if isinstance(cache, dict) else None
+                )
+            except Exception:
+                track_state = None
+            if track_state and track_state != "RED":
+                return "live"
+            return "suspended"
+        return "pre"
+
+    return "pre"
+
+
 class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Sensor mapping SessionStatus to semantic states for automations."""
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "session"
+
+    _attr_translation_key = "session_status"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:timer-play"
         self._attr_native_value = None
         self._started_flag = None
@@ -2823,77 +2899,7 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self.async_write_ha_state()
 
     def _map_status(self, raw: dict | None) -> str | None:
-        if not raw:
-            return None
-        # Prefer explicit string in Status, fall back to Message
-        message = str(raw.get("Status") or raw.get("Message") or "").strip()
-        started_hint = str(raw.get("Started") or "").strip()
-
-        # Stateless mapping based only on this payload.
-        if message == "Started":
-            return "live"
-
-        if message == "Finished":
-            # A qualifying part or the session segment ended.
-            # Reset internal memory defensively.
-            self._started_flag = None
-            return "finished"
-
-        if message == "Finalised":
-            # Session finalised without requiring a prior "Finished".
-            self._started_flag = None
-            return "finalised"
-
-        if message == "Ends":
-            # Session officially ends. Clear any sticky state.
-            self._started_flag = None
-            return "ended"
-
-        if message == "Inactive":
-            # Planned qualifying break vs. suspension vs. pre-session
-            if started_hint == "Finished":
-                # Planned pause between quali segments
-                self._started_flag = None
-                return "break"
-            if started_hint == "Started":
-                # Tie-break using latest TrackStatus: if not RED, treat as live
-                try:
-                    cache = self.hass.data.get(LATEST_TRACK_STATUS)
-                    track_state = (
-                        normalize_track_status(cache)
-                        if isinstance(cache, dict)
-                        else None
-                    )
-                except Exception:
-                    track_state = None
-                if track_state and track_state != "RED":
-                    return "live"
-                # Red flag / suspended while session is considered started
-                return "suspended"
-            # Not started yet
-            return "pre"
-
-        if message == "Aborted":
-            # Aborted within an already started session is a suspension-like state
-            if started_hint == "Started":
-                # Tie-break using latest TrackStatus: if not RED, treat as live
-                try:
-                    cache = self.hass.data.get(LATEST_TRACK_STATUS)
-                    track_state = (
-                        normalize_track_status(cache)
-                        if isinstance(cache, dict)
-                        else None
-                    )
-                except Exception:
-                    track_state = None
-                if track_state and track_state != "RED":
-                    return "live"
-                return "suspended"
-            # Otherwise treat like pre (no live running yet)
-            return "pre"
-
-        # Fallback: unknown values behave like pre-session
-        return "pre"
+        return _map_session_status_payload(raw, self.hass)
 
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
@@ -2941,6 +2947,181 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_extra_state_attributes = {}
 
 
+class F1SessionClockBaseSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Base sensor for derived session clock values."""
+
+    _device_category = "session"
+    _value_key: str = ""
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last and last.state not in (None, "unknown", "unavailable"):
+            self._attr_native_value = last.state
+            self._attr_extra_state_attributes = dict(
+                getattr(last, "attributes", {}) or {}
+            )
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self._handle_coordinator_update()
+
+    @staticmethod
+    def _format_hms(value: int | None) -> str | None:
+        if not isinstance(value, int) or value < 0:
+            return None
+        hours = value // 3600
+        minutes = (value % 3600) // 60
+        seconds = value % 60
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+
+    def _extract_state(self) -> dict | None:
+        data = getattr(self.coordinator, "data", None)
+        return data if isinstance(data, dict) else None
+
+    def _extract_value(self, state: dict) -> int | None:
+        raw = state.get(self._value_key)
+        try:
+            if raw is None:
+                return None
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def _is_value_available(self, state: dict, value: int | None) -> bool:
+        source_quality = str(state.get("source_quality") or "").strip()
+        return value is not None and source_quality != "unavailable"
+
+    def _build_attrs(self, state: dict, value: int | None) -> dict:
+        return {
+            "session_type": state.get("session_type"),
+            "session_name": state.get("session_name"),
+            "session_part": state.get("session_part"),
+            "session_status": state.get("session_status"),
+            "clock_phase": state.get("clock_phase"),
+            "clock_running": state.get("clock_running"),
+            "source_quality": state.get("source_quality"),
+            "session_start_utc": state.get("session_start_utc"),
+            "reference_utc": state.get("reference_utc"),
+            "last_server_utc": state.get("last_server_utc"),
+            "value_seconds": value,
+            "formatted_hms": self._format_hms(value),
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        state = self._extract_state()
+        if not isinstance(state, dict):
+            return
+
+        value = self._extract_value(state)
+        source_quality = str(state.get("source_quality") or "").strip()
+        if value is None and source_quality == "unavailable":
+            # Keep restored value during startup/reconnect until a useful payload arrives.
+            self._safe_write_ha_state()
+            return
+
+        value_text = self._format_hms(value)
+        attrs = self._build_attrs(state, value)
+        if (
+            self._attr_native_value == value_text
+            and self._attr_extra_state_attributes == attrs
+        ):
+            return
+        self._attr_native_value = value_text
+        self._attr_extra_state_attributes = attrs
+        self._safe_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        state = self._extract_state()
+        if not isinstance(state, dict):
+            return False
+        value = self._extract_value(state)
+        return self._is_value_available(state, value)
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def extra_state_attributes(self):
+        return self._attr_extra_state_attributes
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
+
+
+class F1SessionTimeRemainingSensor(F1SessionClockBaseSensor):
+    """Official session time remaining based on ExtrapolatedClock."""
+
+    _value_key = "clock_remaining_s"
+
+    _attr_translation_key = "session_time_remaining"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:timer-sand"
+
+    def _build_attrs(self, state: dict, value: int | None) -> dict:
+        attrs = super()._build_attrs(state, value)
+        attrs["clock_total_s"] = state.get("clock_total_s")
+        return attrs
+
+
+class F1SessionTimeElapsedSensor(F1SessionClockBaseSensor):
+    """Official session elapsed time based on ExtrapolatedClock."""
+
+    _value_key = "clock_elapsed_s"
+
+    _attr_translation_key = "session_time_elapsed"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:timer-outline"
+
+    def _build_attrs(self, state: dict, value: int | None) -> dict:
+        attrs = super()._build_attrs(state, value)
+        attrs["clock_total_s"] = state.get("clock_total_s")
+        attrs["clock_remaining_s"] = state.get("clock_remaining_s")
+        return attrs
+
+
+class F1RaceTimeToThreeHourLimitSensor(F1SessionClockBaseSensor):
+    """Time remaining until the FIA 3-hour race duration cap."""
+
+    _value_key = "race_three_hour_remaining_s"
+
+    _attr_translation_key = "race_time_to_three_hour_limit"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:car-clock"
+
+    @staticmethod
+    def _is_main_race(state: dict) -> bool:
+        session_type = str(state.get("session_type") or "").strip().lower()
+        session_name = str(state.get("session_name") or "").strip().lower()
+        return session_type == "race" and "sprint" not in session_name
+
+    def _is_value_available(self, state: dict, value: int | None) -> bool:
+        if not self._is_main_race(state):
+            return False
+        return super()._is_value_available(state, value)
+
+    def _build_attrs(self, state: dict, value: int | None) -> dict:
+        attrs = super()._build_attrs(state, value)
+        attrs["race_start_utc"] = state.get("race_start_utc")
+        attrs["race_three_hour_cap_utc"] = state.get("race_three_hour_cap_utc")
+        return attrs
+
+
 class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Live sensor reporting current session label (e.g., Practice 1, Qualifying/Q1, Sprint Qualifying/SQ1, Sprint, Race).
 
@@ -2950,8 +3131,12 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - Behavior: restores last state on restart; respects global live delay via coordinator.
     """
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "session"
+
+    _attr_translation_key = "current_session"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:calendar-clock"
         try:
             self._attr_device_class = SensorDeviceClass.ENUM
@@ -3119,22 +3304,31 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         }
         return label, meta
 
-    def _live_status(self) -> str | None:
+    def _live_status_payload(self) -> dict | None:
         try:
             if self._status_coordinator and isinstance(
                 self._status_coordinator.data, dict
             ):
-                d = self._status_coordinator.data
-                return str(d.get("Status") or d.get("Message") or "").strip()
+                return self._status_coordinator.data
         except Exception:
             return None
         return None
 
+    def _live_status(self) -> str | None:
+        payload = self._live_status_payload()
+        if isinstance(payload, dict):
+            return str(payload.get("Status") or payload.get("Message") or "").strip()
+        return None
+
+    def _mapped_live_status(self) -> str | None:
+        return _map_session_status_payload(self._live_status_payload(), self.hass)
+
     def _apply_payload(self, raw: dict, allow_clear: bool = True) -> None:
         label, meta = self._resolve_label(raw or {})
         status = self._live_status()
+        mapped_status = self._mapped_live_status()
         # Treat session as ended by explicit status; only use EndDate as a soft fallback with grace
-        ended = str(status or "").strip() in ("Finished", "Finalised", "Ends")
+        ended = mapped_status in ("finished", "finalised", "ended")
         with suppress(Exception):
             end_iso = raw.get("EndDate")
             if end_iso and not ended:
@@ -3149,7 +3343,7 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     st = str(status or "").strip()
                     if st not in ("Started", "Green", "GreenFlag"):
                         ended = True
-        active = str(status or "").strip() == "Started"
+        active = mapped_status == "live"
         desired_state = None
         if label in ("Qualifying", "Sprint Qualifying"):
             desired_state = None if ended else label
@@ -3190,9 +3384,10 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_extra_state_attributes = attrs
         with suppress(Exception):
             getLogger(__name__).debug(
-                "CurrentSession apply: label=%s status=%s ended=%s active=%s",
+                "CurrentSession apply: label=%s status=%s mapped=%s ended=%s active=%s",
                 label,
                 status,
+                mapped_status,
                 ended,
                 active,
             )
@@ -3245,10 +3440,13 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Expose the latest Race Control message as an easy-to-use sensor."""
 
+    _device_category = "officials"
     _history_limit = 5
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _attr_translation_key = "race_control"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-outline"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
@@ -3490,8 +3688,12 @@ class F1TrackLimitsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         - last_update: ISO timestamp of last update
     """
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "officials"
+
+    _attr_translation_key = "track_limits"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:map-marker-off"
         self._attr_native_value = 0
         self._by_driver: dict[str, dict] = {}
@@ -3813,11 +4015,15 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         - last_update: ISO timestamp of last update
     """
 
+    _device_category = "officials"
+
     # NFI decisions expire after this many seconds
     NFI_EXPIRY_SECONDS = 300  # 5 minutes
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _attr_translation_key = "investigations"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:account-search"
         self._attr_native_value = 0
         # Internal state: keyed by incident key for matching
@@ -4335,10 +4541,13 @@ class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - Attributes: racing_number, path, received_at, sequence, history, raw_message
     """
 
+    _device_category = "drivers"
     _history_limit = 20
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _attr_translation_key = "team_radio"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:headset"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
@@ -4526,10 +4735,13 @@ class F1PitStopsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - Attributes: cars (dict keyed by racing number), last_update
     """
 
+    _device_category = "drivers"
     _unrecorded_attributes = frozenset({"cars"})
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _attr_translation_key = "pitstops"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:car-wrench"
         self._attr_native_value = 0
         self._attr_extra_state_attributes = {"cars": {}, "last_update": None}
@@ -4616,6 +4828,8 @@ class F1ChampionshipPredictionDriversSensor(_ChampionshipPredictionBase):
     - Attributes: predicted_driver_p1, drivers, last_update
     """
 
+    _attr_translation_key = "championship_prediction_drivers"
+
     def _apply_payload(self, payload: dict, *, force: bool = False) -> None:
         if not isinstance(payload, dict):
             return
@@ -4646,6 +4860,8 @@ class F1ChampionshipPredictionTeamsSensor(_ChampionshipPredictionBase):
     - State: predicted P1 team name (string)
     - Attributes: predicted_team_p1, teams, last_update
     """
+
+    _attr_translation_key = "championship_prediction_teams"
 
     _DEFAULT_ICON = "mdi:trophy-variant"
 
@@ -4681,8 +4897,12 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - Restore: Remembers last value/attributes on restart and keeps them until new feed data arrives.
     """
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "session"
+
+    _attr_translation_key = "race_lap_count"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:counter"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
@@ -4939,8 +5159,12 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     - Behavior: restores last known state; logs only on change; respects consolidated drivers coordinator.
     """
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _device_category = "drivers"
+
+    _attr_translation_key = "driver_list"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:account-multiple"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {"drivers": []}
@@ -5215,10 +5439,11 @@ class F1CurrentTyresSensor(_CoordinatorStreamSensorBase):
         "WET": "#0000FF",  # blue
     }
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
-        # Icon for tyres; can be adjusted if a better one is found
-        self._attr_icon = "mdi:wheel"
+    _attr_translation_key = "current_tyres"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:tire"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {"drivers": []}
 
@@ -5326,8 +5551,10 @@ class F1TyreStatisticsSensor(_CoordinatorStreamSensorBase):
         "WET": "#0000FF",  # blue
     }
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _attr_translation_key = "tyre_statistics"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:chart-bar"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
@@ -5418,11 +5645,14 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
           }
     """
 
+    _device_category = "drivers"
     _unrecorded_attributes = frozenset({"drivers"})
     _PIT_OUT_HOLD_SECONDS = 6.0
 
-    def __init__(self, coordinator, sensor_name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, sensor_name, unique_id, entry_id, device_name)
+    _attr_translation_key = "driver_positions"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:podium"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {
@@ -5809,3 +6039,97 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     @property
     def state(self):
         return self._attr_native_value
+
+
+class F1StraightModeSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Sensor for the 2026 Straight Mode (active aero) state.
+
+    Reflects the track-wide active aerodynamic permission broadcasted via
+    Race Control messages. Three states are possible: normal grip (full aero
+    allowed), low grip (limited aero), and disabled (aero off).
+    """
+
+    _device_category = "session"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [STRAIGHT_MODE_NORMAL, STRAIGHT_MODE_LOW, STRAIGHT_MODE_DISABLED]
+    _attr_icon = "mdi:car-speed-limiter"
+    _attr_translation_key = "straight_mode"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
+        self._attr_suggested_object_id = f"{device_name}_straight_mode"
+        self._attr_native_value: str | None = None
+        self._attr_extra_state_attributes: dict[str, object] = {}
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        data = self._extract_data()
+        updated = self._has_straight_mode_state(data)
+        restored = False
+        if updated and data is not None:
+            self._apply_data(data)
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                restored_state = str(last.state)
+                if restored_state in self._attr_options:
+                    self._attr_native_value = restored_state
+                    attrs = dict(last.attributes or {})
+                    self._attr_extra_state_attributes = {
+                        "overtake_enabled": attrs.get("overtake_enabled"),
+                        "restored": True,
+                    }
+                    restored = True
+            if not restored and not self._is_stream_active():
+                self._clear_state()
+        self._stream_last_active = self._is_stream_active()
+        self.async_write_ha_state()
+
+    def _extract_data(self) -> dict | None:
+        data = self.coordinator.data
+        if not isinstance(data, dict):
+            return None
+        return data
+
+    def _has_straight_mode_state(self, data: dict | None) -> bool:
+        if not isinstance(data, dict):
+            return False
+        value = data.get("straight_mode")
+        return isinstance(value, str) and value in self._attr_options
+
+    def _apply_data(self, data: dict) -> None:
+        self._attr_native_value = data.get("straight_mode")
+        self._attr_extra_state_attributes = {
+            "overtake_enabled": data.get("overtake_enabled"),
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        data = self._extract_data()
+        updated = self._has_straight_mode_state(data)
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
+            self.async_write_ha_state()
+            return
+        if not updated or data is None:
+            return
+        self._apply_data(data)
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        return self._attr_native_value is not None
+
+    @property
+    def extra_state_attributes(self):
+        return self._attr_extra_state_attributes
+
+    def _clear_state(self) -> None:
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}

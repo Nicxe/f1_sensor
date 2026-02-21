@@ -83,6 +83,7 @@ The `switch.f1_delay_calibration` entity exposes:
 | started_at | string | ISO‑8601 timestamp when the timer started (best effort) |
 | elapsed | number | Elapsed seconds since start (best effort) |
 | timeout_at | string | ISO‑8601 timestamp when calibration times out (best effort) |
+| recorded_lap | number | Lap number recorded for lap sync calibration, or null if not applicable (best effort) |
 
 ### Choose the calibration reference
 
@@ -90,9 +91,14 @@ Use `select.f1_live_delay_reference` to choose when the calibration timer starts
 
 - **Session live** - Timer starts at lights out (races) or pit exit open (practice/qualifying). This is the most precise option.
 - **Formation start (race/sprint)** - Timer starts when the formation lap begins. This lets you focus on watching the start rather than pressing a button at lights out.
+- **Lap sync (race/sprint)** - Timer starts when the next lap completes during the race. This lets you synchronize at any point during the race, not just at the start.
 
 :::tip Formation start for races
 For races and sprints, formation start is often the better choice. The timer starts automatically when the formation lap begins, so you only need to press the button when you see the formation lap start on TV. Then you can sit back and enjoy the actual race start.
+:::
+
+:::tip Lap sync for mid-race calibration
+If you join a broadcast mid-race, or if your initial sync has drifted, lap sync lets you recalibrate without waiting for the next session. It works at any point during a race or sprint.
 :::
 
 :::info Formation lap timing
@@ -115,6 +121,12 @@ What happens next depends on the chosen reference:
 - When the formation lap begins, the timer starts automatically
 - For practice and qualifying, it falls back to session live behavior
 
+**Lap sync reference (race/sprint):**
+- The integration waits for the next lap to complete
+- When a lap completes, the timer starts and shows which lap was recorded (for example, "Lap 22 completed")
+- The timer locks onto that specific lap. If you need a different lap, cancel and re-arm
+- Only available during race and sprint sessions
+
 ### Step 2 - Match the TV broadcast
 
 When you see the reference point on your TV, press `button.f1_match_live_delay`. The elapsed time is measured and the result is written to `number.f1_live_delay`.
@@ -122,6 +134,8 @@ When you see the reference point on your TV, press `button.f1_match_live_delay`.
 **With session live reference:** Press when you see lights out (race) or pit exit open (practice/qualifying).
 
 **With formation start reference:** Press when you see the formation lap begin on TV.
+
+**With lap sync reference:** Press when you see the recorded lap complete on your TV. The status message tells you exactly which lap to look for.
 
 :::info When does the session go live?
 
@@ -136,6 +150,9 @@ The session starts when all five lights go out and the race begins. This is **no
 
 **Race (formation start)**
 The timer starts when cars begin the formation lap, before the actual race start.
+
+**Race (lap sync)**
+The timer starts when the next lap completes. You can arm this at any point during the race. When the lap counter ticks, the timer starts and the status tells you which lap was recorded. Press the button when you see that same lap complete on TV.
 ::::
 
 ---

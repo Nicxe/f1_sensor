@@ -31,8 +31,28 @@ const sidebars = {
 
     {
       type: 'category',
-      label: 'Examples',
-      items: ['example/e-ink', 'example/season-progression-charts', 'example/custom-card', 'example/custom-card-by'],
+      label: 'Blueprints',
+      items: ['blueprints/track-status-light', 'blueprints/race-control-notifications'],
+    },
+
+    {
+      type: 'category',
+      label: 'Cards',
+      items: ['cards/cards-overview'],
+    },
+
+    {
+      type: 'category',
+      label: 'Showcase',
+      items: [
+        'example/e-ink',
+        'example/season-progression-charts',
+        {
+          type: 'category',
+          label: 'Community Builds',
+          items: ['example/custom-card', 'example/custom-card-by'],
+        },
+      ],
     },
 
 

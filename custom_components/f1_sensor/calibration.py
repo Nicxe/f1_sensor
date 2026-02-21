@@ -16,9 +16,10 @@ from .const import (
     DOMAIN,
     DEFAULT_LIVE_DELAY_REFERENCE,
     LIVE_DELAY_REFERENCE_FORMATION,
+    LIVE_DELAY_REFERENCE_LAP_SYNC,
     LIVE_DELAY_REFERENCE_SESSION,
 )
-from .formation_start import FormationStartTracker
+from .formation_start import FormationStartTracker, _is_race_or_sprint
 from .live_delay import LiveDelayController, LiveDelayReferenceController
 from .signalr import LiveBus
 
@@ -51,6 +52,9 @@ class LiveDelayCalibrationManager:
         self._reference = DEFAULT_LIVE_DELAY_REFERENCE
         self._reference_unsub: Callable[[], None] | None = None
         self._formation_unsub: Callable[[], None] | None = None
+        self._lapcount_unsub: Callable[[], None] | None = None
+        self._recorded_lap: int | None = None
+        self._recorded_lap_utc = None
         self._state = self._initial_state()
         self._listeners: list[Callable[[dict[str, Any]], None]] = []
         self._tick_handle: asyncio.Handle | None = None
@@ -89,13 +93,26 @@ class LiveDelayCalibrationManager:
             with suppress(Exception):
                 self._formation_unsub()
             self._formation_unsub = None
+        if self._lapcount_unsub:
+            with suppress(Exception):
+                self._lapcount_unsub()
+            self._lapcount_unsub = None
 
     async def async_prepare(self, *, source: str = "button") -> dict[str, Any]:
         """Arm calibration and wait for session start."""
         if self._is_replay_active():
             return await self.async_blocked_by_replay(source=source)
+        if self._reference == LIVE_DELAY_REFERENCE_LAP_SYNC:
+            if not self._is_current_session_race_or_sprint():
+                message = "Lap sync is only available during race and sprint sessions."
+                self._transition_to_idle(message)
+                self._notify_listeners()
+                self._notify_user("F1 live delay", message)
+                return self.snapshot()
         _LOGGER.debug("Calibration prepare triggered by %s", source)
         self._cancel_handles()
+        self._recorded_lap = None
+        self._recorded_lap_utc = None
         now = dt_util.utcnow()
         self._state.update(
             {
@@ -105,6 +122,7 @@ class LiveDelayCalibrationManager:
                 "elapsed": 0.0,
                 "timeout_at": None,
                 "reference": self._reference,
+                "recorded_lap": None,
                 "message": self._waiting_message(),
             }
         )
@@ -118,6 +136,8 @@ class LiveDelayCalibrationManager:
                     reason="formation_already_found",
                     started_at=self._formation_start_utc,
                 )
+        elif self._reference == LIVE_DELAY_REFERENCE_LAP_SYNC:
+            self._ensure_lapcount_listener()
         return self.snapshot()
 
     async def async_complete(self, *, source: str = "button") -> dict[str, Any]:
@@ -155,10 +175,17 @@ class LiveDelayCalibrationManager:
         self._transition_to_idle("Calibration cancelled.")
         self._notify_listeners()
         if source == "timeout":
-            self._notify_user(
-                "F1 live delay",
-                "Calibration timed out after 2 minutes without changing the delay.",
-            )
+            if (
+                self._reference == LIVE_DELAY_REFERENCE_LAP_SYNC
+                and self._recorded_lap is not None
+            ):
+                timeout_msg = (
+                    f"Calibration timed out. Lap {self._recorded_lap} was recorded "
+                    "but sync was not confirmed within 5 minutes."
+                )
+            else:
+                timeout_msg = "Calibration timed out without changing the delay."
+            self._notify_user("F1 live delay", timeout_msg)
         return self.snapshot()
 
     async def async_blocked_by_replay(self, *, source: str) -> dict[str, Any]:
@@ -205,20 +232,22 @@ class LiveDelayCalibrationManager:
                 start = dt_util.utcnow()
         else:
             start = dt_util.utcnow()
+        timeout = self._effective_timeout()
         self._state.update(
             {
                 "mode": "running",
                 "waiting_since": None,
                 "started_at": start,
                 "elapsed": 0.0,
-                "timeout_at": start + timedelta(seconds=self._timeout_seconds),
+                "timeout_at": start + timedelta(seconds=timeout),
                 "reference": self._reference,
+                "recorded_lap": self._recorded_lap,
                 "message": self._running_message(),
             }
         )
         _LOGGER.debug("Calibration timer started (%s)", reason)
         self._schedule_tick()
-        self._schedule_timeout()
+        self._schedule_timeout(timeout)
         self._notify_listeners()
 
     def _compute_elapsed(self) -> float:
@@ -246,10 +275,11 @@ class LiveDelayCalibrationManager:
         self._notify_listeners()
         self._schedule_tick()
 
-    def _schedule_timeout(self) -> None:
+    def _schedule_timeout(self, timeout: int | None = None) -> None:
         self._cancel_timeout()
         loop = self._hass.loop
-        self._timeout_handle = loop.call_later(self._timeout_seconds, self._on_timeout)
+        seconds = timeout if timeout is not None else self._effective_timeout()
+        self._timeout_handle = loop.call_later(seconds, self._on_timeout)
 
     def _cancel_timeout(self) -> None:
         if self._timeout_handle:
@@ -266,6 +296,7 @@ class LiveDelayCalibrationManager:
 
     def _transition_to_idle(self, message: str | None) -> None:
         self._cancel_handles()
+        self._remove_lapcount_listener()
         self._state.update(
             {
                 "mode": "idle",
@@ -274,6 +305,7 @@ class LiveDelayCalibrationManager:
                 "started_at": None,
                 "elapsed": 0.0,
                 "timeout_at": None,
+                "recorded_lap": None,
                 "message": message,
             }
         )
@@ -305,6 +337,7 @@ class LiveDelayCalibrationManager:
             "started_at": None,
             "elapsed": 0.0,
             "timeout_at": None,
+            "recorded_lap": None,
             "message": None,
             "last_result": None,
         }
@@ -342,6 +375,7 @@ class LiveDelayCalibrationManager:
         self._state["reference"] = self._reference
         if self._reference == LIVE_DELAY_REFERENCE_FORMATION:
             self._ensure_formation_listener()
+            self._remove_lapcount_listener()
             if (
                 self._state["mode"] == "waiting"
                 and self._formation_start_utc is not None
@@ -350,8 +384,13 @@ class LiveDelayCalibrationManager:
                     reason="formation_reference_switch",
                     started_at=self._formation_start_utc,
                 )
+        elif self._reference == LIVE_DELAY_REFERENCE_LAP_SYNC:
+            self._remove_formation_listener()
+            if self._state["mode"] == "waiting":
+                self._ensure_lapcount_listener()
         else:
             self._remove_formation_listener()
+            self._remove_lapcount_listener()
             if self._state["mode"] == "waiting" and self._is_session_live(
                 self._last_session_payload
             ):
@@ -387,12 +426,76 @@ class LiveDelayCalibrationManager:
                 started_at=self._formation_start_utc,
             )
 
+    def _ensure_lapcount_listener(self) -> None:
+        if self._bus is None or self._lapcount_unsub is not None:
+            return
+        try:
+            self._lapcount_unsub = self._bus.subscribe(
+                "LapCount", self._handle_lapcount_message
+            )
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Failed to subscribe to LapCount for lap sync")
+
+    def _remove_lapcount_listener(self) -> None:
+        if self._lapcount_unsub is None:
+            return
+        with suppress(Exception):
+            self._lapcount_unsub()
+        self._lapcount_unsub = None
+
+    def _handle_lapcount_message(self, msg: dict) -> None:
+        if self._reference != LIVE_DELAY_REFERENCE_LAP_SYNC:
+            return
+        if self._state["mode"] != "waiting":
+            return
+        if not isinstance(msg, dict):
+            return
+        current_lap = msg.get("CurrentLap")
+        if current_lap is None:
+            current_lap = msg.get("LapCount")
+        if current_lap is None:
+            return
+        try:
+            current_lap = int(current_lap)
+        except (ValueError, TypeError):
+            return
+        completed_lap = max(0, current_lap - 1)
+        now = dt_util.utcnow()
+        self._recorded_lap = completed_lap
+        self._recorded_lap_utc = now
+        self._remove_lapcount_listener()
+        _LOGGER.debug("Lap sync recorded lap %d at %s", completed_lap, now.isoformat())
+        self._start_timer(reason="lap_tick", started_at=now)
+
+    def _is_current_session_race_or_sprint(self) -> bool:
+        if self._formation_tracker is not None:
+            session_type = getattr(self._formation_tracker, "_session_type", None)
+            session_name = getattr(self._formation_tracker, "_session_name", None)
+            if session_type or session_name:
+                return _is_race_or_sprint(session_type, session_name)
+        return True
+
+    def _effective_timeout(self) -> int:
+        if self._reference == LIVE_DELAY_REFERENCE_LAP_SYNC:
+            return 300
+        return self._timeout_seconds
+
     def _waiting_message(self) -> str:
+        if self._reference == LIVE_DELAY_REFERENCE_LAP_SYNC:
+            return "Waiting for next lap to complete..."
         if self._reference == LIVE_DELAY_REFERENCE_FORMATION:
             return "Waiting for formation start marker (race/sprint)."
         return "Waiting for SessionStatus to report 'Started'."
 
     def _running_message(self) -> str:
+        if self._reference == LIVE_DELAY_REFERENCE_LAP_SYNC:
+            lap = self._recorded_lap
+            if lap is not None:
+                return (
+                    f"Lap {lap} completed – press 'Match live delay' "
+                    "when you see this lap complete on TV."
+                )
+            return "Calibration running – press 'Match live delay' when TV catches up."
         if self._reference == LIVE_DELAY_REFERENCE_FORMATION:
             return (
                 "Calibration running from formation marker – press 'Match live delay' "

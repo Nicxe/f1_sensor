@@ -98,14 +98,27 @@ Use this section to understand the possible values for enum-type states and attr
 
 </details>
 
+<details>
+<summary>Straight Mode (2026 regulation)</summary>
+
+| Value | Description |
+| --- | --- |
+| `normal_grip` | Normal aerodynamic configuration permitted on straight sections |
+| `low_grip` | Restricted aerodynamic configuration on straight sections |
+| `disabled` | Straight mode system is not active |
+
+</details>
+
 ---
 
 ### Entities Summary
 
 | Entity                                                | Info                                                                                                                 |  
 | --------                                              | --------                                                                                                              |  
-| [sensor.f1_session_status](#session-status)           | Current session phase| 
-| [sensor.f1_current_session](#current-session)         | Current ongoing session, like Practice 1, Qualification, Race| 
+| [sensor.f1_session_status](#session-status)           | Current session phase|
+| [sensor.f1_current_session](#current-session)         | Current ongoing session, like Practice 1, Qualification, Race|
+| [sensor.f1_session_time_elapsed](#session-time-elapsed) | Time elapsed in the current session `(beta)` |
+| [sensor.f1_session_time_remaining](#session-time-remaining) | Time remaining in the current session `(beta)` |
 | [sensor.f1_track_status](#track-status)               | Current track status |
 | [binary_sensor.f1_safety_car](#safety-car)            | Safety Car (SC) or Virtual Safety Car (VSC) is active|  
 | [sensor.f1_race_lap_count](#race-lap)                 | Current race lap number|
@@ -123,6 +136,8 @@ Use this section to understand the possible values for enum-type states and attr
 | [binary_sensor.f1_formation_start](#formation-start)  | Indicates when formation start procedure is ready |
 | [sensor.f1_championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) |
 | [sensor.f1_championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) |
+| [binary_sensor.f1_overtake_mode](#overtake-mode)      | ON when track-wide overtake mode is enabled (2026 regulation, experimental) |
+| [sensor.f1_straight_mode](#straight-mode)             | Active aerodynamic straight mode state (2026 regulation, experimental) |
 
 
 ---
@@ -193,6 +208,92 @@ Qualifying
 | live_status | string | Raw `SessionStatus` message (`Started`, `Finished`, etc.) |
 | active | boolean | True when live running is active |
 | last_label | string | Last resolved label when not active |
+
+---
+
+## Session Time Elapsed
+
+:::caution Beta
+This sensor is currently in beta. The behavior has not been verified across all session types, edge cases (red flags, suspensions, qualifying segments), and timing scenarios. Treat the values as indicative rather than definitive until further testing is complete.
+:::
+
+`sensor.f1_session_time_elapsed` - How much of the scheduled session time has passed, based on the F1 ExtrapolatedClock feed. The clock advances in real time while a session is running and pauses during interruptions such as red flags or safety car delays.
+
+**State**
+- String: elapsed time formatted as `H:MM:SS` (e.g., `0:23:45`), or `unavailable` when no data is available.
+
+**Example**
+```text
+0:23:45
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| session_type | string | Session type (e.g., "Practice", "Qualifying", "Race") |
+| session_name | string | Session name (e.g., "Practice 1", "Race") |
+| session_part | number | Session part, for example the qualifying segment (Q1/Q2/Q3) |
+| session_status | string | Current session status from the feed |
+| clock_phase | string | Clock state: `idle`, `running`, `paused`, or `finished` |
+| clock_running | boolean | Whether the clock is actively counting |
+| source_quality | string | Data source reliability (see below) |
+| session_start_utc | string | ISO‑8601 timestamp of the session start |
+| reference_utc | string | ISO‑8601 timestamp used as the clock reference point |
+| last_server_utc | string | ISO‑8601 timestamp of the last server heartbeat |
+| value_seconds | number | Elapsed time in whole seconds |
+| formatted_hms | string | Elapsed time formatted as `H:MM:SS` |
+| clock_total_s | number | Total scheduled session duration in seconds, when known |
+| clock_remaining_s | number | Remaining time in seconds, when known |
+
+**`source_quality` values**
+
+| Value | Description |
+| --- | --- |
+| `official` | Clock data from ExtrapolatedClock with server heartbeat confirmation |
+| `official_no_heartbeat` | Clock data from ExtrapolatedClock, but no heartbeat received yet |
+| `sessiondata_fallback` | Elapsed time estimated from session schedule data, not from the live clock feed |
+| `unavailable` | No usable timing data available |
+
+---
+
+## Session Time Remaining
+
+:::caution Beta
+This sensor is currently in beta. The behavior has not been verified across all session types, edge cases (red flags, suspensions, qualifying segments), and timing scenarios. Treat the values as indicative rather than definitive until further testing is complete.
+:::
+
+`sensor.f1_session_time_remaining` - How much scheduled session time is left, based on the F1 ExtrapolatedClock feed. Like the elapsed sensor, this clock pauses during interruptions and resumes when the session restarts.
+
+**State**
+- String: remaining time formatted as `H:MM:SS` (e.g., `0:36:15`), or `unavailable` when no data is available.
+
+**Example**
+```text
+0:36:15
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| session_type | string | Session type (e.g., "Practice", "Qualifying", "Race") |
+| session_name | string | Session name (e.g., "Practice 1", "Race") |
+| session_part | number | Session part, for example the qualifying segment (Q1/Q2/Q3) |
+| session_status | string | Current session status from the feed |
+| clock_phase | string | Clock state: `idle`, `running`, `paused`, or `finished` |
+| clock_running | boolean | Whether the clock is actively counting |
+| source_quality | string | Data source reliability (see `source_quality` values above) |
+| session_start_utc | string | ISO‑8601 timestamp of the session start |
+| reference_utc | string | ISO‑8601 timestamp used as the clock reference point |
+| last_server_utc | string | ISO‑8601 timestamp of the last server heartbeat |
+| value_seconds | number | Remaining time in whole seconds |
+| formatted_hms | string | Remaining time formatted as `H:MM:SS` |
+| clock_total_s | number | Total scheduled session duration in seconds, when known |
+
+:::info Session clock behavior
+The session clock counts down the scheduled duration of the session. It does not account for race laps — in a race, the session ends when the leader completes the required number of laps, which may happen before or (rarely) after the scheduled time expires. Use `sensor.f1_race_lap_count` for lap-based progress.
+:::
 
 ---
 
@@ -1645,4 +1746,68 @@ on
 
 ::::info INFO
 Active only during race and sprint sessions.
+::::
+
+---
+
+## Overtake Mode
+
+:::caution Experimental — 2026 regulation
+This sensor is based on data observed during 2026 pre-season testing. It should be considered experimental until confirmed against live race conditions. The exact message format from Formula 1 may be adjusted in a future update once the first race weekend has been evaluated.
+:::
+
+`binary_sensor.f1_overtake_mode` - Indicates whether the track-wide overtake mode is currently enabled. This is a 2026 Formula 1 regulation feature that allows a driver who was within one second of the car ahead at the final corner detection point to deploy an additional 0.5 MJ of electrical energy on the following straight.
+
+**State (on/off)**
+- `on` when overtake mode is enabled track-wide; otherwise `off`.
+
+**Example**
+```text
+on
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| straight_mode | string | Current straight mode state (`normal_grip`, `low_grip`, or `disabled`) |
+| restored | boolean | True if the state was restored from history after a Home Assistant restart |
+
+::::info INFO
+Active only during sessions where the 2026 overtake mode regulation applies. The state is restored from history when Home Assistant restarts during an active session.
+::::
+
+---
+
+## Straight Mode
+
+:::caution Experimental — 2026 regulation
+This sensor is based on data observed during 2026 pre-season testing. It should be considered experimental until confirmed against live race conditions. The exact message format from Formula 1 may be adjusted in a future update once the first race weekend has been evaluated.
+:::
+
+`sensor.f1_straight_mode` - Shows the track-wide active aerodynamic permission for straight sections, broadcasted via Race Control messages. This is a 2026 Formula 1 regulation feature where the car's aerodynamic profile on designated straight sections of the circuit is regulated by the FIA.
+
+**State (enum)**
+- One of: `normal_grip`, `low_grip`, `disabled`.
+
+| Value | Description |
+| --- | --- |
+| `normal_grip` | Normal aerodynamic configuration permitted on straight sections |
+| `low_grip` | Restricted aerodynamic configuration on straight sections |
+| `disabled` | Straight mode system is not active |
+
+**Example**
+```text
+normal_grip
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| overtake_enabled | boolean | Whether overtake mode is currently enabled |
+| restored | boolean | True if the state was restored from history after a Home Assistant restart |
+
+::::info INFO
+Active only during sessions where the 2026 straight mode regulation applies. The state is restored from history when Home Assistant restarts during an active session.
 ::::

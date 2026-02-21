@@ -56,76 +56,96 @@ def _normalize_race_week_start(data: dict) -> str:
     return DEFAULT_RACE_WEEK_START_DAY
 
 
+def _set_suggested_object_id(entity, object_id: str) -> None:
+    """Keep stable entity_id/object_id independent of user-facing name."""
+    entity._attr_suggested_object_id = object_id
+
+
+def _default_object_id(key: str) -> str:
+    """Build a stable default object_id for new entities."""
+    normalized_key = str(key).strip().replace("-", "_").lower()
+    return f"f1_{normalized_key}"
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
     data = hass.data[DOMAIN][entry.entry_id]
     base = entry.data.get("sensor_name", "F1")
-    enabled = entry.data.get("enabled_sensors", [])
+    disabled: set[str] = set(entry.data.get("disabled_sensors") or [])
     race_week_start = _normalize_race_week_start(entry.data)
 
     sensors = []
-    # Useful for power users/automations even when dev UI is disabled.
-    if "live_timing_diagnostics" in enabled:
-        sensors.append(
-            F1LiveTimingOnlineBinarySensor(
-                hass,
-                entry.entry_id,
-                base,
-            )
+    if "live_timing_diagnostics" not in disabled:
+        sensor = F1LiveTimingOnlineBinarySensor(
+            hass,
+            entry.entry_id,
+            base,
         )
-    if "race_week" in enabled:
-        sensors.append(
-            F1RaceWeekSensor(
-                data["race_coordinator"],
-                f"{base}_race_week",
-                f"{entry.entry_id}_race_week",
-                entry.entry_id,
-                base,
-                race_week_start=race_week_start,
-            )
+        _set_suggested_object_id(sensor, _default_object_id("live_timing_online"))
+        sensors.append(sensor)
+    if "race_week" not in disabled:
+        sensor = F1RaceWeekSensor(
+            data["race_coordinator"],
+            f"{entry.entry_id}_race_week",
+            entry.entry_id,
+            base,
+            race_week_start=race_week_start,
         )
-    if "safety_car" in enabled:
+        _set_suggested_object_id(sensor, _default_object_id("race_week"))
+        sensors.append(sensor)
+    if "safety_car" not in disabled:
         coord = data.get("track_status_coordinator")
         if coord:
-            sensors.append(
-                F1SafetyCarBinarySensor(
-                    coord,
-                    f"{base}_safety_car",
-                    f"{entry.entry_id}_safety_car",
-                    entry.entry_id,
-                    base,
-                )
+            sensor = F1SafetyCarBinarySensor(
+                coord,
+                f"{entry.entry_id}_safety_car",
+                entry.entry_id,
+                base,
             )
-    if "formation_start" in enabled:
+            _set_suggested_object_id(sensor, _default_object_id("safety_car"))
+            sensors.append(sensor)
+    if "formation_start" not in disabled:
         tracker: FormationStartTracker | None = data.get("formation_start_tracker")
         if tracker is not None:
-            sensors.append(
-                F1FormationStartBinarySensor(
-                    tracker,
-                    f"{base}_formation_start",
-                    f"{entry.entry_id}_formation_start",
-                    entry.entry_id,
-                    base,
-                )
+            sensor = F1FormationStartBinarySensor(
+                tracker,
+                f"{entry.entry_id}_formation_start",
+                entry.entry_id,
+                base,
             )
+            _set_suggested_object_id(sensor, _default_object_id("formation_start"))
+            sensors.append(sensor)
+    if "overtake_mode" not in disabled:
+        coord = data.get("live_mode_coordinator")
+        if coord:
+            sensor = F1OvertakeModeBinarySensor(
+                coord,
+                f"{entry.entry_id}_overtake_mode",
+                entry.entry_id,
+                base,
+            )
+            _set_suggested_object_id(sensor, _default_object_id("overtake_mode"))
+            sensors.append(sensor)
     async_add_entities(sensors, True)
 
 
 class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
     """Binary sensor indicating if it's currently race week."""
 
+    _device_category = "race"
+    _attr_translation_key = "race_week"
+
     def __init__(
         self,
         coordinator,
-        name,
         unique_id,
         entry_id,
         device_name,
         *,
         race_week_start: str = DEFAULT_RACE_WEEK_START_DAY,
     ):
-        super().__init__(coordinator, name, unique_id, entry_id, device_name)
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:calendar-range"
         # No device class: this is not a physical presence/occupancy type sensor.
         # Using a device class here can lead to misleading UI semantics/translations.
@@ -185,8 +205,11 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
 class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     """Binary sensor indicating if the Safety Car or VSC is active."""
 
-    def __init__(self, coordinator, name, unique_id, entry_id, device_name):
-        super().__init__(coordinator, name, unique_id, entry_id, device_name)
+    _device_category = "session"
+    _attr_translation_key = "safety_car"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:car"
         # No device class: BinarySensorDeviceClass.SAFETY maps to "safe/unsafe"
         # semantics (OFF="safe"), which is misleading for "safety car deployed".
@@ -296,17 +319,18 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
 class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
     """Binary sensor indicating the formation start marker for races/sprints."""
 
+    _device_category = "session"
     _attr_device_class = None
+    _attr_translation_key = "formation_start"
 
     def __init__(
         self,
         tracker: FormationStartTracker,
-        name: str,
         unique_id: str,
         entry_id: str,
         device_name: str,
     ) -> None:
-        F1AuxEntity.__init__(self, name, unique_id, entry_id, device_name)
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         BinarySensorEntity.__init__(self)
         self._tracker = tracker
         self._is_on = False
@@ -394,17 +418,19 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
     - OFF: outside window / idle.
     """
 
+    _device_category = "system"
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:access-point"
+    _attr_translation_key = "live_timing_online"
 
     def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
         super().__init__(
-            name=f"{device_name}_live_timing_online",
             unique_id=f"{entry_id}_live_timing_online",
             entry_id=entry_id,
             device_name=device_name,
         )
+        self._attr_suggested_object_id = _default_object_id("live_timing_online")
         self.hass = hass
         self._entry_id = entry_id
         self._unsub_live_state = None
@@ -495,3 +521,101 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
                 round(effective_age, 1) if effective_age is not None else None
             ),
         }
+
+
+class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
+    """Binary sensor indicating whether Overtake Mode is currently enabled.
+
+    Overtake Mode is a 2026 F1 regulation feature that allows a driver who
+    was within one second of the car ahead at the final corner detection point
+    to deploy an additional 0.5 MJ of electrical energy on the following lap.
+    Race Control publishes a track-wide OVERTAKE ENABLED / OVERTAKE DISABLED
+    message to signal availability.
+    """
+
+    _device_category = "session"
+    _attr_device_class = None
+    _attr_icon = "mdi:lightning-bolt"
+    _attr_translation_key = "overtake_mode"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
+        self._attr_suggested_object_id = f"{device_name}_overtake_mode"
+        self._attr_is_on: bool | None = None
+        self._attr_extra_state_attributes: dict[str, Any] = {}
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        data = self._extract_data()
+        updated = self._has_overtake_state(data)
+        restored = False
+        if updated and data is not None:
+            self._apply_data(data)
+        else:
+            last = await self.async_get_last_state()
+            if last and last.state not in (None, "unknown", "unavailable"):
+                last_state = last.state
+                if isinstance(last_state, bool):
+                    self._attr_is_on = last_state
+                else:
+                    self._attr_is_on = str(last_state).lower() in (
+                        "on",
+                        "true",
+                        "1",
+                    )
+                attrs = dict(last.attributes or {})
+                self._attr_extra_state_attributes = {
+                    "straight_mode": attrs.get("straight_mode"),
+                    "restored": True,
+                }
+                restored = True
+            if not restored and not self._is_stream_active():
+                self._clear_state()
+        self._stream_last_active = self._is_stream_active()
+        self.async_write_ha_state()
+
+    def _extract_data(self) -> dict[str, Any] | None:
+        data = self.coordinator.data
+        if not isinstance(data, dict):
+            return None
+        return data
+
+    def _has_overtake_state(self, data: dict[str, Any] | None) -> bool:
+        return isinstance(data, dict) and isinstance(data.get("overtake_enabled"), bool)
+
+    def _apply_data(self, data: dict[str, Any]) -> None:
+        self._attr_is_on = bool(data.get("overtake_enabled"))
+        self._attr_extra_state_attributes = {
+            "straight_mode": data.get("straight_mode"),
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        data = self._extract_data()
+        updated = self._has_overtake_state(data)
+        if not self._handle_stream_state(updated):
+            return
+        if not self._is_stream_active():
+            self.async_write_ha_state()
+            return
+        if not updated or data is None:
+            return
+        self._apply_data(data)
+        self.async_write_ha_state()
+
+    @property
+    def is_on(self) -> bool | None:
+        return self._attr_is_on
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        return self._attr_is_on is not None
+
+    @property
+    def extra_state_attributes(self):
+        return self._attr_extra_state_attributes
+
+    def _clear_state(self) -> None:
+        self._attr_is_on = None
+        self._attr_extra_state_attributes = {}
