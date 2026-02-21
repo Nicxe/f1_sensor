@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import datetime
-import re
 from contextlib import suppress
+import datetime
 from logging import getLogger
+import re
 from zoneinfo import ZoneInfo
 
 import async_timeout
@@ -3579,7 +3579,9 @@ class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 dt = datetime.datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=datetime.UTC)
-                utc_str = dt.astimezone(datetime.UTC).isoformat(timespec="seconds")
+                utc_str = dt.astimezone(datetime.UTC).isoformat(
+                    timespec="seconds"
+                )
         except Exception:
             utc_str = self._cleanup_string(utc_str)
 
@@ -5174,7 +5176,7 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         #
         # LiveDriversCoordinator intentionally clears its consolidated state when
         # the live window ends to avoid briefly showing stale timing data at the
-        # start of a new session. For `sensor.f1_driver_list` we *do* want to keep
+        # start of a new session. For `sensor.f1_drivers_driver_list` we *do* want to keep
         # the last known list for dashboards/UI, so we treat an empty coordinator
         # payload as "no update" and keep/restored state.
         updated = self._update_from_coordinator()

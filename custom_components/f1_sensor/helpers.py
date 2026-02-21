@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import json
-import logging
-import re
-import time
-import zlib
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta, timezone
 from html.parser import HTMLParser
+import json
 from json import JSONDecodeError
+import logging
+import re
+import time
 from typing import Any
 from urllib.parse import urlencode, urljoin
+import zlib
 
 import async_timeout
 from homeassistant.const import __version__ as HA_VERSION

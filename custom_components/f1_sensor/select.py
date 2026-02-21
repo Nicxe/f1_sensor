@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 from contextlib import suppress
+import logging
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry

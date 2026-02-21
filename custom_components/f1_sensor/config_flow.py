@@ -1,8 +1,8 @@
 from pathlib import Path
 
+from homeassistant import config_entries
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-from homeassistant import config_entries
 
 from .const import (
     CONF_OPERATION_MODE,

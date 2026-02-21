@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import timedelta
 from inspect import isawaitable
+import logging
 from typing import Any
 
 from homeassistant.components import persistent_notification

@@ -1,23 +1,22 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import logging
-import re
-import time
 from collections import deque
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+import json
+import logging
 from pathlib import Path
+import re
+import time
 from typing import Any
 from urllib.parse import urljoin
 
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_COMPONENT_LOADED
-from homeassistant.core import HomeAssistant
-from homeassistant.core import callback as ha_callback
+from homeassistant.core import HomeAssistant, callback as ha_callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -219,13 +218,9 @@ def _apply_activity_log_filter_excludes(hass: HomeAssistant) -> None:
             _refresh_recorder_entity_filter(instance)
 
     with suppress(Exception):
-        from homeassistant.components.logbook import (
+        from homeassistant.components.logbook import (  # noqa: PLC0415  # noqa: PLC0415
             DOMAIN as LOGBOOK_DOMAIN,  # noqa: PLC0415
-        )
-        from homeassistant.components.logbook import (  # noqa: PLC0415
             helpers as logbook_helpers,
-        )
-        from homeassistant.components.logbook import (  # noqa: PLC0415
             websocket_api as logbook_websocket_api,
         )
 
@@ -5810,7 +5805,11 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             start = start.replace(tzinfo=UTC)
         if end.tzinfo is None:
             end = end.replace(tzinfo=UTC)
-        duration = int((end.astimezone(UTC) - start.astimezone(UTC)).total_seconds())
+        duration = int(
+            (
+                end.astimezone(UTC) - start.astimezone(UTC)
+            ).total_seconds()
+        )
         if duration <= 0:
             return None
         if duration > (4 * 3600):

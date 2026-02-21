@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable, Iterable
 import contextlib
+from contextlib import suppress
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta, timezone
 import json
 import logging
 import re
 import time
-from collections.abc import Callable, Iterable
-from contextlib import suppress
-from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Protocol
 
-import async_timeout
 from aiohttp import ClientSession
+import async_timeout
 from homeassistant.util import dt as dt_util
 
 from .const import (

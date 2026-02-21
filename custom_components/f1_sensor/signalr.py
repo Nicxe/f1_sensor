@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator, Callable, Iterable
+from contextlib import suppress
 import datetime as dt
 import json
 import logging
 import time
-from collections.abc import AsyncGenerator, Callable, Iterable
-from contextlib import suppress
 from typing import Protocol
 
 from aiohttp import ClientSession, WSMsgType

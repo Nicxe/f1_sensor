@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from inspect import isawaitable
 import logging
 import time
-from inspect import isawaitable
 
 import async_timeout
 from homeassistant.components import persistent_notification

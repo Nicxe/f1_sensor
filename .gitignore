@@ -12,4 +12,7 @@ f1_sensor.zip
 custom_components/f1_sensor/AGENTS.md
 custom_components/f1_sensor/CLAUDE.md
 /custom_components/f1_sensor/skills
+/custom_components/f1_sensor/tests
 /scripts
+pytest.ini
+/custom_components/f1_sensor/tests
