@@ -26,7 +26,7 @@ The display is laid out as a compact race schedule overview:
 - **Upcoming sessions** — qualifying, practice, and sprint times for the current race weekend
 - **Following races** — the next three rounds at a glance
 
-All data comes from the `sensor.f1_next_race` and `sensor.f1_current_season` entities provided by F1 Sensor.
+All data comes from the `sensor.f1_race_next_race` and `sensor.f1_current_season` entities provided by F1 Sensor.
 
 ---
 
