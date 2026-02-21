@@ -1,18 +1,31 @@
-node_modules
-build
+# JavaScript / build artifacts
+node_modules/
+build/
+dist/
+npm-debug.log*
+
+# Python caches / coverage artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# macOS
 .DS_Store
+
+# Local release artifacts
+f1_sensor.zip
+/F1 Live Timing API - Dumps/
 releasenote.md
 custom_components/f1_sensor/v3-ReleaseNote.MD
-*.pyc
-node_modules/
-npm-debug.log*
-f1_sensor.zip
-/F1 Live Timing API - Dumps
-/custom_components/f1_sensor/.claude
+
+# Local agent/editor metadata (not part of integration runtime)
+custom_components/f1_sensor/.claude/
+custom_components/f1_sensor/skills/
 custom_components/f1_sensor/AGENTS.md
 custom_components/f1_sensor/CLAUDE.md
-/custom_components/f1_sensor/skills
-/custom_components/f1_sensor/tests
-/scripts
-pytest.ini
-/custom_components/f1_sensor/tests
