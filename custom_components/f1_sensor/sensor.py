@@ -3579,9 +3579,7 @@ class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 dt = datetime.datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=datetime.UTC)
-                utc_str = dt.astimezone(datetime.UTC).isoformat(
-                    timespec="seconds"
-                )
+                utc_str = dt.astimezone(datetime.UTC).isoformat(timespec="seconds")
         except Exception:
             utc_str = self._cleanup_string(utc_str)
 

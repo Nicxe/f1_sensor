@@ -5805,11 +5805,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             start = start.replace(tzinfo=UTC)
         if end.tzinfo is None:
             end = end.replace(tzinfo=UTC)
-        duration = int(
-            (
-                end.astimezone(UTC) - start.astimezone(UTC)
-            ).total_seconds()
-        )
+        duration = int((end.astimezone(UTC) - start.astimezone(UTC)).total_seconds())
         if duration <= 0:
             return None
         if duration > (4 * 3600):
