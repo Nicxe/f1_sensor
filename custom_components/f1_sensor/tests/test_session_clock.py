@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import logging
 import time
-from datetime import UTC, datetime
 
+from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 import pytest
+
 from custom_components.f1_sensor.__init__ import SessionClockCoordinator
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
@@ -15,8 +18,6 @@ from custom_components.f1_sensor.sensor import (
     F1RaceTimeToThreeHourLimitSensor,
     F1SessionTimeRemainingSensor,
 )
-from homeassistant.helpers.entity_component import EntityComponent
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 

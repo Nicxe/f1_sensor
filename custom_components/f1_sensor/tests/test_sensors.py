@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import logging
 
+from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.const import STATE_UNAVAILABLE, UnitOfTemperature
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.json import json_bytes
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util.json import json_loads
 import pytest
+
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     DOMAIN,
@@ -21,13 +29,6 @@ from custom_components.f1_sensor.sensor import (
     F1SprintResultsSensor,
     F1WeatherSensor,
 )
-from homeassistant.components.sensor import SensorDeviceClass
-from homeassistant.const import STATE_UNAVAILABLE, UnitOfTemperature
-from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.entity_component import EntityComponent
-from homeassistant.helpers.json import json_bytes
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant.util.json import json_loads
 
 _LOGGER = logging.getLogger(__name__)
 MAX_STATE_ATTRS_BYTES = 16384
