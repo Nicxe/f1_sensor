@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import logging
 import time
+from datetime import UTC, datetime
 
-from homeassistant.helpers.entity_component import EntityComponent
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 import pytest
-
 from custom_components.f1_sensor.__init__ import SessionClockCoordinator
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
@@ -18,6 +15,8 @@ from custom_components.f1_sensor.sensor import (
     F1RaceTimeToThreeHourLimitSensor,
     F1SessionTimeRemainingSensor,
 )
+from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -298,7 +297,6 @@ async def test_session_time_remaining_sensor_uses_coordinator_data(hass) -> None
 
     sensor = F1SessionTimeRemainingSensor(
         coordinator,
-        "F1 session remaining",
         f"{entry_id}_session_remaining",
         entry_id,
         "F1",
@@ -353,7 +351,6 @@ async def test_race_three_hour_sensor_hidden_for_sprint(hass) -> None:
 
     sensor = F1RaceTimeToThreeHourLimitSensor(
         coordinator,
-        "F1 race to cap",
         f"{entry_id}_race_cap",
         entry_id,
         "F1",

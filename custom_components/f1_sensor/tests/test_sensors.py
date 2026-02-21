@@ -2,15 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.components.sensor import SensorDeviceClass
-from homeassistant.const import STATE_UNAVAILABLE, UnitOfTemperature
-from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.entity_component import EntityComponent
-from homeassistant.helpers.json import json_bytes
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant.util.json import json_loads
 import pytest
-
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     DOMAIN,
@@ -29,6 +21,13 @@ from custom_components.f1_sensor.sensor import (
     F1SprintResultsSensor,
     F1WeatherSensor,
 )
+from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.const import STATE_UNAVAILABLE, UnitOfTemperature
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.json import json_bytes
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util.json import json_loads
 
 _LOGGER = logging.getLogger(__name__)
 MAX_STATE_ATTRS_BYTES = 16384
@@ -229,7 +228,6 @@ async def test_current_season_sensor_state_attributes_and_availability(hass) -> 
 
     sensor = F1CurrentSeasonSensor(
         coordinator,
-        "F1 Current season",
         f"{entry_id}_current_season",
         entry_id,
         "F1",
@@ -286,7 +284,6 @@ async def test_current_season_sensor_excludes_races_from_recorder(hass) -> None:
 
     sensor = F1CurrentSeasonSensor(
         coordinator,
-        "F1 Current season",
         f"{entry_id}_current_season",
         entry_id,
         "F1",
@@ -316,7 +313,6 @@ async def test_season_results_sensor_excludes_races_from_recorder(hass) -> None:
 
     sensor = F1SeasonResultsSensor(
         coordinator,
-        "F1 Season results",
         f"{entry_id}_season_results",
         entry_id,
         "F1",
@@ -339,7 +335,6 @@ async def test_sprint_results_sensor_excludes_races_from_recorder(hass) -> None:
 
     sensor = F1SprintResultsSensor(
         coordinator,
-        "F1 Sprint results",
         f"{entry_id}_sprint_results",
         entry_id,
         "F1",
@@ -364,7 +359,6 @@ async def test_driver_points_progression_excludes_heavy_attrs_from_recorder(
 
     sensor = F1DriverPointsProgressionSensor(
         coordinator,
-        "F1 Driver points progression",
         f"{entry_id}_driver_points_progression",
         entry_id,
         "F1",
@@ -394,7 +388,6 @@ async def test_constructor_points_progression_excludes_heavy_attrs_from_recorder
 
     sensor = F1ConstructorPointsProgressionSensor(
         coordinator,
-        "F1 Constructor points progression",
         f"{entry_id}_constructor_points_progression",
         entry_id,
         "F1",
@@ -422,7 +415,6 @@ async def test_pitstops_sensor_excludes_cars_from_recorder(hass) -> None:
 
     sensor = F1PitStopsSensor(
         coordinator,
-        "F1 Pitstops",
         f"{entry_id}_pitstops",
         entry_id,
         "F1",
@@ -447,7 +439,6 @@ async def test_driver_positions_sensor_excludes_drivers_from_recorder(hass) -> N
 
     sensor = F1DriverPositionsSensor(
         coordinator,
-        "F1 Driver positions",
         f"{entry_id}_driver_positions",
         entry_id,
         "F1",
@@ -476,7 +467,6 @@ async def test_recorder_payload_size_stays_below_limit_for_large_season_results(
 
     sensor = F1SeasonResultsSensor(
         coordinator,
-        "F1 Season results",
         f"{entry_id}_season_results",
         entry_id,
         "F1",
@@ -497,7 +487,6 @@ async def test_recorder_payload_size_stays_below_limit_for_large_driver_position
 
     sensor = F1DriverPositionsSensor(
         coordinator,
-        "F1 Driver positions",
         f"{entry_id}_driver_positions",
         entry_id,
         "F1",
@@ -548,14 +537,12 @@ async def test_standings_sensor_counts_expandable(hass) -> None:
 
     driver_sensor = F1DriverStandingsSensor(
         coordinator,
-        "F1 Driver standings",
         f"{entry_id}_driver_standings",
         entry_id,
         "F1",
     )
     constructor_sensor = F1ConstructorStandingsSensor(
         coordinator,
-        "F1 Constructor standings",
         f"{entry_id}_constructor_standings",
         entry_id,
         "F1",
@@ -583,7 +570,6 @@ def test_weather_sensor_uses_celsius_unit(hass) -> None:
 
     sensor = F1WeatherSensor(
         coordinator,
-        "F1 Weather",
         f"{entry_id}_weather",
         entry_id,
         "F1",
@@ -624,7 +610,6 @@ async def test_driver_list_sensor_handles_22_drivers(hass) -> None:
 
     sensor = F1DriverListSensor(
         coordinator,
-        "F1 Driver list",
         f"{entry_id}_driver_list",
         entry_id,
         "F1",
