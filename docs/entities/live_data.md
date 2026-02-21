@@ -115,27 +115,27 @@ Use this section to understand the possible values for enum-type states and attr
 
 | Entity                                                | Info                                                                                                                 |  
 | --------                                              | --------                                                                                                              |  
-| [sensor.f1_session_session_status](#session-status)           | Current session phase|
-| [sensor.f1_session_current_session](#current-session)         | Current ongoing session, like Practice 1, Qualification, Race|
-| [sensor.f1_session_session_time_elapsed](#session-time-elapsed) | Time elapsed in the current session `(beta)` |
-| [sensor.f1_session_session_time_remaining](#session-time-remaining) | Time remaining in the current session `(beta)` |
-| [sensor.f1_session_track_status](#track-status)               | Current track status |
+| [sensor.f1_session_status](#session-status)           | Current session phase|
+| [sensor.f1_current_session](#current-session)         | Current ongoing session, like Practice 1, Qualification, Race|
+| [sensor.f1_session_time_elapsed](#session-time-elapsed) | Time elapsed in the current session `(beta)` |
+| [sensor.f1_session_time_remaining](#session-time-remaining) | Time remaining in the current session `(beta)` |
+| [sensor.f1_track_status](#track-status)               | Current track status |
 | [binary_sensor.f1_safety_car](#safety-car)            | Safety Car (SC) or Virtual Safety Car (VSC) is active|  
-| [sensor.f1_session_race_lap_count](#race-lap)                 | Current race lap number|
-| [sensor.f1_session_track_weather](#track-weather)             | Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)|
-| [sensor.f1_drivers_driver_list](#driver-list)                 | Show list and details on all drivers, including team color, headshot URL etc| 
-| [sensor.f1_drivers_pit_stops](#pit-stops)                      | Live pit stop events and aggregated pit stop series per car |
+| [sensor.f1_race_lap_count](#race-lap)                 | Current race lap number|
+| [sensor.f1_track_weather](#track-weather)             | Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)|
+| [sensor.f1_driver_list](#driver-list)                 | Show list and details on all drivers, including team color, headshot URL etc| 
+| [sensor.f1_pitstops](#pit-stops)                      | Live pit stop events and aggregated pit stop series per car |
 | [sensor.f1_team_radio](#team-radio)                   | Latest team radio message and rolling history |
-| [sensor.f1_drivers_current_tyres](#current-tyres)             | Current tyre compound per driver |
-| [sensor.f1_drivers_tyre_statistics](#tyre-statistics)         | Aggregated tyre statistics per compound |
-| [sensor.f1_drivers_driver_positions](#driver-positions)       | Driver positions and lap times |
+| [sensor.f1_current_tyres](#current-tyres)             | Current tyre compound per driver |
+| [sensor.f1_tyre_statistics](#tyre-statistics)         | Aggregated tyre statistics per compound |
+| [sensor.f1_driver_positions](#driver-positions)       | Driver positions and lap times |
 | [sensor.f1_top_three_p1](#top-three)                  | Dedicated sensors for current P1, P2 and P3 |
-| [sensor.f1_officials_race_control](#race-control)               | Race Control messages feed (flags, incidents, key updates) |
-| [sensor.f1_officials_track_limits](#track-limits)               | Track limits violations per driver (deletions, warnings, penalties) |
-| [sensor.f1_officials_investigations_penalties](#investigations)           | Active steward investigations and pending penalties |
-| [binary_sensor.f1_session_formation_start](#formation-start)  | Indicates when formation start procedure is ready |
-| [sensor.f1_championship_championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) |
-| [sensor.f1_championship_championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) |
+| [sensor.f1_race_control](#race-control)               | Race Control messages feed (flags, incidents, key updates) |
+| [sensor.f1_track_limits](#track-limits)               | Track limits violations per driver (deletions, warnings, penalties) |
+| [sensor.f1_investigations](#investigations)           | Active steward investigations and pending penalties |
+| [binary_sensor.f1_formation_start](#formation-start)  | Indicates when formation start procedure is ready |
+| [sensor.f1_championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) |
+| [sensor.f1_championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) |
 | [binary_sensor.f1_overtake_mode](#overtake-mode)      | ON when track-wide overtake mode is enabled (2026 regulation, experimental) |
 | [sensor.f1_straight_mode](#straight-mode)             | Active aerodynamic straight mode state (2026 regulation, experimental) |
 
@@ -179,7 +179,7 @@ After finalised or ended, logic resets and next session begins at **pre**.
 ---
 
 ## Current Session
-Human-readable label for the active session. Only shows a state when `sensor.f1_session_session_status` is `live`
+Human-readable label for the active session. Only shows a state when `sensor.f1_session_status` is `live`
 
 **State (enum/string)**
 - `Practice 1`, `Practice 2`, `Practice 3`, `Qualifying`, `Sprint Qualifying`, `Sprint`, `Race`, or `unknown` when inactive (e.g., outside live/eligible windows).
@@ -217,7 +217,7 @@ Qualifying
 This sensor is currently in beta. The behavior has not been verified across all session types, edge cases (red flags, suspensions, qualifying segments), and timing scenarios. Treat the values as indicative rather than definitive until further testing is complete.
 :::
 
-`sensor.f1_session_session_time_elapsed` - How much of the scheduled session time has passed, based on the F1 ExtrapolatedClock feed. The clock advances in real time while a session is running and pauses during interruptions such as red flags or safety car delays.
+`sensor.f1_session_time_elapsed` - How much of the scheduled session time has passed, based on the F1 ExtrapolatedClock feed. The clock advances in real time while a session is running and pauses during interruptions such as red flags or safety car delays.
 
 **State**
 - String: elapsed time formatted as `H:MM:SS` (e.g., `0:23:45`), or `unavailable` when no data is available.
@@ -263,7 +263,7 @@ This sensor is currently in beta. The behavior has not been verified across all 
 This sensor is currently in beta. The behavior has not been verified across all session types, edge cases (red flags, suspensions, qualifying segments), and timing scenarios. Treat the values as indicative rather than definitive until further testing is complete.
 :::
 
-`sensor.f1_session_session_time_remaining` - How much scheduled session time is left, based on the F1 ExtrapolatedClock feed. Like the elapsed sensor, this clock pauses during interruptions and resumes when the session restarts.
+`sensor.f1_session_time_remaining` - How much scheduled session time is left, based on the F1 ExtrapolatedClock feed. Like the elapsed sensor, this clock pauses during interruptions and resumes when the session restarts.
 
 **State**
 - String: remaining time formatted as `H:MM:SS` (e.g., `0:36:15`), or `unavailable` when no data is available.
@@ -292,7 +292,7 @@ This sensor is currently in beta. The behavior has not been verified across all 
 | clock_total_s | number | Total scheduled session duration in seconds, when known |
 
 :::info Session clock behavior
-The session clock counts down the scheduled duration of the session. It does not account for race laps — in a race, the session ends when the leader completes the required number of laps, which may happen before or (rarely) after the scheduled time expires. Use `sensor.f1_session_race_lap_count` for lap-based progress.
+The session clock counts down the scheduled duration of the session. It does not account for race laps — in a race, the session ends when the leader completes the required number of laps, which may happen before or (rarely) after the scheduled time expires. Use `sensor.f1_race_lap_count` for lap-based progress.
 :::
 
 ---
@@ -474,7 +474,7 @@ Each entry in `drivers` contains:
 
 **Get a driver's headshot URL:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_driver_list', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
 {% set ver = drivers | selectattr('tla', 'eq', 'VER') | first %}
 {% if ver %}
   {{ ver.headshot_large }}
@@ -483,7 +483,7 @@ Each entry in `drivers` contains:
 
 **Get team color for styling:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_driver_list', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
 {% set driver = drivers | selectattr('racing_number', 'eq', '44') | first %}
 {% if driver %}
   background-color: {{ driver.team_color }};
@@ -492,7 +492,7 @@ Each entry in `drivers` contains:
 
 **List all drivers for a team:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_driver_list', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
 {% for d in drivers if d.team == 'Ferrari' %}
   {{ d.name }} (#{{ d.racing_number }})
 {% endfor %}
@@ -500,14 +500,14 @@ Each entry in `drivers` contains:
 
 **Create a driver lookup by TLA:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_driver_list', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
 {% set lookup = dict.from_keys(drivers | map(attribute='tla') | list, drivers) %}
 {{ lookup.VER.name }} drives for {{ lookup.VER.team }}
 ```
 
 **Generate image elements for all drivers:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_driver_list', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
 {% for d in drivers %}
   <img src="{{ d.headshot_small }}" alt="{{ d.name }}" style="border: 2px solid {{ d.team_color }}">
 {% endfor %}
@@ -523,7 +523,7 @@ The headshot URLs are provided by F1 and may change between sessions. This senso
 
 ## Pit Stops
 
-`sensor.f1_drivers_pit_stops` - Live pit stop information from the F1 Live Timing feed, aggregated per car.
+`sensor.f1_pitstops` - Live pit stop information from the F1 Live Timing feed, aggregated per car.
 
 **State**
 - Integer: total number of pit stops recorded in the current session, or `0` when none are available.
@@ -679,7 +679,7 @@ Each entry in `drivers` contains:
 
 **Get a driver's current tyre:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_current_tyres', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') %}
 {% set ver = drivers | selectattr('tla', 'eq', 'VER') | first %}
 {% if ver %}
   VER on {{ ver.compound }} ({{ ver.stint_laps }} laps{% if ver.new %}, NEW{% endif %})
@@ -688,7 +688,7 @@ Each entry in `drivers` contains:
 
 **Count drivers on each compound:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_current_tyres', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') %}
 {% if drivers %}
   SOFT: {{ drivers | selectattr('compound', 'eq', 'SOFT') | list | length }}
   MEDIUM: {{ drivers | selectattr('compound', 'eq', 'MEDIUM') | list | length }}
@@ -698,7 +698,7 @@ Each entry in `drivers` contains:
 
 **List drivers on fresh tyres:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_current_tyres', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') %}
 {% for d in drivers if d.new %}
   {{ d.tla }} - fresh {{ d.compound }}
 {% endfor %}
@@ -706,7 +706,7 @@ Each entry in `drivers` contains:
 
 **Find driver with most laps on current stint:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_current_tyres', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') %}
 {% if drivers %}
   {% set longest = drivers | sort(attribute='stint_laps', reverse=true) | first %}
   {{ longest.tla }} has {{ longest.stint_laps }} laps on {{ longest.compound }}
@@ -715,7 +715,7 @@ Each entry in `drivers` contains:
 
 **Create a tyre summary with colors:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_current_tyres', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') %}
 {% for d in drivers | sort(attribute='position') %}
   P{{ d.position }} {{ d.tla }}: {{ d.compound_short }} ({{ d.stint_laps }} laps)
 {% endfor %}
@@ -727,7 +727,7 @@ Each entry in `drivers` contains:
 
 ## Tyre Statistics
 
-`sensor.f1_drivers_tyre_statistics` - Aggregated tyre performance statistics per compound, showing fastest times and usage across all drivers.
+`sensor.f1_tyre_statistics` - Aggregated tyre performance statistics per compound, showing fastest times and usage across all drivers.
 
 **State**
 - String: name of the fastest compound (e.g., "SOFT"), or `unknown` when not available.
@@ -831,12 +831,12 @@ Each entry in `start_compounds` contains:
 
 **Get the fastest compound:**
 ```jinja2
-Fastest compound: {{ states('sensor.f1_drivers_tyre_statistics') }}
+Fastest compound: {{ states('sensor.f1_tyre_statistics') }}
 ```
 
 **Get fastest time on a specific compound:**
 ```jinja2
-{% set compounds = state_attr('sensor.f1_drivers_tyre_statistics', 'compounds') %}
+{% set compounds = state_attr('sensor.f1_tyre_statistics', 'compounds') %}
 {% if compounds and compounds.SOFT %}
   {% set best = compounds.SOFT.best_times | first %}
   Fastest on SOFT: {{ best.time }} by {{ best.tla }}
@@ -845,7 +845,7 @@ Fastest compound: {{ states('sensor.f1_drivers_tyre_statistics') }}
 
 **Show delta between compounds:**
 ```jinja2
-{% set deltas = state_attr('sensor.f1_drivers_tyre_statistics', 'deltas') %}
+{% set deltas = state_attr('sensor.f1_tyre_statistics', 'deltas') %}
 {% if deltas %}
   MEDIUM vs SOFT: {{ deltas.MEDIUM | default('N/A') }}
   HARD vs SOFT: {{ deltas.HARD | default('N/A') }}
@@ -854,7 +854,7 @@ Fastest compound: {{ states('sensor.f1_drivers_tyre_statistics') }}
 
 **Count drivers who started on each compound:**
 ```jinja2
-{% set starts = state_attr('sensor.f1_drivers_tyre_statistics', 'start_compounds') %}
+{% set starts = state_attr('sensor.f1_tyre_statistics', 'start_compounds') %}
 {% if starts %}
   {% set mediums = starts | selectattr('compound', 'eq', 'MEDIUM') | list | length %}
   {% set hards = starts | selectattr('compound', 'eq', 'HARD') | list | length %}
@@ -865,7 +865,7 @@ Fastest compound: {{ states('sensor.f1_drivers_tyre_statistics') }}
 
 **Get total laps on all compounds:**
 ```jinja2
-{% set compounds = state_attr('sensor.f1_drivers_tyre_statistics', 'compounds') %}
+{% set compounds = state_attr('sensor.f1_tyre_statistics', 'compounds') %}
 {% if compounds %}
   {% set total = namespace(laps=0) %}
   {% for name, data in compounds.items() %}
@@ -885,7 +885,7 @@ Use the `compound_color` field to style your dashboard elements. The colors matc
 
 ## Driver Positions
 
-`sensor.f1_drivers_driver_positions` - Live driver positions and lap-by-lap timing data for all drivers in the session.
+`sensor.f1_driver_positions` - Live driver positions and lap-by-lap timing data for all drivers in the session.
 
 **State**
 - Integer: current lap number (leader's lap), or `unknown` when not available.
@@ -1002,7 +1002,7 @@ Each entry in `drivers` contains:
 
 **Get the race leader:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_driver_positions', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
 {% if drivers %}
   {% set leader = drivers | selectattr('current_position', 'eq', '1') | first %}
   {% if leader %}
@@ -1013,7 +1013,7 @@ Each entry in `drivers` contains:
 
 **Get a specific driver by number:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_driver_positions', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
 {% set driver = drivers | selectattr('racing_number', 'eq', '44') | first %}
 {% if driver %}
   {{ driver.name }} is in P{{ driver.current_position }}
@@ -1022,7 +1022,7 @@ Each entry in `drivers` contains:
 
 **Get driver's last lap time:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_driver_positions', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
 {% set driver = drivers | selectattr('racing_number', 'eq', '1') | first %}
 {% if driver and driver.laps %}
   {% set last_lap = driver.completed_laps | string %}
@@ -1032,7 +1032,7 @@ Each entry in `drivers` contains:
 
 **List all drivers in pit lane:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_driver_positions', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
 {% for d in drivers if d.status == 'pit_in' %}
   {{ d.tla }} is in the pits
 {% endfor %}
@@ -1040,8 +1040,8 @@ Each entry in `drivers` contains:
 
 **Show race progress:**
 ```jinja2
-{% set current = states('sensor.f1_drivers_driver_positions') %}
-{% set total = state_attr('sensor.f1_drivers_driver_positions', 'total_laps') %}
+{% set current = states('sensor.f1_driver_positions') %}
+{% set total = state_attr('sensor.f1_driver_positions', 'total_laps') %}
 {% if current != 'unknown' and total %}
   Lap {{ current }} of {{ total }}
 {% endif %}
@@ -1049,7 +1049,7 @@ Each entry in `drivers` contains:
 
 **Get position changes from grid:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_drivers_driver_positions', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
 {% for d in drivers %}
   {% set change = d.grid_position | int - d.current_position | int %}
   {{ d.tla }}: {% if change > 0 %}+{% endif %}{{ change }}
@@ -1134,7 +1134,7 @@ YELLOW FLAG IN TURN 4
 
 ## Track Limits
 
-`sensor.f1_officials_track_limits` - Aggregated track limits violations per driver, including deleted lap times, black and white flag warnings, and penalties.
+`sensor.f1_track_limits` - Aggregated track limits violations per driver, including deleted lap times, black and white flag warnings, and penalties.
 
 **State**
 - Integer: total number of track limit violations (deletions + warnings) in this session.
@@ -1232,7 +1232,7 @@ Each entry in `violations` contains:
 
 **Get a driver's track limits count:**
 ```jinja2
-{% set by_driver = state_attr('sensor.f1_officials_track_limits', 'by_driver') %}
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
 {% set ham = by_driver.get('HAM') %}
 {% if ham %}
   HAM: {{ ham.deletions }} deletions{% if ham.warning %}, WARNING{% endif %}
@@ -1241,7 +1241,7 @@ Each entry in `violations` contains:
 
 **List drivers with warnings:**
 ```jinja2
-{% set by_driver = state_attr('sensor.f1_officials_track_limits', 'by_driver') %}
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
 {% for tla, data in by_driver.items() if data.warning %}
   {{ tla }} (#{{ data.racing_number }}) - {{ data.deletions }} deletions
 {% endfor %}
@@ -1249,7 +1249,7 @@ Each entry in `violations` contains:
 
 **Find drivers at risk (3+ deletions, no warning yet):**
 ```jinja2
-{% set by_driver = state_attr('sensor.f1_officials_track_limits', 'by_driver') %}
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
 {% for tla, data in by_driver.items() if data.deletions >= 3 and not data.warning %}
   {{ tla }}: {{ data.deletions }} deletions - at risk!
 {% endfor %}
@@ -1257,15 +1257,15 @@ Each entry in `violations` contains:
 
 **Get total session track limits:**
 ```jinja2
-{% set deletions = state_attr('sensor.f1_officials_track_limits', 'total_deletions') %}
-{% set warnings = state_attr('sensor.f1_officials_track_limits', 'total_warnings') %}
-{% set penalties = state_attr('sensor.f1_officials_track_limits', 'total_penalties') %}
+{% set deletions = state_attr('sensor.f1_track_limits', 'total_deletions') %}
+{% set warnings = state_attr('sensor.f1_track_limits', 'total_warnings') %}
+{% set penalties = state_attr('sensor.f1_track_limits', 'total_penalties') %}
 Deletions: {{ deletions }}, Warnings: {{ warnings }}, Penalties: {{ penalties }}
 ```
 
 **List drivers with penalties:**
 ```jinja2
-{% set by_driver = state_attr('sensor.f1_officials_track_limits', 'by_driver') %}
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
 {% for tla, data in by_driver.items() if data.penalty %}
   {{ tla }}: {{ data.penalty }}
 {% endfor %}
@@ -1281,7 +1281,7 @@ The typical track limits progression is: 3 deleted lap times → BLACK AND WHITE
 
 ## Investigations
 
-`sensor.f1_officials_investigations_penalties` - Active steward investigations and pending penalties. Shows only currently relevant information with automatic lifecycle management.
+`sensor.f1_investigations` - Active steward investigations and pending penalties. Shows only currently relevant information with automatic lifecycle management.
 
 **State**
 - Integer: count of actionable items (noted incidents + under investigation + pending penalties).
@@ -1396,7 +1396,7 @@ Each entry in `penalties` contains:
 
 **Check if a driver is under investigation:**
 ```jinja2
-{% set investigations = state_attr('sensor.f1_officials_investigations_penalties', 'under_investigation') %}
+{% set investigations = state_attr('sensor.f1_investigations', 'under_investigation') %}
 {% set ver_involved = investigations | selectattr('drivers', 'contains', 'VER') | list %}
 {% if ver_involved | length > 0 %}
   VER is under investigation!
@@ -1405,7 +1405,7 @@ Each entry in `penalties` contains:
 
 **List all pending penalties:**
 ```jinja2
-{% set penalties = state_attr('sensor.f1_officials_investigations_penalties', 'penalties') %}
+{% set penalties = state_attr('sensor.f1_investigations', 'penalties') %}
 {% for p in penalties %}
   {{ p.driver }}: {{ p.penalty }} ({{ p.reason }})
 {% endfor %}
@@ -1413,14 +1413,14 @@ Each entry in `penalties` contains:
 
 **Count active investigations:**
 ```jinja2
-{% set noted = state_attr('sensor.f1_officials_investigations_penalties', 'noted') | length %}
-{% set investigating = state_attr('sensor.f1_officials_investigations_penalties', 'under_investigation') | length %}
+{% set noted = state_attr('sensor.f1_investigations', 'noted') | length %}
+{% set investigating = state_attr('sensor.f1_investigations', 'under_investigation') | length %}
 Noted: {{ noted }}, Under Investigation: {{ investigating }}
 ```
 
 **Get post-race investigations:**
 ```jinja2
-{% set investigations = state_attr('sensor.f1_officials_investigations_penalties', 'under_investigation') %}
+{% set investigations = state_attr('sensor.f1_investigations', 'under_investigation') %}
 {% for inv in investigations if inv.after_race %}
   {{ inv.drivers | join(' vs ') }} - {{ inv.reason }} (after race)
 {% endfor %}
@@ -1428,7 +1428,7 @@ Noted: {{ noted }}, Under Investigation: {{ investigating }}
 
 **Show recent NFI decisions:**
 ```jinja2
-{% set nfi = state_attr('sensor.f1_officials_investigations_penalties', 'no_further_action') %}
+{% set nfi = state_attr('sensor.f1_investigations', 'no_further_action') %}
 {% for item in nfi %}
   {{ item.drivers | join('/') }}: No Further Action ({{ item.reason }})
 {% endfor %}
@@ -1436,7 +1436,7 @@ Noted: {{ noted }}, Under Investigation: {{ investigating }}
 
 **Create investigation summary:**
 ```jinja2
-{% set sensor = 'sensor.f1_officials_investigations_penalties' %}
+{% set sensor = 'sensor.f1_investigations' %}
 {% set total = states(sensor) | int %}
 {% if total > 0 %}
   {{ total }} active matter{{ 's' if total > 1 else '' }}:
@@ -1550,7 +1550,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 **Get predicted champion:**
 ```jinja2
-{% set p1 = state_attr('sensor.f1_championship_championship_prediction_drivers', 'predicted_driver_p1') %}
+{% set p1 = state_attr('sensor.f1_championship_prediction_drivers', 'predicted_driver_p1') %}
 {% if p1 %}
   Predicted champion: {{ p1.tla }} with {{ p1.points }} points
 {% endif %}
@@ -1558,7 +1558,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 **Show points gain prediction for a driver:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_championship_championship_prediction_drivers', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_championship_prediction_drivers', 'drivers') %}
 {% set ver = drivers.get('1') %}
 {% if ver %}
   {% set gain = ver.PredictedPoints - ver.CurrentPoints %}
@@ -1568,7 +1568,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 **List drivers predicted to gain positions:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_championship_championship_prediction_drivers', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_championship_prediction_drivers', 'drivers') %}
 {% for num, d in drivers.items() if d.PredictedPosition < d.CurrentPosition %}
   #{{ num }}: P{{ d.CurrentPosition }} -> P{{ d.PredictedPosition }}
 {% endfor %}
@@ -1576,8 +1576,8 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 **Calculate predicted gap to leader:**
 ```jinja2
-{% set p1 = state_attr('sensor.f1_championship_championship_prediction_drivers', 'predicted_driver_p1') %}
-{% set drivers = state_attr('sensor.f1_championship_championship_prediction_drivers', 'drivers') %}
+{% set p1 = state_attr('sensor.f1_championship_prediction_drivers', 'predicted_driver_p1') %}
+{% set drivers = state_attr('sensor.f1_championship_prediction_drivers', 'drivers') %}
 {% set ham = drivers.get('44') %}
 {% if p1 and ham %}
   Gap to leader: {{ p1.points - ham.PredictedPoints }} points
@@ -1683,7 +1683,7 @@ Each entry in `teams` (keyed by team key) contains:
 
 **Get predicted constructors champion:**
 ```jinja2
-{% set p1 = state_attr('sensor.f1_championship_championship_prediction_teams', 'predicted_team_p1') %}
+{% set p1 = state_attr('sensor.f1_championship_prediction_teams', 'predicted_team_p1') %}
 {% if p1 %}
   Predicted constructors champion: {{ p1.team_name }}
 {% endif %}
@@ -1691,7 +1691,7 @@ Each entry in `teams` (keyed by team key) contains:
 
 **Compare two teams:**
 ```jinja2
-{% set teams = state_attr('sensor.f1_championship_championship_prediction_teams', 'teams') %}
+{% set teams = state_attr('sensor.f1_championship_prediction_teams', 'teams') %}
 {% set rb = teams.get('red_bull') %}
 {% set ferrari = teams.get('ferrari') %}
 {% if rb and ferrari %}
@@ -1701,7 +1701,7 @@ Each entry in `teams` (keyed by team key) contains:
 
 **List teams by predicted finish:**
 ```jinja2
-{% set teams = state_attr('sensor.f1_championship_championship_prediction_teams', 'teams') %}
+{% set teams = state_attr('sensor.f1_championship_prediction_teams', 'teams') %}
 {% for key, t in teams.items() | sort(attribute='1.PredictedPosition') %}
   P{{ t.PredictedPosition }}: {{ t.TeamName }} ({{ t.PredictedPoints }} pts)
 {% endfor %}
@@ -1709,7 +1709,7 @@ Each entry in `teams` (keyed by team key) contains:
 
 **Show teams predicted to change position:**
 ```jinja2
-{% set teams = state_attr('sensor.f1_championship_championship_prediction_teams', 'teams') %}
+{% set teams = state_attr('sensor.f1_championship_prediction_teams', 'teams') %}
 {% for key, t in teams.items() if t.PredictedPosition != t.CurrentPosition %}
   {{ t.TeamName }}: P{{ t.CurrentPosition }} -> P{{ t.PredictedPosition }}
 {% endfor %}

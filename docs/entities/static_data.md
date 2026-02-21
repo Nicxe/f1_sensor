@@ -10,7 +10,7 @@ Information that rarely changes, such as schedules, drivers, circuits, and champ
 
 | Entity                                                                            | Info                                              | 
 | ----------------------------------------------------------------------------------| --------------------------------------------------| 
-| [sensor.f1_race_next_race](#next-race)                                                 | Next race info                                    | 
+| [sensor.f1_next_race](#next-race)                                                       | Next race info                                    |
 | [sensor.f1_track_time](#track-time)                                               | Current local time at the next race circuit       |
 | [sensor.f1_current_season](#current-season)                                       | Full race schedule                                | 
 | [sensor.f1_driver_standings](#driver-standings)                                   | Current driver championship standings             | 
@@ -23,7 +23,7 @@ Information that rarely changes, such as schedules, drivers, circuits, and champ
 | [binary_sensor.f1_race_week](#race-week)                                          | `on` during race week                             | 
 | [sensor.f1_sprint_results](#sprint-results)                                       | Sprint classification results |
 | [sensor.f1_fia_documents](#fia-decision-documents)                                | FIA decisions and documents for the current weekend |
-| [calendar.f1_season](#season-calendar)                                            | Full season calendar with all sessions              |
+| [calendar.f1_race_season_calendar](#season-calendar)                              | Full season calendar with all sessions              |
 
 
 ::::info
@@ -33,7 +33,7 @@ Many schedule timestamps are provided in three variants: an explicit UTC value (
 ---
 
 ## Next Race 
-`sensor.f1_race_next_race` - Schedule for the next race; state is the race start timestamp (ISO‑8601).
+`sensor.f1_next_race` - Schedule for the next race; state is the race start timestamp (ISO‑8601).
 
 **State**
   - ISO‑8601 timestamp (UTC) of the race start, or `unknown` if not available.
@@ -914,7 +914,7 @@ The sensor maintains a history of up to 100 documents internally. When a new rac
 
 ## Season Calendar
 
-`calendar.f1_season` - Native Home Assistant calendar showing every session of the current Formula 1 season.
+`calendar.f1_race_season_calendar` - Native Home Assistant calendar showing every session of the current Formula 1 season.
 
 The calendar appears in the Home Assistant calendar panel and shows each session as a separate event: Practice 1, Practice 2, Practice 3, Qualifying, Sprint Qualifying, Sprint, and Race. On sprint weekends, Practice 3 is replaced by Sprint Qualifying and Sprint.
 

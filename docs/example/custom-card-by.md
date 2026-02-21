@@ -184,7 +184,7 @@ custom_fields:
       
       // Build team color map from driver list
       const getTeamColors = () => {
-        const driverList = states['sensor.f1_drivers_driver_list']?.attributes?.drivers || [];
+        const driverList = states['sensor.f1_driver_list']?.attributes?.drivers || [];
         const colorMap = {};
         driverList.forEach(d => {
           if (d.team && d.team_color) {
@@ -195,7 +195,7 @@ custom_fields:
       };
 
       const getDriverData = () => {
-        const driverList = states['sensor.f1_drivers_driver_list']?.attributes?.drivers || [];
+        const driverList = states['sensor.f1_driver_list']?.attributes?.drivers || [];
         const dataMap = {};
         driverList.forEach(d => {
           if (d.tla) {
@@ -455,7 +455,7 @@ custom_fields:
 
       // Build team color map from driver list
       const getTeamColors = () => {
-        const driverList = states['sensor.f1_drivers_driver_list']?.attributes?.drivers || [];
+        const driverList = states['sensor.f1_driver_list']?.attributes?.drivers || [];
         const colorMap = {};
         driverList.forEach(d => {
           if (d.team && d.team_color) {
