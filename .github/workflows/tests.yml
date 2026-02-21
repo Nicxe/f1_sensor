@@ -7,9 +7,6 @@ on:
       - "custom_components/**/*.py"
       - "custom_components/**/tests/**"
   pull_request:
-    paths:
-      - "custom_components/**/*.py"
-      - "custom_components/**/tests/**"
 
 permissions:
   contents: read
