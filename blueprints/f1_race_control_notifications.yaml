@@ -3,12 +3,12 @@ blueprint:
     min_version: 2024.6.0
   name: F1 Sensor - Race Control Notifications
   description: >
-    Skicka notiser från F1 Sensor race control på ett enkelt sätt, med valfria filter.
+    Send notifications from the F1 Sensor race control in a simple way, with optional filters.
 
-    Välj race control-sensor, lägg till valfria filter, och definiera sedan egna notifierings-actions
-    (till exempel mobilnotis, TTS, script eller andra Home Assistant-tjänster).
+    Select the race control sensor, add optional filters, and then define your own notification actions
+    (for example mobile notifications, TTS, scripts, or other Home Assistant services).
 
-    Tillgängliga template-variabler i dina actions:
+    Available template variables in your actions:
     {{ notification_title }}, {{ notification_message }},
     {{ race_control_message }}, {{ race_control_category }}, {{ race_control_flag }},
     {{ race_control_scope }}, {{ race_control_sector }}, {{ race_control_car_number }},
