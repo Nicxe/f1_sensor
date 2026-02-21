@@ -1,16 +1,16 @@
 from pathlib import Path
 
+from homeassistant import config_entries
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-from homeassistant import config_entries
 
 from .const import (
     CONF_OPERATION_MODE,
     CONF_RACE_WEEK_START_DAY,
     CONF_RACE_WEEK_SUNDAY_START,
     CONF_REPLAY_FILE,
-    DEFAULT_RACE_WEEK_START_DAY,
     DEFAULT_OPERATION_MODE,
+    DEFAULT_RACE_WEEK_START_DAY,
     DOMAIN,
     ENABLE_DEVELOPMENT_MODE_UI,
     OPERATION_MODE_DEVELOPMENT,

@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
-from typing import Any, Callable
+from typing import Any
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
+
+from .calibration import LiveDelayCalibrationManager
 from .const import (
     DOMAIN,
     REPLAY_START_REFERENCE_FORMATION,
@@ -17,7 +20,6 @@ from .const import (
 from .entity import F1AuxEntity
 from .replay_mode import ReplayController, ReplayState
 from .replay_start import ReplayStartReferenceController
-from .calibration import LiveDelayCalibrationManager
 
 _LOGGER = logging.getLogger(__name__)
 

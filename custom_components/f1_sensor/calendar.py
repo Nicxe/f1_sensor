@@ -115,7 +115,7 @@ class F1SeasonCalendar(F1BaseEntity, CalendarEntity):
     @property
     def event(self) -> CalendarEvent | None:
         """Return the current or next upcoming event."""
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
         events = self._build_events()
         for ev in events:
             if ev.start <= now < ev.end:

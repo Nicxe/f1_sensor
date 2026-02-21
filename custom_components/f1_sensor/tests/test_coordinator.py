@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+import pytest
 from yarl import URL
 
 from custom_components.f1_sensor.__init__ import (
