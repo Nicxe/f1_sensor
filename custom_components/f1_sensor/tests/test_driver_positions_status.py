@@ -12,7 +12,7 @@ class DummyCoordinator(SimpleNamespace):
 
 def _make_sensor() -> F1DriverPositionsSensor:
     coord = DummyCoordinator(data={})
-    return F1DriverPositionsSensor(coord, "F1", "uid", "entry", "F1")
+    return F1DriverPositionsSensor(coord, "uid", "entry", "F1")
 
 
 def test_driver_status_pit_out_hold() -> None:
