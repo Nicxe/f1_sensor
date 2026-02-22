@@ -1,6 +1,8 @@
 <!--
-  IMPORTANT: Your PR must target the `dev` branch.
-  PRs targeting `main` or `beta` are closed automatically.
+  IMPORTANT: Target the correct branch for your change.
+  - Documentation or blueprint changes (standalone, no code): target the `content` branch
+  - Code changes (integration, sensors, fixes, features, tests): target the `dev` branch
+  - PRs targeting `main` or `beta` are closed automatically.
   If you are unsure whether your change fits the project direction, open an issue first.
 -->
 
@@ -45,16 +47,16 @@
 
 ## Checklist
 
-- [ ] My PR targets the `dev` branch
-- [ ] I have read [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [ ] I have read [CONTRIBUTING.md](../CONTRIBUTING.md) and am targeting the correct branch
+- [ ] My PR targets `content` (for standalone docs/blueprint changes) or `dev` (for code changes)
 - [ ] The code has no commented-out blocks left behind
-- [ ] Code is formatted with Ruff (`ruff format custom_components`)
-- [ ] Code passes Ruff lint check (`ruff check custom_components`)
-- [ ] Tests have been added or updated to cover the change
-- [ ] All tests pass locally (`pytest custom_components/f1_sensor/tests`)
-- [ ] Hassfest validation passes (`python3 -m script.hassfest`)
-- [ ] Translations updated if new config options or UI strings were added
-- [ ] This PR has no merge conflicts with `dev`
+- [ ] Code is formatted with Ruff (`ruff format custom_components`) — if applicable
+- [ ] Code passes Ruff lint check (`ruff check custom_components`) — if applicable
+- [ ] Tests have been added or updated to cover the change — if applicable
+- [ ] All tests pass locally (`pytest custom_components/f1_sensor/tests`) — if applicable
+- [ ] Hassfest validation passes (`python3 -m script.hassfest`) — if applicable
+- [ ] Translations updated if new config options or UI strings were added — if applicable
+- [ ] This PR has no merge conflicts with its target branch
 
 If this PR changes user-facing behavior, entities, or configuration:
 
