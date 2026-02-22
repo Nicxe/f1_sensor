@@ -4,6 +4,10 @@ build/
 dist/
 npm-debug.log*
 
+# Docusaurus local dev artifacts
+.docusaurus/
+.cache-loader/
+
 # Python caches / coverage artifacts
 __pycache__/
 *.pyc
