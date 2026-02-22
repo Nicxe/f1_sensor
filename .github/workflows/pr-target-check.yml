@@ -27,10 +27,15 @@ jobs:
 
           This PR targets the \`$BASE_BRANCH\` branch, which is reserved for internal releases and managed exclusively by the maintainer.
 
-          Please open a new PR targeting the \`dev\` branch instead. The branch workflow for this project is:
-          - \`dev\` — where all contributions are merged and tested
-          - \`beta\` — pre-release testing, promoted from \`dev\` by the maintainer
-          - \`main\` — stable releases, promoted from \`beta\` by the maintainer
+          Please open a new PR targeting the correct branch based on your change:
+          - **Documentation or blueprint** changes (standalone, no code) → \`content\`
+          - **Code changes** (integration logic, sensors, fixes, features, tests) → \`dev\`
+
+          The branch workflow for this project is:
+          - \`content\` — docs and blueprint contributions, merged directly to \`main\`
+          - \`dev\` — code contributions, promoted through \`beta\` to \`main\` by the maintainer
+          - \`beta\` — pre-release testing, managed by the maintainer
+          - \`main\` — stable releases, managed by the maintainer
 
           You can change the base branch in GitHub's UI when creating the PR. See [CONTRIBUTING.md](../CONTRIBUTING.md) for details. Thank you!"
 
