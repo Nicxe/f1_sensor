@@ -17,19 +17,67 @@ jobs:
         with:
           script: |
             const normalize = v => v.trim().replace(/^v/i, '');
+            const isBeta = v => /beta/i.test(v);
+
+            const ensureLabel = async (name, color, description) => {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                  color,
+                  description,
+                });
+              } catch {
+                // Label already exists — ignore
+              }
+            };
 
             const body = context.payload.issue.body || '';
             const issueNumber = context.payload.issue.number;
-
-            // Skip if already labeled (avoid duplicate comments on re-open)
-            const labels = context.payload.issue.labels.map(l => l.name);
-            if (labels.includes('outdated-version')) return;
+            const existingLabels = context.payload.issue.labels.map(l => l.name);
 
             // Extract reported version from issue body
             const versionMatch = body.match(/### F1 Sensor Version\s*\n+([^\n#]+)/);
             if (!versionMatch) return;
             const reportedVersion = normalize(versionMatch[1]);
             if (!reportedVersion) return;
+
+            // Beta version — acknowledge as tester, skip outdated check
+            if (isBeta(reportedVersion)) {
+              if (existingLabels.includes('beta')) return;
+
+              await ensureLabel('beta', 'bfd4f2', 'Reported on a beta version');
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['beta'],
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: [
+                  '👋 Thanks for testing the beta and taking the time to report this!',
+                  '',
+                  `You're running **${reportedVersion}**, which is a pre-release version. Beta feedback is valuable and helps improve the integration before stable releases.`,
+                  '',
+                  'If this issue is affecting your day-to-day use of F1 Sensor, you can revert to the latest stable release via HACS at any time.',
+                  '',
+                  '**How to switch back to a stable release via HACS:**',
+                  '1. Go to **HACS** in your Home Assistant sidebar',
+                  '2. Find **F1 Sensor**, click **Download**, and select the latest stable version',
+                  '3. Restart Home Assistant',
+                  '',
+                  'We\'ll look into this — thanks again for helping test!',
+                ].join('\n'),
+              });
+              return;
+            }
+
+            // Stable version — skip if already labeled
+            if (existingLabels.includes('outdated-version')) return;
 
             // Get latest release
             let latestRelease;
@@ -48,28 +96,13 @@ jobs:
 
             if (reportedVersion === latestVersion) return;
 
-            // Ensure the label exists
-            try {
-              await github.rest.issues.createLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: 'outdated-version',
-                color: 'e4e669',
-                description: 'Issue reported on an outdated version',
-              });
-            } catch {
-              // Label already exists — ignore
-            }
-
-            // Add label
+            await ensureLabel('outdated-version', 'e4e669', 'Issue reported on an outdated version');
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issueNumber,
               labels: ['outdated-version'],
             });
-
-            // Post comment
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
