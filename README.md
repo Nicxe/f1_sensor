@@ -27,7 +27,7 @@ Whether you want your lights to react to a safety car or build dashboards that v
 
 A companion collection of custom Lovelace cards is available for displaying live session data directly on your dashboards — tyre strategy, pit stops, lap times, investigations, race control, and more.
 
-<img alt="F1 Sensor Live Data Cards" src="https://github.com/user-attachments/assets/94346421-347e-4807-8a9f-185982c5697c" />
+<img alt="F1 Sensor Live Data Cards" src="https://github.com/user-attachments/assets/9ec7b6c0-9584-4647-baac-03407d73ef99" />
 
 👉 **[github.com/Nicxe/f1-sensor-live-data-card](https://github.com/Nicxe/f1-sensor-live-data-card)**
 
