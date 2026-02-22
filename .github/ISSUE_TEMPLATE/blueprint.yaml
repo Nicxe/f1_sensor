@@ -30,9 +30,8 @@ body:
       label: Blueprint
       description: Which blueprint does this relate to?
       options:
-        - Race Notification
-        - Session Notification
         - Track Status Light
+        - Race Control Notifications
         - Other
     validations:
       required: true
@@ -52,6 +51,8 @@ body:
       options:
         - Bug – the blueprint is not working as expected
         - Question – I need help configuring or using the blueprint
+        - Feature – Suggest an improvement or new feature
+
     validations:
       required: true
 
@@ -59,7 +60,7 @@ body:
     id: description
     attributes:
       label: Description
-      description: Describe the problem or question in detail. What did you expect to happen, and what actually happened?
+      description: Describe the problem, question or feature in detail. What did you expect to happen, and what actually happened?
     validations:
       required: true
 
