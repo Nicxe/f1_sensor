@@ -1,0 +1,92 @@
+name: Issue Version Check
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'bug')
+    steps:
+      - name: Check reported version against latest release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const normalize = v => v.trim().replace(/^v/i, '');
+
+            const body = context.payload.issue.body || '';
+            const issueNumber = context.payload.issue.number;
+
+            // Skip if already labeled (avoid duplicate comments on re-open)
+            const labels = context.payload.issue.labels.map(l => l.name);
+            if (labels.includes('outdated-version')) return;
+
+            // Extract reported version from issue body
+            const versionMatch = body.match(/### F1 Sensor Version\s*\n+([^\n#]+)/);
+            if (!versionMatch) return;
+            const reportedVersion = normalize(versionMatch[1]);
+            if (!reportedVersion) return;
+
+            // Get latest release
+            let latestRelease;
+            try {
+              const { data } = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              latestRelease = data;
+            } catch {
+              // No releases yet — nothing to compare against
+              return;
+            }
+
+            const latestVersion = normalize(latestRelease.tag_name);
+
+            if (reportedVersion === latestVersion) return;
+
+            // Ensure the label exists
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'outdated-version',
+                color: 'e4e669',
+                description: 'Issue reported on an outdated version',
+              });
+            } catch {
+              // Label already exists — ignore
+            }
+
+            // Add label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ['outdated-version'],
+            });
+
+            // Post comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: [
+                '👋 Thanks for the report!',
+                '',
+                `I noticed you're running version **${reportedVersion}**, but the latest release of F1 Sensor is **${latestVersion}**.`,
+                '',
+                'Please update to the latest version and check whether the issue still occurs — many problems are already fixed in newer releases.',
+                '',
+                '**How to update via HACS:**',
+                '1. Go to **HACS** in your Home Assistant sidebar',
+                '2. Find **F1 Sensor**, click **Download**, and select the latest version',
+                '3. Restart Home Assistant',
+                '',
+                'If the issue persists after updating, please comment here and we\'ll continue investigating.',
+                'If we don\'t hear back within **24 hours**, this issue will be automatically closed.',
+              ].join('\n'),
+            });
