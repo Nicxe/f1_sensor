@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.helpers.entity_component import EntityComponent
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 import pytest
-
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     DOMAIN,
@@ -16,6 +13,8 @@ from custom_components.f1_sensor.sensor import (
     F1CurrentSessionSensor,
     F1SessionStatusSensor,
 )
+from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 

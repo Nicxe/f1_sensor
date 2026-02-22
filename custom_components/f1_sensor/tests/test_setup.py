@@ -5,8 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.f1_sensor import (
     _is_activity_log_excluded_entity,
     _refresh_recorder_entity_filter,
@@ -24,6 +22,7 @@ from custom_components.f1_sensor.const import (
     PLATFORMS,
 )
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
 class FakeLiveBus:

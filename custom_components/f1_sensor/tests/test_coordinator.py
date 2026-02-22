@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 import pytest
-from yarl import URL
-
 from custom_components.f1_sensor.__init__ import (
     F1DataCoordinator,
     F1SeasonResultsCoordinator,
 )
 from custom_components.f1_sensor.const import API_URL, SEASON_RESULTS_URL
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from yarl import URL
 
 
 @pytest.mark.asyncio

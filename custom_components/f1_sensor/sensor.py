@@ -5864,6 +5864,13 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             identity = info.get("identity", {})
             lap_history = info.get("lap_history", {})
             timing = info.get("timing", {})
+            _sectors = info.get("sectors", {})
+            _cur = _sectors.get("current", {})
+            _bst = _sectors.get("best", {})
+
+            def _sec(idx: int, field: str) -> object:
+                s = _cur.get(idx)
+                return s.get(field) if isinstance(s, dict) else None
 
             # Normalize team color
             team_color = identity.get("team_color")
@@ -5897,6 +5904,18 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     fastest.get("time_secs") if is_fastest else None
                 ),
                 "fastest_lap_lap": fastest.get("lap") if is_fastest else None,
+                "sector_1": _sec(0, "time"),
+                "sector_2": _sec(1, "time"),
+                "sector_3": _sec(2, "time"),
+                "sector_1_overall_fastest": _sec(0, "overall_fastest"),
+                "sector_1_personal_fastest": _sec(0, "personal_fastest"),
+                "sector_2_overall_fastest": _sec(1, "overall_fastest"),
+                "sector_2_personal_fastest": _sec(1, "personal_fastest"),
+                "sector_3_overall_fastest": _sec(2, "overall_fastest"),
+                "sector_3_personal_fastest": _sec(2, "personal_fastest"),
+                "best_sector_1": _bst.get(0),
+                "best_sector_2": _bst.get(1),
+                "best_sector_3": _bst.get(2),
                 **status_attrs,
             }
 
