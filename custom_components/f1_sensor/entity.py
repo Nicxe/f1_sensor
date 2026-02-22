@@ -1,5 +1,7 @@
 import asyncio
+import json
 from contextlib import suppress
+from pathlib import Path
 
 from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import Entity
@@ -11,6 +13,38 @@ from .const import (
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
 )
+
+
+def _load_translation_names() -> dict[str, str]:
+    """Load entity display names from the bundled English translations."""
+    try:
+        path = Path(__file__).parent / "translations" / "en.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        result: dict[str, str] = {}
+        for entities in data.get("entity", {}).values():
+            for key, attrs in entities.items():
+                if isinstance(attrs, dict) and (n := attrs.get("name")):
+                    result[key] = n
+        return result
+    except Exception:
+        return {}
+
+
+_TRANSLATION_NAMES: dict[str, str] = _load_translation_names()
+
+
+def _entity_name_from_key(translation_key: str | None) -> str | None:
+    """Return a display name for a translation key without any device prefix."""
+    if not translation_key:
+        return None
+    name = _TRANSLATION_NAMES.get(translation_key)
+    if name:
+        return name
+    parts = translation_key.replace("_", " ").split()
+    if not parts:
+        return None
+    return " ".join([parts[0].capitalize()] + parts[1:])
+
 
 DEVICE_CATEGORIES: dict[str, str] = {
     "race": "Race",
@@ -53,7 +87,6 @@ class F1BaseEntity(CoordinatorEntity):
     """Common base entity for F1 sensors."""
 
     _device_category: str = "system"
-    _attr_has_entity_name = True
 
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator)
@@ -61,6 +94,11 @@ class F1BaseEntity(CoordinatorEntity):
         self._entry_id = entry_id
         self._device_name = device_name
         self._stream_last_active: bool | None = None
+
+    @property
+    def name(self) -> str | None:
+        """Return entity name from translations, without device prefix."""
+        return _entity_name_from_key(getattr(self, "_attr_translation_key", None))
 
     @property
     def device_info(self):
@@ -214,7 +252,6 @@ class F1AuxEntity(Entity):
     """Helper base for entities that do not use a coordinator but share device info."""
 
     _device_category: str = "system"
-    _attr_has_entity_name = True
 
     def __init__(self, unique_id: str, entry_id: str, device_name: str):
         super().__init__()
@@ -246,6 +283,11 @@ class F1AuxEntity(Entity):
             except Exception:
                 return False
         return False
+
+    @property
+    def name(self) -> str | None:
+        """Return entity name from translations, without device prefix."""
+        return _entity_name_from_key(getattr(self, "_attr_translation_key", None))
 
     @property
     def device_info(self):

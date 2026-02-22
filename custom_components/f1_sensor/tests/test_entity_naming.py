@@ -51,7 +51,6 @@ async def test_sensor_setup_entry_uses_translation_key_for_track_status(hass) ->
     entity = entities[0]
     assert entity.unique_id == f"{entry.entry_id}_track_status"
     assert entity._attr_translation_key == "track_status"
-    assert entity._attr_has_entity_name is True
     assert entity._attr_suggested_object_id == "f1_track_status"
 
 
@@ -89,6 +88,3 @@ async def test_binary_sensor_setup_entry_uses_translation_keys(hass) -> None:
     )
     assert object_ids[f"{entry.entry_id}_race_week"] == "f1_race_week"
     assert object_ids[f"{entry.entry_id}_live_timing_online"] == "f1_live_timing_online"
-    # Verify all entities use has_entity_name
-    for entity in entities:
-        assert entity._attr_has_entity_name is True
