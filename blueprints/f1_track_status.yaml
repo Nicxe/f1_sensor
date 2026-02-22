@@ -7,6 +7,8 @@ blueprint:
 
     Core behavior: choose session and track sensors, then map track states to colors.
 
+    Requires F1 Sensor live entities for track/session status to be enabled in integration settings.
+
     Advanced options include scene snapshots, timed or continuous flashing, clear-state auto-restore,
     and flexible session-end behavior.
 
@@ -167,12 +169,13 @@ blueprint:
       description: Core light target and transition settings.
       input:
         light_target:
-          name: Light Entity
-          description: Light entity to control.
+          name: Light or Group Entity
+          description: Light entity to control, or a group entity that contains lights.
           selector:
             entity:
               filter:
                 - domain: light
+                - domain: group
               multiple: false
         brightness_pct:
           name: Brightness
@@ -437,6 +440,8 @@ variables:
   session_status_entity: !input session_status_entity
   active_phases: !input active_session_phases
   light_entity: !input light_target
+  light_turn_on_service: "{{ 'homeassistant.turn_on' if (light_entity | string).startswith('group.') else 'light.turn_on' }}"
+  light_turn_off_service: "{{ 'homeassistant.turn_off' if (light_entity | string).startswith('group.') else 'light.turn_off' }}"
 
   presence_list: !input presence_devices
   media_player_entity: !input media_player_gate
@@ -464,7 +469,7 @@ variables:
   notification_actions_list: !input notification_actions
   has_notification_actions: "{{ notification_actions_list | count > 0 }}"
 
-  automation_slug: "{{ (this.entity_id | default('f1_session_track_status_light') | replace('.', '_') | replace('-', '_')) }}"
+  automation_slug: "{{ (this.entity_id | default('f1_track_status_light') | replace('.', '_') | replace('-', '_')) }}"
   pre_race_scene_id: "{{ automation_slug ~ '_pre_race' }}"
   pre_alert_scene_id: "{{ automation_slug ~ '_pre_alert' }}"
 
@@ -608,7 +613,7 @@ action:
                   - condition: template
                     value_template: "{{ end_action_mode == 'turn_off' }}"
                 sequence:
-                  - service: light.turn_off
+                  - service: "{{ light_turn_off_service }}"
                     target:
                       entity_id: !input light_target
 
@@ -616,7 +621,7 @@ action:
                   - condition: template
                     value_template: "{{ end_action_mode == 'neutral' }}"
                 sequence:
-                  - service: light.turn_on
+                  - service: "{{ light_turn_on_service }}"
                     target:
                       entity_id: !input light_target
                     data:
@@ -687,7 +692,7 @@ action:
                           - condition: template
                             value_template: "{{ clear_behavior_mode_input == 'steady' or (clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay'] and not snapshot_before_alert_enabled) }}"
                         sequence:
-                          - service: light.turn_on
+                          - service: "{{ light_turn_on_service }}"
                             target:
                               entity_id: !input light_target
                             data:
@@ -708,7 +713,7 @@ action:
                           - condition: template
                             value_template: "{{ clear_behavior_mode_input == 'restore_after_delay' and snapshot_before_alert_enabled }}"
                         sequence:
-                          - service: light.turn_on
+                          - service: "{{ light_turn_on_service }}"
                             target:
                               entity_id: !input light_target
                             data:
@@ -733,7 +738,7 @@ action:
                           - condition: template
                             value_template: "{{ yellow_red_mode_input == 'steady' }}"
                         sequence:
-                          - service: light.turn_on
+                          - service: "{{ light_turn_on_service }}"
                             target:
                               entity_id: !input light_target
                             data:
@@ -750,7 +755,7 @@ action:
                                 - condition: template
                                   value_template: "{{ states(track_status_entity) | upper == 'YELLOW' }}"
                               sequence:
-                                - service: light.turn_on
+                                - service: "{{ light_turn_on_service }}"
                                   target:
                                     entity_id: !input light_target
                                   data:
@@ -758,7 +763,7 @@ action:
                                     rgb_color: !input color_yellow
                                 - delay:
                                     seconds: !input flash_interval_s
-                                - service: light.turn_off
+                                - service: "{{ light_turn_off_service }}"
                                   target:
                                     entity_id: !input light_target
                                 - delay:
@@ -775,7 +780,7 @@ action:
                                 - condition: template
                                   value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'YELLOW' }}"
                               sequence:
-                                - service: light.turn_on
+                                - service: "{{ light_turn_on_service }}"
                                   target:
                                     entity_id: !input light_target
                                   data:
@@ -783,7 +788,7 @@ action:
                                     rgb_color: !input color_yellow
                                 - delay:
                                     seconds: !input flash_interval_s
-                                - service: light.turn_off
+                                - service: "{{ light_turn_off_service }}"
                                   target:
                                     entity_id: !input light_target
                                 - delay:
@@ -804,7 +809,7 @@ action:
                                   - condition: template
                                     value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
                                 sequence:
-                                  - service: light.turn_on
+                                  - service: "{{ light_turn_on_service }}"
                                     target:
                                       entity_id: !input light_target
                                     data:
@@ -821,7 +826,7 @@ action:
                           - condition: template
                             value_template: "{{ yellow_red_mode_input == 'steady' }}"
                         sequence:
-                          - service: light.turn_on
+                          - service: "{{ light_turn_on_service }}"
                             target:
                               entity_id: !input light_target
                             data:
@@ -838,7 +843,7 @@ action:
                                 - condition: template
                                   value_template: "{{ states(track_status_entity) | upper == 'RED' }}"
                               sequence:
-                                - service: light.turn_on
+                                - service: "{{ light_turn_on_service }}"
                                   target:
                                     entity_id: !input light_target
                                   data:
@@ -846,7 +851,7 @@ action:
                                     rgb_color: !input color_red
                                 - delay:
                                     seconds: !input flash_interval_s
-                                - service: light.turn_off
+                                - service: "{{ light_turn_off_service }}"
                                   target:
                                     entity_id: !input light_target
                                 - delay:
@@ -863,7 +868,7 @@ action:
                                 - condition: template
                                   value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'RED' }}"
                               sequence:
-                                - service: light.turn_on
+                                - service: "{{ light_turn_on_service }}"
                                   target:
                                     entity_id: !input light_target
                                   data:
@@ -871,7 +876,7 @@ action:
                                     rgb_color: !input color_red
                                 - delay:
                                     seconds: !input flash_interval_s
-                                - service: light.turn_off
+                                - service: "{{ light_turn_off_service }}"
                                   target:
                                     entity_id: !input light_target
                                 - delay:
@@ -892,7 +897,7 @@ action:
                                   - condition: template
                                     value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
                                 sequence:
-                                  - service: light.turn_on
+                                  - service: "{{ light_turn_on_service }}"
                                     target:
                                       entity_id: !input light_target
                                     data:
@@ -909,7 +914,7 @@ action:
                           - condition: template
                             value_template: "{{ sc_vsc_mode_input == 'steady' }}"
                         sequence:
-                          - service: light.turn_on
+                          - service: "{{ light_turn_on_service }}"
                             target:
                               entity_id: !input light_target
                             data:
@@ -926,7 +931,7 @@ action:
                                 - condition: template
                                   value_template: "{{ states(track_status_entity) | upper == 'SC' }}"
                               sequence:
-                                - service: light.turn_on
+                                - service: "{{ light_turn_on_service }}"
                                   target:
                                     entity_id: !input light_target
                                   data:
@@ -934,7 +939,7 @@ action:
                                     rgb_color: !input color_sc
                                 - delay:
                                     seconds: !input flash_interval_s
-                                - service: light.turn_off
+                                - service: "{{ light_turn_off_service }}"
                                   target:
                                     entity_id: !input light_target
                                 - delay:
@@ -951,7 +956,7 @@ action:
                                 - condition: template
                                   value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'SC' }}"
                               sequence:
-                                - service: light.turn_on
+                                - service: "{{ light_turn_on_service }}"
                                   target:
                                     entity_id: !input light_target
                                   data:
@@ -959,7 +964,7 @@ action:
                                     rgb_color: !input color_sc
                                 - delay:
                                     seconds: !input flash_interval_s
-                                - service: light.turn_off
+                                - service: "{{ light_turn_off_service }}"
                                   target:
                                     entity_id: !input light_target
                                 - delay:
@@ -980,7 +985,7 @@ action:
                                   - condition: template
                                     value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
                                 sequence:
-                                  - service: light.turn_on
+                                  - service: "{{ light_turn_on_service }}"
                                     target:
                                       entity_id: !input light_target
                                     data:
@@ -997,7 +1002,7 @@ action:
                           - condition: template
                             value_template: "{{ sc_vsc_mode_input == 'steady' }}"
                         sequence:
-                          - service: light.turn_on
+                          - service: "{{ light_turn_on_service }}"
                             target:
                               entity_id: !input light_target
                             data:
@@ -1014,7 +1019,7 @@ action:
                                 - condition: template
                                   value_template: "{{ states(track_status_entity) | upper == 'VSC' }}"
                               sequence:
-                                - service: light.turn_on
+                                - service: "{{ light_turn_on_service }}"
                                   target:
                                     entity_id: !input light_target
                                   data:
@@ -1022,7 +1027,7 @@ action:
                                     rgb_color: !input color_vsc
                                 - delay:
                                     seconds: !input flash_interval_s
-                                - service: light.turn_off
+                                - service: "{{ light_turn_off_service }}"
                                   target:
                                     entity_id: !input light_target
                                 - delay:
@@ -1039,7 +1044,7 @@ action:
                                 - condition: template
                                   value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'VSC' }}"
                               sequence:
-                                - service: light.turn_on
+                                - service: "{{ light_turn_on_service }}"
                                   target:
                                     entity_id: !input light_target
                                   data:
@@ -1047,7 +1052,7 @@ action:
                                     rgb_color: !input color_vsc
                                 - delay:
                                     seconds: !input flash_interval_s
-                                - service: light.turn_off
+                                - service: "{{ light_turn_off_service }}"
                                   target:
                                     entity_id: !input light_target
                                 - delay:
@@ -1068,7 +1073,7 @@ action:
                                   - condition: template
                                     value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
                                 sequence:
-                                  - service: light.turn_on
+                                  - service: "{{ light_turn_on_service }}"
                                     target:
                                       entity_id: !input light_target
                                     data:
