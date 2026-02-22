@@ -2,7 +2,7 @@ name: Conflict check
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, content]
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -20,8 +20,8 @@ jobs:
           dirtyLabel: "has-conflicts"
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           commentOnDirty: |
-            This PR has merge conflicts with the `dev` branch and cannot be merged until they are resolved.
+            This PR has merge conflicts with the target branch and cannot be merged until they are resolved.
 
-            Please rebase or merge `dev` into your branch and resolve the conflicts locally, then push the updated branch.
+            Please rebase or merge the target branch into your branch and resolve the conflicts locally, then push the updated branch.
           commentOnClean: |
             Merge conflicts have been resolved. Thank you!

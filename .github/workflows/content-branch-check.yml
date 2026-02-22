@@ -1,0 +1,50 @@
+name: Redirect docs/blueprint PRs to content branch
+
+on:
+  pull_request_target:
+    branches: [dev]
+    types: [opened]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  check-content-only:
+    runs-on: ubuntu-latest
+    if: >
+      github.actor != 'Nicxe' &&
+      github.actor != 'dependabot[bot]'
+    steps:
+      - name: Get changed files
+        id: changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          files=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json files --jq '.files[].path')
+          echo "$files"
+          non_content=$(echo "$files" | grep -vE '^(docs|blueprints)/' || true)
+          if [ -z "$non_content" ]; then
+            echo "content_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "content_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Close and redirect if content-only
+        if: steps.changed.outputs.content_only == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Hi @${{ github.actor }}, thank you for your contribution!
+
+          This PR only changes documentation or blueprint files, which means it should target the \`content\` branch rather than \`dev\`.
+
+          The \`content\` branch is a direct path to \`main\` for standalone docs and blueprint changes — no beta testing required. This means your change can be reviewed and published faster.
+
+          Please open a new PR targeting the \`content\` branch instead. See [CONTRIBUTING.md](../CONTRIBUTING.md) for details. Thank you!"
+
+          gh pr close "$PR_NUMBER" --repo "$REPO"
