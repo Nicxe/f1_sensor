@@ -1,20 +1,22 @@
-name: Sync main back to beta and content
+name: Sync main back to content after docs/blueprint merge
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "blueprints/**"
 
 permissions:
   contents: write
 
-jobs:
-  sync-beta:
-    if: ${{ github.event.release.prerelease == false && github.event.release.target_commitish == 'main' }}
-    uses: nicxe/.github/.github/workflows/resusable-sync-main-back-to-beta.yml@main
-    secrets: inherit
+concurrency:
+  group: sync-content-${{ github.ref }}
+  cancel-in-progress: false
 
+jobs:
   sync-content:
-    if: ${{ github.event.release.prerelease == false && github.event.release.target_commitish == 'main' }}
+    name: Sync main back to content branch
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main
@@ -32,5 +34,5 @@ jobs:
       - name: Merge main into content
         run: |
           git checkout content
-          git merge main --ff-only || git merge main -m "chore: sync content with main after release"
+          git merge main --ff-only || git merge main -m "chore: sync content with main"
           git push origin content

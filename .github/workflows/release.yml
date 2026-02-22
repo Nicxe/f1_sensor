@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     branches: [beta, main]
+    paths:
+      - "custom_components/**"
+      - "hacs.json"
 
 permissions:
   contents: write
