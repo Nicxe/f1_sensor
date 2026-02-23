@@ -531,7 +531,7 @@ variables:
     {% else %}
       {% set from_phase = (trigger.from_state.state if trigger.from_state is not none else '') | lower %}
       {% set to_phase = (trigger.to_state.state if trigger.to_state is not none else '') | lower %}
-      {{ session_scope_now_ok and to_phase in valid_session_phases and from_phase not in active_phases and to_phase in active_phases }}
+      {{ (session_scope_now_ok | bool) and to_phase in valid_session_phases and from_phase not in active_phases and to_phase in active_phases }}
     {% endif %}
 
   session_left_active: >
@@ -540,7 +540,7 @@ variables:
     {% else %}
       {% set from_phase = (trigger.from_state.state if trigger.from_state is not none else '') | lower %}
       {% set to_phase = (trigger.to_state.state if trigger.to_state is not none else '') | lower %}
-      {{ session_scope_ok and to_phase in valid_session_phases and from_phase in active_phases and to_phase not in active_phases }}
+      {{ (session_scope_ok | bool) and to_phase in valid_session_phases and from_phase in active_phases and to_phase not in active_phases }}
     {% endif %}
 
   presence_ok: >
@@ -570,7 +570,7 @@ variables:
     {% endif %}
 
   can_apply_track_light: >
-    {{ session_scope_now_ok and is_active_phase and presence_ok and media_ok and not dnd_blocked }}
+    {{ (session_scope_now_ok | bool) and (is_active_phase | bool) and (presence_ok | bool) and (media_ok | bool) and not (dnd_blocked | bool) }}
 
 triggers:
   - trigger: state
@@ -586,7 +586,7 @@ actions:
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ session_entered_active }}"
+            value_template: "{{ session_entered_active | bool }}"
         sequence:
           - if:
               - condition: template
@@ -601,7 +601,7 @@ actions:
 
       - conditions:
           - condition: template
-            value_template: "{{ session_left_active }}"
+            value_template: "{{ session_left_active | bool }}"
         sequence:
           - delay:
               minutes: !input end_delay_min
@@ -669,7 +669,7 @@ actions:
 
       - conditions:
           - condition: template
-            value_template: "{{ can_apply_track_light and track_state in ['CLEAR', 'YELLOW', 'RED', 'SC', 'VSC'] }}"
+            value_template: "{{ (can_apply_track_light | bool) and track_state in ['CLEAR', 'YELLOW', 'RED', 'SC', 'VSC'] }}"
         sequence:
           - if:
               - condition: template

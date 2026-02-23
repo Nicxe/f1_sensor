@@ -492,7 +492,7 @@ conditions:
   - condition: template
     value_template: "{{ notification_actions_input | count > 0 }}"
   - condition: template
-    value_template: "{{ session_scope_ok and phase_ok and event_ok and flag_ok and category_ok and include_ok and exclude_ok }}"
+    value_template: "{{ (session_scope_ok | bool) and (phase_ok | bool) and (event_ok | bool) and (flag_ok | bool) and (category_ok | bool) and (include_ok | bool) and (exclude_ok | bool) }}"
 
 actions:
   - sequence: !input notification_actions
