@@ -3,6 +3,8 @@ id: cards-overview
 title: Live Data Cards
 ---
 
+import useBaseUrl from '@docusaurus/useBaseUrl';
+
 # F1 Sensor Live Data Cards
 
 A collection of custom Lovelace cards built specifically for the F1 Sensor integration. The cards are designed to display live session data with an F1-styled dark interface and are kept up to date alongside the integration.
@@ -184,20 +186,27 @@ Shows a full pit stop history for all drivers: stop number, tyre fitted, pit tim
 
 `custom:f1-driver-lap-times-card`
 
-Displays the current race order with each driver's last lap time, current status, and team color coding. Retired and stopped drivers are clearly indicated.
+Displays the current race order with each driver's last lap time, personal best lap time, current status, and team color coding. The driver holding the session fastest lap is highlighted in purple. Retired and stopped drivers are clearly indicated. An optional lap history mode adds a column per lap (L1, L2, L3…) with trend arrows showing whether each lap was faster or slower than the previous one.
 
-![Placeholder — F1 Driver Lap Times card screenshot](/img/placeholder_card_lap_times.png)
+<img src={useBaseUrl('/img/placeholder_card_lap_times.png')} alt="F1 Driver Lap Times card screenshot" style={{width: '100%'}} />
 
 **Required entities:** `sensor.f1_driver_positions`, `sensor.f1_driver_list`
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `title` | `Driver Lap Times` | Card title |
+| `show_header` | `true` | Show the card title header |
+| `show_table_header` | `true` | Show column labels above the table |
 | `show_position` | `true` | Show current race position |
 | `show_team_logo` | `true` | Show team logo |
+| `team_logo_style` | `color` | Logo appearance: `color` (with white fallback) or `white` |
 | `show_tla` | `true` | Show driver three-letter code |
 | `show_status` | `true` | Show driver status (on track, pit, retired) |
 | `show_last_lap` | `true` | Show last lap time |
+| `show_best_lap` | `true` | Show each driver's personal best lap time |
+| `show_lap_history` | `false` | Show a lap-by-lap history table with one column per lap (L1, L2, L3…) |
+| `lap_history_limit` | `0` | Number of recent lap columns to show when lap history is enabled. `0` shows all laps |
+| `show_lap_trend` | `true` | Show trend arrows (▲/▼) in lap history columns comparing each lap to the previous |
 
 ---
 
