@@ -11,6 +11,9 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
     registries:
       - github-packages
     open-pull-requests-limit: 10
