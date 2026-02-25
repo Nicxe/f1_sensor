@@ -125,11 +125,11 @@ blueprint:
       name: Activation Conditions
       icon: mdi:filter-check
       collapsed: true
-      description: Optional gates that must pass before track updates control the light.
+      description: Optional gates that must pass before any blueprint actions run.
       input:
         presence_devices:
           name: Presence Devices
-          description: Optional. At least one selected device must be home.
+          description: Optional. At least one selected device must be home for this automation to run.
           default: []
           selector:
             entity:
@@ -138,7 +138,7 @@ blueprint:
               multiple: true
         media_player_gate:
           name: Media Player Gate
-          description: Optional. Selected media player must be on, idle, or playing.
+          description: Optional. Selected media player must be on, idle, or playing for this automation to run.
           default: ""
           selector:
             entity:
@@ -147,7 +147,7 @@ blueprint:
               multiple: false
         enable_dnd:
           name: Enable Do Not Disturb Window
-          description: Blocks track updates inside the configured time window.
+          description: Blocks this automation inside the configured time window.
           default: false
           selector:
             boolean: {}
@@ -161,6 +161,12 @@ blueprint:
           default: "07:00:00"
           selector:
             time: {}
+        activation_condition:
+          name: Activation Condition
+          description: Optional extra conditions for power users. If not met, no actions in this automation run.
+          default: []
+          selector:
+            condition: {}
 
     light_behavior:
       name: Light Behavior
@@ -570,7 +576,7 @@ variables:
     {% endif %}
 
   can_apply_track_light: >
-    {{ (session_scope_now_ok | bool) and (is_active_phase | bool) and (presence_ok | bool) and (media_ok | bool) and not (dnd_blocked | bool) }}
+    {{ (session_scope_now_ok | bool) and (is_active_phase | bool) }}
 
 triggers:
   - trigger: state
@@ -580,7 +586,11 @@ triggers:
     entity_id: !input session_status_entity
     id: session_update
 
-conditions: []
+conditions:
+  - condition: template
+    value_template: "{{ (presence_ok | bool) and (media_ok | bool) and not (dnd_blocked | bool) }}"
+  - condition: and
+    conditions: !input activation_condition
 
 actions:
   - choose:
