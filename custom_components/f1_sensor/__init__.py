@@ -70,6 +70,7 @@ from .helpers import (
     parse_fia_documents,
 )
 from .live_delay import LiveDelayController, LiveDelayReferenceController
+from .no_spoiler import NoSpoilerModeManager
 from .live_window import (
     EventTrackerScheduleSource,
     LiveAvailabilityTracker,
@@ -572,6 +573,50 @@ def coordinator_logger(
     )
 
 
+_NO_SPOILER_MANAGER_KEY = "no_spoiler_manager"
+
+
+def _is_no_spoiler_blocked(coordinator: DataUpdateCoordinator) -> bool:
+    """Return True when No Spoiler Mode is active and live data should be frozen.
+
+    Replay data is never blocked — the replay_mode flag bypasses this gate.
+    """
+    try:
+        mgr = (coordinator.hass.data.get(DOMAIN) or {}).get(_NO_SPOILER_MANAGER_KEY)
+        return (
+            mgr is not None
+            and mgr.is_active
+            and not getattr(coordinator, "_replay_mode", False)
+        )
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _is_no_spoiler_jolpica_blocked(coordinator: DataUpdateCoordinator) -> bool:
+    """Return True when No Spoiler Mode is active for a Jolpica/Ergast coordinator.
+
+    Coordinators that are not spoiler-sensitive (e.g. race schedule) opt out by
+    setting ``_no_spoiler_sensitive = False`` on the instance.
+    """
+    try:
+        if not getattr(coordinator, "_no_spoiler_sensitive", True):
+            return False
+        mgr = (coordinator.hass.data.get(DOMAIN) or {}).get(_NO_SPOILER_MANAGER_KEY)
+        return mgr is not None and mgr.is_active
+    except Exception:  # noqa: BLE001
+        return False
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Create the global NoSpoilerModeManager once when the domain first loads."""
+    domain_root = hass.data.setdefault(DOMAIN, {})
+    if _NO_SPOILER_MANAGER_KEY not in domain_root:
+        manager = NoSpoilerModeManager(hass)
+        await manager.async_load()
+        domain_root[_NO_SPOILER_MANAGER_KEY] = manager
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up integration via config flow."""
     # Dev-only: periodically report how many Jolpica requests actually hit the network.
@@ -737,6 +782,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if need_race
         else None
     )
+    # The race coordinator provides schedule/calendar data that is never spoiler-sensitive.
+    if race_coordinator is not None:
+        race_coordinator._no_spoiler_sensitive = False
     driver_coordinator = (
         F1DataCoordinator(
             hass,
@@ -1178,6 +1226,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "formation_start_tracker": formation_tracker,
         "replay_controller": replay_controller,
         "activity_filter_unsub": None,
+        "no_spoiler_unsub": None,
     }
 
     _apply_activity_log_filter_excludes(hass)
@@ -1193,6 +1242,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             EVENT_COMPONENT_LOADED,
             _on_component_loaded,
         )
+
+        # Register no-spoiler listener for catch-up on deactivation.
+        no_spoiler_mgr: NoSpoilerModeManager | None = hass.data.get(DOMAIN, {}).get(
+            _NO_SPOILER_MANAGER_KEY
+        )
+        if no_spoiler_mgr is not None:
+            _blocked_jolpica = [
+                coord
+                for coord in (
+                    driver_coordinator,
+                    constructor_coordinator,
+                    last_race_coordinator,
+                    season_results_coordinator,
+                    sprint_results_coordinator,
+                    fia_documents_coordinator,
+                )
+                if coord is not None
+            ]
+
+            def _on_no_spoiler_changed(active: bool) -> None:
+                if active:
+                    # Activated: wake supervisor so it drops any active connection.
+                    _sup = hass_data.get("live_supervisor") if hass_data else None
+                    if _sup is not None and callable(getattr(_sup, "wake", None)):
+                        _sup.wake()
+                    return
+                # Deactivated: trigger catch-up for all blocked Jolpica coordinators.
+                for coord in _blocked_jolpica:
+                    hass.async_create_task(coord.async_request_refresh())
+                # Wake supervisor so it re-evaluates session windows.
+                _sup = hass_data.get("live_supervisor") if hass_data else None
+                if _sup is not None and callable(getattr(_sup, "wake", None)):
+                    _sup.wake()
+
+            hass_data["no_spoiler_unsub"] = no_spoiler_mgr.add_listener(
+                _on_no_spoiler_changed
+            )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -1301,6 +1387,8 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         return None
 
     def _deliver(self, msg: dict) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
@@ -1567,6 +1655,8 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("RaceControl: disabled startup cutoff for replay mode")
 
     def _deliver(self, item: dict) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         self.available = True
         # Maintain last message for visibility and parity with other coordinators
         self._last_message = item
@@ -1685,6 +1775,8 @@ class LiveModeCoordinator(DataUpdateCoordinator):
         else:
             return
         if self._state != prev:
+            if _is_no_spoiler_blocked(self):
+                return
             self.available = True
             self.async_set_updated_data(dict(self._state))
             if _LOGGER.isEnabledFor(logging.DEBUG):
@@ -1778,6 +1870,8 @@ class LapCountCoordinator(DataUpdateCoordinator):
         )
 
     def _deliver(self, msg: dict) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
@@ -1944,6 +2038,8 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         return result
 
     def _deliver(self, msg: dict) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         self.available = True
         # In replay/development mode, try to provide a static root URL even if the
         # transport did not annotate the payload (robust against file encoding quirks).
@@ -2266,6 +2362,8 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._schedule_deliver()
 
     def _deliver(self) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         self.available = True
         self._refresh_pit_deltas()
         cars: dict[str, Any] = {}
@@ -2772,6 +2870,8 @@ class ChampionshipPredictionCoordinator(
         return best_key, best_entry
 
     def _deliver(self) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         self.available = True
 
         p1_rn, p1_entry = self._pick_predicted_driver_p1()
@@ -4023,6 +4123,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         return None
 
     def _deliver(self) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         # Push deep-copied shallow dict to avoid accidental external mutation
         self.async_set_updated_data(self._state)
 
@@ -4393,6 +4495,9 @@ class F1DataCoordinator(DataUpdateCoordinator):
                 )
                 # Detect season rollovers in current.json and clear stale caches if needed.
                 self._handle_season_rollover_if_needed(data)
+                # No-spoiler: keep the cache warm but don't deliver new data to entities.
+                if _is_no_spoiler_jolpica_blocked(self):
+                    return self.data
                 return data
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}") from err
@@ -4658,13 +4763,17 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
                     total,
                     len(assembled_races),
                 )
-            return {
+            result = {
                 "MRData": {
                     "RaceTable": {
                         "Races": assembled_races,
                     }
                 }
             }
+            # No-spoiler: keep cache warm but don't deliver new data to entities.
+            if _is_no_spoiler_jolpica_blocked(self):
+                return self.data
+            return result
         except Exception as err:
             raise UpdateFailed(f"Error fetching season results: {err}") from err
 
@@ -4708,7 +4817,7 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         try:
             async with async_timeout.timeout(10):
-                return await fetch_json(
+                data = await fetch_json(
                     self.hass,
                     self._session,
                     self._url,
@@ -4719,6 +4828,10 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
                     persist_map=self._persist,
                     persist_save=self._persist_save,
                 )
+                # No-spoiler: keep cache warm but don't deliver new data to entities.
+                if _is_no_spoiler_jolpica_blocked(self):
+                    return self.data
+                return data
         except Exception as err:
             raise UpdateFailed(f"Error fetching sprint results: {err}") from err
 
@@ -4791,11 +4904,17 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(f"Error parsing FIA documents: {err}") from err
 
-        return {
+        result = {
             "event_key": event_key,
             "race": self._summarize_race(race),
             "documents": docs,
         }
+        # No-spoiler: keep cache warm but don't deliver new data to entities.
+        # On deactivation, the next refresh will deliver the full document list
+        # including any documents published during the blackout period.
+        if _is_no_spoiler_jolpica_blocked(self):
+            return self.data
+        return result
 
     async def _get_season_url(self, season: str) -> str:
         cached = self._season_url_cache.get(season)
@@ -5163,6 +5282,8 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         return None
 
     def _deliver(self, msg: dict) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
@@ -5302,6 +5423,8 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         return None
 
     def _deliver(self, msg: dict) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
@@ -5512,6 +5635,8 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         self._schedule_deliver()
 
     def _deliver(self) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         # Pushar aktuellt state till sensorerna
         lines = self._state.get("lines", [])
         line_summary = [
@@ -5608,6 +5733,8 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         return None
 
     def _deliver(self, msg: dict) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
@@ -6359,6 +6486,8 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             self._stop_tick()
 
     def _deliver(self) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         self.available = True
         self._state = self._build_state()
         self.data_list = [self._state]

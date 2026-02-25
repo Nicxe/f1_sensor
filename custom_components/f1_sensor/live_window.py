@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(f"custom_components.{DOMAIN}")
 
+_NO_SPOILER_MANAGER_KEY = "no_spoiler_manager"
+
 STATIC_BASE = "https://livetiming.formula1.com/static"
 SESSION_END_STATES = {"Finished", "Finalised", "Ends"}
 SESSION_RUNNING_STATES = {"Started", "Resumed"}
@@ -840,6 +842,15 @@ class LiveSessionSupervisor:
         if source == "none" and prev_source != "none":
             _LOGGER.info("schedule source selected: none (fail-closed idle)")
 
+    @property
+    def _is_no_spoiler_active(self) -> bool:
+        """Return True when No Spoiler Mode is active."""
+        try:
+            mgr = (self._hass.data.get(DOMAIN) or {}).get(_NO_SPOILER_MANAGER_KEY)
+            return mgr is not None and bool(mgr.is_active)
+        except Exception:  # noqa: BLE001
+            return False
+
     def wake(self) -> None:
         """Interrupt the supervisor sleep cycle so it re-evaluates immediately."""
         self._wake_event.set()
@@ -898,6 +909,11 @@ class LiveSessionSupervisor:
                 # Defer activation while replay controls the bus
                 if self._availability.replay_locked:
                     await self._interruptible_sleep(ACTIVE_REFRESH.total_seconds())
+                    continue
+                # Defer activation while No Spoiler Mode is active
+                if self._is_no_spoiler_active:
+                    self._availability.set_state(False, "no-spoiler")
+                    await self._interruptible_sleep(IDLE_REFRESH.total_seconds())
                     continue
                 await self._activate_window(window, source=source)
 
@@ -1139,6 +1155,14 @@ class LiveSessionSupervisor:
         )
         while not self._stopped:
             await self._interruptible_sleep(ACTIVE_REFRESH.total_seconds())
+            # If No Spoiler Mode was activated mid-session, close the connection immediately.
+            if self._is_no_spoiler_active:
+                _LOGGER.info(
+                    "No Spoiler Mode activated mid-session; closing live connection for %s",
+                    label,
+                )
+                reason = "no-spoiler-activated"
+                break
             now = dt_util.utcnow()
             hb_age = self._bus.last_heartbeat_age()
             activity_age = self._bus.last_stream_activity_age(LIVE_ACTIVITY_STREAMS)
