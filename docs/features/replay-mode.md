@@ -7,6 +7,10 @@ Replay Mode lets you watch historical F1 sessions with full Home Assistant integ
 
 Your lights flash red on a red flag. Your dashboard shows live timing. Race Control messages trigger notifications. Everything stays perfectly in sync with what you see on screen.
 
+:::tip Watching it later? Keep your dashboard spoiler-free
+If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode, press play when your broadcast begins, and experience everything as if it were live — without any spoilers.
+:::
+
 ---
 
 ## How it works
@@ -201,3 +205,4 @@ Replace `media_player.apple_tv` with your actual media player entity. This works
 
 - While replay is active, the integration does not receive live data. Stop the replay to return to live mode.
 - The live delay calibration feature is disabled during replay.
+- Replay Mode does not protect you from spoilers on its own. Use [No Spoiler Mode](/features/no-spoiler-mode) to keep your dashboard frozen until you are ready to watch.

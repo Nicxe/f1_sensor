@@ -15,7 +15,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Features',
-      items: ['features/live-delay', 'features/replay-mode'],
+      items: ['features/live-delay', 'features/replay-mode', 'features/no-spoiler-mode'],
     },
     {
       type: 'category',

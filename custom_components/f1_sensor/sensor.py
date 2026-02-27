@@ -98,6 +98,14 @@ def _extract_driver_position(info: dict | None) -> str | None:
     return pos_str or None
 
 
+def _parse_lap_time_to_secs(t: str) -> float:
+    """Convert a lap time string like '1:23.247' or '23.247' to seconds."""
+    if ":" in t:
+        mins, secs = t.split(":", 1)
+        return int(mins) * 60 + float(secs)
+    return float(t)
+
+
 def _combine_date_time(
     date_str: str | None, time_str: str | None, *, force_utc: bool = False
 ) -> str | None:
@@ -5821,10 +5829,16 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             return True
         return "race" in joined
 
+    def _is_qualifying_like(self) -> bool:
+        session_type, session_name = self._get_session_type_and_name()
+        joined = f"{session_type or ''} {session_name or ''}".lower()
+        return "qualifying" in joined or "shootout" in joined
+
     def _normalize_restored_attributes(self, attrs: dict) -> dict:
         attrs.setdefault("drivers", [])
         attrs.setdefault("total_laps", None)
         attrs.setdefault("fastest_lap", None)
+        attrs.setdefault("current_qualifying_part", None)
         drivers = attrs.get("drivers")
         if isinstance(drivers, list):
             for drv in drivers:
@@ -5834,6 +5848,15 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 drv.setdefault("fastest_lap_time", None)
                 drv.setdefault("fastest_lap_time_secs", None)
                 drv.setdefault("fastest_lap_lap", None)
+                drv.setdefault("q1_time", None)
+                drv.setdefault("q1_knocked_out", None)
+                drv.setdefault("q1_position", None)
+                drv.setdefault("q2_time", None)
+                drv.setdefault("q2_knocked_out", None)
+                drv.setdefault("q2_position", None)
+                drv.setdefault("q3_time", None)
+                drv.setdefault("q3_knocked_out", None)
+                drv.setdefault("q3_position", None)
         return attrs
 
     def _update_from_coordinator(self, *, initial: bool = False) -> bool:
@@ -5851,6 +5874,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         default_on_track = self._is_replay_active()
         session_type, session_name = self._get_session_type_and_name()
         allow_fastest = self._is_race_or_sprint(session_type, session_name)
+        is_qualifying = self._is_qualifying_like()
         fastest = data.get("fastest_lap") if allow_fastest else None
         fastest_rn = None
         if isinstance(fastest, dict):
@@ -5864,6 +5888,13 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             identity = info.get("identity", {})
             lap_history = info.get("lap_history", {})
             timing = info.get("timing", {})
+            _sectors = info.get("sectors", {})
+            _cur = _sectors.get("current", {})
+            _bst = _sectors.get("best", {})
+
+            def _sec(idx: int, field: str, _c: dict = _cur) -> object:
+                s = _c.get(idx)
+                return s.get(field) if isinstance(s, dict) else None
 
             # Normalize team color
             team_color = identity.get("team_color")
@@ -5878,6 +5909,31 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 rn, timing, default_on_track=default_on_track
             )
             is_fastest = bool(allow_fastest and fastest_rn == rn)
+            # Qualifying segment data
+            _q_state = info.get("qualifying", {})
+            _q_segs = _q_state.get("segments", {})
+            _q_knocked_out_api = _q_state.get("knocked_out", False)
+            if is_qualifying:
+                _q2_participated = _q_segs.get(2, {}).get("participated", False)
+                _q3_participated = _q_segs.get(3, {}).get("participated", False)
+                _q1_time = _q_segs.get(1, {}).get("best_time")
+                _q2_time = _q_segs.get(2, {}).get("best_time")
+                _q3_time = _q_segs.get(3, {}).get("best_time")
+                # q1_knocked_out: API says knocked_out and driver never appeared in Q2
+                # q2_knocked_out: knocked_out and was in Q2 but not Q3
+                # q3_knocked_out: always False (final segment)
+                _q1_ko = _q_knocked_out_api and not _q2_participated
+                _q2_ko = (
+                    _q_knocked_out_api and _q2_participated and not _q3_participated
+                )
+                _q3_ko = False
+            else:
+                _q1_time = None
+                _q2_time = None
+                _q3_time = None
+                _q1_ko = None
+                _q2_ko = None
+                _q3_ko = None
             drivers_out[rn] = {
                 "racing_number": rn,
                 "tla": identity.get("tla"),
@@ -5897,6 +5953,27 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     fastest.get("time_secs") if is_fastest else None
                 ),
                 "fastest_lap_lap": fastest.get("lap") if is_fastest else None,
+                "sector_1": _sec(0, "time"),
+                "sector_2": _sec(1, "time"),
+                "sector_3": _sec(2, "time"),
+                "sector_1_overall_fastest": _sec(0, "overall_fastest"),
+                "sector_1_personal_fastest": _sec(0, "personal_fastest"),
+                "sector_2_overall_fastest": _sec(1, "overall_fastest"),
+                "sector_2_personal_fastest": _sec(1, "personal_fastest"),
+                "sector_3_overall_fastest": _sec(2, "overall_fastest"),
+                "sector_3_personal_fastest": _sec(2, "personal_fastest"),
+                "best_sector_1": _bst.get(0),
+                "best_sector_2": _bst.get(1),
+                "best_sector_3": _bst.get(2),
+                "q1_time": _q1_time,
+                "q1_knocked_out": _q1_ko,
+                "q1_position": None,
+                "q2_time": _q2_time,
+                "q2_knocked_out": _q2_ko,
+                "q2_position": None,
+                "q3_time": _q3_time,
+                "q3_knocked_out": _q3_ko,
+                "q3_position": None,
                 **status_attrs,
             }
 
@@ -5915,11 +5992,30 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         # Convert to list and sort to preserve order in Home Assistant
         drivers_list = sorted(drivers_out.values(), key=position_sort_key)
 
+        # Compute per-segment positions for qualifying sessions (second pass)
+        if is_qualifying:
+            for seg_num in (1, 2, 3):
+                time_key = f"q{seg_num}_time"
+                pos_key = f"q{seg_num}_position"
+                timed = []
+                for idx, drv in enumerate(drivers_list):
+                    t = drv.get(time_key)
+                    if t:
+                        try:
+                            timed.append((idx, _parse_lap_time_to_secs(t)))
+                        except (ValueError, TypeError):
+                            pass
+                timed.sort(key=lambda x: x[1])
+                for rank, (idx, _) in enumerate(timed, 1):
+                    drivers_list[idx][pos_key] = rank
+
+        current_q_part = data.get("session", {}).get("part") if is_qualifying else None
         self._attr_native_value = lap_current
         self._attr_extra_state_attributes = {
             "drivers": drivers_list,
             "total_laps": lap_total,
             "fastest_lap": dict(fastest) if isinstance(fastest, dict) else None,
+            "current_qualifying_part": current_q_part,
         }
         return True
 
