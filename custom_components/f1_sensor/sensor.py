@@ -5892,8 +5892,8 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             _cur = _sectors.get("current", {})
             _bst = _sectors.get("best", {})
 
-            def _sec(idx: int, field: str) -> object:
-                s = _cur.get(idx)
+            def _sec(idx: int, field: str, _c: dict = _cur) -> object:
+                s = _c.get(idx)
                 return s.get(field) if isinstance(s, dict) else None
 
             # Normalize team color
