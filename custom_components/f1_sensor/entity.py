@@ -1,6 +1,6 @@
 import asyncio
-import json
 from contextlib import suppress
+import json
 from pathlib import Path
 
 from homeassistant.helpers.device_registry import DeviceEntryType

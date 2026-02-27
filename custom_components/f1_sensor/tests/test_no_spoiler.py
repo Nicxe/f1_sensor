@@ -9,7 +9,6 @@ import pytest
 
 from custom_components.f1_sensor.no_spoiler import NoSpoilerModeManager
 
-
 # ---------------------------------------------------------------------------
 # NoSpoilerModeManager unit tests
 # ---------------------------------------------------------------------------
@@ -113,8 +112,8 @@ def _make_fake_coordinator(hass, *, replay_mode: bool = False):
 @pytest.mark.asyncio
 async def test_is_no_spoiler_blocked_when_active(hass) -> None:
     from custom_components.f1_sensor import (
-        _is_no_spoiler_blocked,
         _NO_SPOILER_MANAGER_KEY,
+        _is_no_spoiler_blocked,
     )
     from custom_components.f1_sensor.const import DOMAIN
 
@@ -133,8 +132,8 @@ async def test_is_no_spoiler_blocked_when_active(hass) -> None:
 async def test_is_no_spoiler_blocked_replay_bypasses(hass) -> None:
     """Replay mode bypasses the no-spoiler gate."""
     from custom_components.f1_sensor import (
-        _is_no_spoiler_blocked,
         _NO_SPOILER_MANAGER_KEY,
+        _is_no_spoiler_blocked,
     )
     from custom_components.f1_sensor.const import DOMAIN
 
@@ -152,8 +151,8 @@ async def test_is_no_spoiler_blocked_replay_bypasses(hass) -> None:
 @pytest.mark.asyncio
 async def test_is_no_spoiler_blocked_when_inactive(hass) -> None:
     from custom_components.f1_sensor import (
-        _is_no_spoiler_blocked,
         _NO_SPOILER_MANAGER_KEY,
+        _is_no_spoiler_blocked,
     )
     from custom_components.f1_sensor.const import DOMAIN
 
@@ -169,8 +168,8 @@ async def test_is_no_spoiler_blocked_when_inactive(hass) -> None:
 @pytest.mark.asyncio
 async def test_is_no_spoiler_jolpica_blocked_sensitive(hass) -> None:
     from custom_components.f1_sensor import (
-        _is_no_spoiler_jolpica_blocked,
         _NO_SPOILER_MANAGER_KEY,
+        _is_no_spoiler_jolpica_blocked,
     )
     from custom_components.f1_sensor.const import DOMAIN
 
@@ -190,8 +189,8 @@ async def test_is_no_spoiler_jolpica_blocked_sensitive(hass) -> None:
 async def test_is_no_spoiler_jolpica_blocked_not_sensitive(hass) -> None:
     """Schedule coordinator (race_coordinator) is never blocked."""
     from custom_components.f1_sensor import (
-        _is_no_spoiler_jolpica_blocked,
         _NO_SPOILER_MANAGER_KEY,
+        _is_no_spoiler_jolpica_blocked,
     )
     from custom_components.f1_sensor.const import DOMAIN
 
@@ -215,7 +214,7 @@ async def test_is_no_spoiler_jolpica_blocked_not_sensitive(hass) -> None:
 @pytest.mark.asyncio
 async def test_async_setup_creates_manager(hass) -> None:
     """async_setup should create and load the NoSpoilerModeManager."""
-    from custom_components.f1_sensor import async_setup, _NO_SPOILER_MANAGER_KEY
+    from custom_components.f1_sensor import _NO_SPOILER_MANAGER_KEY, async_setup
     from custom_components.f1_sensor.const import DOMAIN
 
     with patch(
@@ -232,7 +231,7 @@ async def test_async_setup_creates_manager(hass) -> None:
 @pytest.mark.asyncio
 async def test_async_setup_idempotent(hass) -> None:
     """Calling async_setup twice does not create a second manager instance."""
-    from custom_components.f1_sensor import async_setup, _NO_SPOILER_MANAGER_KEY
+    from custom_components.f1_sensor import _NO_SPOILER_MANAGER_KEY, async_setup
     from custom_components.f1_sensor.const import DOMAIN
 
     with patch(
