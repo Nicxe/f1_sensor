@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 import logging
 import time
@@ -8,7 +9,10 @@ from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 import pytest
 
-from custom_components.f1_sensor.__init__ import SessionClockCoordinator
+from custom_components.f1_sensor.__init__ import (
+    SessionClockCoordinator,
+    _wrap_delayed_handler,
+)
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     DOMAIN,
@@ -82,30 +86,39 @@ async def test_session_clock_qualifying_elapsed_and_remaining(
 
 
 @pytest.mark.asyncio
-async def test_session_clock_applies_live_delay_to_elapsed_and_remaining(
-    hass, monkeypatch
-) -> None:
+async def test_session_clock_delay_keeps_heartbeat_stream_updating(hass) -> None:
     coordinator = SessionClockCoordinator(
         hass,
         session_coord=object(),
-        delay_seconds=30,
+        delay_seconds=1,
     )
-    coordinator._session_info = {"Type": "Qualifying", "Name": "Qualifying"}
-    coordinator._clock_anchor_utc = _utc("2025-12-06T14:00:01Z")
-    coordinator._clock_anchor_remaining_s = 17 * 60 + 59
-    coordinator._clock_anchor_extrapolating = True
-    coordinator._last_heartbeat_utc = _utc("2025-12-06T14:00:01Z")
-    base_mono = 1000.0
-    coordinator._last_heartbeat_mono = base_mono
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.__init__.time.monotonic",
-        lambda: base_mono + 30.0,
-    )
+    try:
+        coordinator._session_info = {"Type": "Qualifying", "Name": "Qualifying"}
+        delayed_clock = _wrap_delayed_handler(
+            coordinator, coordinator._on_extrapolated_clock
+        )
+        delayed_heartbeat = _wrap_delayed_handler(coordinator, coordinator._on_heartbeat)
 
-    state = coordinator._build_state()
-    # With 30s live delay, timers must behave as if server-now == anchor time.
-    assert state["clock_remaining_s"] == 17 * 60 + 59
-    assert state["clock_elapsed_s"] == 1
+        delayed_clock(
+            {
+                "Utc": "2025-12-06T14:00:01Z",
+                "Remaining": "00:17:59",
+                "Extrapolating": True,
+            }
+        )
+        delayed_heartbeat({"Utc": "2025-12-06T14:00:01Z"})
+        await asyncio.sleep(0.5)
+        delayed_heartbeat({"Utc": "2025-12-06T14:00:16Z"})
+        await asyncio.sleep(0.65)
+        await hass.async_block_till_done()
+
+        state = coordinator.data
+        assert state is not None
+        assert state["clock_remaining_s"] == 17 * 60 + 59
+        assert state["clock_elapsed_s"] == 1
+        assert state["source_quality"] == "official"
+    finally:
+        await coordinator.async_close()
 
 
 @pytest.mark.asyncio

@@ -266,7 +266,7 @@ def _refresh_session_fingerprint(
 def _schedule_deliver_handle(
     loop: asyncio.AbstractEventLoop,
     handle: asyncio.Handle | None,
-    delay: int,
+    delay: float,
     callback: Callable[[], None],
 ) -> asyncio.Handle | None:
     if handle:
@@ -283,7 +283,7 @@ def _schedule_deliver_handle(
 def _schedule_message_delivery(
     loop: asyncio.AbstractEventLoop,
     handle: asyncio.Handle | None,
-    delay: int,
+    delay: float,
     deliver: Callable[[dict], None],
     msg: dict,
 ) -> asyncio.Handle | None:
@@ -317,6 +317,148 @@ def _cancel_handles(handles: list[asyncio.Handle]) -> None:
     handles.clear()
 
 
+def _invoke_on_loop(
+    loop: asyncio.AbstractEventLoop, callback: Callable[[], None]
+) -> None:
+    """Run callback on the Home Assistant loop from any thread."""
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if running is loop:
+        callback()
+        return
+    loop.call_soon_threadsafe(callback)
+
+
+def _init_delayed_ingest_state(instance: Any) -> None:
+    instance._delay_queue: deque[tuple[float, Callable[[], None]]] = deque()
+    instance._delay_queue_handle = None
+    instance._delay_queue_generation = 0
+
+
+def _clear_delayed_ingest_state(instance: Any) -> None:
+    generation = int(getattr(instance, "_delay_queue_generation", 0) or 0)
+    instance._delay_queue_generation = generation + 1
+    instance._delay_queue_handle = _cancel_handle(
+        getattr(instance, "_delay_queue_handle", None)
+    )
+    queue = getattr(instance, "_delay_queue", None)
+    if isinstance(queue, deque):
+        queue.clear()
+
+
+def _close_delayed_ingest_state(instance: Any) -> None:
+    _clear_delayed_ingest_state(instance)
+
+
+def _arm_delayed_ingest_queue(instance: Any) -> None:
+    queue = getattr(instance, "_delay_queue", None)
+    if not isinstance(queue, deque) or not queue:
+        instance._delay_queue_handle = _cancel_handle(
+            getattr(instance, "_delay_queue_handle", None)
+        )
+        return
+    delay = (
+        0
+        if bool(getattr(instance, "_replay_mode", False))
+        else max(0, int(getattr(instance, "_delay", 0) or 0))
+    )
+    wait = 0.0
+    if delay > 0:
+        wait = max(0.0, queue[0][0] + delay - time.monotonic())
+    instance._delay_queue_handle = _schedule_deliver_handle(
+        instance.hass.loop,
+        getattr(instance, "_delay_queue_handle", None),
+        wait,
+        lambda: _drain_delayed_ingest_queue(instance),
+    )
+
+
+def _drain_delayed_ingest_queue(instance: Any) -> None:
+    instance._delay_queue_handle = None
+    queue = getattr(instance, "_delay_queue", None)
+    if not isinstance(queue, deque):
+        return
+    while queue:
+        delay = (
+            0
+            if bool(getattr(instance, "_replay_mode", False))
+            else max(0, int(getattr(instance, "_delay", 0) or 0))
+        )
+        now_mono = time.monotonic()
+        received_at, callback = queue[0]
+        if delay > 0 and (received_at + delay) > (now_mono + 0.001):
+            break
+        queue.popleft()
+        try:
+            callback()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Delayed ingest callback failed", exc_info=True)
+    _arm_delayed_ingest_queue(instance)
+
+
+def _queue_delayed_ingest(instance: Any, callback: Callable[[], None]) -> None:
+    """Delay callback application from raw stream receipt time without debouncing."""
+    received_at = time.monotonic()
+    generation = int(getattr(instance, "_delay_queue_generation", 0) or 0)
+
+    def _enqueue() -> None:
+        if generation != int(getattr(instance, "_delay_queue_generation", 0) or 0):
+            return
+        delay = (
+            0
+            if bool(getattr(instance, "_replay_mode", False))
+            else max(0, int(getattr(instance, "_delay", 0) or 0))
+        )
+        if delay <= 0:
+            try:
+                callback()
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Immediate delayed-ingest callback failed", exc_info=True)
+            return
+        queue = getattr(instance, "_delay_queue", None)
+        if not isinstance(queue, deque):
+            _init_delayed_ingest_state(instance)
+            queue = instance._delay_queue
+        queue.append((received_at, callback))
+        _arm_delayed_ingest_queue(instance)
+
+    _invoke_on_loop(instance.hass.loop, _enqueue)
+
+
+def _apply_delay_with_queue(instance: Any, seconds: int) -> None:
+    new_delay = max(0, int(seconds or 0))
+
+    def _apply() -> None:
+        if new_delay == getattr(instance, "_delay", 0):
+            return
+        instance._delay = new_delay
+        queue = getattr(instance, "_delay_queue", None)
+        if not isinstance(queue, deque) or not queue:
+            return
+        if new_delay <= 0 or bool(getattr(instance, "_replay_mode", False)):
+            _drain_delayed_ingest_queue(instance)
+            return
+        _arm_delayed_ingest_queue(instance)
+
+    _invoke_on_loop(instance.hass.loop, _apply)
+
+
+def _wrap_delayed_handler(
+    instance: Any, handler: Callable[[Any], None]
+) -> Callable[[Any], None]:
+    """Return a subscription callback that delays raw message application."""
+
+    def _wrapped(payload: Any) -> None:
+        _queue_delayed_ingest(
+            instance,
+            lambda payload=payload: handler(payload),
+        )
+
+    return _wrapped
+
+
 def _apply_delay_simple(instance: Any, seconds: int) -> None:
     new_delay = max(0, int(seconds or 0))
     if new_delay == instance._delay:
@@ -337,6 +479,7 @@ def _init_stream_delay_state(
     instance._bus = bus
     instance._unsub = None
     instance._delay_listener = None
+    _init_delayed_ingest_state(instance)
     instance._delay = max(0, int(delay_seconds or 0))
     instance._replay_mode = False
     if delay_controller is not None:
@@ -353,6 +496,7 @@ def _close_stream_delay_state(instance: Any) -> None:
     instance._deliver_handle = _cancel_handle(instance._deliver_handle)
     instance._delay_listener = _call_unsub(instance._delay_listener)
     instance._live_state_unsub = _call_unsub(instance._live_state_unsub)
+    _close_delayed_ingest_state(instance)
 
 
 def _apply_delay_handles_only(
@@ -395,6 +539,7 @@ def _init_signalr_state(
     instance._bus = bus
     instance._unsub = None
     instance._delay_listener = None
+    _init_delayed_ingest_state(instance)
     instance._delay = max(0, int(delay_seconds or 0))
     instance._replay_mode = False
     if delay_controller is not None:
@@ -418,6 +563,7 @@ class _SessionFingerprintMixin:
             return
         self._session_fingerprint = fp
         if changed:
+            _clear_delayed_ingest_state(self)
             self._reset_store()
 
 
@@ -1319,6 +1465,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         self._deliver_handle = _cancel_handle(self._deliver_handle)
         self._delay_listener = _call_unsub(self._delay_listener)
         self._live_state_unsub = _call_unsub(self._live_state_unsub)
+        _close_delayed_ingest_state(self)
 
     async def _async_update_data(self):
         return self._last_message
@@ -1329,10 +1476,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         # Skip duplicate snapshots without timestamp to avoid heartbeat churn
         if self._should_skip_duplicate(msg):
             return
-        delay = 0 if self._replay_mode else self._delay
-        self._deliver_handle = _schedule_message_delivery(
-            self.hass.loop, self._deliver_handle, delay, self._deliver, msg
-        )
+        self._deliver(msg)
 
     @staticmethod
     def _has_timestamp(d: dict) -> bool:
@@ -1408,12 +1552,14 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         try:
             self._unsub = (
                 self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe("WeatherData", self._on_bus_message)  # type: ignore[attr-defined]
+            ).subscribe(
+                "WeatherData", _wrap_delayed_handler(self, self._on_bus_message)
+            )  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
     def set_delay(self, seconds: int) -> None:
-        _apply_delay_simple(self, seconds)
+        _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         # Ignore initial attach callback so we don't mark entities unavailable
@@ -1422,9 +1568,10 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
             return
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
-            self._deliver_handle = _cancel_handle(self._deliver_handle)
+            _clear_delayed_ingest_state(self)
         self.available = is_live
         if not is_live:
+            _clear_delayed_ingest_state(self)
             self._last_message = None
             self.data_list = []
             # Notify entities to clear their state
@@ -1499,6 +1646,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._live_state_unsub()
             self._live_state_unsub = None
+        _close_delayed_ingest_state(self)
 
     async def _async_update_data(self):
         return self._last_message
@@ -1842,6 +1990,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
         self._deliver_handle = _cancel_handle(self._deliver_handle)
         self._delay_listener = _call_unsub(self._delay_listener)
         self._live_state_unsub = _call_unsub(self._live_state_unsub)
+        _close_delayed_ingest_state(self)
 
     async def _async_update_data(self):
         return self._last_message
@@ -1864,10 +2013,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        delay = 0 if self._replay_mode else self._delay
-        self._deliver_handle = _schedule_message_delivery(
-            self.hass.loop, self._deliver_handle, delay, self._deliver, msg
-        )
+        self._deliver(msg)
 
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
@@ -1890,21 +2036,24 @@ class LapCountCoordinator(DataUpdateCoordinator):
         try:
             self._unsub = (
                 self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe("LapCount", self._on_bus_message)  # type: ignore[attr-defined]
+            ).subscribe(
+                "LapCount", _wrap_delayed_handler(self, self._on_bus_message)
+            )  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
     def set_delay(self, seconds: int) -> None:
-        _apply_delay_simple(self, seconds)
+        _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
-            self._deliver_handle = _cancel_handle(self._deliver_handle)
+            _clear_delayed_ingest_state(self)
         self.available = is_live
         if not is_live:
+            _clear_delayed_ingest_state(self)
             self._last_message = None
             self.data_list = []
             # Notify entities to clear their state
@@ -1951,6 +2100,7 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         self._bus = bus
         self._unsub: Callable[[], None] | None = None
         self._delay_listener: Callable[[], None] | None = None
+        _init_delayed_ingest_state(self)
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         if delay_controller is not None:
@@ -1971,6 +2121,7 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         self._deliver_handle = _cancel_handle(self._deliver_handle)
         self._delay_listener = _call_unsub(self._delay_listener)
         self._live_state_unsub = _call_unsub(self._live_state_unsub)
+        _close_delayed_ingest_state(self)
 
     async def _async_update_data(self):
         return self._state
@@ -1980,23 +2131,21 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
             return
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
-            self._deliver_handle = _cancel_handle(self._deliver_handle)
+            _clear_delayed_ingest_state(self)
         self.available = is_live
         if not is_live:
+            _clear_delayed_ingest_state(self)
             self._state = {"latest": None, "history": []}
             # Notify entities to clear their state
             self.async_set_updated_data(self._state)
 
     def set_delay(self, seconds: int) -> None:
-        _apply_delay_simple(self, seconds)
+        _apply_delay_with_queue(self, seconds)
 
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        delay = 0 if self._replay_mode else self._delay
-        self._deliver_handle = _schedule_message_delivery(
-            self.hass.loop, self._deliver_handle, delay, self._deliver, msg
-        )
+        self._deliver(msg)
 
     @staticmethod
     def _normalize_captures(payload: dict) -> list[dict]:
@@ -2131,7 +2280,9 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         try:
             self._unsub = (
                 self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe("TeamRadio", self._on_bus_message)  # type: ignore[attr-defined]
+            ).subscribe(
+                "TeamRadio", _wrap_delayed_handler(self, self._on_bus_message)
+            )  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -2177,6 +2328,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._unsubs: list[Callable[[], None]] = []
         self._drivers_unsub: Callable[[], None] | None = None
         self._delay_listener: Callable[[], None] | None = None
+        _init_delayed_ingest_state(self)
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         if delay_controller is not None:
@@ -2208,6 +2360,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._live_state_unsub = _call_unsub(self._live_state_unsub)
         self._drivers_unsub = _call_unsub(self._drivers_unsub)
         self._session_unsub = _call_unsub(self._session_unsub)
+        _close_delayed_ingest_state(self)
 
     async def _async_update_data(self):
         return self._state
@@ -2217,13 +2370,14 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             return
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
-            self._deliver_handle = _cancel_handle(self._deliver_handle)
+            _clear_delayed_ingest_state(self)
         self.available = is_live
         if not is_live:
+            _clear_delayed_ingest_state(self)
             self._reset_store()
 
     def set_delay(self, seconds: int) -> None:
-        _apply_delay_simple(self, seconds)
+        _apply_delay_with_queue(self, seconds)
 
     def _reset_store(self) -> None:
         self._by_car = {}
@@ -2263,10 +2417,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             return None
 
     def _schedule_deliver(self) -> None:
-        delay = 0 if self._replay_mode else self._delay
-        self._deliver_handle = _schedule_deliver_handle(
-            self.hass.loop, self._deliver_handle, delay, self._deliver
-        )
+        self._deliver()
 
     def _add_stop(self, racing_number: str, stop: dict) -> None:
         rn = str(racing_number or "").strip()
@@ -2419,11 +2570,18 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         # Subscribe to shared live bus streams
         bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
         with suppress(Exception):
-            self._unsubs.append(bus.subscribe("DriverList", self._on_driverlist))  # type: ignore[attr-defined]
+            self._unsubs.append(
+                bus.subscribe(
+                    "DriverList", _wrap_delayed_handler(self, self._on_driverlist)
+                )
+            )  # type: ignore[attr-defined]
         with suppress(Exception):
             self._unsubs.append(
-                bus.subscribe("PitStopSeries", self._on_bus_pitstopseries)  # type: ignore[attr-defined]
-            )
+                bus.subscribe(
+                    "PitStopSeries",
+                    _wrap_delayed_handler(self, self._on_bus_pitstopseries),
+                )
+            )  # type: ignore[attr-defined]
         if self._drivers_coord is not None:
             try:
                 self._drivers_unsub = self._drivers_coord.async_add_listener(
@@ -2653,6 +2811,7 @@ class ChampionshipPredictionCoordinator(
 
         self._unsubs: list[Callable[[], None]] = []
         self._delay_listener: Callable[[], None] | None = None
+        _init_delayed_ingest_state(self)
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         if delay_controller is not None:
@@ -2694,6 +2853,7 @@ class ChampionshipPredictionCoordinator(
         self._delay_listener = _call_unsub(self._delay_listener)
         self._live_state_unsub = _call_unsub(self._live_state_unsub)
         self._session_unsub = _call_unsub(self._session_unsub)
+        _close_delayed_ingest_state(self)
 
     async def _async_update_data(self):
         return self._state
@@ -2703,13 +2863,14 @@ class ChampionshipPredictionCoordinator(
             return
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
-            self._deliver_handle = _cancel_handle(self._deliver_handle)
+            _clear_delayed_ingest_state(self)
         self.available = is_live
         if not is_live:
+            _clear_delayed_ingest_state(self)
             self._reset_store()
 
     def set_delay(self, seconds: int) -> None:
-        _apply_delay_simple(self, seconds)
+        _apply_delay_with_queue(self, seconds)
 
     def _reset_store(self) -> None:
         self._drivers = {}
@@ -2735,10 +2896,7 @@ class ChampionshipPredictionCoordinator(
             self.async_set_updated_data(self._state)
 
     def _schedule_deliver(self) -> None:
-        delay = 0 if self._replay_mode else self._delay
-        self._deliver_handle = _schedule_deliver_handle(
-            self.hass.loop, self._deliver_handle, delay, self._deliver
-        )
+        self._deliver()
 
     @staticmethod
     def _deep_merge(dst: dict[str, Any], src: dict[str, Any]) -> dict[str, Any]:
@@ -2938,11 +3096,16 @@ class ChampionshipPredictionCoordinator(
         bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
         with suppress(Exception):
             self._unsubs.append(
-                bus.subscribe("ChampionshipPrediction", self._on_bus_message)  # type: ignore[attr-defined]
-            )
+                bus.subscribe(
+                    "ChampionshipPrediction",
+                    _wrap_delayed_handler(self, self._on_bus_message),
+                )
+            )  # type: ignore[attr-defined]
         with suppress(Exception):
             self._unsubs.append(
-                bus.subscribe("DriverList", self._on_driverlist)  # type: ignore[attr-defined]
+                bus.subscribe(
+                    "DriverList", _wrap_delayed_handler(self, self._on_driverlist)
+                )  # type: ignore[attr-defined]
             )
 
 
@@ -3009,6 +3172,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._bus = bus
         self._unsubs: list[Callable[[], None]] = []
         self._delay_listener: Callable[[], None] | None = None
+        _init_delayed_ingest_state(self)
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         if delay_controller is not None:
@@ -3046,6 +3210,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._live_state_unsub()
             self._live_state_unsub = None
+        _close_delayed_ingest_state(self)
 
     async def _async_update_data(self):
         return self._state
@@ -3496,18 +3661,19 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             self._schedule_deliver()
 
     def set_delay(self, seconds: int) -> None:
-        _apply_delay_simple(self, seconds)
+        _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
-            self._deliver_handle = _cancel_handle(self._deliver_handle)
+            _clear_delayed_ingest_state(self)
         self.available = is_live
         if not is_live:
             # Clear consolidated state so a future session window does not briefly
             # show stale driver/timing information before the first live frames.
+            _clear_delayed_ingest_state(self)
             with suppress(Exception):
                 self._state = {
                     "drivers": {},
@@ -4181,10 +4347,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self.async_set_updated_data(self._state)
 
     def _schedule_deliver(self) -> None:
-        delay = 0 if self._replay_mode else self._delay
-        self._deliver_handle = _schedule_deliver_handle(
-            self.hass.loop, self._deliver_handle, delay, self._deliver
-        )
+        self._deliver()
 
     def _on_driverlist(self, dl: dict) -> None:
         # Allow DriverList merges even when frozen so identity mapping remains available
@@ -4327,26 +4490,56 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             bus = None
         if bus is not None:
             with suppress(Exception):
-                self._unsubs.append(bus.subscribe("DriverList", self._on_driverlist))
-            with suppress(Exception):
-                self._unsubs.append(bus.subscribe("TimingData", self._on_timingdata))
-            with suppress(Exception):
-                self._unsubs.append(bus.subscribe("TimingAppData", self._on_timingapp))
-            with suppress(Exception):
                 self._unsubs.append(
-                    bus.subscribe("TyreStintSeries", self._on_tyre_stints)
+                    bus.subscribe(
+                        "DriverList", _wrap_delayed_handler(self, self._on_driverlist)
+                    )
                 )
             with suppress(Exception):
-                self._unsubs.append(bus.subscribe("LapCount", self._on_lapcount))
-            with suppress(Exception):
                 self._unsubs.append(
-                    bus.subscribe("SessionStatus", self._on_sessionstatus)
+                    bus.subscribe(
+                        "TimingData", _wrap_delayed_handler(self, self._on_timingdata)
+                    )
                 )
             with suppress(Exception):
-                self._unsubs.append(bus.subscribe("LapHistory", self._on_lap_history))
+                self._unsubs.append(
+                    bus.subscribe(
+                        "TimingAppData",
+                        _wrap_delayed_handler(self, self._on_timingapp),
+                    )
+                )
             with suppress(Exception):
                 self._unsubs.append(
-                    bus.subscribe("DriverRaceInfo", self._on_driver_race_info)
+                    bus.subscribe(
+                        "TyreStintSeries",
+                        _wrap_delayed_handler(self, self._on_tyre_stints),
+                    )
+                )
+            with suppress(Exception):
+                self._unsubs.append(
+                    bus.subscribe(
+                        "LapCount", _wrap_delayed_handler(self, self._on_lapcount)
+                    )
+                )
+            with suppress(Exception):
+                self._unsubs.append(
+                    bus.subscribe(
+                        "SessionStatus",
+                        _wrap_delayed_handler(self, self._on_sessionstatus),
+                    )
+                )
+            with suppress(Exception):
+                self._unsubs.append(
+                    bus.subscribe(
+                        "LapHistory", _wrap_delayed_handler(self, self._on_lap_history)
+                    )
+                )
+            with suppress(Exception):
+                self._unsubs.append(
+                    bus.subscribe(
+                        "DriverRaceInfo",
+                        _wrap_delayed_handler(self, self._on_driver_race_info),
+                    )
                 )
             with suppress(Exception):
                 self._unsubs.append(bus.subscribe("TrackStatus", self._on_trackstatus))
@@ -5256,6 +5449,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._live_state_unsub()
             self._live_state_unsub = None
+        _close_delayed_ingest_state(self)
 
     async def _async_update_data(self):
         return self._last_message
@@ -5454,10 +5648,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        delay = 0 if self._replay_mode else self._delay
-        self._deliver_handle = _schedule_message_delivery(
-            self.hass.loop, self._deliver_handle, delay, self._deliver, msg
-        )
+        self._deliver(msg)
 
     @staticmethod
     def _parse_message(data):
@@ -5495,21 +5686,24 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         try:
             self._unsub = (
                 self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe("SessionStatus", self._on_bus_message)  # type: ignore[attr-defined]
+            ).subscribe(
+                "SessionStatus", _wrap_delayed_handler(self, self._on_bus_message)
+            )  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
     def set_delay(self, seconds: int) -> None:
-        _apply_delay_simple(self, seconds)
+        _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
-            self._deliver_handle = _cancel_handle(self._deliver_handle)
+            _clear_delayed_ingest_state(self)
         self.available = is_live
         if not is_live:
+            _clear_delayed_ingest_state(self)
             self._last_message = None
             self.data_list = []
             # Notify entities to clear their state
@@ -5571,10 +5765,8 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         if reason == "init":
             return
         self._replay_mode = _is_replay_delay_reason(reason)
-        if self._replay_mode and self._deliver_handle:
-            with suppress(Exception):
-                self._deliver_handle.cancel()
-            self._deliver_handle = None
+        if self._replay_mode:
+            _clear_delayed_ingest_state(self)
         self.available = is_live
         # Note: For replay mode, we don't schedule deliver here.
         # The inject_message call will handle delivery with the correct initial state.
@@ -5583,6 +5775,7 @@ class TopThreeCoordinator(DataUpdateCoordinator):
                 "TopThree: replay mode activated, waiting for initial state injection"
             )
         if not is_live:
+            _clear_delayed_ingest_state(self)
             with suppress(Exception):
                 self._state = {
                     "withheld": None,
@@ -5593,13 +5786,10 @@ class TopThreeCoordinator(DataUpdateCoordinator):
                 self.async_set_updated_data(self._state)
 
     def set_delay(self, seconds: int) -> None:
-        _apply_delay_simple(self, seconds)
+        _apply_delay_with_queue(self, seconds)
 
     def _schedule_deliver(self) -> None:
-        delay = 0 if self._replay_mode else self._delay
-        self._deliver_handle = _schedule_deliver_handle(
-            self.hass.loop, self._deliver_handle, delay, self._deliver
-        )
+        self._deliver()
 
     def _merge_topthree(self, payload: dict) -> None:
         """Merge a TopThree payload (full snapshot or partial delta) into state."""
@@ -5706,7 +5896,9 @@ class TopThreeCoordinator(DataUpdateCoordinator):
             bus = None
         if bus is not None:
             try:
-                self._unsub = bus.subscribe("TopThree", self._on_bus_message)
+                self._unsub = bus.subscribe(
+                    "TopThree", _wrap_delayed_handler(self, self._on_bus_message)
+                )
             except Exception:
                 self._unsub = None
 
@@ -5753,21 +5945,7 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        delay = 0 if self._replay_mode else self._delay
-        if delay > 0:
-            with suppress(Exception):
-                if self._deliver_handle:
-                    self._deliver_handle.cancel()
-            self._deliver_handle = self.hass.loop.call_later(
-                delay, lambda m=msg: self._deliver(m)
-            )
-        else:
-            with suppress(Exception):
-                if self._deliver_handle:
-                    self._deliver_handle.cancel()
-            self._deliver_handle = self.hass.loop.call_soon(
-                lambda m=msg: self._deliver(m)
-            )
+        self._deliver(msg)
 
     @staticmethod
     def _parse_message(data):
@@ -5807,21 +5985,24 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         try:
             self._unsub = (
                 self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe("SessionInfo", self._on_bus_message)  # type: ignore[attr-defined]
+            ).subscribe(
+                "SessionInfo", _wrap_delayed_handler(self, self._on_bus_message)
+            )  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
     def set_delay(self, seconds: int) -> None:
-        _apply_delay_simple(self, seconds)
+        _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
-            self._deliver_handle = _cancel_handle(self._deliver_handle)
+            _clear_delayed_ingest_state(self)
         self.available = is_live
         if not is_live:
+            _clear_delayed_ingest_state(self)
             self._last_message = None
             self.data_list = []
             # Notify entities to clear their state
@@ -6062,13 +6243,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
                     self._race_start_utc = utc
 
     def _schedule_deliver(self) -> None:
-        delay = 0 if self._replay_mode else self._delay
-        self._deliver_handle = _schedule_deliver_handle(
-            self.hass.loop,
-            self._deliver_handle,
-            delay,
-            self._deliver,
-        )
+        self._deliver()
 
     def _server_now_utc(self) -> datetime:
         if (
@@ -6079,9 +6254,6 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             now_utc = self._last_heartbeat_utc + timedelta(seconds=elapsed)
         else:
             now_utc = dt_util.utcnow()
-        delay_seconds = 0 if self._replay_mode else max(0, int(self._delay or 0))
-        if delay_seconds > 0:
-            now_utc = now_utc - timedelta(seconds=delay_seconds)
         return now_utc
 
     def _current_live_window(self):
@@ -6564,7 +6736,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             ("SessionData", self._on_session_data),
         ):
             with suppress(Exception):
-                unsubs.append(bus.subscribe(stream, callback))
+                unsubs.append(bus.subscribe(stream, _wrap_delayed_handler(self, callback)))
         if not unsubs:
             self._unsub = None
             return
@@ -6578,16 +6750,17 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         self._unsub = _unsub_all
 
     def set_delay(self, seconds: int) -> None:
-        _apply_delay_simple(self, seconds)
+        _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
-            self._deliver_handle = _cancel_handle(self._deliver_handle)
+            _clear_delayed_ingest_state(self)
         self.available = is_live
         if not is_live:
+            _clear_delayed_ingest_state(self)
             self._stop_tick()
             self._reset_runtime()
             self._state = self._empty_state()
