@@ -2272,6 +2272,8 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_native_value = None
+        self._session_status_coordinator = None
+        self._forced_unavailable = False
         # Advertise as enum sensor so HA UI can suggest valid states
         try:
             self._attr_device_class = SensorDeviceClass.ENUM
@@ -2288,12 +2290,17 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        self._session_status_coordinator = reg.get("session_status_coordinator")
         # Prefer coordinator's latest if present, otherwise restore last state
         raw = self._extract_current()
         initial = self._normalize(raw)
         updated = raw is not None
-        if initial is not None:
+        if self._session_is_terminal():
+            self._clear_state()
+        elif initial is not None:
             self._attr_native_value = initial
+            self._forced_unavailable = False
             with suppress(Exception):
                 from logging import getLogger
 
@@ -2317,6 +2324,11 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         # Listen for coordinator pushes
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
+        if self._session_status_coordinator is not None:
+            status_removal = self._session_status_coordinator.async_add_listener(
+                self._handle_session_status_update
+            )
+            self.async_on_remove(status_removal)
         self.async_write_ha_state()
 
     def _normalize(self, raw: dict | None) -> str | None:
@@ -2356,8 +2368,39 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         # Return stored value so restored/initialized state is honored until an update arrives
         return self._attr_native_value
 
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        return not self._forced_unavailable
+
+    def _session_is_terminal(self) -> bool:
+        payload = getattr(self._session_status_coordinator, "data", None)
+        is_qualifying_like, qualifying_part = _session_status_mapping_context(
+            self._session_status_coordinator
+        )
+        mapped = _map_session_status_payload(
+            payload,
+            self.hass,
+            is_qualifying_like=is_qualifying_like,
+            qualifying_part=qualifying_part,
+        )
+        return mapped in {"finished", "finalised", "ended"}
+
+    def _handle_session_status_update(self) -> None:
+        if not self._session_is_terminal():
+            return
+        if self._forced_unavailable:
+            return
+        self._clear_state()
+        self.async_write_ha_state()
+
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
+        if self._session_is_terminal():
+            self._clear_state()
+            self.async_write_ha_state()
+            return
         updated = raw is not None
         if not self._handle_stream_state(updated):
             return
@@ -2380,6 +2423,7 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 new_state,
             )
         self._attr_native_value = new_state
+        self._forced_unavailable = False
         self.async_write_ha_state()
 
     @property
@@ -2388,6 +2432,7 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _clear_state(self) -> None:
         self._attr_native_value = None
+        self._forced_unavailable = True
 
 
 class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):

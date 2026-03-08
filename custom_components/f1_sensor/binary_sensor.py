@@ -37,6 +37,35 @@ from .helpers import get_next_race, normalize_track_status
 _LOGGER = logging.getLogger(__name__)
 
 
+def _session_status_mapping_context(coordinator: Any) -> tuple[bool, int | None]:
+    """Return qualifying context used for semantic terminal checks."""
+    is_qualifying_like = bool(getattr(coordinator, "is_qualifying_like_session", False))
+    qualifying_part = getattr(coordinator, "qualifying_part", None)
+    try:
+        if qualifying_part is not None:
+            qualifying_part = int(qualifying_part)
+    except (TypeError, ValueError):
+        qualifying_part = None
+    return is_qualifying_like, qualifying_part
+
+
+def _is_semantic_terminal_session(
+    payload: dict[str, Any] | None, coordinator: Any = None
+) -> bool:
+    """Return True only when the live session has actually ended."""
+    if not isinstance(payload, dict):
+        return False
+
+    status = str(payload.get("Status") or payload.get("Message") or "").strip()
+    if status == "Finished":
+        is_qualifying_like, qualifying_part = _session_status_mapping_context(
+            coordinator
+        )
+        return not (is_qualifying_like and qualifying_part in (1, 2))
+
+    return status in {"Finalised", "Ends"}
+
+
 def _normalize_race_week_start(data: dict) -> str:
     value = data.get(CONF_RACE_WEEK_START_DAY)
     if value in (
@@ -218,14 +247,26 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
         self._attr_is_on = False
         self._attr_extra_state_attributes = {}
         self._last_ts: datetime.datetime | None = None
+        self._session_status_coordinator = None
+        self._forced_unavailable = False
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        self.coordinator.async_add_listener(self._handle_coordinator_update)
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        self._session_status_coordinator = reg.get("session_status_coordinator")
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        if self._session_status_coordinator is not None:
+            status_removal = self._session_status_coordinator.async_add_listener(
+                self._handle_session_status_update
+            )
+            self.async_on_remove(status_removal)
         # Prefer coordinator's latest if present
-        payload, ts = self._extract_payload()
+        payload, _ = self._extract_payload()
         updated = payload is not None
-        if payload is not None:
+        if self._session_is_terminal():
+            self._clear_state()
+        elif payload is not None:
             self._update_from_track_status()
         else:
             if self._is_stream_active():
@@ -237,6 +278,7 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
                         **(self._attr_extra_state_attributes or {}),
                         "restored": True,
                     }
+                    self._forced_unavailable = False
             else:
                 self._clear_state()
         self._handle_stream_state(updated)
@@ -291,11 +333,28 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
         )
         self._attr_is_on = is_on
         self._attr_extra_state_attributes = {"track_status": state}
+        self._forced_unavailable = False
         if ts:
             self._last_ts = ts
 
+    def _session_is_terminal(self) -> bool:
+        payload = getattr(self._session_status_coordinator, "data", None)
+        return _is_semantic_terminal_session(payload, self._session_status_coordinator)
+
+    def _handle_session_status_update(self) -> None:
+        if not self._session_is_terminal():
+            return
+        if self._forced_unavailable:
+            return
+        self._clear_state()
+        self.async_write_ha_state()
+
     def _handle_coordinator_update(self) -> None:
         payload, _ = self._extract_payload()
+        if self._session_is_terminal():
+            self._clear_state()
+            self.async_write_ha_state()
+            return
         updated = payload is not None
         if not self._handle_stream_state(updated):
             return
@@ -311,10 +370,17 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         return self._attr_is_on
 
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        return not self._forced_unavailable
+
     def _clear_state(self) -> None:
         self._attr_is_on = False
         self._attr_extra_state_attributes = {}
         self._last_ts = None
+        self._forced_unavailable = True
 
 
 class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):

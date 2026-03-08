@@ -13,6 +13,7 @@ from custom_components.f1_sensor import LiveModeCoordinator
 from custom_components.f1_sensor.binary_sensor import (
     F1FormationStartBinarySensor,
     F1OvertakeModeBinarySensor,
+    F1SafetyCarBinarySensor,
 )
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
@@ -22,7 +23,7 @@ from custom_components.f1_sensor.const import (
     STRAIGHT_MODE_LOW,
 )
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
-from custom_components.f1_sensor.sensor import F1StraightModeSensor
+from custom_components.f1_sensor.sensor import F1StraightModeSensor, F1TrackStatusSensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +87,16 @@ def _build_coordinator(hass, data: dict | None) -> DataUpdateCoordinator:
     coordinator.data = data
     coordinator.available = True
     return coordinator
+
+
+def _set_status_context(
+    coordinator: DataUpdateCoordinator,
+    *,
+    is_qualifying_like: bool = False,
+    qualifying_part: int | None = None,
+) -> None:
+    coordinator.is_qualifying_like_session = is_qualifying_like
+    coordinator.qualifying_part = qualifying_part
 
 
 async def _add_entity_and_get_state(hass, domain: str, entity):
@@ -520,3 +531,198 @@ async def test_formation_start_turns_off_once_session_goes_live(hass) -> None:
     after = hass.states.get(entity.entity_id)
     assert after is not None
     assert after.state == "off"
+
+
+@pytest.mark.asyncio
+async def test_safety_car_turns_on_for_vsc_track_status(hass) -> None:
+    entry_id = "test_entry"
+    status_coordinator = _build_coordinator(hass, {"Status": "Started"})
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": _LiveState(True),
+        "session_status_coordinator": status_coordinator,
+    }
+    coordinator = _build_coordinator(hass, {"Status": "6", "Message": "VSCDeployed"})
+    entity = F1SafetyCarBinarySensor(
+        coordinator,
+        f"{entry_id}_safety_car",
+        entry_id,
+        "F1",
+    )
+
+    state = await _add_entity_and_get_state(hass, "binary_sensor", entity)
+
+    assert state.state == "on"
+    assert state.attributes["track_status"] == "VSC"
+
+
+@pytest.mark.asyncio
+async def test_safety_car_clears_when_session_becomes_terminal(hass) -> None:
+    entry_id = "test_entry"
+    status_coordinator = _build_coordinator(hass, {"Status": "Started"})
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": _LiveState(True),
+        "session_status_coordinator": status_coordinator,
+    }
+    coordinator = _build_coordinator(hass, {"Status": "6", "Message": "VSCDeployed"})
+    entity = F1SafetyCarBinarySensor(
+        coordinator,
+        f"{entry_id}_safety_car",
+        entry_id,
+        "F1",
+    )
+
+    initial = await _add_entity_and_get_state(hass, "binary_sensor", entity)
+    assert initial.state == "on"
+
+    status_coordinator.async_set_updated_data({"Status": "Finalised"})
+    await hass.async_block_till_done()
+
+    after = hass.states.get(entity.entity_id)
+    assert after is not None
+    assert after.state == STATE_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_safety_car_does_not_restore_when_session_is_terminal(hass) -> None:
+    entry_id = "test_entry"
+    status_coordinator = _build_coordinator(hass, {"Status": "Finalised"})
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": _LiveState(True),
+        "session_status_coordinator": status_coordinator,
+    }
+    coordinator = _build_coordinator(hass, None)
+    entity = F1SafetyCarBinarySensor(
+        coordinator,
+        f"{entry_id}_safety_car",
+        entry_id,
+        "F1",
+    )
+    entity.async_get_last_state = AsyncMock(
+        return_value=State("binary_sensor.f1_safety_car", "on", {"track_status": "VSC"})
+    )
+
+    state = await _add_entity_and_get_state(hass, "binary_sensor", entity)
+
+    assert state.state == STATE_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_safety_car_keeps_state_during_qualifying_break(hass) -> None:
+    entry_id = "test_entry"
+    status_coordinator = _build_coordinator(hass, {"Status": "Started"})
+    _set_status_context(
+        status_coordinator,
+        is_qualifying_like=True,
+        qualifying_part=2,
+    )
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": _LiveState(True),
+        "session_status_coordinator": status_coordinator,
+    }
+    coordinator = _build_coordinator(hass, {"Status": "6", "Message": "VSCDeployed"})
+    entity = F1SafetyCarBinarySensor(
+        coordinator,
+        f"{entry_id}_safety_car",
+        entry_id,
+        "F1",
+    )
+
+    initial = await _add_entity_and_get_state(hass, "binary_sensor", entity)
+    assert initial.state == "on"
+
+    status_coordinator.async_set_updated_data({"Status": "Finished"})
+    await hass.async_block_till_done()
+
+    after = hass.states.get(entity.entity_id)
+    assert after is not None
+    assert after.state == "on"
+
+
+@pytest.mark.asyncio
+async def test_track_status_restores_active_state_when_stream_active(hass) -> None:
+    entry_id = "test_entry"
+    status_coordinator = _build_coordinator(hass, {"Status": "Started"})
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": _LiveState(True),
+        "session_status_coordinator": status_coordinator,
+    }
+    coordinator = _build_coordinator(hass, None)
+    entity = F1TrackStatusSensor(
+        coordinator,
+        f"{entry_id}_track_status",
+        entry_id,
+        "F1",
+    )
+    entity.async_get_last_state = AsyncMock(
+        return_value=State("sensor.f1_track_status", "VSC", {})
+    )
+
+    state = await _add_entity_and_get_state(hass, "sensor", entity)
+
+    assert state.state == "VSC"
+
+
+@pytest.mark.asyncio
+async def test_track_status_clears_when_session_becomes_terminal(hass) -> None:
+    entry_id = "test_entry"
+    status_coordinator = _build_coordinator(hass, {"Status": "Started"})
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": _LiveState(True),
+        "session_status_coordinator": status_coordinator,
+    }
+    coordinator = _build_coordinator(hass, {"Status": "6", "Message": "VSCDeployed"})
+    entity = F1TrackStatusSensor(
+        coordinator,
+        f"{entry_id}_track_status",
+        entry_id,
+        "F1",
+    )
+
+    initial = await _add_entity_and_get_state(hass, "sensor", entity)
+    assert initial.state == "VSC"
+
+    status_coordinator.async_set_updated_data({"Status": "Finalised"})
+    await hass.async_block_till_done()
+
+    after = hass.states.get(entity.entity_id)
+    assert after is not None
+    assert after.state == STATE_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_track_status_keeps_state_during_qualifying_break(hass) -> None:
+    entry_id = "test_entry"
+    status_coordinator = _build_coordinator(hass, {"Status": "Started"})
+    _set_status_context(
+        status_coordinator,
+        is_qualifying_like=True,
+        qualifying_part=1,
+    )
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": _LiveState(True),
+        "session_status_coordinator": status_coordinator,
+    }
+    coordinator = _build_coordinator(hass, {"Status": "6", "Message": "VSCDeployed"})
+    entity = F1TrackStatusSensor(
+        coordinator,
+        f"{entry_id}_track_status",
+        entry_id,
+        "F1",
+    )
+
+    initial = await _add_entity_and_get_state(hass, "sensor", entity)
+    assert initial.state == "VSC"
+
+    status_coordinator.async_set_updated_data({"Status": "Finished"})
+    await hass.async_block_till_done()
+
+    after = hass.states.get(entity.entity_id)
+    assert after is not None
+    assert after.state == "VSC"
