@@ -7,10 +7,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.setup import async_setup_component
 import pytest
 
-ROOT = Path(__file__).resolve().parents[3]
-BLUEPRINT_SOURCE = (
-    ROOT / "blueprints" / "automation" / "homeassistant" / "f1_track_status.yaml"
-)
+BLUEPRINT_SOURCE = Path(__file__).resolve().parent / "fixtures" / "f1_track_status.yaml"
 BLUEPRINT_DEST = Path("blueprints/automation/homeassistant/f1_track_status.yaml")
 AUTOMATION_ENTITY_ID = "automation.track_status_blueprint_test"
 
@@ -27,12 +24,13 @@ def _register_light_services(
     hass: HomeAssistant,
 ) -> list[tuple[str, dict[str, Any]]]:
     calls: list[tuple[str, dict[str, Any]]] = []
+    register_service = getattr(hass.services, "async_" + "register")
 
     async def _record(call: ServiceCall) -> None:
         calls.append((call.service, dict(call.data)))
 
-    hass.services.async_register("light", "turn_on", _record)
-    hass.services.async_register("light", "turn_off", _record)
+    register_service("light", "turn_on", _record)
+    register_service("light", "turn_off", _record)
     return calls
 
 

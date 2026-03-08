@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -148,31 +146,76 @@ async def test_australian_race_replay_keeps_fastest_lap_and_tyre_stats_in_sync(
     hass,
 ) -> None:
     coord = _make_coord(hass)
-    base = Path(
-        "/Volumes/config/f1_replay_cache/2026-03-06_Australian_Grand_Prix/2026-03-08_Race"
-    )
-    entries: list[tuple[str, str, dict]] = []
-
-    for file_name, kind in (
-        ("DriverList.txt", "driverlist"),
-        ("TyreStintSeries.txt", "stints"),
-        ("TimingAppData.txt", "timingapp"),
-        ("TimingData.txt", "timingdata"),
-    ):
-        for raw in (base / file_name).read_text(encoding="utf-8").splitlines():
-            timestamp = raw[:12]
-            payload = raw[12:].strip()
-            if payload.startswith("{"):
-                entries.append((timestamp, kind, json.loads(payload)))
-
-    entries.sort(key=lambda item: item[0])
+    entries: list[tuple[str, str, dict]] = [
+        (
+            "01:12:27.027",
+            "timingdata",
+            {"Lines": {"3": {"Sectors": {"2": {"Segments": {"5": {"Status": 2048}}}}}}},
+        ),
+        (
+            "01:12:27.587",
+            "stints",
+            {
+                "Stints": {
+                    "16": {"0": {"Compound": "MEDIUM", "New": "true"}},
+                    "12": {"0": {"Compound": "MEDIUM", "New": "true"}},
+                }
+            },
+        ),
+        (
+            "01:12:27.587",
+            "timingapp",
+            {
+                "Lines": {
+                    "12": {"Stints": {"0": {"LapTime": "1:23.835", "LapNumber": 7}}}
+                }
+            },
+        ),
+        (
+            "01:12:27.587",
+            "timingdata",
+            {
+                "Lines": {
+                    "16": {
+                        "NumberOfLaps": 5,
+                        "LastLapTime": {"Value": "1:23.981", "PersonalFastest": True},
+                        "BestLapTime": {"Value": "1:23.981", "Lap": 5},
+                    },
+                    "12": {
+                        "NumberOfLaps": 7,
+                        "Sectors": {"2": {"Value": "36.246"}},
+                        "LastLapTime": {"Value": "1:23.835", "PersonalFastest": False},
+                    },
+                }
+            },
+        ),
+        (
+            "01:12:27.624",
+            "timingapp",
+            {"Lines": {"12": {"Stints": {"0": {"LapFlags": 3}}}}},
+        ),
+        (
+            "01:12:27.624",
+            "timingdata",
+            {
+                "Lines": {
+                    "12": {
+                        "Sectors": {
+                            "2": {"OverallFastest": True, "PersonalFastest": True}
+                        },
+                        "BestLapTime": {"Value": "1:23.835", "Lap": 7},
+                        "LastLapTime": {
+                            "OverallFastest": True,
+                            "PersonalFastest": True,
+                        },
+                    }
+                }
+            },
+        ),
+    ]
 
     for timestamp, kind, payload in entries:
-        if timestamp > "01:12:27.624":
-            break
-        if kind == "driverlist":
-            coord._merge_driverlist(payload)
-        elif kind == "stints":
+        if kind == "stints":
             coord._merge_tyre_stints(payload)
         elif kind == "timingapp":
             coord._merge_timingapp(payload)
