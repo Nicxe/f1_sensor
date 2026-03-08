@@ -59,6 +59,9 @@
         }
       }
     },
+    "abort": {
+      "reconfigure_successful": "F1 Sensor was successfully reconfigured."
+    }
     "error": {
       "replay_required": "Select a replay dump file when Development mode is enabled.",
       "replay_missing": "Replay dump file not found or unreadable."
