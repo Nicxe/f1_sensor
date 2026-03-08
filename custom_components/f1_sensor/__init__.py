@@ -5044,11 +5044,17 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             assembled_races.sort(
                 key=lambda r: (str(r.get("season")), int(str(r.get("round") or 0)))
             )
-            if total > 0 and len(assembled_races) < total:
+            # Warn only if pagination was cut short by the safety cap, meaning
+            # some result rows were not fetched. Note: `total` counts individual
+            # driver-race result rows, not races, so comparing len(assembled_races)
+            # to total would be a false positive whenever there are fewer races
+            # than classified finishers per race.
+            if safety >= max_loops and next_offset < total:
                 _LOGGER.warning(
-                    "Season results pagination incomplete: expected %s races, got %s",
+                    "Season results pagination incomplete: safety cap reached "
+                    "at offset %s, total reported as %s",
+                    next_offset,
                     total,
-                    len(assembled_races),
                 )
             result = {
                 "MRData": {
