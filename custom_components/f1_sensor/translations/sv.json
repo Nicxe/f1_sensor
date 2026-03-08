@@ -102,9 +102,6 @@
       "race_control": {
         "name": "Tävlingskontroll"
       },
-      "safety_car": {
-        "name": "Säkerhetsbil"
-      },
       "top_three_p1": {
         "name": "Topp tre (P1)"
       },
@@ -247,6 +244,9 @@
       },
       "live_timing_online": {
         "name": "Live timing online"
+      },
+      "safety_car": {
+        "name": "Säkerhetsbil"
       },
       "formation_start": {
         "name": "Formationsstart"
