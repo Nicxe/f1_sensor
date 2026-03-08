@@ -2036,9 +2036,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
         try:
             self._unsub = (
                 self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe(
-                "LapCount", _wrap_delayed_handler(self, self._on_bus_message)
-            )  # type: ignore[attr-defined]
+            ).subscribe("LapCount", _wrap_delayed_handler(self, self._on_bus_message))  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -2280,9 +2278,7 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         try:
             self._unsub = (
                 self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe(
-                "TeamRadio", _wrap_delayed_handler(self, self._on_bus_message)
-            )  # type: ignore[attr-defined]
+            ).subscribe("TeamRadio", _wrap_delayed_handler(self, self._on_bus_message))  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
 
@@ -2581,7 +2577,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                     "PitStopSeries",
                     _wrap_delayed_handler(self, self._on_bus_pitstopseries),
                 )
-            )  # type: ignore[attr-defined]
+            )
         if self._drivers_coord is not None:
             try:
                 self._drivers_unsub = self._drivers_coord.async_add_listener(
@@ -3100,12 +3096,12 @@ class ChampionshipPredictionCoordinator(
                     "ChampionshipPrediction",
                     _wrap_delayed_handler(self, self._on_bus_message),
                 )
-            )  # type: ignore[attr-defined]
+            )
         with suppress(Exception):
             self._unsubs.append(
                 bus.subscribe(
                     "DriverList", _wrap_delayed_handler(self, self._on_driverlist)
-                )  # type: ignore[attr-defined]
+                )
             )
 
 
@@ -4542,7 +4538,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     )
                 )
             with suppress(Exception):
-                self._unsubs.append(bus.subscribe("TrackStatus", self._on_trackstatus))
+                self._unsubs.append(
+                    bus.subscribe(
+                        "TrackStatus", _wrap_delayed_handler(self, self._on_trackstatus)
+                    )
+                )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -5449,7 +5449,6 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._live_state_unsub()
             self._live_state_unsub = None
-        _close_delayed_ingest_state(self)
 
     async def _async_update_data(self):
         return self._last_message
@@ -6013,6 +6012,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
     """Coordinator deriving official timer values from live timing clock streams."""
 
     _FINAL_STATES = frozenset({"Finalised", "Ends"})
+    _CLOCK_FREEZE_STATES = frozenset({"Finished", "Finalised", "Ends"})
     _ACTIVE_OR_ENDED_STATES = frozenset(
         {"Started", "Resumed", "Inactive", "Aborted", "Finished", "Finalised", "Ends"}
     )
@@ -6092,6 +6092,8 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         self._session_part_event_keys: set[tuple[str, int]] = set()
         self._session_status_events: list[tuple[datetime, str]] = []
         self._session_status_event_keys: set[tuple[str, str]] = set()
+        self._segment_start_utc: dict[int, datetime] = {}
+        self._segment_terminal_utc: dict[int, datetime] = {}
         self._session_start_utc: datetime | None = None
         self._race_start_utc: datetime | None = None
         self._last_heartbeat_utc: datetime | None = None
@@ -6169,7 +6171,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         if "Extrapolating" in msg:
             self._clock_anchor_extrapolating = bool(msg.get("Extrapolating"))
         segment_id = self._segment_id(
-            self._resolve_session_part(self._server_now_utc())
+            self._resolve_session_part_at(anchor_utc or self._server_now_utc())
         )
         self._update_clock_total(segment_id, remaining_s)
         self._schedule_deliver()
@@ -6237,10 +6239,9 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             self._session_status_events.append((utc, status))
             self._session_status_events.sort(key=lambda x: x[0])
             if status == "Started":
-                if self._session_start_utc is None or utc < self._session_start_utc:
-                    self._session_start_utc = utc
-                if self._race_start_utc is None or utc < self._race_start_utc:
-                    self._race_start_utc = utc
+                self._record_segment_start(utc)
+            elif status in self._CLOCK_FREEZE_STATES:
+                self._record_segment_terminal(utc)
 
     def _schedule_deliver(self) -> None:
         self._deliver()
@@ -6393,10 +6394,44 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             return current
         return self._session_part_events[-1][1]
 
+    def _resolve_session_part_at(self, at_utc: datetime) -> int | None:
+        return self._resolve_session_part(at_utc)
+
     def _segment_id(self, part: int | None) -> int:
         if self._is_qualifying_like() and isinstance(part, int) and part > 0:
             return part
         return 0
+
+    def _record_segment_start(self, utc: datetime) -> None:
+        segment_id = self._segment_id(self._resolve_session_part_at(utc))
+        current = self._segment_start_utc.get(segment_id)
+        if current is None or utc < current:
+            self._segment_start_utc[segment_id] = utc
+        terminal_utc = self._segment_terminal_utc.get(segment_id)
+        if terminal_utc is not None and utc > terminal_utc:
+            self._segment_terminal_utc.pop(segment_id, None)
+        if segment_id == 0 and (
+            self._session_start_utc is None or utc < self._session_start_utc
+        ):
+            self._session_start_utc = utc
+        if self._is_main_race() and (
+            self._race_start_utc is None or utc < self._race_start_utc
+        ):
+            self._race_start_utc = utc
+
+    def _record_segment_terminal(self, utc: datetime) -> None:
+        segment_id = self._segment_id(self._resolve_session_part_at(utc))
+        self._segment_terminal_utc.setdefault(segment_id, utc)
+
+    def _segment_start(self, segment_id: int) -> datetime | None:
+        if segment_id in self._segment_start_utc:
+            return self._segment_start_utc[segment_id]
+        if segment_id == 0 and isinstance(self._session_start_utc, datetime):
+            return self._session_start_utc
+        return None
+
+    def _segment_terminal(self, segment_id: int) -> datetime | None:
+        return self._segment_terminal_utc.get(segment_id)
 
     def _session_duration_from_info(self) -> int | None:
         info = self._session_info if isinstance(self._session_info, dict) else {}
@@ -6497,6 +6532,10 @@ class SessionClockCoordinator(DataUpdateCoordinator):
     def _resolve_race_start(self) -> datetime | None:
         if not self._is_main_race():
             return None
+        start_utc = self._segment_start(0)
+        if isinstance(start_utc, datetime):
+            self._race_start_utc = start_utc
+            return start_utc
         if isinstance(self._race_start_utc, datetime):
             return self._race_start_utc
         for ts, status in self._session_status_events:
@@ -6509,25 +6548,24 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         return inferred
 
     def _resolve_session_start(
-        self, clock_total: int | None, clock_remaining: int | None
+        self, segment_id: int, clock_total: int | None, clock_remaining: int | None
     ) -> tuple[datetime | None, str | None]:
-        if isinstance(self._session_start_utc, datetime):
-            return self._session_start_utc, "sessiondata"
-        for ts, status in self._session_status_events:
-            if status != "Started":
-                continue
-            if self._session_start_utc is None or ts < self._session_start_utc:
-                self._session_start_utc = ts
-        if isinstance(self._session_start_utc, datetime):
-            return self._session_start_utc, "sessiondata"
+        segment_start = self._segment_start(segment_id)
+        if isinstance(segment_start, datetime):
+            source = "sessiondata_segment" if segment_id != 0 else "sessiondata"
+            return segment_start, source
 
         if (
-            isinstance(self._clock_anchor_utc, datetime)
+            self._clock_anchor_extrapolating
+            and isinstance(self._clock_anchor_utc, datetime)
             and isinstance(clock_total, int)
             and isinstance(clock_remaining, int)
         ):
             offset = max(0, int(clock_total) - int(clock_remaining))
             return self._clock_anchor_utc - timedelta(seconds=offset), "clock_inferred"
+
+        if clock_total is not None:
+            return None, None
 
         info = self._session_info if isinstance(self._session_info, dict) else {}
         info_start = self._parse_utc(info.get("StartDate"))
@@ -6561,8 +6599,12 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         status = self._current_status(now_utc)
         session_part = self._resolve_session_part(now_utc)
         segment_id = self._segment_id(session_part)
+        freeze_utc = self._segment_terminal(segment_id)
+        clock_now_utc = (
+            min(now_utc, freeze_utc) if isinstance(freeze_utc, datetime) else now_utc
+        )
 
-        clock_remaining = self._clock_remaining_seconds(now_utc)
+        clock_remaining = self._clock_remaining_seconds(clock_now_utc)
         self._set_clock_total_floor(
             segment_id,
             self._default_clock_total(segment_id, clock_remaining),
@@ -6578,32 +6620,26 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         )
 
         session_start_utc, session_start_source = self._resolve_session_start(
+            segment_id,
             clock_total,
             clock_remaining,
         )
         clock_elapsed_from_start: int | None = None
         if isinstance(session_start_utc, datetime):
             allow_start_fallback = (
-                session_start_source in {"sessiondata", "clock_inferred"}
-                or clock_remaining is not None
-                or status in self._ACTIVE_OR_ENDED_STATES
+                session_start_source
+                in {"sessiondata", "sessiondata_segment", "clock_inferred"}
+                or clock_total is None
             )
-            if allow_start_fallback and now_utc >= session_start_utc:
+            if allow_start_fallback and clock_now_utc >= session_start_utc:
                 clock_elapsed_from_start = max(
                     0,
-                    int((now_utc - session_start_utc).total_seconds()),
+                    int((clock_now_utc - session_start_utc).total_seconds()),
                 )
 
         clock_elapsed = clock_elapsed_from_clock
-        if isinstance(clock_elapsed_from_start, int):
-            if session_start_source == "sessiondata":
-                clock_elapsed = (
-                    clock_elapsed_from_start
-                    if clock_elapsed is None
-                    else max(clock_elapsed, clock_elapsed_from_start)
-                )
-            elif clock_elapsed is None:
-                clock_elapsed = clock_elapsed_from_start
+        if clock_elapsed is None and isinstance(clock_elapsed_from_start, int):
+            clock_elapsed = clock_elapsed_from_start
 
         terminal = self._status_is_terminal(status)
         clock_running = bool(
@@ -6639,8 +6675,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             if isinstance(race_start_utc, datetime)
             else None
         )
+        race_now_utc = (
+            min(now_utc, freeze_utc)
+            if isinstance(race_cap_utc, datetime) and isinstance(freeze_utc, datetime)
+            else now_utc
+        )
         race_remaining = (
-            max(0, int((race_cap_utc - now_utc).total_seconds()))
+            max(0, int((race_cap_utc - race_now_utc).total_seconds()))
             if isinstance(race_cap_utc, datetime)
             else None
         )
@@ -6688,8 +6729,15 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         if bool(state.get("clock_running")):
             return True
         status = str(state.get("session_status") or "").strip() or None
+        has_official_clock = isinstance(
+            state.get("clock_remaining_s"), int
+        ) and isinstance(state.get("clock_total_s"), int)
         elapsed = state.get("clock_elapsed_s")
-        if isinstance(elapsed, int) and not self._status_is_terminal(status):
+        if (
+            not has_official_clock
+            and isinstance(elapsed, int)
+            and not self._status_is_terminal(status)
+        ):
             return True
         race_remaining = state.get("race_three_hour_remaining_s")
         return (
@@ -6736,7 +6784,9 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             ("SessionData", self._on_session_data),
         ):
             with suppress(Exception):
-                unsubs.append(bus.subscribe(stream, _wrap_delayed_handler(self, callback)))
+                unsubs.append(
+                    bus.subscribe(stream, _wrap_delayed_handler(self, callback))
+                )
         if not unsubs:
             self._unsub = None
             return
