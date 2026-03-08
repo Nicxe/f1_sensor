@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import STATE_UNAVAILABLE, UnitOfTemperature
@@ -27,6 +29,7 @@ from custom_components.f1_sensor.sensor import (
     F1PitStopsSensor,
     F1SeasonResultsSensor,
     F1SprintResultsSensor,
+    F1TopThreePositionSensor,
     F1WeatherSensor,
 )
 
@@ -200,6 +203,18 @@ def _build_pitstops_data(*, cars: int = 20, stops_per_car: int = 8) -> dict:
         "total_stops": cars * stops_per_car,
         "cars": payload,
         "last_update": "2026-03-01T14:59:00Z",
+    }
+
+
+def _build_top_three_data(*, p1: str, p2: str, p3: str, ts: str) -> dict:
+    return {
+        "withheld": False,
+        "lines": [
+            {"Position": "1", "Tla": p1, "RacingNumber": "1"},
+            {"Position": "2", "Tla": p2, "RacingNumber": "2"},
+            {"Position": "3", "Tla": p3, "RacingNumber": "3"},
+        ],
+        "last_update_ts": ts,
     }
 
 
@@ -454,6 +469,61 @@ async def test_driver_positions_sensor_excludes_drivers_from_recorder(hass) -> N
     shared_attrs, _ = _recorder_shared_attrs(state)
     assert "drivers" not in shared_attrs
     assert "total_laps" in shared_attrs
+
+
+@pytest.mark.asyncio
+async def test_top_three_sensor_rate_limits_to_one_second(hass) -> None:
+    coordinator = _build_coordinator(
+        hass,
+        _build_top_three_data(
+            p1="VER",
+            p2="HAM",
+            p3="NOR",
+            ts="2026-03-08T04:00:00+00:00",
+        ),
+    )
+    entry_id = "test_entry_top_three"
+    _set_entry_context(hass, entry_id, stream_active=True)
+
+    sensor = F1TopThreePositionSensor(
+        coordinator,
+        f"{entry_id}_top_three_p2",
+        entry_id,
+        "F1",
+        position_index=1,
+    )
+    await _add_sensor_and_get_state(hass, sensor)
+
+    writes: list[float] = []
+    sensor._safe_write_ha_state = lambda *_args: writes.append(time.monotonic())
+
+    coordinator.async_set_updated_data(
+        _build_top_three_data(
+            p1="VER",
+            p2="LEC",
+            p3="NOR",
+            ts="2026-03-08T04:00:01+00:00",
+        )
+    )
+    await hass.async_block_till_done()
+    assert len(writes) == 1
+
+    coordinator.async_set_updated_data(
+        _build_top_three_data(
+            p1="VER",
+            p2="RUS",
+            p3="NOR",
+            ts="2026-03-08T04:00:02+00:00",
+        )
+    )
+    await hass.async_block_till_done()
+    assert len(writes) == 1
+
+    await asyncio.sleep(1.2)
+    await hass.async_block_till_done()
+
+    assert len(writes) == 2
+    assert sensor.native_value == "RUS"
 
 
 @pytest.mark.asyncio

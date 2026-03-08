@@ -2398,6 +2398,7 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """
 
     _device_category = "drivers"
+    _WRITE_CAP_SECONDS = 1.0
 
     def __init__(
         self,
@@ -2418,6 +2419,8 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self._attr_icon = "mdi:trophy-outline"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
+        self._last_write_ts: float | None = None
+        self._pending_write: bool = False
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -2606,20 +2609,25 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 prev_state,
                 self._attr_native_value,
             )
-        # Rate-limita skrivningar till max var 5:e sekund
+        # Rate-limit writes so dense TopThree deltas stay responsive without
+        # writing every intermediate frame to Home Assistant state.
         try:
             import time as _time
 
             lw = getattr(self, "_last_write_ts", None)
             now = _time.time()
-            if lw is None or (now - lw) >= 5.0:
+            if lw is None or (now - lw) >= self._WRITE_CAP_SECONDS:
                 self._last_write_ts = now
                 self._safe_write_ha_state()
             else:
                 pending = getattr(self, "_pending_write", False)
                 if not pending:
                     self._pending_write = True
-                    delay = max(0.0, 5.0 - (now - lw)) if lw is not None else 5.0
+                    delay = (
+                        max(0.0, self._WRITE_CAP_SECONDS - (now - lw))
+                        if lw is not None
+                        else self._WRITE_CAP_SECONDS
+                    )
 
                     def _do_write(_):
                         try:
