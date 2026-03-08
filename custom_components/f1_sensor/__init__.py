@@ -5664,8 +5664,16 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        self._context_unsubs: list[Callable[[], None]] = []
+        self.is_qualifying_like_session = False
+        self.qualifying_part: int | None = None
 
     async def async_close(self, *_):
+        if self._context_unsubs:
+            for unsub in self._context_unsubs:
+                with suppress(Exception):
+                    unsub()
+            self._context_unsubs = []
         if self._unsub:
             with suppress(Exception):
                 self._unsub()
@@ -5690,6 +5698,56 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         if not isinstance(msg, dict):
             return
         self._deliver(msg)
+
+    @staticmethod
+    def _iter_series_items(value: Any) -> list[dict[str, Any]]:
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        if isinstance(value, dict):
+            result: list[dict[str, Any]] = []
+            try:
+                keys = sorted(
+                    value.keys(),
+                    key=lambda k: int(k) if str(k).isdigit() else str(k),
+                )
+            except Exception:
+                keys = list(value.keys())
+            for key in keys:
+                item = value.get(key)
+                if isinstance(item, dict):
+                    result.append(item)
+            return result
+        return []
+
+    @staticmethod
+    def _is_qualifying_like_session(payload: dict[str, Any]) -> bool:
+        session_type = str(payload.get("Type") or "").strip().lower()
+        session_name = str(payload.get("Name") or "").strip().lower()
+        return (
+            session_type == "qualifying"
+            or "qualifying" in session_name
+            or "shootout" in session_name
+        )
+
+    def _on_session_info_context(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        self.is_qualifying_like_session = self._is_qualifying_like_session(msg)
+
+    def _on_session_data_context(self, msg: dict) -> None:
+        if not isinstance(msg, dict):
+            return
+        latest_part: int | None = None
+        for item in self._iter_series_items(msg.get("Series")):
+            part_raw = item.get("QualifyingPart")
+            if part_raw is None:
+                continue
+            try:
+                latest_part = int(part_raw)
+            except (TypeError, ValueError):
+                continue
+        if latest_part is not None:
+            self.qualifying_part = latest_part
 
     @staticmethod
     def _parse_message(data):
@@ -5725,13 +5783,27 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         try:
-            self._unsub = (
-                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe(
+            bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            self._unsub = bus.subscribe(
                 "SessionStatus", _wrap_delayed_handler(self, self._on_bus_message)
             )  # type: ignore[attr-defined]
+            self._context_unsubs = [
+                bus.subscribe(
+                    "SessionInfo",
+                    _wrap_delayed_handler(self, self._on_session_info_context),
+                ),
+                bus.subscribe(
+                    "SessionData",
+                    _wrap_delayed_handler(self, self._on_session_data_context),
+                ),
+            ]
         except Exception:
             self._unsub = None
+            if self._context_unsubs:
+                for unsub in self._context_unsubs:
+                    with suppress(Exception):
+                        unsub()
+            self._context_unsubs = []
 
     def set_delay(self, seconds: int) -> None:
         _apply_delay_with_queue(self, seconds)
@@ -5744,6 +5816,8 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             _clear_delayed_ingest_state(self)
         self.available = is_live
         if not is_live:
+            self.is_qualifying_like_session = False
+            self.qualifying_part = None
             _clear_delayed_ingest_state(self)
             self._last_message = None
             self.data_list = []

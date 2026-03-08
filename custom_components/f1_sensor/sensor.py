@@ -2668,7 +2668,11 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
 
 def _map_session_status_payload(
-    raw: dict | None, hass: HomeAssistant | None
+    raw: dict | None,
+    hass: HomeAssistant | None,
+    *,
+    is_qualifying_like: bool = False,
+    qualifying_part: int | None = None,
 ) -> str | None:
     """Map raw SessionStatus payloads to semantic states."""
     if not raw:
@@ -2681,6 +2685,8 @@ def _map_session_status_payload(
         return "live"
 
     if message == "Finished":
+        if is_qualifying_like and qualifying_part in (1, 2):
+            return "break"
         return "finished"
 
     if message == "Finalised":
@@ -2722,6 +2728,18 @@ def _map_session_status_payload(
         return "pre"
 
     return "pre"
+
+
+def _session_status_mapping_context(coordinator) -> tuple[bool, int | None]:
+    """Return derived session context used for semantic status mapping."""
+    is_qualifying_like = bool(getattr(coordinator, "is_qualifying_like_session", False))
+    qualifying_part = getattr(coordinator, "qualifying_part", None)
+    try:
+        if qualifying_part is not None:
+            qualifying_part = int(qualifying_part)
+    except (TypeError, ValueError):
+        qualifying_part = None
+    return is_qualifying_like, qualifying_part
 
 
 class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -2916,7 +2934,15 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self.async_write_ha_state()
 
     def _map_status(self, raw: dict | None) -> str | None:
-        return _map_session_status_payload(raw, self.hass)
+        is_qualifying_like, qualifying_part = _session_status_mapping_context(
+            self.coordinator
+        )
+        return _map_session_status_payload(
+            raw,
+            self.hass,
+            is_qualifying_like=is_qualifying_like,
+            qualifying_part=qualifying_part,
+        )
 
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
@@ -3338,7 +3364,15 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         return None
 
     def _mapped_live_status(self) -> str | None:
-        return _map_session_status_payload(self._live_status_payload(), self.hass)
+        is_qualifying_like, qualifying_part = _session_status_mapping_context(
+            self._status_coordinator
+        )
+        return _map_session_status_payload(
+            self._live_status_payload(),
+            self.hass,
+            is_qualifying_like=is_qualifying_like,
+            qualifying_part=qualifying_part,
+        )
 
     def _apply_payload(self, raw: dict, allow_clear: bool = True) -> None:
         label, meta = self._resolve_label(raw or {})
