@@ -532,7 +532,7 @@ variables:
   is_active_phase: "{{ session_phase in active_phases }}"
 
   session_entered_active: >
-    {% if trigger.id != 'session_update' %}
+    {% if trigger.id != 'session_enter_active' %}
       false
     {% else %}
       {% set from_phase = (trigger.from_state.state if trigger.from_state is not none else '') | lower %}
@@ -541,7 +541,7 @@ variables:
     {% endif %}
 
   session_left_active: >
-    {% if trigger.id != 'session_update' %}
+    {% if trigger.id != 'session_leave_active' %}
       false
     {% else %}
       {% set from_phase = (trigger.from_state.state if trigger.from_state is not none else '') | lower %}
@@ -578,13 +578,30 @@ variables:
   can_apply_track_light: >
     {{ (session_scope_now_ok | bool) and (is_active_phase | bool) }}
 
+  should_apply_track_light: >
+    {{
+      (can_apply_track_light | bool)
+      and track_state in ['CLEAR', 'YELLOW', 'RED', 'SC', 'VSC']
+      and (
+        trigger.id == 'track_update'
+        or (session_entered_active | bool)
+      )
+    }}
+
 triggers:
   - trigger: state
     entity_id: !input track_status_entity
     id: track_update
   - trigger: state
     entity_id: !input session_status_entity
-    id: session_update
+    to: !input active_session_phases
+    not_from: !input active_session_phases
+    id: session_enter_active
+  - trigger: state
+    entity_id: !input session_status_entity
+    from: !input active_session_phases
+    not_to: !input active_session_phases
+    id: session_leave_active
 
 conditions:
   - condition: template
@@ -593,22 +610,22 @@ conditions:
     conditions: !input activation_condition
 
 actions:
-  - choose:
-      - conditions:
+  - if:
+      - condition: template
+        value_template: "{{ session_entered_active | bool }}"
+    then:
+      - if:
           - condition: template
-            value_template: "{{ session_entered_active | bool }}"
-        sequence:
-          - if:
-              - condition: template
-                value_template: "{{ snapshot_pre_race_enabled }}"
-            then:
-              - continue_on_error: true
-                action: scene.create
-                data:
-                  scene_id: "{{ pre_race_scene_id }}"
-                  snapshot_entities:
-                    - !input light_target
+            value_template: "{{ snapshot_pre_race_enabled }}"
+        then:
+          - continue_on_error: true
+            action: scene.create
+            data:
+              scene_id: "{{ pre_race_scene_id }}"
+              snapshot_entities:
+                - !input light_target
 
+  - choose:
       - conditions:
           - condition: template
             value_template: "{{ session_left_active | bool }}"
@@ -679,7 +696,7 @@ actions:
 
       - conditions:
           - condition: template
-            value_template: "{{ (can_apply_track_light | bool) and track_state in ['CLEAR', 'YELLOW', 'RED', 'SC', 'VSC'] }}"
+            value_template: "{{ should_apply_track_light | bool }}"
         sequence:
           - if:
               - condition: template
