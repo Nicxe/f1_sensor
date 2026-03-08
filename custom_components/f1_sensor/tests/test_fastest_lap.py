@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -63,6 +65,128 @@ async def test_fastest_lap_seeded_from_best_lap(hass) -> None:
     assert fastest["racing_number"] == "1"
     assert fastest["lap"] == 12
     assert fastest["time"] == "1:32.000"
+
+
+@pytest.mark.asyncio
+async def test_fastest_lap_stays_in_sync_when_timingapp_arrives_first(hass) -> None:
+    coord = _make_coord(hass)
+    coord._merge_tyre_stints(
+        {
+            "Stints": {
+                "16": {"0": {"Compound": "MEDIUM"}},
+                "12": {"0": {"Compound": "MEDIUM"}},
+            }
+        }
+    )
+    coord._merge_timingapp(
+        {"Lines": {"16": {"Stints": {"0": {"LapTime": "1:23.981", "LapNumber": 5}}}}}
+    )
+    coord._merge_timingapp(
+        {"Lines": {"12": {"Stints": {"0": {"LapTime": "1:23.835", "LapNumber": 7}}}}}
+    )
+
+    fastest = coord._state["fastest_lap"]
+    tyre = coord._state["tyre_statistics"]
+    assert fastest["racing_number"] == "12"
+    assert fastest["time"] == "1:23.835"
+    assert fastest["time_secs"] == pytest.approx(83.835)
+    assert tyre["fastest_compound"] == "MEDIUM"
+    assert tyre["fastest_time_secs"] == pytest.approx(83.835)
+
+    coord._merge_timingdata(
+        {
+            "Lines": {
+                "12": {
+                    "NumberOfLaps": 7,
+                    "LastLapTime": {"Value": "1:23.835", "PersonalFastest": False},
+                }
+            }
+        }
+    )
+    fastest = coord._state["fastest_lap"]
+    tyre = coord._state["tyre_statistics"]
+    assert fastest["racing_number"] == "12"
+    assert fastest["time_secs"] == pytest.approx(tyre["fastest_time_secs"])
+
+
+@pytest.mark.asyncio
+async def test_fastest_lap_stays_in_sync_when_timingdata_arrives_first(hass) -> None:
+    coord = _make_coord(hass)
+    coord._merge_tyre_stints(
+        {
+            "Stints": {
+                "16": {"0": {"Compound": "MEDIUM"}},
+                "12": {"0": {"Compound": "MEDIUM"}},
+            }
+        }
+    )
+    coord._merge_timingdata(
+        {"Lines": {"16": {"NumberOfLaps": 5, "LastLapTime": {"Value": "1:23.981"}}}}
+    )
+    coord._merge_timingdata(
+        {"Lines": {"12": {"NumberOfLaps": 7, "LastLapTime": {"Value": "1:23.835"}}}}
+    )
+
+    fastest = coord._state["fastest_lap"]
+    tyre = coord._state["tyre_statistics"]
+    assert fastest["racing_number"] == "12"
+    assert fastest["time_secs"] == pytest.approx(83.835)
+    assert tyre["fastest_time_secs"] == pytest.approx(83.835)
+
+    coord._merge_timingapp(
+        {"Lines": {"12": {"Stints": {"0": {"LapTime": "1:23.835", "LapNumber": 7}}}}}
+    )
+    fastest = coord._state["fastest_lap"]
+    tyre = coord._state["tyre_statistics"]
+    assert fastest["racing_number"] == "12"
+    assert fastest["time_secs"] == pytest.approx(tyre["fastest_time_secs"])
+    assert len(tyre["compounds"]["MEDIUM"]["best_times"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_australian_race_replay_keeps_fastest_lap_and_tyre_stats_in_sync(
+    hass,
+) -> None:
+    coord = _make_coord(hass)
+    base = Path(
+        "/Volumes/config/f1_replay_cache/2026-03-06_Australian_Grand_Prix/2026-03-08_Race"
+    )
+    entries: list[tuple[str, str, dict]] = []
+
+    for file_name, kind in (
+        ("DriverList.txt", "driverlist"),
+        ("TyreStintSeries.txt", "stints"),
+        ("TimingAppData.txt", "timingapp"),
+        ("TimingData.txt", "timingdata"),
+    ):
+        for raw in (base / file_name).read_text(encoding="utf-8").splitlines():
+            timestamp = raw[:12]
+            payload = raw[12:].strip()
+            if payload.startswith("{"):
+                entries.append((timestamp, kind, json.loads(payload)))
+
+    entries.sort(key=lambda item: item[0])
+
+    for timestamp, kind, payload in entries:
+        if timestamp > "01:12:27.624":
+            break
+        if kind == "driverlist":
+            coord._merge_driverlist(payload)
+        elif kind == "stints":
+            coord._merge_tyre_stints(payload)
+        elif kind == "timingapp":
+            coord._merge_timingapp(payload)
+        else:
+            coord._merge_timingdata(payload)
+
+        fastest = coord._state["fastest_lap"]
+        tyre = coord._state["tyre_statistics"]
+        fastest_secs = fastest.get("time_secs")
+        tyre_secs = tyre.get("fastest_time_secs")
+        if fastest_secs is not None and tyre_secs is not None:
+            assert fastest_secs == pytest.approx(tyre_secs), (
+                f"mismatch at {timestamp}: {fastest} vs {tyre}"
+            )
 
 
 def _driver_positions_payload() -> dict:

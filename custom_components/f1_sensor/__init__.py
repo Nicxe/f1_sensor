@@ -3363,6 +3363,52 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             cur = cur.get(p)
         return cur if cur is not None else default
 
+    def _ingest_completed_lap(
+        self, rn: str, lap_time: str, lap_num: int | None = None
+    ) -> bool:
+        """Ingest a completed lap atomically across timing, history, and stint stats."""
+        if not isinstance(lap_time, str) or not lap_time:
+            return False
+
+        drivers = self._state["drivers"]
+        entry = drivers.setdefault(rn, {})
+        entry.setdefault("identity", {})
+        entry.setdefault("timing", {})
+        entry.setdefault("tyres", {})
+        entry.setdefault("laps", {})
+        entry.setdefault("tyre_history", {"stints": [], "current_stint_index": None})
+        entry.setdefault(
+            "lap_history",
+            {
+                "laps": {},
+                "last_recorded_lap": 0,
+                "grid_position": None,
+                "completed_laps": 0,
+            },
+        )
+
+        changed = False
+        timing = entry["timing"]
+        if timing.get("last_lap") != lap_time:
+            timing["last_lap"] = lap_time
+            changed = True
+
+        prev_best = timing.get("best_lap")
+        new_secs = self._parse_laptime_secs(lap_time)
+        prev_secs = (
+            self._parse_laptime_secs(prev_best) if isinstance(prev_best, str) else None
+        )
+        if new_secs is not None and (prev_secs is None or new_secs < prev_secs):
+            timing["best_lap"] = lap_time
+            changed = True
+
+        if self._record_lap_for_history(rn, lap_time, lap_num):
+            changed = True
+        if self._record_lap_time_for_stint(rn, lap_time):
+            changed = True
+
+        return changed
+
     def _merge_timingdata(self, payload: dict) -> bool:
         # payload: {"Lines": { rn: {...timing...} } }
         lines = (payload or {}).get("Lines", {})
@@ -3468,18 +3514,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     changed = True
             last_lap = self._get_value(td, "LastLapTime", "Value")
             if last_lap is not None:
-                if timing.get("last_lap") != last_lap:
-                    # Record for lap history before updating timing
-                    lap_num = number_of_laps
-                    if lap_num is None:
-                        completed = lap_history.get("completed_laps")
-                        lap_num = completed if isinstance(completed, int) else None
-                    if self._record_lap_for_history(rn, last_lap, lap_num):
-                        changed = True
-                    timing["last_lap"] = last_lap
-                    changed = True
-                # Record lap time for tyre statistics (correlate with current stint)
-                if self._record_lap_time_for_stint(rn, last_lap):
+                lap_num = number_of_laps
+                if lap_num is None:
+                    completed = lap_history.get("completed_laps")
+                    lap_num = completed if isinstance(completed, int) else None
+                if self._ingest_completed_lap(rn, last_lap, lap_num):
                     changed = True
             best_lap = self._get_value(td, "BestLapTime", "Value")
             best_lap_num_raw = self._get_value(td, "BestLapTime", "Lap")
@@ -3799,24 +3838,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     )
 
             if isinstance(latest, dict):
-                # Lap times: map latest LapTime to timing.last_lap and update best_lap
                 lap_time = latest.get("LapTime")
                 if isinstance(lap_time, str) and lap_time:
-                    timing = entry.setdefault("timing", {})
-                    if timing.get("last_lap") != lap_time:
-                        timing["last_lap"] = lap_time
-                        changed = True
-                    prev_best = timing.get("best_lap")
-                    new_secs = self._parse_laptime_secs(lap_time)
-                    prev_secs = (
-                        self._parse_laptime_secs(prev_best)
-                        if isinstance(prev_best, str)
-                        else None
-                    )
-                    if new_secs is not None and (
-                        prev_secs is None or new_secs < prev_secs
-                    ):
-                        timing["best_lap"] = lap_time
+                    lap_num_raw = latest.get("LapNumber")
+                    try:
+                        lap_num = int(lap_num_raw) if lap_num_raw is not None else None
+                    except (TypeError, ValueError):
+                        lap_num = None
+                    if self._ingest_completed_lap(rn, lap_time, lap_num):
                         changed = True
 
         return changed
