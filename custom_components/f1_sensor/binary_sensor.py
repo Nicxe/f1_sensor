@@ -545,6 +545,9 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity
         self._attr_is_on: bool | None = None
         self._attr_extra_state_attributes: dict[str, Any] = {}
 
+    def _session_is_terminal(self) -> bool:
+        return bool(getattr(self.coordinator, "session_is_terminal", False))
+
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         data = self._extract_data()
@@ -553,23 +556,24 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity
         if updated and data is not None:
             self._apply_data(data)
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                last_state = last.state
-                if isinstance(last_state, bool):
-                    self._attr_is_on = last_state
-                else:
-                    self._attr_is_on = str(last_state).lower() in (
-                        "on",
-                        "true",
-                        "1",
-                    )
-                attrs = dict(last.attributes or {})
-                self._attr_extra_state_attributes = {
-                    "straight_mode": attrs.get("straight_mode"),
-                    "restored": True,
-                }
-                restored = True
+            if not self._session_is_terminal():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    last_state = last.state
+                    if isinstance(last_state, bool):
+                        self._attr_is_on = last_state
+                    else:
+                        self._attr_is_on = str(last_state).lower() in (
+                            "on",
+                            "true",
+                            "1",
+                        )
+                    attrs = dict(last.attributes or {})
+                    self._attr_extra_state_attributes = {
+                        "straight_mode": attrs.get("straight_mode"),
+                        "restored": True,
+                    }
+                    restored = True
             if not restored and not self._is_stream_active():
                 self._clear_state()
         self._stream_last_active = self._is_stream_active()
@@ -592,6 +596,10 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity
 
     def _handle_coordinator_update(self) -> None:
         data = self._extract_data()
+        if self._session_is_terminal():
+            self._clear_state()
+            self.async_write_ha_state()
+            return
         updated = self._has_overtake_state(data)
         if not self._handle_stream_state(updated):
             return

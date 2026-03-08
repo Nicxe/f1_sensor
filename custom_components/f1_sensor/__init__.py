@@ -1203,6 +1203,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_mode_coordinator = LiveModeCoordinator(
             hass,
             race_control_coordinator,
+            session_status_coordinator=session_status_coordinator,
             config_entry=entry,
             live_state=live_state,
         )
@@ -1860,13 +1861,14 @@ class LiveModeCoordinator(DataUpdateCoordinator):
     """Tracks the current 2026 active aero (Straight Mode) and Overtake Mode states.
 
     Subscribes to RaceControlCoordinator updates to derive cumulative mode state.
-    Automatically resets when the live session window closes.
+    Automatically resets when the live session window closes or SessionStatus ends.
     """
 
     def __init__(
         self,
         hass: HomeAssistant,
         race_control_coordinator: RaceControlCoordinator,
+        session_status_coordinator: SessionStatusCoordinator | None = None,
         config_entry: ConfigEntry | None = None,
         live_state: LiveAvailabilityTracker | None = None,
     ):
@@ -1878,9 +1880,11 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             config_entry=config_entry,
         )
         self._rc_coordinator = race_control_coordinator
+        self._session_status_coordinator = session_status_coordinator
         self.available = True
         self._state: dict = {"overtake_enabled": None, "straight_mode": None}
         self._rc_unsub: Callable[[], None] | None = None
+        self._status_unsub: Callable[[], None] | None = None
         self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
@@ -1890,6 +1894,10 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._rc_unsub()
             self._rc_unsub = None
+        if self._status_unsub:
+            with suppress(Exception):
+                self._status_unsub()
+            self._status_unsub = None
         if self._live_state_unsub:
             with suppress(Exception):
                 self._live_state_unsub()
@@ -1902,7 +1910,38 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             else None
         )
 
+    @property
+    def session_is_terminal(self) -> bool:
+        payload = getattr(self._session_status_coordinator, "data", None)
+        if not isinstance(payload, dict):
+            return False
+        status = str(payload.get("Status") or payload.get("Message") or "").strip()
+        return status in {"Finished", "Finalised", "Ends"}
+
+    def _clear_mode_state(self) -> None:
+        self._state = {"overtake_enabled": None, "straight_mode": None}
+
+    def _publish_state(self) -> None:
+        self.async_set_updated_data(
+            dict(self._state)
+            if any(v is not None for v in self._state.values())
+            else None
+        )
+
+    def _handle_session_status_update(self) -> None:
+        if not self.session_is_terminal:
+            return
+        had_state = (
+            any(v is not None for v in self._state.values()) or self.data is not None
+        )
+        self._clear_mode_state()
+        self.async_set_updated_data(None)
+        if had_state and _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug("LiveMode: cleared state due to terminal SessionStatus")
+
     def _on_race_control_update(self) -> None:
+        if self.session_is_terminal:
+            return
         item = self._rc_coordinator.data
         if not item or not isinstance(item, dict):
             return
@@ -1926,7 +1965,7 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             if _is_no_spoiler_blocked(self):
                 return
             self.available = True
-            self.async_set_updated_data(dict(self._state))
+            self._publish_state()
             if _LOGGER.isEnabledFor(logging.DEBUG):
                 _LOGGER.debug(
                     "LiveMode: state updated overtake_enabled=%s straight_mode=%s",
@@ -1939,20 +1978,23 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             return
         self.available = is_live
         if not is_live:
-            self._state = {"overtake_enabled": None, "straight_mode": None}
+            self._clear_mode_state()
             self.async_set_updated_data(None)
             return
-        self.async_set_updated_data(
-            dict(self._state)
-            if any(v is not None for v in self._state.values())
-            else None
-        )
+        if self.session_is_terminal:
+            self._clear_mode_state()
+        self._publish_state()
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
         self._rc_unsub = self._rc_coordinator.async_add_listener(
             self._on_race_control_update
         )
+        if self._session_status_coordinator is not None:
+            self._status_unsub = self._session_status_coordinator.async_add_listener(
+                self._handle_session_status_update
+            )
+            self._handle_session_status_update()
 
 
 class LapCountCoordinator(DataUpdateCoordinator):

@@ -6156,6 +6156,9 @@ class F1StraightModeSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_native_value: str | None = None
         self._attr_extra_state_attributes: dict[str, object] = {}
 
+    def _session_is_terminal(self) -> bool:
+        return bool(getattr(self.coordinator, "session_is_terminal", False))
+
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         data = self._extract_data()
@@ -6164,17 +6167,18 @@ class F1StraightModeSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         if updated and data is not None:
             self._apply_data(data)
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                restored_state = str(last.state)
-                if restored_state in self._attr_options:
-                    self._attr_native_value = restored_state
-                    attrs = dict(last.attributes or {})
-                    self._attr_extra_state_attributes = {
-                        "overtake_enabled": attrs.get("overtake_enabled"),
-                        "restored": True,
-                    }
-                    restored = True
+            if not self._session_is_terminal():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    restored_state = str(last.state)
+                    if restored_state in self._attr_options:
+                        self._attr_native_value = restored_state
+                        attrs = dict(last.attributes or {})
+                        self._attr_extra_state_attributes = {
+                            "overtake_enabled": attrs.get("overtake_enabled"),
+                            "restored": True,
+                        }
+                        restored = True
             if not restored and not self._is_stream_active():
                 self._clear_state()
         self._stream_last_active = self._is_stream_active()
@@ -6200,6 +6204,10 @@ class F1StraightModeSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         data = self._extract_data()
+        if self._session_is_terminal():
+            self._clear_state()
+            self.async_write_ha_state()
+            return
         updated = self._has_straight_mode_state(data)
         if not self._handle_stream_state(updated):
             return
