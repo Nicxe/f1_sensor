@@ -4082,7 +4082,8 @@ _NO_FURTHER_INVESTIGATION = re.compile(
 # PENALTY patterns - X SECOND TIME PENALTY, DRIVE THROUGH, STOP/GO, REPRIMAND
 _PENALTY_ISSUED = re.compile(
     r"FIA STEWARDS:\s*(\d+ SECOND TIME PENALTY|DRIVE THROUGH PENALTY|"
-    r"\d+ (?:SECOND )?STOP/?GO PENALTY|REPRIMAND \([^)]+\))\s+"
+    r"(?:\d+\s+(?:SECOND\s+)?)?STOP(?:[-\s]+AND[-\s]+|/)?GO PENALTY|"
+    r"REPRIMAND \([^)]+\))\s+"
     r"FOR CAR (\d+) \(([A-Z]{2,3})\)",
     re.IGNORECASE,
 )
