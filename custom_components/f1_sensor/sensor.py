@@ -695,7 +695,9 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
             "circuit_country": loc.get("country"),
             "country_code": get_country_code(loc.get("country")),
             "country_flag_url": get_country_flag_url(loc.get("country")),
-            "circuit_map_url": get_circuit_map_url(circuit.get("circuitId")),
+            "circuit_map_url": get_circuit_map_url(
+                circuit.get("circuitId"), race.get("season")
+            ),
             "circuit_timezone": timezone,
         }
 
@@ -830,7 +832,9 @@ class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
             country = circuit.get("Location", {}).get("country")
             enriched["country_code"] = get_country_code(country)
             enriched["country_flag_url"] = get_country_flag_url(country)
-            enriched["circuit_map_url"] = get_circuit_map_url(circuit.get("circuitId"))
+            enriched["circuit_map_url"] = get_circuit_map_url(
+                circuit.get("circuitId"), race.get("season")
+            )
             enriched_races.append(enriched)
 
         return {"season": table.get("season"), "races": enriched_races}

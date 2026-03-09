@@ -18,6 +18,7 @@ from custom_components.f1_sensor.const import (
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
 )
+from custom_components.f1_sensor.helpers import get_circuit_map_url
 from custom_components.f1_sensor.sensor import (
     F1ConstructorPointsProgressionSensor,
     F1ConstructorStandingsSensor,
@@ -26,6 +27,7 @@ from custom_components.f1_sensor.sensor import (
     F1DriverPointsProgressionSensor,
     F1DriverPositionsSensor,
     F1DriverStandingsSensor,
+    F1NextRaceSensor,
     F1PitStopsSensor,
     F1SeasonResultsSensor,
     F1SprintResultsSensor,
@@ -218,6 +220,43 @@ def _build_top_three_data(*, p1: str, p2: str, p3: str, ts: str) -> dict:
     }
 
 
+def _build_race(
+    *,
+    season: str = "2026",
+    round_: str = "1",
+    race_name: str = "Australian Grand Prix",
+    circuit_id: str = "albert_park",
+    circuit_name: str = "Albert Park Grand Prix Circuit",
+    locality: str = "Melbourne",
+    country: str = "Australia",
+    date: str = "2026-03-08",
+    time: str = "04:00:00Z",
+) -> dict:
+    return {
+        "season": season,
+        "round": round_,
+        "raceName": race_name,
+        "url": f"https://example.com/races/{round_}",
+        "date": date,
+        "time": time,
+        "Circuit": {
+            "circuitId": circuit_id,
+            "url": f"https://example.com/circuits/{circuit_id}",
+            "circuitName": circuit_name,
+            "Location": {
+                "lat": "-37.8497",
+                "long": "144.968",
+                "locality": locality,
+                "country": country,
+            },
+        },
+        "FirstPractice": {"date": "2026-03-06", "time": "01:30:00Z"},
+        "SecondPractice": {"date": "2026-03-06", "time": "05:00:00Z"},
+        "ThirdPractice": {"date": "2026-03-07", "time": "01:30:00Z"},
+        "Qualifying": {"date": "2026-03-07", "time": "05:00:00Z"},
+    }
+
+
 @pytest.mark.asyncio
 async def test_current_season_sensor_state_attributes_and_availability(hass) -> None:
     coordinator = DataUpdateCoordinator(
@@ -319,6 +358,85 @@ async def test_current_season_sensor_excludes_races_from_recorder(hass) -> None:
 
     assert "season" in shared_attrs
     assert "races" not in shared_attrs
+
+
+def test_get_circuit_map_url_prefers_2026_detailed_maps() -> None:
+    assert (
+        get_circuit_map_url("albert_park", "2026")
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1/2026/track/2026trackmelbournedetailed.webp"
+    )
+    assert (
+        get_circuit_map_url("madring", "2026")
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1/2026/track/2026trackmadringdetailed.webp"
+    )
+    assert (
+        get_circuit_map_url("imola", "2026")
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Emilia_Romagna_Circuit.webp"
+    )
+
+
+@pytest.mark.asyncio
+async def test_next_race_sensor_uses_2026_detailed_circuit_map(hass) -> None:
+    coordinator = _build_coordinator(
+        hass,
+        {"MRData": {"RaceTable": {"Races": [_build_race(date="2026-03-15")]}}},
+    )
+    entry_id = "test_entry_next_race"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1NextRaceSensor(
+        coordinator,
+        f"{entry_id}_next_race",
+        entry_id,
+        "F1",
+    )
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert (
+        state.attributes["circuit_map_url"]
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1/2026/track/2026trackmelbournedetailed.webp"
+    )
+
+
+@pytest.mark.asyncio
+async def test_current_season_sensor_enriches_races_with_detailed_maps(hass) -> None:
+    coordinator = _build_coordinator(
+        hass,
+        {
+            "MRData": {
+                "RaceTable": {
+                    "season": "2026",
+                    "Races": [
+                        _build_race(round_="1"),
+                        _build_race(
+                            round_="16",
+                            race_name="Spanish Grand Prix",
+                            circuit_id="madring",
+                            circuit_name="Madring",
+                            locality="Madrid",
+                            country="Spain",
+                            date="2026-09-13",
+                            time="13:00:00Z",
+                        ),
+                    ],
+                }
+            }
+        },
+    )
+    entry_id = "test_entry_current_season_maps"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1CurrentSeasonSensor(
+        coordinator,
+        f"{entry_id}_current_season",
+        entry_id,
+        "F1",
+    )
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    races = state.attributes["races"]
+    assert races[0]["circuit_map_url"].endswith("2026trackmelbournedetailed.webp")
+    assert races[1]["circuit_map_url"].endswith("2026trackmadringdetailed.webp")
 
 
 @pytest.mark.asyncio
