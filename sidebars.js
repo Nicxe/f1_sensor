@@ -32,7 +32,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Blueprints',
-      items: ['blueprints/track-status-light', 'blueprints/race-control-notifications'],
+      items: ['blueprints/track-status-light', 'blueprints/race-control-notifications', 'blueprints/replay-sync'],
     },
 
     {
