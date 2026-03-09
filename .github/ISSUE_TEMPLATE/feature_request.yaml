@@ -4,6 +4,14 @@ title: "[Feature]: "
 labels: ["enhancement"]
 assignees: ["Nicxe"]
 body:
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: All information in this issue is written in English. Issues containing non-English content will be closed without response.
+          required: true
+
   - type: textarea
     id: problem
     attributes:
