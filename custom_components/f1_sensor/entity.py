@@ -101,6 +101,13 @@ class F1BaseEntity(CoordinatorEntity):
         return _entity_name_from_key(getattr(self, "_attr_translation_key", None))
 
     @property
+    def suggested_object_id(self) -> str | None:
+        """Preserve stable object IDs when name is overridden for display."""
+        if hasattr(self, "_attr_suggested_object_id"):
+            return self._attr_suggested_object_id
+        return super().suggested_object_id
+
+    @property
     def device_info(self):
         label = DEVICE_CATEGORIES.get(self._device_category, "System")
         return {
@@ -288,6 +295,13 @@ class F1AuxEntity(Entity):
     def name(self) -> str | None:
         """Return entity name from translations, without device prefix."""
         return _entity_name_from_key(getattr(self, "_attr_translation_key", None))
+
+    @property
+    def suggested_object_id(self) -> str | None:
+        """Preserve stable object IDs when name is overridden for display."""
+        if hasattr(self, "_attr_suggested_object_id"):
+            return self._attr_suggested_object_id
+        return super().suggested_object_id
 
     @property
     def device_info(self):

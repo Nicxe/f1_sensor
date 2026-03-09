@@ -735,6 +735,14 @@ def _clock_finished(clock: dict | None) -> bool:
         return False
 
 
+def _session_status_running(status_payload: dict | None) -> bool:
+    if not isinstance(status_payload, dict):
+        return False
+    status = str(status_payload.get("Status") or "").strip()
+    started = str(status_payload.get("Started") or "").strip()
+    return status in SESSION_RUNNING_STATES or started in SESSION_RUNNING_STATES
+
+
 class LiveSessionSupervisor:
     """Coordinates when the SignalR connection should run."""
 
@@ -1126,6 +1134,7 @@ class LiveSessionSupervisor:
         url = _build_static_url(window.path, "SessionInfo.jsonStream")
         status_url = _build_static_url(window.path, "SessionStatus.jsonStream")
         data_url = _build_static_url(window.path, "SessionData.jsonStream")
+        session_status_payload: dict[str, Any] | None = None
         for name, target in (
             ("SessionInfo", url),
             ("SessionStatus", status_url),
@@ -1134,6 +1143,8 @@ class LiveSessionSupervisor:
             try:
                 payload = await self._fetch_json(target)
                 if payload:
+                    if name == "SessionStatus" and isinstance(payload, dict):
+                        session_status_payload = payload
                     _LOGGER.debug(
                         "%s prime %s keys=%s",
                         window.label,
@@ -1144,6 +1155,62 @@ class LiveSessionSupervisor:
                 _LOGGER.debug(
                     "Failed priming %s for %s", name, window.label, exc_info=True
                 )
+        await self._prime_lap_count(window, session_status_payload)
+
+    async def _prime_lap_count(
+        self, window: SessionWindow, session_status: dict[str, Any] | None
+    ) -> None:
+        if not window.path or not _session_status_running(session_status):
+            return
+        url = _build_static_url(window.path, "LapCount.jsonStream")
+        try:
+            payload = await self._fetch_lapcount_snapshot(url)
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Failed priming LapCount for %s", window.label, exc_info=True)
+            return
+        if not payload:
+            return
+        self._bus.inject_message("LapCount", payload)
+        _LOGGER.debug("%s prime LapCount payload=%s", window.label, payload)
+
+    async def _fetch_lapcount_snapshot(self, url: str) -> dict[str, int] | None:
+        async with async_timeout.timeout(10):
+            async with self._http.get(url) as resp:
+                if resp.status == 404:
+                    return None
+                resp.raise_for_status()
+                text = await resp.text()
+        return self._parse_lapcount_snapshot(text)
+
+    @staticmethod
+    def _parse_lapcount_snapshot(payload: str | None) -> dict[str, int] | None:
+        if not isinstance(payload, str) or not payload.strip():
+            return None
+        snapshot: dict[str, int] = {}
+        for raw_line in payload.splitlines():
+            line = raw_line.lstrip("\ufeff").strip()
+            if not line or line.upper().startswith("URL:"):
+                continue
+            json_start = line.find("{")
+            if json_start == -1:
+                continue
+            try:
+                item = json.loads(line[json_start:])
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(item, dict):
+                continue
+            current_lap = _as_int(
+                item.get("CurrentLap") if "CurrentLap" in item else item.get("LapCount")
+            )
+            total_laps = _as_int(item.get("TotalLaps"))
+            if current_lap is not None and current_lap > 0:
+                snapshot["CurrentLap"] = current_lap
+            if total_laps is not None and total_laps > 0:
+                snapshot["TotalLaps"] = total_laps
+        if "CurrentLap" not in snapshot:
+            return None
+        return snapshot
 
     async def _monitor_window(self, window: SessionWindow, *, source: str) -> str:
         label = window.label

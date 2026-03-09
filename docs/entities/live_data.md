@@ -429,6 +429,7 @@ Each entry in `drivers` contains:
 | last_name | string | Last name |
 | team | string | Team name |
 | team_color | string | Team color as hex code (e.g., "#3671C6") |
+| team_color_rgb | list | Team color as RGB values (e.g., `[54, 113, 198]`) |
 | headshot_small | string | URL to small driver headshot image |
 | headshot_large | string | URL to large driver headshot image |
 | reference | string | External reference URL or ID |
@@ -447,6 +448,7 @@ Each entry in `drivers` contains:
       "last_name": "Verstappen",
       "team": "Red Bull Racing",
       "team_color": "#3671C6",
+      "team_color_rgb": [54, 113, 198],
       "headshot_small": "https://media.formula1.com/content/dam/fom-website/drivers/M/MAXVER01_Max_Verstappen/maxver01.png",
       "headshot_large": "https://media.formula1.com/content/dam/fom-website/drivers/M/MAXVER01_Max_Verstappen/maxver01-large.png",
       "reference": "max_verstappen"
@@ -459,6 +461,7 @@ Each entry in `drivers` contains:
       "last_name": "Hamilton",
       "team": "Ferrari",
       "team_color": "#ED1131",
+      "team_color_rgb": [237, 17, 49],
       "headshot_small": "https://media.formula1.com/content/dam/fom-website/drivers/L/LEWHAM01_Lewis_Hamilton/lewham01.png",
       "headshot_large": "https://media.formula1.com/content/dam/fom-website/drivers/L/LEWHAM01_Lewis_Hamilton/lewham01-large.png",
       "reference": "lewis_hamilton"
@@ -487,6 +490,18 @@ Each entry in `drivers` contains:
 {% set driver = drivers | selectattr('racing_number', 'eq', '44') | first %}
 {% if driver %}
   background-color: {{ driver.team_color }};
+{% endif %}
+```
+
+**Set a light to a driver's team color:**
+```jinja2
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
+{% set ver = drivers | selectattr('tla', 'eq', 'VER') | first %}
+{% if ver and ver.team_color_rgb %}
+service: light.turn_on
+data:
+  entity_id: light.living_room
+  rgb_color: {{ ver.team_color_rgb }}
 {% endif %}
 ```
 
@@ -622,10 +637,12 @@ Each entry in `drivers` contains:
 | racing_number | string | Car number |
 | tla | string | Three-letter abbreviation (driver code) |
 | team_color | string | Team color as hex code (e.g., "#3671C6") |
+| team_color_rgb | list | Team color as RGB values (e.g., `[54, 113, 198]`) |
 | position | string | Current position in the session |
 | compound | string | Tyre compound name (e.g., "SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET") |
 | compound_short | string | Single-letter abbreviation ("S", "M", "H", "I", "W") |
 | compound_color | string | Hex color code for the compound (e.g., "#FF0000" for soft) |
+| compound_color_rgb | list | Compound color as RGB values (e.g., `[255, 0, 0]` for soft) |
 | new | boolean | Whether the tyres are brand new |
 | stint_laps | number | Number of laps on the current set |
 
@@ -639,10 +656,12 @@ Each entry in `drivers` contains:
       "racing_number": "1",
       "tla": "VER",
       "team_color": "#3671C6",
+      "team_color_rgb": [54, 113, 198],
       "position": "1",
       "compound": "MEDIUM",
       "compound_short": "M",
       "compound_color": "#FFFF00",
+      "compound_color_rgb": [255, 255, 0],
       "new": false,
       "stint_laps": 15
     },
@@ -650,10 +669,12 @@ Each entry in `drivers` contains:
       "racing_number": "44",
       "tla": "HAM",
       "team_color": "#ED1131",
+      "team_color_rgb": [237, 17, 49],
       "position": "2",
       "compound": "HARD",
       "compound_short": "H",
       "compound_color": "#FFFFFF",
+      "compound_color_rgb": [255, 255, 255],
       "new": true,
       "stint_laps": 3
     },
@@ -661,10 +682,12 @@ Each entry in `drivers` contains:
       "racing_number": "4",
       "tla": "NOR",
       "team_color": "#FF8000",
+      "team_color_rgb": [255, 128, 0],
       "position": "3",
       "compound": "SOFT",
       "compound_short": "S",
       "compound_color": "#FF0000",
+      "compound_color_rgb": [255, 0, 0],
       "new": true,
       "stint_laps": 1
     }
@@ -756,6 +779,7 @@ Each entry in `compounds` (keyed by compound name) contains:
 | sets_used | number | Number of new tyre sets used |
 | sets_used_total | number | Total stints on this compound |
 | compound_color | string | Hex color code for the compound |
+| compound_color_rgb | list | Compound color as RGB values (e.g., `[255, 0, 0]` for soft) |
 
 Each entry in `best_times` contains:
 
@@ -799,7 +823,8 @@ Each entry in `start_compounds` contains:
       "total_laps": 45,
       "sets_used": 8,
       "sets_used_total": 12,
-      "compound_color": "#FF0000"
+      "compound_color": "#FF0000",
+      "compound_color_rgb": [255, 0, 0]
     },
     "MEDIUM": {
       "best_times": [
@@ -809,7 +834,8 @@ Each entry in `start_compounds` contains:
       "total_laps": 120,
       "sets_used": 15,
       "sets_used_total": 20,
-      "compound_color": "#FFFF00"
+      "compound_color": "#FFFF00",
+      "compound_color_rgb": [255, 255, 0]
     },
     "HARD": {
       "best_times": [
@@ -818,7 +844,8 @@ Each entry in `start_compounds` contains:
       "total_laps": 80,
       "sets_used": 6,
       "sets_used_total": 8,
-      "compound_color": "#FFFFFF"
+      "compound_color": "#FFFFFF",
+      "compound_color_rgb": [255, 255, 255]
     }
   }
 }
@@ -913,6 +940,7 @@ Each entry in `drivers` contains:
 | name | string | Driver's full name |
 | team | string | Team name |
 | team_color | string | Team color as hex code (e.g., "#3671C6") |
+| team_color_rgb | list | Team color as RGB values (e.g., `[54, 113, 198]`) |
 | grid_position | string | Starting grid position |
 | current_position | string | Current position in the session |
 | laps | object | Map of lap numbers to lap times (e.g., `{"1": "1:32.456", "2": "1:31.789"}`) |
@@ -960,6 +988,7 @@ Each entry in `drivers` contains:
       "name": "Max Verstappen",
       "team": "Red Bull Racing",
       "team_color": "#3671C6",
+      "team_color_rgb": [54, 113, 198],
       "grid_position": "1",
       "current_position": "1",
       "laps": {
@@ -1007,6 +1036,7 @@ Each entry in `drivers` contains:
     "name": "Max Verstappen",
     "team": "Red Bull Racing",
     "team_color": "#3671C6",
+    "team_color_rgb": [54, 113, 198],
     "lap": 42,
     "time": "1:29.123",
     "time_secs": 89.123
@@ -1029,6 +1059,7 @@ Each entry in `drivers` contains:
       "name": "Max Verstappen",
       "team": "Red Bull Racing",
       "team_color": "#3671C6",
+      "team_color_rgb": [54, 113, 198],
       "grid_position": "1",
       "current_position": "1",
       "laps": {},
@@ -1240,6 +1271,7 @@ VER
 | last_name | string | Driver's last name |
 | team | string | Team name |
 | team_color | string | Team color as hex code (e.g., "#3671C6") |
+| team_color_rgb | list | Team color as RGB values (e.g., `[54, 113, 198]`) |
 | lap_time | string | Current lap time when available |
 | overall_fastest | boolean | Whether this is the overall fastest lap |
 | personal_fastest | boolean | Whether this is the driver's personal best |

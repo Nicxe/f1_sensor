@@ -59,9 +59,6 @@
       "race_control": {
         "name": "Controle de corrida"
       },
-      "safety_car": {
-        "name": "Safety car"
-      },
       "pitstops": {
         "name": "Pit stops"
       },
@@ -103,6 +100,9 @@
       },
       "live_timing_online": {
         "name": "Live Timing online"
+      },
+      "safety_car": {
+        "name": "Safety car"
       },
       "formation_start": {
         "name": "Formation start"

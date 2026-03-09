@@ -15,6 +15,8 @@ from .calibration import LiveDelayCalibrationManager
 from .const import API_URL, DOMAIN, ENABLE_DEVELOPMENT_MODE_UI
 from .entity import F1AuxEntity
 from .replay_entities import (
+    F1ReplayBackButton,
+    F1ReplayForwardButton,
     F1ReplayLoadButton,
     F1ReplayPauseButton,
     F1ReplayPlayButton,
@@ -77,6 +79,18 @@ async def async_setup_entry(
                 F1ReplayPauseButton(
                     replay_controller,
                     f"{entry.entry_id}_replay_pause",
+                    entry.entry_id,
+                    name,
+                ),
+                F1ReplayBackButton(
+                    replay_controller,
+                    f"{entry.entry_id}_replay_back_30",
+                    entry.entry_id,
+                    name,
+                ),
+                F1ReplayForwardButton(
+                    replay_controller,
+                    f"{entry.entry_id}_replay_forward_30",
                     entry.entry_id,
                     name,
                 ),

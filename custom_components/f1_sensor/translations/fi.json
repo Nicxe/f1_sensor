@@ -59,9 +59,6 @@
       "race_control": {
         "name": "Kisavalvonta"
       },
-      "safety_car": {
-        "name": "Turva-auto"
-      },
       "pitstops": {
         "name": "Varikkopysähdykset"
       },
@@ -103,6 +100,9 @@
       },
       "live_timing_online": {
         "name": "Live timing online"
+      },
+      "safety_car": {
+        "name": "Turva-auto"
       },
       "formation_start": {
         "name": "Formation start"

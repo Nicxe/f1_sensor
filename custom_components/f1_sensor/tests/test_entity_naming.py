@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 from unittest.mock import Mock
 
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_component import EntityComponent
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -11,6 +14,8 @@ from custom_components.f1_sensor import (
 )
 from custom_components.f1_sensor.const import DOMAIN, SUPPORTED_SENSOR_KEYS
 from custom_components.f1_sensor.helpers import format_entity_name
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def test_format_entity_name_humanizes_sensor_keys() -> None:
@@ -91,3 +96,47 @@ async def test_binary_sensor_setup_entry_uses_translation_keys(hass) -> None:
     )
     assert object_ids[f"{entry.entry_id}_race_week"] == "f1_race_week"
     assert object_ids[f"{entry.entry_id}_live_timing_online"] == "f1_live_timing_online"
+
+
+@pytest.mark.asyncio
+async def test_binary_sensor_setup_entry_registers_safety_car_entity(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "RaceHub",
+            "disabled_sensors": sorted(SUPPORTED_SENSOR_KEYS - {"safety_car"}),
+        },
+    )
+    entry.add_to_hass(hass)
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "track_status_coordinator": Mock(),
+    }
+
+    async_add_entities = Mock()
+    await binary_sensor_platform.async_setup_entry(hass, entry, async_add_entities)
+
+    entities = async_add_entities.call_args[0][0]
+    assert len(entities) == 1
+
+    entity = entities[0]
+    assert entity.unique_id == f"{entry.entry_id}_safety_car"
+    assert entity._attr_translation_key == "safety_car"
+    assert entity._attr_suggested_object_id == "f1_safety_car"
+    assert entity.name == "Safety car"
+
+    component = EntityComponent(_LOGGER, "binary_sensor", hass)
+    await component.async_add_entities([entity])
+    await hass.async_block_till_done()
+
+    assert entity.entity_id == "binary_sensor.f1_safety_car"
+
+    state = hass.states.get(entity.entity_id)
+    assert state is not None
+    assert state.attributes["friendly_name"] == "Safety car"
+
+    registry = er.async_get(hass)
+    registry_entry = registry.async_get(entity.entity_id)
+    assert registry_entry is not None
+    assert registry_entry.entity_id == "binary_sensor.f1_safety_car"
+    assert registry_entry.unique_id == f"{entry.entry_id}_safety_car"

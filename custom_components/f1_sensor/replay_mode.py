@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator, Callable
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
+from functools import partial
+from inspect import isawaitable
 import json
 import logging
 from pathlib import Path
@@ -22,6 +25,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DEFAULT_REPLAY_START_REFERENCE,
+    DOMAIN,
     REPLAY_CACHE_DIR,
     REPLAY_CACHE_RETENTION_DAYS,
     REPLAY_START_REFERENCE_FORMATION,
@@ -75,6 +79,7 @@ class ReplayState(Enum):
     SELECTED = "selected"
     LOADING = "loading"
     READY = "ready"
+    SEEKING = "seeking"
     PLAYING = "playing"
     PAUSED = "paused"
 
@@ -1347,22 +1352,31 @@ class ReplayTransport:
         start_from_session_start: bool = True,
         start_from_ms: int | None = None,
         speed_multiplier: float = 1.0,
+        include_start_frame: bool = True,
     ) -> None:
         self._hass = hass
         self._index = replay_index
         self._start_from_session_start = start_from_session_start
         self._start_from_ms = start_from_ms
+        self._include_start_frame = include_start_frame
         self._speed = max(0.1, min(10.0, speed_multiplier))
         self._closed = False
         self._paused = False
         self._pause_event = asyncio.Event()
         self._pause_event.set()  # Not paused initially
-        self._current_position_ms = 0
-        self._playback_start_ms = 0
+        self._current_position_ms = self._resolve_start_ms()
+        self._playback_start_ms = self._current_position_ms
         self._playback_started_at: float | None = None
         self._pause_started_at: float | None = None
         self._total_paused_duration: float = 0.0
         self._listeners: list[Callable[[dict], None]] = []
+
+    def _resolve_start_ms(self) -> int:
+        if self._start_from_ms is not None:
+            return self._start_from_ms
+        return (
+            self._index.session_started_at_ms if self._start_from_session_start else 0
+        )
 
     async def ensure_connection(self) -> None:
         """No-op for replay transport - data is already local."""
@@ -1370,14 +1384,7 @@ class ReplayTransport:
 
     async def messages(self) -> AsyncGenerator[dict]:
         """Yield replay frames as SignalR-compatible messages."""
-        if self._start_from_ms is not None:
-            start_ms = self._start_from_ms
-        else:
-            start_ms = (
-                self._index.session_started_at_ms
-                if self._start_from_session_start
-                else 0
-            )
+        start_ms = self._resolve_start_ms()
         self._current_position_ms = start_ms
         self._playback_start_ms = start_ms
         self._playback_started_at = time.monotonic()
@@ -1404,13 +1411,28 @@ class ReplayTransport:
                                 fut = asyncio.run_coroutine_threadsafe(
                                     queue.put(line), loop
                                 )
-                                fut.result()
+                                while not self._closed:
+                                    try:
+                                        fut.result(timeout=0.5)
+                                        break
+                                    except FutureTimeoutError:
+                                        continue
+                                else:
+                                    fut.cancel()
+                                    break
                             except Exception:
                                 break
                 finally:
                     with suppress(Exception):
                         fut = asyncio.run_coroutine_threadsafe(queue.put(None), loop)
-                        fut.result()
+                        while not self._closed:
+                            try:
+                                fut.result(timeout=0.5)
+                                break
+                            except FutureTimeoutError:
+                                continue
+                        else:
+                            fut.cancel()
 
             reader_task = self._hass.async_add_executor_job(_read_frames_stream)
             _LOGGER.debug("Replay: streaming cache file from disk")
@@ -1437,7 +1459,9 @@ class ReplayTransport:
                     continue
 
                 # Skip frames before start point
-                if frame_ms < start_ms:
+                if frame_ms < start_ms or (
+                    frame_ms == start_ms and not self._include_start_frame
+                ):
                     continue
 
                 # Calculate delay based on elapsed time
@@ -1593,6 +1617,7 @@ class ReplayController:
         self._replay_active = False  # Track if replay transport is active
         self._playback_task: asyncio.Task | None = None
         self._listeners: list[Callable[[dict], None]] = []
+        self._pending_start_ms: int | None = None
 
     @property
     def session_manager(self) -> ReplaySessionManager:
@@ -1635,6 +1660,227 @@ class ReplayController:
                     )
         return start_from_ms, initial_state
 
+    def _resolve_requested_start_ms(self, index: ReplayIndex) -> int:
+        baseline_ms, _initial_state = self._resolve_playback_start(index, log=False)
+        if self._pending_start_ms is None:
+            return baseline_ms
+        return max(baseline_ms, min(self._pending_start_ms, index.duration_ms))
+
+    def _get_registry(self) -> dict[str, Any]:
+        return (
+            self._hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            if self._hass is not None
+            else {}
+        ) or {}
+
+    def _set_state(self, state: ReplayState) -> None:
+        self._session_manager._state = state
+        self._session_manager._notify_listeners()
+
+    def _current_or_pending_position_ms(self, index: ReplayIndex) -> int:
+        if self._transport is not None:
+            return self._transport.get_playback_position_ms()
+        return self._resolve_requested_start_ms(index)
+
+    @staticmethod
+    def _read_frames_range_sync(
+        frames_file: Path,
+        *,
+        start_exclusive_ms: int,
+        end_inclusive_ms: int,
+    ) -> list[ReplayFrame]:
+        frames: list[ReplayFrame] = []
+        with open(frames_file, encoding="utf-8") as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    frame = json.loads(line)
+                    frame_ms = int(frame["t"])
+                    if frame_ms <= start_exclusive_ms:
+                        continue
+                    if frame_ms > end_inclusive_ms:
+                        break
+                    frames.append(
+                        ReplayFrame(
+                            timestamp_ms=frame_ms,
+                            stream=str(frame["s"]),
+                            payload=frame["p"],
+                        )
+                    )
+                except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+                    continue
+        return frames
+
+    async def _replay_frames_range(
+        self,
+        index: ReplayIndex,
+        *,
+        start_exclusive_ms: int,
+        end_inclusive_ms: int,
+    ) -> None:
+        if end_inclusive_ms <= start_exclusive_ms:
+            return
+        frames = await self._hass.async_add_executor_job(
+            partial(
+                self._read_frames_range_sync,
+                index.frames_file,
+                start_exclusive_ms=start_exclusive_ms,
+                end_inclusive_ms=end_inclusive_ms,
+            )
+        )
+        for frame in frames:
+            if isinstance(frame.payload, dict):
+                self._live_bus.inject_message(frame.stream, frame.payload)
+
+    async def _run_replay_reset_callbacks(self) -> None:
+        callbacks = self._get_registry().get("replay_reset_callbacks", [])
+        for callback in list(callbacks):
+            try:
+                result = callback()
+                if isawaitable(result):
+                    await result
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Replay reset callback failed", exc_info=True)
+
+    async def _stop_active_replay_transport(self) -> None:
+        if self._transport is not None:
+            await self._transport.close()
+
+        if self._live_bus._running:
+            await self._live_bus.async_close()
+
+        self._transport = None
+
+        if self._playback_task is not None:
+            self._playback_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._playback_task
+            self._playback_task = None
+
+    def _ensure_replay_active(self) -> None:
+        if self._live_state is not None:
+            self._live_state.set_state(True, "replay")
+        if not self._replay_active:
+            self._original_transport_factory = self._live_bus._transport_factory
+            self._replay_active = True
+
+    def _replay_transport_factory(self) -> ReplayTransport:
+        if not self._replay_active or self._transport is None:
+            _LOGGER.warning("Replay transport factory called without active transport")
+            raise RuntimeError("Replay transport is not available")
+        if self._transport._closed:
+            _LOGGER.info("Replay transport is closed - stopping reconnect attempts")
+            self._replay_active = False
+            raise RuntimeError("Replay transport is closed - playback complete")
+        return self._transport
+
+    def _inject_initial_state(self, initial_state: dict[str, Any] | None) -> None:
+        if not initial_state:
+            return
+        _LOGGER.info(
+            "Injecting initial state for %d streams: %s",
+            len(initial_state),
+            list(initial_state.keys()),
+        )
+        for stream, payload in initial_state.items():
+            if isinstance(payload, dict):
+                self._live_bus.inject_message(stream, payload)
+
+    async def _start_transport(
+        self,
+        index: ReplayIndex,
+        *,
+        start_from_ms: int,
+        include_start_frame: bool,
+        paused: bool,
+    ) -> None:
+        self._transport = ReplayTransport(
+            self._hass,
+            index,
+            start_from_session_start=False,
+            start_from_ms=start_from_ms,
+            include_start_frame=include_start_frame,
+        )
+        if paused:
+            self._transport.pause()
+        await self._live_bus.swap_transport(self._replay_transport_factory)
+        self._playback_task = self._hass.async_create_task(self._run_playback())
+
+    async def async_seek_by(self, seconds: int) -> None:
+        """Seek relative to the current or planned replay position."""
+        index = self._session_manager.get_loaded_index()
+        if index is None:
+            raise RuntimeError("No replay index loaded")
+        target_ms = self._current_or_pending_position_ms(index) + (int(seconds) * 1000)
+        await self.async_seek_to_ms(target_ms)
+
+    async def async_seek_to_position(self, position_s: int) -> None:
+        """Seek to an absolute position in seconds from the replay start reference."""
+        index = self._session_manager.get_loaded_index()
+        if index is None:
+            raise RuntimeError("No replay index loaded")
+        playback_start_ms, _initial_state = self._resolve_playback_start(
+            index, log=False
+        )
+        await self.async_seek_to_ms(playback_start_ms + (int(position_s) * 1000))
+
+    async def async_seek_to_ms(self, target_ms: int) -> None:
+        """Seek to an absolute millisecond position within the loaded replay."""
+        if self._session_manager.state not in (
+            ReplayState.READY,
+            ReplayState.PLAYING,
+            ReplayState.PAUSED,
+        ):
+            raise RuntimeError("Replay must be loaded before seeking")
+
+        index = self._session_manager.get_loaded_index()
+        if index is None:
+            raise RuntimeError("No replay index loaded")
+
+        baseline_ms, initial_state = self._resolve_playback_start(index, log=False)
+        target_ms = max(baseline_ms, min(int(target_ms), index.duration_ms))
+
+        if self._session_manager.state == ReplayState.READY:
+            self._pending_start_ms = target_ms
+            self._set_state(ReplayState.READY)
+            return
+
+        previous_state = self._session_manager.state
+        current_ms = self._current_or_pending_position_ms(index)
+        if target_ms == current_ms:
+            return
+
+        self._set_state(ReplayState.SEEKING)
+        self._pending_start_ms = target_ms
+
+        await self._stop_active_replay_transport()
+
+        if target_ms < current_ms:
+            await self._run_replay_reset_callbacks()
+            self._inject_initial_state(initial_state)
+            await self._replay_frames_range(
+                index,
+                start_exclusive_ms=baseline_ms,
+                end_inclusive_ms=target_ms,
+            )
+        else:
+            await self._replay_frames_range(
+                index,
+                start_exclusive_ms=current_ms,
+                end_inclusive_ms=target_ms,
+            )
+
+        await self._start_transport(
+            index,
+            start_from_ms=target_ms,
+            include_start_frame=False,
+            paused=previous_state == ReplayState.PAUSED,
+        )
+        self._pending_start_ms = None
+        self._set_state(previous_state)
+
     def _reset_formation_tracker(self) -> None:
         if self._formation_tracker is None:
             return
@@ -1656,6 +1902,7 @@ class ReplayController:
 
         # Lock replay state first so the supervisor cannot re-arm the bus
         # while we await async_close below
+        self._pending_start_ms = None
         if self._live_state is not None:
             self._live_state.set_state(False, "replay-preparing")
 
@@ -1686,77 +1933,42 @@ class ReplayController:
         if not index:
             raise RuntimeError("No replay index loaded")
 
-        start_from_ms, initial_state = self._resolve_playback_start(index, log=True)
+        baseline_ms, initial_state = self._resolve_playback_start(index, log=True)
+        start_from_ms = self._resolve_requested_start_ms(index)
+        include_start_frame = start_from_ms <= baseline_ms
 
-        # Create transport
-        self._transport = ReplayTransport(
-            self._hass,
-            index,
-            start_from_session_start=False,
-            start_from_ms=start_from_ms,
-        )
-
-        # Signal coordinators that we're "live" for replay mode
-        # This makes them accept incoming data even outside real live window
-        if self._live_state is not None:
-            _LOGGER.info("Setting live_state to True for replay mode")
-            self._live_state.set_state(True, "replay")
-
-        # Save original transport factory and swap to replay
-        self._original_transport_factory = self._live_bus._transport_factory
-        self._replay_active = True
-
-        def _replay_transport_factory():
-            if not self._replay_active or self._transport is None:
-                _LOGGER.warning(
-                    "Replay transport factory called but replay is not active"
-                )
-                raise RuntimeError("Replay transport is not available")
-            # Check if transport is closed (playback complete) - deactivate to stop reconnects
-            if self._transport._closed:
-                _LOGGER.info("Replay transport is closed - stopping reconnect attempts")
-                self._replay_active = False
-                raise RuntimeError("Replay transport is closed - playback complete")
-            _LOGGER.debug("Replay transport factory called, returning transport")
-            return self._transport
-
-        _LOGGER.debug("Calling swap_transport with replay factory")
-        await self._live_bus.swap_transport(_replay_transport_factory)
-        _LOGGER.debug(
-            "swap_transport completed, LiveBus running=%s", self._live_bus._running
-        )
-
-        # Inject initial state for all streams so sensors have their correct values
-        # before the replay transport starts yielding frames
-        if initial_state:
-            _LOGGER.info(
-                "Injecting initial state for %d streams: %s",
-                len(initial_state),
-                list(initial_state.keys()),
+        self._ensure_replay_active()
+        await self._run_replay_reset_callbacks()
+        self._inject_initial_state(initial_state)
+        if start_from_ms > baseline_ms:
+            await self._replay_frames_range(
+                index,
+                start_exclusive_ms=baseline_ms,
+                end_inclusive_ms=start_from_ms,
             )
-            for stream, payload in initial_state.items():
-                if isinstance(payload, dict):
-                    self._live_bus.inject_message(stream, payload)
+            include_start_frame = False
 
-        # Start playback in background
-        self._playback_task = self._hass.async_create_task(self._run_playback())
-        self._session_manager._state = ReplayState.PLAYING
-        self._session_manager._notify_listeners()
+        await self._start_transport(
+            index,
+            start_from_ms=start_from_ms,
+            include_start_frame=include_start_frame,
+            paused=False,
+        )
+        self._pending_start_ms = None
+        self._set_state(ReplayState.PLAYING)
         _LOGGER.info("Replay playback started")
 
     async def async_pause(self) -> None:
         """Pause playback."""
         if self._transport and self._session_manager.state == ReplayState.PLAYING:
             self._transport.pause()
-            self._session_manager._state = ReplayState.PAUSED
-            self._session_manager._notify_listeners()
+            self._set_state(ReplayState.PAUSED)
 
     async def async_resume(self) -> None:
         """Resume playback."""
         if self._transport and self._session_manager.state == ReplayState.PAUSED:
             self._transport.resume()
-            self._session_manager._state = ReplayState.PLAYING
-            self._session_manager._notify_listeners()
+            self._set_state(ReplayState.PLAYING)
 
     async def async_stop(self) -> None:
         """Stop playback and return to idle."""
@@ -1773,19 +1985,20 @@ class ReplayController:
                 self._original_transport_factory = None
             else:
                 self._live_bus._transport_factory = None
+            if self._transport:
+                await self._transport.close()
             # Now safe to close the bus
             await self._live_bus.async_close()
 
-        # Now safe to close the transport since LiveBus is stopped
-        if self._transport:
-            await self._transport.close()
-            self._transport = None
+        self._transport = None
 
         if self._playback_task:
             self._playback_task.cancel()
             with suppress(asyncio.CancelledError):
                 await self._playback_task
             self._playback_task = None
+
+        self._pending_start_ms = None
 
         # Restore live state to idle - let LiveSessionSupervisor control it
         if self._live_state is not None:
@@ -1847,8 +2060,8 @@ class ReplayController:
                     self._on_replay_ended()
 
                 # Update session state to IDLE (not READY - session is done)
-                self._session_manager._state = ReplayState.IDLE
-                self._session_manager._notify_listeners()
+                self._pending_start_ms = None
+                self._set_state(ReplayState.IDLE)
 
                 # Clean up cache
                 await self._session_manager.async_unload()
@@ -1858,23 +2071,51 @@ class ReplayController:
         index = self._session_manager.get_loaded_index()
         if not index:
             return {}
-        start_from_ms, _ = self._resolve_playback_start(index, log=False)
+        playback_start_ms, _initial_state = self._resolve_playback_start(
+            index, log=False
+        )
+        position_ms = self._resolve_requested_start_ms(index)
         return {
             "session_start_ms": index.session_started_at_ms,
-            "playback_start_ms": start_from_ms,
+            "playback_start_ms": playback_start_ms,
+            "position_ms": position_ms,
             "duration_ms": index.duration_ms,
         }
 
     def get_playback_status(self) -> dict:
         """Get current playback position and status."""
-        if not self._transport:
+        if self._transport is not None:
+            index = self._session_manager.get_loaded_index()
+            session_start_ms = self._transport.get_session_start_offset_ms()
+            playback_start_ms = self._transport.get_playback_start_offset_ms()
+            duration_ms = self._transport.get_total_duration_ms()
+            if index is not None:
+                session_start_ms = index.session_started_at_ms
+                playback_start_ms, _initial_state = self._resolve_playback_start(
+                    index, log=False
+                )
+                duration_ms = index.duration_ms
+            return {
+                "position_ms": self._transport.get_playback_position_ms(),
+                "session_start_ms": session_start_ms,
+                "playback_start_ms": playback_start_ms,
+                "duration_ms": duration_ms,
+                "paused": self._transport.is_paused(),
+                "elapsed_s": self._transport._get_elapsed_playback_time(),
+            }
+
+        index = self._session_manager.get_loaded_index()
+        if index is None:
             return {"position_ms": 0, "duration_ms": 0, "paused": False, "elapsed_s": 0}
 
+        playback_start_ms, _initial_state = self._resolve_playback_start(
+            index, log=False
+        )
         return {
-            "position_ms": self._transport.get_playback_position_ms(),
-            "session_start_ms": self._transport.get_session_start_offset_ms(),
-            "playback_start_ms": self._transport.get_playback_start_offset_ms(),
-            "duration_ms": self._transport.get_total_duration_ms(),
-            "paused": self._transport.is_paused(),
-            "elapsed_s": self._transport._get_elapsed_playback_time(),
+            "position_ms": self._resolve_requested_start_ms(index),
+            "session_start_ms": index.session_started_at_ms,
+            "playback_start_ms": playback_start_ms,
+            "duration_ms": index.duration_ms,
+            "paused": self._session_manager.state == ReplayState.PAUSED,
+            "elapsed_s": 0,
         }

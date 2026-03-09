@@ -695,7 +695,9 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
             "circuit_country": loc.get("country"),
             "country_code": get_country_code(loc.get("country")),
             "country_flag_url": get_country_flag_url(loc.get("country")),
-            "circuit_map_url": get_circuit_map_url(circuit.get("circuitId")),
+            "circuit_map_url": get_circuit_map_url(
+                circuit.get("circuitId"), race.get("season")
+            ),
             "circuit_timezone": timezone,
         }
 
@@ -830,7 +832,9 @@ class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
             country = circuit.get("Location", {}).get("country")
             enriched["country_code"] = get_country_code(country)
             enriched["country_flag_url"] = get_country_flag_url(country)
-            enriched["circuit_map_url"] = get_circuit_map_url(circuit.get("circuitId"))
+            enriched["circuit_map_url"] = get_circuit_map_url(
+                circuit.get("circuitId"), race.get("season")
+            )
             enriched_races.append(enriched)
 
         return {"season": table.get("season"), "races": enriched_races}
@@ -2272,6 +2276,8 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_native_value = None
+        self._session_status_coordinator = None
+        self._forced_unavailable = False
         # Advertise as enum sensor so HA UI can suggest valid states
         try:
             self._attr_device_class = SensorDeviceClass.ENUM
@@ -2288,12 +2294,17 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        self._session_status_coordinator = reg.get("session_status_coordinator")
         # Prefer coordinator's latest if present, otherwise restore last state
         raw = self._extract_current()
         initial = self._normalize(raw)
         updated = raw is not None
-        if initial is not None:
+        if self._session_is_terminal():
+            self._clear_state()
+        elif initial is not None:
             self._attr_native_value = initial
+            self._forced_unavailable = False
             with suppress(Exception):
                 from logging import getLogger
 
@@ -2317,6 +2328,11 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         # Listen for coordinator pushes
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
+        if self._session_status_coordinator is not None:
+            status_removal = self._session_status_coordinator.async_add_listener(
+                self._handle_session_status_update
+            )
+            self.async_on_remove(status_removal)
         self.async_write_ha_state()
 
     def _normalize(self, raw: dict | None) -> str | None:
@@ -2356,8 +2372,39 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         # Return stored value so restored/initialized state is honored until an update arrives
         return self._attr_native_value
 
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        return not self._forced_unavailable
+
+    def _session_is_terminal(self) -> bool:
+        payload = getattr(self._session_status_coordinator, "data", None)
+        is_qualifying_like, qualifying_part = _session_status_mapping_context(
+            self._session_status_coordinator
+        )
+        mapped = _map_session_status_payload(
+            payload,
+            self.hass,
+            is_qualifying_like=is_qualifying_like,
+            qualifying_part=qualifying_part,
+        )
+        return mapped in {"finished", "finalised", "ended"}
+
+    def _handle_session_status_update(self) -> None:
+        if not self._session_is_terminal():
+            return
+        if self._forced_unavailable:
+            return
+        self._clear_state()
+        self.async_write_ha_state()
+
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
+        if self._session_is_terminal():
+            self._clear_state()
+            self.async_write_ha_state()
+            return
         updated = raw is not None
         if not self._handle_stream_state(updated):
             return
@@ -2380,6 +2427,7 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 new_state,
             )
         self._attr_native_value = new_state
+        self._forced_unavailable = False
         self.async_write_ha_state()
 
     @property
@@ -2388,6 +2436,20 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _clear_state(self) -> None:
         self._attr_native_value = None
+        self._forced_unavailable = True
+
+
+def _hex_to_rgb(color: str | None) -> list[int] | None:
+    """Convert '#RRGGBB' or 'RRGGBB' to [R, G, B], or None if invalid."""
+    if not isinstance(color, str) or not color:
+        return None
+    s = color.lstrip("#").strip()
+    if len(s) != 6:
+        return None
+    try:
+        return [int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)]
+    except ValueError:
+        return None
 
 
 class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -2398,6 +2460,7 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """
 
     _device_category = "drivers"
+    _WRITE_CAP_SECONDS = 1.0
 
     def __init__(
         self,
@@ -2418,6 +2481,8 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self._attr_icon = "mdi:trophy-outline"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
+        self._last_write_ts: float | None = None
+        self._pending_write: bool = False
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -2545,6 +2610,7 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "last_name": last_name,
             "team": team,
             "team_color": team_color,
+            "team_color_rgb": _hex_to_rgb(team_color),
             "lap_time": lap_time,
             "overall_fastest": overall_fastest,
             "personal_fastest": personal_fastest,
@@ -2606,20 +2672,25 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 prev_state,
                 self._attr_native_value,
             )
-        # Rate-limita skrivningar till max var 5:e sekund
+        # Rate-limit writes so dense TopThree deltas stay responsive without
+        # writing every intermediate frame to Home Assistant state.
         try:
             import time as _time
 
             lw = getattr(self, "_last_write_ts", None)
             now = _time.time()
-            if lw is None or (now - lw) >= 5.0:
+            if lw is None or (now - lw) >= self._WRITE_CAP_SECONDS:
                 self._last_write_ts = now
                 self._safe_write_ha_state()
             else:
                 pending = getattr(self, "_pending_write", False)
                 if not pending:
                     self._pending_write = True
-                    delay = max(0.0, 5.0 - (now - lw)) if lw is not None else 5.0
+                    delay = (
+                        max(0.0, self._WRITE_CAP_SECONDS - (now - lw))
+                        if lw is not None
+                        else self._WRITE_CAP_SECONDS
+                    )
 
                     def _do_write(_):
                         try:
@@ -2660,7 +2731,11 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
 
 def _map_session_status_payload(
-    raw: dict | None, hass: HomeAssistant | None
+    raw: dict | None,
+    hass: HomeAssistant | None,
+    *,
+    is_qualifying_like: bool = False,
+    qualifying_part: int | None = None,
 ) -> str | None:
     """Map raw SessionStatus payloads to semantic states."""
     if not raw:
@@ -2673,6 +2748,8 @@ def _map_session_status_payload(
         return "live"
 
     if message == "Finished":
+        if is_qualifying_like and qualifying_part in (1, 2):
+            return "break"
         return "finished"
 
     if message == "Finalised":
@@ -2714,6 +2791,18 @@ def _map_session_status_payload(
         return "pre"
 
     return "pre"
+
+
+def _session_status_mapping_context(coordinator) -> tuple[bool, int | None]:
+    """Return derived session context used for semantic status mapping."""
+    is_qualifying_like = bool(getattr(coordinator, "is_qualifying_like_session", False))
+    qualifying_part = getattr(coordinator, "qualifying_part", None)
+    try:
+        if qualifying_part is not None:
+            qualifying_part = int(qualifying_part)
+    except (TypeError, ValueError):
+        qualifying_part = None
+    return is_qualifying_like, qualifying_part
 
 
 class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -2908,7 +2997,15 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self.async_write_ha_state()
 
     def _map_status(self, raw: dict | None) -> str | None:
-        return _map_session_status_payload(raw, self.hass)
+        is_qualifying_like, qualifying_part = _session_status_mapping_context(
+            self.coordinator
+        )
+        return _map_session_status_payload(
+            raw,
+            self.hass,
+            is_qualifying_like=is_qualifying_like,
+            qualifying_part=qualifying_part,
+        )
 
     def _handle_coordinator_update(self) -> None:
         raw = self._extract_current()
@@ -3330,7 +3427,15 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         return None
 
     def _mapped_live_status(self) -> str | None:
-        return _map_session_status_payload(self._live_status_payload(), self.hass)
+        is_qualifying_like, qualifying_part = _session_status_mapping_context(
+            self._status_coordinator
+        )
+        return _map_session_status_payload(
+            self._live_status_payload(),
+            self.hass,
+            is_qualifying_like=is_qualifying_like,
+            qualifying_part=qualifying_part,
+        )
 
     def _apply_payload(self, raw: dict, allow_clear: bool = True) -> None:
         label, meta = self._resolve_label(raw or {})
@@ -5299,6 +5404,7 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     "last_name": ident.get("last_name"),
                     "team": ident.get("team"),
                     "team_color": team_color,
+                    "team_color_rgb": _hex_to_rgb(team_color),
                     "headshot_small": ident.get("headshot_small")
                     or ident.get("headshot"),
                     "headshot_large": ident.get("headshot_large")
@@ -5500,10 +5606,12 @@ class F1CurrentTyresSensor(_CoordinatorStreamSensorBase):
                     "racing_number": ident.get("racing_number") or rn,
                     "tla": tla,
                     "team_color": team_color,
+                    "team_color_rgb": _hex_to_rgb(team_color),
                     "position": position,
                     "compound": compound,
                     "compound_short": compound_short,
                     "compound_color": compound_color,
+                    "compound_color_rgb": _hex_to_rgb(compound_color),
                     "new": is_new,
                     "stint_laps": stint_laps,
                 }
@@ -5586,6 +5694,9 @@ class F1TyreStatisticsSensor(_CoordinatorStreamSensorBase):
         for comp_name, comp_data in compounds_raw.items():
             comp_copy = dict(comp_data)
             comp_copy["compound_color"] = self._COMPOUND_COLOR.get(comp_name)
+            comp_copy["compound_color_rgb"] = _hex_to_rgb(
+                self._COMPOUND_COLOR.get(comp_name)
+            )
             compounds[comp_name] = comp_copy
 
         self._attr_native_value = fastest_compound
@@ -5940,6 +6051,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "name": identity.get("name"),
                 "team": identity.get("team"),
                 "team_color": team_color,
+                "team_color_rgb": _hex_to_rgb(team_color),
                 "grid_position": lap_history.get("grid_position"),
                 "current_position": _extract_driver_position(info),
                 "laps": lap_history.get("laps", {}),
@@ -6010,11 +6122,16 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     drivers_list[idx][pos_key] = rank
 
         current_q_part = data.get("session", {}).get("part") if is_qualifying else None
+        if isinstance(fastest, dict):
+            fastest_out = dict(fastest)
+            fastest_out["team_color_rgb"] = _hex_to_rgb(fastest_out.get("team_color"))
+        else:
+            fastest_out = None
         self._attr_native_value = lap_current
         self._attr_extra_state_attributes = {
             "drivers": drivers_list,
             "total_laps": lap_total,
-            "fastest_lap": dict(fastest) if isinstance(fastest, dict) else None,
+            "fastest_lap": fastest_out,
             "current_qualifying_part": current_q_part,
         }
         return True
@@ -6156,6 +6273,9 @@ class F1StraightModeSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_native_value: str | None = None
         self._attr_extra_state_attributes: dict[str, object] = {}
 
+    def _session_is_terminal(self) -> bool:
+        return bool(getattr(self.coordinator, "session_is_terminal", False))
+
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         data = self._extract_data()
@@ -6164,17 +6284,18 @@ class F1StraightModeSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         if updated and data is not None:
             self._apply_data(data)
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                restored_state = str(last.state)
-                if restored_state in self._attr_options:
-                    self._attr_native_value = restored_state
-                    attrs = dict(last.attributes or {})
-                    self._attr_extra_state_attributes = {
-                        "overtake_enabled": attrs.get("overtake_enabled"),
-                        "restored": True,
-                    }
-                    restored = True
+            if not self._session_is_terminal():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    restored_state = str(last.state)
+                    if restored_state in self._attr_options:
+                        self._attr_native_value = restored_state
+                        attrs = dict(last.attributes or {})
+                        self._attr_extra_state_attributes = {
+                            "overtake_enabled": attrs.get("overtake_enabled"),
+                            "restored": True,
+                        }
+                        restored = True
             if not restored and not self._is_stream_active():
                 self._clear_state()
         self._stream_last_active = self._is_stream_active()
@@ -6200,6 +6321,10 @@ class F1StraightModeSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         data = self._extract_data()
+        if self._session_is_terminal():
+            self._clear_state()
+            self.async_write_ha_state()
+            return
         updated = self._has_straight_mode_state(data)
         if not self._handle_stream_state(updated):
             return

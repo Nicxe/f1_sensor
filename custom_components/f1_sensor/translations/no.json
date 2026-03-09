@@ -59,9 +59,6 @@
       "race_control": {
         "name": "Racekontroll"
       },
-      "safety_car": {
-        "name": "Sikkerhetsbil"
-      },
       "pitstops": {
         "name": "Pitstopp"
       },
@@ -103,6 +100,9 @@
       },
       "live_timing_online": {
         "name": "Live timing online"
+      },
+      "safety_car": {
+        "name": "Sikkerhetsbil"
       },
       "formation_start": {
         "name": "Formation start"

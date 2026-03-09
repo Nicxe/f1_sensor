@@ -1,0 +1,1124 @@
+blueprint:
+  homeassistant:
+    min_version: 2024.6.0
+  name: F1 Sensor - Track Status Light (Modern)
+  description: >
+    Turn a light into an F1 race-status indicator with sensible defaults and advanced options.
+
+    Core behavior: choose session and track sensors, then map track states to colors.
+
+    Requires F1 Sensor live entities for track/session status to be enabled in integration settings.
+
+    Advanced options include scene snapshots, timed or continuous flashing, clear-state auto-restore,
+    and flexible session-end behavior.
+
+    Track states: CLEAR, YELLOW, VSC, SC, RED.
+    Session phases: pre, live, suspended, break, finished, finalised, ended.
+
+    You can simulate state changes in Developer Tools -> States.
+  domain: automation
+  source_url: https://github.com/Nicxe/f1_sensor
+  author: Nicxe
+
+  input:
+    data_sources:
+      name: Data Sources
+      icon: mdi:database
+      collapsed: false
+      description: Link the blueprint to your F1 Sensor entities.
+      input:
+        session_status_entity:
+          name: Session Status Sensor
+          description: Sensor that reports session phases such as live and finished.
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+              multiple: false
+        track_status_entity:
+          name: Track Status Sensor
+          description: Sensor that reports CLEAR, YELLOW, VSC, SC, and RED.
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+              multiple: false
+        active_session_phases:
+          name: Active Session Phases
+          description: Light logic runs only in these phases.
+          default:
+            - live
+            - suspended
+          selector:
+            select:
+              mode: dropdown
+              multiple: true
+              options:
+                - label: Pre-session
+                  value: pre
+                - label: Live
+                  value: live
+                - label: Suspended
+                  value: suspended
+                - label: Break
+                  value: break
+                - label: Finished
+                  value: finished
+                - label: Finalised
+                  value: finalised
+                - label: Ended
+                  value: ended
+
+    session_scope:
+      name: Session Scope
+      icon: mdi:flag-checkered
+      collapsed: false
+      description: Limit automation behavior to selected values from F1 Current Session.
+      input:
+        enable_current_session_filter:
+          name: Enable Current Session Filter
+          description: When enabled, automation runs only for selected current sessions.
+          default: false
+          selector:
+            boolean: {}
+        current_session_entity:
+          name: Current Session Sensor (optional)
+          description: Select your F1 current session sensor (typically *_current_session).
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+              multiple: false
+        allowed_current_sessions:
+          name: Allowed Current Sessions
+          description: Select which sessions should use this automation.
+          default:
+            - Practice 1
+            - Practice 2
+            - Practice 3
+            - Qualifying
+            - Sprint Qualifying
+            - Sprint
+            - Race
+          selector:
+            select:
+              mode: dropdown
+              multiple: true
+              options:
+                - label: Practice 1
+                  value: Practice 1
+                - label: Practice 2
+                  value: Practice 2
+                - label: Practice 3
+                  value: Practice 3
+                - label: Qualifying
+                  value: Qualifying
+                - label: Sprint Qualifying
+                  value: Sprint Qualifying
+                - label: Sprint
+                  value: Sprint
+                - label: Race
+                  value: Race
+
+    activation_conditions:
+      name: Activation Conditions
+      icon: mdi:filter-check
+      collapsed: true
+      description: Optional gates that must pass before any blueprint actions run.
+      input:
+        presence_devices:
+          name: Presence Devices
+          description: Optional. At least one selected device must be home for this automation to run.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: device_tracker
+              multiple: true
+        media_player_gate:
+          name: Media Player Gate
+          description: Optional. Selected media player must be on, idle, or playing for this automation to run.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: media_player
+              multiple: false
+        enable_dnd:
+          name: Enable Do Not Disturb Window
+          description: Blocks this automation inside the configured time window.
+          default: false
+          selector:
+            boolean: {}
+        dnd_start_time:
+          name: DND Start Time
+          default: "23:00:00"
+          selector:
+            time: {}
+        dnd_end_time:
+          name: DND End Time
+          default: "07:00:00"
+          selector:
+            time: {}
+        activation_condition:
+          name: Activation Condition
+          description: Optional extra conditions for power users. If not met, no actions in this automation run.
+          default: []
+          selector:
+            condition: {}
+
+    light_behavior:
+      name: Light Behavior
+      icon: mdi:lightbulb
+      collapsed: false
+      description: Core light target and transition settings.
+      input:
+        light_target:
+          name: Light or Group Entity
+          description: Light entity to control, or a group entity that contains lights.
+          selector:
+            entity:
+              filter:
+                - domain: light
+                - domain: group
+              multiple: false
+        brightness_pct:
+          name: Brightness
+          default: 100
+          selector:
+            number:
+              min: 0
+              max: 100
+              step: 1
+              unit_of_measurement: "%"
+        transition_s:
+          name: Transition Time
+          default: 1
+          selector:
+            number:
+              min: 0
+              max: 10
+              step: 0.5
+              unit_of_measurement: s
+        snapshot_pre_race:
+          name: Snapshot Light At Session Start
+          description: Save light state when session enters active phases. Used for session-end restore.
+          default: true
+          selector:
+            boolean: {}
+        snapshot_before_alert:
+          name: Snapshot Before Alerts
+          description: Save light state before YELLOW, RED, SC, or VSC updates. Used for restore-after-alert options.
+          default: true
+          selector:
+            boolean: {}
+
+    flag_colors:
+      name: Flag Colors
+      icon: mdi:palette
+      collapsed: true
+      input:
+        color_clear:
+          name: Color - CLEAR
+          default: [0, 255, 0]
+          selector:
+            color_rgb: {}
+        color_yellow:
+          name: Color - YELLOW
+          default: [255, 255, 0]
+          selector:
+            color_rgb: {}
+        color_red:
+          name: Color - RED
+          default: [255, 0, 0]
+          selector:
+            color_rgb: {}
+        color_vsc:
+          name: Color - VSC
+          default: [255, 255, 0]
+          selector:
+            color_rgb: {}
+        color_sc:
+          name: Color - SC
+          default: [255, 0, 0]
+          selector:
+            color_rgb: {}
+
+    alert_behavior:
+      name: Alert Behavior
+      icon: mdi:alarm-light
+      collapsed: true
+      description: Configure flashing patterns for YELLOW/RED and SC/VSC.
+      input:
+        flash_interval_s:
+          name: Flash Interval
+          default: 1
+          selector:
+            number:
+              min: 1
+              max: 10
+              step: 1
+              unit_of_measurement: s
+        yellow_red_mode:
+          name: YELLOW/RED Mode
+          description: Select steady, timed flashing, or continuous flashing.
+          default: flash_timed
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Steady color only
+                  value: steady
+                - label: Flash for a duration then continue
+                  value: flash_timed
+                - label: Flash continuously until status changes
+                  value: flash_continuous
+        yellow_red_flash_duration_s:
+          name: YELLOW/RED Flash Duration
+          description: Used when YELLOW/RED mode is set to timed flashing.
+          default: 10
+          selector:
+            number:
+              min: 1
+              max: 300
+              step: 1
+              unit_of_measurement: s
+        yellow_red_after_flash:
+          name: YELLOW/RED After Timed Flash
+          description: What to do after timed flashing completes.
+          default: steady
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Keep steady color
+                  value: steady
+                - label: Restore pre-alert scene
+                  value: restore_previous
+        sc_vsc_mode:
+          name: SC/VSC Mode
+          description: Select steady, timed flashing, or continuous flashing.
+          default: flash_timed
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Steady color only
+                  value: steady
+                - label: Flash for a duration then continue
+                  value: flash_timed
+                - label: Flash continuously until status changes
+                  value: flash_continuous
+        sc_vsc_flash_duration_s:
+          name: SC/VSC Flash Duration
+          description: Used when SC/VSC mode is set to timed flashing.
+          default: 10
+          selector:
+            number:
+              min: 1
+              max: 300
+              step: 1
+              unit_of_measurement: s
+        sc_vsc_after_flash:
+          name: SC/VSC After Timed Flash
+          description: What to do after timed flashing completes.
+          default: steady
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Keep steady color
+                  value: steady
+                - label: Restore pre-alert scene
+                  value: restore_previous
+
+    clear_behavior:
+      name: CLEAR Behavior
+      icon: mdi:check-circle-outline
+      collapsed: true
+      description: Choose what happens when track state becomes CLEAR.
+      input:
+        clear_behavior_mode:
+          name: CLEAR Mode
+          default: steady
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Keep CLEAR color
+                  value: steady
+                - label: Restore pre-alert scene immediately
+                  value: restore_immediately
+                - label: CLEAR color then restore after delay
+                  value: restore_after_delay
+        clear_restore_delay_s:
+          name: CLEAR Restore Delay
+          description: Used when CLEAR mode is set to delayed restore.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 300
+              step: 1
+              unit_of_measurement: s
+
+    session_end_behavior:
+      name: Session End Behavior
+      icon: mdi:flag-checkered
+      collapsed: true
+      description: Configure what happens when session leaves active phases.
+      input:
+        end_delay_min:
+          name: End Delay
+          description: Delay in minutes before applying end-of-session action.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 240
+              step: 1
+              unit_of_measurement: min
+        end_action:
+          name: End Action
+          default: keep
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Keep current light state
+                  value: keep
+                - label: Turn off light
+                  value: turn_off
+                - label: Set neutral color
+                  value: neutral
+                - label: Restore pre-race scene
+                  value: restore_pre_race
+        end_neutral_color:
+          name: Neutral Color
+          description: Used only when End Action is set to neutral.
+          default: [255, 255, 255]
+          selector:
+            color_rgb: {}
+        cleanup_scenes_on_end:
+          name: Delete Runtime Scenes On Session End
+          description: Deletes temporary pre-race and pre-alert scenes after end action.
+          default: true
+          selector:
+            boolean: {}
+
+    notifications:
+      name: Notifications (Optional)
+      icon: mdi:bell-badge
+      collapsed: true
+      description: Run custom notification actions on track updates and/or session end.
+      input:
+        enable_notifications:
+          name: Enable Notifications
+          default: false
+          selector:
+            boolean: {}
+        notify_on_track_updates:
+          name: Notify on Track Status Updates
+          default: true
+          selector:
+            boolean: {}
+        notify_on_session_end:
+          name: Notify on Session End
+          default: true
+          selector:
+            boolean: {}
+        notification_actions:
+          name: Notification Actions
+          description: >
+            Define any Home Assistant actions for notifications (phone, notify service, TTS, script, etc).
+            Available templates: {{ notification_title }}, {{ notification_message }}, {{ notification_track_state }}, {{ notification_session_phase }}.
+          default: []
+          selector:
+            action: {}
+
+variables:
+  current_session_filter_enabled: !input enable_current_session_filter
+  current_session_entity: !input current_session_entity
+  allowed_current_sessions: !input allowed_current_sessions
+
+  track_status_entity: !input track_status_entity
+  session_status_entity: !input session_status_entity
+  active_phases: !input active_session_phases
+  light_entity: !input light_target
+  light_turn_on_service: "{{ 'homeassistant.turn_on' if (light_entity | string).startswith('group.') else 'light.turn_on' }}"
+  light_turn_off_service: "{{ 'homeassistant.turn_off' if (light_entity | string).startswith('group.') else 'light.turn_off' }}"
+
+  presence_list: !input presence_devices
+  media_player_entity: !input media_player_gate
+  enable_dnd_window: !input enable_dnd
+  dnd_start: !input dnd_start_time
+  dnd_end: !input dnd_end_time
+
+  snapshot_pre_race_enabled: !input snapshot_pre_race
+  snapshot_before_alert_enabled: !input snapshot_before_alert
+
+  yellow_red_mode_input: !input yellow_red_mode
+  yellow_red_after_flash_input: !input yellow_red_after_flash
+  yellow_red_flash_duration_input: !input yellow_red_flash_duration_s
+  sc_vsc_mode_input: !input sc_vsc_mode
+  sc_vsc_after_flash_input: !input sc_vsc_after_flash
+  sc_vsc_flash_duration_input: !input sc_vsc_flash_duration_s
+  clear_behavior_mode_input: !input clear_behavior_mode
+
+  end_action_mode: !input end_action
+  cleanup_scenes_after_end: !input cleanup_scenes_on_end
+
+  notifications_enabled: !input enable_notifications
+  notifications_on_track: !input notify_on_track_updates
+  notifications_on_session_end: !input notify_on_session_end
+  notification_actions_list: !input notification_actions
+  has_notification_actions: "{{ notification_actions_list | count > 0 }}"
+
+  automation_slug: "{{ (this.entity_id | default('f1_track_status_light') | replace('.', '_') | replace('-', '_')) }}"
+  pre_race_scene_id: "{{ automation_slug ~ '_pre_race' }}"
+  pre_alert_scene_id: "{{ automation_slug ~ '_pre_alert' }}"
+
+  track_state: "{{ states(track_status_entity) | upper }}"
+  session_phase: "{{ states(session_status_entity) | lower }}"
+  current_session_now: >-
+    {% if current_session_entity | string | length > 0 %}
+      {{ states(current_session_entity) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  current_session_last: >-
+    {% if current_session_entity | string | length > 0 %}
+      {{ state_attr(current_session_entity, 'last_label') | default('', true) | string }}
+    {% else %}
+      ""
+    {% endif %}
+  current_session_effective: >-
+    {% set now_label = current_session_now | trim %}
+    {% if now_label in ['', 'unknown', 'unavailable', 'none', 'None'] %}
+      {{ current_session_last | trim }}
+    {% else %}
+      {{ now_label }}
+    {% endif %}
+  session_scope_now_ok: >-
+    {% if not current_session_filter_enabled %}
+      true
+    {% elif current_session_entity | string | length == 0 %}
+      false
+    {% else %}
+      {% set now_label = current_session_now | trim %}
+      {% if now_label in ['', 'unknown', 'unavailable', 'none', 'None'] %}
+        false
+      {% else %}
+        {{ now_label in allowed_current_sessions }}
+      {% endif %}
+    {% endif %}
+  session_scope_ok: >-
+    {% if not current_session_filter_enabled %}
+      true
+    {% elif current_session_entity | string | length == 0 %}
+      false
+    {% else %}
+      {{ (current_session_effective | trim) in allowed_current_sessions }}
+    {% endif %}
+  valid_session_phases:
+    - pre
+    - live
+    - suspended
+    - break
+    - finished
+    - finalised
+    - ended
+  is_active_phase: "{{ session_phase in active_phases }}"
+
+  session_entered_active: >
+    {% if trigger.id != 'session_enter_active' %}
+      false
+    {% else %}
+      {% set from_phase = (trigger.from_state.state if trigger.from_state is not none else '') | lower %}
+      {% set to_phase = (trigger.to_state.state if trigger.to_state is not none else '') | lower %}
+      {{ (session_scope_now_ok | bool) and to_phase in valid_session_phases and from_phase not in active_phases and to_phase in active_phases }}
+    {% endif %}
+
+  session_left_active: >
+    {% if trigger.id != 'session_leave_active' %}
+      false
+    {% else %}
+      {% set from_phase = (trigger.from_state.state if trigger.from_state is not none else '') | lower %}
+      {% set to_phase = (trigger.to_state.state if trigger.to_state is not none else '') | lower %}
+      {{ (session_scope_ok | bool) and to_phase in valid_session_phases and from_phase in active_phases and to_phase not in active_phases }}
+    {% endif %}
+
+  presence_ok: >
+    {% if presence_list | count == 0 %}
+      true
+    {% else %}
+      {{ expand(presence_list) | selectattr('state', 'eq', 'home') | list | count > 0 }}
+    {% endif %}
+
+  media_ok: >
+    {% if media_player_entity | string | length == 0 %}
+      true
+    {% else %}
+      {{ states(media_player_entity) in ['on', 'idle', 'playing'] }}
+    {% endif %}
+
+  dnd_blocked: >
+    {% if not enable_dnd_window %}
+      false
+    {% else %}
+      {% set now_s = now().hour * 3600 + now().minute * 60 + now().second %}
+      {% set start_parts = dnd_start.split(':') %}
+      {% set end_parts = dnd_end.split(':') %}
+      {% set start_s = (start_parts[0] | int(0)) * 3600 + (start_parts[1] | int(0)) * 60 + (start_parts[2] | int(0)) %}
+      {% set end_s = (end_parts[0] | int(0)) * 3600 + (end_parts[1] | int(0)) * 60 + (end_parts[2] | int(0)) %}
+      {{ (start_s <= end_s and start_s <= now_s <= end_s) or (start_s > end_s and (now_s >= start_s or now_s <= end_s)) }}
+    {% endif %}
+
+  can_apply_track_light: >
+    {{ (session_scope_now_ok | bool) and (is_active_phase | bool) }}
+
+  should_apply_track_light: >
+    {{
+      (can_apply_track_light | bool)
+      and track_state in ['CLEAR', 'YELLOW', 'RED', 'SC', 'VSC']
+      and (
+        trigger.id == 'track_update'
+        or (session_entered_active | bool)
+      )
+    }}
+
+triggers:
+  - trigger: state
+    entity_id: !input track_status_entity
+    id: track_update
+  - trigger: state
+    entity_id: !input session_status_entity
+    to: !input active_session_phases
+    not_from: !input active_session_phases
+    id: session_enter_active
+  - trigger: state
+    entity_id: !input session_status_entity
+    from: !input active_session_phases
+    not_to: !input active_session_phases
+    id: session_leave_active
+
+conditions:
+  - condition: template
+    value_template: "{{ (presence_ok | bool) and (media_ok | bool) and not (dnd_blocked | bool) }}"
+  - condition: and
+    conditions: !input activation_condition
+
+actions:
+  - if:
+      - condition: template
+        value_template: "{{ session_entered_active | bool }}"
+    then:
+      - if:
+          - condition: template
+            value_template: "{{ snapshot_pre_race_enabled }}"
+        then:
+          - continue_on_error: true
+            action: scene.create
+            data:
+              scene_id: "{{ pre_race_scene_id }}"
+              snapshot_entities:
+                - !input light_target
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ session_left_active | bool }}"
+        sequence:
+          - delay:
+              minutes: !input end_delay_min
+          - condition: template
+            value_template: "{{ states(session_status_entity) | lower not in active_phases }}"
+
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ end_action_mode == 'turn_off' }}"
+                sequence:
+                  - action: "{{ light_turn_off_service }}"
+                    target:
+                      entity_id: !input light_target
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ end_action_mode == 'neutral' }}"
+                sequence:
+                  - action: "{{ light_turn_on_service }}"
+                    target:
+                      entity_id: !input light_target
+                    data:
+                      brightness_pct: !input brightness_pct
+                      rgb_color: !input end_neutral_color
+                      transition: !input transition_s
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ end_action_mode == 'restore_pre_race' and snapshot_pre_race_enabled }}"
+                sequence:
+                  - continue_on_error: true
+                    action: scene.turn_on
+                    data:
+                      entity_id: "{{ 'scene.' ~ pre_race_scene_id }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ notifications_enabled and notifications_on_session_end and has_notification_actions }}"
+            then:
+              - variables:
+                  notification_title: "F1 Session Ended"
+                  notification_track_state: "{{ states(track_status_entity) | upper }}"
+                  notification_session_phase: "{{ states(session_status_entity) | lower }}"
+                  notification_message: >-
+                    Session moved from
+                    {{ (trigger.from_state.state if trigger.from_state is not none else 'unknown') | lower }}
+                    to
+                    {{ (trigger.to_state.state if trigger.to_state is not none else 'unknown') | lower }}.
+                    Current track status: {{ states(track_status_entity) | upper }}.
+              - sequence: !input notification_actions
+
+          - if:
+              - condition: template
+                value_template: "{{ cleanup_scenes_after_end }}"
+            then:
+              - continue_on_error: true
+                action: scene.delete
+                data:
+                  entity_id: "{{ 'scene.' ~ pre_race_scene_id }}"
+              - continue_on_error: true
+                action: scene.delete
+                data:
+                  entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+
+      - conditions:
+          - condition: template
+            value_template: "{{ should_apply_track_light | bool }}"
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ snapshot_before_alert_enabled and trigger.id == 'track_update' and track_state in ['YELLOW', 'RED', 'SC', 'VSC'] }}"
+            then:
+              - continue_on_error: true
+                action: scene.create
+                data:
+                  scene_id: "{{ pre_alert_scene_id }}"
+                  snapshot_entities:
+                    - !input light_target
+
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ track_state == 'CLEAR' }}"
+                sequence:
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ clear_behavior_mode_input == 'steady' or (clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay'] and not snapshot_before_alert_enabled) }}"
+                        sequence:
+                          - action: "{{ light_turn_on_service }}"
+                            target:
+                              entity_id: !input light_target
+                            data:
+                              brightness_pct: !input brightness_pct
+                              rgb_color: !input color_clear
+                              transition: !input transition_s
+
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ clear_behavior_mode_input == 'restore_immediately' and snapshot_before_alert_enabled }}"
+                        sequence:
+                          - continue_on_error: true
+                            action: scene.turn_on
+                            data:
+                              entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ clear_behavior_mode_input == 'restore_after_delay' and snapshot_before_alert_enabled }}"
+                        sequence:
+                          - action: "{{ light_turn_on_service }}"
+                            target:
+                              entity_id: !input light_target
+                            data:
+                              brightness_pct: !input brightness_pct
+                              rgb_color: !input color_clear
+                              transition: !input transition_s
+                          - delay:
+                              seconds: !input clear_restore_delay_s
+                          - condition: template
+                            value_template: "{{ states(track_status_entity) | upper == 'CLEAR' }}"
+                          - continue_on_error: true
+                            action: scene.turn_on
+                            data:
+                              entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ track_state == 'YELLOW' }}"
+                sequence:
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ yellow_red_mode_input == 'steady' }}"
+                        sequence:
+                          - action: "{{ light_turn_on_service }}"
+                            target:
+                              entity_id: !input light_target
+                            data:
+                              brightness_pct: !input brightness_pct
+                              rgb_color: !input color_yellow
+                              transition: !input transition_s
+
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ yellow_red_mode_input == 'flash_continuous' }}"
+                        sequence:
+                          - repeat:
+                              while:
+                                - condition: template
+                                  value_template: "{{ states(track_status_entity) | upper == 'YELLOW' }}"
+                              sequence:
+                                - action: "{{ light_turn_on_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                  data:
+                                    brightness_pct: !input brightness_pct
+                                    rgb_color: !input color_yellow
+                                - delay:
+                                    seconds: !input flash_interval_s
+                                - action: "{{ light_turn_off_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                - delay:
+                                    seconds: !input flash_interval_s
+
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ yellow_red_mode_input == 'flash_timed' }}"
+                        sequence:
+                          - variables:
+                              flash_end_ts: "{{ as_timestamp(now()) + (yellow_red_flash_duration_input | int(10)) }}"
+                          - repeat:
+                              while:
+                                - condition: template
+                                  value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'YELLOW' }}"
+                              sequence:
+                                - action: "{{ light_turn_on_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                  data:
+                                    brightness_pct: !input brightness_pct
+                                    rgb_color: !input color_yellow
+                                - delay:
+                                    seconds: !input flash_interval_s
+                                - action: "{{ light_turn_off_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                - delay:
+                                    seconds: !input flash_interval_s
+
+                          - condition: template
+                            value_template: "{{ states(track_status_entity) | upper == 'YELLOW' }}"
+                          - choose:
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ yellow_red_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                sequence:
+                                  - continue_on_error: true
+                                    action: scene.turn_on
+                                    data:
+                                      entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                sequence:
+                                  - action: "{{ light_turn_on_service }}"
+                                    target:
+                                      entity_id: !input light_target
+                                    data:
+                                      brightness_pct: !input brightness_pct
+                                      rgb_color: !input color_yellow
+                                      transition: !input transition_s
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ track_state == 'RED' }}"
+                sequence:
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ yellow_red_mode_input == 'steady' }}"
+                        sequence:
+                          - action: "{{ light_turn_on_service }}"
+                            target:
+                              entity_id: !input light_target
+                            data:
+                              brightness_pct: !input brightness_pct
+                              rgb_color: !input color_red
+                              transition: !input transition_s
+
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ yellow_red_mode_input == 'flash_continuous' }}"
+                        sequence:
+                          - repeat:
+                              while:
+                                - condition: template
+                                  value_template: "{{ states(track_status_entity) | upper == 'RED' }}"
+                              sequence:
+                                - action: "{{ light_turn_on_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                  data:
+                                    brightness_pct: !input brightness_pct
+                                    rgb_color: !input color_red
+                                - delay:
+                                    seconds: !input flash_interval_s
+                                - action: "{{ light_turn_off_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                - delay:
+                                    seconds: !input flash_interval_s
+
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ yellow_red_mode_input == 'flash_timed' }}"
+                        sequence:
+                          - variables:
+                              flash_end_ts: "{{ as_timestamp(now()) + (yellow_red_flash_duration_input | int(10)) }}"
+                          - repeat:
+                              while:
+                                - condition: template
+                                  value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'RED' }}"
+                              sequence:
+                                - action: "{{ light_turn_on_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                  data:
+                                    brightness_pct: !input brightness_pct
+                                    rgb_color: !input color_red
+                                - delay:
+                                    seconds: !input flash_interval_s
+                                - action: "{{ light_turn_off_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                - delay:
+                                    seconds: !input flash_interval_s
+
+                          - condition: template
+                            value_template: "{{ states(track_status_entity) | upper == 'RED' }}"
+                          - choose:
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ yellow_red_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                sequence:
+                                  - continue_on_error: true
+                                    action: scene.turn_on
+                                    data:
+                                      entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                sequence:
+                                  - action: "{{ light_turn_on_service }}"
+                                    target:
+                                      entity_id: !input light_target
+                                    data:
+                                      brightness_pct: !input brightness_pct
+                                      rgb_color: !input color_red
+                                      transition: !input transition_s
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ track_state == 'SC' }}"
+                sequence:
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ sc_vsc_mode_input == 'steady' }}"
+                        sequence:
+                          - action: "{{ light_turn_on_service }}"
+                            target:
+                              entity_id: !input light_target
+                            data:
+                              brightness_pct: !input brightness_pct
+                              rgb_color: !input color_sc
+                              transition: !input transition_s
+
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ sc_vsc_mode_input == 'flash_continuous' }}"
+                        sequence:
+                          - repeat:
+                              while:
+                                - condition: template
+                                  value_template: "{{ states(track_status_entity) | upper == 'SC' }}"
+                              sequence:
+                                - action: "{{ light_turn_on_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                  data:
+                                    brightness_pct: !input brightness_pct
+                                    rgb_color: !input color_sc
+                                - delay:
+                                    seconds: !input flash_interval_s
+                                - action: "{{ light_turn_off_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                - delay:
+                                    seconds: !input flash_interval_s
+
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ sc_vsc_mode_input == 'flash_timed' }}"
+                        sequence:
+                          - variables:
+                              flash_end_ts: "{{ as_timestamp(now()) + (sc_vsc_flash_duration_input | int(10)) }}"
+                          - repeat:
+                              while:
+                                - condition: template
+                                  value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'SC' }}"
+                              sequence:
+                                - action: "{{ light_turn_on_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                  data:
+                                    brightness_pct: !input brightness_pct
+                                    rgb_color: !input color_sc
+                                - delay:
+                                    seconds: !input flash_interval_s
+                                - action: "{{ light_turn_off_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                - delay:
+                                    seconds: !input flash_interval_s
+
+                          - condition: template
+                            value_template: "{{ states(track_status_entity) | upper == 'SC' }}"
+                          - choose:
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ sc_vsc_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                sequence:
+                                  - continue_on_error: true
+                                    action: scene.turn_on
+                                    data:
+                                      entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                sequence:
+                                  - action: "{{ light_turn_on_service }}"
+                                    target:
+                                      entity_id: !input light_target
+                                    data:
+                                      brightness_pct: !input brightness_pct
+                                      rgb_color: !input color_sc
+                                      transition: !input transition_s
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ track_state == 'VSC' }}"
+                sequence:
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ sc_vsc_mode_input == 'steady' }}"
+                        sequence:
+                          - action: "{{ light_turn_on_service }}"
+                            target:
+                              entity_id: !input light_target
+                            data:
+                              brightness_pct: !input brightness_pct
+                              rgb_color: !input color_vsc
+                              transition: !input transition_s
+
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ sc_vsc_mode_input == 'flash_continuous' }}"
+                        sequence:
+                          - repeat:
+                              while:
+                                - condition: template
+                                  value_template: "{{ states(track_status_entity) | upper == 'VSC' }}"
+                              sequence:
+                                - action: "{{ light_turn_on_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                  data:
+                                    brightness_pct: !input brightness_pct
+                                    rgb_color: !input color_vsc
+                                - delay:
+                                    seconds: !input flash_interval_s
+                                - action: "{{ light_turn_off_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                - delay:
+                                    seconds: !input flash_interval_s
+
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ sc_vsc_mode_input == 'flash_timed' }}"
+                        sequence:
+                          - variables:
+                              flash_end_ts: "{{ as_timestamp(now()) + (sc_vsc_flash_duration_input | int(10)) }}"
+                          - repeat:
+                              while:
+                                - condition: template
+                                  value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'VSC' }}"
+                              sequence:
+                                - action: "{{ light_turn_on_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                  data:
+                                    brightness_pct: !input brightness_pct
+                                    rgb_color: !input color_vsc
+                                - delay:
+                                    seconds: !input flash_interval_s
+                                - action: "{{ light_turn_off_service }}"
+                                  target:
+                                    entity_id: !input light_target
+                                - delay:
+                                    seconds: !input flash_interval_s
+
+                          - condition: template
+                            value_template: "{{ states(track_status_entity) | upper == 'VSC' }}"
+                          - choose:
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ sc_vsc_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                sequence:
+                                  - continue_on_error: true
+                                    action: scene.turn_on
+                                    data:
+                                      entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                sequence:
+                                  - action: "{{ light_turn_on_service }}"
+                                    target:
+                                      entity_id: !input light_target
+                                    data:
+                                      brightness_pct: !input brightness_pct
+                                      rgb_color: !input color_vsc
+                                      transition: !input transition_s
+
+          - if:
+              - condition: template
+                value_template: "{{ notifications_enabled and notifications_on_track and has_notification_actions and trigger.id == 'track_update' }}"
+            then:
+              - variables:
+                  notification_title: "F1 Track Status"
+                  notification_track_state: "{{ states(track_status_entity) | upper }}"
+                  notification_session_phase: "{{ states(session_status_entity) | lower }}"
+                  notification_message: >-
+                    Track status changed to {{ states(track_status_entity) | upper }}
+                    during session phase {{ states(session_status_entity) | lower }}.
+              - sequence: !input notification_actions
+
+mode: restart

@@ -24,6 +24,9 @@ _CARDATA_PRE_WINDOW = timedelta(seconds=60)
 _CARDATA_RETRY_DELAY = 20
 _CARDATA_MAX_ATTEMPTS = 3
 _CARDATA_TIMEOUT = 20
+_SESSION_PRE_STATES = {"inactive", "false"}
+_SESSION_LIVE_STATES = {"started", "resumed", "green", "greenflag", "true"}
+_SESSION_TERMINAL_STATES = {"finished", "finalised", "ends", "ended"}
 
 
 def _parse_utc(value: str | None) -> datetime | None:
@@ -88,6 +91,34 @@ def _build_static_url(path: str, resource: str) -> str:
     return f"https://livetiming.formula1.com/static/{normalized}/{resource}"
 
 
+def _normalize_session_phase(payload: dict[str, Any] | None) -> str | None:
+    """Map upstream session payloads to coarse session phases."""
+    if not isinstance(payload, dict):
+        return None
+
+    raw_values = (
+        payload.get("SessionStatus"),
+        payload.get("Status"),
+        payload.get("Started"),
+        payload.get("Message"),
+    )
+    normalized = [
+        str(value).strip().lower()
+        for value in raw_values
+        if value is not None and str(value).strip()
+    ]
+    for value in normalized:
+        if value in _SESSION_TERMINAL_STATES:
+            return "terminal"
+    for value in normalized:
+        if value in _SESSION_LIVE_STATES:
+            return "live"
+    for value in normalized:
+        if value in _SESSION_PRE_STATES:
+            return "pre"
+    return None
+
+
 class FormationStartTracker:
     """Finds the formation start marker near the scheduled session start."""
 
@@ -115,6 +146,7 @@ class FormationStartTracker:
         self._status: str = "idle"
         self._source: str | None = None
         self._last_error: str | None = None
+        self._session_phase: str | None = None
 
     @property
     def formation_start_utc(self) -> datetime | None:
@@ -147,6 +179,7 @@ class FormationStartTracker:
         self._session_name = None
         self._path = None
         self._scheduled_start_utc = None
+        self._session_phase = None
         self._reset_state(status=status)
         self._notify_listeners()
 
@@ -230,6 +263,7 @@ class FormationStartTracker:
             self._session_name = None
             self._path = None
             self._scheduled_start_utc = None
+            self._session_phase = None
             self._reset_state(status="idle")
             self._cancel_task()
 
@@ -239,6 +273,7 @@ class FormationStartTracker:
         self._scheduled_start_utc = (
             _session_start_utc(payload) or self._scheduled_start_utc
         )
+        self._apply_session_phase(_normalize_session_phase(payload))
 
         if not _is_race_or_sprint(self._session_type, self._session_name):
             if self._status != "not_applicable":
@@ -247,7 +282,7 @@ class FormationStartTracker:
                 self._notify_listeners()
             return
 
-        if self._formation_start_utc is not None:
+        if self._formation_start_utc is not None or self._session_phase != "pre":
             return
 
         if self._scheduled_start_utc and self._path:
@@ -258,23 +293,36 @@ class FormationStartTracker:
     def _handle_session_status(self, payload: dict) -> None:
         if not isinstance(payload, dict):
             return
-        message = str(payload.get("Status") or payload.get("Message") or "").strip()
-        started = payload.get("Started")
-        is_live = str(started).lower() in ("started", "true") or message in {
-            "Started",
-            "Green",
-            "GreenFlag",
-        }
-        if not is_live:
+        self._apply_session_phase(_normalize_session_phase(payload))
+
+    def _apply_session_phase(self, phase: str | None) -> None:
+        if phase is None:
             return
-        if self._status == "ready":
-            self._status = "live"
+        self._session_phase = phase
+        if phase == "pre":
+            return
+
+        if self._formation_start_utc is None:
+            self._cancel_task()
+
+        next_status = "live" if phase == "live" else "terminal"
+        if self._status != next_status:
+            self._status = next_status
             self._notify_listeners()
+
+    def _probe_allowed(self, session_id: str | None) -> bool:
+        return (
+            session_id == self._session_id
+            and self._session_phase == "pre"
+            and self._formation_start_utc is None
+            and self._scheduled_start_utc is not None
+            and self._path is not None
+        )
 
     def _schedule_probe(self) -> None:
         if self._task is not None and not self._task.done():
             return
-        if not self._scheduled_start_utc or not self._path:
+        if not self._probe_allowed(self._session_id):
             return
         delay = (
             self._scheduled_start_utc - dt_util.utcnow() - _CARDATA_PRE_WINDOW
@@ -298,7 +346,7 @@ class FormationStartTracker:
                 return
         attempts = 0
         while attempts < _CARDATA_MAX_ATTEMPTS:
-            if session_id != self._session_id:
+            if not self._probe_allowed(session_id):
                 return
             found = await self._probe_cardata(session_id)
             if found:
@@ -309,14 +357,12 @@ class FormationStartTracker:
                     await asyncio.sleep(_CARDATA_RETRY_DELAY)
                 except asyncio.CancelledError:
                     return
-        if self._status == "pending":
+        if self._status == "pending" and self._session_phase == "pre":
             self._status = "unavailable"
             self._notify_listeners()
 
     async def _probe_cardata(self, session_id: str | None) -> bool:
-        if session_id != self._session_id:
-            return False
-        if not self._path or not self._scheduled_start_utc:
+        if not self._probe_allowed(session_id):
             return False
         url = _build_static_url(self._path, "CarData.z.jsonStream")
         target = self._scheduled_start_utc
@@ -337,7 +383,7 @@ class FormationStartTracker:
                     def _process_utcs(utcs: list[datetime]) -> bool:
                         nonlocal best_delta, best_utc, max_seen, stop_scan
                         for utc_val in utcs:
-                            if session_id != self._session_id:
+                            if not self._probe_allowed(session_id):
                                 return False
                             if max_seen is None or utc_val > max_seen:
                                 max_seen = utc_val
@@ -391,6 +437,8 @@ class FormationStartTracker:
             return False
         if best_delta > window_seconds:
             self._last_error = "out_of_window"
+            return False
+        if not self._probe_allowed(session_id):
             return False
 
         self._formation_start_utc = best_utc

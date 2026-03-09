@@ -102,9 +102,6 @@
       "race_control": {
         "name": "Tävlingskontroll"
       },
-      "safety_car": {
-        "name": "Säkerhetsbil"
-      },
       "top_three_p1": {
         "name": "Topp tre (P1)"
       },
@@ -199,6 +196,12 @@
       "replay_pause": {
         "name": "Pausa"
       },
+      "replay_back_30": {
+        "name": "Bakåt 30 sekunder"
+      },
+      "replay_forward_30": {
+        "name": "Framåt 30 sekunder"
+      },
       "replay_stop": {
         "name": "Stoppa"
       },
@@ -247,6 +250,9 @@
       },
       "live_timing_online": {
         "name": "Live timing online"
+      },
+      "safety_car": {
+        "name": "Säkerhetsbil"
       },
       "formation_start": {
         "name": "Formationsstart"
