@@ -2435,6 +2435,19 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._forced_unavailable = True
 
 
+def _hex_to_rgb(color: str | None) -> list[int] | None:
+    """Convert '#RRGGBB' or 'RRGGBB' to [R, G, B], or None if invalid."""
+    if not isinstance(color, str) or not color:
+        return None
+    s = color.lstrip("#").strip()
+    if len(s) != 6:
+        return None
+    try:
+        return [int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)]
+    except ValueError:
+        return None
+
+
 class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Live Top Three sensor for a single position (P1, P2 eller P3).
 
@@ -2593,6 +2606,7 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "last_name": last_name,
             "team": team,
             "team_color": team_color,
+            "team_color_rgb": _hex_to_rgb(team_color),
             "lap_time": lap_time,
             "overall_fastest": overall_fastest,
             "personal_fastest": personal_fastest,
@@ -5386,6 +5400,7 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     "last_name": ident.get("last_name"),
                     "team": ident.get("team"),
                     "team_color": team_color,
+                    "team_color_rgb": _hex_to_rgb(team_color),
                     "headshot_small": ident.get("headshot_small")
                     or ident.get("headshot"),
                     "headshot_large": ident.get("headshot_large")
@@ -5587,10 +5602,12 @@ class F1CurrentTyresSensor(_CoordinatorStreamSensorBase):
                     "racing_number": ident.get("racing_number") or rn,
                     "tla": tla,
                     "team_color": team_color,
+                    "team_color_rgb": _hex_to_rgb(team_color),
                     "position": position,
                     "compound": compound,
                     "compound_short": compound_short,
                     "compound_color": compound_color,
+                    "compound_color_rgb": _hex_to_rgb(compound_color),
                     "new": is_new,
                     "stint_laps": stint_laps,
                 }
@@ -5673,6 +5690,9 @@ class F1TyreStatisticsSensor(_CoordinatorStreamSensorBase):
         for comp_name, comp_data in compounds_raw.items():
             comp_copy = dict(comp_data)
             comp_copy["compound_color"] = self._COMPOUND_COLOR.get(comp_name)
+            comp_copy["compound_color_rgb"] = _hex_to_rgb(
+                self._COMPOUND_COLOR.get(comp_name)
+            )
             compounds[comp_name] = comp_copy
 
         self._attr_native_value = fastest_compound
@@ -6027,6 +6047,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "name": identity.get("name"),
                 "team": identity.get("team"),
                 "team_color": team_color,
+                "team_color_rgb": _hex_to_rgb(team_color),
                 "grid_position": lap_history.get("grid_position"),
                 "current_position": _extract_driver_position(info),
                 "laps": lap_history.get("laps", {}),
@@ -6097,11 +6118,16 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     drivers_list[idx][pos_key] = rank
 
         current_q_part = data.get("session", {}).get("part") if is_qualifying else None
+        if isinstance(fastest, dict):
+            fastest_out = dict(fastest)
+            fastest_out["team_color_rgb"] = _hex_to_rgb(fastest_out.get("team_color"))
+        else:
+            fastest_out = None
         self._attr_native_value = lap_current
         self._attr_extra_state_attributes = {
             "drivers": drivers_list,
             "total_laps": lap_total,
-            "fastest_lap": dict(fastest) if isinstance(fastest, dict) else None,
+            "fastest_lap": fastest_out,
             "current_qualifying_part": current_q_part,
         }
         return True
