@@ -196,6 +196,12 @@
       "replay_pause": {
         "name": "Pausa"
       },
+      "replay_back_30": {
+        "name": "Bakåt 30 sekunder"
+      },
+      "replay_forward_30": {
+        "name": "Framåt 30 sekunder"
+      },
       "replay_stop": {
         "name": "Stoppa"
       },

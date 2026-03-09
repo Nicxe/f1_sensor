@@ -56,7 +56,11 @@ This is expected behavior. The live sensors only update shortly before, during, 
 <details>
 <summary>Will the live data work if I watch a race replay later (not live)?</summary>
 
-Yes! The integration includes [**Replay Mode**](/features/replay-mode) which lets you play back historical sessions with full Home Assistant integration. When you watch a recorded race from F1 TV or another service, you can sync all your automations and dashboards to work exactly as they would during a live broadcast.
+Yes. The integration includes [**Replay Mode**](/features/replay-mode), which lets you play back historical sessions with full Home Assistant integration. When you watch a recorded race from F1 TV or another service, your automations and dashboards can follow the replay much more like a live broadcast.
+
+Replay Mode now also includes experimental 30-second catch-up controls in Version 1. You can use **Back 30 seconds** and **Forward 30 seconds** to manually line up the replay with your broadcaster if the timing drifts.
+
+This catch-up feature is still experimental, so more refinement may be needed as development continues.
 
 See the [Replay Mode documentation](/features/replay-mode) for setup instructions.
 </details>

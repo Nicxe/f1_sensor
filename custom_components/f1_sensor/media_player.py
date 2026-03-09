@@ -156,7 +156,7 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
         elif state == ReplayState.PAUSED:
             self._attr_state = MediaPlayerState.PAUSED
             self._attr_media_position_updated_at = dt_util.utcnow()
-        elif state == ReplayState.LOADING:
+        elif state in (ReplayState.LOADING, ReplayState.SEEKING):
             self._attr_state = MediaPlayerState.BUFFERING
             self._attr_media_position_updated_at = None
         else:
@@ -165,7 +165,7 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
 
         if state in (ReplayState.PLAYING, ReplayState.PAUSED, ReplayState.READY):
             self._attr_media_duration = total_s
-            self._attr_media_position = position_s if state != ReplayState.READY else 0
+            self._attr_media_position = position_s
         else:
             self._attr_media_duration = 0
             self._attr_media_position = 0

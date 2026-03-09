@@ -196,6 +196,12 @@
       "replay_pause": {
         "name": "Pause"
       },
+      "replay_back_30": {
+        "name": "Back 30 seconds"
+      },
+      "replay_forward_30": {
+        "name": "Forward 30 seconds"
+      },
       "replay_stop": {
         "name": "Stop"
       },

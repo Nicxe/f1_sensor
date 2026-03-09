@@ -5,6 +5,7 @@ from collections import deque
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from functools import partial
 import json
 import logging
 from pathlib import Path
@@ -77,7 +78,7 @@ from .live_window import (
 )
 from .no_spoiler import NoSpoilerModeManager
 from .replay import ReplaySignalRClient
-from .replay_mode import ReplayController
+from .replay_mode import ReplayController, ReplayState
 from .replay_start import ReplayStartReferenceController
 from .signalr import LiveBus
 
@@ -1372,6 +1373,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "calibration_manager": calibration_manager,
         "formation_start_tracker": formation_tracker,
         "replay_controller": replay_controller,
+        "replay_reset_callbacks": _build_replay_reset_callbacks(
+            track_status_coordinator,
+            session_status_coordinator,
+            session_info_coordinator,
+            session_clock_coordinator,
+            race_control_coordinator if enable_rc else None,
+            live_mode_coordinator if enable_rc else None,
+            weather_data_coordinator if enable_rc else None,
+            lap_count_coordinator if enable_rc else None,
+            top_three_coordinator,
+            team_radio_coordinator,
+            pitstop_coordinator,
+            championship_prediction_coordinator,
+            drivers_coordinator,
+        ),
         "activity_filter_unsub": None,
         "no_spoiler_unsub": None,
     }
@@ -4664,6 +4680,137 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
+def _build_replay_reset_callbacks(*coordinators: Any) -> list[Callable[[], None]]:
+    """Build reset callbacks for coordinators that keep replay-sensitive state."""
+    return [
+        partial(_reset_replay_sensitive_coordinator_state, coordinator)
+        for coordinator in coordinators
+        if coordinator is not None
+    ]
+
+
+def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
+    """Reset accumulated coordinator state before replay rebuild/rewind."""
+    if coordinator is None:
+        return
+
+    if isinstance(coordinator, WeatherDataCoordinator):
+        _clear_delayed_ingest_state(coordinator)
+        coordinator._last_message = None
+        coordinator.data_list = []
+        coordinator.async_set_updated_data(None)
+        return
+
+    if isinstance(coordinator, RaceControlCoordinator):
+        for handle in list(coordinator._deliver_handles):
+            with suppress(Exception):
+                handle.cancel()
+        coordinator._deliver_handles.clear()
+        coordinator._last_message = None
+        coordinator.data_list = []
+        coordinator._seen_ids_set.clear()
+        coordinator._seen_ids_order.clear()
+        coordinator._startup_cutoff = None
+        coordinator.async_set_updated_data(None)
+        return
+
+    if isinstance(coordinator, LiveModeCoordinator):
+        coordinator._clear_mode_state()
+        coordinator.async_set_updated_data(None)
+        return
+
+    if isinstance(coordinator, LapCountCoordinator):
+        _clear_delayed_ingest_state(coordinator)
+        coordinator._last_message = None
+        coordinator.data_list = []
+        coordinator.async_set_updated_data(None)
+        return
+
+    if isinstance(coordinator, TeamRadioCoordinator):
+        _clear_delayed_ingest_state(coordinator)
+        coordinator._state = {"latest": None, "history": []}
+        coordinator.async_set_updated_data(coordinator._state)
+        return
+
+    if isinstance(coordinator, PitStopCoordinator):
+        _clear_delayed_ingest_state(coordinator)
+        coordinator._reset_store()
+        return
+
+    if isinstance(coordinator, ChampionshipPredictionCoordinator):
+        _clear_delayed_ingest_state(coordinator)
+        coordinator._reset_store()
+        return
+
+    if isinstance(coordinator, LiveDriversCoordinator):
+        _clear_delayed_ingest_state(coordinator)
+        coordinator._state = {
+            "drivers": {},
+            "leader_rn": None,
+            "lap_current": None,
+            "lap_total": None,
+            "session_status": None,
+            "track_status": None,
+            "frozen": False,
+            "tyre_statistics": {},
+            "fastest_lap": coordinator._empty_fastest_lap(),
+        }
+        coordinator.async_set_updated_data(coordinator._state)
+        return
+
+    if isinstance(coordinator, TrackStatusCoordinator):
+        if coordinator._deliver_handle is not None:
+            with suppress(Exception):
+                coordinator._deliver_handle.cancel()
+            coordinator._deliver_handle = None
+        for handle in list(coordinator._deliver_handles):
+            with suppress(Exception):
+                handle.cancel()
+        coordinator._deliver_handles.clear()
+        coordinator._last_message = None
+        coordinator.data_list = []
+        coordinator._startup_cutoff = None
+        coordinator._last_untimestamped_fingerprint = None
+        with suppress(Exception):
+            coordinator.hass.data[LATEST_TRACK_STATUS] = None
+        coordinator.async_set_updated_data(None)
+        return
+
+    if isinstance(coordinator, SessionStatusCoordinator):
+        _clear_delayed_ingest_state(coordinator)
+        coordinator.is_qualifying_like_session = False
+        coordinator.qualifying_part = None
+        coordinator._last_message = None
+        coordinator.data_list = []
+        coordinator.async_set_updated_data(None)
+        return
+
+    if isinstance(coordinator, TopThreeCoordinator):
+        _clear_delayed_ingest_state(coordinator)
+        coordinator._state = {
+            "withheld": None,
+            "lines": [None, None, None],
+            "last_update_ts": None,
+        }
+        coordinator.async_set_updated_data(coordinator._state)
+        return
+
+    if isinstance(coordinator, SessionInfoCoordinator):
+        _clear_delayed_ingest_state(coordinator)
+        coordinator._last_message = None
+        coordinator.data_list = []
+        coordinator.async_set_updated_data(None)
+        return
+
+    if isinstance(coordinator, SessionClockCoordinator):
+        _clear_delayed_ingest_state(coordinator)
+        coordinator._stop_tick()
+        coordinator._reset_runtime()
+        coordinator._state = coordinator._empty_state()
+        coordinator.data_list = [coordinator._state]
+        coordinator.async_set_updated_data(coordinator._state)
+
+
 class F1DataCoordinator(DataUpdateCoordinator):
     """Handles updates from a given F1 endpoint."""
 
@@ -6398,6 +6545,23 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         self._deliver()
 
     def _server_now_utc(self) -> datetime:
+        if self._replay_mode:
+            entry_id = getattr(getattr(self, "config_entry", None), "entry_id", None)
+            reg = (
+                self.hass.data.get(DOMAIN, {}).get(entry_id, {})
+                if entry_id is not None
+                else {}
+            )
+            replay_controller = reg.get("replay_controller")
+            with suppress(Exception):
+                if replay_controller is not None and replay_controller.state in (
+                    ReplayState.PAUSED,
+                    ReplayState.SEEKING,
+                ):
+                    if isinstance(self._last_heartbeat_utc, datetime):
+                        return self._last_heartbeat_utc
+                    if isinstance(self._clock_anchor_utc, datetime):
+                        return self._clock_anchor_utc
         if (
             isinstance(self._last_heartbeat_utc, datetime)
             and self._last_heartbeat_mono is not None

@@ -40,7 +40,9 @@ Ready to give it a try? Start with the [**installation guide**](/getting-started
 
 Take your setup to the next level:
 - [**Live Delay**](/features/live-delay) – Sync live data with your TV broadcast
-- [**Replay Mode**](/features/replay-mode) – Relive historical sessions with full Home Assistant integration
+- [**Replay Mode**](/features/replay-mode) – Relive historical sessions with full Home Assistant integration and experimental 30-second catch-up controls
+
+
 
 ### Showcase
 

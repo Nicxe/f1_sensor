@@ -389,6 +389,64 @@ class F1ReplayStopButton(F1AuxEntity, ButtonEntity):
         await self._controller.async_stop()
 
 
+class F1ReplayBackButton(F1AuxEntity, ButtonEntity):
+    """Button to rewind replay by 30 seconds."""
+
+    _device_category = "system"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "replay_back_30"
+
+    def __init__(
+        self,
+        controller: ReplayController,
+        unique_id: str,
+        entry_id: str,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
+        ButtonEntity.__init__(self)
+        self._controller = controller
+        self._attr_icon = "mdi:rewind-30"
+
+    async def async_press(self) -> None:
+        """Handle button press - rewind replay."""
+        if self._controller.state in (
+            ReplayState.READY,
+            ReplayState.PLAYING,
+            ReplayState.PAUSED,
+        ):
+            await self._controller.async_seek_by(-30)
+
+
+class F1ReplayForwardButton(F1AuxEntity, ButtonEntity):
+    """Button to fast-forward replay by 30 seconds."""
+
+    _device_category = "system"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "replay_forward_30"
+
+    def __init__(
+        self,
+        controller: ReplayController,
+        unique_id: str,
+        entry_id: str,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
+        ButtonEntity.__init__(self)
+        self._controller = controller
+        self._attr_icon = "mdi:fast-forward-30"
+
+    async def async_press(self) -> None:
+        """Handle button press - fast-forward replay."""
+        if self._controller.state in (
+            ReplayState.READY,
+            ReplayState.PLAYING,
+            ReplayState.PAUSED,
+        ):
+            await self._controller.async_seek_by(30)
+
+
 class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
     """Sensor showing replay status and progress."""
 
