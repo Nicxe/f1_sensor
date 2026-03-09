@@ -51,8 +51,10 @@
     "node": ">=20.0"
   },
   "overrides": {
-    "tar": "^7.5.3",
+    "tar": "^7.5.10",
     "cross-spawn": "^7.0.6",
-    "brace-expansion": "^2.0.2"
+    "brace-expansion": "^2.0.2",
+    "minimatch": "^3.1.4",
+    "serialize-javascript": "^7.0.3"
   }
 }
