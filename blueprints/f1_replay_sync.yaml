@@ -1,0 +1,56 @@
+blueprint:
+  name: F1 Replay Sync
+  description: Syncs the Play/Pause state of an F1 Replay player with a Main TV.
+  domain: automation
+  input:
+    main_tv:
+      name: Main TV
+      description: The Apple TV or Smart TV that you are watching the F1 replay on.
+      selector:
+        entity:
+          domain: media_player
+    f1_player:
+      name: F1 Replay Player
+      description: The media player running the F1 Replay (filtered for F1 integration).
+      selector:
+        entity:
+          filter:
+            integration: f1_sensor
+          domain: media_player
+
+triggers:
+  - trigger: state
+    entity_id: !input main_tv
+    to: "paused"
+    id: "pause_f1"
+  - trigger: state
+    entity_id: !input main_tv
+    to: "playing"
+    id: "resume_f1"
+
+actions:
+  - choose:
+      # Logic for Pausing
+      - conditions:
+          - condition: trigger
+            id: "pause_f1"
+          - condition: state
+            entity_id: !input f1_player
+            state: "playing"
+        sequence:
+          - action: media_player.media_pause
+            target:
+              entity_id: !input f1_player
+
+      # Logic for Resuming
+      - conditions:
+          - condition: trigger
+            id: "resume_f1"
+          - condition: state
+            entity_id: !input f1_player
+            state: "paused"
+        sequence:
+          - action: media_player.media_play
+            target:
+              entity_id: !input f1_player
+mode: single
