@@ -1,0 +1,21 @@
+name: Refresh Context7 docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "static/**"
+      - "src/**"
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Context7 re-index
+        run: |
+          curl -s -X POST https://context7.com/v1/refresh \
+            -H "Authorization: Bearer ${{ secrets.CONTEXT7_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"libraryName": "nicxe_github_io_f1_sensor"}' \
+            --fail-with-body
