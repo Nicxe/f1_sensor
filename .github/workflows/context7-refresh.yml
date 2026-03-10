@@ -1,15 +1,13 @@
 name: Refresh Context7 docs
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/**"
-      - "static/**"
-      - "src/**"
+  workflow_run:
+    workflows: ["Deploy Docusaurus to GitHub Pages"]
+    types: [completed]
 
 jobs:
   refresh:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Context7 re-index
