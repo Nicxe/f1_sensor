@@ -87,6 +87,41 @@ def _driver_entry(
     }
 
 
+def _australian_q1_start_snapshot() -> dict:
+    """Reduced Q1 start payload using list-style BestLapTimes placeholders."""
+    return {
+        "SessionPart": 1,
+        "Lines": {
+            "63": {"BestLapTimes": [{"Value": ""}, {}, {}], "KnockedOut": False},
+            "23": {"BestLapTimes": [{"Value": ""}, {}, {}], "KnockedOut": False},
+            "14": {"BestLapTimes": [{"Value": ""}, {}, {}], "KnockedOut": False},
+        },
+    }
+
+
+def _australian_q2_start_snapshot() -> dict:
+    """Reduced Q2 start payload with a Q1-eliminated driver still in the snapshot."""
+    return {
+        "SessionPart": 2,
+        "Lines": {
+            "63": {"BestLapTimes": {"1": {"Value": ""}}, "KnockedOut": False},
+            "23": {"BestLapTimes": {"1": {"Value": ""}}, "KnockedOut": False},
+            "14": {"KnockedOut": True},
+        },
+    }
+
+
+def _australian_q3_start_snapshot() -> dict:
+    """Reduced Q3 start payload with a Q2-eliminated driver still in the snapshot."""
+    return {
+        "SessionPart": 3,
+        "Lines": {
+            "63": {"BestLapTimes": {"2": {"Value": ""}}, "KnockedOut": False},
+            "23": {"KnockedOut": True},
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Coordinator tests: _merge_timingdata qualifying fields
 # ---------------------------------------------------------------------------
@@ -191,13 +226,10 @@ async def test_coordinator_merges_knocked_out_false(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_coordinator_marks_participation_q1(hass) -> None:
-    """Driver appearing during SessionPart=1 gets segments[1].participated=True."""
+    """List-style BestLapTimes placeholders mark only the active Q1 segment."""
     coord = _make_coord(hass)
     coord._merge_timingdata(
-        {
-            "SessionPart": 1,
-            "Lines": {"44": {"NumberOfLaps": 3}},
-        }
+        {"SessionPart": 1, "Lines": {"44": {"BestLapTimes": [{"Value": ""}, {}, {}]}}}
     )
     q = coord._state["drivers"]["44"]["qualifying"]
     assert q["segments"][1]["participated"] is True
@@ -207,10 +239,14 @@ async def test_coordinator_marks_participation_q1(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_coordinator_marks_participation_q2(hass) -> None:
-    """Driver appearing in Q1 then Q2 gets participation in both segments."""
+    """Segment placeholders mark Q2 participation without over-marking Q3."""
     coord = _make_coord(hass)
-    coord._merge_timingdata({"SessionPart": 1, "Lines": {"44": {"NumberOfLaps": 3}}})
-    coord._merge_timingdata({"SessionPart": 2, "Lines": {"44": {"NumberOfLaps": 5}}})
+    coord._merge_timingdata(
+        {"SessionPart": 1, "Lines": {"44": {"BestLapTimes": [{"Value": ""}, {}, {}]}}}
+    )
+    coord._merge_timingdata(
+        {"SessionPart": 2, "Lines": {"44": {"BestLapTimes": {"1": {"Value": ""}}}}}
+    )
     q = coord._state["drivers"]["44"]["qualifying"]
     assert q["segments"][1]["participated"] is True
     assert q["segments"][2]["participated"] is True
@@ -218,15 +254,25 @@ async def test_coordinator_marks_participation_q2(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_coordinator_participation_falls_back_to_stored_part(hass) -> None:
-    """When SessionPart is absent, the previously stored part is used."""
+async def test_coordinator_snapshot_keeps_eliminated_drivers_out_of_future_segments(
+    hass,
+) -> None:
+    """Eliminated drivers staying in the snapshot do not gain future participation."""
     coord = _make_coord(hass)
-    # Set stored part to 2
-    coord._merge_timingdata({"SessionPart": 2, "Lines": {}})
-    # Payload without SessionPart – should still mark participation in part 2
-    coord._merge_timingdata({"Lines": {"55": {"NumberOfLaps": 2}}})
-    q = coord._state["drivers"]["55"]["qualifying"]
-    assert q["segments"][2]["participated"] is True
+    coord._merge_timingdata(_australian_q1_start_snapshot())
+    coord._merge_timingdata(_australian_q2_start_snapshot())
+    coord._merge_timingdata(_australian_q3_start_snapshot())
+
+    q1_eliminated = coord._state["drivers"]["14"]["qualifying"]
+    q2_eliminated = coord._state["drivers"]["23"]["qualifying"]
+    q3_driver = coord._state["drivers"]["63"]["qualifying"]
+
+    assert q1_eliminated["segments"][1]["participated"] is True
+    assert q1_eliminated["segments"][2]["participated"] is False
+    assert q1_eliminated["segments"][3]["participated"] is False
+    assert q2_eliminated["segments"][2]["participated"] is True
+    assert q2_eliminated["segments"][3]["participated"] is False
+    assert q3_driver["segments"][3]["participated"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -413,6 +459,30 @@ def test_sensor_q2_knocked_out_for_driver_in_q2_not_q3(hass) -> None:
     assert drv["q1_knocked_out"] is False
     assert drv["q2_knocked_out"] is True
     assert drv["q3_knocked_out"] is False
+
+
+@pytest.mark.asyncio
+async def test_sensor_qualifying_knockout_flags_follow_q2_q3_transition_snapshots(
+    hass,
+) -> None:
+    """Australian-style Q2/Q3 snapshots keep Q1 and Q2 eliminations distinct."""
+    coord = _make_coord(hass)
+    coord._merge_timingdata(_australian_q1_start_snapshot())
+    coord._merge_timingdata(_australian_q2_start_snapshot())
+    coord._merge_timingdata(_australian_q3_start_snapshot())
+
+    sensor = _make_sensor(hass, DummyCoordinator(data=coord._state))
+    assert sensor._update_from_coordinator(initial=True) is True
+
+    by_rn = {
+        d["racing_number"]: d for d in sensor._attr_extra_state_attributes["drivers"]
+    }
+    assert by_rn["14"]["q1_knocked_out"] is True
+    assert by_rn["14"]["q2_knocked_out"] is False
+    assert by_rn["23"]["q1_knocked_out"] is False
+    assert by_rn["23"]["q2_knocked_out"] is True
+    assert by_rn["63"]["q1_knocked_out"] is False
+    assert by_rn["63"]["q2_knocked_out"] is False
 
 
 def test_sensor_dnf_in_q2_without_time_is_q2_knocked_out(hass) -> None:
