@@ -272,11 +272,9 @@ custom_fields:
       const PADDING = isMobile ? '1px 4px' : '1px 6px';
       const POS_WIDTH = isMobile ? '30px' : '40px';
       const BADGE_FONT = isMobile ? '12px' : '15px';
-      let lastPos = 0;
 
       return displayResults.map((r, idx) => {
-        const pos = r.position === undefined ? lastPos : r.position;
-        if(r.position !== undefined) lastPos = r.position;
+        const pos = r.position !== undefined ? r.position : (r.positionText || '-');
         
         const code = r.Driver?.code;
         const name = `${r.Driver?.givenName || ''} ${r.Driver?.familyName || ''}`.trim();
@@ -538,11 +536,9 @@ custom_fields:
       const GAP = isMobile ? '4px' : '8px';
       const PADDING = isMobile ? '1px 4px' : '1px 6px';
       const POS_WIDTH = isMobile ? '30px' : '40px';
-      let lastPos = 0;
 
       return displayResults.map((r) => {
-        const pos = r.position === undefined ? lastPos : r.position;
-        if(r.position !== undefined) lastPos = r.position;
+        const pos = r.position !== undefined ? r.position : (r.positionText || '-');
         
         const apiTeamName = r.Constructor?.name || 'Unknown';
         const normalizedName = normalizeTeamName(apiTeamName);
