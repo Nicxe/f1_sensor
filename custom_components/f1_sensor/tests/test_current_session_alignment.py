@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.helpers.entity_component import EntityComponent
@@ -13,6 +14,7 @@ from custom_components.f1_sensor.const import (
     LATEST_TRACK_STATUS,
     OPERATION_MODE_DEVELOPMENT,
 )
+from custom_components.f1_sensor.replay_mode import ReplayState
 from custom_components.f1_sensor.sensor import (
     F1CurrentSessionSensor,
     F1SessionStatusSensor,
@@ -43,6 +45,8 @@ def _session_info_payload(
     session_type: str = "Practice",
     name: str = "Day 3",
     number: int | None = 3,
+    start_date: str = "2099-02-20T10:00:00",
+    end_date: str = "2099-02-20T19:00:00",
 ) -> dict:
     return {
         "Type": session_type,
@@ -55,8 +59,8 @@ def _session_info_payload(
             "Country": {"Name": "Bahrain"},
             "Circuit": {"ShortName": "Sakhir"},
         },
-        "StartDate": "2099-02-20T10:00:00",
-        "EndDate": "2099-02-20T19:00:00",
+        "StartDate": start_date,
+        "EndDate": end_date,
         "GmtOffset": "03:00:00",
     }
 
@@ -87,6 +91,19 @@ def _set_live_context(
         CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
         "live_state": _LiveState(True),
         "session_status_coordinator": status_coordinator,
+    }
+
+
+def _set_replay_context(
+    hass,
+    entry_id: str,
+    *,
+    status_coordinator: DataUpdateCoordinator,
+) -> None:
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "session_status_coordinator": status_coordinator,
+        "replay_controller": SimpleNamespace(state=ReplayState.PLAYING),
     }
 
 
@@ -292,6 +309,44 @@ async def test_qualifying_finished_stays_terminal_for_final_segment(hass) -> Non
     assert current_state.attributes["live_status"] == "Finished"
     assert current_state.attributes["active"] is False
     assert current_state.attributes["last_label"] == "Qualifying"
+
+
+@pytest.mark.asyncio
+async def test_current_session_keeps_replay_qualifying_label_after_scheduled_end(
+    hass,
+) -> None:
+    entry_id = "test_entry_replay_qualifying_past_end"
+    status_coordinator = _build_coordinator(
+        hass,
+        {"Status": "Inactive", "Started": "Started"},
+    )
+    info_coordinator = _build_coordinator(
+        hass,
+        _session_info_payload(
+            session_type="Qualifying",
+            name="Qualifying",
+            number=None,
+            start_date="2026-03-07T16:00:00",
+            end_date="2026-03-07T17:00:00",
+        ),
+    )
+
+    _set_replay_context(hass, entry_id, status_coordinator=status_coordinator)
+    hass.data[LATEST_TRACK_STATUS] = {"Status": "1", "Message": "AllClear"}
+
+    current_sensor = F1CurrentSessionSensor(
+        info_coordinator,
+        f"{entry_id}_current_session",
+        entry_id,
+        "F1",
+    )
+    await _add_sensors(hass, [current_sensor])
+
+    current_state = hass.states.get(current_sensor.entity_id)
+    assert current_state is not None
+    assert current_state.state == "Qualifying"
+    assert current_state.attributes["live_status"] == "Inactive"
+    assert current_state.attributes["active"] is True
 
 
 @pytest.mark.asyncio

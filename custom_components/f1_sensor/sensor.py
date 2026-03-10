@@ -3261,6 +3261,24 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         ]
         self._status_coordinator = None
 
+    def _is_replay_active(self) -> bool:
+        """Return True when replay mode is playing or paused."""
+        reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(
+            self._entry_id, {}
+        ) or {}
+        replay_controller = reg.get("replay_controller")
+        if replay_controller is None:
+            return False
+        try:
+            from .replay_mode import ReplayState
+
+            return replay_controller.state in (
+                ReplayState.PLAYING,
+                ReplayState.PAUSED,
+            )
+        except Exception:
+            return False
+
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         # Wire listeners first so _live_status() reflects current coordinator state
@@ -3289,7 +3307,7 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 ended_by_attrs = False
                 try:
                     end_iso = attrs.get("end") or attrs.get("EndDate")
-                    if end_iso:
+                    if end_iso and not self._is_replay_active():
                         end_dt = datetime.datetime.fromisoformat(
                             str(end_iso).replace("Z", "+00:00")
                         )
@@ -3445,7 +3463,7 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         ended = mapped_status in ("finished", "finalised", "ended")
         with suppress(Exception):
             end_iso = raw.get("EndDate")
-            if end_iso and not ended:
+            if end_iso and not ended and not self._is_replay_active():
                 end_dt = datetime.datetime.fromisoformat(
                     str(end_iso).replace("Z", "+00:00")
                 )
