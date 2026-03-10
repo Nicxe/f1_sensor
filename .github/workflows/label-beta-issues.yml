@@ -1,0 +1,72 @@
+name: Label issues in BETA-testing
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  issues: write
+
+jobs:
+  label-beta-issues:
+    if: ${{ github.event.release.prerelease == true && github.event.release.target_commitish == 'beta' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add "In BETA-testing" label to fixed issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.release.body || '';
+            const labelName = 'In BETA-testing';
+
+            const issueNumbers = [
+              ...new Set([...body.matchAll(/#(\d+)/g)].map(m => parseInt(m[1])))
+            ];
+
+            if (issueNumbers.length === 0) {
+              console.log('No issue references found in release notes');
+              return;
+            }
+
+            // Create label if it does not exist
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: labelName,
+              });
+            } catch (e) {
+              if (e.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: labelName,
+                  color: 'fbca04',
+                  description: 'A fix for this issue is available in a BETA pre-release',
+                });
+                console.log(`Created label "${labelName}"`);
+              }
+            }
+
+            for (const num of issueNumbers) {
+              try {
+                const { data: issue } = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: num,
+                });
+
+                // Skip pull requests and already-closed issues
+                if (issue.pull_request || issue.state === 'closed') continue;
+
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: num,
+                  labels: [labelName],
+                });
+                console.log(`Labeled issue #${num}`);
+              } catch (e) {
+                console.log(`Skipping #${num}: ${e.message}`);
+              }
+            }
