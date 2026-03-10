@@ -15,5 +15,5 @@ jobs:
           curl -s -X POST https://context7.com/api/v1/refresh \
             -H "Authorization: Bearer ${{ secrets.CONTEXT7_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d '{"libraryName": "nicxe_github_io_f1_sensor"}' \
+            -d '{"libraryName": "/websites/nicxe_github_io_f1_sensor"}' \
             --fail-with-body
