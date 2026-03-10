@@ -163,6 +163,12 @@ blueprint:
                   value: BLACK
                 - label: CHEQUERED
                   value: CHEQUERED
+        filter_blue_flags:
+          name: Filter Out Blue Flags
+          description: If enabled, BLUE flag race control messages are skipped before other flag filters are applied.
+          default: false
+          selector:
+            boolean: {}
         allowed_categories:
           name: Allowed Categories
           description: Comma or semicolon separated category names. Empty means all categories.
@@ -266,6 +272,7 @@ variables:
   active_phases: !input active_session_phases
   require_phase_gate: !input require_active_phase
   allowed_flags_input: !input allowed_flags
+  filter_blue_flags_input: !input filter_blue_flags
   allowed_categories_raw: !input allowed_categories
   include_keywords_raw: !input include_keywords
   exclude_keywords_raw: !input exclude_keywords
@@ -412,7 +419,9 @@ variables:
       true
     {% endif %}
   flag_ok: >-
-    {% if allowed_flags_input | count == 0 %}
+    {% if filter_blue_flags_input and (race_control_flag | upper == 'BLUE') %}
+      false
+    {% elif allowed_flags_input | count == 0 %}
       true
     {% else %}
       {{ race_control_flag | upper in allowed_flags_input }}

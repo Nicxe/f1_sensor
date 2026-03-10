@@ -82,9 +82,14 @@ All filters are optional and collapsed by default. Leave them empty to receive e
 | Setting | Description |
 | --- | --- |
 | **Allowed Flags** | Only notify for specific flag types. Leave empty to allow all flags |
+| **Filter Out Blue Flags** | Skip notifications for `BLUE` flag messages. Useful if waved blue flags create too much noise |
 | **Allowed Categories** | Comma or semicolon-separated category names. Leave empty to allow all categories |
 | **Include Keywords** | Only notify when the message contains at least one of these words |
 | **Exclude Keywords** | Skip notifications when the message contains any of these words |
+
+:::info
+**Filter Out Blue Flags** is applied before the regular flag allow-list. If you enable it, blue flag messages are suppressed even when `BLUE` is included in **Allowed Flags**.
+:::
 
 **Available flag values:**
 
@@ -200,6 +205,12 @@ Enable **Require Active Session Phase** and set **Active Session Phases** to `li
 ### Exclude administrative messages
 
 Set **Exclude Keywords** to `clerk, official, document` to filter out FIA document references.
+
+---
+
+### Silence blue flag spam
+
+Enable **Filter Out Blue Flags** if you want to keep Race Control notifications for incidents, penalties, and safety car events without receiving repeated waved blue flag messages late in the race.
 
 ---
 
