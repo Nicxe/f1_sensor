@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -14,7 +14,6 @@ import time
 from typing import Any
 from urllib.parse import urljoin
 
-import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_COMPONENT_LOADED
 from homeassistant.core import HomeAssistant, callback as ha_callback
@@ -3379,6 +3378,33 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             cur = cur.get(p)
         return cur if cur is not None else default
 
+    @staticmethod
+    def _iter_qualifying_best_lap_times(
+        best_lap_times: object,
+    ) -> Iterator[tuple[int, dict[str, Any]]]:
+        """Yield qualifying segment lap payloads from dict or list streams.
+
+        The F1 timing feed uses non-empty entries for segments the driver has
+        actually reached. Future segments may be present as empty dicts, which
+        must not be treated as participation.
+        """
+        if isinstance(best_lap_times, dict):
+            items = best_lap_times.items()
+        elif isinstance(best_lap_times, list):
+            items = enumerate(best_lap_times)
+        else:
+            return
+
+        for seg_idx_raw, lap_data in items:
+            if not isinstance(lap_data, dict) or not lap_data:
+                continue
+            try:
+                seg_num = int(seg_idx_raw) + 1
+            except (TypeError, ValueError):
+                continue
+            if seg_num in (1, 2, 3):
+                yield seg_num, lap_data
+
     def _ingest_completed_lap(
         self, rn: str, lap_time: str, lap_num: int | None = None
     ) -> bool:
@@ -3433,17 +3459,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         drivers = self._state["drivers"]
         changed = False
         position_changed = False
-        # Extract current qualifying part from payload before driver loop so it is
-        # available when marking participation. Fallback to previously stored part.
-        current_q_part_raw = payload.get("SessionPart")
-        if current_q_part_raw is None:
-            current_q_part_raw = self._state.get("session", {}).get("part")
-        try:
-            current_q_part: int | None = (
-                int(current_q_part_raw) if current_q_part_raw is not None else None
-            )
-        except (TypeError, ValueError):
-            current_q_part = None
         # 1) Apply incremental updates to stored driver timing
         for rn, td in lines.items():
             if not isinstance(td, dict):
@@ -3593,35 +3608,25 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "knocked_out": False,
                 },
             )
-            if current_q_part in (1, 2, 3):
-                q_state["segments"].setdefault(
-                    current_q_part, {"best_time": None, "participated": False}
-                )["participated"] = True
             if "KnockedOut" in td:
                 new_ko = bool(td["KnockedOut"])
                 if q_state.get("knocked_out") != new_ko:
                     q_state["knocked_out"] = new_ko
                     changed = True
-            best_lap_times = td.get("BestLapTimes")
-            if isinstance(best_lap_times, dict):
-                for seg_idx_str, lap_data in best_lap_times.items():
-                    if not isinstance(lap_data, dict):
-                        continue
-                    try:
-                        seg_num = (
-                            int(seg_idx_str) + 1
-                        )  # "0"→1(Q1), "1"→2(Q2), "2"→3(Q3)
-                    except (TypeError, ValueError):
-                        continue
-                    if seg_num not in (1, 2, 3):
-                        continue
-                    value = str(lap_data.get("Value") or "").strip()
-                    seg = q_state["segments"].setdefault(
-                        seg_num, {"best_time": None, "participated": False}
-                    )
-                    if value and seg.get("best_time") != value:
-                        seg["best_time"] = value
-                        changed = True
+            best_lap_times = list(
+                self._iter_qualifying_best_lap_times(td.get("BestLapTimes"))
+            )
+            for seg_num, lap_data in best_lap_times:
+                seg = q_state["segments"].setdefault(
+                    seg_num, {"best_time": None, "participated": False}
+                )
+                if not seg.get("participated"):
+                    seg["participated"] = True
+                    changed = True
+                value = str(lap_data.get("Value") or "").strip()
+                if value and seg.get("best_time") != value:
+                    seg["best_time"] = value
+                    changed = True
         # SessionPart (for Q1/Q2/Q3 detection)
         with suppress(Exception):
             part = payload.get("SessionPart")
@@ -4944,7 +4949,7 @@ class F1DataCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from the F1 API."""
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 data = await fetch_json(
                     self.hass,
                     self._session,
@@ -5089,7 +5094,7 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             URL(primary_base).with_query({"limit": str(limit), "offset": str(offset)})
         )
 
-        async with async_timeout.timeout(10):
+        async with asyncio.timeout(10):
             try:
                 return await fetch_json(
                     self.hass,
@@ -5285,7 +5290,7 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 data = await fetch_json(
                     self.hass,
                     self._session,
@@ -5354,7 +5359,7 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
         season_url = await self._get_season_url(season)
 
         try:
-            async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+            async with asyncio.timeout(FIA_DOCS_FETCH_TIMEOUT):
                 html = await fetch_text(
                     self.hass,
                     self._session,
@@ -5391,7 +5396,7 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
             return cached
         slug = None
         try:
-            async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+            async with asyncio.timeout(FIA_DOCS_FETCH_TIMEOUT):
                 html = await fetch_text(
                     self.hass,
                     self._session,
@@ -5404,7 +5409,7 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
                 )
             slug = self._extract_season_slug(html, season)
             if not slug:
-                async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+                async with asyncio.timeout(FIA_DOCS_FETCH_TIMEOUT):
                     html = await fetch_text(
                         self.hass,
                         self._session,
@@ -5541,7 +5546,7 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
         if cache_bust:
             url = f"{url}?t={int(time.time())}"
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 async with self._session.get(url) as response:
                     text = await response.text()
                     self.last_http_status = response.status

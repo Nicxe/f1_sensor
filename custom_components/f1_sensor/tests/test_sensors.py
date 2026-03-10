@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from unittest.mock import MagicMock
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import STATE_UNAVAILABLE, UnitOfTemperature
@@ -42,6 +43,15 @@ MAX_STATE_ATTRS_BYTES = 16384
 class _LiveState:
     def __init__(self, is_live: bool = False) -> None:
         self.is_live = is_live
+
+
+class _TimeoutSession:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def get(self, *_args, **_kwargs):
+        self.calls += 1
+        raise TimeoutError
 
 
 def _build_coordinator(hass, data: dict) -> DataUpdateCoordinator:
@@ -766,6 +776,61 @@ def test_weather_sensor_uses_celsius_unit(hass) -> None:
 
     assert sensor.device_class == SensorDeviceClass.TEMPERATURE
     assert sensor.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+
+
+@pytest.mark.asyncio
+async def test_weather_sensor_timeout_clears_stale_state(hass, monkeypatch) -> None:
+    coordinator = _build_coordinator(
+        hass,
+        {
+            "MRData": {
+                "RaceTable": {
+                    "Races": [
+                        {
+                            "season": "2026",
+                            "round": "1",
+                            "raceName": "Australian Grand Prix",
+                            "date": "2026-03-20",
+                            "time": "05:00:00Z",
+                            "Circuit": {
+                                "circuitId": "albert_park",
+                                "circuitName": "Albert Park",
+                                "Location": {"lat": "-37.8497", "long": "144.968"},
+                            },
+                        }
+                    ]
+                }
+            }
+        },
+    )
+    entry_id = "test_entry"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1WeatherSensor(
+        coordinator,
+        f"{entry_id}_weather",
+        entry_id,
+        "F1",
+    )
+    sensor._current = {"temperature": 31.2, "weather_source": "stale"}
+    sensor._race = {"temperature": 27.5, "weather_source": "stale"}
+    sensor._attr_icon = "mdi:weather-sunny"
+    timeout_session = _TimeoutSession()
+
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.sensor.async_get_clientsession",
+        lambda _hass: timeout_session,
+    )
+    sensor._hass = hass
+    sensor.async_write_ha_state = MagicMock()
+
+    await sensor._update_weather()
+
+    assert timeout_session.calls == 1
+    assert sensor._current == {}
+    assert sensor._race == {}
+    assert sensor._attr_icon == "mdi:weather-partly-cloudy"
+    sensor.async_write_ha_state.assert_called_once()
 
 
 @pytest.mark.asyncio

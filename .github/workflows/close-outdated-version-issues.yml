@@ -1,0 +1,49 @@
+name: Close Outdated Version Issues
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Every hour
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  close-outdated:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close issues with outdated-version label after 24 hours of inactivity
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'outdated-version',
+            });
+
+            for (const issue of issues) {
+              if (new Date(issue.updated_at) < cutoff) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: [
+                    'This issue has been automatically closed due to no response after the request to update to the latest version.',
+                    '',
+                    'If you\'re still experiencing this issue after updating, please open a new report with the latest version and relevant logs.',
+                  ].join('\n'),
+                });
+
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  state: 'closed',
+                  state_reason: 'not_planned',
+                });
+              }
+            }

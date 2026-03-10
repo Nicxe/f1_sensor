@@ -21,6 +21,15 @@ class _CachingBus:
         return lambda: None
 
 
+class _TimeoutHttp:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def get(self, *_args, **_kwargs):
+        self.calls += 1
+        raise TimeoutError
+
+
 def _session_info_payload(
     *,
     session_status: str = "Inactive",
@@ -139,3 +148,23 @@ async def test_cached_late_payloads_do_not_schedule_probe(
     assert tracker.snapshot()["status"] == expected_status
     assert tracker.formation_start_utc is None
     assert snapshots[-1]["formation_start"] is None
+
+
+@pytest.mark.asyncio
+async def test_probe_cardata_timeout_sets_timeout_error(hass) -> None:
+    timeout_http = _TimeoutHttp()
+    tracker = FormationStartTracker(
+        hass,
+        bus=_CachingBus(),
+        http_session=timeout_http,  # type: ignore[arg-type]
+    )
+    tracker._session_id = "session-1"
+    tracker._session_phase = "pre"
+    tracker._path = "2026/2026-03-20_Australian_Grand_Prix/2026-03-20_Race/"
+    tracker._scheduled_start_utc = dt_util.utcnow()
+
+    result = await tracker._probe_cardata("session-1")
+
+    assert result is False
+    assert timeout_http.calls == 1
+    assert tracker.snapshot()["error"] == "timeout"

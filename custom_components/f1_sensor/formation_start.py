@@ -10,7 +10,6 @@ import logging
 from typing import Any
 
 from aiohttp import ClientSession
-import async_timeout
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
@@ -373,7 +372,7 @@ class FormationStartTracker:
         stop_scan = False
         batch: list[str] = []
         try:
-            async with async_timeout.timeout(_CARDATA_TIMEOUT):
+            async with asyncio.timeout(_CARDATA_TIMEOUT):
                 async with self._http.get(url) as resp:
                     if resp.status == 404:
                         self._last_error = "not_found"

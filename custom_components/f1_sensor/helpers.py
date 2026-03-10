@@ -15,7 +15,6 @@ from typing import Any
 from urllib.parse import urlencode, urljoin
 import zlib
 
-import async_timeout
 from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_integration
@@ -350,7 +349,7 @@ async def fetch_json(
                 _LOGGER.debug("HTTP cache MISS key=%s -> fetching", key)
         if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
             _record_jolpica_miss(hass, key)
-        async with async_timeout.timeout(30):
+        async with asyncio.timeout(30):
             async with session.get(url, params=params, headers=headers) as resp:
                 resp.raise_for_status()
                 text = await resp.text()
@@ -483,7 +482,7 @@ async def fetch_text(
                 _LOGGER.debug("HTTP text cache MISS key=%s -> fetching", key)
         if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
             _record_jolpica_miss(hass, key)
-        async with async_timeout.timeout(30):
+        async with asyncio.timeout(30):
             async with session.get(url, params=params, headers=headers) as resp:
                 resp.raise_for_status()
                 text = await resp.text()

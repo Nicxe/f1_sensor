@@ -85,6 +85,16 @@ class _FakeHttp:
         return _FakeResponse(status, body)
 
 
+class _TimeoutHttp:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def get(self, url: str, headers: dict | None = None):
+        del headers
+        self.calls.append(url)
+        raise TimeoutError
+
+
 class _StaticSource:
     def __init__(self, result: ScheduleFetchResult) -> None:
         self._result = result
@@ -641,6 +651,60 @@ async def test_event_tracker_retry_uses_refreshed_root_endpoint(monkeypatch) -> 
         "https://api.formula1.com/v1/event-tracker",
         "https://api.formula1.com/v2/event-tracker",
     ]
+
+
+@pytest.mark.asyncio
+async def test_event_tracker_timeout_returns_last_error() -> None:
+    timeout_http = _TimeoutHttp()
+    source = EventTrackerScheduleSource(
+        timeout_http,  # type: ignore[arg-type]
+        base_url="https://api.formula1.com",
+        endpoint="/v1/event-tracker",
+    )
+
+    result = await source.async_fetch_windows(
+        pre_window=dt.timedelta(minutes=60),
+        post_window=dt.timedelta(minutes=15),
+        active=False,
+    )
+
+    assert result.windows == []
+    assert result.last_error is not None
+    assert "root:" in result.last_error
+    assert timeout_http.calls
+
+
+@pytest.mark.asyncio
+async def test_prime_lap_count_timeout_does_not_inject_message(hass) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    bus = _DummyBus()
+    timeout_http = _TimeoutHttp()
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        bus,
+        http_session=timeout_http,  # type: ignore[arg-type]
+    )
+    window = _mk_window(path="2026/1304/11465/")
+
+    await supervisor._prime_lap_count(window, {"Status": "Started", "Started": True})
+
+    assert bus.injected_messages == []
+    assert timeout_http.calls
+
+
+@pytest.mark.asyncio
+async def test_session_finished_timeout_returns_false(hass) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        _DummyBus(),
+        http_session=_TimeoutHttp(),  # type: ignore[arg-type]
+    )
+    window = _mk_window(path="2026/1304/11465/")
+
+    assert await supervisor._session_finished(window) is False
 
 
 @pytest.mark.asyncio

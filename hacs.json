@@ -1,5 +1,6 @@
 {
+    "filename": "f1_sensor.zip",
+    "homeassistant": "2023.8.0",
     "name": "F1 Sensor",
-    "zip_release": true,
-    "filename": "f1_sensor.zip"
+    "zip_release": true
 }

@@ -13,7 +13,6 @@ import time
 from typing import TYPE_CHECKING, Any, Protocol
 
 from aiohttp import ClientSession
-import async_timeout
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -465,7 +464,7 @@ class EventTrackerScheduleSource:
         if not self._env_source_url:
             return
         try:
-            async with async_timeout.timeout(self._timeout):
+            async with asyncio.timeout(self._timeout):
                 async with self._http.get(self._env_source_url) as resp:
                     if resp.status != 200:
                         return
@@ -519,7 +518,7 @@ class EventTrackerScheduleSource:
             "locale": self._locale,
         }
         url = self._build_url(endpoint)
-        async with async_timeout.timeout(self._timeout):
+        async with asyncio.timeout(self._timeout):
             async with self._http.get(url, headers=headers) as resp:
                 text = await resp.text()
                 if resp.status != 200:
@@ -1174,7 +1173,7 @@ class LiveSessionSupervisor:
         _LOGGER.debug("%s prime LapCount payload=%s", window.label, payload)
 
     async def _fetch_lapcount_snapshot(self, url: str) -> dict[str, int] | None:
-        async with async_timeout.timeout(10):
+        async with asyncio.timeout(10):
             async with self._http.get(url) as resp:
                 if resp.status == 404:
                     return None
@@ -1304,7 +1303,7 @@ class LiveSessionSupervisor:
         return False
 
     async def _fetch_json(self, url: str) -> Any:
-        async with async_timeout.timeout(10):
+        async with asyncio.timeout(10):
             async with self._http.get(url) as resp:
                 if resp.status == 404:
                     return None
