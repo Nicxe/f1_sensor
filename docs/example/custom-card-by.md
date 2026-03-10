@@ -274,7 +274,8 @@ custom_fields:
       const BADGE_FONT = isMobile ? '12px' : '15px';
 
       return displayResults.map((r, idx) => {
-        const pos = r.position;
+        const pos = r.position !== undefined ? r.position : (r.positionText || '-');
+        
         const code = r.Driver?.code;
         const name = `${r.Driver?.givenName || ''} ${r.Driver?.familyName || ''}`.trim();
         const team = r.Constructors?.[0]?.name || ''; 
@@ -537,7 +538,8 @@ custom_fields:
       const POS_WIDTH = isMobile ? '30px' : '40px';
 
       return displayResults.map((r) => {
-        const pos = r.position;
+        const pos = r.position !== undefined ? r.position : (r.positionText || '-');
+        
         const apiTeamName = r.Constructor?.name || 'Unknown';
         const normalizedName = normalizeTeamName(apiTeamName);
         const points = r.points || '0';
