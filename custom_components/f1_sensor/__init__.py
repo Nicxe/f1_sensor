@@ -14,7 +14,6 @@ import time
 from typing import Any
 from urllib.parse import urljoin
 
-import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_COMPONENT_LOADED
 from homeassistant.core import HomeAssistant, callback as ha_callback
@@ -4950,7 +4949,7 @@ class F1DataCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from the F1 API."""
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 data = await fetch_json(
                     self.hass,
                     self._session,
@@ -5095,7 +5094,7 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             URL(primary_base).with_query({"limit": str(limit), "offset": str(offset)})
         )
 
-        async with async_timeout.timeout(10):
+        async with asyncio.timeout(10):
             try:
                 return await fetch_json(
                     self.hass,
@@ -5291,7 +5290,7 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 data = await fetch_json(
                     self.hass,
                     self._session,
@@ -5360,7 +5359,7 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
         season_url = await self._get_season_url(season)
 
         try:
-            async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+            async with asyncio.timeout(FIA_DOCS_FETCH_TIMEOUT):
                 html = await fetch_text(
                     self.hass,
                     self._session,
@@ -5397,7 +5396,7 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
             return cached
         slug = None
         try:
-            async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+            async with asyncio.timeout(FIA_DOCS_FETCH_TIMEOUT):
                 html = await fetch_text(
                     self.hass,
                     self._session,
@@ -5410,7 +5409,7 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
                 )
             slug = self._extract_season_slug(html, season)
             if not slug:
-                async with async_timeout.timeout(FIA_DOCS_FETCH_TIMEOUT):
+                async with asyncio.timeout(FIA_DOCS_FETCH_TIMEOUT):
                     html = await fetch_text(
                         self.hass,
                         self._session,
@@ -5547,7 +5546,7 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
         if cache_bust:
             url = f"{url}?t={int(time.time())}"
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 async with self._session.get(url) as response:
                     text = await response.text()
                     self.last_http_status = response.status

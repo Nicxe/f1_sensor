@@ -7,7 +7,6 @@ from logging import getLogger
 import re
 from zoneinfo import ZoneInfo
 
-import async_timeout
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -994,7 +993,7 @@ class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
             f"&forecast_days=16"
         )
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 async with session.get(url) as resp:
                     resp.raise_for_status()
                     data = await resp.json()

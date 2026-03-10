@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from inspect import isawaitable
 import logging
 import time
 
-import async_timeout
 from homeassistant.components import persistent_notification
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
@@ -230,7 +230,7 @@ class F1JolpicaUserAgentTestButton(F1AuxEntity, ButtonEntity):
         started = time.time()
         headers = {"User-Agent": str(ua_configured)} if ua_configured else None
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 async with session.get(
                     API_URL, params={"limit": "1"}, headers=headers
                 ) as resp:
@@ -241,7 +241,7 @@ class F1JolpicaUserAgentTestButton(F1AuxEntity, ButtonEntity):
             err = str(e)
 
         elapsed_ms = int(round((time.time() - started) * 1000))
-        if err:
+        if err is not None:
             log = (
                 f"Jolpica UA test FAILED (elapsed={elapsed_ms}ms) "
                 f"ua_configured={ua_configured!r} ua_session={ua_session!r} ua_sent={headers.get('User-Agent') if isinstance(headers, dict) else None!r} error={err}"

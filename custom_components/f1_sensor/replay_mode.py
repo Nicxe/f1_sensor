@@ -19,7 +19,6 @@ import time
 from typing import Any
 
 from aiohttp import ClientSession
-import async_timeout
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
@@ -263,7 +262,7 @@ class ReplaySessionManager:
 
         url = f"{STATIC_BASE}/{year}/Index.json"
         try:
-            async with async_timeout.timeout(15):
+            async with asyncio.timeout(15):
                 async with self._http.get(url) as resp:
                     if resp.status in (403, 404):
                         self._index_status = INDEX_STATUS_NO_DATA
@@ -684,7 +683,7 @@ class ReplaySessionManager:
         frames: list[ReplayFrame] = []
 
         try:
-            async with async_timeout.timeout(60):
+            async with asyncio.timeout(60):
                 async with self._http.get(url) as resp:
                     if resp.status == 404:
                         _LOGGER.debug("Stream %s not found (404)", stream_name)
@@ -1157,7 +1156,7 @@ class ReplaySessionManager:
         stop_scan = False
         batch: list[str] = []
         try:
-            async with async_timeout.timeout(FORMATION_HTTP_TIMEOUT):
+            async with asyncio.timeout(FORMATION_HTTP_TIMEOUT):
                 async with self._http.get(url) as resp:
                     if resp.status == 404:
                         return None
@@ -1250,7 +1249,7 @@ class ReplaySessionManager:
     async def _check_url_exists(self, url: str, session: ReplaySession) -> None:
         """HEAD request to check if URL exists."""
         try:
-            async with async_timeout.timeout(5):
+            async with asyncio.timeout(5):
                 async with self._http.head(url) as resp:
                     session.available = resp.status == 200
         except Exception:
