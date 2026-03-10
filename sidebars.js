@@ -15,7 +15,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Features',
-      items: ['features/live-delay', 'features/replay-mode'],
+      items: ['features/live-delay', 'features/replay-mode', 'features/no-spoiler-mode', 'features/context7'],
     },
     {
       type: 'category',
@@ -32,7 +32,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Blueprints',
-      items: ['blueprints/track-status-light', 'blueprints/race-control-notifications', 'blueprints/replay-sync'],
+      items: ['blueprints/track-status-light', 'blueprints/race-control-notifications'],
     },
 
     {
