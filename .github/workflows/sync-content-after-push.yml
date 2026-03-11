@@ -26,13 +26,5 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Merge main into content
-        run: |
-          git checkout content
-          git merge main --ff-only || git merge main -m "chore: sync content with main"
-          git push origin content
+      - name: Force push main to content
+        run: git push origin main:content --force
