@@ -27,6 +27,10 @@ Diagnostic entities are intended for troubleshooting and advanced automations. S
 | --- | --- | --- |
 | reason | string | Why the current live timing state is active (best effort) |
 | window | string | Current live timing window label (best effort) |
+| schedule_source | string | How the live schedule was resolved (best effort) |
+| index_http_status | number | HTTP status code of the last schedule index fetch (best effort) |
+| fallback_active | boolean | True if the schedule is using a fallback source (best effort) |
+| last_schedule_error | string | Error details from the last schedule fetch attempt (best effort) |
 | heartbeat_age_s | number | Seconds since last heartbeat frame (best effort) |
 | activity_age_s | number | Seconds since last stream activity (best effort) |
 

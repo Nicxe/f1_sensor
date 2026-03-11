@@ -124,6 +124,7 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_current_session](#current-session)         | Current ongoing session, like Practice 1, Qualification, Race|
 | [sensor.f1_session_time_elapsed](#session-time-elapsed) | Time elapsed in the current session `(beta)` |
 | [sensor.f1_session_time_remaining](#session-time-remaining) | Time remaining in the current session `(beta)` |
+| [sensor.f1_race_three_hour_limit](#race-three-hour-limit) | Time remaining until the FIA 3-hour race duration cap `(beta)` |
 | [sensor.f1_track_status](#track-status)               | Current track status |
 | [binary_sensor.f1_safety_car](#safety-car)            | Safety Car (SC) or Virtual Safety Car (VSC) is active|  
 | [sensor.f1_race_lap_count](#race-lap)                 | Current race lap number|
@@ -179,7 +180,14 @@ After finalised or ended, logic resets and next session begins at **pre**.
 
 | Attribute | Type | Description |
 | --- | --- | --- |
-| (none) |  | No extra attributes |
+| meeting_name | string | Meeting name (e.g., "Monaco Grand Prix") |
+| meeting_location | string | Meeting location (e.g., "Monte Carlo") |
+| meeting_country | string | Meeting country (e.g., "Monaco") |
+| circuit_short_name | string | Circuit short name (e.g., "Monaco") |
+| gmt_offset | string | Event GMT offset |
+| start | string | Session start ISO‑8601 |
+| end | string | Session end ISO‑8601 |
+| track_grip | string | Track grip state from Race Control, when available (best effort) |
 
 ---
 
@@ -299,6 +307,49 @@ This sensor is currently in beta. The behavior has not been verified across all 
 :::info Session clock behavior
 The session clock counts down the scheduled duration of the session. It does not account for race laps — in a race, the session ends when the leader completes the required number of laps, which may happen before or (rarely) after the scheduled time expires. Use `sensor.f1_race_lap_count` for lap-based progress.
 :::
+
+---
+
+## Race Three Hour Limit
+
+:::caution Beta
+This sensor is currently in beta. The behavior has not been verified across all edge cases and timing scenarios. Treat the values as indicative rather than definitive until further testing is complete.
+:::
+
+`sensor.f1_race_three_hour_limit` - Time remaining until the FIA three-hour race duration cap is reached. This sensor is only available during the main race session (not sprint races).
+
+Under FIA regulations, a race must finish within three hours of the original start time. This sensor counts down to that absolute limit, independently of the session clock which may be paused during red flags.
+
+**State**
+- String: remaining time formatted as `H:MM:SS` (e.g., `2:14:30`), or `unavailable` when no data is available or outside the main race.
+
+**Example**
+```text
+2:14:30
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| session_type | string | Session type (e.g., "Race") |
+| session_name | string | Session name (e.g., "Race") |
+| session_part | number | Session part, when available |
+| session_status | string | Current session status from the feed |
+| clock_phase | string | Clock state: `idle`, `running`, `paused`, or `finished` |
+| clock_running | boolean | Whether the clock is actively counting |
+| source_quality | string | Data source reliability (see `source_quality` values above) |
+| session_start_utc | string | ISO‑8601 timestamp of the session start |
+| reference_utc | string | ISO‑8601 timestamp used as the clock reference point |
+| last_server_utc | string | ISO‑8601 timestamp of the last server heartbeat |
+| value_seconds | number | Remaining time until three-hour cap in whole seconds |
+| formatted_hms | string | Remaining time formatted as `H:MM:SS` |
+| race_start_utc | string | ISO‑8601 timestamp of the race start |
+| race_three_hour_cap_utc | string | ISO‑8601 timestamp of the three-hour deadline |
+
+::::info Info
+This sensor is only available during the main race session. It becomes unavailable during practice, qualifying, and sprint sessions.
+::::
 
 ---
 

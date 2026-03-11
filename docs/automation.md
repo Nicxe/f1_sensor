@@ -192,7 +192,7 @@ action:
   - service: notify.mobile_app_your_phone
     data:
       title: "Safety Car"
-      message: "Safety car deployed — {{ state_attr('binary_sensor.f1_safety_car', 'message') }}"
+      message: "Safety car deployed — track status: {{ state_attr('binary_sensor.f1_safety_car', 'track_status') }}"
 mode: single
 ```
 

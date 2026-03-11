@@ -7,6 +7,14 @@ Replay Mode lets you watch historical F1 sessions with full Home Assistant integ
 
 Your lights flash red on a red flag. Your dashboard shows live timing. Race Control messages trigger notifications. Everything stays perfectly in sync with what you see on screen.
 
+:::warning Experimental replay catch-up
+Replay Mode now includes experimental 30-second catch-up controls in Version 1. The feature is being tested in real setups, and additional refinement may still be needed in later updates.
+:::
+
+:::tip Watching it later? Keep your dashboard spoiler-free
+If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode, press play when your broadcast begins, and experience everything as if it were live — without any spoilers.
+:::
+
 ---
 
 ## How it works
@@ -36,6 +44,8 @@ Replay Mode adds several control entities to Home Assistant.
 | `button.f1_replay_play` | Start or resume playback |
 | `button.f1_replay_pause` | Pause playback |
 | `button.f1_replay_stop` | Stop playback and return to idle |
+| `button.f1_replay_back_30` | Experimental: move replay back 30 seconds |
+| `button.f1_replay_forward_30` | Experimental: move replay forward 30 seconds |
 | `button.f1_replay_refresh` | Refresh the session list |
 
 ### Media player
@@ -104,7 +114,44 @@ If you pause your TV, pause the replay to stay in sync. When you resume, resume 
 
 - **Pause** - Press `button.f1_replay_pause` or pause `media_player.f1_replay_player`
 - **Resume** - Press `button.f1_replay_play` or play `media_player.f1_replay_player`
+- **Back 30 seconds** - Press `button.f1_replay_back_30` to move replay back 30 seconds
+- **Forward 30 seconds** - Press `button.f1_replay_forward_30` to move replay forward 30 seconds
 - **Stop** - Press `button.f1_replay_stop` to end playback and return to idle
+
+---
+
+## Replay Catch-Up
+
+:::warning Experimental feature
+The replay catch-up controls in Replay Mode are experimental.
+
+You can now move replay backward or forward in fixed 30-second steps with **Back 30 seconds** and **Forward 30 seconds**. This is an early version that is being tested in real setups, so more refinement may still be needed in future updates.
+:::
+
+The Version 1 replay catch-up controls are designed to help you manually line up Replay Mode with your broadcaster when the video is ahead or behind.
+
+### How the 30-second buttons work
+
+When you press **Forward 30 seconds**, the integration does not simply skip to a new position and ignore what happened in between. It quickly replays the events inside that 30-second window first, then continues from the new position.
+
+That means important state changes still land correctly. If a red flag, Race Control update, session clock change, or other tracked event happens inside those 30 seconds, the related entities still end up in the right state after the jump.
+
+When you press **Back 30 seconds**, Replay Mode rebuilds the replay state from the selected replay start point and then replays forward to the new position.
+
+### What to expect in Version 1
+
+- Catch-up uses fixed 30-second steps only
+- There is no free drag-to-seek slider yet
+- The feature is intended to make manual catch-up simpler, not to guarantee perfect sync with every broadcaster
+- Rewinding can replay the same historical event again, which means automations and notifications may trigger again by design
+
+### Best way to use it
+
+If your TV or streaming replay is slightly out of sync, pause Replay Mode and use the 30-second buttons until the on-screen action matches your Home Assistant entities again. A practical reference point is the session clock, track status, or the latest Race Control message.
+
+:::info
+This feature is experimental. Real-world feedback will be used to improve the behavior, controls, and timing in later updates.
+:::
 
 ---
 
@@ -127,7 +174,7 @@ The `media_player.f1_replay_player` entity provides standard media player contro
 | media_title | string | Name of the selected session |
 | media_position | number | Current position in seconds |
 | media_duration | number | Total duration in seconds |
-| replay_state | string | Replay state (`idle`, `selected`, `loading`, `ready`, `playing`, `paused`) |
+| replay_state | string | Replay state (`idle`, `selected`, `loading`, `ready`, `playing`, `paused`, `seeking`) |
 | selected_session | string | Name of the selected session |
 | selected_session_id | string | Internal session identifier (best effort) |
 | playback_position_s | number | Current position in seconds |
@@ -142,7 +189,7 @@ The `media_player.f1_replay_player` entity provides standard media player contro
 The `sensor.f1_replay_status` entity tracks the current state and provides detailed attributes.
 
 **State (enum)**
-- One of: `idle`, `selected`, `loading`, `ready`, `playing`, `paused`
+- One of: `idle`, `selected`, `loading`, `ready`, `playing`, `paused`, `seeking`
 
 **Attributes**
 
@@ -155,6 +202,7 @@ The `sensor.f1_replay_status` entity tracks the current state and provides detai
 | playback_position_formatted | string | Current position as HH:MM:SS |
 | playback_total_s | number | Total playback duration in seconds |
 | playback_total_formatted | string | Total duration as HH:MM:SS |
+| session_start_offset_s | number | Start offset in seconds from the underlying session archive (best effort) |
 | paused | boolean | True when playback is paused |
 | sessions_available | number | Number of sessions available for the selected year |
 | selected_year | number | Currently selected year |
@@ -207,3 +255,6 @@ Replace `media_player.apple_tv` with your actual media player entity. This works
 
 - While replay is active, the integration does not receive live data. Stop the replay to return to live mode.
 - The live delay calibration feature is disabled during replay.
+- The experimental catch-up controls currently support fixed 30-second jumps only.
+- Rewinding can replay historical events again, so replay-driven automations and notifications may run again.
+- Replay Mode does not protect you from spoilers on its own. Use [No Spoiler Mode](/features/no-spoiler-mode) to keep your dashboard frozen until you are ready to watch.

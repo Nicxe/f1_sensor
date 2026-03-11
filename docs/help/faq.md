@@ -58,7 +58,20 @@ This is expected behavior. The live sensors only update shortly before, during, 
 
 Yes! The integration includes [**Replay Mode**](/features/replay-mode) which lets you play back historical sessions with full Home Assistant integration. When you watch a recorded race from F1 TV or another service, you can sync all your automations and dashboards to work exactly as they would during a live broadcast.
 
+If you want to avoid spoilers before watching, turn on [**No Spoiler Mode**](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode and experience everything as if it were live.
+
 See the [Replay Mode documentation](/features/replay-mode) for setup instructions.
+</details>
+
+
+<details>
+<summary>How do I keep my dashboard spoiler-free until I can watch?</summary>
+
+Turn on [**No Spoiler Mode**](/features/no-spoiler-mode) before the session starts. The integration freezes all spoiler-sensitive entities (results, live timing, standings, race control messages) while keeping schedule and calendar data up to date.
+
+When you are ready, load the session in [**Replay Mode**](/features/replay-mode) and press play when the broadcast starts. When you are done, turn No Spoiler Mode off and everything updates at once.
+
+See the [No Spoiler Mode documentation](/features/no-spoiler-mode) for full details.
 </details>
 
 
@@ -126,7 +139,7 @@ Additionally, `binary_sensor.f1_safety_car` turns on whenever a Safety Car or Vi
 <details>
 <summary>Can F1 Sensor show live driver positions or lap times like a Formula 1 timing tower?</summary>
 
-Not at the moment. The integration focuses on key session data (session status, flags, laps, standings, etc.) rather than real-time timing for every driver. Live driver position tracking (essentially the running order with continuous updates) is quite complex and is not currently implemented. The developer has explored it, but handling that much real-time data reliably is challenging, so there’s no guarantee it will be added. Future updates may introduce more live data features (the roadmap includes ideas like enhanced live timing), but as of now there is no sensor for constantly updating driver positions during a session.
+Yes. The `sensor.f1_driver_positions` sensor provides live driver positions, lap times, sector times, pit status, and more during an active session. There are also dedicated `sensor.f1_top_three_p1`, `sensor.f1_top_three_p2`, and `sensor.f1_top_three_p3` sensors for the current top three positions, and `sensor.f1_current_tyres` for each driver’s current tyre compound. See [Driver Positions](/entities/live-data#driver-positions) for full details.
 </details>
 
 
