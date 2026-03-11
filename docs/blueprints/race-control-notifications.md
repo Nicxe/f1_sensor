@@ -47,6 +47,12 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_race_contro
 
 ### Step 2 — Configure Source
 
+:::info Finding the right entities
+Use the standard `entity_id` from the docs when you search, for example `sensor.f1_race_control`, `sensor.f1_session_status`, and `sensor.f1_current_session`.
+
+Display names may be translated in Home Assistant. If you upgraded from an older release and already have a different registry ID, keep selecting your existing entity instead of trying to rename it to match the docs.
+:::
+
 | Setting | Description |
 | --- | --- |
 | **Race Control Sensor** | Select the `*_race_control` sensor from your F1 Sensor integration |

@@ -17,12 +17,18 @@ Actual delays vary by provider, but these ranges are common:
 
 By setting the delay accordingly, Home Assistant can react in sync with the live pictures you are watching.
 
+:::info Standard entity IDs
+This page uses the standard helper entity IDs for new installations: `number.f1_live_delay`, `switch.f1_delay_calibration`, `button.f1_delay_calibration_match`, and `select.f1_live_delay_reference`.
+
+If you upgraded from an older release and already have different registry IDs, keep using those existing entities. The integration does not rename installed entities automatically.
+:::
+
 ---
 
 
 ## Option 1 - Manual delay adjustment
 
-At its core, Live Delay is a single value, stored in `number.f1_system_live_delay`
+At its core, Live Delay is a single value, stored in `number.f1_live_delay`.
 
 Changing this value **directly updates** the Live Delay Controller and delays all live messages. This value represents how many seconds the live data stream should be delayed before it is exposed to sensors.
 
@@ -49,9 +55,9 @@ It uses these helper entities:
 
 | Entity | Purpose |
 | --- | --- |
-| `switch.f1_system_delay_calibration` | Arm calibration and start the timer |
-| `button.f1_system_match_live_delay` | Press when TV catches up to commit the delay |
-| `select.f1_system_live_delay_reference` | Choose when the timer starts |
+| `switch.f1_delay_calibration` | Arm calibration and start the timer |
+| `button.f1_delay_calibration_match` | Press when TV catches up to commit the delay |
+| `select.f1_live_delay_reference` | Choose when the timer starts |
 
 ![Manual Live Auto](/img/live_delay_auto.png)
 
@@ -59,7 +65,7 @@ It uses these helper entities:
 
 The calibration workflow publishes additional attributes so you can see what it is doing.
 
-The `number.f1_system_live_delay` entity also exposes:
+The `number.f1_live_delay` entity also exposes:
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -72,7 +78,7 @@ The `number.f1_system_live_delay` entity also exposes:
 | calibration_last_result | number | Most recent saved delay value in seconds (best effort) |
 | calibration_message | string | Human-readable status message (best effort) |
 
-The `switch.f1_system_delay_calibration` entity exposes:
+The `switch.f1_delay_calibration` entity exposes:
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -87,7 +93,7 @@ The `switch.f1_system_delay_calibration` entity exposes:
 
 ### Choose the calibration reference
 
-Use `select.f1_system_live_delay_reference` to choose when the calibration timer starts:
+Use `select.f1_live_delay_reference` to choose when the calibration timer starts:
 
 - **Session live** - Timer starts at lights out (races) or pit exit open (practice/qualifying). This is the most precise option.
 - **Formation start (race/sprint)** - Timer starts when the formation lap begins. This lets you focus on watching the start rather than pressing a button at lights out.
@@ -107,7 +113,7 @@ The formation lap start point is estimated with approximately one second accurac
 
 ### Step 1 - Arm the calibration
 
-Turn the switch `switch.f1_system_delay_calibration` **on** to start calibration mode.
+Turn the switch `switch.f1_delay_calibration` **on** to start calibration mode.
 
 What happens next depends on the chosen reference:
 
@@ -129,7 +135,7 @@ What happens next depends on the chosen reference:
 
 ### Step 2 - Match the TV broadcast
 
-When you see the reference point on your TV, press `button.f1_system_match_live_delay`. The elapsed time is measured and the result is written to `number.f1_system_live_delay`.
+When you see the reference point on your TV, press `button.f1_delay_calibration_match`. The elapsed time is measured and the result is written to `number.f1_live_delay`.
 
 **With session live reference:** Press when you see lights out (race) or pit exit open (practice/qualifying).
 

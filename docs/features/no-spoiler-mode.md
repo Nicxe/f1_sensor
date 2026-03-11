@@ -87,7 +87,7 @@ automation:
     trigger:
       - platform: state
         entity_id: sensor.f1_session_status
-        to: "Started"
+        to: "live"
     action:
       - action: switch.turn_on
         target:
