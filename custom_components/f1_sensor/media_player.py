@@ -16,7 +16,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .entity import F1AuxEntity
+from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
 from .replay_mode import ReplayController, ReplayState
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,16 +37,14 @@ async def async_setup_entry(
         return
 
     name = entry.data.get("sensor_name", "F1")
-    async_add_entities(
-        [
-            F1ReplayMediaPlayer(
-                replay_controller,
-                f"{entry.entry_id}_replay_player",
-                entry.entry_id,
-                name,
-            )
-        ]
+    entity = F1ReplayMediaPlayer(
+        replay_controller,
+        f"{entry.entry_id}_replay_player",
+        entry.entry_id,
+        name,
     )
+    set_suggested_object_id(entity, default_object_id("replay_player"))
+    async_add_entities([entity])
 
 
 class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):

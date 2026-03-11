@@ -21,6 +21,15 @@ if "custom_components" not in sys.modules:
     sys.modules["custom_components"] = namespace
 
 
+@pytest.fixture(autouse=True)
+def clear_f1_entry_name_settings() -> None:
+    from custom_components.f1_sensor.entity import clear_entry_name_settings
+
+    clear_entry_name_settings()
+    yield
+    clear_entry_name_settings()
+
+
 @pytest.fixture
 def replay_file(tmp_path: Path) -> str:
     path = tmp_path / "replay.txt"

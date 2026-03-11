@@ -3,10 +3,12 @@ blueprint:
     min_version: 2024.6.0
   name: F1 Sensor - Race Control Notifications
   description: >
-    Send notifications from the F1 Sensor race control in a simple way, with optional filters.
+    Send notifications from F1 Sensor Race Control in a simple way, with optional filters.
 
-    Select the race control sensor, add optional filters, and then define your own notification actions
+    Select the Race Control sensor, add optional filters, and then define your own notification actions
     (for example mobile notifications, TTS, scripts, or other Home Assistant services).
+
+    Requires that the Race Control live sensor is enabled in the F1 Sensor settings.
 
     Available template variables in your actions:
     {{ notification_title }}, {{ notification_message }},
@@ -161,6 +163,12 @@ blueprint:
                   value: BLACK
                 - label: CHEQUERED
                   value: CHEQUERED
+        filter_blue_flags:
+          name: Filter Out Blue Flags
+          description: If enabled, BLUE flag race control messages are skipped before other flag filters are applied.
+          default: false
+          selector:
+            boolean: {}
         allowed_categories:
           name: Allowed Categories
           description: Comma or semicolon separated category names. Empty means all categories.
@@ -242,6 +250,19 @@ blueprint:
           selector:
             action: {}
 
+    activation_conditions:
+      name: Activation Conditions
+      icon: mdi:filter-check
+      collapsed: true
+      description: Optional extra conditions. If not met, notifications are not sent.
+      input:
+        activation_condition:
+          name: Activation Condition
+          description: Optional condition block for advanced users (state, not-state, and/or/not, etc).
+          default: []
+          selector:
+            condition: {}
+
 variables:
   current_session_filter_enabled: !input enable_current_session_filter
   current_session_entity: !input current_session_sensor
@@ -251,6 +272,7 @@ variables:
   active_phases: !input active_session_phases
   require_phase_gate: !input require_active_phase
   allowed_flags_input: !input allowed_flags
+  filter_blue_flags_input: !input filter_blue_flags
   allowed_categories_raw: !input allowed_categories
   include_keywords_raw: !input include_keywords
   exclude_keywords_raw: !input exclude_keywords
@@ -397,7 +419,9 @@ variables:
       true
     {% endif %}
   flag_ok: >-
-    {% if allowed_flags_input | count == 0 %}
+    {% if filter_blue_flags_input and (race_control_flag | upper == 'BLUE') %}
+      false
+    {% elif allowed_flags_input | count == 0 %}
       true
     {% else %}
       {{ race_control_flag | upper in allowed_flags_input }}
@@ -478,21 +502,23 @@ variables:
     {% endif %}
     {{ ns.lines | join('\n') }}
 
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     entity_id: !input race_control_sensor
 
-condition:
+conditions:
   - condition: template
     value_template: "{{ trigger.to_state is not none }}"
   - condition: template
     value_template: "{{ trigger.to_state.state not in ['unknown', 'unavailable', 'none', 'None', ''] }}"
   - condition: template
     value_template: "{{ notification_actions_input | count > 0 }}"
+  - condition: and
+    conditions: !input activation_condition
   - condition: template
-    value_template: "{{ session_scope_ok and phase_ok and event_ok and flag_ok and category_ok and include_ok and exclude_ok }}"
+    value_template: "{{ (session_scope_ok | bool) and (phase_ok | bool) and (event_ok | bool) and (flag_ok | bool) and (category_ok | bool) and (include_ok | bool) and (exclude_ok | bool) }}"
 
-action:
+actions:
   - sequence: !input notification_actions
   - if:
       - condition: template

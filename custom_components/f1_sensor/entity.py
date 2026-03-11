@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import suppress
+from functools import cache
 import json
 from pathlib import Path
 
@@ -8,17 +9,48 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    CONF_ENTITY_NAME_LANGUAGE,
+    CONF_ENTITY_NAME_MODE,
     CONF_OPERATION_MODE,
+    DEFAULT_ENTITY_NAME_LANGUAGE,
     DEFAULT_OPERATION_MODE,
     DOMAIN,
+    ENTITY_NAME_MODE_LEGACY,
+    ENTITY_NAME_MODE_LOCALIZED,
     OPERATION_MODE_DEVELOPMENT,
 )
 
+_TRANSLATIONS_DIR = Path(__file__).parent / "translations"
+_ENTRY_NAME_SETTINGS: dict[str, tuple[str, str]] = {}
 
-def _load_translation_names() -> dict[str, str]:
-    """Load entity display names from the bundled English translations."""
+
+def _normalize_language(language: str | None) -> str:
+    """Normalize a stored language code for translation lookup."""
+    if not language:
+        return DEFAULT_ENTITY_NAME_LANGUAGE
+    normalized = str(language).strip().replace("_", "-").lower()
+    return normalized or DEFAULT_ENTITY_NAME_LANGUAGE
+
+
+def _translation_language_candidates(language: str | None) -> tuple[str, ...]:
+    """Return translation file candidates in priority order."""
+    normalized = _normalize_language(language)
+    candidates: list[str] = []
+    for candidate in (
+        normalized,
+        normalized.split("-", 1)[0],
+        DEFAULT_ENTITY_NAME_LANGUAGE,
+    ):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    return tuple(candidates)
+
+
+@cache
+def _load_translation_names(language: str) -> dict[str, str]:
+    """Load entity display names from a bundled translation file."""
     try:
-        path = Path(__file__).parent / "translations" / "en.json"
+        path = _TRANSLATIONS_DIR / f"{_normalize_language(language)}.json"
         data = json.loads(path.read_text(encoding="utf-8"))
         result: dict[str, str] = {}
         for entities in data.get("entity", {}).values():
@@ -30,15 +62,73 @@ def _load_translation_names() -> dict[str, str]:
         return {}
 
 
-_TRANSLATION_NAMES: dict[str, str] = _load_translation_names()
+def register_entry_name_settings(entry_id: str, data: dict) -> None:
+    """Register naming settings for a config entry."""
+    mode = data.get(CONF_ENTITY_NAME_MODE, ENTITY_NAME_MODE_LEGACY)
+    if mode not in (ENTITY_NAME_MODE_LEGACY, ENTITY_NAME_MODE_LOCALIZED):
+        mode = ENTITY_NAME_MODE_LEGACY
+    language = _normalize_language(data.get(CONF_ENTITY_NAME_LANGUAGE))
+    _ENTRY_NAME_SETTINGS[entry_id] = (mode, language)
 
 
-def _entity_name_from_key(translation_key: str | None) -> str | None:
+def unregister_entry_name_settings(entry_id: str) -> None:
+    """Remove naming settings for a config entry."""
+    _ENTRY_NAME_SETTINGS.pop(entry_id, None)
+
+
+def clear_entry_name_settings() -> None:
+    """Clear cached entry naming settings for tests."""
+    _ENTRY_NAME_SETTINGS.clear()
+
+
+def _entry_name_settings(entry_id: str | None) -> tuple[str, str]:
+    """Return the naming mode and language for an entry."""
+    if not entry_id:
+        return ENTITY_NAME_MODE_LEGACY, DEFAULT_ENTITY_NAME_LANGUAGE
+    return _ENTRY_NAME_SETTINGS.get(
+        entry_id,
+        (ENTITY_NAME_MODE_LEGACY, DEFAULT_ENTITY_NAME_LANGUAGE),
+    )
+
+
+def _translated_entity_name(translation_key: str, language: str) -> str | None:
+    """Return the first matching translated entity name for a language."""
+    for candidate in _translation_language_candidates(language):
+        if name := _load_translation_names(candidate).get(translation_key):
+            return name
+    return None
+
+
+def _default_object_id_from_translation_key(translation_key: str | None) -> str | None:
+    """Return the stable default object_id for a translation key."""
+    if not translation_key:
+        return None
+    normalized = str(translation_key).strip().replace("-", "_").lower()
+    return f"f1_{normalized}" if normalized else None
+
+
+def default_object_id(key: str | None) -> str | None:
+    """Build a stable default object_id for a standard entity key."""
+    return _default_object_id_from_translation_key(key)
+
+
+def set_suggested_object_id(entity: Entity, object_id: str | None) -> None:
+    """Set a stable suggested object ID when one is provided."""
+    if object_id:
+        entity._attr_suggested_object_id = object_id
+
+
+def _entity_name_from_key(
+    translation_key: str | None, *, entry_id: str | None = None
+) -> str | None:
     """Return a display name for a translation key without any device prefix."""
     if not translation_key:
         return None
-    name = _TRANSLATION_NAMES.get(translation_key)
-    if name:
+    mode, language = _entry_name_settings(entry_id)
+    if mode == ENTITY_NAME_MODE_LOCALIZED:
+        if name := _translated_entity_name(translation_key, language):
+            return name
+    elif name := _translated_entity_name(translation_key, DEFAULT_ENTITY_NAME_LANGUAGE):
         return name
     parts = translation_key.replace("_", " ").split()
     if not parts:
@@ -98,13 +188,20 @@ class F1BaseEntity(CoordinatorEntity):
     @property
     def name(self) -> str | None:
         """Return entity name from translations, without device prefix."""
-        return _entity_name_from_key(getattr(self, "_attr_translation_key", None))
+        return _entity_name_from_key(
+            getattr(self, "_attr_translation_key", None),
+            entry_id=self._entry_id,
+        )
 
     @property
     def suggested_object_id(self) -> str | None:
         """Preserve stable object IDs when name is overridden for display."""
         if hasattr(self, "_attr_suggested_object_id"):
             return self._attr_suggested_object_id
+        if object_id := _default_object_id_from_translation_key(
+            getattr(self, "_attr_translation_key", None)
+        ):
+            return object_id
         return super().suggested_object_id
 
     @property
@@ -294,13 +391,20 @@ class F1AuxEntity(Entity):
     @property
     def name(self) -> str | None:
         """Return entity name from translations, without device prefix."""
-        return _entity_name_from_key(getattr(self, "_attr_translation_key", None))
+        return _entity_name_from_key(
+            getattr(self, "_attr_translation_key", None),
+            entry_id=self._entry_id,
+        )
 
     @property
     def suggested_object_id(self) -> str | None:
         """Preserve stable object IDs when name is overridden for display."""
         if hasattr(self, "_attr_suggested_object_id"):
             return self._attr_suggested_object_id
+        if object_id := _default_object_id_from_translation_key(
+            getattr(self, "_attr_translation_key", None)
+        ):
+            return object_id
         return super().suggested_object_id
 
     @property
