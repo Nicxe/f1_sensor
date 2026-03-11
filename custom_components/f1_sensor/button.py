@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from inspect import isawaitable
 import logging
 import time
 
-import async_timeout
 from homeassistant.components import persistent_notification
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
@@ -13,8 +13,10 @@ from homeassistant.helpers.entity import EntityCategory
 
 from .calibration import LiveDelayCalibrationManager
 from .const import API_URL, DOMAIN, ENABLE_DEVELOPMENT_MODE_UI
-from .entity import F1AuxEntity
+from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
 from .replay_entities import (
+    F1ReplayBackButton,
+    F1ReplayForwardButton,
     F1ReplayLoadButton,
     F1ReplayPauseButton,
     F1ReplayPlayButton,
@@ -36,64 +38,48 @@ async def async_setup_entry(
 
     manager: LiveDelayCalibrationManager | None = registry.get("calibration_manager")
     if manager is not None:
-        entities.append(
-            F1MatchDelayButton(
-                manager,
-                f"{entry.entry_id}_delay_calibration_match",
-                entry.entry_id,
-                name,
-            )
+        entity = F1MatchDelayButton(
+            manager,
+            f"{entry.entry_id}_delay_calibration_match",
+            entry.entry_id,
+            name,
         )
+        set_suggested_object_id(entity, default_object_id("delay_calibration_match"))
+        entities.append(entity)
 
     # Manual diagnostic button to verify which UA we send to Jolpica/Ergast.
     # Only expose this in development-mode UI to avoid confusing normal users.
     if ENABLE_DEVELOPMENT_MODE_UI and registry.get("http_session") is not None:
-        entities.append(
-            F1JolpicaUserAgentTestButton(
-                hass=hass,
-                entry_id=entry.entry_id,
-                device_name=name,
-                unique_id=f"{entry.entry_id}_jolpica_user_agent_test",
-            )
+        entity = F1JolpicaUserAgentTestButton(
+            hass=hass,
+            entry_id=entry.entry_id,
+            device_name=name,
+            unique_id=f"{entry.entry_id}_jolpica_user_agent_test",
         )
+        set_suggested_object_id(entity, default_object_id("jolpica_ua_test"))
+        entities.append(entity)
 
     # Replay mode buttons
     replay_controller = registry.get("replay_controller")
     if replay_controller is not None:
-        entities.extend(
-            [
-                F1ReplayLoadButton(
-                    replay_controller,
-                    f"{entry.entry_id}_replay_load",
-                    entry.entry_id,
-                    name,
-                ),
-                F1ReplayPlayButton(
-                    replay_controller,
-                    f"{entry.entry_id}_replay_play",
-                    entry.entry_id,
-                    name,
-                ),
-                F1ReplayPauseButton(
-                    replay_controller,
-                    f"{entry.entry_id}_replay_pause",
-                    entry.entry_id,
-                    name,
-                ),
-                F1ReplayStopButton(
-                    replay_controller,
-                    f"{entry.entry_id}_replay_stop",
-                    entry.entry_id,
-                    name,
-                ),
-                F1ReplayRefreshButton(
-                    replay_controller,
-                    f"{entry.entry_id}_replay_refresh",
-                    entry.entry_id,
-                    name,
-                ),
-            ]
+        replay_buttons = (
+            ("replay_load", F1ReplayLoadButton),
+            ("replay_play", F1ReplayPlayButton),
+            ("replay_pause", F1ReplayPauseButton),
+            ("replay_back_30", F1ReplayBackButton),
+            ("replay_forward_30", F1ReplayForwardButton),
+            ("replay_stop", F1ReplayStopButton),
+            ("replay_refresh", F1ReplayRefreshButton),
         )
+        for key, entity_cls in replay_buttons:
+            entity = entity_cls(
+                replay_controller,
+                f"{entry.entry_id}_{key}",
+                entry.entry_id,
+                name,
+            )
+            set_suggested_object_id(entity, default_object_id(key))
+            entities.append(entity)
 
     if entities:
         async_add_entities(entities)
@@ -216,7 +202,7 @@ class F1JolpicaUserAgentTestButton(F1AuxEntity, ButtonEntity):
         started = time.time()
         headers = {"User-Agent": str(ua_configured)} if ua_configured else None
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 async with session.get(
                     API_URL, params={"limit": "1"}, headers=headers
                 ) as resp:
@@ -227,7 +213,7 @@ class F1JolpicaUserAgentTestButton(F1AuxEntity, ButtonEntity):
             err = str(e)
 
         elapsed_ms = int(round((time.time() - started) * 1000))
-        if err:
+        if err is not None:
             log = (
                 f"Jolpica UA test FAILED (elapsed={elapsed_ms}ms) "
                 f"ua_configured={ua_configured!r} ua_session={ua_session!r} ua_sent={headers.get('User-Agent') if isinstance(headers, dict) else None!r} error={err}"

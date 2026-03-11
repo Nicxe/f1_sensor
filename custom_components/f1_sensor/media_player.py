@@ -16,7 +16,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .entity import F1AuxEntity
+from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
 from .replay_mode import ReplayController, ReplayState
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,16 +37,14 @@ async def async_setup_entry(
         return
 
     name = entry.data.get("sensor_name", "F1")
-    async_add_entities(
-        [
-            F1ReplayMediaPlayer(
-                replay_controller,
-                f"{entry.entry_id}_replay_player",
-                entry.entry_id,
-                name,
-            )
-        ]
+    entity = F1ReplayMediaPlayer(
+        replay_controller,
+        f"{entry.entry_id}_replay_player",
+        entry.entry_id,
+        name,
     )
+    set_suggested_object_id(entity, default_object_id("replay_player"))
+    async_add_entities([entity])
 
 
 class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
@@ -156,7 +154,7 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
         elif state == ReplayState.PAUSED:
             self._attr_state = MediaPlayerState.PAUSED
             self._attr_media_position_updated_at = dt_util.utcnow()
-        elif state == ReplayState.LOADING:
+        elif state in (ReplayState.LOADING, ReplayState.SEEKING):
             self._attr_state = MediaPlayerState.BUFFERING
             self._attr_media_position_updated_at = None
         else:
@@ -165,7 +163,7 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
 
         if state in (ReplayState.PLAYING, ReplayState.PAUSED, ReplayState.READY):
             self._attr_media_duration = total_s
-            self._attr_media_position = position_s if state != ReplayState.READY else 0
+            self._attr_media_position = position_s
         else:
             self._attr_media_duration = 0
             self._attr_media_position = 0

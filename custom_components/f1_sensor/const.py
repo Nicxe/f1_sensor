@@ -33,6 +33,15 @@ OPERATION_MODE_LIVE = "live"
 OPERATION_MODE_DEVELOPMENT = "development"
 DEFAULT_OPERATION_MODE = OPERATION_MODE_LIVE
 
+# Internal naming metadata. This is not user-configurable; it lets new config
+# entries snapshot the backend language for localized friendly names while
+# legacy entries keep their current naming behavior.
+CONF_ENTITY_NAME_MODE = "entity_name_mode"
+CONF_ENTITY_NAME_LANGUAGE = "entity_name_language"
+ENTITY_NAME_MODE_LEGACY = "legacy"
+ENTITY_NAME_MODE_LOCALIZED = "localized"
+DEFAULT_ENTITY_NAME_LANGUAGE = "en"
+
 # Race schedule grace period: keep a session "current" briefly after start.
 RACE_SWITCH_GRACE = timedelta(hours=3)
 
@@ -161,13 +170,47 @@ FIA_DOCS_FETCH_TIMEOUT = 15
 # Country flag support
 FLAG_CDN_BASE_URL = "https://flagcdn.com/w80"
 
-# Circuit map image support (official F1 track maps with DRS zones)
-CIRCUIT_MAP_CDN_BASE_URL = "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9"
+# Detailed circuit map support (official F1 season-specific track maps)
+CIRCUIT_MAP_DETAILED_CDN_BASE_URL = (
+    "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1"
+)
 
-# Map from Ergast circuitId to F1 CDN filename (without _Circuit.webp suffix)
-# Verified against F1 calendars 2020-2026
-F1_CIRCUIT_MAP_NAMES: dict[str, str] = {
-    # Current calendar (2024-2026)
+# Verified 2026 detailed map slugs from official F1 race pages
+F1_DETAILED_CIRCUIT_MAP_SLUGS: dict[str, dict[str, str]] = {
+    "2026": {
+        "albert_park": "melbourne",
+        "shanghai": "shanghai",
+        "suzuka": "suzuka",
+        "bahrain": "sakhir",
+        "jeddah": "jeddah",
+        "miami": "miami",
+        "villeneuve": "montreal",
+        "monaco": "montecarlo",
+        "catalunya": "catalunya",
+        "red_bull_ring": "spielberg",
+        "silverstone": "silverstone",
+        "spa": "spafrancorchamps",
+        "hungaroring": "hungaroring",
+        "zandvoort": "zandvoort",
+        "monza": "monza",
+        "madring": "madring",
+        "baku": "baku",
+        "marina_bay": "singapore",
+        "americas": "austin",
+        "rodriguez": "mexicocity",
+        "interlagos": "interlagos",
+        "vegas": "lasvegas",
+        "losail": "lusail",
+        "yas_marina": "yasmarinacircuit",
+    }
+}
+
+# Legacy circuit map support (official F1 track maps with DRS zones)
+CIRCUIT_MAP_LEGACY_CDN_BASE_URL = "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9"
+
+# Legacy fallback map from Ergast circuitId to F1 CDN filename (without suffix)
+F1_LEGACY_CIRCUIT_MAP_NAMES: dict[str, str] = {
+    # Current and recent calendars
     "bahrain": "Bahrain",
     "jeddah": "Saudi_Arabia",
     "albert_park": "Australia",
@@ -192,7 +235,7 @@ F1_CIRCUIT_MAP_NAMES: dict[str, str] = {
     "vegas": "Las_Vegas",
     "losail": "Qatar",
     "yas_marina": "Abu_Dhabi",
-    # Historic circuits (2020-2022)
+    # Historic circuits
     "portimao": "Portugal",
     "istanbul": "Turkey",
     "sochi": "Russia",

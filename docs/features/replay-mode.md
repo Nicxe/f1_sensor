@@ -3,9 +3,19 @@ id: replay-mode
 title: Replay Mode
 ---
 
-Replay Mode lets you watch historical F1 sessions with full Home Assistant integration. When you play back a recorded race or qualifying from F1 TV or another service, all your automations and dashboards work exactly as they would during a live broadcast.
+Replay Mode lets you watch historical F1 sessions with full Home Assistant integration. When you play back a recorded race or qualifying from F1 TV or another service, your automations and dashboards can follow the session in a way that is much closer to a live broadcast.
 
-Your lights flash red on a red flag. Your dashboard shows live timing. Race Control messages trigger notifications. Everything stays perfectly in sync with what you see on screen.
+Your lights can react to a red flag. Your dashboard can show live timing. Race Control messages can still drive notifications while you watch the session later.
+
+
+:::warning Experimental replay catch-up
+Replay Mode now includes experimental 30-second catch-up controls in Version 1. The feature is being tested in real setups, and additional refinement may still be needed in later updates.
+:::
+
+
+:::tip Watching it later? Keep your dashboard spoiler-free
+If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode, press play when your broadcast begins, and experience everything as if it were live — without any spoilers.
+:::
 
 :::warning Experimental replay catch-up
 Replay Mode now includes experimental 30-second catch-up controls in Version 1. The feature is being tested in real setups, and additional refinement may still be needed in later updates.
@@ -19,7 +29,7 @@ If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoil
 
 ## How it works
 
-Replay Mode downloads session data from Formula 1's public archive and plays it back through the same data pipeline used during live sessions. By starting playback at the same moment the session begins on your TV, all live entities stay synchronized with the broadcast.
+Replay Mode downloads session data from Formula 1's public archive and plays it back through the same data pipeline used during live sessions. By starting playback at the same moment the session begins on your TV, your live entities can follow the broadcast closely.
 
 :::info Standard entity IDs
 This page uses the standard Replay Mode entity IDs for new installations, such as `select.f1_replay_year` and `media_player.f1_replay_player`.
@@ -106,7 +116,7 @@ Start the session on your TV or streaming service. When you see the session begi
 
 **For practice and qualifying** (or session live reference): Press play when the pit exit opens and cars start leaving the garage.
 
-From this point, all live sensors update in sync with what you see on screen.
+From this point, the replayed live sensors follow what you see on screen.
 
 ### Step 5 - Control playback
 
@@ -117,6 +127,41 @@ If you pause your TV, pause the replay to stay in sync. When you resume, resume 
 - **Back 30 seconds** - Press `button.f1_replay_back_30` to move replay back 30 seconds
 - **Forward 30 seconds** - Press `button.f1_replay_forward_30` to move replay forward 30 seconds
 - **Stop** - Press `button.f1_replay_stop` to end playback and return to idle
+
+---
+
+## Replay Catch-Up
+
+:::warning Experimental feature
+The replay catch-up controls in Replay Mode are experimental.
+
+You can now move replay backward or forward in fixed 30-second steps with **Back 30 seconds** and **Forward 30 seconds**. This is an early version that is being tested in real setups, so more refinement may still be needed in future updates.
+:::
+
+The Version 1 replay catch-up controls are designed to help you manually line up Replay Mode with your broadcaster when the video is ahead or behind.
+
+### How the 30-second buttons work
+
+When you press **Forward 30 seconds**, the integration does not simply skip to a new position and ignore what happened in between. It quickly replays the events inside that 30-second window first, then continues from the new position.
+
+That means important state changes still land correctly. If a red flag, Race Control update, session clock change, or other tracked event happens inside those 30 seconds, the related entities still end up in the right state after the jump.
+
+When you press **Back 30 seconds**, Replay Mode rebuilds the replay state from the selected replay start point and then replays forward to the new position.
+
+### What to expect in Version 1
+
+- Catch-up uses fixed 30-second steps only
+- There is no free drag-to-seek slider yet
+- The feature is intended to make manual catch-up simpler, not to guarantee perfect sync with every broadcaster
+- Rewinding can replay the same historical event again, which means automations and notifications may trigger again by design
+
+### Best way to use it
+
+If your TV or streaming replay is slightly out of sync, pause Replay Mode and use the 30-second buttons until the on-screen action matches your Home Assistant entities again. A practical reference point is the session clock, track status, or the latest Race Control message.
+
+:::info
+This feature is experimental. Real-world feedback will be used to improve the behavior, controls, and timing in later updates.
+:::
 
 ---
 
