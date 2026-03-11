@@ -25,7 +25,10 @@ from custom_components.f1_sensor.const import (
     ENTITY_NAME_MODE_LOCALIZED,
     SUPPORTED_SENSOR_KEYS,
 )
-from custom_components.f1_sensor.entity import register_entry_name_settings
+from custom_components.f1_sensor.entity import (
+    async_prepare_translation_names,
+    register_entry_name_settings,
+)
 from custom_components.f1_sensor.helpers import format_entity_name
 from custom_components.f1_sensor.number import F1LiveDelayNumber
 
@@ -205,6 +208,7 @@ async def test_localized_aux_entity_keeps_english_entity_id(hass) -> None:
             CONF_ENTITY_NAME_LANGUAGE: "sv",
         },
     )
+    await async_prepare_translation_names(hass, entry_id)
     entity = F1LiveDelayNumber(
         controller=_DummyDelayController(7),
         calibration=None,
@@ -221,6 +225,36 @@ async def test_localized_aux_entity_keeps_english_entity_id(hass) -> None:
     state = hass.states.get(entity.entity_id)
     assert state is not None
     assert state.attributes["friendly_name"] == "Livefördröjning"
+
+
+@pytest.mark.asyncio
+async def test_localized_aux_entity_name_uses_preloaded_translations_only(
+    hass, monkeypatch
+) -> None:
+    entry_id = "localized_preload_entry"
+    register_entry_name_settings(
+        entry_id,
+        {
+            CONF_ENTITY_NAME_MODE: ENTITY_NAME_MODE_LOCALIZED,
+            CONF_ENTITY_NAME_LANGUAGE: "sv",
+        },
+    )
+    await async_prepare_translation_names(hass, entry_id)
+
+    def _fail_read_text(*_args, **_kwargs):
+        raise AssertionError("translation files should already be cached")
+
+    monkeypatch.setattr("pathlib.Path.read_text", _fail_read_text)
+
+    entity = F1LiveDelayNumber(
+        controller=_DummyDelayController(7),
+        calibration=None,
+        unique_id="localized_delay_number",
+        entry_id=entry_id,
+        device_name="RaceHub",
+    )
+
+    assert entity.name == "Livefördröjning"
 
 
 @pytest.mark.asyncio
