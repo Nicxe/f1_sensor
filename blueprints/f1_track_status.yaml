@@ -10,7 +10,11 @@ blueprint:
     Requires F1 Sensor live entities for track/session status to be enabled in integration settings.
 
     Advanced options include scene snapshots, timed or continuous flashing, clear-state auto-restore,
-    and flexible session-end behavior.
+    flexible session-end behavior, and optional WLED preset control.
+
+    WLED preset mode is opt-in. When enabled with a valid preset entity, preset mappings override the
+    normal color and flash logic for the matching track states. Leave preset fields empty to keep the
+    standard light behavior.
 
     Track states: CLEAR, YELLOW, VSC, SC, RED.
     Session phases: pre, live, suspended, break, finished, finalised, ended.
@@ -213,6 +217,95 @@ blueprint:
           default: true
           selector:
             boolean: {}
+
+    wled_advanced:
+      name: WLED Advanced
+      icon: mdi:led-strip-variant
+      collapsed: true
+      description: >
+        Optional WLED-native control for a single WLED light. Use this when your LED strip is exposed by
+        Home Assistant as a WLED light plus companion preset, palette, intensity, and speed entities.
+        When a valid preset is configured for a track state, that preset overrides the normal color and
+        flashing logic for that state. Presets should contain any desired animation, segment, or palette setup.
+      input:
+        enable_wled_advanced:
+          name: Enable WLED Advanced Mode
+          description: Only applies to a single light entity. If light target is a group, normal light behavior is used.
+          default: false
+          selector:
+            boolean: {}
+        wled_preset_entity:
+          name: WLED Preset Entity (optional)
+          description: Select the WLED preset select entity from the same device or segment as the target light.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: select
+              multiple: false
+        wled_palette_entity:
+          name: WLED Palette Entity (optional)
+          description: Optional companion entity used only for snapshot and restore.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: select
+              multiple: false
+        wled_intensity_entity:
+          name: WLED Intensity Entity (optional)
+          description: Optional companion entity used only for snapshot and restore.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: number
+              multiple: false
+        wled_speed_entity:
+          name: WLED Speed Entity (optional)
+          description: Optional companion entity used only for snapshot and restore.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: number
+              multiple: false
+        wled_preset_clear:
+          name: Preset - CLEAR
+          description: Optional. Must match a WLED preset option exactly. Leave empty to use normal CLEAR behavior.
+          default: ""
+          selector:
+            text: {}
+        wled_preset_yellow:
+          name: Preset - YELLOW
+          description: Optional. Must match a WLED preset option exactly. Leave empty to use normal YELLOW behavior.
+          default: ""
+          selector:
+            text: {}
+        wled_preset_red:
+          name: Preset - RED
+          description: Optional. Must match a WLED preset option exactly. Leave empty to use normal RED behavior.
+          default: ""
+          selector:
+            text: {}
+        wled_preset_vsc:
+          name: Preset - VSC
+          description: Optional. Must match a WLED preset option exactly. Leave empty to use normal VSC behavior.
+          default: ""
+          selector:
+            text: {}
+        wled_preset_sc:
+          name: Preset - SC
+          description: Optional. Must match a WLED preset option exactly. Leave empty to use normal SC behavior.
+          default: ""
+          selector:
+            text: {}
+        wled_preset_end:
+          name: Preset - Session End Neutral
+          description: Optional. Used only when End Action is neutral and the preset exists on the selected WLED preset entity.
+          default: ""
+          selector:
+            text: {}
 
     flag_colors:
       name: Flag Colors
@@ -446,8 +539,10 @@ variables:
   session_status_entity: !input session_status_entity
   active_phases: !input active_session_phases
   light_entity: !input light_target
-  light_turn_on_service: "{{ 'homeassistant.turn_on' if (light_entity | string).startswith('group.') else 'light.turn_on' }}"
-  light_turn_off_service: "{{ 'homeassistant.turn_off' if (light_entity | string).startswith('group.') else 'light.turn_off' }}"
+  is_group_target: "{{ (light_entity | string).startswith('group.') }}"
+  is_single_light_target: "{{ (light_entity | string).startswith('light.') }}"
+  light_turn_on_service: "{{ 'homeassistant.turn_on' if (is_group_target | bool) else 'light.turn_on' }}"
+  light_turn_off_service: "{{ 'homeassistant.turn_off' if (is_group_target | bool) else 'light.turn_off' }}"
 
   presence_list: !input presence_devices
   media_player_entity: !input media_player_gate
@@ -457,6 +552,68 @@ variables:
 
   snapshot_pre_race_enabled: !input snapshot_pre_race
   snapshot_before_alert_enabled: !input snapshot_before_alert
+
+  wled_advanced_enabled: !input enable_wled_advanced
+  wled_preset_entity: !input wled_preset_entity
+  wled_palette_entity: !input wled_palette_entity
+  wled_intensity_entity: !input wled_intensity_entity
+  wled_speed_entity: !input wled_speed_entity
+  wled_preset_clear_name: !input wled_preset_clear
+  wled_preset_yellow_name: !input wled_preset_yellow
+  wled_preset_red_name: !input wled_preset_red
+  wled_preset_vsc_name: !input wled_preset_vsc
+  wled_preset_sc_name: !input wled_preset_sc
+  wled_preset_end_name: !input wled_preset_end
+  wled_advanced_active: >-
+    {{
+      (wled_advanced_enabled | bool)
+      and (is_single_light_target | bool)
+      and not (is_group_target | bool)
+      and (wled_preset_entity | string | trim | length > 0)
+    }}
+  wled_snapshot_entities_json: >-
+    {% set ns = namespace(entities=[light_entity | string]) %}
+    {% if wled_advanced_active | bool %}
+      {% for entity_id in [wled_preset_entity, wled_palette_entity, wled_intensity_entity, wled_speed_entity] %}
+        {% set entity_id = entity_id | string | trim %}
+        {% if entity_id | length > 0 %}
+          {% set ns.entities = ns.entities + [entity_id] %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+    {{ ns.entities | to_json }}
+  desired_wled_track_preset: >-
+    {% set current_track_state = states(track_status_entity) | upper %}
+    {% if current_track_state == 'CLEAR' %}
+      {{ wled_preset_clear_name | string | trim }}
+    {% elif current_track_state == 'YELLOW' %}
+      {{ wled_preset_yellow_name | string | trim }}
+    {% elif current_track_state == 'RED' %}
+      {{ wled_preset_red_name | string | trim }}
+    {% elif current_track_state == 'VSC' %}
+      {{ wled_preset_vsc_name | string | trim }}
+    {% elif current_track_state == 'SC' %}
+      {{ wled_preset_sc_name | string | trim }}
+    {% else %}
+      ""
+    {% endif %}
+  has_valid_wled_track_preset: >-
+    {% if not (wled_advanced_active | bool) %}
+      false
+    {% else %}
+      {% set preset = desired_wled_track_preset | string | trim %}
+      {% set options = state_attr(wled_preset_entity, 'options') | default([], true) %}
+      {{ preset | length > 0 and preset in options }}
+    {% endif %}
+  desired_wled_end_preset: "{{ wled_preset_end_name | string | trim }}"
+  has_valid_wled_end_preset: >-
+    {% if not (wled_advanced_active | bool) %}
+      false
+    {% else %}
+      {% set preset = desired_wled_end_preset | string | trim %}
+      {% set options = state_attr(wled_preset_entity, 'options') | default([], true) %}
+      {{ preset | length > 0 and preset in options }}
+    {% endif %}
 
   yellow_red_mode_input: !input yellow_red_mode
   yellow_red_after_flash_input: !input yellow_red_after_flash
@@ -622,8 +779,7 @@ actions:
             action: scene.create
             data:
               scene_id: "{{ pre_race_scene_id }}"
-              snapshot_entities:
-                - !input light_target
+              snapshot_entities: "{{ wled_snapshot_entities_json | from_json }}"
 
   - choose:
       - conditions:
@@ -648,13 +804,30 @@ actions:
                   - condition: template
                     value_template: "{{ end_action_mode == 'neutral' }}"
                 sequence:
-                  - action: "{{ light_turn_on_service }}"
-                    target:
-                      entity_id: !input light_target
-                    data:
-                      brightness_pct: !input brightness_pct
-                      rgb_color: !input end_neutral_color
-                      transition: !input transition_s
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ has_valid_wled_end_preset }}"
+                        sequence:
+                          - if:
+                              - condition: template
+                                value_template: "{{ states(light_entity) == 'off' }}"
+                            then:
+                              - action: light.turn_on
+                                target:
+                                  entity_id: !input light_target
+                          - action: select.select_option
+                            data:
+                              entity_id: "{{ wled_preset_entity }}"
+                              option: "{{ desired_wled_end_preset }}"
+                    default:
+                      - action: "{{ light_turn_on_service }}"
+                        target:
+                          entity_id: !input light_target
+                        data:
+                          brightness_pct: !input brightness_pct
+                          rgb_color: !input end_neutral_color
+                          transition: !input transition_s
 
               - conditions:
                   - condition: template
@@ -706,407 +879,423 @@ actions:
                 action: scene.create
                 data:
                   scene_id: "{{ pre_alert_scene_id }}"
-                  snapshot_entities:
-                    - !input light_target
+                  snapshot_entities: "{{ wled_snapshot_entities_json | from_json }}"
 
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ track_state == 'CLEAR' }}"
+                    value_template: "{{ has_valid_wled_track_preset }}"
                 sequence:
-                  - choose:
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ clear_behavior_mode_input == 'steady' or (clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay'] and not snapshot_before_alert_enabled) }}"
-                        sequence:
-                          - action: "{{ light_turn_on_service }}"
-                            target:
-                              entity_id: !input light_target
-                            data:
-                              brightness_pct: !input brightness_pct
-                              rgb_color: !input color_clear
-                              transition: !input transition_s
+                  - if:
+                      - condition: template
+                        value_template: "{{ states(light_entity) == 'off' }}"
+                    then:
+                      - action: light.turn_on
+                        target:
+                          entity_id: !input light_target
+                  - action: select.select_option
+                    data:
+                      entity_id: "{{ wled_preset_entity }}"
+                      option: "{{ desired_wled_track_preset }}"
+            default:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ track_state == 'CLEAR' }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ clear_behavior_mode_input == 'steady' or (clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay'] and not snapshot_before_alert_enabled) }}"
+                            sequence:
+                              - action: "{{ light_turn_on_service }}"
+                                target:
+                                  entity_id: !input light_target
+                                data:
+                                  brightness_pct: !input brightness_pct
+                                  rgb_color: !input color_clear
+                                  transition: !input transition_s
 
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ clear_behavior_mode_input == 'restore_immediately' and snapshot_before_alert_enabled }}"
-                        sequence:
-                          - continue_on_error: true
-                            action: scene.turn_on
-                            data:
-                              entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ clear_behavior_mode_input == 'restore_immediately' and snapshot_before_alert_enabled }}"
+                            sequence:
+                              - continue_on_error: true
+                                action: scene.turn_on
+                                data:
+                                  entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
 
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ clear_behavior_mode_input == 'restore_after_delay' and snapshot_before_alert_enabled }}"
-                        sequence:
-                          - action: "{{ light_turn_on_service }}"
-                            target:
-                              entity_id: !input light_target
-                            data:
-                              brightness_pct: !input brightness_pct
-                              rgb_color: !input color_clear
-                              transition: !input transition_s
-                          - delay:
-                              seconds: !input clear_restore_delay_s
-                          - condition: template
-                            value_template: "{{ states(track_status_entity) | upper == 'CLEAR' }}"
-                          - continue_on_error: true
-                            action: scene.turn_on
-                            data:
-                              entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ clear_behavior_mode_input == 'restore_after_delay' and snapshot_before_alert_enabled }}"
+                            sequence:
+                              - action: "{{ light_turn_on_service }}"
+                                target:
+                                  entity_id: !input light_target
+                                data:
+                                  brightness_pct: !input brightness_pct
+                                  rgb_color: !input color_clear
+                                  transition: !input transition_s
+                              - delay:
+                                  seconds: !input clear_restore_delay_s
+                              - condition: template
+                                value_template: "{{ states(track_status_entity) | upper == 'CLEAR' }}"
+                              - continue_on_error: true
+                                action: scene.turn_on
+                                data:
+                                  entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
 
-              - conditions:
-                  - condition: template
-                    value_template: "{{ track_state == 'YELLOW' }}"
-                sequence:
-                  - choose:
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ yellow_red_mode_input == 'steady' }}"
-                        sequence:
-                          - action: "{{ light_turn_on_service }}"
-                            target:
-                              entity_id: !input light_target
-                            data:
-                              brightness_pct: !input brightness_pct
-                              rgb_color: !input color_yellow
-                              transition: !input transition_s
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ track_state == 'YELLOW' }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ yellow_red_mode_input == 'steady' }}"
+                            sequence:
+                              - action: "{{ light_turn_on_service }}"
+                                target:
+                                  entity_id: !input light_target
+                                data:
+                                  brightness_pct: !input brightness_pct
+                                  rgb_color: !input color_yellow
+                                  transition: !input transition_s
 
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ yellow_red_mode_input == 'flash_continuous' }}"
-                        sequence:
-                          - repeat:
-                              while:
-                                - condition: template
-                                  value_template: "{{ states(track_status_entity) | upper == 'YELLOW' }}"
-                              sequence:
-                                - action: "{{ light_turn_on_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                  data:
-                                    brightness_pct: !input brightness_pct
-                                    rgb_color: !input color_yellow
-                                - delay:
-                                    seconds: !input flash_interval_s
-                                - action: "{{ light_turn_off_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                - delay:
-                                    seconds: !input flash_interval_s
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ yellow_red_mode_input == 'flash_continuous' }}"
+                            sequence:
+                              - repeat:
+                                  while:
+                                    - condition: template
+                                      value_template: "{{ states(track_status_entity) | upper == 'YELLOW' }}"
+                                  sequence:
+                                    - action: "{{ light_turn_on_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                      data:
+                                        brightness_pct: !input brightness_pct
+                                        rgb_color: !input color_yellow
+                                    - delay:
+                                        seconds: !input flash_interval_s
+                                    - action: "{{ light_turn_off_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                    - delay:
+                                        seconds: !input flash_interval_s
 
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ yellow_red_mode_input == 'flash_timed' }}"
-                        sequence:
-                          - variables:
-                              flash_end_ts: "{{ as_timestamp(now()) + (yellow_red_flash_duration_input | int(10)) }}"
-                          - repeat:
-                              while:
-                                - condition: template
-                                  value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'YELLOW' }}"
-                              sequence:
-                                - action: "{{ light_turn_on_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                  data:
-                                    brightness_pct: !input brightness_pct
-                                    rgb_color: !input color_yellow
-                                - delay:
-                                    seconds: !input flash_interval_s
-                                - action: "{{ light_turn_off_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                - delay:
-                                    seconds: !input flash_interval_s
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ yellow_red_mode_input == 'flash_timed' }}"
+                            sequence:
+                              - variables:
+                                  flash_end_ts: "{{ as_timestamp(now()) + (yellow_red_flash_duration_input | int(10)) }}"
+                              - repeat:
+                                  while:
+                                    - condition: template
+                                      value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'YELLOW' }}"
+                                  sequence:
+                                    - action: "{{ light_turn_on_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                      data:
+                                        brightness_pct: !input brightness_pct
+                                        rgb_color: !input color_yellow
+                                    - delay:
+                                        seconds: !input flash_interval_s
+                                    - action: "{{ light_turn_off_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                    - delay:
+                                        seconds: !input flash_interval_s
 
-                          - condition: template
-                            value_template: "{{ states(track_status_entity) | upper == 'YELLOW' }}"
-                          - choose:
-                              - conditions:
-                                  - condition: template
-                                    value_template: "{{ yellow_red_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
-                                sequence:
-                                  - continue_on_error: true
-                                    action: scene.turn_on
-                                    data:
-                                      entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
-                              - conditions:
-                                  - condition: template
-                                    value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
-                                sequence:
-                                  - action: "{{ light_turn_on_service }}"
-                                    target:
-                                      entity_id: !input light_target
-                                    data:
-                                      brightness_pct: !input brightness_pct
-                                      rgb_color: !input color_yellow
-                                      transition: !input transition_s
+                              - condition: template
+                                value_template: "{{ states(track_status_entity) | upper == 'YELLOW' }}"
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ yellow_red_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                    sequence:
+                                      - continue_on_error: true
+                                        action: scene.turn_on
+                                        data:
+                                          entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                    sequence:
+                                      - action: "{{ light_turn_on_service }}"
+                                        target:
+                                          entity_id: !input light_target
+                                        data:
+                                          brightness_pct: !input brightness_pct
+                                          rgb_color: !input color_yellow
+                                          transition: !input transition_s
 
-              - conditions:
-                  - condition: template
-                    value_template: "{{ track_state == 'RED' }}"
-                sequence:
-                  - choose:
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ yellow_red_mode_input == 'steady' }}"
-                        sequence:
-                          - action: "{{ light_turn_on_service }}"
-                            target:
-                              entity_id: !input light_target
-                            data:
-                              brightness_pct: !input brightness_pct
-                              rgb_color: !input color_red
-                              transition: !input transition_s
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ track_state == 'RED' }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ yellow_red_mode_input == 'steady' }}"
+                            sequence:
+                              - action: "{{ light_turn_on_service }}"
+                                target:
+                                  entity_id: !input light_target
+                                data:
+                                  brightness_pct: !input brightness_pct
+                                  rgb_color: !input color_red
+                                  transition: !input transition_s
 
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ yellow_red_mode_input == 'flash_continuous' }}"
-                        sequence:
-                          - repeat:
-                              while:
-                                - condition: template
-                                  value_template: "{{ states(track_status_entity) | upper == 'RED' }}"
-                              sequence:
-                                - action: "{{ light_turn_on_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                  data:
-                                    brightness_pct: !input brightness_pct
-                                    rgb_color: !input color_red
-                                - delay:
-                                    seconds: !input flash_interval_s
-                                - action: "{{ light_turn_off_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                - delay:
-                                    seconds: !input flash_interval_s
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ yellow_red_mode_input == 'flash_continuous' }}"
+                            sequence:
+                              - repeat:
+                                  while:
+                                    - condition: template
+                                      value_template: "{{ states(track_status_entity) | upper == 'RED' }}"
+                                  sequence:
+                                    - action: "{{ light_turn_on_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                      data:
+                                        brightness_pct: !input brightness_pct
+                                        rgb_color: !input color_red
+                                    - delay:
+                                        seconds: !input flash_interval_s
+                                    - action: "{{ light_turn_off_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                    - delay:
+                                        seconds: !input flash_interval_s
 
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ yellow_red_mode_input == 'flash_timed' }}"
-                        sequence:
-                          - variables:
-                              flash_end_ts: "{{ as_timestamp(now()) + (yellow_red_flash_duration_input | int(10)) }}"
-                          - repeat:
-                              while:
-                                - condition: template
-                                  value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'RED' }}"
-                              sequence:
-                                - action: "{{ light_turn_on_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                  data:
-                                    brightness_pct: !input brightness_pct
-                                    rgb_color: !input color_red
-                                - delay:
-                                    seconds: !input flash_interval_s
-                                - action: "{{ light_turn_off_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                - delay:
-                                    seconds: !input flash_interval_s
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ yellow_red_mode_input == 'flash_timed' }}"
+                            sequence:
+                              - variables:
+                                  flash_end_ts: "{{ as_timestamp(now()) + (yellow_red_flash_duration_input | int(10)) }}"
+                              - repeat:
+                                  while:
+                                    - condition: template
+                                      value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'RED' }}"
+                                  sequence:
+                                    - action: "{{ light_turn_on_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                      data:
+                                        brightness_pct: !input brightness_pct
+                                        rgb_color: !input color_red
+                                    - delay:
+                                        seconds: !input flash_interval_s
+                                    - action: "{{ light_turn_off_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                    - delay:
+                                        seconds: !input flash_interval_s
 
-                          - condition: template
-                            value_template: "{{ states(track_status_entity) | upper == 'RED' }}"
-                          - choose:
-                              - conditions:
-                                  - condition: template
-                                    value_template: "{{ yellow_red_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
-                                sequence:
-                                  - continue_on_error: true
-                                    action: scene.turn_on
-                                    data:
-                                      entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
-                              - conditions:
-                                  - condition: template
-                                    value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
-                                sequence:
-                                  - action: "{{ light_turn_on_service }}"
-                                    target:
-                                      entity_id: !input light_target
-                                    data:
-                                      brightness_pct: !input brightness_pct
-                                      rgb_color: !input color_red
-                                      transition: !input transition_s
+                              - condition: template
+                                value_template: "{{ states(track_status_entity) | upper == 'RED' }}"
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ yellow_red_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                    sequence:
+                                      - continue_on_error: true
+                                        action: scene.turn_on
+                                        data:
+                                          entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                    sequence:
+                                      - action: "{{ light_turn_on_service }}"
+                                        target:
+                                          entity_id: !input light_target
+                                        data:
+                                          brightness_pct: !input brightness_pct
+                                          rgb_color: !input color_red
+                                          transition: !input transition_s
 
-              - conditions:
-                  - condition: template
-                    value_template: "{{ track_state == 'SC' }}"
-                sequence:
-                  - choose:
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ sc_vsc_mode_input == 'steady' }}"
-                        sequence:
-                          - action: "{{ light_turn_on_service }}"
-                            target:
-                              entity_id: !input light_target
-                            data:
-                              brightness_pct: !input brightness_pct
-                              rgb_color: !input color_sc
-                              transition: !input transition_s
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ track_state == 'SC' }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ sc_vsc_mode_input == 'steady' }}"
+                            sequence:
+                              - action: "{{ light_turn_on_service }}"
+                                target:
+                                  entity_id: !input light_target
+                                data:
+                                  brightness_pct: !input brightness_pct
+                                  rgb_color: !input color_sc
+                                  transition: !input transition_s
 
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ sc_vsc_mode_input == 'flash_continuous' }}"
-                        sequence:
-                          - repeat:
-                              while:
-                                - condition: template
-                                  value_template: "{{ states(track_status_entity) | upper == 'SC' }}"
-                              sequence:
-                                - action: "{{ light_turn_on_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                  data:
-                                    brightness_pct: !input brightness_pct
-                                    rgb_color: !input color_sc
-                                - delay:
-                                    seconds: !input flash_interval_s
-                                - action: "{{ light_turn_off_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                - delay:
-                                    seconds: !input flash_interval_s
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ sc_vsc_mode_input == 'flash_continuous' }}"
+                            sequence:
+                              - repeat:
+                                  while:
+                                    - condition: template
+                                      value_template: "{{ states(track_status_entity) | upper == 'SC' }}"
+                                  sequence:
+                                    - action: "{{ light_turn_on_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                      data:
+                                        brightness_pct: !input brightness_pct
+                                        rgb_color: !input color_sc
+                                    - delay:
+                                        seconds: !input flash_interval_s
+                                    - action: "{{ light_turn_off_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                    - delay:
+                                        seconds: !input flash_interval_s
 
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ sc_vsc_mode_input == 'flash_timed' }}"
-                        sequence:
-                          - variables:
-                              flash_end_ts: "{{ as_timestamp(now()) + (sc_vsc_flash_duration_input | int(10)) }}"
-                          - repeat:
-                              while:
-                                - condition: template
-                                  value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'SC' }}"
-                              sequence:
-                                - action: "{{ light_turn_on_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                  data:
-                                    brightness_pct: !input brightness_pct
-                                    rgb_color: !input color_sc
-                                - delay:
-                                    seconds: !input flash_interval_s
-                                - action: "{{ light_turn_off_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                - delay:
-                                    seconds: !input flash_interval_s
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ sc_vsc_mode_input == 'flash_timed' }}"
+                            sequence:
+                              - variables:
+                                  flash_end_ts: "{{ as_timestamp(now()) + (sc_vsc_flash_duration_input | int(10)) }}"
+                              - repeat:
+                                  while:
+                                    - condition: template
+                                      value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'SC' }}"
+                                  sequence:
+                                    - action: "{{ light_turn_on_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                      data:
+                                        brightness_pct: !input brightness_pct
+                                        rgb_color: !input color_sc
+                                    - delay:
+                                        seconds: !input flash_interval_s
+                                    - action: "{{ light_turn_off_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                    - delay:
+                                        seconds: !input flash_interval_s
 
-                          - condition: template
-                            value_template: "{{ states(track_status_entity) | upper == 'SC' }}"
-                          - choose:
-                              - conditions:
-                                  - condition: template
-                                    value_template: "{{ sc_vsc_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
-                                sequence:
-                                  - continue_on_error: true
-                                    action: scene.turn_on
-                                    data:
-                                      entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
-                              - conditions:
-                                  - condition: template
-                                    value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
-                                sequence:
-                                  - action: "{{ light_turn_on_service }}"
-                                    target:
-                                      entity_id: !input light_target
-                                    data:
-                                      brightness_pct: !input brightness_pct
-                                      rgb_color: !input color_sc
-                                      transition: !input transition_s
+                              - condition: template
+                                value_template: "{{ states(track_status_entity) | upper == 'SC' }}"
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ sc_vsc_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                    sequence:
+                                      - continue_on_error: true
+                                        action: scene.turn_on
+                                        data:
+                                          entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                    sequence:
+                                      - action: "{{ light_turn_on_service }}"
+                                        target:
+                                          entity_id: !input light_target
+                                        data:
+                                          brightness_pct: !input brightness_pct
+                                          rgb_color: !input color_sc
+                                          transition: !input transition_s
 
-              - conditions:
-                  - condition: template
-                    value_template: "{{ track_state == 'VSC' }}"
-                sequence:
-                  - choose:
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ sc_vsc_mode_input == 'steady' }}"
-                        sequence:
-                          - action: "{{ light_turn_on_service }}"
-                            target:
-                              entity_id: !input light_target
-                            data:
-                              brightness_pct: !input brightness_pct
-                              rgb_color: !input color_vsc
-                              transition: !input transition_s
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ track_state == 'VSC' }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ sc_vsc_mode_input == 'steady' }}"
+                            sequence:
+                              - action: "{{ light_turn_on_service }}"
+                                target:
+                                  entity_id: !input light_target
+                                data:
+                                  brightness_pct: !input brightness_pct
+                                  rgb_color: !input color_vsc
+                                  transition: !input transition_s
 
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ sc_vsc_mode_input == 'flash_continuous' }}"
-                        sequence:
-                          - repeat:
-                              while:
-                                - condition: template
-                                  value_template: "{{ states(track_status_entity) | upper == 'VSC' }}"
-                              sequence:
-                                - action: "{{ light_turn_on_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                  data:
-                                    brightness_pct: !input brightness_pct
-                                    rgb_color: !input color_vsc
-                                - delay:
-                                    seconds: !input flash_interval_s
-                                - action: "{{ light_turn_off_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                - delay:
-                                    seconds: !input flash_interval_s
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ sc_vsc_mode_input == 'flash_continuous' }}"
+                            sequence:
+                              - repeat:
+                                  while:
+                                    - condition: template
+                                      value_template: "{{ states(track_status_entity) | upper == 'VSC' }}"
+                                  sequence:
+                                    - action: "{{ light_turn_on_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                      data:
+                                        brightness_pct: !input brightness_pct
+                                        rgb_color: !input color_vsc
+                                    - delay:
+                                        seconds: !input flash_interval_s
+                                    - action: "{{ light_turn_off_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                    - delay:
+                                        seconds: !input flash_interval_s
 
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ sc_vsc_mode_input == 'flash_timed' }}"
-                        sequence:
-                          - variables:
-                              flash_end_ts: "{{ as_timestamp(now()) + (sc_vsc_flash_duration_input | int(10)) }}"
-                          - repeat:
-                              while:
-                                - condition: template
-                                  value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'VSC' }}"
-                              sequence:
-                                - action: "{{ light_turn_on_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                  data:
-                                    brightness_pct: !input brightness_pct
-                                    rgb_color: !input color_vsc
-                                - delay:
-                                    seconds: !input flash_interval_s
-                                - action: "{{ light_turn_off_service }}"
-                                  target:
-                                    entity_id: !input light_target
-                                - delay:
-                                    seconds: !input flash_interval_s
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ sc_vsc_mode_input == 'flash_timed' }}"
+                            sequence:
+                              - variables:
+                                  flash_end_ts: "{{ as_timestamp(now()) + (sc_vsc_flash_duration_input | int(10)) }}"
+                              - repeat:
+                                  while:
+                                    - condition: template
+                                      value_template: "{{ as_timestamp(now()) < flash_end_ts and states(track_status_entity) | upper == 'VSC' }}"
+                                  sequence:
+                                    - action: "{{ light_turn_on_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                      data:
+                                        brightness_pct: !input brightness_pct
+                                        rgb_color: !input color_vsc
+                                    - delay:
+                                        seconds: !input flash_interval_s
+                                    - action: "{{ light_turn_off_service }}"
+                                      target:
+                                        entity_id: !input light_target
+                                    - delay:
+                                        seconds: !input flash_interval_s
 
-                          - condition: template
-                            value_template: "{{ states(track_status_entity) | upper == 'VSC' }}"
-                          - choose:
-                              - conditions:
-                                  - condition: template
-                                    value_template: "{{ sc_vsc_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
-                                sequence:
-                                  - continue_on_error: true
-                                    action: scene.turn_on
-                                    data:
-                                      entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
-                              - conditions:
-                                  - condition: template
-                                    value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
-                                sequence:
-                                  - action: "{{ light_turn_on_service }}"
-                                    target:
-                                      entity_id: !input light_target
-                                    data:
-                                      brightness_pct: !input brightness_pct
-                                      rgb_color: !input color_vsc
-                                      transition: !input transition_s
+                              - condition: template
+                                value_template: "{{ states(track_status_entity) | upper == 'VSC' }}"
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ sc_vsc_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                    sequence:
+                                      - continue_on_error: true
+                                        action: scene.turn_on
+                                        data:
+                                          entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                    sequence:
+                                      - action: "{{ light_turn_on_service }}"
+                                        target:
+                                          entity_id: !input light_target
+                                        data:
+                                          brightness_pct: !input brightness_pct
+                                          rgb_color: !input color_vsc
+                                          transition: !input transition_s
 
           - if:
               - condition: template
