@@ -60,7 +60,11 @@ from .const import (
     STRAIGHT_MODE_NORMAL,
     SUPPORTED_SENSOR_KEYS,
 )
-from .entity import register_entry_name_settings, unregister_entry_name_settings
+from .entity import (
+    async_prepare_translation_names,
+    register_entry_name_settings,
+    unregister_entry_name_settings,
+)
 from .formation_start import FormationStartTracker
 from .helpers import (
     PersistentCache,
@@ -769,6 +773,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Dev-only: periodically report how many Jolpica requests actually hit the network.
     _ensure_jolpica_stats_reporting(hass)
     register_entry_name_settings(entry.entry_id, entry.data)
+    await async_prepare_translation_names(hass, entry.entry_id)
     # Build the effective set of enabled sensors.
     # ``disabled_sensors`` stores the keys the user explicitly unchecked.
     # Everything else (including new keys added in future versions) is enabled.

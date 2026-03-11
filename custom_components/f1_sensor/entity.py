@@ -1,9 +1,9 @@
 import asyncio
 from contextlib import suppress
-from functools import cache
 import json
 from pathlib import Path
 
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -22,6 +22,7 @@ from .const import (
 
 _TRANSLATIONS_DIR = Path(__file__).parent / "translations"
 _ENTRY_NAME_SETTINGS: dict[str, tuple[str, str]] = {}
+_TRANSLATION_NAME_CACHE: dict[str, dict[str, str]] = {}
 
 
 def _normalize_language(language: str | None) -> str:
@@ -46,9 +47,8 @@ def _translation_language_candidates(language: str | None) -> tuple[str, ...]:
     return tuple(candidates)
 
 
-@cache
-def _load_translation_names(language: str) -> dict[str, str]:
-    """Load entity display names from a bundled translation file."""
+def _read_translation_names(language: str) -> dict[str, str]:
+    """Read entity display names from a bundled translation file."""
     try:
         path = _TRANSLATIONS_DIR / f"{_normalize_language(language)}.json"
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -62,6 +62,28 @@ def _load_translation_names(language: str) -> dict[str, str]:
         return {}
 
 
+def _prime_translation_names(languages: tuple[str, ...]) -> None:
+    """Load translation files into memory outside the event loop."""
+    for language in languages:
+        normalized = _normalize_language(language)
+        if normalized in _TRANSLATION_NAME_CACHE:
+            continue
+        _TRANSLATION_NAME_CACHE[normalized] = _read_translation_names(normalized)
+
+
+async def async_prepare_translation_names(
+    hass: HomeAssistant, entry_id: str | None = None
+) -> None:
+    """Preload translation files that may be needed during entity setup."""
+    mode, language = _entry_name_settings(entry_id)
+    languages = list(_translation_language_candidates(DEFAULT_ENTITY_NAME_LANGUAGE))
+    if mode == ENTITY_NAME_MODE_LOCALIZED:
+        for candidate in _translation_language_candidates(language):
+            if candidate not in languages:
+                languages.append(candidate)
+    await hass.async_add_executor_job(_prime_translation_names, tuple(languages))
+
+
 def register_entry_name_settings(entry_id: str, data: dict) -> None:
     """Register naming settings for a config entry."""
     mode = data.get(CONF_ENTITY_NAME_MODE, ENTITY_NAME_MODE_LEGACY)
@@ -69,6 +91,15 @@ def register_entry_name_settings(entry_id: str, data: dict) -> None:
         mode = ENTITY_NAME_MODE_LEGACY
     language = _normalize_language(data.get(CONF_ENTITY_NAME_LANGUAGE))
     _ENTRY_NAME_SETTINGS[entry_id] = (mode, language)
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        languages = list(_translation_language_candidates(DEFAULT_ENTITY_NAME_LANGUAGE))
+        if mode == ENTITY_NAME_MODE_LOCALIZED:
+            for candidate in _translation_language_candidates(language):
+                if candidate not in languages:
+                    languages.append(candidate)
+        _prime_translation_names(tuple(languages))
 
 
 def unregister_entry_name_settings(entry_id: str) -> None:
@@ -79,6 +110,7 @@ def unregister_entry_name_settings(entry_id: str) -> None:
 def clear_entry_name_settings() -> None:
     """Clear cached entry naming settings for tests."""
     _ENTRY_NAME_SETTINGS.clear()
+    _TRANSLATION_NAME_CACHE.clear()
 
 
 def _entry_name_settings(entry_id: str | None) -> tuple[str, str]:
@@ -94,7 +126,7 @@ def _entry_name_settings(entry_id: str | None) -> tuple[str, str]:
 def _translated_entity_name(translation_key: str, language: str) -> str | None:
     """Return the first matching translated entity name for a language."""
     for candidate in _translation_language_candidates(language):
-        if name := _load_translation_names(candidate).get(translation_key):
+        if name := _TRANSLATION_NAME_CACHE.get(candidate, {}).get(translation_key):
             return name
     return None
 
