@@ -1,6 +1,6 @@
 {
   "name": "f1-sensor",
-  "version": "4.0",
+  "version": "4.1",
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
