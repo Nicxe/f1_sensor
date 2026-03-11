@@ -60,6 +60,7 @@ from .const import (
     STRAIGHT_MODE_NORMAL,
     SUPPORTED_SENSOR_KEYS,
 )
+from .entity import register_entry_name_settings, unregister_entry_name_settings
 from .formation_start import FormationStartTracker
 from .helpers import (
     PersistentCache,
@@ -767,6 +768,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up integration via config flow."""
     # Dev-only: periodically report how many Jolpica requests actually hit the network.
     _ensure_jolpica_stats_reporting(hass)
+    register_entry_name_settings(entry.entry_id, entry.data)
     # Build the effective set of enabled sensors.
     # ``disabled_sensors`` stores the keys the user explicitly unchecked.
     # Everything else (including new keys added in future versions) is enabled.
@@ -4665,6 +4667,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         await close()
                     except Exception as err:  # noqa: BLE001
                         _LOGGER.debug("Error during %s async_close: %s", name, err)
+        unregister_entry_name_settings(entry.entry_id)
         # If this was the last entry, remove dev-only stats reporter.
         if isinstance(data_root, dict):
             # Keep only real entry dicts (exclude our global stats key)

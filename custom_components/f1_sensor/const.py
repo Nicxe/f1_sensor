@@ -33,6 +33,15 @@ OPERATION_MODE_LIVE = "live"
 OPERATION_MODE_DEVELOPMENT = "development"
 DEFAULT_OPERATION_MODE = OPERATION_MODE_LIVE
 
+# Internal naming metadata. This is not user-configurable; it lets new config
+# entries snapshot the backend language for localized friendly names while
+# legacy entries keep their current naming behavior.
+CONF_ENTITY_NAME_MODE = "entity_name_mode"
+CONF_ENTITY_NAME_LANGUAGE = "entity_name_language"
+ENTITY_NAME_MODE_LEGACY = "legacy"
+ENTITY_NAME_MODE_LOCALIZED = "localized"
+DEFAULT_ENTITY_NAME_LANGUAGE = "en"
+
 # Race schedule grace period: keep a session "current" briefly after start.
 RACE_SWITCH_GRACE = timedelta(hours=3)
 

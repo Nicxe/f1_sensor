@@ -37,7 +37,12 @@ from .const import (
     STRAIGHT_MODE_LOW,
     STRAIGHT_MODE_NORMAL,
 )
-from .entity import F1AuxEntity, F1BaseEntity
+from .entity import (
+    F1AuxEntity,
+    F1BaseEntity,
+    default_object_id,
+    set_suggested_object_id,
+)
 from .helpers import (
     get_circuit_map_url,
     get_country_code,
@@ -182,17 +187,6 @@ async def _async_setup_points_progression(sensor) -> None:
     sensor.async_write_ha_state()
 
 
-def _set_suggested_object_id(entity, object_id: str) -> None:
-    """Keep stable entity_id/object_id independent of user-facing name."""
-    entity._attr_suggested_object_id = object_id
-
-
-def _default_object_id(key: str) -> str:
-    """Build a stable default object_id for new entities."""
-    normalized_key = str(key).strip().replace("-", "_").lower()
-    return f"f1_{normalized_key}"
-
-
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
@@ -275,7 +269,7 @@ async def async_setup_entry(
             if not coord:
                 continue
             for pos in range(3):
-                object_id = _default_object_id(f"top_three_p{pos + 1}")
+                object_id = default_object_id(f"top_three_p{pos + 1}")
                 sensor = F1TopThreePositionSensor(
                     coord,
                     f"{entry.entry_id}_top_three_p{pos + 1}",
@@ -283,7 +277,7 @@ async def async_setup_entry(
                     base,
                     pos,
                 )
-                _set_suggested_object_id(sensor, object_id)
+                set_suggested_object_id(sensor, object_id)
                 sensors.append(sensor)
         elif key == "championship_prediction":
             if not coord:
@@ -294,8 +288,8 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            _set_suggested_object_id(
-                drivers_sensor, _default_object_id("championship_prediction_drivers")
+            set_suggested_object_id(
+                drivers_sensor, default_object_id("championship_prediction_drivers")
             )
             sensors.append(drivers_sensor)
             teams_sensor = F1ChampionshipPredictionTeamsSensor(
@@ -304,8 +298,8 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            _set_suggested_object_id(
-                teams_sensor, _default_object_id("championship_prediction_teams")
+            set_suggested_object_id(
+                teams_sensor, default_object_id("championship_prediction_teams")
             )
             sensors.append(teams_sensor)
         elif key == "live_timing_diagnostics":
@@ -316,7 +310,7 @@ async def async_setup_entry(
                     entry.entry_id,
                     base,
                 )
-                _set_suggested_object_id(sensor, _default_object_id("live_timing_mode"))
+                set_suggested_object_id(sensor, default_object_id("live_timing_mode"))
                 sensors.append(sensor)
         elif cls and coord:
             sensor = cls(
@@ -325,7 +319,7 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            _set_suggested_object_id(sensor, _default_object_id(key))
+            set_suggested_object_id(sensor, default_object_id(key))
             sensors.append(sensor)
 
     # Replay status sensor
@@ -337,7 +331,7 @@ async def async_setup_entry(
             entry.entry_id,
             base,
         )
-        _set_suggested_object_id(sensor, _default_object_id("replay_status"))
+        set_suggested_object_id(sensor, default_object_id("replay_status"))
         sensors.append(sensor)
 
     async_add_entities(sensors, True)
@@ -360,7 +354,7 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
             entry_id=entry_id,
             device_name=device_name,
         )
-        self._attr_suggested_object_id = _default_object_id("live_timing_mode")
+        self._attr_suggested_object_id = default_object_id("live_timing_mode")
         self.hass = hass
         self._entry_id = entry_id
         self._unsub_live_state = None
@@ -6287,7 +6281,7 @@ class F1StraightModeSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
-        self._attr_suggested_object_id = f"{device_name}_straight_mode"
+        self._attr_suggested_object_id = default_object_id("straight_mode")
         self._attr_native_value: str | None = None
         self._attr_extra_state_attributes: dict[str, object] = {}
 

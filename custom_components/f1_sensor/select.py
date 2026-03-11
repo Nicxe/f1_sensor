@@ -17,7 +17,7 @@ from .const import (
     LIVE_DELAY_REFERENCE_LAP_SYNC,
     LIVE_DELAY_REFERENCE_SESSION,
 )
-from .entity import F1AuxEntity
+from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
 from .live_delay import LiveDelayReferenceController
 from .replay_entities import (
     F1ReplaySessionSelect,
@@ -45,44 +45,44 @@ async def async_setup_entry(
         "delay_reference_controller"
     )
     if reference_controller is not None:
-        entities.append(
-            F1LiveDelayReferenceSelect(
-                reference_controller,
-                f"{entry.entry_id}_live_delay_reference",
-                entry.entry_id,
-                name,
-            )
+        entity = F1LiveDelayReferenceSelect(
+            reference_controller,
+            f"{entry.entry_id}_live_delay_reference",
+            entry.entry_id,
+            name,
         )
+        set_suggested_object_id(entity, default_object_id("live_delay_reference"))
+        entities.append(entity)
 
     # Replay session selector
     replay_controller = registry.get("replay_controller")
     if replay_controller is not None:
-        entities.append(
-            F1ReplayYearSelect(
-                replay_controller,
-                f"{entry.entry_id}_replay_year_select",
-                entry.entry_id,
-                name,
-            )
+        entity = F1ReplayYearSelect(
+            replay_controller,
+            f"{entry.entry_id}_replay_year_select",
+            entry.entry_id,
+            name,
         )
-        entities.append(
-            F1ReplaySessionSelect(
-                replay_controller,
-                f"{entry.entry_id}_replay_session_select",
-                entry.entry_id,
-                name,
-            )
+        set_suggested_object_id(entity, default_object_id("replay_year"))
+        entities.append(entity)
+        entity = F1ReplaySessionSelect(
+            replay_controller,
+            f"{entry.entry_id}_replay_session_select",
+            entry.entry_id,
+            name,
         )
+        set_suggested_object_id(entity, default_object_id("replay_session"))
+        entities.append(entity)
         start_reference_controller = registry.get("replay_start_reference_controller")
         if start_reference_controller is not None:
-            entities.append(
-                F1ReplayStartReferenceSelect(
-                    start_reference_controller,
-                    f"{entry.entry_id}_replay_start_reference",
-                    entry.entry_id,
-                    name,
-                )
+            entity = F1ReplayStartReferenceSelect(
+                start_reference_controller,
+                f"{entry.entry_id}_replay_start_reference",
+                entry.entry_id,
+                name,
             )
+            set_suggested_object_id(entity, default_object_id("replay_start_reference"))
+            entities.append(entity)
 
     if entities:
         async_add_entities(entities)

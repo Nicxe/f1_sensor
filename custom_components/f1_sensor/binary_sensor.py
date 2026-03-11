@@ -30,7 +30,12 @@ from .const import (
     RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
 )
-from .entity import F1AuxEntity, F1BaseEntity
+from .entity import (
+    F1AuxEntity,
+    F1BaseEntity,
+    default_object_id,
+    set_suggested_object_id,
+)
 from .formation_start import FormationStartTracker
 from .helpers import get_next_race, normalize_track_status
 
@@ -86,17 +91,6 @@ def _normalize_race_week_start(data: dict) -> str:
     return DEFAULT_RACE_WEEK_START_DAY
 
 
-def _set_suggested_object_id(entity, object_id: str) -> None:
-    """Keep stable entity_id/object_id independent of user-facing name."""
-    entity._attr_suggested_object_id = object_id
-
-
-def _default_object_id(key: str) -> str:
-    """Build a stable default object_id for new entities."""
-    normalized_key = str(key).strip().replace("-", "_").lower()
-    return f"f1_{normalized_key}"
-
-
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
@@ -112,7 +106,7 @@ async def async_setup_entry(
             entry.entry_id,
             base,
         )
-        _set_suggested_object_id(sensor, _default_object_id("live_timing_online"))
+        set_suggested_object_id(sensor, default_object_id("live_timing_online"))
         sensors.append(sensor)
     if "race_week" not in disabled:
         sensor = F1RaceWeekSensor(
@@ -122,7 +116,7 @@ async def async_setup_entry(
             base,
             race_week_start=race_week_start,
         )
-        _set_suggested_object_id(sensor, _default_object_id("race_week"))
+        set_suggested_object_id(sensor, default_object_id("race_week"))
         sensors.append(sensor)
     if "safety_car" not in disabled:
         coord = data.get("track_status_coordinator")
@@ -133,7 +127,7 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            _set_suggested_object_id(sensor, _default_object_id("safety_car"))
+            set_suggested_object_id(sensor, default_object_id("safety_car"))
             sensors.append(sensor)
     if "formation_start" not in disabled:
         tracker: FormationStartTracker | None = data.get("formation_start_tracker")
@@ -144,7 +138,7 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            _set_suggested_object_id(sensor, _default_object_id("formation_start"))
+            set_suggested_object_id(sensor, default_object_id("formation_start"))
             sensors.append(sensor)
     if "overtake_mode" not in disabled:
         coord = data.get("live_mode_coordinator")
@@ -155,7 +149,7 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            _set_suggested_object_id(sensor, _default_object_id("overtake_mode"))
+            set_suggested_object_id(sensor, default_object_id("overtake_mode"))
             sensors.append(sensor)
     async_add_entities(sensors, True)
 
@@ -497,7 +491,7 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
             entry_id=entry_id,
             device_name=device_name,
         )
-        self._attr_suggested_object_id = _default_object_id("live_timing_online")
+        self._attr_suggested_object_id = default_object_id("live_timing_online")
         self.hass = hass
         self._entry_id = entry_id
         self._unsub_live_state = None
@@ -607,7 +601,7 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity
 
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
-        self._attr_suggested_object_id = f"{device_name}_overtake_mode"
+        self._attr_suggested_object_id = default_object_id("overtake_mode")
         self._attr_is_on: bool | None = None
         self._attr_extra_state_attributes: dict[str, Any] = {}
 

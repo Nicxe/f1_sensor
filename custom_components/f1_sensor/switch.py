@@ -11,7 +11,7 @@ from homeassistant.helpers.entity import EntityCategory
 
 from .calibration import LiveDelayCalibrationManager
 from .const import DOMAIN
-from .entity import F1AuxEntity
+from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
 from .no_spoiler import NoSpoilerModeManager
 
 _NO_SPOILER_SWITCH_ENTRY_KEY = "no_spoiler_switch_entry_id"
@@ -30,14 +30,14 @@ async def async_setup_entry(
     manager: LiveDelayCalibrationManager | None = registry.get("calibration_manager")
     if manager is not None:
         name = entry.data.get("sensor_name", "F1")
-        entities.append(
-            F1DelayCalibrationSwitch(
-                manager,
-                f"{entry.entry_id}_delay_calibration_switch",
-                entry.entry_id,
-                name,
-            )
+        entity = F1DelayCalibrationSwitch(
+            manager,
+            f"{entry.entry_id}_delay_calibration_switch",
+            entry.entry_id,
+            name,
         )
+        set_suggested_object_id(entity, default_object_id("delay_calibration"))
+        entities.append(entity)
 
     # No Spoiler Mode switch — global, registered only by the first entry that loads.
     domain_root = hass.data.setdefault(DOMAIN, {})
@@ -45,14 +45,14 @@ async def async_setup_entry(
     if no_spoiler_mgr is not None and not domain_root.get(_NO_SPOILER_SWITCH_ENTRY_KEY):
         domain_root[_NO_SPOILER_SWITCH_ENTRY_KEY] = entry.entry_id
         name = entry.data.get("sensor_name", "F1")
-        entities.append(
-            F1NoSpoilerSwitch(
-                no_spoiler_mgr,
-                "f1_sensor_no_spoiler_mode",
-                entry.entry_id,
-                name,
-            )
+        entity = F1NoSpoilerSwitch(
+            no_spoiler_mgr,
+            "f1_sensor_no_spoiler_mode",
+            entry.entry_id,
+            name,
         )
+        set_suggested_object_id(entity, default_object_id("no_spoiler_mode"))
+        entities.append(entity)
 
     if entities:
         async_add_entities(entities)

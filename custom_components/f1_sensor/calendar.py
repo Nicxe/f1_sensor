@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .entity import F1BaseEntity
+from .entity import F1BaseEntity, default_object_id, set_suggested_object_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,16 +79,14 @@ async def async_setup_entry(
         return
 
     base = entry.data.get("sensor_name", "F1")
-    async_add_entities(
-        [
-            F1SeasonCalendar(
-                coordinator=race_coordinator,
-                unique_id=f"{entry.entry_id}_f1_season_calendar",
-                entry_id=entry.entry_id,
-                device_name=base,
-            )
-        ]
+    entity = F1SeasonCalendar(
+        coordinator=race_coordinator,
+        unique_id=f"{entry.entry_id}_f1_season_calendar",
+        entry_id=entry.entry_id,
+        device_name=base,
     )
+    set_suggested_object_id(entity, default_object_id("season_calendar"))
+    async_add_entities([entity])
 
 
 class F1SeasonCalendar(F1BaseEntity, CalendarEntity):

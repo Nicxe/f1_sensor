@@ -5,14 +5,18 @@ import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
 from .const import (
+    CONF_ENTITY_NAME_LANGUAGE,
+    CONF_ENTITY_NAME_MODE,
     CONF_OPERATION_MODE,
     CONF_RACE_WEEK_START_DAY,
     CONF_RACE_WEEK_SUNDAY_START,
     CONF_REPLAY_FILE,
+    DEFAULT_ENTITY_NAME_LANGUAGE,
     DEFAULT_OPERATION_MODE,
     DEFAULT_RACE_WEEK_START_DAY,
     DOMAIN,
     ENABLE_DEVELOPMENT_MODE_UI,
+    ENTITY_NAME_MODE_LOCALIZED,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
     RACE_WEEK_START_MONDAY,
@@ -78,6 +82,14 @@ def _build_sensor_options() -> dict:
 class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
+    def _current_backend_language(self) -> str:
+        """Return the current backend language for new config entries."""
+        language = getattr(self.hass.config, "language", None)
+        if not language:
+            return DEFAULT_ENTITY_NAME_LANGUAGE
+        normalized = str(language).strip().replace("_", "-")
+        return normalized or DEFAULT_ENTITY_NAME_LANGUAGE
+
     def _normalize_race_week_start(self, data: dict) -> str:
         value = data.get(CONF_RACE_WEEK_START_DAY)
         if value in RACE_WEEK_START_OPTIONS:
@@ -120,6 +132,8 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 all_keys = set(_build_sensor_options().keys())
                 checked = set(user_input.pop("enabled_sensors", all_keys))
                 user_input["disabled_sensors"] = sorted(all_keys - checked)
+                user_input[CONF_ENTITY_NAME_MODE] = ENTITY_NAME_MODE_LOCALIZED
+                user_input[CONF_ENTITY_NAME_LANGUAGE] = self._current_backend_language()
                 return self.async_create_entry(
                     title=user_input["sensor_name"], data=user_input
                 )
