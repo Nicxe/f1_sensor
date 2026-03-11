@@ -15,18 +15,19 @@ from typing import Any
 from urllib.parse import urlencode, urljoin
 import zlib
 
-import async_timeout
 from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CIRCUIT_MAP_CDN_BASE_URL,
+    CIRCUIT_MAP_DETAILED_CDN_BASE_URL,
+    CIRCUIT_MAP_LEGACY_CDN_BASE_URL,
     DOMAIN,
     ENABLE_DEVELOPMENT_MODE_UI,
-    F1_CIRCUIT_MAP_NAMES,
     F1_COUNTRY_CODES,
+    F1_DETAILED_CIRCUIT_MAP_SLUGS,
+    F1_LEGACY_CIRCUIT_MAP_NAMES,
     FLAG_CDN_BASE_URL,
 )
 
@@ -185,14 +186,27 @@ def get_country_flag_url(country_name: str | None) -> str | None:
     return f"{FLAG_CDN_BASE_URL}/{code}.png"
 
 
-def get_circuit_map_url(circuit_id: str | None) -> str | None:
-    """Return F1 circuit map CDN URL for Ergast circuit ID."""
+def get_circuit_map_url(
+    circuit_id: str | None, season: str | int | None = None
+) -> str | None:
+    """Return the preferred F1 circuit map URL for a circuit and season."""
     if not circuit_id:
         return None
-    circuit_name = F1_CIRCUIT_MAP_NAMES.get(circuit_id)
-    if not circuit_name:
+
+    season_key = str(season) if season is not None else None
+    if season_key:
+        detailed_maps = F1_DETAILED_CIRCUIT_MAP_SLUGS.get(season_key, {})
+        detailed_slug = detailed_maps.get(circuit_id)
+        if detailed_slug:
+            return (
+                f"{CIRCUIT_MAP_DETAILED_CDN_BASE_URL}/{season_key}/track/"
+                f"{season_key}track{detailed_slug}detailed.webp"
+            )
+
+    legacy_name = F1_LEGACY_CIRCUIT_MAP_NAMES.get(circuit_id)
+    if not legacy_name:
         return None
-    return f"{CIRCUIT_MAP_CDN_BASE_URL}/{circuit_name}_Circuit.webp"
+    return f"{CIRCUIT_MAP_LEGACY_CDN_BASE_URL}/{legacy_name}_Circuit.webp"
 
 
 def format_entity_name(
@@ -335,7 +349,7 @@ async def fetch_json(
                 _LOGGER.debug("HTTP cache MISS key=%s -> fetching", key)
         if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
             _record_jolpica_miss(hass, key)
-        async with async_timeout.timeout(30):
+        async with asyncio.timeout(30):
             async with session.get(url, params=params, headers=headers) as resp:
                 resp.raise_for_status()
                 text = await resp.text()
@@ -468,7 +482,7 @@ async def fetch_text(
                 _LOGGER.debug("HTTP text cache MISS key=%s -> fetching", key)
         if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
             _record_jolpica_miss(hass, key)
-        async with async_timeout.timeout(30):
+        async with asyncio.timeout(30):
             async with session.get(url, params=params, headers=headers) as resp:
                 resp.raise_for_status()
                 text = await resp.text()

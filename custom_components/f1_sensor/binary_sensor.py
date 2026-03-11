@@ -30,11 +30,45 @@ from .const import (
     RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
 )
-from .entity import F1AuxEntity, F1BaseEntity
+from .entity import (
+    F1AuxEntity,
+    F1BaseEntity,
+    default_object_id,
+    set_suggested_object_id,
+)
 from .formation_start import FormationStartTracker
 from .helpers import get_next_race, normalize_track_status
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _session_status_mapping_context(coordinator: Any) -> tuple[bool, int | None]:
+    """Return qualifying context used for semantic terminal checks."""
+    is_qualifying_like = bool(getattr(coordinator, "is_qualifying_like_session", False))
+    qualifying_part = getattr(coordinator, "qualifying_part", None)
+    try:
+        if qualifying_part is not None:
+            qualifying_part = int(qualifying_part)
+    except (TypeError, ValueError):
+        qualifying_part = None
+    return is_qualifying_like, qualifying_part
+
+
+def _is_semantic_terminal_session(
+    payload: dict[str, Any] | None, coordinator: Any = None
+) -> bool:
+    """Return True only when the live session has actually ended."""
+    if not isinstance(payload, dict):
+        return False
+
+    status = str(payload.get("Status") or payload.get("Message") or "").strip()
+    if status == "Finished":
+        is_qualifying_like, qualifying_part = _session_status_mapping_context(
+            coordinator
+        )
+        return not (is_qualifying_like and qualifying_part in (1, 2))
+
+    return status in {"Finalised", "Ends"}
 
 
 def _normalize_race_week_start(data: dict) -> str:
@@ -57,17 +91,6 @@ def _normalize_race_week_start(data: dict) -> str:
     return DEFAULT_RACE_WEEK_START_DAY
 
 
-def _set_suggested_object_id(entity, object_id: str) -> None:
-    """Keep stable entity_id/object_id independent of user-facing name."""
-    entity._attr_suggested_object_id = object_id
-
-
-def _default_object_id(key: str) -> str:
-    """Build a stable default object_id for new entities."""
-    normalized_key = str(key).strip().replace("-", "_").lower()
-    return f"f1_{normalized_key}"
-
-
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
@@ -83,7 +106,7 @@ async def async_setup_entry(
             entry.entry_id,
             base,
         )
-        _set_suggested_object_id(sensor, _default_object_id("live_timing_online"))
+        set_suggested_object_id(sensor, default_object_id("live_timing_online"))
         sensors.append(sensor)
     if "race_week" not in disabled:
         sensor = F1RaceWeekSensor(
@@ -93,7 +116,7 @@ async def async_setup_entry(
             base,
             race_week_start=race_week_start,
         )
-        _set_suggested_object_id(sensor, _default_object_id("race_week"))
+        set_suggested_object_id(sensor, default_object_id("race_week"))
         sensors.append(sensor)
     if "safety_car" not in disabled:
         coord = data.get("track_status_coordinator")
@@ -104,7 +127,7 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            _set_suggested_object_id(sensor, _default_object_id("safety_car"))
+            set_suggested_object_id(sensor, default_object_id("safety_car"))
             sensors.append(sensor)
     if "formation_start" not in disabled:
         tracker: FormationStartTracker | None = data.get("formation_start_tracker")
@@ -115,7 +138,7 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            _set_suggested_object_id(sensor, _default_object_id("formation_start"))
+            set_suggested_object_id(sensor, default_object_id("formation_start"))
             sensors.append(sensor)
     if "overtake_mode" not in disabled:
         coord = data.get("live_mode_coordinator")
@@ -126,7 +149,7 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            _set_suggested_object_id(sensor, _default_object_id("overtake_mode"))
+            set_suggested_object_id(sensor, default_object_id("overtake_mode"))
             sensors.append(sensor)
     async_add_entities(sensors, True)
 
@@ -218,14 +241,26 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
         self._attr_is_on = False
         self._attr_extra_state_attributes = {}
         self._last_ts: datetime.datetime | None = None
+        self._session_status_coordinator = None
+        self._forced_unavailable = False
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        self.coordinator.async_add_listener(self._handle_coordinator_update)
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        self._session_status_coordinator = reg.get("session_status_coordinator")
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        if self._session_status_coordinator is not None:
+            status_removal = self._session_status_coordinator.async_add_listener(
+                self._handle_session_status_update
+            )
+            self.async_on_remove(status_removal)
         # Prefer coordinator's latest if present
-        payload, ts = self._extract_payload()
+        payload, _ = self._extract_payload()
         updated = payload is not None
-        if payload is not None:
+        if self._session_is_terminal():
+            self._clear_state()
+        elif payload is not None:
             self._update_from_track_status()
         else:
             if self._is_stream_active():
@@ -237,6 +272,7 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
                         **(self._attr_extra_state_attributes or {}),
                         "restored": True,
                     }
+                    self._forced_unavailable = False
             else:
                 self._clear_state()
         self._handle_stream_state(updated)
@@ -291,11 +327,28 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
         )
         self._attr_is_on = is_on
         self._attr_extra_state_attributes = {"track_status": state}
+        self._forced_unavailable = False
         if ts:
             self._last_ts = ts
 
+    def _session_is_terminal(self) -> bool:
+        payload = getattr(self._session_status_coordinator, "data", None)
+        return _is_semantic_terminal_session(payload, self._session_status_coordinator)
+
+    def _handle_session_status_update(self) -> None:
+        if not self._session_is_terminal():
+            return
+        if self._forced_unavailable:
+            return
+        self._clear_state()
+        self.async_write_ha_state()
+
     def _handle_coordinator_update(self) -> None:
         payload, _ = self._extract_payload()
+        if self._session_is_terminal():
+            self._clear_state()
+            self.async_write_ha_state()
+            return
         updated = payload is not None
         if not self._handle_stream_state(updated):
             return
@@ -311,10 +364,17 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         return self._attr_is_on
 
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        return not self._forced_unavailable
+
     def _clear_state(self) -> None:
         self._attr_is_on = False
         self._attr_extra_state_attributes = {}
         self._last_ts = None
+        self._forced_unavailable = True
 
 
 class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
@@ -431,7 +491,7 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
             entry_id=entry_id,
             device_name=device_name,
         )
-        self._attr_suggested_object_id = _default_object_id("live_timing_online")
+        self._attr_suggested_object_id = default_object_id("live_timing_online")
         self.hass = hass
         self._entry_id = entry_id
         self._unsub_live_state = None
@@ -541,9 +601,12 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity
 
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
-        self._attr_suggested_object_id = f"{device_name}_overtake_mode"
+        self._attr_suggested_object_id = default_object_id("overtake_mode")
         self._attr_is_on: bool | None = None
         self._attr_extra_state_attributes: dict[str, Any] = {}
+
+    def _session_is_terminal(self) -> bool:
+        return bool(getattr(self.coordinator, "session_is_terminal", False))
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -553,23 +616,24 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity
         if updated and data is not None:
             self._apply_data(data)
         else:
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                last_state = last.state
-                if isinstance(last_state, bool):
-                    self._attr_is_on = last_state
-                else:
-                    self._attr_is_on = str(last_state).lower() in (
-                        "on",
-                        "true",
-                        "1",
-                    )
-                attrs = dict(last.attributes or {})
-                self._attr_extra_state_attributes = {
-                    "straight_mode": attrs.get("straight_mode"),
-                    "restored": True,
-                }
-                restored = True
+            if not self._session_is_terminal():
+                last = await self.async_get_last_state()
+                if last and last.state not in (None, "unknown", "unavailable"):
+                    last_state = last.state
+                    if isinstance(last_state, bool):
+                        self._attr_is_on = last_state
+                    else:
+                        self._attr_is_on = str(last_state).lower() in (
+                            "on",
+                            "true",
+                            "1",
+                        )
+                    attrs = dict(last.attributes or {})
+                    self._attr_extra_state_attributes = {
+                        "straight_mode": attrs.get("straight_mode"),
+                        "restored": True,
+                    }
+                    restored = True
             if not restored and not self._is_stream_active():
                 self._clear_state()
         self._stream_last_active = self._is_stream_active()
@@ -592,6 +656,10 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity
 
     def _handle_coordinator_update(self) -> None:
         data = self._extract_data()
+        if self._session_is_terminal():
+            self._clear_state()
+            self.async_write_ha_state()
+            return
         updated = self._has_overtake_state(data)
         if not self._handle_stream_state(updated):
             return

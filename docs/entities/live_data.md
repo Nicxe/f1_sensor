@@ -429,6 +429,7 @@ Each entry in `drivers` contains:
 | last_name | string | Last name |
 | team | string | Team name |
 | team_color | string | Team color as hex code (e.g., "#3671C6") |
+| team_color_rgb | list | Team color as RGB values (e.g., `[54, 113, 198]`) |
 | headshot_small | string | URL to small driver headshot image |
 | headshot_large | string | URL to large driver headshot image |
 | reference | string | External reference URL or ID |
@@ -447,6 +448,7 @@ Each entry in `drivers` contains:
       "last_name": "Verstappen",
       "team": "Red Bull Racing",
       "team_color": "#3671C6",
+      "team_color_rgb": [54, 113, 198],
       "headshot_small": "https://media.formula1.com/content/dam/fom-website/drivers/M/MAXVER01_Max_Verstappen/maxver01.png",
       "headshot_large": "https://media.formula1.com/content/dam/fom-website/drivers/M/MAXVER01_Max_Verstappen/maxver01-large.png",
       "reference": "max_verstappen"
@@ -459,6 +461,7 @@ Each entry in `drivers` contains:
       "last_name": "Hamilton",
       "team": "Ferrari",
       "team_color": "#ED1131",
+      "team_color_rgb": [237, 17, 49],
       "headshot_small": "https://media.formula1.com/content/dam/fom-website/drivers/L/LEWHAM01_Lewis_Hamilton/lewham01.png",
       "headshot_large": "https://media.formula1.com/content/dam/fom-website/drivers/L/LEWHAM01_Lewis_Hamilton/lewham01-large.png",
       "reference": "lewis_hamilton"
@@ -487,6 +490,18 @@ Each entry in `drivers` contains:
 {% set driver = drivers | selectattr('racing_number', 'eq', '44') | first %}
 {% if driver %}
   background-color: {{ driver.team_color }};
+{% endif %}
+```
+
+**Set a light to a driver's team color:**
+```jinja2
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
+{% set ver = drivers | selectattr('tla', 'eq', 'VER') | first %}
+{% if ver and ver.team_color_rgb %}
+service: light.turn_on
+data:
+  entity_id: light.living_room
+  rgb_color: {{ ver.team_color_rgb }}
 {% endif %}
 ```
 
@@ -622,10 +637,12 @@ Each entry in `drivers` contains:
 | racing_number | string | Car number |
 | tla | string | Three-letter abbreviation (driver code) |
 | team_color | string | Team color as hex code (e.g., "#3671C6") |
+| team_color_rgb | list | Team color as RGB values (e.g., `[54, 113, 198]`) |
 | position | string | Current position in the session |
 | compound | string | Tyre compound name (e.g., "SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET") |
 | compound_short | string | Single-letter abbreviation ("S", "M", "H", "I", "W") |
 | compound_color | string | Hex color code for the compound (e.g., "#FF0000" for soft) |
+| compound_color_rgb | list | Compound color as RGB values (e.g., `[255, 0, 0]` for soft) |
 | new | boolean | Whether the tyres are brand new |
 | stint_laps | number | Number of laps on the current set |
 
@@ -639,10 +656,12 @@ Each entry in `drivers` contains:
       "racing_number": "1",
       "tla": "VER",
       "team_color": "#3671C6",
+      "team_color_rgb": [54, 113, 198],
       "position": "1",
       "compound": "MEDIUM",
       "compound_short": "M",
       "compound_color": "#FFFF00",
+      "compound_color_rgb": [255, 255, 0],
       "new": false,
       "stint_laps": 15
     },
@@ -650,10 +669,12 @@ Each entry in `drivers` contains:
       "racing_number": "44",
       "tla": "HAM",
       "team_color": "#ED1131",
+      "team_color_rgb": [237, 17, 49],
       "position": "2",
       "compound": "HARD",
       "compound_short": "H",
       "compound_color": "#FFFFFF",
+      "compound_color_rgb": [255, 255, 255],
       "new": true,
       "stint_laps": 3
     },
@@ -661,10 +682,12 @@ Each entry in `drivers` contains:
       "racing_number": "4",
       "tla": "NOR",
       "team_color": "#FF8000",
+      "team_color_rgb": [255, 128, 0],
       "position": "3",
       "compound": "SOFT",
       "compound_short": "S",
       "compound_color": "#FF0000",
+      "compound_color_rgb": [255, 0, 0],
       "new": true,
       "stint_laps": 1
     }
@@ -756,6 +779,7 @@ Each entry in `compounds` (keyed by compound name) contains:
 | sets_used | number | Number of new tyre sets used |
 | sets_used_total | number | Total stints on this compound |
 | compound_color | string | Hex color code for the compound |
+| compound_color_rgb | list | Compound color as RGB values (e.g., `[255, 0, 0]` for soft) |
 
 Each entry in `best_times` contains:
 
@@ -799,7 +823,8 @@ Each entry in `start_compounds` contains:
       "total_laps": 45,
       "sets_used": 8,
       "sets_used_total": 12,
-      "compound_color": "#FF0000"
+      "compound_color": "#FF0000",
+      "compound_color_rgb": [255, 0, 0]
     },
     "MEDIUM": {
       "best_times": [
@@ -809,7 +834,8 @@ Each entry in `start_compounds` contains:
       "total_laps": 120,
       "sets_used": 15,
       "sets_used_total": 20,
-      "compound_color": "#FFFF00"
+      "compound_color": "#FFFF00",
+      "compound_color_rgb": [255, 255, 0]
     },
     "HARD": {
       "best_times": [
@@ -818,7 +844,8 @@ Each entry in `start_compounds` contains:
       "total_laps": 80,
       "sets_used": 6,
       "sets_used_total": 8,
-      "compound_color": "#FFFFFF"
+      "compound_color": "#FFFFFF",
+      "compound_color_rgb": [255, 255, 255]
     }
   }
 }
@@ -902,6 +929,7 @@ Use the `compound_color` field to style your dashboard elements. The colors matc
 | drivers | list | List of drivers, sorted by position when available |
 | total_laps | number | Total race distance in laps, when known |
 | fastest_lap | object | Fastest lap details during races and sprints; `null` in other session types |
+| current_qualifying_part | number | Active qualifying segment (1, 2, or 3); `null` outside qualifying sessions |
 
 Each entry in `drivers` contains:
 
@@ -912,6 +940,7 @@ Each entry in `drivers` contains:
 | name | string | Driver's full name |
 | team | string | Team name |
 | team_color | string | Team color as hex code (e.g., "#3671C6") |
+| team_color_rgb | list | Team color as RGB values (e.g., `[54, 113, 198]`) |
 | grid_position | string | Starting grid position |
 | current_position | string | Current position in the session |
 | laps | object | Map of lap numbers to lap times (e.g., `{"1": "1:32.456", "2": "1:31.789"}`) |
@@ -925,9 +954,30 @@ Each entry in `drivers` contains:
 | fastest_lap_time | string | Fastest lap time (race/sprint only) |
 | fastest_lap_time_secs | number | Fastest lap time in seconds (race/sprint only) |
 | fastest_lap_lap | number | Lap number of the fastest lap (race/sprint only) |
+| sector_1 | number | Current sector 1 time in seconds; `null` while sector has not been completed this lap |
+| sector_2 | number | Current sector 2 time in seconds; `null` while not yet completed |
+| sector_3 | number | Current sector 3 time in seconds; `null` while not yet completed |
+| sector_1_overall_fastest | boolean | True if the current sector 1 time is the fastest by any driver this session |
+| sector_1_personal_fastest | boolean | True if the current sector 1 time is this driver's personal best |
+| sector_2_overall_fastest | boolean | True if the current sector 2 time is the overall fastest |
+| sector_2_personal_fastest | boolean | True if the current sector 2 time is this driver's personal best |
+| sector_3_overall_fastest | boolean | True if the current sector 3 time is the overall fastest |
+| sector_3_personal_fastest | boolean | True if the current sector 3 time is this driver's personal best |
+| best_sector_1 | number | Driver's personal best sector 1 time this session (or segment, in qualifying) |
+| best_sector_2 | number | Driver's personal best sector 2 time this session (or segment, in qualifying) |
+| best_sector_3 | number | Driver's personal best sector 3 time this session (or segment, in qualifying) |
+| q1_time | string | Best lap time set in Q1; `null` if no time was set or outside qualifying |
+| q1_knocked_out | boolean | True if the driver did not advance past Q1; `null` outside qualifying |
+| q1_position | number | Finishing rank in Q1 based on best lap time; `null` if no time was set |
+| q2_time | string | Best lap time set in Q2; `null` if did not participate or no time set |
+| q2_knocked_out | boolean | True if the driver did not advance past Q2; `null` outside qualifying |
+| q2_position | number | Finishing rank in Q2; `null` if no time was set |
+| q3_time | string | Best lap time set in Q3; `null` if did not participate |
+| q3_knocked_out | boolean | Always `false` (Q3 is the final segment); `null` outside qualifying |
+| q3_position | number | Finishing rank in Q3; `null` if no time was set |
 
 <details>
-<summary>JSON Structure Example</summary>
+<summary>JSON Structure Example — Race</summary>
 
 ```json
 {
@@ -938,6 +988,7 @@ Each entry in `drivers` contains:
       "name": "Max Verstappen",
       "team": "Red Bull Racing",
       "team_color": "#3671C6",
+      "team_color_rgb": [54, 113, 198],
       "grid_position": "1",
       "current_position": "1",
       "laps": {
@@ -954,31 +1005,28 @@ Each entry in `drivers` contains:
       "fastest_lap": true,
       "fastest_lap_time": "1:29.123",
       "fastest_lap_time_secs": 89.123,
-      "fastest_lap_lap": 42
-    },
-    {
-      "racing_number": "44",
-      "tla": "HAM",
-      "name": "Lewis Hamilton",
-      "team": "Ferrari",
-      "team_color": "#ED1131",
-      "grid_position": "3",
-      "current_position": "2",
-      "laps": {
-        "1": "1:33.012",
-        "2": "1:31.567",
-        "3": "1:31.890"
-      },
-      "completed_laps": 45,
-      "status": "on_track",
-      "in_pit": false,
-      "pit_out": false,
-      "retired": false,
-      "stopped": false,
-      "fastest_lap": false,
-      "fastest_lap_time": null,
-      "fastest_lap_time_secs": null,
-      "fastest_lap_lap": null
+      "fastest_lap_lap": 42,
+      "sector_1": 28.123,
+      "sector_2": null,
+      "sector_3": null,
+      "sector_1_overall_fastest": true,
+      "sector_1_personal_fastest": true,
+      "sector_2_overall_fastest": null,
+      "sector_2_personal_fastest": null,
+      "sector_3_overall_fastest": null,
+      "sector_3_personal_fastest": null,
+      "best_sector_1": 27.891,
+      "best_sector_2": 31.456,
+      "best_sector_3": 29.776,
+      "q1_time": null,
+      "q1_knocked_out": null,
+      "q1_position": null,
+      "q2_time": null,
+      "q2_knocked_out": null,
+      "q2_position": null,
+      "q3_time": null,
+      "q3_knocked_out": null,
+      "q3_position": null
     }
   ],
   "total_laps": 70,
@@ -988,10 +1036,110 @@ Each entry in `drivers` contains:
     "name": "Max Verstappen",
     "team": "Red Bull Racing",
     "team_color": "#3671C6",
+    "team_color_rgb": [54, 113, 198],
     "lap": 42,
     "time": "1:29.123",
     "time_secs": 89.123
-  }
+  },
+  "current_qualifying_part": null
+}
+```
+
+</details>
+
+<details>
+<summary>JSON Structure Example — Qualifying</summary>
+
+```json
+{
+  "drivers": [
+    {
+      "racing_number": "1",
+      "tla": "VER",
+      "name": "Max Verstappen",
+      "team": "Red Bull Racing",
+      "team_color": "#3671C6",
+      "team_color_rgb": [54, 113, 198],
+      "grid_position": "1",
+      "current_position": "1",
+      "laps": {},
+      "completed_laps": 6,
+      "status": "on_track",
+      "in_pit": false,
+      "pit_out": false,
+      "retired": false,
+      "stopped": false,
+      "fastest_lap": false,
+      "fastest_lap_time": null,
+      "fastest_lap_time_secs": null,
+      "fastest_lap_lap": null,
+      "sector_1": 16.911,
+      "sector_2": null,
+      "sector_3": null,
+      "sector_1_overall_fastest": true,
+      "sector_1_personal_fastest": true,
+      "sector_2_overall_fastest": null,
+      "sector_2_personal_fastest": null,
+      "sector_3_overall_fastest": null,
+      "sector_3_personal_fastest": null,
+      "best_sector_1": 16.802,
+      "best_sector_2": 44.213,
+      "best_sector_3": 22.087,
+      "q1_time": "1:23.100",
+      "q1_knocked_out": false,
+      "q1_position": 3,
+      "q2_time": "1:22.500",
+      "q2_knocked_out": false,
+      "q2_position": 2,
+      "q3_time": "1:21.987",
+      "q3_knocked_out": false,
+      "q3_position": 1
+    },
+    {
+      "racing_number": "10",
+      "tla": "GAS",
+      "name": "Pierre Gasly",
+      "team": "Alpine",
+      "team_color": "#FF87BC",
+      "grid_position": "16",
+      "current_position": "16",
+      "laps": {},
+      "completed_laps": 4,
+      "status": "on_track",
+      "in_pit": false,
+      "pit_out": false,
+      "retired": false,
+      "stopped": false,
+      "fastest_lap": false,
+      "fastest_lap_time": null,
+      "fastest_lap_time_secs": null,
+      "fastest_lap_lap": null,
+      "sector_1": null,
+      "sector_2": null,
+      "sector_3": null,
+      "sector_1_overall_fastest": null,
+      "sector_1_personal_fastest": null,
+      "sector_2_overall_fastest": null,
+      "sector_2_personal_fastest": null,
+      "sector_3_overall_fastest": null,
+      "sector_3_personal_fastest": null,
+      "best_sector_1": null,
+      "best_sector_2": null,
+      "best_sector_3": null,
+      "q1_time": "1:24.892",
+      "q1_knocked_out": true,
+      "q1_position": 16,
+      "q2_time": null,
+      "q2_knocked_out": false,
+      "q2_position": null,
+      "q3_time": null,
+      "q3_knocked_out": false,
+      "q3_position": null
+    }
+  ],
+  "total_laps": null,
+  "fastest_lap": null,
+  "current_qualifying_part": 3
 }
 ```
 
@@ -1056,10 +1204,43 @@ Each entry in `drivers` contains:
 {% endfor %}
 ```
 
+**Get Q3 qualifying results sorted by position:**
+```jinja2
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
+{% set q3 = drivers | selectattr('q3_time', 'ne', None) | sort(attribute='q3_position') %}
+{% for d in q3 %}
+  P{{ d.q3_position }}: {{ d.tla }} — {{ d.q3_time }}
+{% endfor %}
+```
+
+**List drivers knocked out in Q1:**
+```jinja2
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
+{% for d in drivers if d.q1_knocked_out %}
+  {{ d.tla }} eliminated in Q1 ({{ d.q1_time or 'no time' }})
+{% endfor %}
+```
+
+**Show active qualifying segment:**
+```jinja2
+{% set part = state_attr('sensor.f1_driver_positions', 'current_qualifying_part') %}
+{% if part %}
+  Q{{ part }} in progress
+{% endif %}
+```
+
 </details>
 
 :::info
 Fastest lap details are only exposed during races and sprints. In practice and qualifying, `fastest_lap` is `null` and each driver has `fastest_lap: false`.
+:::
+
+:::info
+Sector times (`sector_1`, `sector_2`, `sector_3`) update live as drivers complete each sector during a lap. They are set to `null` until the sector is crossed, and reset at the start of each new lap. The `best_sector_*` fields hold the driver's personal best for the current session — or the current qualifying segment if in Q1, Q2, or Q3.
+:::
+
+:::info
+Qualifying segment data (`q1_time`, `q2_time`, `q3_time` and their associated `_knocked_out` and `_position` fields) is only populated during qualifying and sprint shootout sessions. In all other session types these fields are `null`. All 20 drivers are always present regardless of whether they set a time. `q1_knocked_out: true` means the driver did not advance to Q2, and `q2_knocked_out: true` means the driver did not reach Q3.
 :::
 
 ---
@@ -1090,6 +1271,7 @@ VER
 | last_name | string | Driver's last name |
 | team | string | Team name |
 | team_color | string | Team color as hex code (e.g., "#3671C6") |
+| team_color_rgb | list | Team color as RGB values (e.g., `[54, 113, 198]`) |
 | lap_time | string | Current lap time when available |
 | overall_fastest | boolean | Whether this is the overall fastest lap |
 | personal_fastest | boolean | Whether this is the driver's personal best |

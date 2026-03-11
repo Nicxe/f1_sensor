@@ -1,261 +1,273 @@
 {
-    "device_automation": {
-        "trigger_type": {
-            "race_week_started": "Race week has started",
-            "race_week_ended": "Race week has ended",
-            "safety_car_deployed": "Safety car deployed",
-            "safety_car_cleared": "Safety car cleared",
-            "formation_start_ready": "Formation start ready",
-            "overtake_mode_enabled": "Overtake mode enabled",
-            "overtake_mode_disabled": "Overtake mode disabled",
-            "session_live": "Session went live",
-            "track_status_clear": "Track status: Clear",
-            "track_status_yellow": "Track status: Yellow flag",
-            "track_status_safety_car": "Track status: Safety car",
-            "track_status_vsc": "Track status: Virtual safety car",
-            "track_status_red_flag": "Track status: Red flag",
-            "new_race_control_message": "New race control message",
-            "new_fia_document": "New FIA document published",
-            "investigation_changed": "Investigation status changed",
-            "new_team_radio": "New team radio message",
-            "live_timing_online": "Live timing came online",
-            "live_timing_offline": "Live timing went offline"
-        }
-    },
-    "config": {
-        "step": {
-            "user": {
-                "title": "F1 Sensor setup",
-                "data": {
-                    "sensor_name": "Device name",
-                    "enabled_sensors": "Enabled sensors",
-                    "operation_mode": "Operation mode",
-                    "replay_file": "Replay dump path",
-                    "enable_race_control": "Enable live F1 API (Race Control/Track/Session)",
-                    "race_week_start_day": "First day of race week"
-                },
-                "data_description": {
-                    "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
-                    "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
-                    "enable_race_control": "Connects to Formula 1 Live Timing via SignalR to receive live updates. If disabled, these live sensors are not created.",
-                    "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday."
-                }
-            },
-            "reconfigure": {
-                "title": "Reconfigure F1 Sensor",
-                "data": {
-                    "sensor_name": "Device name",
-                    "enabled_sensors": "Enabled sensors",
-                    "operation_mode": "Operation mode",
-                    "replay_file": "Replay dump path",
-                    "enable_race_control": "Enable live F1 API",
-                    "race_week_start_day": "First day of race week"
-                },
-                "data_description": {
-                    "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
-                    "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
-                    "enable_race_control": "Connects to Formula 1 Live Timing to receive live updates. If disabled, these live sensors are not created.",
-                    "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday."
-                }
-            }
-        },
-        "error": {
-            "replay_required": "Select a replay dump file when Development mode is enabled.",
-            "replay_missing": "Replay dump file not found or unreadable."
-        }
-    },
-    "entity": {
-        "sensor": {
-            "next_race": {
-                "name": "Next race"
-            },
-            "track_time": {
-                "name": "Track time"
-            },
-            "current_season": {
-                "name": "Current season"
-            },
-            "driver_standings": {
-                "name": "Driver standings"
-            },
-            "constructor_standings": {
-                "name": "Constructor standings"
-            },
-            "weather": {
-                "name": "Weather"
-            },
-            "track_weather": {
-                "name": "Track weather"
-            },
-            "current_session": {
-                "name": "Current session"
-            },
-            "last_race_results": {
-                "name": "Last race results"
-            },
-            "season_results": {
-                "name": "Season results"
-            },
-            "sprint_results": {
-                "name": "Sprint results"
-            },
-            "race_control": {
-                "name": "Race control"
-            },
-            "safety_car": {
-                "name": "Safety car"
-            },
-            "top_three_p1": {
-                "name": "Top three (P1)"
-            },
-            "top_three_p2": {
-                "name": "Top three (P2)"
-            },
-            "top_three_p3": {
-                "name": "Top three (P3)"
-            },
-            "pitstops": {
-                "name": "Pit stops"
-            },
-            "championship_prediction_drivers": {
-                "name": "Championship prediction (drivers)"
-            },
-            "championship_prediction_teams": {
-                "name": "Championship prediction (teams)"
-            },
-            "fia_documents": {
-                "name": "FIA decisions"
-            },
-            "live_timing_mode": {
-                "name": "Live timing mode"
-            },
-            "driver_positions": {
-                "name": "Driver positions"
-            },
-            "track_limits": {
-                "name": "Track limits"
-            },
-            "investigations": {
-                "name": "Investigations & penalties"
-            },
-            "straight_mode": {
-                "name": "Straight mode",
-                "state": {
-                    "normal_grip": "Normal grip",
-                    "low_grip": "Low grip",
-                    "disabled": "Disabled"
-                }
-            },
-            "track_status": {
-                "name": "Track status"
-            },
-            "session_status": {
-                "name": "Session status"
-            },
-            "session_time_remaining": {
-                "name": "Session time remaining"
-            },
-            "session_time_elapsed": {
-                "name": "Session time elapsed"
-            },
-            "race_time_to_three_hour_limit": {
-                "name": "Time to 3-hour limit"
-            },
-            "driver_list": {
-                "name": "Driver list"
-            },
-            "current_tyres": {
-                "name": "Current tyres"
-            },
-            "tyre_statistics": {
-                "name": "Tyre statistics"
-            },
-            "team_radio": {
-                "name": "Team radio"
-            },
-            "race_lap_count": {
-                "name": "Race lap count"
-            },
-            "driver_points_progression": {
-                "name": "Driver points progression"
-            },
-            "constructor_points_progression": {
-                "name": "Constructor points progression"
-            },
-            "replay_status": {
-                "name": "Replay status"
-            }
-        },
-        "button": {
-            "delay_calibration_match": {
-                "name": "Match live delay"
-            },
-            "replay_load": {
-                "name": "Load session"
-            },
-            "replay_play": {
-                "name": "Play"
-            },
-            "replay_pause": {
-                "name": "Pause"
-            },
-            "replay_stop": {
-                "name": "Stop"
-            },
-            "replay_refresh": {
-                "name": "Refresh sessions"
-            },
-            "jolpica_ua_test": {
-                "name": "Jolpica user-agent test"
-            }
-        },
-        "switch": {
-            "delay_calibration": {
-                "name": "Delay calibration"
-            }
-        },
-        "number": {
-            "live_delay": {
-                "name": "Live delay"
-            }
-        },
-        "media_player": {
-            "replay_player": {
-                "name": "Replay player"
-            }
-        },
-        "select": {
-            "live_delay_reference": {
-                "name": "Live delay reference"
-            },
-            "replay_year": {
-                "name": "Replay year"
-            },
-            "replay_session": {
-                "name": "Replay session"
-            },
-            "replay_start_reference": {
-                "name": "Replay start reference"
-            }
-        },
-        "binary_sensor": {
-            "race_week": {
-                "name": "Race week"
-            },
-            "live_timing_online": {
-                "name": "Live timing online"
-            },
-            "formation_start": {
-                "name": "Formation start"
-            },
-            "overtake_mode": {
-                "name": "Overtake mode"
-            }
-        },
-        "calendar": {
-            "season_calendar": {
-                "name": "Season calendar"
-            }
-        }
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Race week has started",
+      "race_week_ended": "Race week has ended",
+      "safety_car_deployed": "Safety car deployed",
+      "safety_car_cleared": "Safety car cleared",
+      "formation_start_ready": "Formation start ready",
+      "overtake_mode_enabled": "Overtake mode enabled",
+      "overtake_mode_disabled": "Overtake mode disabled",
+      "session_live": "Session went live",
+      "track_status_clear": "Track status: Clear",
+      "track_status_yellow": "Track status: Yellow flag",
+      "track_status_safety_car": "Track status: Safety car",
+      "track_status_vsc": "Track status: Virtual safety car",
+      "track_status_red_flag": "Track status: Red flag",
+      "new_race_control_message": "New race control message",
+      "new_fia_document": "New FIA document published",
+      "investigation_changed": "Investigation status changed",
+      "new_team_radio": "New team radio message",
+      "live_timing_online": "Live timing came online",
+      "live_timing_offline": "Live timing went offline"
     }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "F1 Sensor setup",
+        "data": {
+          "sensor_name": "Device name",
+          "enabled_sensors": "Enabled sensors",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path",
+          "enable_race_control": "Enable live F1 API (Race Control/Track/Session)",
+          "race_week_start_day": "First day of race week"
+        },
+        "data_description": {
+          "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
+          "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
+          "enable_race_control": "Connects to Formula 1 Live Timing via SignalR to receive live updates. If disabled, these live sensors are not created.",
+          "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure F1 Sensor",
+        "data": {
+          "sensor_name": "Device name",
+          "enabled_sensors": "Enabled sensors",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path",
+          "enable_race_control": "Enable live F1 API",
+          "race_week_start_day": "First day of race week"
+        },
+        "data_description": {
+          "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
+          "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
+          "enable_race_control": "Connects to Formula 1 Live Timing to receive live updates. If disabled, these live sensors are not created.",
+          "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday."
+        }
+      }
+    },
+    "abort": {
+      "reconfigure_successful": "F1 Sensor was successfully reconfigured."
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_race": {
+        "name": "Next race"
+      },
+      "track_time": {
+        "name": "Track time"
+      },
+      "current_season": {
+        "name": "Current season"
+      },
+      "driver_standings": {
+        "name": "Driver standings"
+      },
+      "constructor_standings": {
+        "name": "Constructor standings"
+      },
+      "weather": {
+        "name": "Weather"
+      },
+      "track_weather": {
+        "name": "Track weather"
+      },
+      "current_session": {
+        "name": "Current session"
+      },
+      "last_race_results": {
+        "name": "Last race results"
+      },
+      "season_results": {
+        "name": "Season results"
+      },
+      "sprint_results": {
+        "name": "Sprint results"
+      },
+      "race_control": {
+        "name": "Race control"
+      },
+      "top_three_p1": {
+        "name": "Top three (P1)"
+      },
+      "top_three_p2": {
+        "name": "Top three (P2)"
+      },
+      "top_three_p3": {
+        "name": "Top three (P3)"
+      },
+      "pitstops": {
+        "name": "Pit stops"
+      },
+      "championship_prediction_drivers": {
+        "name": "Championship prediction (drivers)"
+      },
+      "championship_prediction_teams": {
+        "name": "Championship prediction (teams)"
+      },
+      "fia_documents": {
+        "name": "FIA decisions"
+      },
+      "live_timing_mode": {
+        "name": "Live timing mode"
+      },
+      "driver_positions": {
+        "name": "Driver positions"
+      },
+      "track_limits": {
+        "name": "Track limits"
+      },
+      "investigations": {
+        "name": "Investigations & penalties"
+      },
+      "straight_mode": {
+        "name": "Straight mode",
+        "state": {
+          "normal_grip": "Normal grip",
+          "low_grip": "Low grip",
+          "disabled": "Disabled"
+        }
+      },
+      "track_status": {
+        "name": "Track status"
+      },
+      "session_status": {
+        "name": "Session status"
+      },
+      "session_time_remaining": {
+        "name": "Session time remaining"
+      },
+      "session_time_elapsed": {
+        "name": "Session time elapsed"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "Time to 3-hour limit"
+      },
+      "driver_list": {
+        "name": "Driver list"
+      },
+      "current_tyres": {
+        "name": "Current tyres"
+      },
+      "tyre_statistics": {
+        "name": "Tyre statistics"
+      },
+      "team_radio": {
+        "name": "Team radio"
+      },
+      "race_lap_count": {
+        "name": "Race lap count"
+      },
+      "driver_points_progression": {
+        "name": "Driver points progression"
+      },
+      "constructor_points_progression": {
+        "name": "Constructor points progression"
+      },
+      "replay_status": {
+        "name": "Replay status"
+      }
+    },
+    "button": {
+      "delay_calibration_match": {
+        "name": "Match live delay"
+      },
+      "replay_load": {
+        "name": "Load session"
+      },
+      "replay_play": {
+        "name": "Play"
+      },
+      "replay_pause": {
+        "name": "Pause"
+      },
+      "replay_back_30": {
+        "name": "Back 30 seconds"
+      },
+      "replay_forward_30": {
+        "name": "Forward 30 seconds"
+      },
+      "replay_stop": {
+        "name": "Stop"
+      },
+      "replay_refresh": {
+        "name": "Refresh sessions"
+      },
+      "jolpica_ua_test": {
+        "name": "Jolpica user-agent test"
+      }
+    },
+    "switch": {
+      "delay_calibration": {
+        "name": "Delay calibration"
+      },
+      "no_spoiler_mode": {
+        "name": "No Spoiler Mode"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "Live delay"
+      }
+    },
+    "media_player": {
+      "replay_player": {
+        "name": "Replay player"
+      }
+    },
+    "select": {
+      "live_delay_reference": {
+        "name": "Live delay reference"
+      },
+      "replay_year": {
+        "name": "Replay year"
+      },
+      "replay_session": {
+        "name": "Replay session"
+      },
+      "replay_start_reference": {
+        "name": "Replay start reference"
+      }
+    },
+    "binary_sensor": {
+      "race_week": {
+        "name": "Race week"
+      },
+      "live_timing_online": {
+        "name": "Live timing online"
+      },
+      "safety_car": {
+        "name": "Safety car"
+      },
+      "formation_start": {
+        "name": "Formation start"
+      },
+      "overtake_mode": {
+        "name": "Overtake mode"
+      }
+    },
+    "calendar": {
+      "season_calendar": {
+        "name": "Season calendar"
+      }
+    }
+  }
 }

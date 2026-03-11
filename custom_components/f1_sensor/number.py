@@ -11,7 +11,7 @@ from homeassistant.helpers.entity import EntityCategory
 
 from .calibration import LiveDelayCalibrationManager
 from .const import DOMAIN
-from .entity import F1AuxEntity
+from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
 from .live_delay import LiveDelayController
 
 
@@ -34,6 +34,7 @@ async def async_setup_entry(
         entry_id=entry.entry_id,
         device_name=entry.data.get("sensor_name", "F1"),
     )
+    set_suggested_object_id(entity, default_object_id("live_delay"))
     async_add_entities([entity])
 
 
