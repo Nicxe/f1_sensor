@@ -1,0 +1,19 @@
+name: Refresh Context7 docs
+
+on:
+  workflow_run:
+    workflows: ["Deploy Docusaurus to GitHub Pages"]
+    types: [completed]
+
+jobs:
+  refresh:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Context7 re-index
+        run: |
+          curl -s -X POST https://context7.com/api/v1/refresh \
+            -H "Authorization: Bearer ${{ secrets.CONTEXT7_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"libraryName": "/websites/nicxe_github_io_f1_sensor"}' \
+            --fail-with-body

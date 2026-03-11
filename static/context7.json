@@ -1,0 +1,8 @@
+{
+  "url": "https://context7.com/websites/nicxe_github_io_f1_sensor",
+  "public_key": "pk_3AJoxtjYa3FqEusglqKIK",
+  "projectTitle": "F1 Sensor",
+  "description": "Home Assistant custom integration that provides Formula 1 race data as sensors. Includes next race info, session schedules, live race flags, race control messages, driver standings, constructor standings, and full season calendar.",
+  "folders": ["docs"],
+  "rules": "Focus on sensor entity IDs, state values, and attributes. Prioritize YAML examples for Home Assistant automations and scripts. Use exact entity names and attribute keys as documented."
+}

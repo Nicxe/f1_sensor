@@ -15,7 +15,9 @@ For notifications to arrive at the right moment, configure the [Live Delay](/fea
 
 ---
 
+
 ## Import the Blueprint
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FNicxe%2Ff1_sensor%2Fblob%2Fmain%2Fblueprints%2Ff1_race_control_notifications.yaml)
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNicxe%2Ff1_sensor%2Fmain%2Fblueprints%2Ff1_race_control_notifications.yaml)
 
@@ -24,7 +26,6 @@ Or go to **Settings > Automations & Scenes > Blueprints** and import manually us
 ```
 https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_race_control_notifications.yaml
 ```
-
 ---
 
 ## Requirements
@@ -82,9 +83,14 @@ All filters are optional and collapsed by default. Leave them empty to receive e
 | Setting | Description |
 | --- | --- |
 | **Allowed Flags** | Only notify for specific flag types. Leave empty to allow all flags |
+| **Filter Out Blue Flags** | Skip notifications for `BLUE` flag messages. Useful if waved blue flags create too much noise |
 | **Allowed Categories** | Comma or semicolon-separated category names. Leave empty to allow all categories |
 | **Include Keywords** | Only notify when the message contains at least one of these words |
 | **Exclude Keywords** | Skip notifications when the message contains any of these words |
+
+:::info
+**Filter Out Blue Flags** is applied before the regular flag allow-list. If you enable it, blue flag messages are suppressed even when `BLUE` is included in **Allowed Flags**.
+:::
 
 **Available flag values:**
 
@@ -200,6 +206,12 @@ Enable **Require Active Session Phase** and set **Active Session Phases** to `li
 ### Exclude administrative messages
 
 Set **Exclude Keywords** to `clerk, official, document` to filter out FIA document references.
+
+---
+
+### Silence blue flag spam
+
+Enable **Filter Out Blue Flags** if you want to keep Race Control notifications for incidents, penalties, and safety car events without receiving repeated waved blue flag messages late in the race.
 
 ---
 
