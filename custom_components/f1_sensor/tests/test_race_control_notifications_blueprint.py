@@ -10,8 +10,6 @@ import pytest
 BLUEPRINT_SOURCE = (
     Path(__file__).resolve().parents[3]
     / "blueprints"
-    / "automation"
-    / "homeassistant"
     / "f1_race_control_notifications.yaml"
 )
 BLUEPRINT_DEST = Path(
