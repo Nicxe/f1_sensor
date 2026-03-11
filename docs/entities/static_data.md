@@ -5,6 +5,11 @@ title: Static Data
 
 Information that rarely changes, such as schedules, drivers, circuits, and championship standings.
 
+:::info Entity IDs vs display names
+This page documents the standard `entity_id` for each entity, for example `sensor.f1_next_race`.
+
+Display names can be translated in Home Assistant, and older installations may already have a different registry ID. When you look up an entity in Home Assistant, use the documented `entity_id` or search for the `f1_` suffix instead of relying on the display name alone.
+:::
 
 ## Entities Summary
 
@@ -23,7 +28,7 @@ Information that rarely changes, such as schedules, drivers, circuits, and champ
 | [binary_sensor.f1_race_week](#race-week)                                          | `on` during race week                             | 
 | [sensor.f1_sprint_results](#sprint-results)                                       | Sprint classification results |
 | [sensor.f1_fia_documents](#fia-decision-documents)                                | FIA decisions and documents for the current weekend |
-| [calendar.f1_race_season_calendar](#season-calendar)                              | Full season calendar with all sessions              |
+| [calendar.f1_season_calendar](#season-calendar)                                   | Full season calendar with all sessions              |
 
 
 ::::info
@@ -914,7 +919,7 @@ The sensor maintains a history of up to 100 documents internally. When a new rac
 
 ## Season Calendar
 
-`calendar.f1_race_season_calendar` - Native Home Assistant calendar showing every session of the current Formula 1 season.
+`calendar.f1_season_calendar` - Native Home Assistant calendar showing every session of the current Formula 1 season.
 
 The calendar appears in the Home Assistant calendar panel and shows each session as a separate event: Practice 1, Practice 2, Practice 3, Qualifying, Sprint Qualifying, Sprint, and Race. On sprint weekends, Practice 3 is replaced by Sprint Qualifying and Sprint.
 
@@ -957,7 +962,7 @@ description: Notify before any F1 session begins
 trigger:
   - platform: calendar
     event: start
-    entity_id: calendar.f1_season
+    entity_id: calendar.f1_season_calendar
     offset: "-00:30:00"
 action:
   - service: notify.persistent_notification
@@ -970,4 +975,3 @@ mode: single
 ::::tip
 The calendar entity complements `sensor.f1_current_season`. Use the sensor when you need race data in templates and attributes. Use the calendar when you want a visual schedule or calendar-based automations.
 ::::
-

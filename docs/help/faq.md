@@ -62,7 +62,20 @@ Replay Mode now also includes experimental 30-second catch-up controls in Versio
 
 This catch-up feature is still experimental, so more refinement may be needed as development continues.
 
+If you want to avoid spoilers before watching, turn on [**No Spoiler Mode**](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode and experience everything as if it were live.
+
 See the [Replay Mode documentation](/features/replay-mode) for setup instructions.
+</details>
+
+
+<details>
+<summary>How do I keep my dashboard spoiler-free until I can watch?</summary>
+
+Turn on [**No Spoiler Mode**](/features/no-spoiler-mode) before the session starts. The integration freezes all spoiler-sensitive entities (results, live timing, standings, race control messages) while keeping schedule and calendar data up to date.
+
+When you are ready, load the session in [**Replay Mode**](/features/replay-mode) and press play when the broadcast starts. When you are done, turn No Spoiler Mode off and everything updates at once.
+
+See the [No Spoiler Mode documentation](/features/no-spoiler-mode) for full details.
 </details>
 
 
@@ -71,10 +84,19 @@ See the [Replay Mode documentation](/features/replay-mode) for setup instruction
 
 The integration provides multiple ways to adjust the live delay:
 
-1. **Direct adjustment**: Change `number.f1_system_live_delay` to set the delay in seconds
-2. **Guided calibration**: Use the built-in calibration workflow with `switch.f1_system_delay_calibration`
+1. **Direct adjustment**: Change `number.f1_live_delay` to set the delay in seconds
+2. **Guided calibration**: Use the built-in calibration workflow with `switch.f1_delay_calibration`
 
 For detailed instructions including automatic calibration during a live session, see [**Live Delay**](/features/live-delay).
+</details>
+
+
+<details>
+<summary>Why does the documentation say one entity name, but Home Assistant shows another?</summary>
+
+The documentation always uses the standard `entity_id`, for example `sensor.f1_track_status` or `binary_sensor.f1_safety_car`. That is the stable reference used in examples, templates, blueprints, and automations.
+
+The display name shown in Home Assistant can be translated, and older installations may already have a different registry ID. If you cannot find an entity by display name, open the entity list and search for the documented `entity_id` or the `f1_` suffix instead. If you already have a working entity with a different registry ID from an older release, keep using that existing ID.
 </details>
 
 
@@ -98,7 +120,7 @@ For example automations, check the [Automation](/automation) page.
 
 As of version 2.2.0, there is a sensor for this. The integration provides `sensor.f1_current_session` which indicates the name of the session that is currently running. 
 
-For example, it will show values like “Practice 1”, “Qualifying”, “Sprint Shootout”, or “Race” when those sessions are in progress. This complements the `f1_session_session_status` sensor (which shows the state like pre/live/finished) by telling you exactly which session is active. 
+For example, it will show values like “Practice 1”, “Qualifying”, “Sprint Shootout”, or “Race” when those sessions are in progress. This complements the `sensor.f1_session_status` sensor (which shows the state like pre/live/finished) by telling you exactly which session is active. 
 
 This is useful for automations or dashboards that need to behave differently for practice vs. race, etc.
 </details>
@@ -121,14 +143,14 @@ Additionally, `binary_sensor.f1_safety_car` turns on whenever a Safety Car or Vi
 <details>
 <summary>Can F1 Sensor show live driver positions or lap times like a Formula 1 timing tower?</summary>
 
-Not at the moment. The integration focuses on key session data (session status, flags, laps, standings, etc.) rather than real-time timing for every driver. Live driver position tracking (essentially the running order with continuous updates) is quite complex and is not currently implemented. The developer has explored it, but handling that much real-time data reliably is challenging, so there’s no guarantee it will be added. Future updates may introduce more live data features (the roadmap includes ideas like enhanced live timing), but as of now there is no sensor for constantly updating driver positions during a session.
+Yes. The `sensor.f1_driver_positions` sensor provides live driver positions, lap times, sector times, pit status, and more during an active session. There are also dedicated `sensor.f1_top_three_p1`, `sensor.f1_top_three_p2`, and `sensor.f1_top_three_p3` sensors for the current top three positions, and `sensor.f1_current_tyres` for each driver’s current tyre compound. See [Driver Positions](/entities/live-data#driver-positions) for full details.
 </details>
 
 
 <details>
 <summary>How can I display “Lap X of Y” for the current race?</summary>
 
-The integration provides the current lap number as `sensor.f1_race_lap_count` during an active race. To get the total number of laps, use the sensor’s attributes. The `f1_session_race_lap_count` sensor has an attribute named `total_laps` that represents the total laps scheduled for the race. 
+The integration provides the current lap number as `sensor.f1_race_lap_count` during an active race. To get the total number of laps, use the sensor’s attributes. The `sensor.f1_race_lap_count` sensor has an attribute named `total_laps` that represents the total laps scheduled for the race. 
 
 For example, if the sensor state is `12` and the `total_laps` attribute is `56`, you can construct a template or use a custom card to show “Lap 12 of 56.” 
 

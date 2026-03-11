@@ -50,7 +50,7 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_replay_sync
 | Setting | Description |
 | --- | --- |
 | **Main TV** | The media player you are watching the F1 replay on. Any media player entity works — Apple TV, smart TV, or similar |
-| **F1 Replay Player** | The `media_player.f1_system_replay_player` entity from the F1 Sensor integration |
+| **F1 Replay Player** | The standard `media_player.f1_replay_player` entity from the F1 Sensor integration. If you upgraded from an older release and already have a different registry ID, select your existing replay player entity instead |
 
 ---
 
