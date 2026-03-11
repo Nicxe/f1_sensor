@@ -17,6 +17,12 @@ This gives you control over which data points to load, for example, only the nex
 You can always change this selection later by reconfiguring the integration via Settings > Devices & Services in Home Assistant.
 ::::
 
+:::info Finding entities after setup
+This documentation always refers to the standard `entity_id`, for example `sensor.f1_track_status` or `binary_sensor.f1_safety_car`.
+
+Display names in Home Assistant can be localized, and older installations may already have different registry IDs. When you search in Home Assistant, search for the `f1_` suffix or check the entity’s `entity_id` in the entity settings instead of relying on the display name alone.
+:::
+
 
 ### Manual Configuration
 

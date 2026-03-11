@@ -5,6 +5,11 @@ title: Live Data
 
 By enabling [live data](/getting-started/add-integration) when configuring the F1 Sensor, Home Assistant can react to live data from an ongoing session such as practice, qualifying, or race. These entities update shortly before, during, and shortly after a session. Outside session times, they become **unavailable**. The only exception is the Driver List sensor, which retains its last known state to support dashboard graphics even between sessions.
 
+:::info Entity IDs vs display names
+This page documents the standard `entity_id` for each entity, for example `sensor.f1_track_status`.
+
+Display names in Home Assistant can be localized, and older installations may already use different registry IDs. If you cannot find an entity by name, search for the documented `entity_id` or for the `f1_` suffix in the entity list.
+:::
 
 :::info F1 Live Timing API
 The data for these entities comes from the F1 Live Timing API, which is unofficial. There is no known official documentation, and the API may change without prior notice.

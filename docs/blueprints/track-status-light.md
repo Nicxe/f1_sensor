@@ -48,6 +48,12 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_track_statu
 
 Link the blueprint to the correct F1 Sensor entities.
 
+:::info Finding the right entities
+Use the standard `entity_id` from the docs when you search, for example `sensor.f1_track_status`, `sensor.f1_session_status`, and `sensor.f1_current_session`.
+
+Display names may be translated in Home Assistant. If you upgraded from an older release and already have a different registry ID, keep selecting your existing entity instead of trying to rename it to match the docs.
+:::
+
 | Setting | Description |
 | --- | --- |
 | **Session Status Sensor** | Select the `*_session_status` sensor. This determines when the automation is active |

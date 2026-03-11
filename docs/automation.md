@@ -13,6 +13,12 @@ For automations to match what you see on screen, configure the [Live Delay](/fea
 Looking for an easy starting point? The [Blueprints](/blueprints/track-status-light) section has ready-made automations for light control and race control notifications — no YAML required.
 :::
 
+:::info Use entity IDs from this page
+All examples below use the standard `entity_id`, such as `sensor.f1_session_status` and `binary_sensor.f1_safety_car`.
+
+If your Home Assistant UI shows translated display names, search for the documented `entity_id` or the `f1_` suffix in the entity picker. If you upgraded from an older release and already have a different registry ID, keep using your existing entity.
+:::
+
 ---
 
 ## Device Automation Triggers
@@ -107,7 +113,7 @@ description: Send a reminder 30 minutes before any F1 session
 trigger:
   - platform: calendar
     event: start
-    entity_id: calendar.f1_race_season_calendar
+    entity_id: calendar.f1_season_calendar
     offset: "-0:30:0"
 condition: []
 action:
