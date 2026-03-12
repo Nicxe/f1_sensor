@@ -14,13 +14,18 @@ import time
 from typing import Any
 from urllib.parse import urljoin
 
+from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_COMPONENT_LOADED
-from homeassistant.core import HomeAssistant, callback as ha_callback
+from homeassistant.core import HomeAssistant, ServiceCall, callback as ha_callback
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
+import voluptuous as vol
 
 from .calibration import LiveDelayCalibrationManager
 from .const import (
@@ -100,6 +105,20 @@ _ACTIVITY_FILTER_MARKER = "__f1_sensor_activity_filter__"
 _ACTIVITY_FILTER_REBIND_MARKER = "__f1_sensor_activity_filter_rebound__"
 _ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER = "__f1_sensor_activity_logbook_subscribe__"
 _ACTIVITY_FILTER_COMPONENTS = frozenset({"recorder", "logbook"})
+_RC_LOG_SERVICE_MARKER = "__race_control_log_service_registered__"
+_RC_LOG_WS_MARKER = "__race_control_log_ws_registered__"
+_RC_LOG_SERVICE = "clear_race_control_log"
+_RC_LOG_STORE_KEY = "race_control_log_store"
+_RC_LOG_EVENT = f"{DOMAIN}_race_control_event"
+_RC_LOG_RESET_EVENT = f"{DOMAIN}_race_control_log_reset_event"
+_RC_LOG_WS_TYPE = f"{DOMAIN}/race_control_log/get"
+_DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
+    {
+        _JOLPICA_STATS_KEY,
+        _RC_LOG_SERVICE_MARKER,
+        _RC_LOG_WS_MARKER,
+    }
+)
 
 
 def _is_replay_delay_reason(reason: str | None) -> bool:
@@ -242,6 +261,423 @@ def _apply_activity_log_filter_excludes(hass: HomeAssistant) -> None:
         if callable(wrapped_subscribe):
             logbook_helpers.async_subscribe_events = wrapped_subscribe
             logbook_websocket_api.async_subscribe_events = wrapped_subscribe
+
+
+def _rc_cleanup_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _normalize_race_control_timestamp(value: Any) -> str | None:
+    text = _rc_cleanup_string(value)
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC).isoformat(timespec="seconds")
+    except Exception:
+        return text
+
+
+def _format_race_control_state(payload: dict[str, Any]) -> str:
+    message = _rc_cleanup_string(payload.get("Message") or payload.get("Text"))
+    if message:
+        return message[:255]
+    flag = _rc_cleanup_string(payload.get("Flag"))
+    category = _rc_cleanup_string(
+        payload.get("Category") or payload.get("CategoryType")
+    )
+    scope = _rc_cleanup_string(payload.get("Scope"))
+    sector = _rc_cleanup_string(payload.get("Sector"))
+    parts = [part for part in (flag, category, scope, sector) if part]
+    return " - ".join(parts) if parts else "Race control update"
+
+
+def _normalize_race_control_log_item(
+    payload: dict[str, Any],
+    *,
+    received_at: str | None = None,
+    sequence: int | None = None,
+) -> dict[str, Any]:
+    utc = _normalize_race_control_timestamp(
+        payload.get("Utc")
+        or payload.get("utc")
+        or payload.get("processedAt")
+        or payload.get("timestamp")
+    )
+    category = _rc_cleanup_string(
+        payload.get("Category") or payload.get("CategoryType")
+    )
+    flag = _rc_cleanup_string(payload.get("Flag"))
+    scope = _rc_cleanup_string(payload.get("Scope"))
+    sector = _rc_cleanup_string(payload.get("Sector") or payload.get("TrackSegment"))
+    car_number = _rc_cleanup_string(
+        payload.get("CarNumber")
+        or payload.get("Number")
+        or payload.get("Car")
+        or payload.get("Driver")
+    )
+    message = _rc_cleanup_string(payload.get("Message") or payload.get("Text"))
+    event_id = RaceControlCoordinator._message_id(payload)
+    item = {
+        "event_id": event_id,
+        "utc": utc,
+        "received_at": received_at or dt_util.utcnow().isoformat(timespec="seconds"),
+        "category": category,
+        "flag": flag,
+        "scope": scope,
+        "sector": sector,
+        "car_number": car_number,
+        "message": message or _format_race_control_state(payload),
+        "sequence": sequence,
+    }
+    return item
+
+
+def _resolve_race_control_session_label(info: dict[str, Any]) -> str | None:
+    session_type = str(info.get("Type") or "").strip()
+    session_name = str(info.get("Name") or "").strip()
+    try:
+        number = int(info.get("Number")) if info.get("Number") is not None else None
+    except Exception:
+        number = None
+
+    if session_type == "Practice":
+        return f"Practice {number}" if number else (session_name or "Practice")
+    if session_type == "Qualifying":
+        lowered = session_name.lower()
+        if lowered.startswith("sprint qualifying") or lowered.startswith(
+            "sprint shootout"
+        ):
+            return "Sprint Qualifying"
+        return "Qualifying"
+    if session_type == "Race":
+        lowered = session_name.lower()
+        if lowered.startswith("sprint qualifying") or lowered.startswith(
+            "sprint shootout"
+        ):
+            return "Sprint Qualifying"
+        if lowered.startswith("sprint"):
+            return "Sprint"
+        return session_name or "Race"
+    return session_name or session_type or None
+
+
+def _race_control_entity_id_for_entry(hass: HomeAssistant, entry_id: str) -> str | None:
+    registry = er.async_get(hass)
+    return registry.async_get_entity_id("sensor", DOMAIN, f"{entry_id}_race_control")
+
+
+def _resolve_race_control_log_entry_id(
+    hass: HomeAssistant, entity_id: str
+) -> str | None:
+    registry = er.async_get(hass)
+    entry = registry.async_get(entity_id)
+    if entry is None or entry.platform != DOMAIN:
+        return None
+    if entry.unique_id != f"{entry.config_entry_id}_race_control":
+        return None
+    return entry.config_entry_id
+
+
+class RaceControlLogStore:
+    """Persist the full Race Control history for the active or latest session."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry_id: str,
+        *,
+        session_info_coordinator: DataUpdateCoordinator | None = None,
+        session_status_coordinator: DataUpdateCoordinator | None = None,
+        storage_version: int = 1,
+    ) -> None:
+        self._hass = hass
+        self._entry_id = entry_id
+        self._session_info_coordinator = session_info_coordinator
+        self._session_status_coordinator = session_status_coordinator
+        self._store = Store(
+            hass,
+            storage_version,
+            f"{DOMAIN}_{entry_id}_race_control_log_v{storage_version}",
+        )
+        self._session_key: str | None = None
+        self._items: list[dict[str, Any]] = []
+        self._event_ids: set[str] = set()
+        self._next_sequence = 1
+        self._listeners: list[Callable[[], None]] = []
+        self._save_task: asyncio.Task | None = None
+        self._loaded = False
+
+    async def async_initialize(self) -> None:
+        stored = await self._store.async_load()
+        if isinstance(stored, dict):
+            self._session_key = _rc_cleanup_string(stored.get("session_key"))
+            raw_items = stored.get("items")
+            if isinstance(raw_items, list):
+                self._items = [
+                    dict(item) for item in raw_items if isinstance(item, dict)
+                ]
+            self._event_ids = {
+                str(item.get("event_id"))
+                for item in self._items
+                if item.get("event_id")
+            }
+            last_sequence = 0
+            for item in self._items:
+                try:
+                    last_sequence = max(last_sequence, int(item.get("sequence") or 0))
+                except Exception:
+                    continue
+            self._next_sequence = (
+                last_sequence + 1 if last_sequence > 0 else len(self._items) + 1
+            )
+        self._loaded = True
+        if self._session_info_coordinator is not None:
+            self._listeners.append(
+                self._session_info_coordinator.async_add_listener(
+                    self._handle_session_context_update
+                )
+            )
+        if self._session_status_coordinator is not None:
+            self._listeners.append(
+                self._session_status_coordinator.async_add_listener(
+                    self._handle_session_context_update
+                )
+            )
+        self._sync_session_context(fire_reset=False)
+
+    async def async_close(self) -> None:
+        while self._listeners:
+            unsub = self._listeners.pop()
+            with suppress(Exception):
+                unsub()
+        if self._save_task and not self._save_task.done():
+            self._save_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._save_task
+        self._save_task = None
+
+    @property
+    def session_key(self) -> str | None:
+        return self._session_key
+
+    def get_items(self) -> list[dict[str, Any]]:
+        return [dict(item) for item in reversed(self._items)]
+
+    def append(
+        self, payload: dict[str, Any], *, received_at: str | None = None
+    ) -> dict[str, Any] | None:
+        if not isinstance(payload, dict):
+            return None
+        self._sync_session_context(force=True)
+        item = _normalize_race_control_log_item(
+            payload,
+            received_at=received_at,
+            sequence=self._next_sequence,
+        )
+        event_id = item.get("event_id")
+        if event_id and event_id in self._event_ids:
+            return None
+        self._items.append(item)
+        if event_id:
+            self._event_ids.add(str(event_id))
+        self._next_sequence += 1
+        self._schedule_save()
+        return dict(item)
+
+    async def async_clear(self, *, reason: str = "manual") -> None:
+        self._clear(reason=reason)
+
+    def clear_for_source_stop(self, *, reason: str | None = None) -> None:
+        """Clear saved history when the active source goes unavailable."""
+        clear_reason = _rc_cleanup_string(reason) or "source_unavailable"
+        if clear_reason == "init":
+            return
+        self._clear(reason=clear_reason)
+
+    def _clear(self, *, reason: str, fire_event: bool = True) -> None:
+        had_items = bool(self._items)
+        self._items = []
+        self._event_ids = set()
+        self._next_sequence = 1
+        self._schedule_save()
+        if fire_event and (had_items or reason == "session_change"):
+            self._fire_reset_event(reason)
+
+    def _schedule_save(self) -> None:
+        if not self._loaded:
+            return
+        if self._save_task and not self._save_task.done():
+            self._save_task.cancel()
+            self._save_task = None
+
+        async def _save() -> None:
+            try:
+                await self._store.async_save(
+                    {
+                        "session_key": self._session_key,
+                        "items": list(self._items),
+                    }
+                )
+            except Exception:
+                _LOGGER.debug("Failed to persist race control log", exc_info=True)
+
+        self._save_task = self._hass.async_create_task(_save())
+
+    def _handle_session_context_update(self) -> None:
+        self._sync_session_context(fire_reset=True)
+
+    def _sync_session_context(
+        self,
+        *,
+        fire_reset: bool = True,
+        force: bool = False,
+    ) -> None:
+        new_key = self._compute_session_key()
+        if not new_key:
+            return
+        if self._session_key is None:
+            self._session_key = new_key
+            self._schedule_save()
+            return
+        if new_key == self._session_key:
+            return
+        if not force and not self._is_session_active():
+            return
+        self._session_key = new_key
+        self._clear(
+            reason="session_change" if fire_reset else "init",
+            fire_event=fire_reset,
+        )
+
+    def _is_session_active(self) -> bool:
+        data = (
+            self._session_status_coordinator.data
+            if self._session_status_coordinator is not None
+            else None
+        )
+        if not isinstance(data, dict):
+            return False
+        status = str(data.get("Status") or data.get("Message") or "").strip()
+        started = data.get("Started")
+        if started is True:
+            return True
+        return status in {"Started", "Green", "GreenFlag", "Resumed"}
+
+    def _compute_session_key(self) -> str | None:
+        info = (
+            self._session_info_coordinator.data
+            if self._session_info_coordinator is not None
+            else None
+        )
+        if not isinstance(info, dict):
+            return None
+        meeting = info.get("Meeting") if isinstance(info.get("Meeting"), dict) else {}
+        label = _resolve_race_control_session_label(info)
+        meeting_key = meeting.get("Key")
+        start = info.get("StartDate")
+        if not (meeting_key or start or label):
+            return None
+        parts = [
+            str(meeting_key or "").strip(),
+            str(start or "").strip(),
+            str(label or "").strip(),
+        ]
+        return "|".join(parts)
+
+    def _fire_reset_event(self, reason: str) -> None:
+        try:
+            self._hass.bus.async_fire(
+                _RC_LOG_RESET_EVENT,
+                {
+                    "entry_id": self._entry_id,
+                    "entity_id": _race_control_entity_id_for_entry(
+                        self._hass,
+                        self._entry_id,
+                    ),
+                    "reason": reason,
+                    "session_key": self._session_key,
+                    "cleared_at": dt_util.utcnow().isoformat(timespec="seconds"),
+                },
+            )
+        except Exception:
+            _LOGGER.debug(
+                "Failed to publish race control log reset event", exc_info=True
+            )
+
+
+def _get_race_control_log_store_for_entity(
+    hass: HomeAssistant, entity_id: str
+) -> RaceControlLogStore | None:
+    entry_id = _resolve_race_control_log_entry_id(hass, entity_id)
+    if not entry_id:
+        return None
+    data = hass.data.get(DOMAIN, {}).get(entry_id, {}) or {}
+    store = data.get(_RC_LOG_STORE_KEY)
+    return store if isinstance(store, RaceControlLogStore) else None
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): _RC_LOG_WS_TYPE,
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_race_control_log(
+    hass: HomeAssistant,
+    connection: Any,
+    msg: dict[str, Any],
+) -> None:
+    entity_id = msg["entity_id"]
+    store = _get_race_control_log_store_for_entity(hass, entity_id)
+    if store is None:
+        connection.send_error(
+            msg["id"],
+            "not_found",
+            "Race Control log is not available for this entity",
+        )
+        return
+    connection.send_result(
+        msg["id"],
+        {
+            "entity_id": entity_id,
+            "session_key": store.session_key,
+            "items": store.get_items(),
+        },
+    )
+
+
+async def _async_handle_clear_race_control_log(
+    hass: HomeAssistant, call: ServiceCall
+) -> None:
+    entity_id = call.data["entity_id"]
+    store = _get_race_control_log_store_for_entity(hass, entity_id)
+    if store is None:
+        raise ServiceValidationError(
+            f"Race Control log is not available for {entity_id}"
+        )
+    await store.async_clear(reason="manual")
+
+
+def _async_register_race_control_log_interfaces(hass: HomeAssistant) -> None:
+    root = hass.data.setdefault(DOMAIN, {})
+    if not root.get(_RC_LOG_SERVICE_MARKER):
+        hass.services.async_register(
+            DOMAIN,
+            _RC_LOG_SERVICE,
+            partial(_async_handle_clear_race_control_log, hass),
+            schema=vol.Schema({vol.Required("entity_id"): cv.entity_id}),
+        )
+        root[_RC_LOG_SERVICE_MARKER] = True
+    if not root.get(_RC_LOG_WS_MARKER):
+        websocket_api.async_register_command(hass, _ws_get_race_control_log)
+        root[_RC_LOG_WS_MARKER] = True
 
 
 def _compute_session_fingerprint(index_payload: Any) -> str | None:
@@ -1092,6 +1528,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
+    race_control_log_store = None
     live_mode_coordinator = None
     top_three_coordinator = None
     hass.data[LATEST_TRACK_STATUS] = None
@@ -1180,6 +1617,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        race_control_log_store = RaceControlLogStore(
+            hass,
+            entry.entry_id,
+            session_info_coordinator=session_info_coordinator,
+            session_status_coordinator=session_status_coordinator,
+        )
+        await race_control_log_store.async_initialize()
         race_control_coordinator = RaceControlCoordinator(
             hass,
             session_coordinator,
@@ -1188,6 +1632,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             config_entry=entry,
             delay_controller=delay_controller,
             live_state=live_state,
+            log_store=race_control_log_store,
         )
         weather_data_coordinator = WeatherDataCoordinator(
             hass,
@@ -1358,6 +1803,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "session_info_coordinator": session_info_coordinator,
         "session_clock_coordinator": session_clock_coordinator,
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
+        _RC_LOG_STORE_KEY: race_control_log_store if enable_rc else None,
         "live_mode_coordinator": live_mode_coordinator if enable_rc else None,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
@@ -1397,6 +1843,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "activity_filter_unsub": None,
         "no_spoiler_unsub": None,
     }
+
+    if race_control_log_store is not None:
+        _async_register_race_control_log_interfaces(hass)
 
     _apply_activity_log_filter_excludes(hass)
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
@@ -1617,6 +2066,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
         live_state: LiveAvailabilityTracker | None = None,
+        log_store: RaceControlLogStore | None = None,
     ):
         super().__init__(
             hass,
@@ -1647,6 +2097,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             and config_entry.data.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
             == OPERATION_MODE_DEVELOPMENT
         )
+        self._log_store = log_store
         self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
@@ -1816,6 +2267,8 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         if not is_live:
             self._last_message = None
             self.data_list = []
+            if self._log_store is not None:
+                self._log_store.clear_for_source_stop(reason=reason)
             # Notify entities to clear their state
             self.async_set_updated_data(self._last_message)
         # In replay mode, disable the startup cutoff so historical messages are accepted
@@ -1829,10 +2282,14 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         if _is_no_spoiler_blocked(self):
             return
         self.available = True
+        received_at = dt_util.utcnow().isoformat(timespec="seconds")
         # Maintain last message for visibility and parity with other coordinators
         self._last_message = item
         self.data_list = [item]
         self.async_set_updated_data(item)
+        log_item = None
+        if self._log_store is not None:
+            log_item = self._log_store.append(item, received_at=received_at)
         if _LOGGER.isEnabledFor(logging.DEBUG):
             with suppress(Exception):
                 cat = item.get("Category") or item.get("CategoryType")
@@ -1850,10 +2307,28 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         # Publish on HA event bus with a consistent event name
         try:
             self.hass.bus.async_fire(
-                f"{DOMAIN}_race_control_event",
+                _RC_LOG_EVENT,
                 {
+                    "entry_id": self.config_entry.entry_id
+                    if self.config_entry
+                    else None,
+                    "entity_id": (
+                        _race_control_entity_id_for_entry(
+                            self.hass,
+                            self.config_entry.entry_id,
+                        )
+                        if self.config_entry is not None
+                        else None
+                    ),
                     "message": item,
-                    "received_at": dt_util.utcnow().isoformat(timespec="seconds"),
+                    "received_at": received_at,
+                    "event_id": self._message_id(item),
+                    "log_item": log_item,
+                    "session_key": (
+                        self._log_store.session_key
+                        if self._log_store is not None
+                        else None
+                    ),
                 },
             )
         except Exception:
@@ -4675,13 +5150,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         unregister_entry_name_settings(entry.entry_id)
         # If this was the last entry, remove dev-only stats reporter.
         if isinstance(data_root, dict):
-            # Keep only real entry dicts (exclude our global stats key)
+            # Keep only real entry dicts (exclude our domain-level markers)
             remaining_entries = [
                 k
                 for k in data_root.keys()
-                if isinstance(k, str) and k != _JOLPICA_STATS_KEY
+                if isinstance(k, str)
+                and k not in _DOMAIN_ROOT_INTERNAL_KEYS
+                and k != _NO_SPOILER_MANAGER_KEY
             ]
             if not remaining_entries:
+                if hass.services.has_service(DOMAIN, _RC_LOG_SERVICE):
+                    with suppress(Exception):
+                        hass.services.async_remove(DOMAIN, _RC_LOG_SERVICE)
+                data_root.pop(_RC_LOG_SERVICE_MARKER, None)
                 stats = data_root.get(_JOLPICA_STATS_KEY)
                 unsub = stats.get("unsub") if isinstance(stats, dict) else None
                 if callable(unsub):
@@ -6557,24 +7038,37 @@ class SessionClockCoordinator(DataUpdateCoordinator):
     def _schedule_deliver(self) -> None:
         self._deliver()
 
+    def _replay_controller_state(self) -> ReplayState | None:
+        """Return the current replay controller state when available."""
+        entry_id = getattr(getattr(self, "config_entry", None), "entry_id", None)
+        reg = (
+            self.hass.data.get(DOMAIN, {}).get(entry_id, {})
+            if entry_id is not None
+            else {}
+        )
+        replay_controller = reg.get("replay_controller")
+        with suppress(Exception):
+            if replay_controller is not None:
+                return replay_controller.state
+        return None
+
+    def _is_replay_temporarily_frozen(self) -> bool:
+        """Return True when replay should freeze the clock reference."""
+        return self._replay_controller_state() in (
+            ReplayState.PAUSED,
+            ReplayState.SEEKING,
+        )
+
+    def _is_replay_paused(self) -> bool:
+        """Return True when replay is explicitly paused."""
+        return self._replay_controller_state() == ReplayState.PAUSED
+
     def _server_now_utc(self) -> datetime:
-        if self._replay_mode:
-            entry_id = getattr(getattr(self, "config_entry", None), "entry_id", None)
-            reg = (
-                self.hass.data.get(DOMAIN, {}).get(entry_id, {})
-                if entry_id is not None
-                else {}
-            )
-            replay_controller = reg.get("replay_controller")
-            with suppress(Exception):
-                if replay_controller is not None and replay_controller.state in (
-                    ReplayState.PAUSED,
-                    ReplayState.SEEKING,
-                ):
-                    if isinstance(self._last_heartbeat_utc, datetime):
-                        return self._last_heartbeat_utc
-                    if isinstance(self._clock_anchor_utc, datetime):
-                        return self._clock_anchor_utc
+        if self._is_replay_temporarily_frozen():
+            if isinstance(self._last_heartbeat_utc, datetime):
+                return self._last_heartbeat_utc
+            if isinstance(self._clock_anchor_utc, datetime):
+                return self._clock_anchor_utc
         if (
             isinstance(self._last_heartbeat_utc, datetime)
             and self._last_heartbeat_mono is not None
@@ -6970,11 +7464,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             clock_elapsed = clock_elapsed_from_start
 
         terminal = self._status_is_terminal(status)
+        replay_paused = self._is_replay_paused()
         clock_running = bool(
             self._clock_anchor_extrapolating
             and clock_remaining is not None
             and clock_remaining > 0
             and not terminal
+            and not replay_paused
         )
         if terminal or (
             clock_remaining == 0 and status in {"Finished", "Finalised", "Ends"}
@@ -6985,13 +7481,16 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         elif (
             clock_remaining is not None
             and clock_remaining > 0
-            and status
-            in {
-                "Started",
-                "Resumed",
-                "Inactive",
-                "Aborted",
-            }
+            and (
+                replay_paused
+                or status
+                in {
+                    "Started",
+                    "Resumed",
+                    "Inactive",
+                    "Aborted",
+                }
+            )
         ):
             clock_phase = "paused"
         else:
@@ -7053,6 +7552,8 @@ class SessionClockCoordinator(DataUpdateCoordinator):
 
     def _should_tick(self, state: dict[str, Any]) -> bool:
         if not self.available:
+            return False
+        if self._is_replay_paused():
             return False
         if bool(state.get("clock_running")):
             return True
