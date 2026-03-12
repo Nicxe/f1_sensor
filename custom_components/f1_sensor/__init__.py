@@ -6557,24 +6557,37 @@ class SessionClockCoordinator(DataUpdateCoordinator):
     def _schedule_deliver(self) -> None:
         self._deliver()
 
+    def _replay_controller_state(self) -> ReplayState | None:
+        """Return the current replay controller state when available."""
+        entry_id = getattr(getattr(self, "config_entry", None), "entry_id", None)
+        reg = (
+            self.hass.data.get(DOMAIN, {}).get(entry_id, {})
+            if entry_id is not None
+            else {}
+        )
+        replay_controller = reg.get("replay_controller")
+        with suppress(Exception):
+            if replay_controller is not None:
+                return replay_controller.state
+        return None
+
+    def _is_replay_temporarily_frozen(self) -> bool:
+        """Return True when replay should freeze the clock reference."""
+        return self._replay_controller_state() in (
+            ReplayState.PAUSED,
+            ReplayState.SEEKING,
+        )
+
+    def _is_replay_paused(self) -> bool:
+        """Return True when replay is explicitly paused."""
+        return self._replay_controller_state() == ReplayState.PAUSED
+
     def _server_now_utc(self) -> datetime:
-        if self._replay_mode:
-            entry_id = getattr(getattr(self, "config_entry", None), "entry_id", None)
-            reg = (
-                self.hass.data.get(DOMAIN, {}).get(entry_id, {})
-                if entry_id is not None
-                else {}
-            )
-            replay_controller = reg.get("replay_controller")
-            with suppress(Exception):
-                if replay_controller is not None and replay_controller.state in (
-                    ReplayState.PAUSED,
-                    ReplayState.SEEKING,
-                ):
-                    if isinstance(self._last_heartbeat_utc, datetime):
-                        return self._last_heartbeat_utc
-                    if isinstance(self._clock_anchor_utc, datetime):
-                        return self._clock_anchor_utc
+        if self._is_replay_temporarily_frozen():
+            if isinstance(self._last_heartbeat_utc, datetime):
+                return self._last_heartbeat_utc
+            if isinstance(self._clock_anchor_utc, datetime):
+                return self._clock_anchor_utc
         if (
             isinstance(self._last_heartbeat_utc, datetime)
             and self._last_heartbeat_mono is not None
@@ -6970,11 +6983,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             clock_elapsed = clock_elapsed_from_start
 
         terminal = self._status_is_terminal(status)
+        replay_paused = self._is_replay_paused()
         clock_running = bool(
             self._clock_anchor_extrapolating
             and clock_remaining is not None
             and clock_remaining > 0
             and not terminal
+            and not replay_paused
         )
         if terminal or (
             clock_remaining == 0 and status in {"Finished", "Finalised", "Ends"}
@@ -6985,13 +7000,16 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         elif (
             clock_remaining is not None
             and clock_remaining > 0
-            and status
-            in {
-                "Started",
-                "Resumed",
-                "Inactive",
-                "Aborted",
-            }
+            and (
+                replay_paused
+                or status
+                in {
+                    "Started",
+                    "Resumed",
+                    "Inactive",
+                    "Aborted",
+                }
+            )
         ):
             clock_phase = "paused"
         else:
@@ -7053,6 +7071,8 @@ class SessionClockCoordinator(DataUpdateCoordinator):
 
     def _should_tick(self, state: dict[str, Any]) -> bool:
         if not self.available:
+            return False
+        if self._is_replay_paused():
             return False
         if bool(state.get("clock_running")):
             return True
