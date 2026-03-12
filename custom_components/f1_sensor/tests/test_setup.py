@@ -8,6 +8,12 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor import (
+    _NO_SPOILER_MANAGER_KEY,
+    _RC_LOG_RESET_EVENT,
+    _RC_LOG_SERVICE,
+    _RC_LOG_SERVICE_MARKER,
+    RaceControlCoordinator,
+    RaceControlLogStore,
     _is_activity_log_excluded_entity,
     _refresh_recorder_entity_filter,
     _wrap_activity_filter,
@@ -44,9 +50,24 @@ class FakeLiveBus:
 class DummyCoordinator:
     def __init__(self, *args, **kwargs) -> None:
         self.config_entry = kwargs.get("config_entry")
+        self.data = kwargs.get("data", {})
+        self._listeners = []
 
     async def async_config_entry_first_refresh(self) -> None:
         return None
+
+    def async_add_listener(self, update_callback):
+        self._listeners.append(update_callback)
+
+        def _unsubscribe() -> None:
+            if update_callback in self._listeners:
+                self._listeners.remove(update_callback)
+
+        return _unsubscribe
+
+    def trigger_update(self) -> None:
+        for listener in list(self._listeners):
+            listener()
 
 
 class FakeReplayController:
@@ -192,6 +213,154 @@ def test_logbook_subscribe_wrapper_filters_excluded_entities() -> None:
         SimpleNamespace(data={"entity_id": "sensor.f1_next_race"})
     )
     assert seen == ["called"]
+
+
+@pytest.mark.asyncio
+async def test_race_control_log_store_keeps_newest_first_and_resets(hass) -> None:
+    session_info = DummyCoordinator(
+        data={
+            "Meeting": {"Key": 1001},
+            "StartDate": "2026-03-12T14:00:00Z",
+            "Type": "Race",
+            "Name": "Grand Prix",
+        }
+    )
+    session_status = DummyCoordinator(data={"Status": "Started", "Started": True})
+    store = RaceControlLogStore(
+        hass,
+        "entry-1",
+        session_info_coordinator=session_info,
+        session_status_coordinator=session_status,
+    )
+    reset_events = []
+    unsub = hass.bus.async_listen(
+        _RC_LOG_RESET_EVENT,
+        lambda event: reset_events.append(event.data),
+    )
+
+    try:
+        await store.async_initialize()
+
+        first = store.append(
+            {
+                "Utc": "2026-03-12T14:01:00Z",
+                "Flag": "YELLOW",
+                "Message": "Yellow flag in sector 1",
+            }
+        )
+        second = store.append(
+            {
+                "Utc": "2026-03-12T14:02:00Z",
+                "Category": "SafetyCar",
+                "Message": "Safety car deployed",
+            }
+        )
+        await hass.async_block_till_done()
+
+        assert first is not None
+        assert second is not None
+        assert [item["message"] for item in store.get_items()] == [
+            "Safety car deployed",
+            "Yellow flag in sector 1",
+        ]
+        assert [item["sequence"] for item in store.get_items()] == [2, 1]
+
+        await store.async_clear(reason="manual")
+        await hass.async_block_till_done()
+
+        assert store.get_items() == []
+        assert reset_events[-1]["reason"] == "manual"
+        assert reset_events[-1]["entry_id"] == "entry-1"
+
+        after_clear = store.append(
+            {
+                "Utc": "2026-03-12T14:03:00Z",
+                "Flag": "GREEN",
+                "Message": "Track clear",
+            }
+        )
+        assert after_clear is not None
+        assert after_clear["sequence"] == 1
+
+        session_info.data = {
+            "Meeting": {"Key": 1002},
+            "StartDate": "2026-03-19T14:00:00Z",
+            "Type": "Race",
+            "Name": "Grand Prix",
+        }
+        session_info.trigger_update()
+        await hass.async_block_till_done()
+
+        assert store.get_items() == []
+        assert reset_events[-1]["reason"] == "session_change"
+        assert reset_events[-1]["session_key"] == "1002|2026-03-19T14:00:00Z|Grand Prix"
+    finally:
+        unsub()
+        await store.async_close()
+
+
+@pytest.mark.asyncio
+async def test_race_control_log_clears_when_source_stops(hass) -> None:
+    session_info = DummyCoordinator(
+        data={
+            "Meeting": {"Key": 1001},
+            "StartDate": "2026-03-12T14:00:00Z",
+            "Type": "Race",
+            "Name": "Grand Prix",
+        }
+    )
+    session_status = DummyCoordinator(data={"Status": "Started", "Started": True})
+    store = RaceControlLogStore(
+        hass,
+        "entry-1",
+        session_info_coordinator=session_info,
+        session_status_coordinator=session_status,
+    )
+    live_state = LiveAvailabilityTracker()
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry-1",
+        data={CONF_OPERATION_MODE: OPERATION_MODE_LIVE},
+    )
+    config_entry.add_to_hass(hass)
+    coordinator = RaceControlCoordinator(
+        hass,
+        session_coord=object(),
+        bus=FakeLiveBus(None, None),
+        config_entry=config_entry,
+        live_state=live_state,
+        log_store=store,
+    )
+    reset_events = []
+    unsub = hass.bus.async_listen(
+        _RC_LOG_RESET_EVENT,
+        lambda event: reset_events.append(event.data),
+    )
+
+    try:
+        await store.async_initialize()
+
+        coordinator._deliver(  # noqa: SLF001 - targeted behavior test
+            {
+                "Utc": "2026-03-12T14:01:00Z",
+                "Flag": "YELLOW",
+                "Message": "Yellow flag in sector 1",
+            }
+        )
+        await hass.async_block_till_done()
+        assert [item["message"] for item in store.get_items()] == [
+            "Yellow flag in sector 1"
+        ]
+
+        live_state.set_state(False, "replay-stopped")
+        await hass.async_block_till_done()
+
+        assert store.get_items() == []
+        assert reset_events[-1]["reason"] == "replay-stopped"
+    finally:
+        unsub()
+        await coordinator.async_close()
+        await store.async_close()
 
 
 @pytest.mark.asyncio
@@ -357,3 +526,27 @@ async def test_async_unload_entry_keeps_runtime_data_on_failed_platform_unload(
     assert entry.entry_id in hass.data[DOMAIN]
     assert unsubscribed == []
     assert closed == []
+
+
+@pytest.mark.asyncio
+async def test_async_unload_entry_removes_race_control_service_for_last_entry(
+    hass,
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    hass.services.async_register(DOMAIN, _RC_LOG_SERVICE, lambda call: None)
+    hass.data.setdefault(DOMAIN, {})[_NO_SPOILER_MANAGER_KEY] = object()
+    hass.data[DOMAIN][_RC_LOG_SERVICE_MARKER] = True
+    hass.data[DOMAIN][entry.entry_id] = {}
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+
+    result = await async_unload_entry(hass, entry)
+
+    assert result is True
+    assert not hass.services.has_service(DOMAIN, _RC_LOG_SERVICE)
