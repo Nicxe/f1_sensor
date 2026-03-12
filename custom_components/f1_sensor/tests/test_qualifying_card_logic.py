@@ -132,6 +132,8 @@ def _run_card_probe(
     session_state: str = "Qualifying",
 ) -> dict:
     """Execute the qualifying-card row logic from the actual JS source."""
+    if not CARD_PATH.exists():
+        pytest.skip(f"card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for qualifying card regression tests")
