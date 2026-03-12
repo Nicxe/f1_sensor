@@ -1,0 +1,77 @@
+name: Comment on fixed issues when release is published
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  issues: write
+
+jobs:
+  comment-on-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post comment on fixed issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.release.body || '';
+            const isPrerelease = context.payload.release.prerelease === true;
+            const releaseUrl = context.payload.release.html_url;
+            const releaseTag = context.payload.release.tag_name;
+
+            const issueNumbers = [
+              ...new Set([...body.matchAll(/#(\d+)/g)].map(m => parseInt(m[1])))
+            ];
+
+            if (issueNumbers.length === 0) {
+              console.log('No issue references found in release notes');
+              return;
+            }
+
+            const coffeeLink = 'https://www.buymeacoffee.com/NiklasV';
+
+            let comment;
+
+            if (isPrerelease) {
+              comment = `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, a BETA pre-release of F1 Sensor.
+
+To test the beta version, open HACS in Home Assistant, go to **Integrations**, and find **F1 Sensor**. Click the three-dot menu and select **Redownload**. Make sure **Show beta versions** is enabled in the HACS settings for this integration. Alternatively, you can download the release manually from the [Releases page](${releaseUrl}).
+
+Your feedback on the beta is very welcome — please report any issues you run into so they can be fixed before the stable release.
+
+---
+If you enjoy using F1 Sensor and want to support its continued development, you can do so via [Buy Me a Coffee](${coffeeLink}).`;
+            } else {
+              comment = `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, the latest stable release of F1 Sensor.
+
+To update via HACS, open Home Assistant, go to **HACS → Integrations**, find **F1 Sensor**, and click **Update**. If you installed it manually, download the latest release from the [Releases page](${releaseUrl}) and replace the existing files.
+
+After updating, restart Home Assistant to apply the changes.
+
+---
+If you enjoy using F1 Sensor and want to support its continued development, you can do so via [Buy Me a Coffee](${coffeeLink}).`;
+            }
+
+            for (const num of issueNumbers) {
+              try {
+                const { data: issue } = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: num,
+                });
+
+                // Skip pull requests
+                if (issue.pull_request) continue;
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: num,
+                  body: comment,
+                });
+                console.log(`Commented on issue #${num}`);
+              } catch (e) {
+                console.log(`Skipping #${num}: ${e.message}`);
+              }
+            }
