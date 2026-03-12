@@ -719,3 +719,66 @@ async def test_replay_pause_freezes_session_clock(hass, tmp_path: Path) -> None:
     assert session_clock.data["clock_remaining_s"] == paused_remaining
 
     await controller.async_stop()
+
+
+@pytest.mark.asyncio
+async def test_replay_pause_freezes_session_clock_without_replay_mode_flag(
+    hass, tmp_path: Path
+) -> None:
+    initial_state = {
+        "SessionInfo": {"Type": "Race", "Name": "Race"},
+        "SessionStatus": {"Status": "Started", "Started": True},
+        "SessionData": {
+            "StatusSeries": {
+                "0": {"Utc": "2025-12-07T13:00:00Z", "SessionStatus": "Started"}
+            }
+        },
+        "ExtrapolatedClock": {
+            "Utc": "2025-12-07T13:00:00Z",
+            "Remaining": "02:00:00",
+            "Extrapolating": True,
+        },
+        "Heartbeat": {"Utc": "2025-12-07T13:00:00Z"},
+    }
+    frames = [
+        (0, "SessionInfo", initial_state["SessionInfo"]),
+        (0, "SessionStatus", initial_state["SessionStatus"]),
+        (0, "SessionData", initial_state["SessionData"]),
+        (0, "ExtrapolatedClock", initial_state["ExtrapolatedClock"]),
+        (0, "Heartbeat", initial_state["Heartbeat"]),
+        (
+            10_000,
+            "ExtrapolatedClock",
+            {
+                "Utc": "2025-12-07T13:00:10Z",
+                "Remaining": "01:59:50",
+                "Extrapolating": True,
+            },
+        ),
+        (10_000, "Heartbeat", {"Utc": "2025-12-07T13:00:10Z"}),
+    ]
+    controller, session_clock = await _setup_session_clock_harness(
+        hass,
+        tmp_path,
+        initial_state=initial_state,
+        frames=frames,
+    )
+
+    await controller.async_play()
+    await controller.async_seek_by(10)
+
+    # Reproduce the runtime path where session clock did not carry the replay flag
+    # even though the replay controller had entered a paused state.
+    session_clock._replay_mode = False
+
+    await controller.async_pause()
+    paused_remaining = session_clock.data["clock_remaining_s"]
+
+    await asyncio.sleep(1.2)
+
+    assert controller.state == ReplayState.PAUSED
+    assert session_clock.data["clock_running"] is False
+    assert session_clock.data["clock_phase"] == "paused"
+    assert session_clock.data["clock_remaining_s"] == paused_remaining
+
+    await controller.async_stop()
