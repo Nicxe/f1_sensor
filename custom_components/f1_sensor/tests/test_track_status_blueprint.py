@@ -431,6 +431,70 @@ async def test_blueprint_falls_back_to_preset_when_playlist_is_invalid(
 
 
 @pytest.mark.asyncio
+async def test_blueprint_resets_wled_effect_when_clear_falls_back_to_standard_mode(
+    hass: HomeAssistant,
+) -> None:
+    await _install_blueprint(hass)
+    calls = _register_services(hass)
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": "SC",
+            "sensor.test_session_status": "pre",
+            "light.test_track_status": "off",
+            "select.test_wled_preset": (
+                "Idle",
+                {"options": ["Safety Car Preset"]},
+            ),
+        },
+    )
+
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "enable_wled_advanced": True,
+            "wled_preset_entity": "select.test_wled_preset",
+            "wled_preset_sc": "Safety Car Preset",
+        },
+    )
+    calls.clear()
+
+    await _set_states(hass, {"sensor.test_session_status": "live"})
+
+    assert calls == [
+        (
+            "light.turn_on",
+            {
+                "entity_id": ["light.test_track_status"],
+            },
+        ),
+        (
+            "select.select_option",
+            {
+                "entity_id": "select.test_wled_preset",
+                "option": "Safety Car Preset",
+            },
+        ),
+    ]
+
+    calls.clear()
+    await _set_states(hass, {"sensor.test_track_status": "CLEAR"})
+
+    assert calls == [
+        (
+            "light.turn_on",
+            {
+                "entity_id": ["light.test_track_status"],
+                "brightness_pct": 100,
+                "rgb_color": [11, 22, 33],
+                "transition": 0,
+                "effect": "Solid",
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
 async def test_blueprint_applies_finished_override_before_end_action(
     hass: HomeAssistant,
 ) -> None:
