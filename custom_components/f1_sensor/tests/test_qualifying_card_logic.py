@@ -211,7 +211,7 @@ def test_qualifying_card_normalizes_string_qpart_for_rows() -> None:
 
 
 def test_qualifying_card_does_not_reuse_previous_segment_rank_in_q3() -> None:
-    """Untimed Q3 drivers must not inherit their Q2 position."""
+    """Untimed Q3 drivers must not show a visible Q3 position."""
     result = _run_card_probe(
         current_q_part=3,
         position_drivers=[
@@ -245,5 +245,43 @@ def test_qualifying_card_does_not_reuse_previous_segment_rank_in_q3() -> None:
     assert result["sessionPart"] == 3
     assert [row["tla"] for row in result["rows"]] == ["LEC", "PIA"]
     assert result["rows"][0]["position"] == 4
-    assert result["rows"][1]["position"] == 5
+    assert result["rows"][1]["position"] is None
     assert result["rows"][1]["current_segment_best_lap"] is None
+
+
+def test_qualifying_card_sorts_untimed_q3_drivers_after_timed_rows() -> None:
+    """Untimed Q3 drivers must not outrank drivers with a valid Q3 lap."""
+    result = _run_card_probe(
+        current_q_part=3,
+        position_drivers=[
+            {
+                "racing_number": "44",
+                "tla": "HAM",
+                "team": "Mercedes",
+                "q1_time": "1:31.500",
+                "q1_position": 8,
+                "q2_time": "1:30.900",
+                "q2_position": 6,
+                "q3_time": "1:30.500",
+                "q3_position": 2,
+                "current_position": "9",
+            },
+            {
+                "racing_number": "81",
+                "tla": "PIA",
+                "team": "McLaren",
+                "q1_time": "1:31.000",
+                "q1_position": 3,
+                "q2_time": "1:30.700",
+                "q2_position": 4,
+                "q3_time": None,
+                "q3_position": None,
+                "current_position": "1",
+            },
+        ],
+    )
+
+    assert result["sessionPart"] == 3
+    assert [row["tla"] for row in result["rows"]] == ["HAM", "PIA"]
+    assert result["rows"][0]["position"] == 2
+    assert result["rows"][1]["position"] is None
