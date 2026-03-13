@@ -42,7 +42,13 @@ async def async_setup_entry(
     # No Spoiler Mode switch — global, registered only by the first entry that loads.
     domain_root = hass.data.setdefault(DOMAIN, {})
     no_spoiler_mgr: NoSpoilerModeManager | None = domain_root.get("no_spoiler_manager")
-    if no_spoiler_mgr is not None and not domain_root.get(_NO_SPOILER_SWITCH_ENTRY_KEY):
+    no_spoiler_owner = domain_root.get(_NO_SPOILER_SWITCH_ENTRY_KEY)
+    owner_is_stale = isinstance(no_spoiler_owner, str) and no_spoiler_owner not in {
+        key for key, value in domain_root.items() if isinstance(value, dict)
+    }
+    if no_spoiler_mgr is not None and (
+        no_spoiler_owner is None or no_spoiler_owner == entry.entry_id or owner_is_stale
+    ):
         domain_root[_NO_SPOILER_SWITCH_ENTRY_KEY] = entry.entry_id
         name = entry.data.get("sensor_name", "F1")
         entity = F1NoSpoilerSwitch(

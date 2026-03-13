@@ -5151,6 +5151,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         unregister_entry_name_settings(entry.entry_id)
         # If this was the last entry, remove dev-only stats reporter.
         if isinstance(data_root, dict):
+            with suppress(Exception):
+                from .switch import _NO_SPOILER_SWITCH_ENTRY_KEY
+
+                if data_root.get(_NO_SPOILER_SWITCH_ENTRY_KEY) == entry.entry_id:
+                    data_root.pop(_NO_SPOILER_SWITCH_ENTRY_KEY, None)
             # Keep only real entry dicts (exclude our domain-level markers)
             remaining_entries = [
                 k
