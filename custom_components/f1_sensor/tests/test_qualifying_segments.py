@@ -252,6 +252,55 @@ async def test_coordinator_merges_knocked_out_false(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_coordinator_keeps_accepting_qualifying_laps_after_finished(hass) -> None:
+    """Late qualifying laps must still merge after raw Finished until Finalised."""
+    coord = _make_coord(hass)
+
+    coord._on_sessionstatus({"Status": "Finished", "Started": "Finished"})
+    assert coord._state["frozen"] is False
+
+    coord._on_timingdata(
+        {
+            "SessionPart": 3,
+            "Lines": {
+                "81": {
+                    "NumberOfLaps": 7,
+                    "BestLapTimes": {"2": {"Value": "1:20.123", "Lap": 7}},
+                    "LastLapTime": {"Value": "1:20.123", "PersonalFastest": True},
+                }
+            },
+        }
+    )
+
+    driver = coord._state["drivers"]["81"]
+    assert driver["qualifying"]["segments"][3]["best_time"] == "1:20.123"
+    assert driver["lap_history"]["laps"]["7"] == "1:20.123"
+    assert driver["lap_history"]["completed_laps"] == 7
+
+    coord._on_sessionstatus({"Status": "Finalised", "Started": "Finished"})
+    assert coord._state["frozen"] is True
+
+    coord._on_timingdata(
+        {
+            "SessionPart": 3,
+            "Lines": {
+                "81": {
+                    "NumberOfLaps": 8,
+                    "BestLapTimes": {"2": {"Value": "1:19.999", "Lap": 8}},
+                    "LastLapTime": {"Value": "1:19.999", "PersonalFastest": True},
+                }
+            },
+        }
+    )
+
+    driver = coord._state["drivers"]["81"]
+    assert driver["qualifying"]["segments"][3]["best_time"] == "1:20.123"
+    assert driver["lap_history"]["laps"]["7"] == "1:20.123"
+    assert "8" not in driver["lap_history"]["laps"]
+    assert driver["lap_history"]["completed_laps"] == 7
+
+
+@pytest.mark.asyncio
 async def test_coordinator_marks_participation_q1(hass) -> None:
     """List-style BestLapTimes placeholders mark only the active Q1 segment."""
     coord = _make_coord(hass)
