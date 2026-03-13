@@ -4886,8 +4886,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         with suppress(Exception):
             msg = str(payload.get("Status") or payload.get("Message") or "").strip()
             started_flag = payload.get("Started")
-            # Freeze at session end
-            if msg in ("Finished", "Finalised", "Ends"):
+            # Keep driver timing open through raw Finished because valid lap
+            # completions can still arrive until the session is finalised.
+            if msg in ("Finalised", "Ends"):
                 self._state["frozen"] = True
             # Unfreeze on new session start or green running
             elif started_flag is True or msg in ("Started", "Green", "GreenFlag"):

@@ -641,16 +641,16 @@ variables:
       and ((wled_has_playlist_entity | bool) or (wled_has_preset_entity | bool))
     }}
   wled_snapshot_entities_json: >-
-    {% set ns = namespace(entities=[light_entity | string]) %}
-    {% if wled_advanced_active | bool %}
-      {% for entity_id in [wled_playlist_entity, wled_preset_entity, wled_palette_entity, wled_intensity_entity, wled_speed_entity] %}
-        {% set entity_id = entity_id | string | trim %}
-        {% if entity_id | length > 0 %}
-          {% set ns.entities = ns.entities + [entity_id] %}
-        {% endif %}
-      {% endfor %}
-    {% endif %}
-    {{ ns.entities | to_json }}
+    {%- set ns = namespace(entities=[light_entity | string]) -%}
+    {%- if wled_advanced_active | bool -%}
+      {%- for entity_id in [wled_playlist_entity, wled_preset_entity, wled_palette_entity, wled_intensity_entity, wled_speed_entity] -%}
+        {%- set entity_id = entity_id | string | trim -%}
+        {%- if entity_id | length > 0 -%}
+          {%- set ns.entities = ns.entities + [entity_id] -%}
+        {%- endif -%}
+      {%- endfor -%}
+    {%- endif -%}
+    {{- ns.entities | to_json -}}
   desired_wled_track_playlist: >-
     {% set current_track_state = states(track_status_entity) | upper %}
     {% if current_track_state == 'CLEAR' %}
@@ -808,8 +808,23 @@ variables:
 
   track_state: "{{ states(track_status_entity) | upper }}"
   session_phase: "{{ states(session_status_entity) | lower }}"
-  trigger_from_phase: "{{ (trigger.from_state.state if trigger.from_state is not none else '') | lower }}"
-  trigger_to_phase: "{{ (trigger.to_state.state if trigger.to_state is not none else '') | lower }}"
+  notification_title: "F1 Track Status"
+  notification_track_state: "{{ track_state }}"
+  notification_session_phase: "{{ session_phase }}"
+  notification_message: >-
+    Track status is {{ track_state }} during session phase {{ session_phase }}.
+  trigger_from_phase: >-
+    {% if trigger is defined and trigger.from_state is defined and trigger.from_state is not none %}
+      {{ trigger.from_state.state | lower }}
+    {% else %}
+      {{ '' }}
+    {% endif %}
+  trigger_to_phase: >-
+    {% if trigger is defined and trigger.to_state is defined and trigger.to_state is not none %}
+      {{ trigger.to_state.state | lower }}
+    {% else %}
+      {{ '' }}
+    {% endif %}
   current_session_now: >-
     {% if current_session_entity | string | length > 0 %}
       {{ states(current_session_entity) | string }}
@@ -957,7 +972,7 @@ actions:
             action: scene.create
             data:
               scene_id: "{{ pre_race_scene_id }}"
-              snapshot_entities: "{{ wled_snapshot_entities_json | from_json }}"
+              snapshot_entities: "{{ wled_snapshot_entities_json | trim | from_json }}"
 
   - choose:
       - conditions:
@@ -1048,10 +1063,10 @@ actions:
               notification_session_phase: "{{ states(session_status_entity) | lower }}"
               notification_message: >-
                 Session moved from
-                {{ (trigger.from_state.state if trigger.from_state is not none else 'unknown') | lower }}
+                {{ trigger_from_phase if trigger_from_phase | length > 0 else 'unknown' }}
                 to
-                {{ (trigger.to_state.state if trigger.to_state is not none else 'unknown') | lower }}.
-                Current track status: {{ states(track_status_entity) | upper }}.
+                {{ trigger_to_phase if trigger_to_phase | length > 0 else 'unknown' }}.
+                Current track status: {{ track_state }}.
           - sequence: !input notification_actions
 
       - if:
@@ -1080,7 +1095,20 @@ actions:
                 action: scene.create
                 data:
                   scene_id: "{{ pre_alert_scene_id }}"
-                  snapshot_entities: "{{ wled_snapshot_entities_json | from_json }}"
+                  snapshot_entities: "{{ wled_snapshot_entities_json | trim | from_json }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ notifications_enabled and notifications_on_track and has_notification_actions and trigger.id == 'track_update' }}"
+            then:
+              - variables:
+                  notification_title: "F1 Track Status"
+                  notification_track_state: "{{ track_state }}"
+                  notification_session_phase: "{{ session_phase }}"
+                  notification_message: >-
+                    Track status changed to {{ track_state }}
+                    during session phase {{ session_phase }}.
+              - sequence: !input notification_actions
 
           - choose:
               - conditions:
@@ -1109,13 +1137,27 @@ actions:
                               - condition: template
                                 value_template: "{{ clear_behavior_mode_input == 'steady' or (clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay'] and not snapshot_before_alert_enabled) }}"
                             sequence:
-                              - action: "{{ light_turn_on_service }}"
-                                target:
-                                  entity_id: !input light_target
-                                data:
-                                  brightness_pct: !input brightness_pct
-                                  rgb_color: !input color_clear
-                                  transition: !input transition_s
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ wled_advanced_active | bool }}"
+                                    sequence:
+                                      - action: light.turn_on
+                                        target:
+                                          entity_id: !input light_target
+                                        data:
+                                          brightness_pct: !input brightness_pct
+                                          rgb_color: !input color_clear
+                                          transition: !input transition_s
+                                          effect: Solid
+                                default:
+                                  - action: "{{ light_turn_on_service }}"
+                                    target:
+                                      entity_id: !input light_target
+                                    data:
+                                      brightness_pct: !input brightness_pct
+                                      rgb_color: !input color_clear
+                                      transition: !input transition_s
 
                           - conditions:
                               - condition: template
@@ -1130,13 +1172,27 @@ actions:
                               - condition: template
                                 value_template: "{{ clear_behavior_mode_input == 'restore_after_delay' and snapshot_before_alert_enabled }}"
                             sequence:
-                              - action: "{{ light_turn_on_service }}"
-                                target:
-                                  entity_id: !input light_target
-                                data:
-                                  brightness_pct: !input brightness_pct
-                                  rgb_color: !input color_clear
-                                  transition: !input transition_s
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ wled_advanced_active | bool }}"
+                                    sequence:
+                                      - action: light.turn_on
+                                        target:
+                                          entity_id: !input light_target
+                                        data:
+                                          brightness_pct: !input brightness_pct
+                                          rgb_color: !input color_clear
+                                          transition: !input transition_s
+                                          effect: Solid
+                                default:
+                                  - action: "{{ light_turn_on_service }}"
+                                    target:
+                                      entity_id: !input light_target
+                                    data:
+                                      brightness_pct: !input brightness_pct
+                                      rgb_color: !input color_clear
+                                      transition: !input transition_s
                               - delay:
                                   seconds: !input clear_restore_delay_s
                               - condition: template
@@ -1497,18 +1553,5 @@ actions:
                                           brightness_pct: !input brightness_pct
                                           rgb_color: !input color_vsc
                                           transition: !input transition_s
-
-          - if:
-              - condition: template
-                value_template: "{{ notifications_enabled and notifications_on_track and has_notification_actions and trigger.id == 'track_update' }}"
-            then:
-              - variables:
-                  notification_title: "F1 Track Status"
-                  notification_track_state: "{{ states(track_status_entity) | upper }}"
-                  notification_session_phase: "{{ states(session_status_entity) | lower }}"
-                  notification_message: >-
-                    Track status changed to {{ states(track_status_entity) | upper }}
-                    during session phase {{ states(session_status_entity) | lower }}.
-              - sequence: !input notification_actions
 
 mode: restart
