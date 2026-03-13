@@ -12,15 +12,6 @@ Your lights can react to a red flag. Your dashboard can show live timing. Race C
 Replay Mode now includes experimental 30-second catch-up controls in Version 1. The feature is being tested in real setups, and additional refinement may still be needed in later updates.
 :::
 
-
-:::tip Watching it later? Keep your dashboard spoiler-free
-If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode, press play when your broadcast begins, and experience everything as if it were live — without any spoilers.
-:::
-
-:::warning Experimental replay catch-up
-Replay Mode now includes experimental 30-second catch-up controls in Version 1. The feature is being tested in real setups, and additional refinement may still be needed in later updates.
-:::
-
 :::tip Watching it later? Keep your dashboard spoiler-free
 If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode, press play when your broadcast begins, and experience everything as if it were live — without any spoilers.
 :::

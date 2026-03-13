@@ -208,3 +208,42 @@ def test_qualifying_card_normalizes_string_qpart_for_rows() -> None:
     assert result["sessionPart"] == 3
     assert result["rows"][0]["position"] == 1
     assert result["rows"][0]["current_segment_best_lap"] == "1:18.518"
+
+
+def test_qualifying_card_does_not_reuse_previous_segment_rank_in_q3() -> None:
+    """Untimed Q3 drivers must not inherit their Q2 position."""
+    result = _run_card_probe(
+        current_q_part=3,
+        position_drivers=[
+            {
+                "racing_number": "16",
+                "tla": "LEC",
+                "team": "Ferrari",
+                "q1_time": "1:31.100",
+                "q1_position": 7,
+                "q2_time": "1:30.800",
+                "q2_position": 4,
+                "q3_time": "1:30.400",
+                "q3_position": 4,
+                "current_position": "4",
+            },
+            {
+                "racing_number": "81",
+                "tla": "PIA",
+                "team": "McLaren",
+                "q1_time": "1:31.000",
+                "q1_position": 3,
+                "q2_time": "1:30.700",
+                "q2_position": 4,
+                "q3_time": None,
+                "q3_position": None,
+                "current_position": "5",
+            },
+        ],
+    )
+
+    assert result["sessionPart"] == 3
+    assert [row["tla"] for row in result["rows"]] == ["LEC", "PIA"]
+    assert result["rows"][0]["position"] == 4
+    assert result["rows"][1]["position"] == 5
+    assert result["rows"][1]["current_segment_best_lap"] is None

@@ -5795,11 +5795,12 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._pit_out_until: dict[str, float] = {}
         self._pit_out_last: dict[str, bool] = {}
         self._session_info_coordinator = None
+        self._session_status_coordinator = None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
 
-        # Subscribe to SessionInfo for accurate session type/name gating
+        # Subscribe to session coordinators for accurate gating and Q-part updates.
         try:
             reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
             self._session_info_coordinator = reg.get("session_info_coordinator")
@@ -5808,8 +5809,15 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     self._handle_session_info_update
                 )
                 self.async_on_remove(rem_info)
+            self._session_status_coordinator = reg.get("session_status_coordinator")
+            if self._session_status_coordinator is not None:
+                rem_status = self._session_status_coordinator.async_add_listener(
+                    self._handle_session_status_update
+                )
+                self.async_on_remove(rem_status)
         except Exception:
             self._session_info_coordinator = None
+            self._session_status_coordinator = None
 
         # Try coordinator first
         updated = self._update_from_coordinator(initial=True)
@@ -5864,6 +5872,12 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._rate_limited_write()
 
     def _handle_session_info_update(self) -> None:
+        self._handle_context_update()
+
+    def _handle_session_status_update(self) -> None:
+        self._handle_context_update()
+
+    def _handle_context_update(self) -> None:
         prev_state = self._attr_native_value
         prev_attrs = self._attr_extra_state_attributes
         updated = self._update_from_coordinator(initial=False)
@@ -5878,6 +5892,35 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             return
 
         self._rate_limited_write()
+
+    @staticmethod
+    def _normalize_qualifying_part(value: object) -> int | None:
+        if value in (None, ""):
+            return None
+        try:
+            normalized = int(value)
+        except (TypeError, ValueError):
+            return None
+        if normalized == 0:
+            return 1
+        return normalized if normalized in (1, 2, 3) else None
+
+    def _resolve_current_qualifying_part(
+        self, data: dict[str, object], *, is_qualifying: bool
+    ) -> int | None:
+        session = data.get("session")
+        if isinstance(session, dict):
+            current_q_part = self._normalize_qualifying_part(session.get("part"))
+            if current_q_part is not None:
+                return current_q_part
+
+        status_is_qualifying_like, status_q_part = _session_status_mapping_context(
+            self._session_status_coordinator
+        )
+        if is_qualifying or status_is_qualifying_like:
+            return self._normalize_qualifying_part(status_q_part)
+
+        return None
 
     def _get_session_type_and_name(self) -> tuple[str | None, str | None]:
         try:
@@ -6133,7 +6176,10 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 for rank, (idx, _) in enumerate(timed, 1):
                     drivers_list[idx][pos_key] = rank
 
-        current_q_part = data.get("session", {}).get("part") if is_qualifying else None
+        current_q_part = self._resolve_current_qualifying_part(
+            data,
+            is_qualifying=is_qualifying,
+        )
         if isinstance(fastest, dict):
             fastest_out = dict(fastest)
             fastest_out["team_color_rgb"] = _hex_to_rgb(fastest_out.get("team_color"))
