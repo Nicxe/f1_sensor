@@ -48,7 +48,6 @@ POST_WINDOW_EXTENSION_STEP = timedelta(minutes=5)
 IDLE_REFRESH = timedelta(minutes=15)
 ACTIVE_REFRESH = timedelta(seconds=20)
 HEARTBEAT_DRAIN_SECONDS = 60.0
-QUALIFYING_POST_FINISH_INACTIVITY_SECONDS = 150.0
 FALLBACK_WINDOW_DURATION = timedelta(minutes=20)
 PRIMARY_RECOVERY_CHECK_INTERVAL = timedelta(minutes=1)
 LIVE_ACTIVITY_STREAMS: tuple[str, ...] = (
@@ -743,20 +742,6 @@ def _session_status_running(status_payload: dict | None) -> bool:
     return status in SESSION_RUNNING_STATES or started in SESSION_RUNNING_STATES
 
 
-def _is_qualifying_like_session_name(name: str | None) -> bool:
-    lower = str(name or "").strip().lower()
-    return "qualifying" in lower or "shootout" in lower
-
-
-def _post_finish_inactivity_timeout(window: SessionWindow, now: datetime) -> float:
-    if now >= window.end_utc and _is_qualifying_like_session_name(window.session_name):
-        return max(
-            HEARTBEAT_DRAIN_SECONDS,
-            QUALIFYING_POST_FINISH_INACTIVITY_SECONDS,
-        )
-    return HEARTBEAT_DRAIN_SECONDS
-
-
 class LiveSessionSupervisor:
     """Coordinates when the SignalR connection should run."""
 
@@ -1245,7 +1230,6 @@ class LiveSessionSupervisor:
                 reason = "no-spoiler-activated"
                 break
             now = dt_util.utcnow()
-            inactivity_timeout = _post_finish_inactivity_timeout(window, now)
             hb_age = self._bus.last_heartbeat_age()
             activity_age = self._bus.last_stream_activity_age(LIVE_ACTIVITY_STREAMS)
             if now >= window.disconnect_at:
@@ -1253,10 +1237,10 @@ class LiveSessionSupervisor:
                     source == "index"
                     and window.disconnect_at < max_disconnect_at
                     and (
-                        (hb_age is not None and hb_age <= inactivity_timeout)
+                        (hb_age is not None and hb_age <= HEARTBEAT_DRAIN_SECONDS)
                         or (
                             activity_age is not None
-                            and activity_age <= inactivity_timeout
+                            and activity_age <= HEARTBEAT_DRAIN_SECONDS
                         )
                     )
                 )
@@ -1279,7 +1263,7 @@ class LiveSessionSupervisor:
                 _LOGGER.info("Disconnect window expired for %s", label)
                 reason = "disconnect-window-expired"
                 break
-            if hb_age is not None and hb_age > inactivity_timeout:
+            if hb_age is not None and hb_age > HEARTBEAT_DRAIN_SECONDS:
                 _LOGGER.info(
                     "Heartbeat aged %.0fs for %s; assuming feed idle", hb_age, label
                 )
