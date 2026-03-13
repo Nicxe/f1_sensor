@@ -45,12 +45,31 @@ function extractMethod(text, signature) {
   return text.slice(start, end + 1);
 }
 
+function extractConst(signature) {
+  const start = source.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`Const signature not found: ${signature}`);
+  }
+  const braceStart = source.indexOf("{", start);
+  const end = findMatchingBrace(source, braceStart);
+  const semicolon = source.indexOf(";", end);
+  return source.slice(start, semicolon + 1);
+}
+
 const classStart = source.indexOf("class F1PracticeTimingCard extends LitElement");
 const classEnd = source.indexOf("class F1PracticeTimingCardEditor extends LitElement");
 if (classStart === -1 || classEnd === -1 || classEnd <= classStart) {
   throw new Error("Unable to locate practice timing card class boundaries");
 }
 const classSource = source.slice(classStart, classEnd);
+
+const helperSources = [
+  extractConst("const resolveEntityIdWithFallback = (hass, entityId) =>"),
+  extractConst("const getEntityStateWithFallback = (hass, entityId) =>"),
+  extractConst("const getStateAgeSeconds = (state, field = 'last_changed') =>"),
+  extractConst("const resolveLiveDelaySeconds = (hass, entityIds = []) =>"),
+  extractConst("const shouldKeepSessionCardVisible = ("),
+];
 
 const methodSources = [
   extractMethod(classSource, "_buildRows(positionDrivers, tyresDrivers, driverList) {"),
@@ -77,6 +96,7 @@ const methodSources = [
 
 const Harness = new Function(
   `
+  const LEGACY_ENTITY_ID_FALLBACKS = {};
   const COMPOUND_FALLBACK = {
     SOFT: "#ff3b30",
     MEDIUM: "#ffd60a",
@@ -86,12 +106,18 @@ const Harness = new Function(
   };
   const getTeamLogoMeta = () => null;
 
+  ${helperSources.join("\n\n")}
+
   class Harness {
-    constructor() {
+    constructor(payload) {
+      this.hass = { states: payload.hassStates || {} };
       this.config = {
         title: "Free Practice",
         show_team_logo: false,
         team_logo_style: "color",
+        session_entity: "sensor.f1_current_session",
+        session_status_entity: "sensor.f1_session_status",
+        positions_entity: "sensor.f1_driver_positions",
       };
     }
 
@@ -102,7 +128,7 @@ const Harness = new Function(
 `,
 )();
 
-const harness = new Harness();
+const harness = new Harness(payload);
 const rows = harness._buildRows(
   payload.positionDrivers || [],
   payload.tyresDrivers || [],
@@ -149,6 +175,14 @@ def _run_card_probe(
         {
             "sessionState": session_state,
             "sessionStatusState": session_status_state,
+            "hassStates": {
+                "sensor.f1_current_session": session_state,
+                "sensor.f1_session_status": session_status_state,
+                "sensor.f1_driver_positions": {
+                    "state": "ready",
+                    "attributes": {},
+                },
+            },
             "positionDrivers": position_drivers or [],
             "tyresDrivers": tyres_drivers or [],
             "driverList": driver_list or [],

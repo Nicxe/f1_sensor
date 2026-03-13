@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -33,9 +34,16 @@ def _register_services(
 
         return _record
 
-    register_service("light", "turn_on", _recorder("light"))
-    register_service("light", "turn_off", _recorder("light"))
-    register_service("select", "select_option", _recorder("select"))
+    for domain, service in (
+        ("input_boolean", "turn_on"),
+        ("light", "turn_on"),
+        ("light", "turn_off"),
+        ("scene", "create"),
+        ("scene", "delete"),
+        ("scene", "turn_on"),
+        ("select", "select_option"),
+    ):
+        register_service(domain, service, _recorder(domain))
     return calls
 
 
@@ -47,6 +55,19 @@ async def _set_states(hass: HomeAssistant, states: dict[str, StateSpec]) -> None
             state, attributes = value, {}
         hass.states.async_set(entity_id, state, attributes)
     await hass.async_block_till_done()
+
+
+async def _set_states_without_full_drain(
+    hass: HomeAssistant, states: dict[str, StateSpec]
+) -> None:
+    for entity_id, value in states.items():
+        if isinstance(value, tuple):
+            state, attributes = value
+        else:
+            state, attributes = value, {}
+        hass.states.async_set(entity_id, state, attributes)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
 
 
 async def _setup_blueprint_automation(
@@ -201,6 +222,104 @@ async def test_blueprint_keeps_end_action_on_session_exit(
             },
         )
     ]
+
+
+@pytest.mark.asyncio
+async def test_blueprint_notifies_before_continuous_sc_flash(
+    hass: HomeAssistant,
+) -> None:
+    await _install_blueprint(hass)
+    calls = _register_services(hass)
+    await _set_states(
+        hass,
+        {
+            "input_boolean.test_notify_flag": "off",
+            "light.test_track_status": "off",
+            "sensor.test_track_status": "CLEAR",
+            "sensor.test_session_status": "live",
+        },
+    )
+
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "enable_notifications": True,
+            "notification_actions": [
+                {
+                    "action": "input_boolean.turn_on",
+                    "target": {"entity_id": "input_boolean.test_notify_flag"},
+                }
+            ],
+            "sc_vsc_mode": "flash_continuous",
+        },
+    )
+    calls.clear()
+
+    await _set_states_without_full_drain(hass, {"sensor.test_track_status": "SC"})
+
+    assert calls[0] == (
+        "input_boolean.turn_on",
+        {"entity_id": ["input_boolean.test_notify_flag"]},
+    )
+    assert calls[1] == (
+        "light.turn_on",
+        {
+            "entity_id": ["light.test_track_status"],
+            "brightness_pct": 100,
+            "rgb_color": [255, 0, 0],
+        },
+    )
+
+    await _set_states(hass, {"sensor.test_track_status": "CLEAR"})
+
+
+@pytest.mark.asyncio
+async def test_blueprint_uses_native_snapshot_entity_list_for_pre_alert_scene(
+    hass: HomeAssistant,
+) -> None:
+    await _install_blueprint(hass)
+    calls = _register_services(hass)
+    await _set_states(
+        hass,
+        {
+            "light.test_track_status": "off",
+            "number.test_wled_intensity": "128",
+            "number.test_wled_speed": "64",
+            "select.test_wled_palette": "Default",
+            "select.test_wled_playlist": "Idle",
+            "sensor.test_track_status": "CLEAR",
+            "sensor.test_session_status": "live",
+        },
+    )
+
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "enable_wled_advanced": True,
+            "snapshot_before_alert": True,
+            "wled_intensity_entity": "number.test_wled_intensity",
+            "wled_palette_entity": "select.test_wled_palette",
+            "wled_playlist_entity": "select.test_wled_playlist",
+            "wled_speed_entity": "number.test_wled_speed",
+        },
+    )
+    calls.clear()
+
+    await _set_states(hass, {"sensor.test_track_status": "SC"})
+
+    assert calls[0] == (
+        "scene.create",
+        {
+            "scene_id": "automation_track_status_blueprint_test_pre_alert",
+            "snapshot_entities": [
+                "light.test_track_status",
+                "select.test_wled_playlist",
+                "select.test_wled_palette",
+                "number.test_wled_intensity",
+                "number.test_wled_speed",
+            ],
+        },
+    )
 
 
 @pytest.mark.asyncio

@@ -3,11 +3,19 @@ F1DriverPositionsSensor."""
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 
+from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 import pytest
 
 from custom_components.f1_sensor.__init__ import LiveDriversCoordinator
+from custom_components.f1_sensor.const import (
+    CONF_OPERATION_MODE,
+    DOMAIN,
+    OPERATION_MODE_DEVELOPMENT,
+)
 from custom_components.f1_sensor.sensor import (
     F1DriverPositionsSensor,
     _parse_lap_time_to_secs,
@@ -21,6 +29,24 @@ from custom_components.f1_sensor.sensor import (
 class DummyCoordinator(SimpleNamespace):
     def async_add_listener(self, _listener):
         return lambda: None
+
+
+def _build_coordinator(hass, data: dict) -> DataUpdateCoordinator:
+    coordinator = DataUpdateCoordinator(
+        hass,
+        logging.getLogger(__name__),
+        name="test",
+        update_method=None,
+    )
+    coordinator.data = data
+    coordinator.available = True
+    return coordinator
+
+
+async def _add_sensors(hass, sensors: list) -> None:
+    component = EntityComponent(None, "sensor", hass)
+    await component.async_add_entities(sensors)
+    await hass.async_block_till_done()
 
 
 def _make_coord(hass) -> LiveDriversCoordinator:
@@ -39,10 +65,11 @@ def _make_sensor(
     hass,
     coord,
     *,
+    entry_id: str = "entry",
     session_type: str = "Qualifying",
     session_name: str = "Qualifying",
 ) -> F1DriverPositionsSensor:
-    sensor = F1DriverPositionsSensor(coord, "uid", "entry", "F1")
+    sensor = F1DriverPositionsSensor(coord, "uid", entry_id, "F1")
     sensor.hass = hass
     sensor._session_info_coordinator = SimpleNamespace(
         data={"Type": session_type, "Name": session_name}
@@ -526,6 +553,135 @@ def test_sensor_current_qualifying_part_in_attributes(hass) -> None:
     sensor._update_from_coordinator(initial=True)
 
     assert sensor._attr_extra_state_attributes["current_qualifying_part"] == 2
+
+
+def test_sensor_current_qualifying_part_falls_back_to_session_status(hass) -> None:
+    """SessionStatus qualifying_part backfills the attribute before segment laps exist."""
+    data = {
+        "drivers": {
+            "1": _driver_entry(
+                "1",
+                position="1",
+                q1="1:20.000",
+                q1_participated=True,
+            ),
+        },
+        "lap_current": None,
+        "lap_total": None,
+    }
+    sensor = _make_sensor(hass, DummyCoordinator(data=data))
+    sensor._session_status_coordinator = SimpleNamespace(
+        is_qualifying_like_session=True,
+        qualifying_part=2,
+    )
+    sensor._update_from_coordinator(initial=True)
+
+    assert sensor._attr_extra_state_attributes["current_qualifying_part"] == 2
+
+
+def test_sensor_current_qualifying_part_falls_back_for_sprint_shootout(hass) -> None:
+    """Sprint Shootout uses the same status-coordinator fallback."""
+    data = {
+        "drivers": {
+            "1": _driver_entry(
+                "1",
+                position="1",
+                q1="1:20.000",
+                q1_participated=True,
+            ),
+        },
+        "lap_current": None,
+        "lap_total": None,
+    }
+    sensor = _make_sensor(
+        hass,
+        DummyCoordinator(data=data),
+        session_type="Qualifying",
+        session_name="Sprint Shootout",
+    )
+    sensor._session_status_coordinator = SimpleNamespace(
+        is_qualifying_like_session=True,
+        qualifying_part=3,
+    )
+    sensor._update_from_coordinator(initial=True)
+
+    assert sensor._attr_extra_state_attributes["current_qualifying_part"] == 3
+
+
+def test_sensor_current_qualifying_part_stays_none_outside_qualifying(hass) -> None:
+    """Non-qualifying sessions do not expose a qualifying part from stale status data."""
+    data = {
+        "drivers": {
+            "1": _driver_entry("1", position="1"),
+        },
+        "lap_current": 5,
+        "lap_total": 57,
+    }
+    sensor = _make_sensor(
+        hass,
+        DummyCoordinator(data=data),
+        session_type="Race",
+        session_name="Formula 1 Race",
+    )
+    sensor._session_status_coordinator = SimpleNamespace(
+        is_qualifying_like_session=False,
+        qualifying_part=2,
+    )
+    sensor._update_from_coordinator(initial=True)
+
+    assert sensor._attr_extra_state_attributes["current_qualifying_part"] is None
+
+
+@pytest.mark.asyncio
+async def test_sensor_session_status_update_refreshes_current_qualifying_part(
+    hass,
+) -> None:
+    """A SessionStatus context update changes the exported Q-part without new TimingData."""
+    entry_id = "test_entry_q_part_status_update"
+    drivers_coordinator = _build_coordinator(
+        hass,
+        {
+            "drivers": {
+                "1": _driver_entry(
+                    "1",
+                    position="1",
+                    q1="1:20.000",
+                    q1_participated=True,
+                ),
+            },
+            "lap_current": None,
+            "lap_total": None,
+        },
+    )
+    status_coordinator = _build_coordinator(hass, {"Status": "Started"})
+    status_coordinator.is_qualifying_like_session = True
+    status_coordinator.qualifying_part = 1
+    info_coordinator = _build_coordinator(
+        hass,
+        {"Type": "Qualifying", "Name": "Qualifying"},
+    )
+
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": SimpleNamespace(is_live=True),
+        "session_info_coordinator": info_coordinator,
+        "session_status_coordinator": status_coordinator,
+    }
+
+    sensor = F1DriverPositionsSensor(drivers_coordinator, "uid_status", entry_id, "F1")
+    await _add_sensors(hass, [sensor])
+
+    state = hass.states.get(sensor.entity_id)
+    assert state is not None
+    assert state.attributes["current_qualifying_part"] == 1
+
+    status_coordinator.qualifying_part = 2
+    status_coordinator.async_set_updated_data({"Status": "Started"})
+    await hass.async_block_till_done()
+
+    updated_state = hass.states.get(sensor.entity_id)
+    assert updated_state is not None
+    assert updated_state.attributes["current_qualifying_part"] == 2
 
 
 def test_sensor_shootout_session_is_qualifying_like(hass) -> None:
