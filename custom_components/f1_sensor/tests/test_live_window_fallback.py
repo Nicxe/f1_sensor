@@ -708,6 +708,84 @@ async def test_session_finished_timeout_returns_false(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_qualifying_monitor_window_allows_longer_post_finish_inactivity(
+    monkeypatch, hass
+) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    bus = _DummyBus()
+    bus.last_heartbeat_age = lambda: 80.0  # type: ignore[method-assign]
+    bus.last_stream_activity_age = lambda *_streams: 80.0  # type: ignore[method-assign]
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        bus,
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    now = dt_util.utcnow()
+    window = _mk_window(
+        session="Sprint Qualifying",
+        start=now - dt.timedelta(minutes=20),
+        end=now - dt.timedelta(seconds=10),
+    )
+    current_times = iter(
+        [
+            window.end_utc + dt.timedelta(seconds=5),
+            window.disconnect_at + dt.timedelta(seconds=1),
+        ]
+    )
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
+    monkeypatch.setattr(
+        live_window.dt_util,
+        "utcnow",
+        lambda: next(current_times, window.disconnect_at + dt.timedelta(seconds=1)),
+    )
+
+    reason = await supervisor._monitor_window(window, source="event_tracker")
+
+    assert reason == "disconnect-window-expired"
+
+
+@pytest.mark.asyncio
+async def test_practice_monitor_window_keeps_short_post_finish_inactivity_timeout(
+    monkeypatch, hass
+) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    bus = _DummyBus()
+    bus.last_heartbeat_age = lambda: 80.0  # type: ignore[method-assign]
+    bus.last_stream_activity_age = lambda *_streams: 80.0  # type: ignore[method-assign]
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        bus,
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    now = dt_util.utcnow()
+    window = _mk_window(
+        session="Practice 1",
+        start=now - dt.timedelta(minutes=20),
+        end=now - dt.timedelta(seconds=10),
+    )
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
+    monkeypatch.setattr(
+        live_window.dt_util,
+        "utcnow",
+        lambda: window.end_utc + dt.timedelta(seconds=5),
+    )
+
+    reason = await supervisor._monitor_window(window, source="event_tracker")
+
+    assert reason == "heartbeat-timeout-80s"
+
+
+@pytest.mark.asyncio
 async def test_switch_back_to_index_when_recovered(monkeypatch, hass) -> None:
     coord = _DummySessionCoordinator({}, status=403)
     supervisor = LiveSessionSupervisor(
