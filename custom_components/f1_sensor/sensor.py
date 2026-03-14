@@ -618,6 +618,16 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
     """Sensor that returns date/time (ISO8601) for the next race in 'state'."""
 
     _device_category = "race"
+    _unrecorded_attributes = frozenset(
+        {
+            "last_5_winners",
+            "last_5_poles",
+            "top_5_driver_wins_here",
+            "top_5_constructor_wins_here",
+            "dnf_rate_last_5_stats",
+            "pole_to_win_conversion_last_5_stats",
+        }
+    )
 
     _attr_translation_key = "next_race"
 
@@ -625,6 +635,25 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._history_coordinator = None
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        self._history_coordinator = reg.get("next_race_history_coordinator")
+        if self._history_coordinator is not None:
+            removal = self._history_coordinator.async_add_listener(
+                self._handle_history_update
+            )
+            self.async_on_remove(removal)
+
+    @callback
+    def _handle_history_update(self) -> None:
+        self._safe_write_ha_state()
+
+    def _history_attributes(self) -> dict:
+        data = getattr(self._history_coordinator, "data", None)
+        return data if isinstance(data, dict) else {}
 
     @property
     def state(self):
@@ -706,6 +735,7 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         _populate("qualifying_start", qual_start)
         _populate("sprint_qualifying_start", sprint_quali_start)
         _populate("sprint_start", sprint_start)
+        attrs.update(self._history_attributes())
 
         return attrs
 

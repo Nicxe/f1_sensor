@@ -119,6 +119,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         _RC_LOG_WS_MARKER,
     }
 )
+_FINISHING_PLUS_LAPS_RE = re.compile(r"^\+\d+\s+Laps?$", re.IGNORECASE)
 
 
 def _is_replay_delay_reason(reason: str | None) -> bool:
@@ -1266,6 +1267,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     TTL_STANDINGS = 24 * 3600  # standings change after race weekends
     TTL_LAST_RESULTS = 24 * 3600
     TTL_SPRINT = 24 * 3600
+    TTL_NEXT_RACE_HISTORY = 365 * 24 * 3600
     # Season results are paginated; we refresh the latest page more often inside the coordinator.
     TTL_SEASON_STABLE_PAGE = 30 * 24 * 3600  # older pages: effectively static
     TTL_SEASON_RECENT_PAGE = 24 * 3600  # second-to-last-ish pages
@@ -1328,6 +1330,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if offset >= 100:
                     return TTL_SEASON_RECENT_PAGE
                 return 7 * 24 * 3600
+            if "/ergast/f1/circuits/" in kk and (
+                "/races.json" in kk
+                or "/results/1.json" in kk
+                or "/qualifying.json" in kk
+            ):
+                return TTL_NEXT_RACE_HISTORY
+            if re.search(r"/ergast/f1/\d{4}/\d+/(results|qualifying)\.json", kk):
+                return TTL_NEXT_RACE_HISTORY
             # Default: keep a modest TTL
             return 6 * 3600
 
@@ -1374,6 +1384,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # The race coordinator provides schedule/calendar data that is never spoiler-sensitive.
     if race_coordinator is not None:
         race_coordinator._no_spoiler_sensitive = False
+    next_race_history_coordinator = (
+        F1NextRaceHistoryCoordinator(
+            hass,
+            race_coordinator,
+            "F1 Next Race History Coordinator",
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            ttl_seconds=TTL_NEXT_RACE_HISTORY,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+        )
+        if race_coordinator is not None and "next_race" in enabled
+        else None
+    )
+    if next_race_history_coordinator is not None:
+        next_race_history_coordinator._no_spoiler_sensitive = False
     driver_coordinator = (
         F1DataCoordinator(
             hass,
@@ -1660,6 +1689,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if race_coordinator:
         await race_coordinator.async_config_entry_first_refresh()
+    if next_race_history_coordinator:
+        await next_race_history_coordinator.async_refresh()
     if driver_coordinator:
         await driver_coordinator.async_config_entry_first_refresh()
     if constructor_coordinator:
@@ -1791,6 +1822,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "http_inflight": http_inflight,
         "http_persist": persisted_map,
         "race_coordinator": race_coordinator,
+        "next_race_history_coordinator": next_race_history_coordinator,
         "driver_coordinator": driver_coordinator,
         "constructor_coordinator": constructor_coordinator,
         "last_race_coordinator": last_race_coordinator,
@@ -5463,6 +5495,631 @@ class F1DataCoordinator(DataUpdateCoordinator):
                 return data
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}") from err
+
+
+class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
+    """Fetch and compute historical facts for the next race circuit."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        race_coordinator: DataUpdateCoordinator,
+        name: str,
+        session=None,
+        user_agent: str | None = None,
+        cache=None,
+        inflight=None,
+        ttl_seconds: int = 365 * 24 * 3600,
+        persist_map=None,
+        persist_save=None,
+        config_entry: ConfigEntry | None = None,
+    ) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=name,
+            update_interval=timedelta(hours=1),
+            config_entry=config_entry,
+        )
+        self._race_coordinator = race_coordinator
+        self._session = session or async_get_clientsession(hass)
+        self._headers = {"User-Agent": str(user_agent)} if user_agent else None
+        self._cache = cache
+        self._inflight = inflight
+        self._ttl = int(ttl_seconds or 365 * 24 * 3600)
+        self._persist = persist_map
+        self._persist_save = persist_save
+        self._target_key: tuple[str, str, str] | None = None
+        self._source_unsub = None
+        if hasattr(race_coordinator, "async_add_listener"):
+            with suppress(Exception):
+                self._source_unsub = race_coordinator.async_add_listener(
+                    self._handle_race_source_update
+                )
+
+    async def async_close(self, *_):
+        if callable(self._source_unsub):
+            with suppress(Exception):
+                self._source_unsub()
+        self._source_unsub = None
+
+    @staticmethod
+    def _empty_history() -> dict[str, Any]:
+        return {
+            "defending_winner": None,
+            "defending_pole_sitter": None,
+            "last_5_winners": [],
+            "last_5_poles": [],
+            "top_5_driver_wins_here": [],
+            "top_5_constructor_wins_here": [],
+            "first_f1_race_here": None,
+            "races_held_here": 0,
+            "last_year_podium": None,
+            "dnf_rate_last_5": 0.0,
+            "dnf_rate_last_5_stats": {
+                "race_count": 0,
+                "starter_count": 0,
+                "finisher_count": 0,
+                "dnf_count": 0,
+                "dnf_rate_pct": 0.0,
+                "per_race": [],
+            },
+            "pole_to_win_conversion_last_5": 0.0,
+            "pole_to_win_conversion_last_5_stats": {
+                "race_count": 0,
+                "pole_to_win_count": 0,
+                "conversion_rate_pct": 0.0,
+                "per_race": [],
+            },
+        }
+
+    @staticmethod
+    def _season_int(value: Any) -> int:
+        try:
+            return int(str(value).strip())
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _round_int(value: Any) -> int:
+        try:
+            return int(str(value).strip())
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _race_date(value: dict[str, Any] | None) -> str | None:
+        raw = value.get("date") if isinstance(value, dict) else None
+        if raw is None:
+            return None
+        text = str(raw).strip()
+        return text or None
+
+    @staticmethod
+    def _race_key(value: dict[str, Any] | None) -> tuple[str, str]:
+        if not isinstance(value, dict):
+            return ("", "")
+        season = value.get("season")
+        round_ = value.get("round")
+        return (
+            str(season).strip() if season is not None else "",
+            str(round_).strip() if round_ is not None else "",
+        )
+
+    @classmethod
+    def _history_sort_key(cls, race: dict[str, Any]) -> tuple[str, int, int]:
+        return (
+            cls._race_date(race) or "",
+            cls._season_int(race.get("season")),
+            cls._round_int(race.get("round")),
+        )
+
+    @staticmethod
+    def _driver_name(driver: dict[str, Any] | None) -> str | None:
+        if not isinstance(driver, dict):
+            return None
+        given = str(driver.get("givenName") or "").strip()
+        family = str(driver.get("familyName") or "").strip()
+        combined = " ".join(part for part in (given, family) if part)
+        if combined:
+            return combined
+        code = str(driver.get("code") or "").strip()
+        return code or None
+
+    @staticmethod
+    def _first_race(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+        races = (
+            (payload or {}).get("MRData", {}).get("RaceTable", {}).get("Races", [])
+            if isinstance(payload, dict)
+            else []
+        )
+        if isinstance(races, list) and races:
+            first = races[0]
+            return first if isinstance(first, dict) else None
+        return None
+
+    @staticmethod
+    def _find_result(
+        results: list[dict[str, Any]], position: str
+    ) -> dict[str, Any] | None:
+        for result in results:
+            if str(result.get("position") or "").strip() == position:
+                return result
+        if position == "1" and results:
+            first = results[0]
+            return first if isinstance(first, dict) else None
+        return None
+
+    @staticmethod
+    def _is_finisher_status(status: Any) -> bool:
+        text = str(status or "").strip()
+        if not text:
+            return False
+        if text == "Finished":
+            return True
+        return bool(_FINISHING_PLUS_LAPS_RE.match(text))
+
+    @classmethod
+    def _normalize_winner(
+        cls, race: dict[str, Any], result: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if not isinstance(result, dict):
+            return None
+        driver = result.get("Driver") if isinstance(result.get("Driver"), dict) else {}
+        constructor = (
+            result.get("Constructor")
+            if isinstance(result.get("Constructor"), dict)
+            else {}
+        )
+        return {
+            "season": str(race.get("season") or ""),
+            "round": str(race.get("round") or ""),
+            "race_name": race.get("raceName"),
+            "date": race.get("date"),
+            "driver_id": driver.get("driverId"),
+            "driver_code": driver.get("code"),
+            "driver_name": cls._driver_name(driver),
+            "constructor_id": constructor.get("constructorId"),
+            "constructor_name": constructor.get("name"),
+            "grid": result.get("grid"),
+        }
+
+    @classmethod
+    def _normalize_pole(
+        cls, race: dict[str, Any], qualifying_result: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if not isinstance(qualifying_result, dict):
+            return None
+        driver = (
+            qualifying_result.get("Driver")
+            if isinstance(qualifying_result.get("Driver"), dict)
+            else {}
+        )
+        constructor = (
+            qualifying_result.get("Constructor")
+            if isinstance(qualifying_result.get("Constructor"), dict)
+            else {}
+        )
+        return {
+            "season": str(race.get("season") or ""),
+            "round": str(race.get("round") or ""),
+            "race_name": race.get("raceName"),
+            "date": race.get("date"),
+            "driver_id": driver.get("driverId"),
+            "driver_code": driver.get("code"),
+            "driver_name": cls._driver_name(driver),
+            "constructor_id": constructor.get("constructorId"),
+            "constructor_name": constructor.get("name"),
+            "q1": qualifying_result.get("Q1"),
+            "q2": qualifying_result.get("Q2"),
+            "q3": qualifying_result.get("Q3"),
+        }
+
+    @classmethod
+    def _normalize_podium(
+        cls, race: dict[str, Any], results: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        podium_items: list[dict[str, Any]] = []
+        ordered = sorted(
+            [
+                result
+                for result in results
+                if str(result.get("position") or "").strip() in {"1", "2", "3"}
+            ],
+            key=lambda result: cls._round_int(result.get("position")),
+        )
+        for result in ordered[:3]:
+            driver = (
+                result.get("Driver") if isinstance(result.get("Driver"), dict) else {}
+            )
+            constructor = (
+                result.get("Constructor")
+                if isinstance(result.get("Constructor"), dict)
+                else {}
+            )
+            podium_items.append(
+                {
+                    "position": str(result.get("position") or ""),
+                    "driver_id": driver.get("driverId"),
+                    "driver_code": driver.get("code"),
+                    "driver_name": cls._driver_name(driver),
+                    "constructor_id": constructor.get("constructorId"),
+                    "constructor_name": constructor.get("name"),
+                    "grid": result.get("grid"),
+                }
+            )
+        if not podium_items:
+            return None
+        return {
+            "season": str(race.get("season") or ""),
+            "round": str(race.get("round") or ""),
+            "race_name": race.get("raceName"),
+            "date": race.get("date"),
+            "podium": podium_items,
+        }
+
+    @staticmethod
+    def _normalize_first_race(race: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not isinstance(race, dict):
+            return None
+        return {
+            "season": str(race.get("season") or ""),
+            "round": str(race.get("round") or ""),
+            "race_name": race.get("raceName"),
+            "date": race.get("date"),
+            "url": race.get("url"),
+        }
+
+    @staticmethod
+    def _history_url(*parts: str) -> str:
+        return "https://api.jolpi.ca/ergast/f1/" + "/".join(
+            part.strip("/") for part in parts
+        )
+
+    async def _fetch_url(self, url: str) -> Any:
+        async with asyncio.timeout(10):
+            return await fetch_json(
+                self.hass,
+                self._session,
+                url,
+                headers=self._headers,
+                ttl_seconds=self._ttl,
+                cache=self._cache,
+                inflight=self._inflight,
+                persist_map=self._persist,
+                persist_save=self._persist_save,
+            )
+
+    def _target_race(self) -> dict[str, Any] | None:
+        payload = getattr(self._race_coordinator, "data", None) or {}
+        races = payload.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+        _, race = get_next_race(
+            races,
+            grace=RACE_SWITCH_GRACE,
+            default_time="00:00:00Z",
+        )
+        return race if isinstance(race, dict) else None
+
+    @staticmethod
+    def _target_key_from_race(
+        race: dict[str, Any] | None,
+    ) -> tuple[str, str, str] | None:
+        if not isinstance(race, dict):
+            return None
+        circuit = race.get("Circuit") if isinstance(race.get("Circuit"), dict) else {}
+        circuit_id = str(circuit.get("circuitId") or "").strip()
+        date = str(race.get("date") or "").strip()
+        round_ = str(race.get("round") or "").strip()
+        if not circuit_id or not date:
+            return None
+        return (circuit_id, date, round_)
+
+    @ha_callback
+    def _handle_race_source_update(self) -> None:
+        next_target = self._target_key_from_race(self._target_race())
+        if next_target is None or next_target == self._target_key:
+            return
+        self.hass.async_create_task(self.async_request_refresh())
+
+    async def _async_update_data(self):
+        history = self._empty_history()
+        try:
+            target_race = self._target_race()
+            target_key = self._target_key_from_race(target_race)
+            self._target_key = target_key
+            if target_race is None or target_key is None:
+                return history
+
+            circuit = (
+                target_race.get("Circuit")
+                if isinstance(target_race.get("Circuit"), dict)
+                else {}
+            )
+            circuit_id = str(circuit.get("circuitId") or "").strip()
+            target_date = self._race_date(target_race)
+            if not circuit_id or not target_date:
+                return history
+
+            circuit_races_url = self._history_url(
+                "circuits", circuit_id, "races.json?limit=100"
+            )
+            winners_url = self._history_url(
+                "circuits", circuit_id, "results", "1.json?limit=100"
+            )
+
+            circuit_races_payload, winners_payload = await asyncio.gather(
+                self._fetch_url(circuit_races_url),
+                self._fetch_url(winners_url),
+            )
+
+            all_races = (
+                (circuit_races_payload or {})
+                .get("MRData", {})
+                .get("RaceTable", {})
+                .get("Races", [])
+            )
+            completed_races = [
+                race
+                for race in all_races
+                if isinstance(race, dict)
+                and (self._race_date(race) or "") < target_date
+            ]
+            completed_races.sort(key=self._history_sort_key)
+            history["first_f1_race_here"] = self._normalize_first_race(
+                completed_races[0] if completed_races else None
+            )
+            history["races_held_here"] = len(completed_races)
+            if not completed_races:
+                return history
+
+            latest_five = list(reversed(completed_races[-5:]))
+
+            winners_races = (
+                (winners_payload or {})
+                .get("MRData", {})
+                .get("RaceTable", {})
+                .get("Races", [])
+            )
+            driver_wins: dict[str, dict[str, Any]] = {}
+            constructor_wins: dict[str, dict[str, Any]] = {}
+            winners_by_race: dict[tuple[str, str], dict[str, Any]] = {}
+            for race in winners_races:
+                if not isinstance(race, dict):
+                    continue
+                if (self._race_date(race) or "") >= target_date:
+                    continue
+                winner = self._find_result(race.get("Results", []) or [], "1")
+                normalized = self._normalize_winner(race, winner)
+                if normalized is None:
+                    continue
+                winners_by_race[self._race_key(race)] = normalized
+
+                driver_id = str(normalized.get("driver_id") or "").strip()
+                if driver_id:
+                    stats = driver_wins.setdefault(
+                        driver_id,
+                        {
+                            "driver_id": normalized.get("driver_id"),
+                            "driver_code": normalized.get("driver_code"),
+                            "driver_name": normalized.get("driver_name"),
+                            "wins": 0,
+                            "first_win_season": normalized.get("season"),
+                            "last_win_season": normalized.get("season"),
+                        },
+                    )
+                    stats["wins"] += 1
+                    if self._season_int(normalized.get("season")) < self._season_int(
+                        stats.get("first_win_season")
+                    ):
+                        stats["first_win_season"] = normalized.get("season")
+                    if self._season_int(normalized.get("season")) > self._season_int(
+                        stats.get("last_win_season")
+                    ):
+                        stats["last_win_season"] = normalized.get("season")
+
+                constructor_id = str(normalized.get("constructor_id") or "").strip()
+                if constructor_id:
+                    stats = constructor_wins.setdefault(
+                        constructor_id,
+                        {
+                            "constructor_id": normalized.get("constructor_id"),
+                            "constructor_name": normalized.get("constructor_name"),
+                            "wins": 0,
+                            "first_win_season": normalized.get("season"),
+                            "last_win_season": normalized.get("season"),
+                        },
+                    )
+                    stats["wins"] += 1
+                    if self._season_int(normalized.get("season")) < self._season_int(
+                        stats.get("first_win_season")
+                    ):
+                        stats["first_win_season"] = normalized.get("season")
+                    if self._season_int(normalized.get("season")) > self._season_int(
+                        stats.get("last_win_season")
+                    ):
+                        stats["last_win_season"] = normalized.get("season")
+
+            result_urls = [
+                self._history_url(
+                    str(race.get("season") or ""),
+                    str(race.get("round") or ""),
+                    "results.json",
+                )
+                for race in latest_five
+            ]
+            qualifying_urls = [
+                self._history_url(
+                    str(race.get("season") or ""),
+                    str(race.get("round") or ""),
+                    "qualifying.json",
+                )
+                for race in latest_five
+            ]
+            result_payloads, qualifying_payloads = await asyncio.gather(
+                asyncio.gather(*(self._fetch_url(url) for url in result_urls)),
+                asyncio.gather(
+                    *(self._fetch_url(url) for url in qualifying_urls),
+                    return_exceptions=True,
+                ),
+            )
+
+            last_five_winners: list[dict[str, Any]] = []
+            last_five_poles: list[dict[str, Any]] = []
+            dnf_per_race: list[dict[str, Any]] = []
+            pole_to_win_per_race: list[dict[str, Any]] = []
+            starter_count = 0
+            finisher_count = 0
+            dnf_count = 0
+            pole_to_win_count = 0
+            last_year_podium = None
+            defending_pole_sitter = None
+            previous_season = self._season_int(target_race.get("season")) - 1
+
+            for idx, race in enumerate(latest_five):
+                race_key = self._race_key(race)
+                result_race = self._first_race(result_payloads[idx]) or race
+                results = result_race.get("Results", []) or []
+                winner = winners_by_race.get(race_key)
+                if winner is None:
+                    winner = self._normalize_winner(
+                        result_race,
+                        self._find_result(results, "1"),
+                    )
+                if winner is not None:
+                    last_five_winners.append(winner)
+
+                starters = len(results)
+                finishers = sum(
+                    1
+                    for result in results
+                    if self._is_finisher_status(result.get("status"))
+                )
+                dnfs = max(0, starters - finishers)
+                starter_count += starters
+                finisher_count += finishers
+                dnf_count += dnfs
+                dnf_per_race.append(
+                    {
+                        "season": str(
+                            result_race.get("season") or race.get("season") or ""
+                        ),
+                        "round": str(
+                            result_race.get("round") or race.get("round") or ""
+                        ),
+                        "race_name": result_race.get("raceName")
+                        or race.get("raceName"),
+                        "starters": starters,
+                        "finishers": finishers,
+                        "dnfs": dnfs,
+                    }
+                )
+
+                winner_result = self._find_result(results, "1")
+                winner_name = None
+                winner_grid = None
+                converted = False
+                if winner_result is not None:
+                    winner_name = self._driver_name(winner_result.get("Driver"))
+                    winner_grid = winner_result.get("grid")
+                    converted = str(winner_grid or "").strip() == "1"
+                    if converted:
+                        pole_to_win_count += 1
+                pole_to_win_per_race.append(
+                    {
+                        "season": str(
+                            result_race.get("season") or race.get("season") or ""
+                        ),
+                        "round": str(
+                            result_race.get("round") or race.get("round") or ""
+                        ),
+                        "race_name": result_race.get("raceName")
+                        or race.get("raceName"),
+                        "winner_name": winner_name,
+                        "winner_grid": winner_grid,
+                        "converted": converted,
+                    }
+                )
+
+                if (
+                    previous_season > 0
+                    and self._season_int(result_race.get("season")) == previous_season
+                    and last_year_podium is None
+                ):
+                    last_year_podium = self._normalize_podium(result_race, results)
+
+                qualifying_payload = qualifying_payloads[idx]
+                if not isinstance(qualifying_payload, Exception):
+                    qualifying_race = self._first_race(qualifying_payload) or race
+                    qualifying_results = (
+                        qualifying_race.get("QualifyingResults", []) or []
+                    )
+                    pole_result = None
+                    for result in qualifying_results:
+                        if str(result.get("position") or "").strip() == "1":
+                            pole_result = result
+                            break
+                    if pole_result is None and qualifying_results:
+                        first = qualifying_results[0]
+                        pole_result = first if isinstance(first, dict) else None
+                    normalized_pole = self._normalize_pole(qualifying_race, pole_result)
+                    if normalized_pole is not None:
+                        if idx == 0:
+                            defending_pole_sitter = normalized_pole
+                        last_five_poles.append(normalized_pole)
+
+            dnf_rate = (
+                round((dnf_count / starter_count) * 100, 1) if starter_count else 0.0
+            )
+            conversion_rate = (
+                round((pole_to_win_count / len(latest_five)) * 100, 1)
+                if latest_five
+                else 0.0
+            )
+
+            history["defending_winner"] = (
+                last_five_winners[0] if last_five_winners else None
+            )
+            history["defending_pole_sitter"] = defending_pole_sitter
+            history["last_5_winners"] = last_five_winners
+            history["last_5_poles"] = last_five_poles
+            history["top_5_driver_wins_here"] = sorted(
+                driver_wins.values(),
+                key=lambda item: (
+                    -int(item.get("wins") or 0),
+                    -self._season_int(item.get("last_win_season")),
+                    str(item.get("driver_name") or "").lower(),
+                    str(item.get("driver_id") or "").lower(),
+                ),
+            )[:5]
+            history["top_5_constructor_wins_here"] = sorted(
+                constructor_wins.values(),
+                key=lambda item: (
+                    -int(item.get("wins") or 0),
+                    -self._season_int(item.get("last_win_season")),
+                    str(item.get("constructor_name") or "").lower(),
+                    str(item.get("constructor_id") or "").lower(),
+                ),
+            )[:5]
+            history["last_year_podium"] = last_year_podium
+            history["dnf_rate_last_5"] = dnf_rate
+            history["dnf_rate_last_5_stats"] = {
+                "race_count": len(latest_five),
+                "starter_count": starter_count,
+                "finisher_count": finisher_count,
+                "dnf_count": dnf_count,
+                "dnf_rate_pct": dnf_rate,
+                "per_race": dnf_per_race,
+            }
+            history["pole_to_win_conversion_last_5"] = conversion_rate
+            history["pole_to_win_conversion_last_5_stats"] = {
+                "race_count": len(latest_five),
+                "pole_to_win_count": pole_to_win_count,
+                "conversion_rate_pct": conversion_rate,
+                "per_race": pole_to_win_per_race,
+            }
+            return history
+        except Exception as err:
+            raise UpdateFailed(f"Error fetching next race history: {err}") from err
 
 
 class F1SeasonResultsCoordinator(DataUpdateCoordinator):

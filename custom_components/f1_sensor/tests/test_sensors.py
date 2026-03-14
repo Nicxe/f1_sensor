@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util.json import json_loads
 import pytest
 
+from custom_components.f1_sensor import F1NextRaceHistoryCoordinator
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     DOMAIN,
@@ -267,6 +268,471 @@ def _build_race(
     }
 
 
+def _history_driver(
+    driver_id: str,
+    code: str,
+    given_name: str,
+    family_name: str,
+) -> dict:
+    return {
+        "driverId": driver_id,
+        "code": code,
+        "givenName": given_name,
+        "familyName": family_name,
+    }
+
+
+def _history_constructor(constructor_id: str, name: str) -> dict:
+    return {
+        "constructorId": constructor_id,
+        "name": name,
+    }
+
+
+def _history_result(
+    *,
+    position: int,
+    driver: dict,
+    constructor: dict,
+    grid: int,
+    status: str = "Finished",
+) -> dict:
+    return {
+        "position": str(position),
+        "Driver": driver,
+        "Constructor": constructor,
+        "grid": str(grid),
+        "status": status,
+    }
+
+
+def _history_qualifying(
+    *,
+    position: int,
+    driver: dict,
+    constructor: dict,
+    q1: str,
+    q2: str | None = None,
+    q3: str | None = None,
+) -> dict:
+    result = {
+        "position": str(position),
+        "Driver": driver,
+        "Constructor": constructor,
+        "Q1": q1,
+    }
+    if q2 is not None:
+        result["Q2"] = q2
+    if q3 is not None:
+        result["Q3"] = q3
+    return result
+
+
+def _history_race_entry(
+    *,
+    season: str,
+    round_: str,
+    race_name: str,
+    date: str,
+    circuit_id: str = "red_bull_ring",
+    circuit_name: str = "Red Bull Ring",
+    locality: str = "Spielberg",
+    country: str = "Austria",
+    time: str = "13:00:00Z",
+) -> dict:
+    return {
+        "season": season,
+        "round": round_,
+        "raceName": race_name,
+        "url": f"https://example.com/{season}/{round_}",
+        "date": date,
+        "time": time,
+        "Circuit": {
+            "circuitId": circuit_id,
+            "url": f"https://example.com/circuits/{circuit_id}",
+            "circuitName": circuit_name,
+            "Location": {
+                "lat": "47.2197",
+                "long": "14.7647",
+                "locality": locality,
+                "country": country,
+            },
+        },
+    }
+
+
+def _build_next_race_history_fixture(
+    *, include_previous_season: bool = True
+) -> tuple[dict, dict[str, dict]]:
+    norris = _history_driver("norris", "NOR", "Lando", "Norris")
+    verstappen = _history_driver("max_verstappen", "VER", "Max", "Verstappen")
+    piastri = _history_driver("piastri", "PIA", "Oscar", "Piastri")
+    leclerc = _history_driver("leclerc", "LEC", "Charles", "Leclerc")
+    hamilton = _history_driver("hamilton", "HAM", "Lewis", "Hamilton")
+    bottas = _history_driver("bottas", "BOT", "Valtteri", "Bottas")
+    sainz = _history_driver("sainz", "SAI", "Carlos", "Sainz")
+    perez = _history_driver("perez", "PER", "Sergio", "Perez")
+
+    mclaren = _history_constructor("mclaren", "McLaren")
+    red_bull = _history_constructor("red_bull", "Red Bull")
+    ferrari = _history_constructor("ferrari", "Ferrari")
+    mercedes = _history_constructor("mercedes", "Mercedes")
+
+    historical_races = [
+        {
+            "race": _history_race_entry(
+                season="2025",
+                round_="11",
+                race_name="Austrian GP",
+                date="2025-06-29",
+            ),
+            "results": [
+                _history_result(position=1, driver=norris, constructor=mclaren, grid=2),
+                _history_result(
+                    position=2, driver=verstappen, constructor=red_bull, grid=1
+                ),
+                _history_result(
+                    position=3, driver=piastri, constructor=mclaren, grid=3
+                ),
+                _history_result(
+                    position=4, driver=leclerc, constructor=ferrari, grid=4
+                ),
+                _history_result(
+                    position=5,
+                    driver=hamilton,
+                    constructor=mercedes,
+                    grid=5,
+                    status="Engine",
+                ),
+            ],
+            "qualifying": [
+                _history_qualifying(
+                    position=1,
+                    driver=piastri,
+                    constructor=mclaren,
+                    q1="1:05.000",
+                    q2="1:04.800",
+                    q3="1:04.500",
+                ),
+                _history_qualifying(
+                    position=2,
+                    driver=verstappen,
+                    constructor=red_bull,
+                    q1="1:05.100",
+                    q2="1:04.900",
+                    q3="1:04.600",
+                ),
+            ],
+        },
+        {
+            "race": _history_race_entry(
+                season="2024",
+                round_="10",
+                race_name="Styrian Grand Prix",
+                date="2024-06-30",
+            ),
+            "results": [
+                _history_result(
+                    position=1, driver=verstappen, constructor=red_bull, grid=1
+                ),
+                _history_result(position=2, driver=norris, constructor=mclaren, grid=2),
+                _history_result(
+                    position=3, driver=leclerc, constructor=ferrari, grid=4
+                ),
+                _history_result(
+                    position=4, driver=hamilton, constructor=mercedes, grid=5
+                ),
+                _history_result(
+                    position=5,
+                    driver=perez,
+                    constructor=red_bull,
+                    grid=3,
+                    status="Disqualified",
+                ),
+            ],
+            "qualifying": [
+                _history_qualifying(
+                    position=1,
+                    driver=norris,
+                    constructor=mclaren,
+                    q1="1:05.200",
+                    q2="1:05.000",
+                    q3="1:04.700",
+                ),
+            ],
+        },
+        {
+            "race": _history_race_entry(
+                season="2023",
+                round_="9",
+                race_name="Austrian Grand Prix",
+                date="2023-07-02",
+            ),
+            "results": [
+                _history_result(
+                    position=1, driver=verstappen, constructor=red_bull, grid=1
+                ),
+                _history_result(
+                    position=2,
+                    driver=hamilton,
+                    constructor=mercedes,
+                    grid=2,
+                    status="+1 Lap",
+                ),
+                _history_result(
+                    position=3,
+                    driver=norris,
+                    constructor=mclaren,
+                    grid=4,
+                    status="+2 Laps",
+                ),
+                _history_result(
+                    position=4, driver=leclerc, constructor=ferrari, grid=3
+                ),
+                _history_result(
+                    position=5,
+                    driver=sainz,
+                    constructor=ferrari,
+                    grid=5,
+                    status="Engine",
+                ),
+            ],
+            "qualifying": [
+                _history_qualifying(
+                    position=1,
+                    driver=verstappen,
+                    constructor=red_bull,
+                    q1="1:05.300",
+                    q2="1:05.100",
+                    q3="1:04.800",
+                ),
+            ],
+        },
+        {
+            "race": _history_race_entry(
+                season="2022",
+                round_="11",
+                race_name="Austrian GP",
+                date="2022-07-10",
+            ),
+            "results": [
+                _history_result(
+                    position=1, driver=leclerc, constructor=ferrari, grid=1
+                ),
+                _history_result(
+                    position=2,
+                    driver=verstappen,
+                    constructor=red_bull,
+                    grid=2,
+                    status="Accident",
+                ),
+                _history_result(
+                    position=3, driver=hamilton, constructor=mercedes, grid=4
+                ),
+                _history_result(
+                    position=4,
+                    driver=norris,
+                    constructor=mclaren,
+                    grid=5,
+                    status="+1 Lap",
+                ),
+                _history_result(position=5, driver=sainz, constructor=ferrari, grid=3),
+            ],
+            "qualifying": [
+                _history_qualifying(
+                    position=1,
+                    driver=leclerc,
+                    constructor=ferrari,
+                    q1="1:05.400",
+                    q2="1:05.200",
+                    q3="1:04.900",
+                ),
+            ],
+        },
+        {
+            "race": _history_race_entry(
+                season="2021",
+                round_="9",
+                race_name="Styria Grand Prix",
+                date="2021-06-27",
+            ),
+            "results": [
+                _history_result(
+                    position=1, driver=hamilton, constructor=mercedes, grid=4
+                ),
+                _history_result(
+                    position=2, driver=verstappen, constructor=red_bull, grid=1
+                ),
+                _history_result(
+                    position=3, driver=bottas, constructor=mercedes, grid=2
+                ),
+                _history_result(
+                    position=4,
+                    driver=leclerc,
+                    constructor=ferrari,
+                    grid=3,
+                    status="+1 Lap",
+                ),
+                _history_result(
+                    position=5,
+                    driver=norris,
+                    constructor=mclaren,
+                    grid=5,
+                    status="Collision",
+                ),
+            ],
+            "qualifying": [
+                _history_qualifying(
+                    position=1,
+                    driver=hamilton,
+                    constructor=mercedes,
+                    q1="1:05.500",
+                    q2="1:05.300",
+                    q3="1:05.000",
+                ),
+            ],
+        },
+        {
+            "race": _history_race_entry(
+                season="2020",
+                round_="1",
+                race_name="Austrian Grand Prix",
+                date="2020-07-05",
+            ),
+            "results": [
+                _history_result(
+                    position=1, driver=bottas, constructor=mercedes, grid=1
+                ),
+                _history_result(
+                    position=2, driver=verstappen, constructor=red_bull, grid=2
+                ),
+                _history_result(
+                    position=3, driver=hamilton, constructor=mercedes, grid=3
+                ),
+                _history_result(
+                    position=4, driver=leclerc, constructor=ferrari, grid=4
+                ),
+                _history_result(position=5, driver=norris, constructor=mclaren, grid=5),
+            ],
+            "qualifying": [
+                _history_qualifying(
+                    position=1,
+                    driver=bottas,
+                    constructor=mercedes,
+                    q1="1:05.600",
+                    q2="1:05.400",
+                    q3="1:05.100",
+                ),
+            ],
+        },
+        {
+            "race": _history_race_entry(
+                season="2019",
+                round_="9",
+                race_name="Austrian Grand Prix",
+                date="2019-06-30",
+            ),
+            "results": [
+                _history_result(
+                    position=1, driver=leclerc, constructor=ferrari, grid=1
+                ),
+            ],
+            "qualifying": [
+                _history_qualifying(
+                    position=1,
+                    driver=leclerc,
+                    constructor=ferrari,
+                    q1="1:05.700",
+                    q2="1:05.500",
+                    q3="1:05.200",
+                ),
+            ],
+        },
+    ]
+    if not include_previous_season:
+        historical_races = [
+            entry for entry in historical_races if entry["race"]["season"] != "2025"
+        ]
+
+    upcoming_race = _build_race(
+        season="2026",
+        round_="11",
+        race_name="Austrian Grand Prix",
+        circuit_id="red_bull_ring",
+        circuit_name="Red Bull Ring",
+        locality="Spielberg",
+        country="Austria",
+        date="2026-06-28",
+        time="13:00:00Z",
+    )
+    upcoming_circuit_entry = _history_race_entry(
+        season="2026",
+        round_="11",
+        race_name="Austrian Grand Prix",
+        date="2026-06-28",
+    )
+
+    base_url = "https://api.jolpi.ca/ergast/f1"
+    payloads: dict[str, dict] = {
+        f"{base_url}/circuits/red_bull_ring/races.json?limit=100": {
+            "MRData": {
+                "RaceTable": {
+                    "Races": [entry["race"] for entry in historical_races]
+                    + [upcoming_circuit_entry]
+                }
+            }
+        },
+        f"{base_url}/circuits/red_bull_ring/results/1.json?limit=100": {
+            "MRData": {
+                "RaceTable": {
+                    "Races": [
+                        {
+                            **entry["race"],
+                            "Results": [entry["results"][0]],
+                        }
+                        for entry in historical_races
+                    ]
+                }
+            }
+        },
+    }
+
+    latest_five = [
+        entry
+        for entry in historical_races
+        if entry["race"]["season"] in {"2025", "2024", "2023", "2022", "2021"}
+    ]
+    if not include_previous_season:
+        latest_five = [
+            entry
+            for entry in historical_races
+            if entry["race"]["season"] in {"2024", "2023", "2022", "2021", "2020"}
+        ]
+
+    for entry in latest_five:
+        season = entry["race"]["season"]
+        round_ = entry["race"]["round"]
+        payloads[f"{base_url}/{season}/{round_}/results.json"] = {
+            "MRData": {
+                "RaceTable": {"Races": [{**entry["race"], "Results": entry["results"]}]}
+            }
+        }
+        payloads[f"{base_url}/{season}/{round_}/qualifying.json"] = {
+            "MRData": {
+                "RaceTable": {
+                    "Races": [
+                        {
+                            **entry["race"],
+                            "QualifyingResults": entry["qualifying"],
+                        }
+                    ]
+                }
+            }
+        }
+
+    return upcoming_race, payloads
+
+
 @pytest.mark.asyncio
 async def test_current_season_sensor_state_attributes_and_availability(hass) -> None:
     coordinator = DataUpdateCoordinator(
@@ -406,6 +872,180 @@ async def test_next_race_sensor_uses_2026_detailed_circuit_map(hass) -> None:
         state.attributes["circuit_map_url"]
         == "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1/2026/track/2026trackmelbournedetailed.webp"
     )
+
+
+@pytest.mark.asyncio
+async def test_next_race_sensor_exposes_circuit_history_attrs(
+    hass, monkeypatch
+) -> None:
+    next_race, payloads = _build_next_race_history_fixture()
+    race_coordinator = _build_coordinator(
+        hass,
+        {"MRData": {"RaceTable": {"Races": [next_race]}}},
+    )
+    entry_id = "test_entry_next_race_history"
+    _set_entry_context(hass, entry_id)
+
+    async def _fake_fetch_url(_self, url):
+        if url not in payloads:
+            raise AssertionError(f"Unexpected URL: {url}")
+        return payloads[url]
+
+    monkeypatch.setattr(
+        F1NextRaceHistoryCoordinator,
+        "_fetch_url",
+        _fake_fetch_url,
+    )
+
+    history_coordinator = F1NextRaceHistoryCoordinator(
+        hass,
+        race_coordinator,
+        "Test Next Race History Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        ttl_seconds=3600,
+        persist_map={},
+        persist_save=MagicMock(),
+    )
+    history_coordinator.data = await history_coordinator._async_update_data()
+    history_coordinator.available = True
+    hass.data[DOMAIN][entry_id]["next_race_history_coordinator"] = history_coordinator
+
+    sensor = F1NextRaceSensor(
+        race_coordinator,
+        f"{entry_id}_next_race",
+        entry_id,
+        "F1",
+    )
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.attributes["defending_winner"]["driver_name"] == "Lando Norris"
+    assert state.attributes["defending_winner"]["season"] == "2025"
+    assert state.attributes["defending_pole_sitter"]["driver_name"] == "Oscar Piastri"
+    assert [item["season"] for item in state.attributes["last_5_winners"]] == [
+        "2025",
+        "2024",
+        "2023",
+        "2022",
+        "2021",
+    ]
+    assert [item["race_name"] for item in state.attributes["last_5_winners"][:2]] == [
+        "Austrian GP",
+        "Styrian Grand Prix",
+    ]
+    assert [item["driver_name"] for item in state.attributes["last_5_poles"][:3]] == [
+        "Oscar Piastri",
+        "Lando Norris",
+        "Max Verstappen",
+    ]
+    assert [
+        item["driver_name"] for item in state.attributes["top_5_driver_wins_here"]
+    ] == [
+        "Max Verstappen",
+        "Charles Leclerc",
+        "Lando Norris",
+        "Lewis Hamilton",
+        "Valtteri Bottas",
+    ]
+    assert [
+        item["constructor_name"]
+        for item in state.attributes["top_5_constructor_wins_here"]
+    ] == ["Red Bull", "Ferrari", "Mercedes", "McLaren"]
+    assert state.attributes["first_f1_race_here"] == {
+        "season": "2019",
+        "round": "9",
+        "race_name": "Austrian Grand Prix",
+        "date": "2019-06-30",
+        "url": "https://example.com/2019/9",
+    }
+    assert state.attributes["races_held_here"] == 7
+    assert state.attributes["last_year_podium"]["season"] == "2025"
+    assert [
+        item["driver_name"] for item in state.attributes["last_year_podium"]["podium"]
+    ] == ["Lando Norris", "Max Verstappen", "Oscar Piastri"]
+    assert state.attributes["dnf_rate_last_5"] == 20.0
+    assert state.attributes["dnf_rate_last_5_stats"]["starter_count"] == 25
+    assert state.attributes["dnf_rate_last_5_stats"]["finisher_count"] == 20
+    assert state.attributes["dnf_rate_last_5_stats"]["dnf_count"] == 5
+    assert state.attributes["pole_to_win_conversion_last_5"] == 60.0
+    assert (
+        state.attributes["pole_to_win_conversion_last_5_stats"]["pole_to_win_count"]
+        == 3
+    )
+    assert state.attributes["pole_to_win_conversion_last_5_stats"]["per_race"][0] == {
+        "season": "2025",
+        "round": "11",
+        "race_name": "Austrian GP",
+        "winner_name": "Lando Norris",
+        "winner_grid": "2",
+        "converted": False,
+    }
+    assert state.state_info is not None
+    assert "last_5_winners" in state.state_info["unrecorded_attributes"]
+    assert "last_5_poles" in state.state_info["unrecorded_attributes"]
+    assert "top_5_driver_wins_here" in state.state_info["unrecorded_attributes"]
+    assert "top_5_constructor_wins_here" in state.state_info["unrecorded_attributes"]
+    assert "dnf_rate_last_5_stats" in state.state_info["unrecorded_attributes"]
+    assert (
+        "pole_to_win_conversion_last_5_stats"
+        in state.state_info["unrecorded_attributes"]
+    )
+
+    shared_attrs, shared_attrs_size = _recorder_shared_attrs(state)
+    assert shared_attrs_size <= MAX_STATE_ATTRS_BYTES
+    assert "last_5_winners" not in shared_attrs
+    assert "last_5_poles" not in shared_attrs
+    assert shared_attrs["defending_winner"]["season"] == "2025"
+
+
+@pytest.mark.asyncio
+async def test_next_race_history_last_year_podium_missing_returns_none(
+    hass, monkeypatch
+) -> None:
+    next_race, payloads = _build_next_race_history_fixture(
+        include_previous_season=False
+    )
+    race_coordinator = _build_coordinator(
+        hass,
+        {"MRData": {"RaceTable": {"Races": [next_race]}}},
+    )
+
+    async def _fake_fetch_url(_self, url):
+        if url not in payloads:
+            raise AssertionError(f"Unexpected URL: {url}")
+        return payloads[url]
+
+    monkeypatch.setattr(
+        F1NextRaceHistoryCoordinator,
+        "_fetch_url",
+        _fake_fetch_url,
+    )
+
+    history_coordinator = F1NextRaceHistoryCoordinator(
+        hass,
+        race_coordinator,
+        "Test Next Race History Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        ttl_seconds=3600,
+        persist_map={},
+        persist_save=MagicMock(),
+    )
+    history = await history_coordinator._async_update_data()
+
+    assert history["last_year_podium"] is None
+    assert [item["season"] for item in history["last_5_winners"]] == [
+        "2024",
+        "2023",
+        "2022",
+        "2021",
+        "2020",
+    ]
+    assert history["races_held_here"] == 6
 
 
 @pytest.mark.asyncio
