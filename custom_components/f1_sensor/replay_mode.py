@@ -65,8 +65,9 @@ REPLAY_YEAR_BACK = 1
 INDEX_STATUS_OK = "ok"
 INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
-# Cache version - bump this when changing initial_state format to invalidate old caches
-CACHE_VERSION = 6
+# Cache version - bump this when replay index contents change in a way that
+# requires re-downloading cached sessions.
+CACHE_VERSION = 7
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 
@@ -612,6 +613,7 @@ class ReplaySessionManager:
         )
 
         formation_started_at_ms: int | None = None
+        formation_start_utc: datetime | None = None
         formation_initial_state: dict[str, Any] | None = None
 
         if self._is_race_or_sprint_session(session):

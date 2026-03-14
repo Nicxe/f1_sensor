@@ -19,10 +19,11 @@ from .signalr import LiveBus
 _LOGGER = logging.getLogger(__name__)
 
 _CARDATA_SEARCH_WINDOW = timedelta(seconds=90)
-_CARDATA_PRE_WINDOW = timedelta(seconds=-10)
+_CARDATA_PRE_WINDOW = timedelta(seconds=5)
 _CARDATA_RETRY_DELAY = 20
 _CARDATA_MAX_ATTEMPTS = 3
 _CARDATA_TIMEOUT = 20
+_CARDATA_BATCH_SIZE = 1
 _SESSION_PRE_STATES = {"inactive", "false"}
 _SESSION_LIVE_STATES = {"started", "resumed", "green", "greenflag", "true"}
 _SESSION_TERMINAL_STATES = {"finished", "finalised", "ends", "ended"}
@@ -389,12 +390,23 @@ class FormationStartTracker:
             return False
         url = _build_static_url(self._path, "CarData.z.jsonStream")
         target = self._scheduled_start_utc
+        if target is None:
+            return False
         window_seconds = _CARDATA_SEARCH_WINDOW.total_seconds()
         best_utc: datetime | None = None
         best_delta: float | None = None
         max_seen: datetime | None = None
+        resolved = False
         stop_scan = False
         batch: list[str] = []
+
+        def _has_converged() -> bool:
+            if best_utc is None or best_delta is None or max_seen is None:
+                return False
+            if best_delta == 0:
+                return True
+            return max_seen >= target + timedelta(seconds=best_delta)
+
         try:
             async with asyncio.timeout(_CARDATA_TIMEOUT):
                 async with self._http.get(url) as resp:
@@ -404,7 +416,7 @@ class FormationStartTracker:
                     resp.raise_for_status()
 
                     def _process_utcs(utcs: list[datetime]) -> bool:
-                        nonlocal best_delta, best_utc, max_seen, stop_scan
+                        nonlocal best_delta, best_utc, max_seen, resolved, stop_scan
                         for utc_val in utcs:
                             if not self._probe_allowed(session_id):
                                 return False
@@ -414,12 +426,15 @@ class FormationStartTracker:
                             if best_delta is None or delta < best_delta:
                                 best_delta = delta
                                 best_utc = utc_val
+                            if _has_converged():
+                                resolved = True
+                                break
                             if utc_val > target + _CARDATA_SEARCH_WINDOW:
                                 stop_scan = True
                                 break
                         return True
 
-                    while not stop_scan:
+                    while not stop_scan and not resolved:
                         raw = await resp.content.readline()
                         if not raw:
                             break
@@ -427,16 +442,16 @@ class FormationStartTracker:
                         if not line:
                             continue
                         batch.append(line)
-                        if len(batch) >= 50:
+                        if len(batch) >= _CARDATA_BATCH_SIZE:
                             utcs = await self._hass.async_add_executor_job(
                                 parse_cardata_lines, list(batch), _parse_utc
                             )
                             batch.clear()
                             if not _process_utcs(utcs):
                                 return False
-                        if stop_scan:
+                        if stop_scan or resolved:
                             break
-                    if batch and not stop_scan:
+                    if batch and not (stop_scan or resolved):
                         utcs = await self._hass.async_add_executor_job(
                             parse_cardata_lines, list(batch), _parse_utc
                         )
