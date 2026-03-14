@@ -1554,13 +1554,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_state = LiveAvailabilityTracker()
         live_state.set_state(True, "replay-mode")
 
-    formation_tracker = None
-    if operation_mode == OPERATION_MODE_LIVE:
-        formation_tracker = FormationStartTracker(
-            hass,
-            bus=live_bus,
-            http_session=session,
-        )
+    formation_tracker = FormationStartTracker(
+        hass,
+        bus=live_bus,
+        http_session=session,
+    )
 
     def _reload_entry():
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))

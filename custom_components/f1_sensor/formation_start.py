@@ -19,7 +19,7 @@ from .signalr import LiveBus
 _LOGGER = logging.getLogger(__name__)
 
 _CARDATA_SEARCH_WINDOW = timedelta(seconds=90)
-_CARDATA_PRE_WINDOW = timedelta(seconds=60)
+_CARDATA_PRE_WINDOW = timedelta(seconds=-10)
 _CARDATA_RETRY_DELAY = 20
 _CARDATA_MAX_ATTEMPTS = 3
 _CARDATA_TIMEOUT = 20
@@ -169,6 +169,30 @@ class FormationStartTracker:
             "source": self._source,
             "error": self._last_error,
         }
+
+    def inject_formation_ready(self, formation_utc: datetime) -> None:
+        """Set formation start directly from cached index data, bypassing the HTTP probe.
+
+        Used by the replay engine to drive the sensor from stored index data rather
+        than making a live HTTP request to the CarData stream.
+        """
+        if (
+            self._session_phase != "pre"
+            or self._formation_start_utc is not None
+            or self._scheduled_start_utc is None
+        ):
+            return
+        if not _is_race_or_sprint(self._session_type, self._session_name):
+            return
+        self._cancel_task()
+        self._formation_start_utc = formation_utc
+        self._delta_seconds = abs(
+            (formation_utc - self._scheduled_start_utc).total_seconds()
+        )
+        self._status = "ready"
+        self._source = "replay_index"
+        self._last_error = None
+        self._notify_listeners()
 
     def reset(self, *, status: str = "idle") -> None:
         """Clear any stored formation state and notify listeners."""
@@ -419,8 +443,10 @@ class FormationStartTracker:
                         if not _process_utcs(utcs):
                             return False
         except TimeoutError:
-            self._last_error = "timeout"
-            return False
+            if best_utc is None or best_delta is None or max_seen is None:
+                self._last_error = "timeout"
+                return False
+            # Valid partial result found before timeout — fall through to validation
         except Exception:  # noqa: BLE001
             self._last_error = "error"
             return False

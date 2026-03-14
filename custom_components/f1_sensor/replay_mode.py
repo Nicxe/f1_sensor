@@ -109,6 +109,18 @@ class ReplaySession:
         return f"{self.year}_{self.meeting_key}_{self.session_key}"
 
 
+def _parse_optional_utc(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt
+    except ValueError:
+        return None
+
+
 @dataclass
 class ReplayFrame:
     """A single frame of replay data."""
@@ -129,6 +141,7 @@ class ReplayIndex:
     frames_file: Path
     index_file: Path
     formation_started_at_ms: int | None = None
+    formation_start_utc: datetime | None = None
     # Snapshot of all streams at session_started_at_ms for initial state
     initial_state: dict[str, Any] | None = None
     formation_initial_state: dict[str, Any] | None = None
@@ -538,6 +551,9 @@ class ReplaySessionManager:
                         formation_started_at_ms=index_data.get(
                             "formation_started_at_ms"
                         ),
+                        formation_start_utc=_parse_optional_utc(
+                            index_data.get("formation_start_utc")
+                        ),
                         frames_file=frames_file,
                         index_file=index_file,
                         initial_state=index_data.get("initial_state"),
@@ -652,6 +668,9 @@ class ReplaySessionManager:
             "duration_ms": duration_ms,
             "session_started_at_ms": session_started_at_ms,
             "formation_started_at_ms": formation_started_at_ms,
+            "formation_start_utc": formation_start_utc.isoformat()
+            if formation_start_utc is not None
+            else None,
             "initial_state": initial_state,
             "formation_initial_state": formation_initial_state,
             "created_at": dt_util.utcnow().isoformat(),
@@ -670,6 +689,7 @@ class ReplaySessionManager:
             duration_ms=duration_ms,
             session_started_at_ms=session_started_at_ms,
             formation_started_at_ms=formation_started_at_ms,
+            formation_start_utc=formation_start_utc,
             frames_file=frames_file,
             index_file=index_file,
             initial_state=initial_state,
@@ -1787,6 +1807,18 @@ class ReplayController:
             if isinstance(payload, dict):
                 self._live_bus.inject_message(stream, payload)
 
+    def _inject_formation_ready_if_applicable(self, index: ReplayIndex) -> None:
+        """Inject formation start state from the index, bypassing any HTTP probe.
+
+        Called after _inject_initial_state so the tracker is already set up with
+        session info and phase before we push the formation ready state.
+        """
+        if self._formation_tracker is None:
+            return
+        if index.formation_start_utc is None:
+            return
+        self._formation_tracker.inject_formation_ready(index.formation_start_utc)
+
     async def _start_transport(
         self,
         index: ReplayIndex,
@@ -1859,6 +1891,7 @@ class ReplayController:
         if target_ms < current_ms:
             await self._run_replay_reset_callbacks()
             self._inject_initial_state(initial_state)
+            self._inject_formation_ready_if_applicable(index)
             await self._replay_frames_range(
                 index,
                 start_exclusive_ms=baseline_ms,
@@ -1939,6 +1972,7 @@ class ReplayController:
         self._ensure_replay_active()
         await self._run_replay_reset_callbacks()
         self._inject_initial_state(initial_state)
+        self._inject_formation_ready_if_applicable(index)
         if start_from_ms > baseline_ms:
             await self._replay_frames_range(
                 index,
