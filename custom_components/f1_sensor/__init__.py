@@ -1716,6 +1716,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
             live_supervisor=live_supervisor,
+            replay_controller=replay_controller,
         )
         await session_clock_coordinator.async_config_entry_first_refresh()
 
@@ -6827,6 +6828,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         delay_controller: LiveDelayController | None = None,
         live_state: LiveAvailabilityTracker | None = None,
         live_supervisor: LiveSessionSupervisor | None = None,
+        replay_controller: ReplayController | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -6840,6 +6842,11 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         self.available = True
         self._state = self._empty_state()
         self.data_list: list[dict] = [self._state]
+        self._live_supervisor = live_supervisor
+        self._tick_unsub: Callable[[], None] | None = None
+        self._replay_controller = replay_controller
+        self._replay_state_unsub: Callable[[], None] | None = None
+        self._reset_runtime()
         _init_stream_delay_state(
             self,
             delay_seconds,
@@ -6847,12 +6854,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             delay_controller=delay_controller,
             live_state=live_state,
         )
-        self._live_supervisor = live_supervisor
-        self._tick_unsub: Callable[[], None] | None = None
-        self._reset_runtime()
 
     async def async_close(self, *_):
         self._stop_tick()
+        if self._replay_state_unsub is not None:
+            with suppress(Exception):
+                self._replay_state_unsub()
+            self._replay_state_unsub = None
         _close_stream_delay_state(self)
 
     async def _async_update_data(self):
@@ -6896,6 +6904,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         self._race_start_utc: datetime | None = None
         self._last_heartbeat_utc: datetime | None = None
         self._last_heartbeat_mono: float | None = None
+        self._clock_anchor_segment_id: int | None = None
 
     @staticmethod
     def _parse_utc(value: Any) -> datetime | None:
@@ -6971,6 +6980,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         segment_id = self._segment_id(
             self._resolve_session_part_at(anchor_utc or self._server_now_utc())
         )
+        self._clock_anchor_segment_id = segment_id
         self._update_clock_total(segment_id, remaining_s)
         self._schedule_deliver()
 
@@ -7068,6 +7078,16 @@ class SessionClockCoordinator(DataUpdateCoordinator):
     def _is_replay_paused(self) -> bool:
         """Return True when replay is explicitly paused."""
         return self._replay_controller_state() == ReplayState.PAUSED
+
+    def _on_replay_state_change(self, snapshot: dict) -> None:
+        """Handle replay controller state changes (pause/resume/seek)."""
+        state_str = snapshot.get("state", "")
+        if state_str in (
+            ReplayState.PAUSED.value,
+            ReplayState.PLAYING.value,
+            ReplayState.SEEKING.value,
+        ):
+            self._deliver()
 
     def _server_now_utc(self) -> datetime:
         if self._is_replay_temporarily_frozen():
@@ -7433,6 +7453,16 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         )
 
         clock_remaining = self._clock_remaining_seconds(clock_now_utc)
+        # During qualifying breaks the segment advances before new clock data
+        # arrives.  Discard the stale anchor from the previous segment so we
+        # don't produce misleading elapsed / remaining values.
+        if (
+            self._is_qualifying_like()
+            and segment_id > 0
+            and self._clock_anchor_segment_id is not None
+            and self._clock_anchor_segment_id != segment_id
+        ):
+            clock_remaining = None
         self._set_clock_total_floor(
             segment_id,
             self._default_clock_total(segment_id, clock_remaining),
@@ -7470,7 +7500,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             clock_elapsed = clock_elapsed_from_start
 
         terminal = self._status_is_terminal(status)
-        replay_paused = self._is_replay_paused()
+        replay_paused = self._is_replay_temporarily_frozen()
         clock_running = bool(
             self._clock_anchor_extrapolating
             and clock_remaining is not None
@@ -7484,6 +7514,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             clock_phase = "finished"
         elif clock_running:
             clock_phase = "running"
+        elif (
+            clock_remaining is not None
+            and clock_remaining == 0
+            and status in self._ACTIVE_OR_ENDED_STATES
+            and not terminal
+        ):
+            clock_phase = "overtime"
         elif (
             clock_remaining is not None
             and clock_remaining > 0
@@ -7559,7 +7596,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
     def _should_tick(self, state: dict[str, Any]) -> bool:
         if not self.available:
             return False
-        if self._is_replay_paused():
+        if self._is_replay_temporarily_frozen():
             return False
         if bool(state.get("clock_running")):
             return True
@@ -7603,6 +7640,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
+        if self._replay_controller is not None:
+            with suppress(Exception):
+                self._replay_state_unsub = (
+                    self._replay_controller.session_manager.add_listener(
+                        self._on_replay_state_change
+                    )
+                )
         try:
             bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
         except Exception:

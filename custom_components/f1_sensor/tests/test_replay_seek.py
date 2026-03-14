@@ -256,14 +256,6 @@ async def _setup_session_clock_harness(
     bus = FakeLiveBus()
     live_state = LiveAvailabilityTracker()
     entry = _make_config_entry(hass)
-    session_clock = SessionClockCoordinator(
-        hass,
-        session_coord=object(),
-        bus=bus,
-        config_entry=entry,
-        live_state=live_state,
-    )
-    await session_clock.async_config_entry_first_refresh()
     controller = ReplayController(
         hass,
         ENTRY_ID,
@@ -274,6 +266,15 @@ async def _setup_session_clock_harness(
             current=REPLAY_START_REFERENCE_SESSION
         ),
     )
+    session_clock = SessionClockCoordinator(
+        hass,
+        session_coord=object(),
+        bus=bus,
+        config_entry=entry,
+        live_state=live_state,
+        replay_controller=controller,
+    )
+    await session_clock.async_config_entry_first_refresh()
     index = _build_index(tmp_path, initial_state=initial_state, frames=frames)
     controller.session_manager._loaded_index = index
     controller.session_manager._state = ReplayState.READY
