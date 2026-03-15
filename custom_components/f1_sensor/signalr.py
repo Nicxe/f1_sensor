@@ -14,6 +14,8 @@ from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
+StreamPayload = Any
+
 NEGOTIATE_URL = "https://livetiming.formula1.com/signalr/negotiate"
 CONNECT_URL = "wss://livetiming.formula1.com/signalr/connect"
 HUB_DATA = '[{"name":"Streaming"}]'
@@ -36,6 +38,7 @@ SUBSCRIBE_MSG = {
             "Heartbeat",
             "ExtrapolatedClock",
             "TimingData",
+            "CarData.z",
             "DriverList",
             "TimingAppData",
             "TopThree",
@@ -111,8 +114,8 @@ class SignalRClient:
         _LOGGER.debug("SignalR connection established")
         _LOGGER.debug(
             "Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, "
-            "LapCount, SessionInfo, SessionData, TimingData, DriverList, TimingAppData, TopThree, "
-            "TyreStintSeries, TeamRadio"
+            "LapCount, SessionInfo, SessionData, TimingData, CarData.z, DriverList, "
+            "TimingAppData, TopThree, TyreStintSeries, TeamRadio"
         )
 
     async def ensure_connection(self) -> None:
@@ -208,7 +211,7 @@ class LiveBus:
         self._transport_factory = transport_factory
         self._client: LiveTransport | None = None
         self._task: asyncio.Task | None = None
-        self._subs: dict[str, list[Callable[[dict], None]]] = {}
+        self._subs: dict[str, list[Callable[[StreamPayload], None]]] = {}
         self._running = False
         # Lightweight per-stream counters for DEBUG summaries
         self._cnt: dict[str, int] = {}
@@ -218,7 +221,7 @@ class LiveBus:
         self._last_logged: float = time.time()
         self._log_interval: float = 10.0  # seconds
         # Cache last payload per stream so new subscribers receive latest snapshot immediately
-        self._last_payload: dict[str, dict] = {}
+        self._last_payload: dict[str, dict[str, Any]] = {}
         self._expect_heartbeat = False
         self._last_heartbeat_at: float | None = None
         self._heartbeat_guard: asyncio.Task | None = None
@@ -226,7 +229,7 @@ class LiveBus:
         self._heartbeat_check_interval = 5.0
 
     def subscribe(
-        self, stream: str, callback: Callable[[dict], None]
+        self, stream: str, callback: Callable[[StreamPayload], None]
     ) -> Callable[[], None]:
         lst = self._subs.setdefault(stream, [])
         lst.append(callback)
@@ -322,7 +325,7 @@ class LiveBus:
                 # Periodic compact DEBUG summary
                 self._maybe_log_summary()
 
-    def _dispatch(self, stream: str, data: dict) -> None:
+    def _dispatch(self, stream: str, data: StreamPayload) -> None:
         with suppress(Exception):
             # Update counters
             self._cnt[stream] = self._cnt.get(stream, 0) + 1
@@ -470,7 +473,7 @@ class LiveBus:
             return None
         return min(ages)
 
-    def get_last_payload(self, stream: str) -> dict | None:
+    def get_last_payload(self, stream: str) -> dict[str, Any] | None:
         data = self._last_payload.get(stream)
         return data if isinstance(data, dict) else None
 
@@ -528,7 +531,7 @@ class LiveBus:
             _LOGGER.info("Restarting LiveBus with live transport")
             await self.start()
 
-    def inject_message(self, stream: str, payload: dict) -> None:
+    def inject_message(self, stream: str, payload: StreamPayload) -> None:
         """Inject a message directly into the bus (for replay mode).
 
         This allows external code to feed data into the bus without

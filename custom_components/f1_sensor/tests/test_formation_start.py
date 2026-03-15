@@ -20,6 +20,7 @@ from custom_components.f1_sensor.replay_mode import (
     ReplaySession,
     ReplaySessionManager,
 )
+from custom_components.f1_sensor.signalr import LiveBus
 
 
 def _make_cardata_line(utc_iso: str) -> bytes:
@@ -30,6 +31,10 @@ def _make_cardata_line(utc_iso: str) -> bytes:
     compressed = compressor.compress(raw) + compressor.flush()
     encoded = base64.b64encode(compressed).decode()
     return f'"{encoded}"\n'.encode()
+
+
+def _make_cardata_payload(utc_iso: str) -> str:
+    return _make_cardata_line(utc_iso).decode().strip()
 
 
 def _iso_utc(value) -> str:
@@ -154,13 +159,25 @@ class _CachingBus:
     def __init__(self, cached: dict[str, dict] | None = None) -> None:
         self._cached = cached or {}
         self.subscriptions: list[str] = []
+        self._callbacks: dict[str, list] = {}
 
     def subscribe(self, stream: str, callback):
         self.subscriptions.append(stream)
+        self._callbacks.setdefault(stream, []).append(callback)
         payload = self._cached.get(stream)
         if isinstance(payload, dict):
             callback(dict(payload))
-        return lambda: None
+
+        def _remove() -> None:
+            callbacks = self._callbacks.get(stream)
+            if callbacks and callback in callbacks:
+                callbacks.remove(callback)
+
+        return _remove
+
+    def emit(self, stream: str, payload) -> None:
+        for callback in list(self._callbacks.get(stream, [])):
+            callback(payload)
 
 
 class _TimeoutHttp:
@@ -398,7 +415,62 @@ async def test_successful_probe_sets_ready_status(hass) -> None:
 
     assert result is True
     assert tracker.snapshot()["status"] == "ready"
+    assert tracker.snapshot()["source"] == "cardata"
     assert tracker.formation_start_utc is not None
+
+
+@pytest.mark.asyncio
+async def test_live_cardata_signalr_sets_ready_before_session_live(hass) -> None:
+    bus = _CachingBus()
+    tracker = FormationStartTracker(
+        hass,
+        bus=bus,  # type: ignore[arg-type]
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    tracker._schedule_probe = Mock()  # type: ignore[method-assign]
+    snapshots: list[dict[str, str | float | None]] = []
+    tracker.add_listener(lambda snapshot: snapshots.append(snapshot))
+
+    target = dt_util.utcnow().replace(microsecond=0)
+    tracker._handle_session_info(_session_info_payload(start_utc=target))
+
+    bus.emit(
+        "CarData.z",
+        _make_cardata_payload(_iso_utc(target + timedelta(milliseconds=80))),
+    )
+    await hass.async_block_till_done()
+
+    assert tracker.snapshot()["status"] == "ready"
+    assert tracker.snapshot()["source"] == "signalr_cardata"
+    assert tracker.snapshot()["delta_seconds"] == pytest.approx(0.08)
+    assert tracker.formation_start_utc == target + timedelta(milliseconds=80)
+    assert snapshots[-1]["status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_live_cardata_after_session_live_does_not_emit_ready(hass) -> None:
+    bus = _CachingBus()
+    tracker = FormationStartTracker(
+        hass,
+        bus=bus,  # type: ignore[arg-type]
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    tracker._schedule_probe = Mock()  # type: ignore[method-assign]
+    target = dt_util.utcnow().replace(microsecond=0)
+
+    tracker.add_listener(lambda _snapshot: None)
+    tracker._handle_session_info(_session_info_payload(start_utc=target))
+    tracker._handle_session_status({"Status": "Started", "Started": "Started"})
+
+    bus.emit(
+        "CarData.z",
+        _make_cardata_payload(_iso_utc(target + timedelta(milliseconds=80))),
+    )
+    await hass.async_block_till_done()
+
+    assert tracker.snapshot()["status"] == "live"
+    assert tracker.snapshot()["source"] is None
+    assert tracker.formation_start_utc is None
 
 
 @pytest.mark.asyncio
@@ -558,6 +630,29 @@ async def test_probe_watch_is_armed_before_scheduled_start(hass) -> None:
 
     assert len(probe_calls) == 1
     assert probe_calls[0] == (295.0, tracker._session_id)
+
+
+@pytest.mark.asyncio
+async def test_live_bus_dispatches_non_dict_cardata_without_breaking_dict_streams(
+    hass,
+) -> None:
+    bus = LiveBus(hass, Mock())
+    received: list[str] = []
+
+    bus.subscribe("CarData.z", lambda payload: received.append(payload))
+    bus.inject_message("CarData.z", _make_cardata_payload(_iso_utc(dt_util.utcnow())))
+    bus.inject_message("SessionStatus", {"Status": "Started"})
+
+    diagnostics = bus.stream_diagnostics(["CarData.z", "SessionStatus"])
+
+    assert len(received) == 1
+    assert isinstance(received[0], str)
+    assert diagnostics["CarData.z"] == {
+        "frame_count": 1,
+        "last_seen_age_s": 0.0,
+        "last_payload_keys": None,
+    }
+    assert diagnostics["SessionStatus"]["last_payload_keys"] == ["Status"]
 
 
 @pytest.mark.asyncio

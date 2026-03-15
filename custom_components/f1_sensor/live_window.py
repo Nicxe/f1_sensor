@@ -1142,6 +1142,10 @@ class LiveSessionSupervisor:
             try:
                 payload = await self._fetch_json(target)
                 if payload:
+                    if name in {"SessionInfo", "SessionStatus"} and isinstance(
+                        payload, dict
+                    ):
+                        self._bus.inject_message(name, payload)
                     if name == "SessionStatus" and isinstance(payload, dict):
                         session_status_payload = payload
                     _LOGGER.debug(
