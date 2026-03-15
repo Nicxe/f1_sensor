@@ -2910,6 +2910,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._by_car: dict[str, list[dict]] = {}
         self._dedup: set[tuple] = set()
         self._driver_map: dict[str, dict[str, Any]] = {}
+        self._driver_pit_counts: dict[str, int] = {}
         self._deliver_handle: asyncio.Handle | None = None
         self._drivers_coord = drivers_coordinator
 
@@ -2948,6 +2949,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
     def _reset_store(self) -> None:
         self._by_car = {}
         self._dedup = set()
+        self._driver_pit_counts = {}
         self._state = {"total_stops": 0, "cars": {}, "last_update": None}
         with suppress(Exception):
             self.async_set_updated_data(self._state)
@@ -3086,24 +3088,50 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         cars: dict[str, Any] = {}
         total = 0
         try:
+            car_numbers = {
+                str(rn) for rn in (self._by_car or {}) if str(rn).strip()
+            } | {
+                str(rn)
+                for rn, count in (self._driver_pit_counts or {}).items()
+                if str(rn).strip() and int(count or 0) > 0
+            }
             for rn, stops in sorted(
-                self._by_car.items(),
+                ((rn, self._by_car.get(rn, [])) for rn in car_numbers),
                 key=lambda kv: int(str(kv[0])) if str(kv[0]).isdigit() else str(kv[0]),
             ):
                 lst = list(stops or [])
+                fallback_count = int(self._driver_pit_counts.get(str(rn), 0))
+                stop_count = max(len(lst), fallback_count)
                 ident = self._get_identity(str(rn))
                 cars[str(rn)] = {
                     "tla": ident.get("tla"),
                     "name": ident.get("name"),
                     "team": ident.get("team"),
-                    "count": len(lst),
+                    "count": stop_count,
                     "stops": lst,
                 }
-                total += len(lst)
+                total += stop_count
         except Exception:
             cars = {
-                str(rn): {"count": len(stops or []), "stops": list(stops or [])}
-                for rn, stops in (self._by_car or {}).items()
+                str(rn): {
+                    "count": max(
+                        len(stops or []),
+                        int(self._driver_pit_counts.get(str(rn), 0)),
+                    ),
+                    "stops": list(stops or []),
+                }
+                for rn, stops in {
+                    **{
+                        str(rn): stops
+                        for rn, stops in (self._by_car or {}).items()
+                        if str(rn).strip()
+                    },
+                    **{
+                        str(rn): self._by_car.get(str(rn), [])
+                        for rn, count in (self._driver_pit_counts or {}).items()
+                        if str(rn).strip() and int(count or 0) > 0
+                    },
+                }.items()
             }
             try:
                 total = sum(
@@ -3155,13 +3183,47 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                 )
             except Exception:
                 self._drivers_unsub = None
+        seeded = self._refresh_pit_counts_from_coordinator()
+        if self._refresh_driver_map_from_coordinator():
+            seeded = True
+        if self._refresh_pit_deltas():
+            seeded = True
+        if seeded:
+            self._schedule_deliver()
 
     def _on_drivers_update(self) -> None:
-        changed = self._refresh_pit_deltas()
+        changed = self._refresh_pit_counts_from_coordinator()
+        if self._refresh_pit_deltas():
+            changed = True
         if self._refresh_driver_map_from_coordinator():
             changed = True
         if changed:
             self._schedule_deliver()
+
+    def _refresh_pit_counts_from_coordinator(self) -> bool:
+        if not self._drivers_coord:
+            return False
+        data = self._drivers_coord.data
+        if not isinstance(data, dict):
+            return False
+        drivers = data.get("drivers")
+        if not isinstance(drivers, dict):
+            return False
+        next_counts: dict[str, int] = {}
+        for rn, info in drivers.items():
+            if not isinstance(info, dict):
+                continue
+            timing = info.get("timing")
+            if not isinstance(timing, dict):
+                continue
+            pit_stops = self._parse_int(timing.get("pit_stops"))
+            if pit_stops is None:
+                continue
+            next_counts[str(rn)] = max(0, pit_stops)
+        if next_counts == self._driver_pit_counts:
+            return False
+        self._driver_pit_counts = next_counts
+        return True
 
     def _refresh_driver_map_from_coordinator(self) -> bool:
         updated = False
@@ -3683,7 +3745,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
       "drivers": {
          rn: {
             "identity": {"tla","name","team","team_color","racing_number"},
-            "timing": {"position","gap_to_leader","interval","last_lap","best_lap","in_pit","pit_out","retired","stopped","status_code"},
+            "timing": {"position","gap_to_leader","interval","last_lap","best_lap","in_pit","pit_out","pit_stops","retired","stopped","status_code"},
             "tyres": {"compound","stint_laps","new"},
             "laps": {"lap_current","lap_total"},
             "sectors": {
@@ -3897,6 +3959,22 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         return cur if cur is not None else default
 
     @staticmethod
+    def _parse_stream_int(value: Any) -> int | None:
+        try:
+            if value is None:
+                return None
+            if isinstance(value, int):
+                return value
+            text = str(value).strip()
+            if not text:
+                return None
+            if text.isdigit():
+                return int(text)
+            return int(float(text))
+        except Exception:
+            return None
+
+    @staticmethod
     def _iter_qualifying_best_lap_times(
         best_lap_times: object,
     ) -> Iterator[tuple[int, dict[str, Any]]]:
@@ -4094,6 +4172,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 pit_out = bool(td.get("PitOut"))
                 if timing.get("pit_out") != pit_out:
                     timing["pit_out"] = pit_out
+                    changed = True
+            if "NumberOfPitStops" in td:
+                pit_stops = self._parse_stream_int(td.get("NumberOfPitStops"))
+                if pit_stops is not None and timing.get("pit_stops") != pit_stops:
+                    timing["pit_stops"] = pit_stops
                     changed = True
             if "Retired" in td:
                 retired = bool(td.get("Retired"))
@@ -5069,16 +5152,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         for rn, info in payload.items():
             if not isinstance(info, dict):
                 continue
-            pos_raw = info.get("Position")
-            if pos_raw is None:
-                continue
-            grid_pos = None
-            try:
-                grid_pos = str(pos_raw).strip()
-            except (TypeError, ValueError):
-                grid_pos = None
-            if not grid_pos:
-                continue
 
             entry = drivers.setdefault(rn, {})
             entry.setdefault("identity", {})
@@ -5097,6 +5170,24 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "completed_laps": 0,
                 },
             )
+
+            timing = entry["timing"]
+            if "PitStops" in info:
+                pit_stops = self._parse_stream_int(info.get("PitStops"))
+                if pit_stops is not None and timing.get("pit_stops") != pit_stops:
+                    timing["pit_stops"] = pit_stops
+                    changed = True
+
+            pos_raw = info.get("Position")
+            if pos_raw is None:
+                continue
+            grid_pos = None
+            try:
+                grid_pos = str(pos_raw).strip()
+            except (TypeError, ValueError):
+                grid_pos = None
+            if not grid_pos:
+                continue
 
             lap_history = entry["lap_history"]
             # Set grid_position only if not already set and no laps completed
