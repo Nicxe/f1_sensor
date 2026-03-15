@@ -807,6 +807,12 @@ variables:
   pre_alert_scene_id: "{{ automation_slug ~ '_pre_alert' }}"
 
   track_state: "{{ states(track_status_entity) | upper }}"
+  defer_wled_clear_restore: >-
+    {{
+      track_state == 'CLEAR'
+      and (snapshot_before_alert_enabled | bool)
+      and clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay']
+    }}
   session_phase: "{{ states(session_status_entity) | lower }}"
   notification_title: "F1 Track Status"
   notification_track_state: "{{ track_state }}"
@@ -1113,7 +1119,7 @@ actions:
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ has_valid_wled_track_selection }}"
+                    value_template: "{{ has_valid_wled_track_selection and not (defer_wled_clear_restore | bool) }}"
                 sequence:
                   - if:
                       - condition: template
@@ -1175,24 +1181,41 @@ actions:
                               - choose:
                                   - conditions:
                                       - condition: template
-                                        value_template: "{{ wled_advanced_active | bool }}"
+                                        value_template: "{{ has_valid_wled_track_selection }}"
                                     sequence:
-                                      - action: light.turn_on
+                                      - if:
+                                          - condition: template
+                                            value_template: "{{ states(light_entity) == 'off' }}"
+                                        then:
+                                          - action: light.turn_on
+                                            target:
+                                              entity_id: !input light_target
+                                      - action: select.select_option
+                                        data:
+                                          entity_id: "{{ selected_wled_track_entity }}"
+                                          option: "{{ selected_wled_track_option }}"
+                                default:
+                                  - choose:
+                                      - conditions:
+                                          - condition: template
+                                            value_template: "{{ wled_advanced_active | bool }}"
+                                        sequence:
+                                          - action: light.turn_on
+                                            target:
+                                              entity_id: !input light_target
+                                            data:
+                                              brightness_pct: !input brightness_pct
+                                              rgb_color: !input color_clear
+                                              transition: !input transition_s
+                                              effect: Solid
+                                    default:
+                                      - action: "{{ light_turn_on_service }}"
                                         target:
                                           entity_id: !input light_target
                                         data:
                                           brightness_pct: !input brightness_pct
                                           rgb_color: !input color_clear
                                           transition: !input transition_s
-                                          effect: Solid
-                                default:
-                                  - action: "{{ light_turn_on_service }}"
-                                    target:
-                                      entity_id: !input light_target
-                                    data:
-                                      brightness_pct: !input brightness_pct
-                                      rgb_color: !input color_clear
-                                      transition: !input transition_s
                               - delay:
                                   seconds: !input clear_restore_delay_s
                               - condition: template
