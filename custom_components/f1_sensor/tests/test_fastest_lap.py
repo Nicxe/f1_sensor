@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -23,6 +24,65 @@ def _make_coord(hass) -> LiveDriversCoordinator:
         delay_controller=None,
         live_state=None,
     )
+
+
+@pytest.mark.asyncio
+async def test_tyre_stints_warn_once_when_compounds_stay_missing_live(
+    hass, monkeypatch, caplog
+) -> None:
+    coord = _make_coord(hass)
+    caplog.set_level(logging.WARNING, logger="custom_components.f1_sensor")
+
+    now = {"value": 100.0}
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.__init__.time.monotonic",
+        lambda: now["value"],
+    )
+
+    coord._handle_live_state(True, "live-Race")
+
+    now["value"] = 401.0
+    coord._merge_tyre_stints({"Stints": {"1": [], "44": []}})
+    coord._merge_tyre_stints({"Stints": {"1": {"0": {"TotalLaps": 5}}}})
+
+    assert (
+        "TyreStintSeries frames received for 301s of live session without tyre compounds"
+        in caplog.text
+    )
+    assert caplog.text.count("without tyre compounds") == 1
+
+
+@pytest.mark.asyncio
+async def test_tyre_stints_log_first_meaningful_compound_live(
+    hass, monkeypatch, caplog
+) -> None:
+    coord = _make_coord(hass)
+    caplog.set_level(logging.INFO, logger="custom_components.f1_sensor")
+
+    now = {"value": 200.0}
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.__init__.time.monotonic",
+        lambda: now["value"],
+    )
+
+    coord._handle_live_state(True, "live-Race")
+
+    now["value"] = 287.5
+    coord._merge_tyre_stints(
+        {
+            "Stints": {
+                "1": {"0": {"Compound": "HARD", "New": "true"}},
+                "44": {"0": {"Compound": "MEDIUM", "New": "false"}},
+            }
+        }
+    )
+    coord._merge_tyre_stints({"Stints": {"16": {"0": {"Compound": "SOFT"}}}})
+
+    assert (
+        "TyreStintSeries delivered first tyre compounds after 87.5s live" in caplog.text
+    )
+    assert "sample=1:HARD, 44:MEDIUM" in caplog.text
+    assert caplog.text.count("delivered first tyre compounds") == 1
 
 
 @pytest.mark.asyncio

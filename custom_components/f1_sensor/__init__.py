@@ -3715,6 +3715,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     }
     """
 
+    _TYRE_DATA_WARNING_THRESHOLD_S = 300.0
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -3744,6 +3746,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self.available = True
+        self._tyre_live_started_mono: float | None = None
+        self._tyre_first_compound_logged = False
+        self._tyre_missing_warning_logged = False
         self._state: dict[str, Any] = {
             "drivers": {},
             "leader_rn": None,
@@ -4281,6 +4286,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         self.available = is_live
+        self._tyre_live_started_mono = (
+            time.monotonic() if is_live and not self._replay_mode else None
+        )
+        self._tyre_first_compound_logged = False
+        self._tyre_missing_warning_logged = False
         if not is_live:
             # Clear consolidated state so a future session window does not briefly
             # show stale driver/timing information before the first live frames.
@@ -4301,6 +4311,67 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             return
         # 2) Recompute leader from full stored state (not just current delta)
         self._recompute_leader_from_state()
+
+    @staticmethod
+    def _extract_compound_presence(payload: dict) -> tuple[int, list[str]]:
+        """Return count and sample of drivers with a meaningful tyre compound."""
+        stints_root = (payload or {}).get("Stints", {})
+        if not isinstance(stints_root, dict):
+            return 0, []
+
+        sample: list[str] = []
+        count = 0
+        for rn, stints in stints_root.items():
+            stint_values: list[dict] = []
+            if isinstance(stints, list):
+                stint_values = [stint for stint in stints if isinstance(stint, dict)]
+            elif isinstance(stints, dict):
+                stint_values = [
+                    stint
+                    for key, stint in stints.items()
+                    if str(key).isdigit() and isinstance(stint, dict)
+                ]
+            for stint in stint_values:
+                compound = LiveDriversCoordinator._normalize_compound(
+                    stint.get("Compound")
+                )
+                if not compound or compound == "UNKNOWN":
+                    continue
+                count += 1
+                if len(sample) < 5:
+                    sample.append(f"{rn}:{compound}")
+                break
+        return count, sample
+
+    def _log_tyre_stream_observability(self, payload: dict) -> None:
+        """Log once when tyre compounds first arrive, or if they stay absent too long."""
+        if self._replay_mode or self._tyre_live_started_mono is None:
+            return
+
+        compound_count, sample = self._extract_compound_presence(payload)
+        elapsed = max(0.0, time.monotonic() - self._tyre_live_started_mono)
+
+        if compound_count > 0:
+            if not self._tyre_first_compound_logged:
+                _LOGGER.info(
+                    "TyreStintSeries delivered first tyre compounds after %.1fs live (drivers=%s, sample=%s)",
+                    elapsed,
+                    compound_count,
+                    ", ".join(sample) if sample else "none",
+                )
+                self._tyre_first_compound_logged = True
+            return
+
+        if self._tyre_missing_warning_logged:
+            return
+        if elapsed < self._TYRE_DATA_WARNING_THRESHOLD_S:
+            return
+
+        _LOGGER.warning(
+            "TyreStintSeries frames received for %.0fs of live session without tyre compounds; current tyres will stay empty until upstream feed includes Compound data",
+            elapsed,
+        )
+        self._tyre_missing_warning_logged = True
 
     def _recompute_leader_from_state(self) -> None:
         drivers = self._state.get("drivers", {}) or {}
@@ -4393,6 +4464,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         This method now tracks full stint history for tyre statistics in addition
         to maintaining the existing tyres dict for backward compatibility.
         """
+        self._log_tyre_stream_observability(payload)
         stints_root = (payload or {}).get("Stints", {})
         if not isinstance(stints_root, dict):
             return False
