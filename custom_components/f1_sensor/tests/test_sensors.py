@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 import logging
 import time
 from unittest.mock import MagicMock
@@ -29,6 +30,7 @@ from custom_components.f1_sensor.sensor import (
     F1DriverPointsProgressionSensor,
     F1DriverPositionsSensor,
     F1DriverStandingsSensor,
+    F1LiveTimingModeSensor,
     F1NextRaceSensor,
     F1PitStopsSensor,
     F1SeasonResultsSensor,
@@ -36,6 +38,7 @@ from custom_components.f1_sensor.sensor import (
     F1TopThreePositionSensor,
     F1WeatherSensor,
 )
+from custom_components.f1_sensor.signalr import LiveBus
 
 _LOGGER = logging.getLogger(__name__)
 MAX_STATE_ATTRS_BYTES = 16384
@@ -852,7 +855,13 @@ def test_get_circuit_map_url_prefers_2026_detailed_maps() -> None:
 
 
 @pytest.mark.asyncio
-async def test_next_race_sensor_uses_2026_detailed_circuit_map(hass) -> None:
+async def test_next_race_sensor_uses_2026_detailed_circuit_map(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.helpers.dt_util.utcnow",
+        lambda: datetime(2026, 3, 10, tzinfo=UTC),
+    )
     coordinator = _build_coordinator(
         hass,
         {"MRData": {"RaceTable": {"Races": [_build_race(date="2026-03-15")]}}},
@@ -1237,6 +1246,94 @@ async def test_driver_positions_sensor_excludes_drivers_from_recorder(hass) -> N
     shared_attrs, _ = _recorder_shared_attrs(state)
     assert "drivers" not in shared_attrs
     assert "total_laps" in shared_attrs
+
+
+@pytest.mark.asyncio
+async def test_live_bus_stream_diagnostics_track_frames_and_keys(
+    hass, monkeypatch, caplog
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.signalr.time.time",
+        lambda: clock["now"],
+    )
+    bus = LiveBus(hass, MagicMock())
+
+    caplog.set_level(logging.DEBUG, logger="custom_components.f1_sensor.signalr")
+
+    bus.inject_message("SessionStatus", {"Status": "Started"})
+    clock["now"] = 112.5
+    bus.inject_message("TrackStatus", {"Status": "1", "Message": "AllClear"})
+
+    diagnostics = bus.stream_diagnostics(
+        ["ChampionshipPrediction", "SessionStatus", "TrackStatus"]
+    )
+
+    assert diagnostics["ChampionshipPrediction"] == {
+        "frame_count": 0,
+        "last_seen_age_s": None,
+        "last_payload_keys": None,
+    }
+    assert diagnostics["SessionStatus"] == {
+        "frame_count": 1,
+        "last_seen_age_s": 12.5,
+        "last_payload_keys": ["Status"],
+    }
+    assert diagnostics["TrackStatus"] == {
+        "frame_count": 1,
+        "last_seen_age_s": 0.0,
+        "last_payload_keys": ["Status", "Message"],
+    }
+    assert "LiveBus first frame for SessionStatus with keys=['Status']" in caplog.text
+    assert (
+        "LiveBus first frame for TrackStatus with keys=['Status', 'Message']"
+        in caplog.text
+    )
+    assert "ChampionshipPrediction:0/0 (none)" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_live_timing_mode_sensor_exposes_stream_diagnostics(hass) -> None:
+    entry_id = "test_entry_live_diagnostics"
+    _set_entry_context(hass, entry_id, stream_active=True)
+
+    bus = MagicMock()
+    bus.last_heartbeat_age.return_value = 5.0
+    bus.last_stream_activity_age.return_value = 2.0
+    bus.stream_diagnostics.return_value = {
+        "SessionStatus": {
+            "frame_count": 3,
+            "last_seen_age_s": 1.0,
+            "last_payload_keys": ["Status"],
+        },
+        "TrackStatus": {
+            "frame_count": 8,
+            "last_seen_age_s": 0.5,
+            "last_payload_keys": ["Status", "Message"],
+        },
+    }
+    hass.data[DOMAIN][entry_id]["live_bus"] = bus
+
+    sensor = F1LiveTimingModeSensor(hass, entry_id, "F1")
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.attributes["heartbeat_age_s"] == 5.0
+    assert state.attributes["activity_age_s"] == 2.0
+    assert state.attributes["streams"]["SessionStatus"] == {
+        "frame_count": 3,
+        "last_seen_age_s": 1.0,
+        "last_payload_keys": ["Status"],
+    }
+    assert state.attributes["streams"]["TrackStatus"] == {
+        "frame_count": 8,
+        "last_seen_age_s": 0.5,
+        "last_payload_keys": ["Status", "Message"],
+    }
+    assert state.attributes["streams"]["ChampionshipPrediction"] == {
+        "frame_count": 0,
+        "last_seen_age_s": None,
+        "last_payload_keys": None,
+    }
 
 
 @pytest.mark.asyncio

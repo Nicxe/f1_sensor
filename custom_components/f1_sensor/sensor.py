@@ -347,6 +347,14 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
     _attr_options = ["idle", "live", "replay"]
 
     _attr_translation_key = "live_timing_mode"
+    _tracked_streams = (
+        "SessionStatus",
+        "TrackStatus",
+        "TopThree",
+        "TimingAppData",
+        "TyreStintSeries",
+        "ChampionshipPrediction",
+    )
 
     def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
         super().__init__(
@@ -422,6 +430,29 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
         except Exception:
             hb_age = activity_age = None
 
+        stream_diagnostics = {
+            stream: {
+                "frame_count": 0,
+                "last_seen_age_s": None,
+                "last_payload_keys": None,
+            }
+            for stream in self._tracked_streams
+        }
+        try:
+            if live_bus is not None and hasattr(live_bus, "stream_diagnostics"):
+                stream_diagnostics.update(
+                    live_bus.stream_diagnostics(self._tracked_streams)
+                )
+        except Exception:
+            stream_diagnostics = {
+                stream: {
+                    "frame_count": 0,
+                    "last_seen_age_s": None,
+                    "last_payload_keys": None,
+                }
+                for stream in self._tracked_streams
+            }
+
         attrs = {
             "reason": reason,
             "window": window,
@@ -449,6 +480,7 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
             "activity_age_s": (
                 round(activity_age, 1) if activity_age is not None else None
             ),
+            "streams": stream_diagnostics,
         }
         return mode, attrs
 
