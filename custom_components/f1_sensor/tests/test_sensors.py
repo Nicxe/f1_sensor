@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 import logging
 import time
 from unittest.mock import MagicMock
@@ -386,7 +387,13 @@ def test_get_circuit_map_url_prefers_2026_detailed_maps() -> None:
 
 
 @pytest.mark.asyncio
-async def test_next_race_sensor_uses_2026_detailed_circuit_map(hass) -> None:
+async def test_next_race_sensor_uses_2026_detailed_circuit_map(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.helpers.dt_util.utcnow",
+        lambda: datetime(2026, 3, 10, tzinfo=UTC),
+    )
     coordinator = _build_coordinator(
         hass,
         {"MRData": {"RaceTable": {"Races": [_build_race(date="2026-03-15")]}}},
