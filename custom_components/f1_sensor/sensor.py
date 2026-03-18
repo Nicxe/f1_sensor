@@ -352,7 +352,6 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
         "TrackStatus",
         "TopThree",
         "TimingAppData",
-        "TyreStintSeries",
         "ChampionshipPrediction",
     )
 

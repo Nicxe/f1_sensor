@@ -1334,6 +1334,7 @@ async def test_live_timing_mode_sensor_exposes_stream_diagnostics(hass) -> None:
         "last_seen_age_s": None,
         "last_payload_keys": None,
     }
+    assert "TyreStintSeries" not in state.attributes["streams"]
 
 
 @pytest.mark.asyncio

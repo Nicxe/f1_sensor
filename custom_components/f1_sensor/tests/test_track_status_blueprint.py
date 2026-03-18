@@ -495,6 +495,93 @@ async def test_blueprint_resets_wled_effect_when_clear_falls_back_to_standard_mo
 
 
 @pytest.mark.asyncio
+async def test_blueprint_restores_pre_alert_scene_after_wled_clear_delay(
+    hass: HomeAssistant,
+) -> None:
+    await _install_blueprint(hass)
+    calls = _register_services(hass)
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": "CLEAR",
+            "sensor.test_session_status": "live",
+            "light.test_track_status": "off",
+            "select.test_wled_preset": (
+                "Idle",
+                {"options": ["Safety Car Preset", "Green Flag Preset"]},
+            ),
+        },
+    )
+
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "enable_wled_advanced": True,
+            "snapshot_before_alert": True,
+            "clear_behavior_mode": "restore_after_delay",
+            "clear_restore_delay_s": 0,
+            "wled_preset_entity": "select.test_wled_preset",
+            "wled_preset_sc": "Safety Car Preset",
+            "wled_preset_clear": "Green Flag Preset",
+        },
+    )
+    calls.clear()
+
+    await _set_states(hass, {"sensor.test_track_status": "SC"})
+
+    assert calls == [
+        (
+            "scene.create",
+            {
+                "scene_id": "automation_track_status_blueprint_test_pre_alert",
+                "snapshot_entities": [
+                    "light.test_track_status",
+                    "select.test_wled_preset",
+                ],
+            },
+        ),
+        (
+            "light.turn_on",
+            {
+                "entity_id": ["light.test_track_status"],
+            },
+        ),
+        (
+            "select.select_option",
+            {
+                "entity_id": "select.test_wled_preset",
+                "option": "Safety Car Preset",
+            },
+        ),
+    ]
+
+    calls.clear()
+    await _set_states(hass, {"sensor.test_track_status": "CLEAR"})
+
+    assert calls == [
+        (
+            "light.turn_on",
+            {
+                "entity_id": ["light.test_track_status"],
+            },
+        ),
+        (
+            "select.select_option",
+            {
+                "entity_id": "select.test_wled_preset",
+                "option": "Green Flag Preset",
+            },
+        ),
+        (
+            "scene.turn_on",
+            {
+                "entity_id": "scene.automation_track_status_blueprint_test_pre_alert",
+            },
+        ),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_blueprint_applies_finished_override_before_end_action(
     hass: HomeAssistant,
 ) -> None:

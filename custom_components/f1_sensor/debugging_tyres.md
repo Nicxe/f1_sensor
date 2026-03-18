@@ -16,10 +16,10 @@ The following evidence was collected during the investigation:
 - Home Assistant runtime data showed that the live session itself was active and other live sensors continued to update normally during the race
 - `sensor.f1_current_tyres` existed and included drivers, but `compound`, `new`, and `stint_laps` were initially `null`
 - later in the same race, the same tyre sensor started showing real compound values without any code changes or reload
-- the archived race stream dumps for `TyreStintSeries`, `CurrentTyres`, and `TimingAppData` all started with missing tyre compound information and only later contained meaningful tyre values
-- the current integration already reads tyre state from `TyreStintSeries`, and the stored race data matches what the integration exposed during the live session
+- the archived race stream dumps for `CurrentTyres` and `TimingAppData` both started with missing tyre compound information and only later contained meaningful tyre values
+- the live integration now reads tyre state directly from `TimingAppData`, which has proven to be the more reliable live feed
 
-Based on that evidence, the most likely explanation is that the upstream live feed did not include usable tyre compounds at the start of the race. At the time of writing, this points more strongly to a live feed timing issue than to a general integration bug.
+Based on that evidence, the most likely explanation is that the upstream live feed did not include usable tyre compounds at the start of the race. At the time of writing, this points more strongly to delayed upstream data inside `TimingAppData` than to a general integration bug.
 
 ## Instrumentation Added
 
@@ -27,7 +27,7 @@ To make the next race easier to diagnose, targeted observability was added in th
 
 ### First meaningful tyre data log
 
-The coordinator now logs a single informational message the first time `TyreStintSeries` contains at least one meaningful tyre `Compound` during a live session.
+The coordinator now logs a single informational message the first time `TimingAppData` contains at least one meaningful tyre `Compound` during a live session.
 
 This gives us:
 
@@ -37,7 +37,7 @@ This gives us:
 
 ### Delayed tyre warning
 
-The coordinator now logs a single warning if a live session has been active for 5 minutes and `TyreStintSeries` frames are still arriving without any meaningful tyre compounds.
+The coordinator now logs a single warning if a live session has been active for 5 minutes and `TimingAppData` frames are still arriving without any meaningful tyre compounds.
 
 This lets us quickly distinguish between:
 
@@ -57,7 +57,7 @@ Expected interpretations:
 
 - If the new warning appears after 5 minutes and tyre values are still empty, the upstream feed is active but still not sending usable tyre compounds
 - If the informational log appears later in the session and tyre values start populating at the same time, that confirms delayed upstream tyre data
-- If the diagnostic stream telemetry shows `TyreStintSeries` is not arriving at all, the problem shifts toward stream delivery rather than payload content
+- If the diagnostic stream telemetry shows `TimingAppData` is not arriving at all, the problem shifts toward stream delivery rather than payload content
 - If tyre compounds arrive in the stream telemetry but the sensor still stays empty, we need to revisit coordinator merge logic
 
 Useful things to capture after the session:
@@ -65,7 +65,7 @@ Useful things to capture after the session:
 - the live timing diagnostic sensor attributes
 - the first new tyre observability log lines
 - a short time window of debug logs around race start
-- the saved `TyreStintSeries` stream dump if available
+- the saved `TimingAppData` stream dump if available
 
 ## Temporary Changes And Cleanup
 

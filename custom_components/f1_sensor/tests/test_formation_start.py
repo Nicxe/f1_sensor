@@ -732,7 +732,7 @@ async def test_replay_manager_rebuilds_old_cache_with_formation_marker(
 
     assert manager._download_stream.await_count > 0
     saved = json.loads((session_dir / "index.json").read_text(encoding="utf-8"))
-    assert saved["cache_version"] == 7
+    assert saved["cache_version"] == 8
     assert saved["formation_start_utc"] == formation_start.isoformat()
     assert index.formation_start_utc == formation_start
 

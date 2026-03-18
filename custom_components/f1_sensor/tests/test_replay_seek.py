@@ -27,7 +27,9 @@ from custom_components.f1_sensor.const import (
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.replay_mode import (
     ReplayController,
+    ReplayFrame,
     ReplayIndex,
+    ReplaySessionManager,
     ReplayState,
 )
 
@@ -317,6 +319,58 @@ async def _setup_close_order_harness(
         "replay_reset_callbacks": [],
     }
     return controller, bus
+
+
+def test_build_initial_state_merges_timingapp_stints_without_tyre_stints(hass) -> None:
+    manager = ReplaySessionManager(hass, ENTRY_ID, AsyncMock())  # type: ignore[arg-type]
+    frames = [
+        ReplayFrame(
+            timestamp_ms=0,
+            stream="TimingAppData",
+            payload={
+                "Lines": {
+                    "16": {
+                        "GridRow": 1,
+                        "Stints": {"0": {"Compound": "MEDIUM", "TotalLaps": 12}},
+                    }
+                }
+            },
+        ),
+        ReplayFrame(
+            timestamp_ms=500,
+            stream="TimingAppData",
+            payload={
+                "Lines": {
+                    "16": {
+                        "CurrentLapIsValid": True,
+                        "Stints": {
+                            "0": {"LapTime": "1:23.000", "LapNumber": 5},
+                            "1": {"Compound": "SOFT", "New": "false", "TotalLaps": 3},
+                        },
+                    },
+                    "81": {
+                        "Stints": [{"Compound": "HARD", "New": "true", "TotalLaps": 8}]
+                    },
+                }
+            },
+        ),
+        ReplayFrame(
+            timestamp_ms=1_000,
+            stream="SessionStatus",
+            payload={"Status": "Started", "Started": True},
+        ),
+    ]
+
+    initial_state = manager._build_initial_state(frames, 1_000)
+
+    assert "TyreStintSeries" not in initial_state
+    timingapp = initial_state["TimingAppData"]
+    assert timingapp["Lines"]["16"]["GridRow"] == 1
+    assert timingapp["Lines"]["16"]["CurrentLapIsValid"] is True
+    assert timingapp["Lines"]["16"]["Stints"]["0"]["Compound"] == "MEDIUM"
+    assert timingapp["Lines"]["16"]["Stints"]["0"]["LapTime"] == "1:23.000"
+    assert timingapp["Lines"]["16"]["Stints"]["1"]["Compound"] == "SOFT"
+    assert timingapp["Lines"]["81"]["Stints"]["0"]["Compound"] == "HARD"
 
 
 @pytest.mark.asyncio

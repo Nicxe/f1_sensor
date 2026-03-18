@@ -21,7 +21,7 @@ CONNECT_URL = "wss://livetiming.formula1.com/signalr/connect"
 HUB_DATA = '[{"name":"Streaming"}]'
 
 # Subscribe to core live streams used across the integration
-# Added: TimingData, DriverList, TimingAppData to support driver sensors
+# Added: TimingData, DriverList, TimingAppData to support driver and tyre sensors
 # Added: TeamRadio to support team radio sensor
 SUBSCRIBE_MSG = {
     "H": "Streaming",
@@ -42,7 +42,6 @@ SUBSCRIBE_MSG = {
             "DriverList",
             "TimingAppData",
             "TopThree",
-            "TyreStintSeries",
             "TeamRadio",
             "PitStopSeries",
             "ChampionshipPrediction",
@@ -57,7 +56,6 @@ DEBUG_SUMMARY_STREAMS = (
     "TrackStatus",
     "TopThree",
     "TimingAppData",
-    "TyreStintSeries",
     "ChampionshipPrediction",
 )
 
@@ -115,7 +113,7 @@ class SignalRClient:
         _LOGGER.debug(
             "Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, "
             "LapCount, SessionInfo, SessionData, TimingData, CarData.z, DriverList, "
-            "TimingAppData, TopThree, TyreStintSeries, TeamRadio"
+            "TimingAppData, TopThree, TeamRadio"
         )
 
     async def ensure_connection(self) -> None:

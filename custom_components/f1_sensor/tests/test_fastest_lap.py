@@ -27,7 +27,7 @@ def _make_coord(hass) -> LiveDriversCoordinator:
 
 
 @pytest.mark.asyncio
-async def test_tyre_stints_warn_once_when_compounds_stay_missing_live(
+async def test_timingapp_warn_once_when_compounds_stay_missing_live(
     hass, monkeypatch, caplog
 ) -> None:
     coord = _make_coord(hass)
@@ -42,18 +42,20 @@ async def test_tyre_stints_warn_once_when_compounds_stay_missing_live(
     coord._handle_live_state(True, "live-Race")
 
     now["value"] = 401.0
-    coord._merge_tyre_stints({"Stints": {"1": [], "44": []}})
-    coord._merge_tyre_stints({"Stints": {"1": {"0": {"TotalLaps": 5}}}})
+    coord._merge_timingapp(
+        {"Lines": {"1": {"Stints": []}, "44": {"Stints": [{"LapNumber": 1}]}}}
+    )
+    coord._merge_timingapp({"Lines": {"1": {"Stints": {"0": {"TotalLaps": 5}}}}})
 
     assert (
-        "TyreStintSeries frames received for 301s of live session without tyre compounds"
+        "TimingAppData frames received for 301s of live session without tyre compounds"
         in caplog.text
     )
     assert caplog.text.count("without tyre compounds") == 1
 
 
 @pytest.mark.asyncio
-async def test_tyre_stints_log_first_meaningful_compound_live(
+async def test_timingapp_logs_first_meaningful_compound_live(
     hass, monkeypatch, caplog
 ) -> None:
     coord = _make_coord(hass)
@@ -68,21 +70,84 @@ async def test_tyre_stints_log_first_meaningful_compound_live(
     coord._handle_live_state(True, "live-Race")
 
     now["value"] = 287.5
-    coord._merge_tyre_stints(
+    coord._merge_timingapp(
         {
-            "Stints": {
-                "1": {"0": {"Compound": "HARD", "New": "true"}},
-                "44": {"0": {"Compound": "MEDIUM", "New": "false"}},
+            "Lines": {
+                "1": {"Stints": {"0": {"Compound": "HARD", "New": "true"}}},
+                "44": {"Stints": {"0": {"Compound": "MEDIUM", "New": "false"}}},
             }
         }
     )
-    coord._merge_tyre_stints({"Stints": {"16": {"0": {"Compound": "SOFT"}}}})
+    coord._merge_timingapp({"Lines": {"16": {"Stints": {"0": {"Compound": "SOFT"}}}}})
 
     assert (
-        "TyreStintSeries delivered first tyre compounds after 87.5s live" in caplog.text
+        "TimingAppData delivered first tyre compounds after 87.5s live" in caplog.text
     )
     assert "sample=1:HARD, 44:MEDIUM" in caplog.text
     assert caplog.text.count("delivered first tyre compounds") == 1
+
+
+@pytest.mark.asyncio
+async def test_extract_stint_items_normalizes_list_and_dict_inputs(hass) -> None:
+    coord = _make_coord(hass)
+
+    assert coord._extract_stint_items(
+        [{"Compound": "SOFT"}, None, {"Compound": "HARD"}]
+    ) == [
+        (0, {"Compound": "SOFT"}),
+        (2, {"Compound": "HARD"}),
+    ]
+    assert coord._extract_stint_items(
+        {"2": {"Compound": "HARD"}, "0": {"Compound": "SOFT"}, "x": {"bad": True}}
+    ) == [
+        (0, {"Compound": "SOFT"}),
+        (2, {"Compound": "HARD"}),
+    ]
+    assert coord._extract_stint_items(None) == []
+
+
+@pytest.mark.asyncio
+async def test_timingapp_only_compound_data_populates_tyres_and_statistics(
+    hass,
+) -> None:
+    coord = _make_coord(hass)
+
+    changed = coord._merge_timingapp(
+        {
+            "Lines": {
+                "16": {
+                    "Stints": {
+                        "0": {"Compound": "MEDIUM", "New": "true", "TotalLaps": 14},
+                        "1": {"Compound": "SOFT", "New": "false", "TotalLaps": 3},
+                    }
+                }
+            }
+        }
+    )
+
+    assert changed is True
+    driver = coord._state["drivers"]["16"]
+    assert driver["tyres"] == {"compound": "SOFT", "stint_laps": 3, "new": False}
+    assert driver["tyre_history"]["current_stint_index"] == 1
+    assert driver["tyre_history"]["stints"][0]["compound"] == "MEDIUM"
+    assert driver["tyre_history"]["stints"][0]["new"] is True
+    assert driver["tyre_history"]["stints"][1]["compound"] == "SOFT"
+    assert driver["tyre_history"]["stints"][1]["total_laps"] == 3
+
+    tyre = coord._state["tyre_statistics"]
+    assert tyre["fastest_compound"] is None
+    assert tyre["start_compounds"] == ["MEDIUM"]
+    assert tyre["compounds"]["MEDIUM"]["total_laps"] == 14
+    assert tyre["compounds"]["SOFT"]["total_laps"] == 3
+
+
+@pytest.mark.asyncio
+async def test_timingapp_without_stints_is_noop(hass) -> None:
+    coord = _make_coord(hass)
+
+    assert coord._merge_timingapp({"Lines": {"1": {"GridRow": 1}}}) is False
+    assert coord._state["drivers"] == {}
+    assert coord._state["tyre_statistics"] == {}
 
 
 @pytest.mark.asyncio
@@ -128,19 +193,29 @@ async def test_fastest_lap_seeded_from_best_lap(hass) -> None:
 @pytest.mark.asyncio
 async def test_fastest_lap_stays_in_sync_when_timingapp_arrives_first(hass) -> None:
     coord = _make_coord(hass)
-    coord._merge_tyre_stints(
+    coord._merge_timingapp(
         {
-            "Stints": {
-                "16": {"0": {"Compound": "MEDIUM"}},
-                "12": {"0": {"Compound": "MEDIUM"}},
+            "Lines": {
+                "16": {
+                    "Stints": {
+                        "0": {
+                            "Compound": "MEDIUM",
+                            "LapTime": "1:23.981",
+                            "LapNumber": 5,
+                        }
+                    }
+                },
+                "12": {
+                    "Stints": {
+                        "0": {
+                            "Compound": "MEDIUM",
+                            "LapTime": "1:23.835",
+                            "LapNumber": 7,
+                        }
+                    }
+                },
             }
         }
-    )
-    coord._merge_timingapp(
-        {"Lines": {"16": {"Stints": {"0": {"LapTime": "1:23.981", "LapNumber": 5}}}}}
-    )
-    coord._merge_timingapp(
-        {"Lines": {"12": {"Stints": {"0": {"LapTime": "1:23.835", "LapNumber": 7}}}}}
     )
 
     fastest = coord._state["fastest_lap"]
@@ -170,11 +245,11 @@ async def test_fastest_lap_stays_in_sync_when_timingapp_arrives_first(hass) -> N
 @pytest.mark.asyncio
 async def test_fastest_lap_stays_in_sync_when_timingdata_arrives_first(hass) -> None:
     coord = _make_coord(hass)
-    coord._merge_tyre_stints(
+    coord._merge_timingapp(
         {
-            "Stints": {
-                "16": {"0": {"Compound": "MEDIUM"}},
-                "12": {"0": {"Compound": "MEDIUM"}},
+            "Lines": {
+                "16": {"Stints": {"0": {"Compound": "MEDIUM"}}},
+                "12": {"Stints": {"0": {"Compound": "MEDIUM"}}},
             }
         }
     )
@@ -214,20 +289,20 @@ async def test_australian_race_replay_keeps_fastest_lap_and_tyre_stats_in_sync(
         ),
         (
             "01:12:27.587",
-            "stints",
-            {
-                "Stints": {
-                    "16": {"0": {"Compound": "MEDIUM", "New": "true"}},
-                    "12": {"0": {"Compound": "MEDIUM", "New": "true"}},
-                }
-            },
-        ),
-        (
-            "01:12:27.587",
             "timingapp",
             {
                 "Lines": {
-                    "12": {"Stints": {"0": {"LapTime": "1:23.835", "LapNumber": 7}}}
+                    "16": {"Stints": {"0": {"Compound": "MEDIUM", "New": "true"}}},
+                    "12": {
+                        "Stints": {
+                            "0": {
+                                "Compound": "MEDIUM",
+                                "New": "true",
+                                "LapTime": "1:23.835",
+                                "LapNumber": 7,
+                            }
+                        }
+                    },
                 }
             },
         ),
@@ -275,9 +350,7 @@ async def test_australian_race_replay_keeps_fastest_lap_and_tyre_stats_in_sync(
     ]
 
     for timestamp, kind, payload in entries:
-        if kind == "stints":
-            coord._merge_tyre_stints(payload)
-        elif kind == "timingapp":
+        if kind == "timingapp":
             coord._merge_timingapp(payload)
         else:
             coord._merge_timingdata(payload)
