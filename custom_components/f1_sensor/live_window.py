@@ -1142,6 +1142,10 @@ class LiveSessionSupervisor:
             try:
                 payload = await self._fetch_json(target)
                 if payload:
+                    if name in {"SessionInfo", "SessionStatus"} and isinstance(
+                        payload, dict
+                    ):
+                        self._bus.inject_message(name, payload)
                     if name == "SessionStatus" and isinstance(payload, dict):
                         session_status_payload = payload
                     _LOGGER.debug(
@@ -1232,6 +1236,11 @@ class LiveSessionSupervisor:
             now = dt_util.utcnow()
             hb_age = self._bus.last_heartbeat_age()
             activity_age = self._bus.last_stream_activity_age(LIVE_ACTIVITY_STREAMS)
+            session_name_l = window.session_name.lower()
+            allow_post_finish_inactivity = (
+                window.end_utc <= now < window.disconnect_at
+                and ("qualifying" in session_name_l or "shootout" in session_name_l)
+            )
             if now >= window.disconnect_at:
                 should_extend = (
                     source == "index"
@@ -1263,7 +1272,11 @@ class LiveSessionSupervisor:
                 _LOGGER.info("Disconnect window expired for %s", label)
                 reason = "disconnect-window-expired"
                 break
-            if hb_age is not None and hb_age > HEARTBEAT_DRAIN_SECONDS:
+            if (
+                hb_age is not None
+                and hb_age > HEARTBEAT_DRAIN_SECONDS
+                and not allow_post_finish_inactivity
+            ):
                 _LOGGER.info(
                     "Heartbeat aged %.0fs for %s; assuming feed idle", hb_age, label
                 )

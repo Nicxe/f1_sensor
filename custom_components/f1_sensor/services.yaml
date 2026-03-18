@@ -1,0 +1,11 @@
+clear_race_control_log:
+  name: Clear race control log
+  description: Clear the saved race control messages for the current session.
+  fields:
+    entity_id:
+      name: Race control entity
+      description: The race control sensor to clear saved messages for.
+      required: true
+      example: sensor.f1_race_control
+      selector:
+        text:

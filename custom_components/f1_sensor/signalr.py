@@ -7,19 +7,21 @@ import datetime as dt
 import json
 import logging
 import time
-from typing import Protocol
+from typing import Any, Protocol
 
 from aiohttp import ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
+StreamPayload = Any
+
 NEGOTIATE_URL = "https://livetiming.formula1.com/signalr/negotiate"
 CONNECT_URL = "wss://livetiming.formula1.com/signalr/connect"
 HUB_DATA = '[{"name":"Streaming"}]'
 
 # Subscribe to core live streams used across the integration
-# Added: TimingData, DriverList, TimingAppData to support driver sensors
+# Added: TimingData, DriverList, TimingAppData to support driver and tyre sensors
 # Added: TeamRadio to support team radio sensor
 SUBSCRIBE_MSG = {
     "H": "Streaming",
@@ -36,10 +38,10 @@ SUBSCRIBE_MSG = {
             "Heartbeat",
             "ExtrapolatedClock",
             "TimingData",
+            "CarData.z",
             "DriverList",
             "TimingAppData",
             "TopThree",
-            "TyreStintSeries",
             "TeamRadio",
             "PitStopSeries",
             "ChampionshipPrediction",
@@ -48,6 +50,14 @@ SUBSCRIBE_MSG = {
     ],
     "I": 1,
 }
+
+DEBUG_SUMMARY_STREAMS = (
+    "SessionStatus",
+    "TrackStatus",
+    "TopThree",
+    "TimingAppData",
+    "ChampionshipPrediction",
+)
 
 
 class LiveTransport(Protocol):
@@ -102,8 +112,8 @@ class SignalRClient:
         _LOGGER.debug("SignalR connection established")
         _LOGGER.debug(
             "Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, "
-            "LapCount, SessionInfo, SessionData, TimingData, DriverList, TimingAppData, TopThree, "
-            "TyreStintSeries, TeamRadio"
+            "LapCount, SessionInfo, SessionData, TimingData, CarData.z, DriverList, "
+            "TimingAppData, TopThree, TeamRadio"
         )
 
     async def ensure_connection(self) -> None:
@@ -199,15 +209,17 @@ class LiveBus:
         self._transport_factory = transport_factory
         self._client: LiveTransport | None = None
         self._task: asyncio.Task | None = None
-        self._subs: dict[str, list[Callable[[dict], None]]] = {}
+        self._subs: dict[str, list[Callable[[StreamPayload], None]]] = {}
         self._running = False
         # Lightweight per-stream counters for DEBUG summaries
         self._cnt: dict[str, int] = {}
+        self._stream_frames: dict[str, int] = {}
+        self._stream_last_keys: dict[str, list[str] | None] = {}
         self._last_ts: dict[str, float] = {}
         self._last_logged: float = time.time()
         self._log_interval: float = 10.0  # seconds
         # Cache last payload per stream so new subscribers receive latest snapshot immediately
-        self._last_payload: dict[str, dict] = {}
+        self._last_payload: dict[str, dict[str, Any]] = {}
         self._expect_heartbeat = False
         self._last_heartbeat_at: float | None = None
         self._heartbeat_guard: asyncio.Task | None = None
@@ -215,7 +227,7 @@ class LiveBus:
         self._heartbeat_check_interval = 5.0
 
     def subscribe(
-        self, stream: str, callback: Callable[[dict], None]
+        self, stream: str, callback: Callable[[StreamPayload], None]
     ) -> Callable[[], None]:
         lst = self._subs.setdefault(stream, [])
         lst.append(callback)
@@ -311,20 +323,30 @@ class LiveBus:
                 # Periodic compact DEBUG summary
                 self._maybe_log_summary()
 
-    def _dispatch(self, stream: str, data: dict) -> None:
+    def _dispatch(self, stream: str, data: StreamPayload) -> None:
         with suppress(Exception):
             # Update counters
             self._cnt[stream] = self._cnt.get(stream, 0) + 1
+            self._stream_frames[stream] = self._stream_frames.get(stream, 0) + 1
             self._last_ts[stream] = time.time()
+            if isinstance(data, dict):
+                self._stream_last_keys[stream] = list(data.keys())[:10]
             if stream == "Heartbeat":
                 self._last_heartbeat_at = time.time()
             # Cache last payload for new subscribers
             if isinstance(data, dict):
                 self._last_payload[stream] = data
+            if _LOGGER.isEnabledFor(logging.DEBUG) and self._stream_frames[stream] == 1:
+                _LOGGER.debug(
+                    "LiveBus first frame for %s with keys=%s",
+                    stream,
+                    self._stream_last_keys.get(stream),
+                )
             callbacks = list(self._subs.get(stream, []) or [])
             for cb in callbacks:
                 with suppress(Exception):
                     cb(data)
+            self._maybe_log_summary()
 
     def _maybe_log_summary(self) -> None:
         if not _LOGGER.isEnabledFor(logging.DEBUG):
@@ -335,16 +357,22 @@ class LiveBus:
         self._last_logged = now
         with suppress(Exception):
             parts: list[str] = []
-            for stream, count in sorted(self._cnt.items()):
+            streams = sorted(
+                set(self._cnt) | set(self._stream_frames) | set(DEBUG_SUMMARY_STREAMS)
+            )
+            for stream in streams:
+                count = self._cnt.get(stream, 0)
+                total = self._stream_frames.get(stream, 0)
                 last_age = None
                 try:
-                    last_age = now - self._last_ts.get(stream, now)
+                    ts = self._last_ts.get(stream)
+                    last_age = now - ts if ts is not None else None
                 except Exception:
                     last_age = None
                 if last_age is not None:
-                    parts.append(f"{stream}:{count} (last {last_age:.1f}s)")
+                    parts.append(f"{stream}:{count}/{total} (last {last_age:.1f}s)")
                 else:
-                    parts.append(f"{stream}:{count}")
+                    parts.append(f"{stream}:{count}/{total} (none)")
             if parts:
                 _LOGGER.debug(
                     "LiveBus summary (last %.0fs): %s",
@@ -443,9 +471,32 @@ class LiveBus:
             return None
         return min(ages)
 
-    def get_last_payload(self, stream: str) -> dict | None:
+    def get_last_payload(self, stream: str) -> dict[str, Any] | None:
         data = self._last_payload.get(stream)
         return data if isinstance(data, dict) else None
+
+    def stream_diagnostics(
+        self, streams: Iterable[str] | None = None
+    ) -> dict[str, dict[str, Any]]:
+        """Return compact per-stream telemetry for diagnostics sensors."""
+        selected = (
+            list(dict.fromkeys(streams))
+            if streams is not None
+            else sorted(set(self._stream_frames) | set(self._last_ts))
+        )
+        now = time.time()
+        return {
+            stream: {
+                "frame_count": self._stream_frames.get(stream, 0),
+                "last_seen_age_s": (
+                    round(now - self._last_ts[stream], 1)
+                    if stream in self._last_ts
+                    else None
+                ),
+                "last_payload_keys": self._stream_last_keys.get(stream),
+            }
+            for stream in selected
+        }
 
     async def swap_transport(
         self, transport_factory: Callable[[], LiveTransport] | None
@@ -464,6 +515,8 @@ class LiveBus:
         self._transport_factory = transport_factory
         self._last_payload.clear()  # Clear cached payloads from previous session
         self._cnt.clear()
+        self._stream_frames.clear()
+        self._stream_last_keys.clear()
         self._last_ts.clear()
 
         # For replay mode (transport_factory provided), always start the bus
@@ -476,7 +529,7 @@ class LiveBus:
             _LOGGER.info("Restarting LiveBus with live transport")
             await self.start()
 
-    def inject_message(self, stream: str, payload: dict) -> None:
+    def inject_message(self, stream: str, payload: StreamPayload) -> None:
         """Inject a message directly into the bus (for replay mode).
 
         This allows external code to feed data into the bus without

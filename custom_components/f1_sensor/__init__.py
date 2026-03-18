@@ -14,13 +14,18 @@ import time
 from typing import Any
 from urllib.parse import urljoin
 
+from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_COMPONENT_LOADED
-from homeassistant.core import HomeAssistant, callback as ha_callback
+from homeassistant.core import HomeAssistant, ServiceCall, callback as ha_callback
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
+import voluptuous as vol
 
 from .calibration import LiveDelayCalibrationManager
 from .const import (
@@ -100,6 +105,21 @@ _ACTIVITY_FILTER_MARKER = "__f1_sensor_activity_filter__"
 _ACTIVITY_FILTER_REBIND_MARKER = "__f1_sensor_activity_filter_rebound__"
 _ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER = "__f1_sensor_activity_logbook_subscribe__"
 _ACTIVITY_FILTER_COMPONENTS = frozenset({"recorder", "logbook"})
+_RC_LOG_SERVICE_MARKER = "__race_control_log_service_registered__"
+_RC_LOG_WS_MARKER = "__race_control_log_ws_registered__"
+_RC_LOG_SERVICE = "clear_race_control_log"
+_RC_LOG_STORE_KEY = "race_control_log_store"
+_RC_LOG_EVENT = f"{DOMAIN}_race_control_event"
+_RC_LOG_RESET_EVENT = f"{DOMAIN}_race_control_log_reset_event"
+_RC_LOG_WS_TYPE = f"{DOMAIN}/race_control_log/get"
+_DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
+    {
+        _JOLPICA_STATS_KEY,
+        _RC_LOG_SERVICE_MARKER,
+        _RC_LOG_WS_MARKER,
+    }
+)
+_FINISHING_PLUS_LAPS_RE = re.compile(r"^\+\d+\s+Laps?$", re.IGNORECASE)
 
 
 def _is_replay_delay_reason(reason: str | None) -> bool:
@@ -242,6 +262,423 @@ def _apply_activity_log_filter_excludes(hass: HomeAssistant) -> None:
         if callable(wrapped_subscribe):
             logbook_helpers.async_subscribe_events = wrapped_subscribe
             logbook_websocket_api.async_subscribe_events = wrapped_subscribe
+
+
+def _rc_cleanup_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _normalize_race_control_timestamp(value: Any) -> str | None:
+    text = _rc_cleanup_string(value)
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC).isoformat(timespec="seconds")
+    except Exception:
+        return text
+
+
+def _format_race_control_state(payload: dict[str, Any]) -> str:
+    message = _rc_cleanup_string(payload.get("Message") or payload.get("Text"))
+    if message:
+        return message[:255]
+    flag = _rc_cleanup_string(payload.get("Flag"))
+    category = _rc_cleanup_string(
+        payload.get("Category") or payload.get("CategoryType")
+    )
+    scope = _rc_cleanup_string(payload.get("Scope"))
+    sector = _rc_cleanup_string(payload.get("Sector"))
+    parts = [part for part in (flag, category, scope, sector) if part]
+    return " - ".join(parts) if parts else "Race control update"
+
+
+def _normalize_race_control_log_item(
+    payload: dict[str, Any],
+    *,
+    received_at: str | None = None,
+    sequence: int | None = None,
+) -> dict[str, Any]:
+    utc = _normalize_race_control_timestamp(
+        payload.get("Utc")
+        or payload.get("utc")
+        or payload.get("processedAt")
+        or payload.get("timestamp")
+    )
+    category = _rc_cleanup_string(
+        payload.get("Category") or payload.get("CategoryType")
+    )
+    flag = _rc_cleanup_string(payload.get("Flag"))
+    scope = _rc_cleanup_string(payload.get("Scope"))
+    sector = _rc_cleanup_string(payload.get("Sector") or payload.get("TrackSegment"))
+    car_number = _rc_cleanup_string(
+        payload.get("CarNumber")
+        or payload.get("Number")
+        or payload.get("Car")
+        or payload.get("Driver")
+    )
+    message = _rc_cleanup_string(payload.get("Message") or payload.get("Text"))
+    event_id = RaceControlCoordinator._message_id(payload)
+    item = {
+        "event_id": event_id,
+        "utc": utc,
+        "received_at": received_at or dt_util.utcnow().isoformat(timespec="seconds"),
+        "category": category,
+        "flag": flag,
+        "scope": scope,
+        "sector": sector,
+        "car_number": car_number,
+        "message": message or _format_race_control_state(payload),
+        "sequence": sequence,
+    }
+    return item
+
+
+def _resolve_race_control_session_label(info: dict[str, Any]) -> str | None:
+    session_type = str(info.get("Type") or "").strip()
+    session_name = str(info.get("Name") or "").strip()
+    try:
+        number = int(info.get("Number")) if info.get("Number") is not None else None
+    except Exception:
+        number = None
+
+    if session_type == "Practice":
+        return f"Practice {number}" if number else (session_name or "Practice")
+    if session_type == "Qualifying":
+        lowered = session_name.lower()
+        if lowered.startswith("sprint qualifying") or lowered.startswith(
+            "sprint shootout"
+        ):
+            return "Sprint Qualifying"
+        return "Qualifying"
+    if session_type == "Race":
+        lowered = session_name.lower()
+        if lowered.startswith("sprint qualifying") or lowered.startswith(
+            "sprint shootout"
+        ):
+            return "Sprint Qualifying"
+        if lowered.startswith("sprint"):
+            return "Sprint"
+        return session_name or "Race"
+    return session_name or session_type or None
+
+
+def _race_control_entity_id_for_entry(hass: HomeAssistant, entry_id: str) -> str | None:
+    registry = er.async_get(hass)
+    return registry.async_get_entity_id("sensor", DOMAIN, f"{entry_id}_race_control")
+
+
+def _resolve_race_control_log_entry_id(
+    hass: HomeAssistant, entity_id: str
+) -> str | None:
+    registry = er.async_get(hass)
+    entry = registry.async_get(entity_id)
+    if entry is None or entry.platform != DOMAIN:
+        return None
+    if entry.unique_id != f"{entry.config_entry_id}_race_control":
+        return None
+    return entry.config_entry_id
+
+
+class RaceControlLogStore:
+    """Persist the full Race Control history for the active or latest session."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry_id: str,
+        *,
+        session_info_coordinator: DataUpdateCoordinator | None = None,
+        session_status_coordinator: DataUpdateCoordinator | None = None,
+        storage_version: int = 1,
+    ) -> None:
+        self._hass = hass
+        self._entry_id = entry_id
+        self._session_info_coordinator = session_info_coordinator
+        self._session_status_coordinator = session_status_coordinator
+        self._store = Store(
+            hass,
+            storage_version,
+            f"{DOMAIN}_{entry_id}_race_control_log_v{storage_version}",
+        )
+        self._session_key: str | None = None
+        self._items: list[dict[str, Any]] = []
+        self._event_ids: set[str] = set()
+        self._next_sequence = 1
+        self._listeners: list[Callable[[], None]] = []
+        self._save_task: asyncio.Task | None = None
+        self._loaded = False
+
+    async def async_initialize(self) -> None:
+        stored = await self._store.async_load()
+        if isinstance(stored, dict):
+            self._session_key = _rc_cleanup_string(stored.get("session_key"))
+            raw_items = stored.get("items")
+            if isinstance(raw_items, list):
+                self._items = [
+                    dict(item) for item in raw_items if isinstance(item, dict)
+                ]
+            self._event_ids = {
+                str(item.get("event_id"))
+                for item in self._items
+                if item.get("event_id")
+            }
+            last_sequence = 0
+            for item in self._items:
+                try:
+                    last_sequence = max(last_sequence, int(item.get("sequence") or 0))
+                except Exception:
+                    continue
+            self._next_sequence = (
+                last_sequence + 1 if last_sequence > 0 else len(self._items) + 1
+            )
+        self._loaded = True
+        if self._session_info_coordinator is not None:
+            self._listeners.append(
+                self._session_info_coordinator.async_add_listener(
+                    self._handle_session_context_update
+                )
+            )
+        if self._session_status_coordinator is not None:
+            self._listeners.append(
+                self._session_status_coordinator.async_add_listener(
+                    self._handle_session_context_update
+                )
+            )
+        self._sync_session_context(fire_reset=False)
+
+    async def async_close(self) -> None:
+        while self._listeners:
+            unsub = self._listeners.pop()
+            with suppress(Exception):
+                unsub()
+        if self._save_task and not self._save_task.done():
+            self._save_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._save_task
+        self._save_task = None
+
+    @property
+    def session_key(self) -> str | None:
+        return self._session_key
+
+    def get_items(self) -> list[dict[str, Any]]:
+        return [dict(item) for item in reversed(self._items)]
+
+    def append(
+        self, payload: dict[str, Any], *, received_at: str | None = None
+    ) -> dict[str, Any] | None:
+        if not isinstance(payload, dict):
+            return None
+        self._sync_session_context(force=True)
+        item = _normalize_race_control_log_item(
+            payload,
+            received_at=received_at,
+            sequence=self._next_sequence,
+        )
+        event_id = item.get("event_id")
+        if event_id and event_id in self._event_ids:
+            return None
+        self._items.append(item)
+        if event_id:
+            self._event_ids.add(str(event_id))
+        self._next_sequence += 1
+        self._schedule_save()
+        return dict(item)
+
+    async def async_clear(self, *, reason: str = "manual") -> None:
+        self._clear(reason=reason)
+
+    def clear_for_source_stop(self, *, reason: str | None = None) -> None:
+        """Clear saved history when the active source goes unavailable."""
+        clear_reason = _rc_cleanup_string(reason) or "source_unavailable"
+        if clear_reason == "init":
+            return
+        self._clear(reason=clear_reason)
+
+    def _clear(self, *, reason: str, fire_event: bool = True) -> None:
+        had_items = bool(self._items)
+        self._items = []
+        self._event_ids = set()
+        self._next_sequence = 1
+        self._schedule_save()
+        if fire_event and (had_items or reason == "session_change"):
+            self._fire_reset_event(reason)
+
+    def _schedule_save(self) -> None:
+        if not self._loaded:
+            return
+        if self._save_task and not self._save_task.done():
+            self._save_task.cancel()
+            self._save_task = None
+
+        async def _save() -> None:
+            try:
+                await self._store.async_save(
+                    {
+                        "session_key": self._session_key,
+                        "items": list(self._items),
+                    }
+                )
+            except Exception:
+                _LOGGER.debug("Failed to persist race control log", exc_info=True)
+
+        self._save_task = self._hass.async_create_task(_save())
+
+    def _handle_session_context_update(self) -> None:
+        self._sync_session_context(fire_reset=True)
+
+    def _sync_session_context(
+        self,
+        *,
+        fire_reset: bool = True,
+        force: bool = False,
+    ) -> None:
+        new_key = self._compute_session_key()
+        if not new_key:
+            return
+        if self._session_key is None:
+            self._session_key = new_key
+            self._schedule_save()
+            return
+        if new_key == self._session_key:
+            return
+        if not force and not self._is_session_active():
+            return
+        self._session_key = new_key
+        self._clear(
+            reason="session_change" if fire_reset else "init",
+            fire_event=fire_reset,
+        )
+
+    def _is_session_active(self) -> bool:
+        data = (
+            self._session_status_coordinator.data
+            if self._session_status_coordinator is not None
+            else None
+        )
+        if not isinstance(data, dict):
+            return False
+        status = str(data.get("Status") or data.get("Message") or "").strip()
+        started = data.get("Started")
+        if started is True:
+            return True
+        return status in {"Started", "Green", "GreenFlag", "Resumed"}
+
+    def _compute_session_key(self) -> str | None:
+        info = (
+            self._session_info_coordinator.data
+            if self._session_info_coordinator is not None
+            else None
+        )
+        if not isinstance(info, dict):
+            return None
+        meeting = info.get("Meeting") if isinstance(info.get("Meeting"), dict) else {}
+        label = _resolve_race_control_session_label(info)
+        meeting_key = meeting.get("Key")
+        start = info.get("StartDate")
+        if not (meeting_key or start or label):
+            return None
+        parts = [
+            str(meeting_key or "").strip(),
+            str(start or "").strip(),
+            str(label or "").strip(),
+        ]
+        return "|".join(parts)
+
+    def _fire_reset_event(self, reason: str) -> None:
+        try:
+            self._hass.bus.async_fire(
+                _RC_LOG_RESET_EVENT,
+                {
+                    "entry_id": self._entry_id,
+                    "entity_id": _race_control_entity_id_for_entry(
+                        self._hass,
+                        self._entry_id,
+                    ),
+                    "reason": reason,
+                    "session_key": self._session_key,
+                    "cleared_at": dt_util.utcnow().isoformat(timespec="seconds"),
+                },
+            )
+        except Exception:
+            _LOGGER.debug(
+                "Failed to publish race control log reset event", exc_info=True
+            )
+
+
+def _get_race_control_log_store_for_entity(
+    hass: HomeAssistant, entity_id: str
+) -> RaceControlLogStore | None:
+    entry_id = _resolve_race_control_log_entry_id(hass, entity_id)
+    if not entry_id:
+        return None
+    data = hass.data.get(DOMAIN, {}).get(entry_id, {}) or {}
+    store = data.get(_RC_LOG_STORE_KEY)
+    return store if isinstance(store, RaceControlLogStore) else None
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): _RC_LOG_WS_TYPE,
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_race_control_log(
+    hass: HomeAssistant,
+    connection: Any,
+    msg: dict[str, Any],
+) -> None:
+    entity_id = msg["entity_id"]
+    store = _get_race_control_log_store_for_entity(hass, entity_id)
+    if store is None:
+        connection.send_error(
+            msg["id"],
+            "not_found",
+            "Race Control log is not available for this entity",
+        )
+        return
+    connection.send_result(
+        msg["id"],
+        {
+            "entity_id": entity_id,
+            "session_key": store.session_key,
+            "items": store.get_items(),
+        },
+    )
+
+
+async def _async_handle_clear_race_control_log(
+    hass: HomeAssistant, call: ServiceCall
+) -> None:
+    entity_id = call.data["entity_id"]
+    store = _get_race_control_log_store_for_entity(hass, entity_id)
+    if store is None:
+        raise ServiceValidationError(
+            f"Race Control log is not available for {entity_id}"
+        )
+    await store.async_clear(reason="manual")
+
+
+def _async_register_race_control_log_interfaces(hass: HomeAssistant) -> None:
+    root = hass.data.setdefault(DOMAIN, {})
+    if not root.get(_RC_LOG_SERVICE_MARKER):
+        hass.services.async_register(
+            DOMAIN,
+            _RC_LOG_SERVICE,
+            partial(_async_handle_clear_race_control_log, hass),
+            schema=vol.Schema({vol.Required("entity_id"): cv.entity_id}),
+        )
+        root[_RC_LOG_SERVICE_MARKER] = True
+    if not root.get(_RC_LOG_WS_MARKER):
+        websocket_api.async_register_command(hass, _ws_get_race_control_log)
+        root[_RC_LOG_WS_MARKER] = True
 
 
 def _compute_session_fingerprint(index_payload: Any) -> str | None:
@@ -830,6 +1267,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     TTL_STANDINGS = 24 * 3600  # standings change after race weekends
     TTL_LAST_RESULTS = 24 * 3600
     TTL_SPRINT = 24 * 3600
+    TTL_NEXT_RACE_HISTORY = 365 * 24 * 3600
     # Season results are paginated; we refresh the latest page more often inside the coordinator.
     TTL_SEASON_STABLE_PAGE = 30 * 24 * 3600  # older pages: effectively static
     TTL_SEASON_RECENT_PAGE = 24 * 3600  # second-to-last-ish pages
@@ -892,6 +1330,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if offset >= 100:
                     return TTL_SEASON_RECENT_PAGE
                 return 7 * 24 * 3600
+            if "/ergast/f1/circuits/" in kk and (
+                "/races.json" in kk
+                or "/results/1.json" in kk
+                or "/qualifying.json" in kk
+            ):
+                return TTL_NEXT_RACE_HISTORY
+            if re.search(r"/ergast/f1/\d{4}/\d+/(results|qualifying)\.json", kk):
+                return TTL_NEXT_RACE_HISTORY
             # Default: keep a modest TTL
             return 6 * 3600
 
@@ -938,6 +1384,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # The race coordinator provides schedule/calendar data that is never spoiler-sensitive.
     if race_coordinator is not None:
         race_coordinator._no_spoiler_sensitive = False
+    next_race_history_coordinator = (
+        F1NextRaceHistoryCoordinator(
+            hass,
+            race_coordinator,
+            "F1 Next Race History Coordinator",
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            ttl_seconds=TTL_NEXT_RACE_HISTORY,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+        )
+        if race_coordinator is not None and "next_race" in enabled
+        else None
+    )
+    if next_race_history_coordinator is not None:
+        next_race_history_coordinator._no_spoiler_sensitive = False
     driver_coordinator = (
         F1DataCoordinator(
             hass,
@@ -1092,6 +1557,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
+    race_control_log_store = None
     live_mode_coordinator = None
     top_three_coordinator = None
     hass.data[LATEST_TRACK_STATUS] = None
@@ -1117,13 +1583,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_state = LiveAvailabilityTracker()
         live_state.set_state(True, "replay-mode")
 
-    formation_tracker = None
-    if operation_mode == OPERATION_MODE_LIVE:
-        formation_tracker = FormationStartTracker(
-            hass,
-            bus=live_bus,
-            http_session=session,
-        )
+    formation_tracker = FormationStartTracker(
+        hass,
+        bus=live_bus,
+        http_session=session,
+    )
 
     def _reload_entry():
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
@@ -1180,6 +1644,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        race_control_log_store = RaceControlLogStore(
+            hass,
+            entry.entry_id,
+            session_info_coordinator=session_info_coordinator,
+            session_status_coordinator=session_status_coordinator,
+        )
+        await race_control_log_store.async_initialize()
         race_control_coordinator = RaceControlCoordinator(
             hass,
             session_coordinator,
@@ -1188,6 +1659,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             config_entry=entry,
             delay_controller=delay_controller,
             live_state=live_state,
+            log_store=race_control_log_store,
         )
         weather_data_coordinator = WeatherDataCoordinator(
             hass,
@@ -1217,6 +1689,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if race_coordinator:
         await race_coordinator.async_config_entry_first_refresh()
+    if next_race_history_coordinator:
+        await next_race_history_coordinator.async_refresh()
     if driver_coordinator:
         await driver_coordinator.async_config_entry_first_refresh()
     if constructor_coordinator:
@@ -1271,6 +1745,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
             live_supervisor=live_supervisor,
+            replay_controller=replay_controller,
         )
         await session_clock_coordinator.async_config_entry_first_refresh()
 
@@ -1347,6 +1822,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "http_inflight": http_inflight,
         "http_persist": persisted_map,
         "race_coordinator": race_coordinator,
+        "next_race_history_coordinator": next_race_history_coordinator,
         "driver_coordinator": driver_coordinator,
         "constructor_coordinator": constructor_coordinator,
         "last_race_coordinator": last_race_coordinator,
@@ -1358,6 +1834,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "session_info_coordinator": session_info_coordinator,
         "session_clock_coordinator": session_clock_coordinator,
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
+        _RC_LOG_STORE_KEY: race_control_log_store if enable_rc else None,
         "live_mode_coordinator": live_mode_coordinator if enable_rc else None,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
@@ -1397,6 +1874,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "activity_filter_unsub": None,
         "no_spoiler_unsub": None,
     }
+
+    if race_control_log_store is not None:
+        _async_register_race_control_log_interfaces(hass)
 
     _apply_activity_log_filter_excludes(hass)
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
@@ -1617,6 +2097,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
         live_state: LiveAvailabilityTracker | None = None,
+        log_store: RaceControlLogStore | None = None,
     ):
         super().__init__(
             hass,
@@ -1647,6 +2128,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             and config_entry.data.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
             == OPERATION_MODE_DEVELOPMENT
         )
+        self._log_store = log_store
         self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
@@ -1816,6 +2298,8 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         if not is_live:
             self._last_message = None
             self.data_list = []
+            if self._log_store is not None:
+                self._log_store.clear_for_source_stop(reason=reason)
             # Notify entities to clear their state
             self.async_set_updated_data(self._last_message)
         # In replay mode, disable the startup cutoff so historical messages are accepted
@@ -1829,10 +2313,14 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         if _is_no_spoiler_blocked(self):
             return
         self.available = True
+        received_at = dt_util.utcnow().isoformat(timespec="seconds")
         # Maintain last message for visibility and parity with other coordinators
         self._last_message = item
         self.data_list = [item]
         self.async_set_updated_data(item)
+        log_item = None
+        if self._log_store is not None:
+            log_item = self._log_store.append(item, received_at=received_at)
         if _LOGGER.isEnabledFor(logging.DEBUG):
             with suppress(Exception):
                 cat = item.get("Category") or item.get("CategoryType")
@@ -1850,10 +2338,28 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         # Publish on HA event bus with a consistent event name
         try:
             self.hass.bus.async_fire(
-                f"{DOMAIN}_race_control_event",
+                _RC_LOG_EVENT,
                 {
+                    "entry_id": self.config_entry.entry_id
+                    if self.config_entry
+                    else None,
+                    "entity_id": (
+                        _race_control_entity_id_for_entry(
+                            self.hass,
+                            self.config_entry.entry_id,
+                        )
+                        if self.config_entry is not None
+                        else None
+                    ),
                     "message": item,
-                    "received_at": dt_util.utcnow().isoformat(timespec="seconds"),
+                    "received_at": received_at,
+                    "event_id": self._message_id(item),
+                    "log_item": log_item,
+                    "session_key": (
+                        self._log_store.session_key
+                        if self._log_store is not None
+                        else None
+                    ),
                 },
             )
         except Exception:
@@ -2404,6 +2910,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._by_car: dict[str, list[dict]] = {}
         self._dedup: set[tuple] = set()
         self._driver_map: dict[str, dict[str, Any]] = {}
+        self._driver_pit_counts: dict[str, int] = {}
         self._deliver_handle: asyncio.Handle | None = None
         self._drivers_coord = drivers_coordinator
 
@@ -2442,6 +2949,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
     def _reset_store(self) -> None:
         self._by_car = {}
         self._dedup = set()
+        self._driver_pit_counts = {}
         self._state = {"total_stops": 0, "cars": {}, "last_update": None}
         with suppress(Exception):
             self.async_set_updated_data(self._state)
@@ -2580,24 +3088,50 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         cars: dict[str, Any] = {}
         total = 0
         try:
+            car_numbers = {
+                str(rn) for rn in (self._by_car or {}) if str(rn).strip()
+            } | {
+                str(rn)
+                for rn, count in (self._driver_pit_counts or {}).items()
+                if str(rn).strip() and int(count or 0) > 0
+            }
             for rn, stops in sorted(
-                self._by_car.items(),
+                ((rn, self._by_car.get(rn, [])) for rn in car_numbers),
                 key=lambda kv: int(str(kv[0])) if str(kv[0]).isdigit() else str(kv[0]),
             ):
                 lst = list(stops or [])
+                fallback_count = int(self._driver_pit_counts.get(str(rn), 0))
+                stop_count = max(len(lst), fallback_count)
                 ident = self._get_identity(str(rn))
                 cars[str(rn)] = {
                     "tla": ident.get("tla"),
                     "name": ident.get("name"),
                     "team": ident.get("team"),
-                    "count": len(lst),
+                    "count": stop_count,
                     "stops": lst,
                 }
-                total += len(lst)
+                total += stop_count
         except Exception:
             cars = {
-                str(rn): {"count": len(stops or []), "stops": list(stops or [])}
-                for rn, stops in (self._by_car or {}).items()
+                str(rn): {
+                    "count": max(
+                        len(stops or []),
+                        int(self._driver_pit_counts.get(str(rn), 0)),
+                    ),
+                    "stops": list(stops or []),
+                }
+                for rn, stops in {
+                    **{
+                        str(rn): stops
+                        for rn, stops in (self._by_car or {}).items()
+                        if str(rn).strip()
+                    },
+                    **{
+                        str(rn): self._by_car.get(str(rn), [])
+                        for rn, count in (self._driver_pit_counts or {}).items()
+                        if str(rn).strip() and int(count or 0) > 0
+                    },
+                }.items()
             }
             try:
                 total = sum(
@@ -2649,13 +3183,47 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                 )
             except Exception:
                 self._drivers_unsub = None
+        seeded = self._refresh_pit_counts_from_coordinator()
+        if self._refresh_driver_map_from_coordinator():
+            seeded = True
+        if self._refresh_pit_deltas():
+            seeded = True
+        if seeded:
+            self._schedule_deliver()
 
     def _on_drivers_update(self) -> None:
-        changed = self._refresh_pit_deltas()
+        changed = self._refresh_pit_counts_from_coordinator()
+        if self._refresh_pit_deltas():
+            changed = True
         if self._refresh_driver_map_from_coordinator():
             changed = True
         if changed:
             self._schedule_deliver()
+
+    def _refresh_pit_counts_from_coordinator(self) -> bool:
+        if not self._drivers_coord:
+            return False
+        data = self._drivers_coord.data
+        if not isinstance(data, dict):
+            return False
+        drivers = data.get("drivers")
+        if not isinstance(drivers, dict):
+            return False
+        next_counts: dict[str, int] = {}
+        for rn, info in drivers.items():
+            if not isinstance(info, dict):
+                continue
+            timing = info.get("timing")
+            if not isinstance(timing, dict):
+                continue
+            pit_stops = self._parse_int(timing.get("pit_stops"))
+            if pit_stops is None:
+                continue
+            next_counts[str(rn)] = max(0, pit_stops)
+        if next_counts == self._driver_pit_counts:
+            return False
+        self._driver_pit_counts = next_counts
+        return True
 
     def _refresh_driver_map_from_coordinator(self) -> bool:
         updated = False
@@ -3177,7 +3745,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
       "drivers": {
          rn: {
             "identity": {"tla","name","team","team_color","racing_number"},
-            "timing": {"position","gap_to_leader","interval","last_lap","best_lap","in_pit","pit_out","retired","stopped","status_code"},
+            "timing": {"position","gap_to_leader","interval","last_lap","best_lap","in_pit","pit_out","pit_stops","retired","stopped","status_code"},
             "tyres": {"compound","stint_laps","new"},
             "laps": {"lap_current","lap_total"},
             "sectors": {
@@ -3209,6 +3777,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     }
     """
 
+    _TYRE_DATA_WARNING_THRESHOLD_S = 300.0
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -3238,6 +3808,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self.available = True
+        self._tyre_live_started_mono: float | None = None
+        self._tyre_first_compound_logged = False
+        self._tyre_missing_warning_logged = False
         self._state: dict[str, Any] = {
             "drivers": {},
             "leader_rn": None,
@@ -3384,6 +3957,22 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 return default
             cur = cur.get(p)
         return cur if cur is not None else default
+
+    @staticmethod
+    def _parse_stream_int(value: Any) -> int | None:
+        try:
+            if value is None:
+                return None
+            if isinstance(value, int):
+                return value
+            text = str(value).strip()
+            if not text:
+                return None
+            if text.isdigit():
+                return int(text)
+            return int(float(text))
+        except Exception:
+            return None
 
     @staticmethod
     def _iter_qualifying_best_lap_times(
@@ -3584,6 +4173,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if timing.get("pit_out") != pit_out:
                     timing["pit_out"] = pit_out
                     changed = True
+            if "NumberOfPitStops" in td:
+                pit_stops = self._parse_stream_int(td.get("NumberOfPitStops"))
+                if pit_stops is not None and timing.get("pit_stops") != pit_stops:
+                    timing["pit_stops"] = pit_stops
+                    changed = True
             if "Retired" in td:
                 retired = bool(td.get("Retired"))
                 if timing.get("retired") != retired:
@@ -3775,6 +4369,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         self.available = is_live
+        self._tyre_live_started_mono = (
+            time.monotonic() if is_live and not self._replay_mode else None
+        )
+        self._tyre_first_compound_logged = False
+        self._tyre_missing_warning_logged = False
         if not is_live:
             # Clear consolidated state so a future session window does not briefly
             # show stale driver/timing information before the first live frames.
@@ -3795,6 +4394,79 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             return
         # 2) Recompute leader from full stored state (not just current delta)
         self._recompute_leader_from_state()
+
+    @staticmethod
+    def _extract_stint_items(stints: Any) -> list[tuple[int, dict[str, Any]]]:
+        """Normalize stint data into sorted `(index, payload)` pairs."""
+        items: list[tuple[int, dict[str, Any]]] = []
+        if isinstance(stints, list):
+            for idx, stint in enumerate(stints):
+                if isinstance(stint, dict):
+                    items.append((idx, stint))
+        elif isinstance(stints, dict):
+            for key, stint in stints.items():
+                if not isinstance(stint, dict) or not str(key).isdigit():
+                    continue
+                with suppress(ValueError):
+                    items.append((int(key), stint))
+        items.sort(key=lambda item: item[0])
+        return items
+
+    @staticmethod
+    def _extract_compound_presence(payload: dict) -> tuple[int, list[str]]:
+        """Return count and sample of drivers with a meaningful tyre compound."""
+        lines = (payload or {}).get("Lines", {})
+        if not isinstance(lines, dict):
+            return 0, []
+
+        sample: list[str] = []
+        count = 0
+        for rn, app in lines.items():
+            if not isinstance(app, dict):
+                continue
+            for _stint_idx, stint in LiveDriversCoordinator._extract_stint_items(
+                app.get("Stints")
+            ):
+                compound = LiveDriversCoordinator._normalize_compound(
+                    stint.get("Compound")
+                )
+                if not compound or compound == "UNKNOWN":
+                    continue
+                count += 1
+                if len(sample) < 5:
+                    sample.append(f"{rn}:{compound}")
+                break
+        return count, sample
+
+    def _log_tyre_stream_observability(self, payload: dict) -> None:
+        """Log once when tyre compounds first arrive, or if they stay absent too long."""
+        if self._replay_mode or self._tyre_live_started_mono is None:
+            return
+
+        compound_count, sample = self._extract_compound_presence(payload)
+        elapsed = max(0.0, time.monotonic() - self._tyre_live_started_mono)
+
+        if compound_count > 0:
+            if not self._tyre_first_compound_logged:
+                _LOGGER.info(
+                    "TimingAppData delivered first tyre compounds after %.1fs live (drivers=%s, sample=%s)",
+                    elapsed,
+                    compound_count,
+                    ", ".join(sample) if sample else "none",
+                )
+                self._tyre_first_compound_logged = True
+            return
+
+        if self._tyre_missing_warning_logged:
+            return
+        if elapsed < self._TYRE_DATA_WARNING_THRESHOLD_S:
+            return
+
+        _LOGGER.warning(
+            "TimingAppData frames received for %.0fs of live session without tyre compounds; current tyres will stay empty until upstream feed includes Compound data",
+            elapsed,
+        )
+        self._tyre_missing_warning_logged = True
 
     def _recompute_leader_from_state(self) -> None:
         drivers = self._state.get("drivers", {}) or {}
@@ -3833,38 +4505,86 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _merge_timingapp(self, payload: dict) -> bool:
         """Merge TimingAppData payloads.
 
-        We now use the dedicated TyreStintSeries stream for tyre information, so this
-        handler is only responsible for lap time fields from the embedded Stints.
+        TimingAppData is the sole source of live stint and tyre data.
         """
         # payload: {"Lines": { rn: {"Stints": { idx or list } } } }
+        self._log_tyre_stream_observability(payload)
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
             return False
         drivers = self._state["drivers"]
         changed = False
+        stints_changed = False
         for rn, app in lines.items():
             if not isinstance(app, dict):
                 continue
-            entry = drivers.setdefault(rn, {})
-            entry.setdefault("timing", {})
             stints = app.get("Stints")
+            stint_items = self._extract_stint_items(stints)
+            if not stint_items:
+                continue
+
+            entry = drivers.setdefault(rn, {})
+            entry.setdefault("identity", {})
+            entry.setdefault("timing", {})
+            entry.setdefault("tyres", {})
+            entry.setdefault("laps", {})
+            entry.setdefault(
+                "tyre_history", {"stints": [], "current_stint_index": None}
+            )
+            entry.setdefault(
+                "lap_history",
+                {
+                    "laps": {},
+                    "last_recorded_lap": 0,
+                    "grid_position": None,
+                    "completed_laps": 0,
+                },
+            )
+            latest: dict[str, Any] | None = None
+
+            tyres = entry["tyres"]
+            tyre_history = entry["tyre_history"]
+
+            for stint_idx, stint_data in stint_items:
+                if self._update_stint_history(tyre_history, stint_idx, stint_data):
+                    stints_changed = True
+
+                if (
+                    tyre_history["current_stint_index"] is None
+                    or stint_idx >= tyre_history["current_stint_index"]
+                ):
+                    if tyre_history["current_stint_index"] != stint_idx:
+                        tyre_history["current_stint_index"] = stint_idx
+                        stints_changed = True
+
+            latest = stint_items[-1][1]
+            if "Compound" in latest:
+                compound = self._normalize_compound(latest.get("Compound"))
+                if tyres.get("compound") != compound:
+                    tyres["compound"] = compound
+                    stints_changed = True
+            if "TotalLaps" in latest:
+                stint_laps = latest.get("TotalLaps")
+                stint_laps_val = (
+                    int(stint_laps) if str(stint_laps or "").isdigit() else stint_laps
+                )
+                if tyres.get("stint_laps") != stint_laps_val:
+                    tyres["stint_laps"] = stint_laps_val
+                    stints_changed = True
+            if "New" in latest:
+                is_new = latest.get("New")
+                s = str(is_new).lower()
+                if s == "true":
+                    new_val: Any = True
+                elif s == "false":
+                    new_val = False
+                else:
+                    new_val = is_new
+                if tyres.get("new") != new_val:
+                    tyres["new"] = new_val
+                    stints_changed = True
 
             # Extract the latest stint entry for lap time updates
-            latest: dict | None = None
-            if isinstance(stints, list) and stints:
-                latest = stints[-1] if isinstance(stints[-1], dict) else None
-            elif isinstance(stints, dict) and stints:
-                # Often indexed by numeric keys or 0/1
-                try:
-                    keys = [int(k) for k in stints.keys() if str(k).isdigit()]
-                    if keys:
-                        latest = stints.get(str(max(keys)))
-                except Exception:
-                    # Fallback: try key '0'
-                    latest = (
-                        stints.get("0") if isinstance(stints.get("0"), dict) else None
-                    )
-
             if isinstance(latest, dict):
                 lap_time = latest.get("LapTime")
                 if isinstance(lap_time, str) and lap_time:
@@ -3876,108 +4596,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     if self._ingest_completed_lap(rn, lap_time, lap_num):
                         changed = True
 
-        return changed
-
-    def _merge_tyre_stints(self, payload: dict) -> bool:
-        """Merge TyreStintSeries payloads into per-driver tyre state.
-
-        Expected payload shape (from SignalR stream \"TyreStintSeries\"):
-            {"Stints": { rn: { idx: {Compound, New, TotalLaps, ...}, ... }, ... }}
-
-        This method now tracks full stint history for tyre statistics in addition
-        to maintaining the existing tyres dict for backward compatibility.
-        """
-        stints_root = (payload or {}).get("Stints", {})
-        if not isinstance(stints_root, dict):
-            return False
-        drivers = self._state["drivers"]
-        stints_changed = False
-
-        for rn, stints in stints_root.items():
-            if not isinstance(stints, (dict, list)):
-                continue
-            entry = drivers.setdefault(rn, {})
-            entry.setdefault("tyres", {})
-            entry.setdefault(
-                "tyre_history", {"stints": [], "current_stint_index": None}
-            )
-            tyres = entry["tyres"]
-            tyre_history = entry["tyre_history"]
-
-            # Process ALL stint indices to build full history
-            stint_items: list[tuple[int, dict]] = []
-            if isinstance(stints, list):
-                for i, s in enumerate(stints):
-                    if isinstance(s, dict):
-                        stint_items.append((i, s))
-            elif isinstance(stints, dict):
-                for k, v in stints.items():
-                    if isinstance(v, dict) and str(k).isdigit():
-                        with suppress(ValueError):
-                            stint_items.append((int(k), v))
-            for stint_idx, stint_data in stint_items:
-                if self._update_stint_history(tyre_history, stint_idx, stint_data):
-                    stints_changed = True
-
-                # Update current stint tracking (highest index = current)
-                if (
-                    tyre_history["current_stint_index"] is None
-                    or stint_idx >= tyre_history["current_stint_index"]
-                ):
-                    if tyre_history["current_stint_index"] != stint_idx:
-                        tyre_history["current_stint_index"] = stint_idx
-                        stints_changed = True
-
-            # Maintain backward compatibility: update tyres dict with latest stint
-            latest: dict | None = None
-            if isinstance(stints, list) and stints:
-                latest = stints[-1] if isinstance(stints[-1], dict) else None
-            elif isinstance(stints, dict) and stints:
-                try:
-                    keys = [int(k) for k in stints.keys() if str(k).isdigit()]
-                    if keys:
-                        latest = stints.get(str(max(keys)))
-                except Exception:
-                    latest = (
-                        stints.get("0") if isinstance(stints.get("0"), dict) else None
-                    )
-            if isinstance(latest, dict):
-                if "Compound" in latest:
-                    compound = self._normalize_compound(latest.get("Compound"))
-                    if tyres.get("compound") != compound:
-                        tyres["compound"] = compound
-                        stints_changed = True
-                if "TotalLaps" in latest:
-                    stint_laps = latest.get("TotalLaps")
-                    stint_laps_val = (
-                        int(stint_laps)
-                        if str(stint_laps or "").isdigit()
-                        else stint_laps
-                    )
-                    if tyres.get("stint_laps") != stint_laps_val:
-                        tyres["stint_laps"] = stint_laps_val
-                        stints_changed = True
-                if "New" in latest:
-                    is_new = latest.get("New")
-                    s = str(is_new).lower()
-                    if s == "true":
-                        new_val: Any = True
-                    elif s == "false":
-                        new_val = False
-                    else:
-                        new_val = is_new
-                    if tyres.get("new") != new_val:
-                        tyres["new"] = new_val
-                        stints_changed = True
-
-        # Recompute tyre statistics if any stints changed
         if stints_changed:
             self._recompute_tyre_statistics()
-
-        # Tyre changes can also interact with leader logic (pit stops etc.)
-        if stints_changed:
             self._recompute_leader_from_state()
-        return stints_changed
+            changed = True
+
+        return changed
 
     def _update_stint_history(
         self, tyre_history: dict, stint_idx: int, stint_data: dict
@@ -4411,8 +5035,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         with suppress(Exception):
             msg = str(payload.get("Status") or payload.get("Message") or "").strip()
             started_flag = payload.get("Started")
-            # Freeze at session end
-            if msg in ("Finished", "Finalised", "Ends"):
+            # Keep driver timing open through raw Finished because valid lap
+            # completions can still arrive until the session is finalised.
+            if msg in ("Finalised", "Ends"):
                 self._state["frozen"] = True
             # Unfreeze on new session start or green running
             elif started_flag is True or msg in ("Started", "Green", "GreenFlag"):
@@ -4464,12 +5089,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         if self._merge_timingapp(ta):
             self._schedule_deliver()
 
-    def _on_tyre_stints(self, ts: dict) -> None:
-        if self._state.get("frozen") and not self._replay_mode:
-            return
-        if self._merge_tyre_stints(ts):
-            self._schedule_deliver()
-
     def _on_lapcount(self, lc: dict) -> None:
         if self._state.get("frozen"):
             return
@@ -4490,16 +5109,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         for rn, info in payload.items():
             if not isinstance(info, dict):
                 continue
-            pos_raw = info.get("Position")
-            if pos_raw is None:
-                continue
-            grid_pos = None
-            try:
-                grid_pos = str(pos_raw).strip()
-            except (TypeError, ValueError):
-                grid_pos = None
-            if not grid_pos:
-                continue
 
             entry = drivers.setdefault(rn, {})
             entry.setdefault("identity", {})
@@ -4518,6 +5127,24 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "completed_laps": 0,
                 },
             )
+
+            timing = entry["timing"]
+            if "PitStops" in info:
+                pit_stops = self._parse_stream_int(info.get("PitStops"))
+                if pit_stops is not None and timing.get("pit_stops") != pit_stops:
+                    timing["pit_stops"] = pit_stops
+                    changed = True
+
+            pos_raw = info.get("Position")
+            if pos_raw is None:
+                continue
+            grid_pos = None
+            try:
+                grid_pos = str(pos_raw).strip()
+            except (TypeError, ValueError):
+                grid_pos = None
+            if not grid_pos:
+                continue
 
             lap_history = entry["lap_history"]
             # Set grid_position only if not already set and no laps completed
@@ -4606,13 +5233,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._unsubs.append(
                     bus.subscribe(
-                        "TyreStintSeries",
-                        _wrap_delayed_handler(self, self._on_tyre_stints),
-                    )
-                )
-            with suppress(Exception):
-                self._unsubs.append(
-                    bus.subscribe(
                         "LapCount", _wrap_delayed_handler(self, self._on_lapcount)
                     )
                 )
@@ -4675,13 +5295,24 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         unregister_entry_name_settings(entry.entry_id)
         # If this was the last entry, remove dev-only stats reporter.
         if isinstance(data_root, dict):
-            # Keep only real entry dicts (exclude our global stats key)
+            with suppress(Exception):
+                from .switch import _NO_SPOILER_SWITCH_ENTRY_KEY
+
+                if data_root.get(_NO_SPOILER_SWITCH_ENTRY_KEY) == entry.entry_id:
+                    data_root.pop(_NO_SPOILER_SWITCH_ENTRY_KEY, None)
+            # Keep only real entry dicts (exclude our domain-level markers)
             remaining_entries = [
                 k
                 for k in data_root.keys()
-                if isinstance(k, str) and k != _JOLPICA_STATS_KEY
+                if isinstance(k, str)
+                and k not in _DOMAIN_ROOT_INTERNAL_KEYS
+                and k != _NO_SPOILER_MANAGER_KEY
             ]
             if not remaining_entries:
+                if hass.services.has_service(DOMAIN, _RC_LOG_SERVICE):
+                    with suppress(Exception):
+                        hass.services.async_remove(DOMAIN, _RC_LOG_SERVICE)
+                data_root.pop(_RC_LOG_SERVICE_MARKER, None)
                 stats = data_root.get(_JOLPICA_STATS_KEY)
                 unsub = stats.get("unsub") if isinstance(stats, dict) else None
                 if callable(unsub):
@@ -4977,6 +5608,631 @@ class F1DataCoordinator(DataUpdateCoordinator):
                 return data
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}") from err
+
+
+class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
+    """Fetch and compute historical facts for the next race circuit."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        race_coordinator: DataUpdateCoordinator,
+        name: str,
+        session=None,
+        user_agent: str | None = None,
+        cache=None,
+        inflight=None,
+        ttl_seconds: int = 365 * 24 * 3600,
+        persist_map=None,
+        persist_save=None,
+        config_entry: ConfigEntry | None = None,
+    ) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=name,
+            update_interval=timedelta(hours=1),
+            config_entry=config_entry,
+        )
+        self._race_coordinator = race_coordinator
+        self._session = session or async_get_clientsession(hass)
+        self._headers = {"User-Agent": str(user_agent)} if user_agent else None
+        self._cache = cache
+        self._inflight = inflight
+        self._ttl = int(ttl_seconds or 365 * 24 * 3600)
+        self._persist = persist_map
+        self._persist_save = persist_save
+        self._target_key: tuple[str, str, str] | None = None
+        self._source_unsub = None
+        if hasattr(race_coordinator, "async_add_listener"):
+            with suppress(Exception):
+                self._source_unsub = race_coordinator.async_add_listener(
+                    self._handle_race_source_update
+                )
+
+    async def async_close(self, *_):
+        if callable(self._source_unsub):
+            with suppress(Exception):
+                self._source_unsub()
+        self._source_unsub = None
+
+    @staticmethod
+    def _empty_history() -> dict[str, Any]:
+        return {
+            "defending_winner": None,
+            "defending_pole_sitter": None,
+            "last_5_winners": [],
+            "last_5_poles": [],
+            "top_5_driver_wins_here": [],
+            "top_5_constructor_wins_here": [],
+            "first_f1_race_here": None,
+            "races_held_here": 0,
+            "last_year_podium": None,
+            "dnf_rate_last_5": 0.0,
+            "dnf_rate_last_5_stats": {
+                "race_count": 0,
+                "starter_count": 0,
+                "finisher_count": 0,
+                "dnf_count": 0,
+                "dnf_rate_pct": 0.0,
+                "per_race": [],
+            },
+            "pole_to_win_conversion_last_5": 0.0,
+            "pole_to_win_conversion_last_5_stats": {
+                "race_count": 0,
+                "pole_to_win_count": 0,
+                "conversion_rate_pct": 0.0,
+                "per_race": [],
+            },
+        }
+
+    @staticmethod
+    def _season_int(value: Any) -> int:
+        try:
+            return int(str(value).strip())
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _round_int(value: Any) -> int:
+        try:
+            return int(str(value).strip())
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _race_date(value: dict[str, Any] | None) -> str | None:
+        raw = value.get("date") if isinstance(value, dict) else None
+        if raw is None:
+            return None
+        text = str(raw).strip()
+        return text or None
+
+    @staticmethod
+    def _race_key(value: dict[str, Any] | None) -> tuple[str, str]:
+        if not isinstance(value, dict):
+            return ("", "")
+        season = value.get("season")
+        round_ = value.get("round")
+        return (
+            str(season).strip() if season is not None else "",
+            str(round_).strip() if round_ is not None else "",
+        )
+
+    @classmethod
+    def _history_sort_key(cls, race: dict[str, Any]) -> tuple[str, int, int]:
+        return (
+            cls._race_date(race) or "",
+            cls._season_int(race.get("season")),
+            cls._round_int(race.get("round")),
+        )
+
+    @staticmethod
+    def _driver_name(driver: dict[str, Any] | None) -> str | None:
+        if not isinstance(driver, dict):
+            return None
+        given = str(driver.get("givenName") or "").strip()
+        family = str(driver.get("familyName") or "").strip()
+        combined = " ".join(part for part in (given, family) if part)
+        if combined:
+            return combined
+        code = str(driver.get("code") or "").strip()
+        return code or None
+
+    @staticmethod
+    def _first_race(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+        races = (
+            (payload or {}).get("MRData", {}).get("RaceTable", {}).get("Races", [])
+            if isinstance(payload, dict)
+            else []
+        )
+        if isinstance(races, list) and races:
+            first = races[0]
+            return first if isinstance(first, dict) else None
+        return None
+
+    @staticmethod
+    def _find_result(
+        results: list[dict[str, Any]], position: str
+    ) -> dict[str, Any] | None:
+        for result in results:
+            if str(result.get("position") or "").strip() == position:
+                return result
+        if position == "1" and results:
+            first = results[0]
+            return first if isinstance(first, dict) else None
+        return None
+
+    @staticmethod
+    def _is_finisher_status(status: Any) -> bool:
+        text = str(status or "").strip()
+        if not text:
+            return False
+        if text == "Finished":
+            return True
+        return bool(_FINISHING_PLUS_LAPS_RE.match(text))
+
+    @classmethod
+    def _normalize_winner(
+        cls, race: dict[str, Any], result: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if not isinstance(result, dict):
+            return None
+        driver = result.get("Driver") if isinstance(result.get("Driver"), dict) else {}
+        constructor = (
+            result.get("Constructor")
+            if isinstance(result.get("Constructor"), dict)
+            else {}
+        )
+        return {
+            "season": str(race.get("season") or ""),
+            "round": str(race.get("round") or ""),
+            "race_name": race.get("raceName"),
+            "date": race.get("date"),
+            "driver_id": driver.get("driverId"),
+            "driver_code": driver.get("code"),
+            "driver_name": cls._driver_name(driver),
+            "constructor_id": constructor.get("constructorId"),
+            "constructor_name": constructor.get("name"),
+            "grid": result.get("grid"),
+        }
+
+    @classmethod
+    def _normalize_pole(
+        cls, race: dict[str, Any], qualifying_result: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if not isinstance(qualifying_result, dict):
+            return None
+        driver = (
+            qualifying_result.get("Driver")
+            if isinstance(qualifying_result.get("Driver"), dict)
+            else {}
+        )
+        constructor = (
+            qualifying_result.get("Constructor")
+            if isinstance(qualifying_result.get("Constructor"), dict)
+            else {}
+        )
+        return {
+            "season": str(race.get("season") or ""),
+            "round": str(race.get("round") or ""),
+            "race_name": race.get("raceName"),
+            "date": race.get("date"),
+            "driver_id": driver.get("driverId"),
+            "driver_code": driver.get("code"),
+            "driver_name": cls._driver_name(driver),
+            "constructor_id": constructor.get("constructorId"),
+            "constructor_name": constructor.get("name"),
+            "q1": qualifying_result.get("Q1"),
+            "q2": qualifying_result.get("Q2"),
+            "q3": qualifying_result.get("Q3"),
+        }
+
+    @classmethod
+    def _normalize_podium(
+        cls, race: dict[str, Any], results: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        podium_items: list[dict[str, Any]] = []
+        ordered = sorted(
+            [
+                result
+                for result in results
+                if str(result.get("position") or "").strip() in {"1", "2", "3"}
+            ],
+            key=lambda result: cls._round_int(result.get("position")),
+        )
+        for result in ordered[:3]:
+            driver = (
+                result.get("Driver") if isinstance(result.get("Driver"), dict) else {}
+            )
+            constructor = (
+                result.get("Constructor")
+                if isinstance(result.get("Constructor"), dict)
+                else {}
+            )
+            podium_items.append(
+                {
+                    "position": str(result.get("position") or ""),
+                    "driver_id": driver.get("driverId"),
+                    "driver_code": driver.get("code"),
+                    "driver_name": cls._driver_name(driver),
+                    "constructor_id": constructor.get("constructorId"),
+                    "constructor_name": constructor.get("name"),
+                    "grid": result.get("grid"),
+                }
+            )
+        if not podium_items:
+            return None
+        return {
+            "season": str(race.get("season") or ""),
+            "round": str(race.get("round") or ""),
+            "race_name": race.get("raceName"),
+            "date": race.get("date"),
+            "podium": podium_items,
+        }
+
+    @staticmethod
+    def _normalize_first_race(race: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not isinstance(race, dict):
+            return None
+        return {
+            "season": str(race.get("season") or ""),
+            "round": str(race.get("round") or ""),
+            "race_name": race.get("raceName"),
+            "date": race.get("date"),
+            "url": race.get("url"),
+        }
+
+    @staticmethod
+    def _history_url(*parts: str) -> str:
+        return "https://api.jolpi.ca/ergast/f1/" + "/".join(
+            part.strip("/") for part in parts
+        )
+
+    async def _fetch_url(self, url: str) -> Any:
+        async with asyncio.timeout(10):
+            return await fetch_json(
+                self.hass,
+                self._session,
+                url,
+                headers=self._headers,
+                ttl_seconds=self._ttl,
+                cache=self._cache,
+                inflight=self._inflight,
+                persist_map=self._persist,
+                persist_save=self._persist_save,
+            )
+
+    def _target_race(self) -> dict[str, Any] | None:
+        payload = getattr(self._race_coordinator, "data", None) or {}
+        races = payload.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+        _, race = get_next_race(
+            races,
+            grace=RACE_SWITCH_GRACE,
+            default_time="00:00:00Z",
+        )
+        return race if isinstance(race, dict) else None
+
+    @staticmethod
+    def _target_key_from_race(
+        race: dict[str, Any] | None,
+    ) -> tuple[str, str, str] | None:
+        if not isinstance(race, dict):
+            return None
+        circuit = race.get("Circuit") if isinstance(race.get("Circuit"), dict) else {}
+        circuit_id = str(circuit.get("circuitId") or "").strip()
+        date = str(race.get("date") or "").strip()
+        round_ = str(race.get("round") or "").strip()
+        if not circuit_id or not date:
+            return None
+        return (circuit_id, date, round_)
+
+    @ha_callback
+    def _handle_race_source_update(self) -> None:
+        next_target = self._target_key_from_race(self._target_race())
+        if next_target is None or next_target == self._target_key:
+            return
+        self.hass.async_create_task(self.async_request_refresh())
+
+    async def _async_update_data(self):
+        history = self._empty_history()
+        try:
+            target_race = self._target_race()
+            target_key = self._target_key_from_race(target_race)
+            self._target_key = target_key
+            if target_race is None or target_key is None:
+                return history
+
+            circuit = (
+                target_race.get("Circuit")
+                if isinstance(target_race.get("Circuit"), dict)
+                else {}
+            )
+            circuit_id = str(circuit.get("circuitId") or "").strip()
+            target_date = self._race_date(target_race)
+            if not circuit_id or not target_date:
+                return history
+
+            circuit_races_url = self._history_url(
+                "circuits", circuit_id, "races.json?limit=100"
+            )
+            winners_url = self._history_url(
+                "circuits", circuit_id, "results", "1.json?limit=100"
+            )
+
+            circuit_races_payload, winners_payload = await asyncio.gather(
+                self._fetch_url(circuit_races_url),
+                self._fetch_url(winners_url),
+            )
+
+            all_races = (
+                (circuit_races_payload or {})
+                .get("MRData", {})
+                .get("RaceTable", {})
+                .get("Races", [])
+            )
+            completed_races = [
+                race
+                for race in all_races
+                if isinstance(race, dict)
+                and (self._race_date(race) or "") < target_date
+            ]
+            completed_races.sort(key=self._history_sort_key)
+            history["first_f1_race_here"] = self._normalize_first_race(
+                completed_races[0] if completed_races else None
+            )
+            history["races_held_here"] = len(completed_races)
+            if not completed_races:
+                return history
+
+            latest_five = list(reversed(completed_races[-5:]))
+
+            winners_races = (
+                (winners_payload or {})
+                .get("MRData", {})
+                .get("RaceTable", {})
+                .get("Races", [])
+            )
+            driver_wins: dict[str, dict[str, Any]] = {}
+            constructor_wins: dict[str, dict[str, Any]] = {}
+            winners_by_race: dict[tuple[str, str], dict[str, Any]] = {}
+            for race in winners_races:
+                if not isinstance(race, dict):
+                    continue
+                if (self._race_date(race) or "") >= target_date:
+                    continue
+                winner = self._find_result(race.get("Results", []) or [], "1")
+                normalized = self._normalize_winner(race, winner)
+                if normalized is None:
+                    continue
+                winners_by_race[self._race_key(race)] = normalized
+
+                driver_id = str(normalized.get("driver_id") or "").strip()
+                if driver_id:
+                    stats = driver_wins.setdefault(
+                        driver_id,
+                        {
+                            "driver_id": normalized.get("driver_id"),
+                            "driver_code": normalized.get("driver_code"),
+                            "driver_name": normalized.get("driver_name"),
+                            "wins": 0,
+                            "first_win_season": normalized.get("season"),
+                            "last_win_season": normalized.get("season"),
+                        },
+                    )
+                    stats["wins"] += 1
+                    if self._season_int(normalized.get("season")) < self._season_int(
+                        stats.get("first_win_season")
+                    ):
+                        stats["first_win_season"] = normalized.get("season")
+                    if self._season_int(normalized.get("season")) > self._season_int(
+                        stats.get("last_win_season")
+                    ):
+                        stats["last_win_season"] = normalized.get("season")
+
+                constructor_id = str(normalized.get("constructor_id") or "").strip()
+                if constructor_id:
+                    stats = constructor_wins.setdefault(
+                        constructor_id,
+                        {
+                            "constructor_id": normalized.get("constructor_id"),
+                            "constructor_name": normalized.get("constructor_name"),
+                            "wins": 0,
+                            "first_win_season": normalized.get("season"),
+                            "last_win_season": normalized.get("season"),
+                        },
+                    )
+                    stats["wins"] += 1
+                    if self._season_int(normalized.get("season")) < self._season_int(
+                        stats.get("first_win_season")
+                    ):
+                        stats["first_win_season"] = normalized.get("season")
+                    if self._season_int(normalized.get("season")) > self._season_int(
+                        stats.get("last_win_season")
+                    ):
+                        stats["last_win_season"] = normalized.get("season")
+
+            result_urls = [
+                self._history_url(
+                    str(race.get("season") or ""),
+                    str(race.get("round") or ""),
+                    "results.json",
+                )
+                for race in latest_five
+            ]
+            qualifying_urls = [
+                self._history_url(
+                    str(race.get("season") or ""),
+                    str(race.get("round") or ""),
+                    "qualifying.json",
+                )
+                for race in latest_five
+            ]
+            result_payloads, qualifying_payloads = await asyncio.gather(
+                asyncio.gather(*(self._fetch_url(url) for url in result_urls)),
+                asyncio.gather(
+                    *(self._fetch_url(url) for url in qualifying_urls),
+                    return_exceptions=True,
+                ),
+            )
+
+            last_five_winners: list[dict[str, Any]] = []
+            last_five_poles: list[dict[str, Any]] = []
+            dnf_per_race: list[dict[str, Any]] = []
+            pole_to_win_per_race: list[dict[str, Any]] = []
+            starter_count = 0
+            finisher_count = 0
+            dnf_count = 0
+            pole_to_win_count = 0
+            last_year_podium = None
+            defending_pole_sitter = None
+            previous_season = self._season_int(target_race.get("season")) - 1
+
+            for idx, race in enumerate(latest_five):
+                race_key = self._race_key(race)
+                result_race = self._first_race(result_payloads[idx]) or race
+                results = result_race.get("Results", []) or []
+                winner = winners_by_race.get(race_key)
+                if winner is None:
+                    winner = self._normalize_winner(
+                        result_race,
+                        self._find_result(results, "1"),
+                    )
+                if winner is not None:
+                    last_five_winners.append(winner)
+
+                starters = len(results)
+                finishers = sum(
+                    1
+                    for result in results
+                    if self._is_finisher_status(result.get("status"))
+                )
+                dnfs = max(0, starters - finishers)
+                starter_count += starters
+                finisher_count += finishers
+                dnf_count += dnfs
+                dnf_per_race.append(
+                    {
+                        "season": str(
+                            result_race.get("season") or race.get("season") or ""
+                        ),
+                        "round": str(
+                            result_race.get("round") or race.get("round") or ""
+                        ),
+                        "race_name": result_race.get("raceName")
+                        or race.get("raceName"),
+                        "starters": starters,
+                        "finishers": finishers,
+                        "dnfs": dnfs,
+                    }
+                )
+
+                winner_result = self._find_result(results, "1")
+                winner_name = None
+                winner_grid = None
+                converted = False
+                if winner_result is not None:
+                    winner_name = self._driver_name(winner_result.get("Driver"))
+                    winner_grid = winner_result.get("grid")
+                    converted = str(winner_grid or "").strip() == "1"
+                    if converted:
+                        pole_to_win_count += 1
+                pole_to_win_per_race.append(
+                    {
+                        "season": str(
+                            result_race.get("season") or race.get("season") or ""
+                        ),
+                        "round": str(
+                            result_race.get("round") or race.get("round") or ""
+                        ),
+                        "race_name": result_race.get("raceName")
+                        or race.get("raceName"),
+                        "winner_name": winner_name,
+                        "winner_grid": winner_grid,
+                        "converted": converted,
+                    }
+                )
+
+                if (
+                    previous_season > 0
+                    and self._season_int(result_race.get("season")) == previous_season
+                    and last_year_podium is None
+                ):
+                    last_year_podium = self._normalize_podium(result_race, results)
+
+                qualifying_payload = qualifying_payloads[idx]
+                if not isinstance(qualifying_payload, Exception):
+                    qualifying_race = self._first_race(qualifying_payload) or race
+                    qualifying_results = (
+                        qualifying_race.get("QualifyingResults", []) or []
+                    )
+                    pole_result = None
+                    for result in qualifying_results:
+                        if str(result.get("position") or "").strip() == "1":
+                            pole_result = result
+                            break
+                    if pole_result is None and qualifying_results:
+                        first = qualifying_results[0]
+                        pole_result = first if isinstance(first, dict) else None
+                    normalized_pole = self._normalize_pole(qualifying_race, pole_result)
+                    if normalized_pole is not None:
+                        if idx == 0:
+                            defending_pole_sitter = normalized_pole
+                        last_five_poles.append(normalized_pole)
+
+            dnf_rate = (
+                round((dnf_count / starter_count) * 100, 1) if starter_count else 0.0
+            )
+            conversion_rate = (
+                round((pole_to_win_count / len(latest_five)) * 100, 1)
+                if latest_five
+                else 0.0
+            )
+
+            history["defending_winner"] = (
+                last_five_winners[0] if last_five_winners else None
+            )
+            history["defending_pole_sitter"] = defending_pole_sitter
+            history["last_5_winners"] = last_five_winners
+            history["last_5_poles"] = last_five_poles
+            history["top_5_driver_wins_here"] = sorted(
+                driver_wins.values(),
+                key=lambda item: (
+                    -int(item.get("wins") or 0),
+                    -self._season_int(item.get("last_win_season")),
+                    str(item.get("driver_name") or "").lower(),
+                    str(item.get("driver_id") or "").lower(),
+                ),
+            )[:5]
+            history["top_5_constructor_wins_here"] = sorted(
+                constructor_wins.values(),
+                key=lambda item: (
+                    -int(item.get("wins") or 0),
+                    -self._season_int(item.get("last_win_season")),
+                    str(item.get("constructor_name") or "").lower(),
+                    str(item.get("constructor_id") or "").lower(),
+                ),
+            )[:5]
+            history["last_year_podium"] = last_year_podium
+            history["dnf_rate_last_5"] = dnf_rate
+            history["dnf_rate_last_5_stats"] = {
+                "race_count": len(latest_five),
+                "starter_count": starter_count,
+                "finisher_count": finisher_count,
+                "dnf_count": dnf_count,
+                "dnf_rate_pct": dnf_rate,
+                "per_race": dnf_per_race,
+            }
+            history["pole_to_win_conversion_last_5"] = conversion_rate
+            history["pole_to_win_conversion_last_5_stats"] = {
+                "race_count": len(latest_five),
+                "pole_to_win_count": pole_to_win_count,
+                "conversion_rate_pct": conversion_rate,
+                "per_race": pole_to_win_per_race,
+            }
+            return history
+        except Exception as err:
+            raise UpdateFailed(f"Error fetching next race history: {err}") from err
 
 
 class F1SeasonResultsCoordinator(DataUpdateCoordinator):
@@ -6340,6 +7596,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         delay_controller: LiveDelayController | None = None,
         live_state: LiveAvailabilityTracker | None = None,
         live_supervisor: LiveSessionSupervisor | None = None,
+        replay_controller: ReplayController | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -6353,6 +7610,11 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         self.available = True
         self._state = self._empty_state()
         self.data_list: list[dict] = [self._state]
+        self._live_supervisor = live_supervisor
+        self._tick_unsub: Callable[[], None] | None = None
+        self._replay_controller = replay_controller
+        self._replay_state_unsub: Callable[[], None] | None = None
+        self._reset_runtime()
         _init_stream_delay_state(
             self,
             delay_seconds,
@@ -6360,12 +7622,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             delay_controller=delay_controller,
             live_state=live_state,
         )
-        self._live_supervisor = live_supervisor
-        self._tick_unsub: Callable[[], None] | None = None
-        self._reset_runtime()
 
     async def async_close(self, *_):
         self._stop_tick()
+        if self._replay_state_unsub is not None:
+            with suppress(Exception):
+                self._replay_state_unsub()
+            self._replay_state_unsub = None
         _close_stream_delay_state(self)
 
     async def _async_update_data(self):
@@ -6409,6 +7672,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         self._race_start_utc: datetime | None = None
         self._last_heartbeat_utc: datetime | None = None
         self._last_heartbeat_mono: float | None = None
+        self._clock_anchor_segment_id: int | None = None
 
     @staticmethod
     def _parse_utc(value: Any) -> datetime | None:
@@ -6484,6 +7748,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         segment_id = self._segment_id(
             self._resolve_session_part_at(anchor_utc or self._server_now_utc())
         )
+        self._clock_anchor_segment_id = segment_id
         self._update_clock_total(segment_id, remaining_s)
         self._schedule_deliver()
 
@@ -6557,24 +7822,47 @@ class SessionClockCoordinator(DataUpdateCoordinator):
     def _schedule_deliver(self) -> None:
         self._deliver()
 
+    def _replay_controller_state(self) -> ReplayState | None:
+        """Return the current replay controller state when available."""
+        entry_id = getattr(getattr(self, "config_entry", None), "entry_id", None)
+        reg = (
+            self.hass.data.get(DOMAIN, {}).get(entry_id, {})
+            if entry_id is not None
+            else {}
+        )
+        replay_controller = reg.get("replay_controller")
+        with suppress(Exception):
+            if replay_controller is not None:
+                return replay_controller.state
+        return None
+
+    def _is_replay_temporarily_frozen(self) -> bool:
+        """Return True when replay should freeze the clock reference."""
+        return self._replay_controller_state() in (
+            ReplayState.PAUSED,
+            ReplayState.SEEKING,
+        )
+
+    def _is_replay_paused(self) -> bool:
+        """Return True when replay is explicitly paused."""
+        return self._replay_controller_state() == ReplayState.PAUSED
+
+    def _on_replay_state_change(self, snapshot: dict) -> None:
+        """Handle replay controller state changes (pause/resume/seek)."""
+        state_str = snapshot.get("state", "")
+        if state_str in (
+            ReplayState.PAUSED.value,
+            ReplayState.PLAYING.value,
+            ReplayState.SEEKING.value,
+        ):
+            self._deliver()
+
     def _server_now_utc(self) -> datetime:
-        if self._replay_mode:
-            entry_id = getattr(getattr(self, "config_entry", None), "entry_id", None)
-            reg = (
-                self.hass.data.get(DOMAIN, {}).get(entry_id, {})
-                if entry_id is not None
-                else {}
-            )
-            replay_controller = reg.get("replay_controller")
-            with suppress(Exception):
-                if replay_controller is not None and replay_controller.state in (
-                    ReplayState.PAUSED,
-                    ReplayState.SEEKING,
-                ):
-                    if isinstance(self._last_heartbeat_utc, datetime):
-                        return self._last_heartbeat_utc
-                    if isinstance(self._clock_anchor_utc, datetime):
-                        return self._clock_anchor_utc
+        if self._is_replay_temporarily_frozen():
+            if isinstance(self._last_heartbeat_utc, datetime):
+                return self._last_heartbeat_utc
+            if isinstance(self._clock_anchor_utc, datetime):
+                return self._clock_anchor_utc
         if (
             isinstance(self._last_heartbeat_utc, datetime)
             and self._last_heartbeat_mono is not None
@@ -6933,6 +8221,16 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         )
 
         clock_remaining = self._clock_remaining_seconds(clock_now_utc)
+        # During qualifying breaks the segment advances before new clock data
+        # arrives.  Discard the stale anchor from the previous segment so we
+        # don't produce misleading elapsed / remaining values.
+        if (
+            self._is_qualifying_like()
+            and segment_id > 0
+            and self._clock_anchor_segment_id is not None
+            and self._clock_anchor_segment_id != segment_id
+        ):
+            clock_remaining = None
         self._set_clock_total_floor(
             segment_id,
             self._default_clock_total(segment_id, clock_remaining),
@@ -6970,11 +8268,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             clock_elapsed = clock_elapsed_from_start
 
         terminal = self._status_is_terminal(status)
+        replay_paused = self._is_replay_temporarily_frozen()
         clock_running = bool(
             self._clock_anchor_extrapolating
             and clock_remaining is not None
             and clock_remaining > 0
             and not terminal
+            and not replay_paused
         )
         if terminal or (
             clock_remaining == 0 and status in {"Finished", "Finalised", "Ends"}
@@ -6984,14 +8284,24 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             clock_phase = "running"
         elif (
             clock_remaining is not None
+            and clock_remaining == 0
+            and status in self._ACTIVE_OR_ENDED_STATES
+            and not terminal
+        ):
+            clock_phase = "overtime"
+        elif (
+            clock_remaining is not None
             and clock_remaining > 0
-            and status
-            in {
-                "Started",
-                "Resumed",
-                "Inactive",
-                "Aborted",
-            }
+            and (
+                replay_paused
+                or status
+                in {
+                    "Started",
+                    "Resumed",
+                    "Inactive",
+                    "Aborted",
+                }
+            )
         ):
             clock_phase = "paused"
         else:
@@ -7054,6 +8364,8 @@ class SessionClockCoordinator(DataUpdateCoordinator):
     def _should_tick(self, state: dict[str, Any]) -> bool:
         if not self.available:
             return False
+        if self._is_replay_temporarily_frozen():
+            return False
         if bool(state.get("clock_running")):
             return True
         status = str(state.get("session_status") or "").strip() or None
@@ -7096,6 +8408,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
+        if self._replay_controller is not None:
+            with suppress(Exception):
+                self._replay_state_unsub = (
+                    self._replay_controller.session_manager.add_listener(
+                        self._on_replay_state_change
+                    )
+                )
         try:
             bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
         except Exception:

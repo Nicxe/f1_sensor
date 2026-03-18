@@ -19,10 +19,11 @@ from .signalr import LiveBus
 _LOGGER = logging.getLogger(__name__)
 
 _CARDATA_SEARCH_WINDOW = timedelta(seconds=90)
-_CARDATA_PRE_WINDOW = timedelta(seconds=60)
+_CARDATA_PRE_WINDOW = timedelta(seconds=5)
 _CARDATA_RETRY_DELAY = 20
 _CARDATA_MAX_ATTEMPTS = 3
 _CARDATA_TIMEOUT = 20
+_CARDATA_BATCH_SIZE = 1
 _SESSION_PRE_STATES = {"inactive", "false"}
 _SESSION_LIVE_STATES = {"started", "resumed", "green", "greenflag", "true"}
 _SESSION_TERMINAL_STATES = {"finished", "finalised", "ends", "ended"}
@@ -134,6 +135,7 @@ class FormationStartTracker:
         self._listeners: list[Callable[[dict[str, Any]], None]] = []
         self._session_unsub: Callable[[], None] | None = None
         self._status_unsub: Callable[[], None] | None = None
+        self._cardata_unsub: Callable[[], None] | None = None
         self._task: asyncio.Task | None = None
         self._session_id: str | None = None
         self._session_type: str | None = None
@@ -146,6 +148,9 @@ class FormationStartTracker:
         self._source: str | None = None
         self._last_error: str | None = None
         self._session_phase: str | None = None
+        self._live_best_utc: datetime | None = None
+        self._live_best_delta: float | None = None
+        self._live_max_seen: datetime | None = None
 
     @property
     def formation_start_utc(self) -> datetime | None:
@@ -169,6 +174,26 @@ class FormationStartTracker:
             "source": self._source,
             "error": self._last_error,
         }
+
+    def inject_formation_ready(self, formation_utc: datetime) -> None:
+        """Set formation start directly from cached index data, bypassing the HTTP probe.
+
+        Used by the replay engine to drive the sensor from stored index data rather
+        than making a live HTTP request to the CarData stream.
+        """
+        if (
+            self._session_phase != "pre"
+            or self._formation_start_utc is not None
+            or self._scheduled_start_utc is None
+        ):
+            return
+        if not _is_race_or_sprint(self._session_type, self._session_name):
+            return
+        self._set_formation_ready(
+            formation_utc,
+            abs((formation_utc - self._scheduled_start_utc).total_seconds()),
+            source="replay_index",
+        )
 
     def reset(self, *, status: str = "idle") -> None:
         """Clear any stored formation state and notify listeners."""
@@ -225,6 +250,13 @@ class FormationStartTracker:
         except Exception:  # noqa: BLE001
             self._status_unsub = None
             _LOGGER.debug("FormationStartTracker failed to subscribe to SessionStatus")
+        try:
+            self._cardata_unsub = self._bus.subscribe(
+                "CarData.z", self._handle_live_cardata
+            )
+        except Exception:  # noqa: BLE001
+            self._cardata_unsub = None
+            _LOGGER.debug("FormationStartTracker failed to subscribe to CarData.z")
 
     def _detach_bus(self) -> None:
         if self._session_unsub is not None:
@@ -235,6 +267,10 @@ class FormationStartTracker:
             with suppress(Exception):
                 self._status_unsub()
             self._status_unsub = None
+        if self._cardata_unsub is not None:
+            with suppress(Exception):
+                self._cardata_unsub()
+            self._cardata_unsub = None
 
     def _notify_listeners(self) -> None:
         snapshot = self.snapshot()
@@ -250,6 +286,9 @@ class FormationStartTracker:
         self._delta_seconds = None
         self._source = None
         self._last_error = None
+        self._live_best_utc = None
+        self._live_best_delta = None
+        self._live_max_seen = None
 
     def _handle_session_info(self, payload: dict) -> None:
         if not isinstance(payload, dict):
@@ -281,18 +320,20 @@ class FormationStartTracker:
                 self._notify_listeners()
             return
 
-        if self._formation_start_utc is not None or self._session_phase != "pre":
-            return
-
-        if self._scheduled_start_utc and self._path:
-            self._status = "pending"
-            self._notify_listeners()
-            self._schedule_probe()
+        self._arm_probe_if_ready()
 
     def _handle_session_status(self, payload: dict) -> None:
         if not isinstance(payload, dict):
             return
         self._apply_session_phase(_normalize_session_phase(payload))
+        self._arm_probe_if_ready()
+
+    def _handle_live_cardata(self, payload: Any) -> None:
+        if not self._live_cardata_allowed():
+            return
+        if not self._live_cardata_window_open():
+            return
+        self._hass.async_create_task(self._process_live_cardata(payload))
 
     def _apply_session_phase(self, phase: str | None) -> None:
         if phase is None:
@@ -309,12 +350,128 @@ class FormationStartTracker:
             self._status = next_status
             self._notify_listeners()
 
+    def _resolution_allowed(self) -> bool:
+        return (
+            self._session_phase == "pre"
+            and self._formation_start_utc is None
+            and self._scheduled_start_utc is not None
+        )
+
+    def _live_cardata_allowed(self) -> bool:
+        return self._resolution_allowed() and _is_race_or_sprint(
+            self._session_type, self._session_name
+        )
+
+    def _arm_probe_if_ready(self) -> None:
+        if not _is_race_or_sprint(self._session_type, self._session_name):
+            return
+        if self._formation_start_utc is not None or self._session_phase != "pre":
+            return
+        if self._scheduled_start_utc and self._path:
+            if self._status != "pending":
+                self._status = "pending"
+                self._notify_listeners()
+            self._schedule_probe()
+
+    def _live_cardata_window_open(self) -> bool:
+        target = self._scheduled_start_utc
+        if target is None:
+            return False
+        now = dt_util.utcnow()
+        return (
+            (target - _CARDATA_SEARCH_WINDOW)
+            <= now
+            <= (target + _CARDATA_SEARCH_WINDOW)
+        )
+
+    @staticmethod
+    def _normalize_live_cardata_line(payload: Any) -> str | None:
+        if isinstance(payload, bytes):
+            payload = payload.decode("utf-8", errors="ignore")
+        if not isinstance(payload, str):
+            return None
+        line = payload.strip()
+        if not line:
+            return None
+        if '"' not in line:
+            line = f'"{line}"'
+        return line
+
+    def _has_converged(
+        self,
+        best_utc: datetime | None,
+        best_delta: float | None,
+        max_seen: datetime | None,
+        target: datetime,
+    ) -> bool:
+        if best_utc is None or best_delta is None or max_seen is None:
+            return False
+        if best_delta == 0:
+            return True
+        return max_seen >= target + timedelta(seconds=best_delta)
+
+    def _set_formation_ready(
+        self, formation_utc: datetime, delta_seconds: float, *, source: str
+    ) -> None:
+        self._cancel_task()
+        self._formation_start_utc = formation_utc
+        self._delta_seconds = delta_seconds
+        self._status = "ready"
+        self._source = source
+        self._last_error = None
+        self._notify_listeners()
+
+    async def _process_live_cardata(self, payload: Any) -> None:
+        if not self._live_cardata_allowed():
+            return
+        if not self._live_cardata_window_open():
+            return
+        line = self._normalize_live_cardata_line(payload)
+        if line is None:
+            return
+        utcs = await self._hass.async_add_executor_job(
+            parse_cardata_lines, [line], _parse_utc
+        )
+        self._consume_live_cardata_utcs(utcs)
+
+    def _consume_live_cardata_utcs(self, utcs: list[datetime]) -> None:
+        if not utcs or not self._live_cardata_allowed():
+            return
+        target = self._scheduled_start_utc
+        if target is None:
+            return
+        for utc_val in utcs:
+            if not self._live_cardata_allowed():
+                return
+            if self._live_max_seen is None or utc_val > self._live_max_seen:
+                self._live_max_seen = utc_val
+            delta = abs((utc_val - target).total_seconds())
+            if self._live_best_delta is None or delta < self._live_best_delta:
+                self._live_best_delta = delta
+                self._live_best_utc = utc_val
+            if self._has_converged(
+                self._live_best_utc,
+                self._live_best_delta,
+                self._live_max_seen,
+                target,
+            ):
+                if (
+                    self._live_best_utc is not None
+                    and self._live_best_delta is not None
+                ):
+                    self._set_formation_ready(
+                        self._live_best_utc,
+                        self._live_best_delta,
+                        source="signalr_cardata",
+                    )
+                return
+            if utc_val > target + _CARDATA_SEARCH_WINDOW:
+                return
+
     def _probe_allowed(self, session_id: str | None) -> bool:
         return (
             session_id == self._session_id
-            and self._session_phase == "pre"
-            and self._formation_start_utc is None
-            and self._scheduled_start_utc is not None
+            and self._resolution_allowed()
             and self._path is not None
         )
 
@@ -365,12 +522,16 @@ class FormationStartTracker:
             return False
         url = _build_static_url(self._path, "CarData.z.jsonStream")
         target = self._scheduled_start_utc
+        if target is None:
+            return False
         window_seconds = _CARDATA_SEARCH_WINDOW.total_seconds()
         best_utc: datetime | None = None
         best_delta: float | None = None
         max_seen: datetime | None = None
+        resolved = False
         stop_scan = False
         batch: list[str] = []
+
         try:
             async with asyncio.timeout(_CARDATA_TIMEOUT):
                 async with self._http.get(url) as resp:
@@ -380,7 +541,7 @@ class FormationStartTracker:
                     resp.raise_for_status()
 
                     def _process_utcs(utcs: list[datetime]) -> bool:
-                        nonlocal best_delta, best_utc, max_seen, stop_scan
+                        nonlocal best_delta, best_utc, max_seen, resolved, stop_scan
                         for utc_val in utcs:
                             if not self._probe_allowed(session_id):
                                 return False
@@ -390,12 +551,20 @@ class FormationStartTracker:
                             if best_delta is None or delta < best_delta:
                                 best_delta = delta
                                 best_utc = utc_val
+                            if self._has_converged(
+                                best_utc,
+                                best_delta,
+                                max_seen,
+                                target,
+                            ):
+                                resolved = True
+                                break
                             if utc_val > target + _CARDATA_SEARCH_WINDOW:
                                 stop_scan = True
                                 break
                         return True
 
-                    while not stop_scan:
+                    while not stop_scan and not resolved:
                         raw = await resp.content.readline()
                         if not raw:
                             break
@@ -403,24 +572,26 @@ class FormationStartTracker:
                         if not line:
                             continue
                         batch.append(line)
-                        if len(batch) >= 50:
+                        if len(batch) >= _CARDATA_BATCH_SIZE:
                             utcs = await self._hass.async_add_executor_job(
                                 parse_cardata_lines, list(batch), _parse_utc
                             )
                             batch.clear()
                             if not _process_utcs(utcs):
                                 return False
-                        if stop_scan:
+                        if stop_scan or resolved:
                             break
-                    if batch and not stop_scan:
+                    if batch and not (stop_scan or resolved):
                         utcs = await self._hass.async_add_executor_job(
                             parse_cardata_lines, list(batch), _parse_utc
                         )
                         if not _process_utcs(utcs):
                             return False
         except TimeoutError:
-            self._last_error = "timeout"
-            return False
+            if best_utc is None or best_delta is None or max_seen is None:
+                self._last_error = "timeout"
+                return False
+            # Valid partial result found before timeout — fall through to validation
         except Exception:  # noqa: BLE001
             self._last_error = "error"
             return False
@@ -440,10 +611,5 @@ class FormationStartTracker:
         if not self._probe_allowed(session_id):
             return False
 
-        self._formation_start_utc = best_utc
-        self._delta_seconds = best_delta
-        self._status = "ready"
-        self._source = "cardata"
-        self._last_error = None
-        self._notify_listeners()
+        self._set_formation_ready(best_utc, best_delta, source="cardata")
         return True

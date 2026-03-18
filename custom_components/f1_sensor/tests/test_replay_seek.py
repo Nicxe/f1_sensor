@@ -27,7 +27,9 @@ from custom_components.f1_sensor.const import (
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.replay_mode import (
     ReplayController,
+    ReplayFrame,
     ReplayIndex,
+    ReplaySessionManager,
     ReplayState,
 )
 
@@ -256,14 +258,6 @@ async def _setup_session_clock_harness(
     bus = FakeLiveBus()
     live_state = LiveAvailabilityTracker()
     entry = _make_config_entry(hass)
-    session_clock = SessionClockCoordinator(
-        hass,
-        session_coord=object(),
-        bus=bus,
-        config_entry=entry,
-        live_state=live_state,
-    )
-    await session_clock.async_config_entry_first_refresh()
     controller = ReplayController(
         hass,
         ENTRY_ID,
@@ -274,6 +268,15 @@ async def _setup_session_clock_harness(
             current=REPLAY_START_REFERENCE_SESSION
         ),
     )
+    session_clock = SessionClockCoordinator(
+        hass,
+        session_coord=object(),
+        bus=bus,
+        config_entry=entry,
+        live_state=live_state,
+        replay_controller=controller,
+    )
+    await session_clock.async_config_entry_first_refresh()
     index = _build_index(tmp_path, initial_state=initial_state, frames=frames)
     controller.session_manager._loaded_index = index
     controller.session_manager._state = ReplayState.READY
@@ -316,6 +319,58 @@ async def _setup_close_order_harness(
         "replay_reset_callbacks": [],
     }
     return controller, bus
+
+
+def test_build_initial_state_merges_timingapp_stints_without_tyre_stints(hass) -> None:
+    manager = ReplaySessionManager(hass, ENTRY_ID, AsyncMock())  # type: ignore[arg-type]
+    frames = [
+        ReplayFrame(
+            timestamp_ms=0,
+            stream="TimingAppData",
+            payload={
+                "Lines": {
+                    "16": {
+                        "GridRow": 1,
+                        "Stints": {"0": {"Compound": "MEDIUM", "TotalLaps": 12}},
+                    }
+                }
+            },
+        ),
+        ReplayFrame(
+            timestamp_ms=500,
+            stream="TimingAppData",
+            payload={
+                "Lines": {
+                    "16": {
+                        "CurrentLapIsValid": True,
+                        "Stints": {
+                            "0": {"LapTime": "1:23.000", "LapNumber": 5},
+                            "1": {"Compound": "SOFT", "New": "false", "TotalLaps": 3},
+                        },
+                    },
+                    "81": {
+                        "Stints": [{"Compound": "HARD", "New": "true", "TotalLaps": 8}]
+                    },
+                }
+            },
+        ),
+        ReplayFrame(
+            timestamp_ms=1_000,
+            stream="SessionStatus",
+            payload={"Status": "Started", "Started": True},
+        ),
+    ]
+
+    initial_state = manager._build_initial_state(frames, 1_000)
+
+    assert "TyreStintSeries" not in initial_state
+    timingapp = initial_state["TimingAppData"]
+    assert timingapp["Lines"]["16"]["GridRow"] == 1
+    assert timingapp["Lines"]["16"]["CurrentLapIsValid"] is True
+    assert timingapp["Lines"]["16"]["Stints"]["0"]["Compound"] == "MEDIUM"
+    assert timingapp["Lines"]["16"]["Stints"]["0"]["LapTime"] == "1:23.000"
+    assert timingapp["Lines"]["16"]["Stints"]["1"]["Compound"] == "SOFT"
+    assert timingapp["Lines"]["81"]["Stints"]["0"]["Compound"] == "HARD"
 
 
 @pytest.mark.asyncio
@@ -716,6 +771,69 @@ async def test_replay_pause_freezes_session_clock(hass, tmp_path: Path) -> None:
     await asyncio.sleep(1.2)
 
     assert controller.state == ReplayState.PAUSED
+    assert session_clock.data["clock_remaining_s"] == paused_remaining
+
+    await controller.async_stop()
+
+
+@pytest.mark.asyncio
+async def test_replay_pause_freezes_session_clock_without_replay_mode_flag(
+    hass, tmp_path: Path
+) -> None:
+    initial_state = {
+        "SessionInfo": {"Type": "Race", "Name": "Race"},
+        "SessionStatus": {"Status": "Started", "Started": True},
+        "SessionData": {
+            "StatusSeries": {
+                "0": {"Utc": "2025-12-07T13:00:00Z", "SessionStatus": "Started"}
+            }
+        },
+        "ExtrapolatedClock": {
+            "Utc": "2025-12-07T13:00:00Z",
+            "Remaining": "02:00:00",
+            "Extrapolating": True,
+        },
+        "Heartbeat": {"Utc": "2025-12-07T13:00:00Z"},
+    }
+    frames = [
+        (0, "SessionInfo", initial_state["SessionInfo"]),
+        (0, "SessionStatus", initial_state["SessionStatus"]),
+        (0, "SessionData", initial_state["SessionData"]),
+        (0, "ExtrapolatedClock", initial_state["ExtrapolatedClock"]),
+        (0, "Heartbeat", initial_state["Heartbeat"]),
+        (
+            10_000,
+            "ExtrapolatedClock",
+            {
+                "Utc": "2025-12-07T13:00:10Z",
+                "Remaining": "01:59:50",
+                "Extrapolating": True,
+            },
+        ),
+        (10_000, "Heartbeat", {"Utc": "2025-12-07T13:00:10Z"}),
+    ]
+    controller, session_clock = await _setup_session_clock_harness(
+        hass,
+        tmp_path,
+        initial_state=initial_state,
+        frames=frames,
+    )
+
+    await controller.async_play()
+    await controller.async_seek_by(10)
+
+    # Reproduce the runtime path where session clock did not carry the replay flag
+    # even though the replay controller had entered a paused state.
+    session_clock._replay_mode = False
+
+    await controller.async_pause()
+    paused_remaining = session_clock.data["clock_remaining_s"]
+
+    await asyncio.sleep(1.2)
+
+    assert controller.state == ReplayState.PAUSED
+    assert session_clock.data["clock_running"] is False
+    assert session_clock.data["clock_phase"] == "paused"
     assert session_clock.data["clock_remaining_s"] == paused_remaining
 
     await controller.async_stop()

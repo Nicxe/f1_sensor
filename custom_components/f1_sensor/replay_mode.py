@@ -50,7 +50,6 @@ REPLAY_STREAMS = [
     "DriverList",
     "TimingAppData",
     "TopThree",
-    "TyreStintSeries",
     "TeamRadio",
     "PitStopSeries",
     "ChampionshipPrediction",
@@ -65,8 +64,9 @@ REPLAY_YEAR_BACK = 1
 INDEX_STATUS_OK = "ok"
 INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
-# Cache version - bump this when changing initial_state format to invalidate old caches
-CACHE_VERSION = 6
+# Cache version - bump this when replay index contents change in a way that
+# requires re-downloading cached sessions.
+CACHE_VERSION = 8
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 
@@ -109,6 +109,18 @@ class ReplaySession:
         return f"{self.year}_{self.meeting_key}_{self.session_key}"
 
 
+def _parse_optional_utc(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt
+    except ValueError:
+        return None
+
+
 @dataclass
 class ReplayFrame:
     """A single frame of replay data."""
@@ -129,6 +141,7 @@ class ReplayIndex:
     frames_file: Path
     index_file: Path
     formation_started_at_ms: int | None = None
+    formation_start_utc: datetime | None = None
     # Snapshot of all streams at session_started_at_ms for initial state
     initial_state: dict[str, Any] | None = None
     formation_initial_state: dict[str, Any] | None = None
@@ -538,6 +551,9 @@ class ReplaySessionManager:
                         formation_started_at_ms=index_data.get(
                             "formation_started_at_ms"
                         ),
+                        formation_start_utc=_parse_optional_utc(
+                            index_data.get("formation_start_utc")
+                        ),
                         frames_file=frames_file,
                         index_file=index_file,
                         initial_state=index_data.get("initial_state"),
@@ -596,6 +612,7 @@ class ReplaySessionManager:
         )
 
         formation_started_at_ms: int | None = None
+        formation_start_utc: datetime | None = None
         formation_initial_state: dict[str, Any] | None = None
 
         if self._is_race_or_sprint_session(session):
@@ -652,6 +669,9 @@ class ReplaySessionManager:
             "duration_ms": duration_ms,
             "session_started_at_ms": session_started_at_ms,
             "formation_started_at_ms": formation_started_at_ms,
+            "formation_start_utc": formation_start_utc.isoformat()
+            if formation_start_utc is not None
+            else None,
             "initial_state": initial_state,
             "formation_initial_state": formation_initial_state,
             "created_at": dt_util.utcnow().isoformat(),
@@ -670,6 +690,7 @@ class ReplaySessionManager:
             duration_ms=duration_ms,
             session_started_at_ms=session_started_at_ms,
             formation_started_at_ms=formation_started_at_ms,
+            formation_start_utc=formation_start_utc,
             frames_file=frames_file,
             index_file=index_file,
             initial_state=initial_state,
@@ -782,41 +803,56 @@ class ReplaySessionManager:
                 cur_lines[idx] = base
             state["lines"] = cur_lines
 
-    def _merge_tyre_stints_state(self, state: dict[str, Any], payload: dict) -> None:
-        stints = payload.get("Stints")
-        if not isinstance(stints, dict):
+    def _merge_timingapp_state(self, state: dict[str, Any], payload: dict) -> None:
+        """Accumulate TimingAppData frames while deep-merging nested stint state."""
+        if not isinstance(payload, dict):
             return
-        cur_stints = state.setdefault("Stints", {})
-        for rn, stints_data in stints.items():
-            if not isinstance(stints_data, (dict, list)):
+
+        for key, value in payload.items():
+            if key != "Lines":
+                state[key] = value
+
+        lines = payload.get("Lines")
+        if not isinstance(lines, dict):
+            return
+
+        cur_lines = state.setdefault("Lines", {})
+        for rn, line_data in lines.items():
+            if not isinstance(line_data, dict):
                 continue
             rn_key = str(rn)
-            entry = cur_stints.setdefault(rn_key, {})
-            if isinstance(stints_data, list):
-                for idx, stint in enumerate(stints_data):
-                    if not isinstance(stint, dict):
-                        continue
-                    key = str(idx)
-                    base = entry.get(key)
-                    if not isinstance(base, dict):
-                        base = {}
-                    base.update(stint)
-                    entry[key] = base
-            else:
-                for idx, stint in stints_data.items():
-                    if not isinstance(stint, dict):
-                        continue
-                    key = str(idx)
-                    base = entry.get(key)
-                    if not isinstance(base, dict):
-                        base = {}
-                    base.update(stint)
-                    entry[key] = base
+            entry = cur_lines.setdefault(rn_key, {})
+            for key, value in line_data.items():
+                if key != "Stints":
+                    entry[key] = value
+                    continue
+                if not isinstance(value, (dict, list)):
+                    continue
+                cur_stints = entry.setdefault("Stints", {})
+                if isinstance(value, list):
+                    for idx, stint in enumerate(value):
+                        if not isinstance(stint, dict):
+                            continue
+                        stint_key = str(idx)
+                        base = cur_stints.get(stint_key)
+                        if not isinstance(base, dict):
+                            base = {}
+                        base.update(stint)
+                        cur_stints[stint_key] = base
+                else:
+                    for idx, stint in value.items():
+                        if not isinstance(stint, dict):
+                            continue
+                        stint_key = str(idx)
+                        base = cur_stints.get(stint_key)
+                        if not isinstance(base, dict):
+                            base = {}
+                        base.update(stint)
+                        cur_stints[stint_key] = base
 
     @staticmethod
-    def _has_tyre_stints_state(state: dict[str, Any]) -> bool:
-        stints = state.get("Stints")
-        return isinstance(stints, dict) and bool(stints)
+    def _has_timingapp_state(state: dict[str, Any]) -> bool:
+        return isinstance(state, dict) and bool(state)
 
     def _merge_lap_history_state(
         self,
@@ -1001,7 +1037,7 @@ class ReplaySessionManager:
             "lines": [None, None, None],
             "withheld": False,
         }
-        tyre_stints_state: dict[str, Any] = {"Stints": {}}
+        timingapp_state: dict[str, Any] = {}
         lap_history_state: dict[str, Any] = {}
         last_lap_times: dict[str, str] = {}
 
@@ -1012,8 +1048,8 @@ class ReplaySessionManager:
                 continue
             if frame.stream == "TopThree" and isinstance(frame.payload, dict):
                 self._merge_topthree_state(topthree_state, frame.payload)
-            elif frame.stream == "TyreStintSeries" and isinstance(frame.payload, dict):
-                self._merge_tyre_stints_state(tyre_stints_state, frame.payload)
+            elif frame.stream == "TimingAppData" and isinstance(frame.payload, dict):
+                self._merge_timingapp_state(timingapp_state, frame.payload)
             elif frame.stream == "TimingData" and isinstance(frame.payload, dict):
                 self._merge_lap_history_state(
                     lap_history_state, last_lap_times, frame.payload
@@ -1035,8 +1071,8 @@ class ReplaySessionManager:
                 "Withheld": topthree_state.get("withheld", False),
                 "Lines": topthree_state["lines"],
             }
-        if self._has_tyre_stints_state(tyre_stints_state):
-            initial_state["TyreStintSeries"] = tyre_stints_state
+        if self._has_timingapp_state(timingapp_state):
+            initial_state["TimingAppData"] = timingapp_state
         if self._has_lap_history_state(lap_history_state):
             initial_state["LapHistory"] = lap_history_state
 
@@ -1056,13 +1092,13 @@ class ReplaySessionManager:
                                 "Lines": lines,
                             }
                             streams_needing_first.discard("TopThree")
-                    elif frame.stream == "TyreStintSeries" and isinstance(
+                    elif frame.stream == "TimingAppData" and isinstance(
                         frame.payload, dict
                     ):
-                        self._merge_tyre_stints_state(tyre_stints_state, frame.payload)
-                        if self._has_tyre_stints_state(tyre_stints_state):
-                            initial_state["TyreStintSeries"] = tyre_stints_state
-                            streams_needing_first.discard("TyreStintSeries")
+                        self._merge_timingapp_state(timingapp_state, frame.payload)
+                        if self._has_timingapp_state(timingapp_state):
+                            initial_state["TimingAppData"] = timingapp_state
+                            streams_needing_first.discard("TimingAppData")
                     else:
                         initial_state[frame.stream] = frame.payload
                         streams_needing_first.discard(frame.stream)
@@ -1077,10 +1113,10 @@ class ReplaySessionManager:
                     "Withheld": topthree_state.get("withheld", False),
                     "Lines": topthree_state["lines"],
                 }
-            if "TyreStintSeries" not in initial_state and self._has_tyre_stints_state(
-                tyre_stints_state
+            if "TimingAppData" not in initial_state and self._has_timingapp_state(
+                timingapp_state
             ):
-                initial_state["TyreStintSeries"] = tyre_stints_state
+                initial_state["TimingAppData"] = timingapp_state
 
         return initial_state
 
@@ -1787,6 +1823,18 @@ class ReplayController:
             if isinstance(payload, dict):
                 self._live_bus.inject_message(stream, payload)
 
+    def _inject_formation_ready_if_applicable(self, index: ReplayIndex) -> None:
+        """Inject formation start state from the index, bypassing any HTTP probe.
+
+        Called after _inject_initial_state so the tracker is already set up with
+        session info and phase before we push the formation ready state.
+        """
+        if self._formation_tracker is None:
+            return
+        if index.formation_start_utc is None:
+            return
+        self._formation_tracker.inject_formation_ready(index.formation_start_utc)
+
     async def _start_transport(
         self,
         index: ReplayIndex,
@@ -1859,6 +1907,7 @@ class ReplayController:
         if target_ms < current_ms:
             await self._run_replay_reset_callbacks()
             self._inject_initial_state(initial_state)
+            self._inject_formation_ready_if_applicable(index)
             await self._replay_frames_range(
                 index,
                 start_exclusive_ms=baseline_ms,
@@ -1939,6 +1988,7 @@ class ReplayController:
         self._ensure_replay_active()
         await self._run_replay_reset_callbacks()
         self._inject_initial_state(initial_state)
+        self._inject_formation_ready_if_applicable(index)
         if start_from_ms > baseline_ms:
             await self._replay_frames_range(
                 index,
