@@ -1528,7 +1528,7 @@ async def test_weather_sensor_timeout_clears_stale_state(hass, monkeypatch) -> N
                             "season": "2026",
                             "round": "1",
                             "raceName": "Australian Grand Prix",
-                            "date": "2026-03-20",
+                            "date": "2099-03-20",
                             "time": "05:00:00Z",
                             "Circuit": {
                                 "circuitId": "albert_park",

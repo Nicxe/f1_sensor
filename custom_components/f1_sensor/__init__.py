@@ -18,7 +18,7 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_COMPONENT_LOADED
 from homeassistant.core import HomeAssistant, ServiceCall, callback as ha_callback
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
@@ -1702,7 +1702,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if sprint_results_coordinator:
         await sprint_results_coordinator.async_config_entry_first_refresh()
     if fia_documents_coordinator:
-        await fia_documents_coordinator.async_config_entry_first_refresh()
+        try:
+            await fia_documents_coordinator.async_config_entry_first_refresh()
+        except ConfigEntryNotReady as err:
+            fia_documents_coordinator.async_set_updated_data(
+                fia_documents_coordinator.build_empty_result()
+            )
+            _LOGGER.warning(
+                "FIA documents unavailable during setup; continuing without documents: %s",
+                err.__cause__ or err,
+            )
     await session_coordinator.async_config_entry_first_refresh()
     if track_status_coordinator:
         await track_status_coordinator.async_config_entry_first_refresh()
@@ -6614,11 +6623,9 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         race = self._get_next_race()
         if not race:
-            return {"event_key": None, "race": None, "documents": []}
+            return self.build_empty_result()
 
         season = str(race.get("season") or datetime.utcnow().year)
-        round_ = str(race.get("round") or "")
-        event_key = f"{season}_{round_ or 'next'}"
 
         season_url = await self._get_season_url(season)
 
@@ -6642,17 +6649,28 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(f"Error parsing FIA documents: {err}") from err
 
-        result = {
-            "event_key": event_key,
-            "race": self._summarize_race(race),
-            "documents": docs,
-        }
+        result = self._build_result(race, docs)
         # No-spoiler: keep cache warm but don't deliver new data to entities.
         # On deactivation, the next refresh will deliver the full document list
         # including any documents published during the blackout period.
         if _is_no_spoiler_jolpica_blocked(self):
             return self.data
         return result
+
+    def build_empty_result(self) -> dict[str, Any]:
+        return self._build_result(self._get_next_race(), [])
+
+    def _build_result(self, race: dict | None, docs: list[dict]) -> dict[str, Any]:
+        if not race:
+            return {"event_key": None, "race": None, "documents": []}
+
+        season = str(race.get("season") or datetime.utcnow().year)
+        round_ = str(race.get("round") or "")
+        return {
+            "event_key": f"{season}_{round_ or 'next'}",
+            "race": self._summarize_race(race),
+            "documents": docs,
+        }
 
     async def _get_season_url(self, season: str) -> str:
         cached = self._season_url_cache.get(season)

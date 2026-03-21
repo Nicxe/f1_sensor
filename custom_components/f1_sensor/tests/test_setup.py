@@ -4,6 +4,7 @@ from contextlib import ExitStack
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.exceptions import ConfigEntryNotReady
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -93,7 +94,9 @@ class FakeLiveSupervisor:
         return None
 
 
-def _coordinator_patches():
+def _coordinator_patches(
+    fia_documents_coordinator_cls=DummyCoordinator,
+):
     """Return context managers that replace all coordinator classes with DummyCoordinator."""
     return (
         patch("custom_components.f1_sensor.F1DataCoordinator", DummyCoordinator),
@@ -107,9 +110,29 @@ def _coordinator_patches():
         ),
         patch(
             "custom_components.f1_sensor.FiaDocumentsCoordinator",
-            DummyCoordinator,
+            fia_documents_coordinator_cls,
         ),
     )
+
+
+class FailingFiaDocumentsCoordinator(DummyCoordinator):
+    last_instance = None
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.data = None
+        FailingFiaDocumentsCoordinator.last_instance = self
+
+    async def async_config_entry_first_refresh(self) -> None:
+        err = ConfigEntryNotReady()
+        err.__cause__ = RuntimeError("403, message='Forbidden'")
+        raise err
+
+    def async_set_updated_data(self, data) -> None:
+        self.data = data
+
+    def build_empty_result(self) -> dict:
+        return {"event_key": None, "race": None, "documents": []}
 
 
 def test_activity_log_exclude_entity_matcher() -> None:
@@ -456,6 +479,52 @@ async def test_async_setup_entry_live_mode_wires_event_tracker_fallback(hass) ->
     assert result is True
     assert FakeLiveSupervisor.last_instance is not None
     assert FakeLiveSupervisor.last_instance.fallback_source is sentinel_source
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_continues_when_fia_documents_fail(
+    hass, mock_config_entry
+):
+    FailingFiaDocumentsCoordinator.last_instance = None
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        for cm in _coordinator_patches(
+            fia_documents_coordinator_cls=FailingFiaDocumentsCoordinator
+        ):
+            stack.enter_context(cm)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+
+        result = await async_setup_entry(hass, mock_config_entry)
+
+    assert result is True
+    hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
+        mock_config_entry, PLATFORMS
+    )
+    assert FailingFiaDocumentsCoordinator.last_instance is not None
+    assert FailingFiaDocumentsCoordinator.last_instance.data == {
+        "event_key": None,
+        "race": None,
+        "documents": [],
+    }
 
 
 @pytest.mark.asyncio
