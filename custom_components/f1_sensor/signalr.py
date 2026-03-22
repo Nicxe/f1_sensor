@@ -20,6 +20,10 @@ NEGOTIATE_URL = "https://livetiming.formula1.com/signalr/negotiate"
 CONNECT_URL = "wss://livetiming.formula1.com/signalr/connect"
 HUB_DATA = '[{"name":"Streaming"}]'
 
+CORE_NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate"
+CORE_CONNECT_URL = "wss://livetiming.formula1.com/signalrcore"
+RECORD_SEP = "\x1e"
+
 # Subscribe to core live streams used across the integration
 # Added: TimingData, DriverList, TimingAppData to support driver and tyre sensors
 # Added: TeamRadio to support team radio sensor
@@ -66,8 +70,8 @@ class LiveTransport(Protocol):
     async def close(self) -> None: ...
 
 
-class SignalRClient:
-    """Minimal SignalR client for Formula 1 live timing."""
+class SignalRLegacyClient:
+    """Minimal legacy SignalR client for Formula 1 live timing."""
 
     def __init__(self, hass: HomeAssistant, session: ClientSession) -> None:
         self._hass = hass
@@ -186,6 +190,153 @@ class SignalRClient:
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
             self._heartbeat_task = None
+        if self._ws is not None:
+            await self._ws.close()
+            self._ws = None
+
+
+class SignalRCoreClient:
+    """SignalR Core client for Formula 1 live timing (/signalrcore endpoint).
+
+    Translates Core protocol messages (type 1/3/6/7 with \\x1e separator)
+    into legacy-format dicts so LiveBus._run() needs no changes.
+    """
+
+    def __init__(self, hass: HomeAssistant, session: ClientSession) -> None:
+        self._hass = hass
+        self._session = session
+        self._ws = None
+        self._cookie: str | None = None
+
+    async def connect(self) -> None:
+        _LOGGER.debug("Connecting to F1 SignalR Core service")
+        negotiate_params = {"negotiateVersion": "1"}
+
+        # Step 1: OPTIONS to obtain AWSALBCORS load-balancer cookie
+        try:
+            async with self._session.options(
+                CORE_NEGOTIATE_URL, params=negotiate_params
+            ) as resp:
+                cookie_header = resp.headers.get("Set-Cookie", "")
+                for part in cookie_header.split(","):
+                    part = part.strip()
+                    if "AWSALBCORS=" in part:
+                        self._cookie = part.split("AWSALBCORS=")[1].split(";")[0]
+                        break
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("OPTIONS request failed, continuing without cookie")
+
+        # Step 2: POST negotiate to obtain connectionToken
+        headers = {}
+        if self._cookie:
+            headers["Cookie"] = f"AWSALBCORS={self._cookie}"
+        async with self._session.post(
+            CORE_NEGOTIATE_URL, params=negotiate_params, headers=headers
+        ) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+            token = data.get("connectionToken") or data.get("ConnectionToken", "")
+
+        # Step 3: WebSocket connect
+        ws_headers = {}
+        if self._cookie:
+            ws_headers["Cookie"] = f"AWSALBCORS={self._cookie}"
+        self._ws = await self._session.ws_connect(
+            CORE_CONNECT_URL, params={"id": token}, headers=ws_headers
+        )
+
+        # Step 4: Handshake
+        await self._ws.send_str(
+            json.dumps({"protocol": "json", "version": 1}) + RECORD_SEP
+        )
+        hs_msg = await self._ws.receive()
+        if hs_msg.type == WSMsgType.TEXT:
+            hs_data = hs_msg.data.replace(RECORD_SEP, "").strip()
+            if hs_data:
+                hs_json = json.loads(hs_data)
+                if "error" in hs_json:
+                    raise ConnectionError(
+                        f"SignalR Core handshake error: {hs_json['error']}"
+                    )
+        elif hs_msg.type in (WSMsgType.CLOSED, WSMsgType.ERROR):
+            raise ConnectionError("WebSocket closed during handshake")
+
+        # Step 5: Subscribe
+        subscribe = {
+            "type": 1,
+            "target": "Subscribe",
+            "arguments": SUBSCRIBE_MSG["A"],
+            "invocationId": "0",
+        }
+        await self._ws.send_str(json.dumps(subscribe) + RECORD_SEP)
+
+        _LOGGER.debug("SignalR Core connection established and subscribed")
+
+    async def ensure_connection(self) -> None:
+        """Try to (re)connect using exponential back-off."""
+        from .const import BACK_OFF_FACTOR, FAST_RETRY_SEC, MAX_RETRY_SEC
+
+        delay = FAST_RETRY_SEC
+        while True:
+            try:
+                await self.connect()
+                return
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning(
+                    "SignalR Core reconnect failed (%s). Retrying in %s s …",
+                    err,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                delay = min(delay * BACK_OFF_FACTOR, MAX_RETRY_SEC)
+
+    async def messages(self) -> AsyncGenerator[dict]:
+        if not self._ws:
+            return
+        async for msg in self._ws:
+            if msg.type == WSMsgType.TEXT:
+                for segment in msg.data.split(RECORD_SEP):
+                    segment = segment.strip()
+                    if not segment:
+                        continue
+                    try:
+                        payload = json.loads(segment)
+                    except json.JSONDecodeError:
+                        continue
+                    msg_type = payload.get("type")
+                    if msg_type == 1:
+                        # Invocation (feed) → translate to legacy M-format
+                        target = payload.get("target", "")
+                        arguments = payload.get("arguments", [])
+                        yield {
+                            "M": [
+                                {"H": "Streaming", "M": target, "A": arguments}
+                            ]
+                        }
+                    elif msg_type == 3:
+                        # Completion (initial state) → translate to legacy R-format
+                        result = payload.get("result")
+                        if isinstance(result, dict):
+                            yield {"R": result}
+                    elif msg_type == 6:
+                        # Ping → respond with pong
+                        try:
+                            await self._ws.send_str(
+                                json.dumps({"type": 6}) + RECORD_SEP
+                            )
+                        except Exception:  # noqa: BLE001
+                            break
+                    elif msg_type == 7:
+                        # Close
+                        error = payload.get("error", "")
+                        _LOGGER.warning(
+                            "SignalR Core server closed connection: %s", error
+                        )
+                        return
+            elif msg.type in (WSMsgType.CLOSED, WSMsgType.ERROR):
+                break
+
+    async def close(self) -> None:
         if self._ws is not None:
             await self._ws.close()
             self._ws = None
@@ -405,7 +556,11 @@ class LiveBus:
     def _create_client(self) -> LiveTransport:
         if callable(self._transport_factory):
             return self._transport_factory()
-        return SignalRClient(self._hass, self._session)
+        from .const import SIGNALR_USE_CORE
+
+        if SIGNALR_USE_CORE:
+            return SignalRCoreClient(self._hass, self._session)
+        return SignalRLegacyClient(self._hass, self._session)
 
     async def _monitor_heartbeat(self) -> None:
         with suppress(asyncio.CancelledError):

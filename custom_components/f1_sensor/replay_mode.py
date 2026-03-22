@@ -2088,7 +2088,7 @@ class ReplayController:
                     self._live_bus._transport_factory = self._original_transport_factory
                     self._original_transport_factory = None
                 else:
-                    # Explicitly set to None so SignalRClient is used on reconnect
+                    # Explicitly set to None so live SignalR client is used on reconnect
                     self._live_bus._transport_factory = None
 
                 # Now safe to close the bus - supervisor will use restored factory on restart
