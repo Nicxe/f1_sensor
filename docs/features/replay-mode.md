@@ -255,7 +255,7 @@ Replace `media_player.apple_tv` with your actual media player entity. This works
 
 ## Additional entities in Replay Mode
 
-Replay Mode provides access to all the same entities as a live session, plus several entities that are **only available during replay**. These entities rely on data streams that require authentication not currently supported during live sessions. Since replay uses the full session archive, all data is available.
+Replay Mode provides access to all the same entities as a live session, plus several replay-only entities. These entities stay registered in Home Assistant at all times, but they are unavailable outside Replay Mode because the underlying data streams require authentication that is not currently supported during live sessions. When you start a replay, they begin updating normally.
 
 | Entity | Description |
 | --- | --- |
@@ -265,7 +265,7 @@ Replay Mode provides access to all the same entities as a live session, plus sev
 | `sensor.f1_championship_prediction_teams` | Predicted Constructors Championship standings |
 | `binary_sensor.f1_formation_start` | Formation start detection for race and sprint sessions |
 
-These entities are not created during live sessions. When you start a replay, they appear automatically and work just like any other entity.
+These entities remain present even before you start a replay. Outside Replay Mode they are unavailable, and when you start a replay they work like any other entity.
 
 For full details on each entity, see the [Live Data reference](/entities/live-data).
 

@@ -155,7 +155,7 @@ All of these entities update **only in relation to an active session**, typicall
 :::
 
 :::note Replay Mode only entities
-Some entities are marked `(Replay Mode only)` in the table above. These entities are only available when playing back a session in [Replay Mode](/features/replay-mode). The underlying data streams require authentication that the integration does not currently support. In Replay Mode, the full session archive is available and these entities work normally.
+Some entities are marked `(Replay Mode only)` in the table above. These entities stay registered in Home Assistant, but they are unavailable outside [Replay Mode](/features/replay-mode) because the underlying data streams require authentication that the integration does not currently support during live sessions. When you start a replay, they begin updating normally.
 
 The affected entities are: Pit Stops, Team Radio, Championship Prediction (Drivers), Championship Prediction (Teams), and Formation Start.
 :::
@@ -601,7 +601,7 @@ The headshot URLs are provided by F1 and may change between sessions. This senso
 ## Pit Stops
 
 :::note Replay Mode only
-This entity is only available in [Replay Mode](/features/replay-mode). The pit stop data stream requires authentication that the integration does not currently support during live sessions.
+This entity stays registered in Home Assistant and is unavailable outside [Replay Mode](/features/replay-mode). The pit stop data stream requires authentication that the integration does not currently support during live sessions.
 :::
 
 `sensor.f1_pitstops` - Pit stop information from the F1 Live Timing feed, aggregated per car.
@@ -650,7 +650,7 @@ Available during race and sprint sessions in Replay Mode.
 ## Team Radio
 
 :::note Replay Mode only
-This entity is only available in [Replay Mode](/features/replay-mode). The team radio data stream requires authentication that the integration does not currently support during live sessions.
+This entity stays registered in Home Assistant and is unavailable outside [Replay Mode](/features/replay-mode). The team radio data stream requires authentication that the integration does not currently support during live sessions.
 :::
 
 Latest team radio clip with a rolling history, sourced from the Team Radio stream. This is a curated selection of radio traffic, similar to what is broadcast during TV coverage, not the full raw radio feed.
@@ -1715,7 +1715,7 @@ Noted: {{ noted }}, Under Investigation: {{ investigating }}
 ## Championship Prediction (Drivers)
 
 :::note Replay Mode only
-This entity is only available in [Replay Mode](/features/replay-mode). The championship prediction data stream requires authentication that the integration does not currently support during live sessions.
+This entity stays registered in Home Assistant and is unavailable outside [Replay Mode](/features/replay-mode). The championship prediction data stream requires authentication that the integration does not currently support during live sessions.
 :::
 
 Predicted Drivers Championship winner and points table, sourced from the ChampionshipPrediction stream.
@@ -1847,7 +1847,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 ## Championship Prediction (Teams)
 
 :::note Replay Mode only
-This entity is only available in [Replay Mode](/features/replay-mode). The championship prediction data stream requires authentication that the integration does not currently support during live sessions.
+This entity stays registered in Home Assistant and is unavailable outside [Replay Mode](/features/replay-mode). The championship prediction data stream requires authentication that the integration does not currently support during live sessions.
 :::
 
 Predicted Constructors Championship winner and points table, sourced from the ChampionshipPrediction stream.
@@ -1982,7 +1982,7 @@ Each entry in `teams` (keyed by team key) contains:
 ## Formation Start
 
 :::note Replay Mode only
-This entity is only available in [Replay Mode](/features/replay-mode). The underlying data stream used for formation start detection requires authentication that the integration does not currently support during live sessions.
+This entity stays registered in Home Assistant and is unavailable outside [Replay Mode](/features/replay-mode). The underlying data stream used for formation start detection requires authentication that the integration does not currently support during live sessions.
 :::
 
 Indicates when the formation start procedure is ready. Useful for triggering automations at race start during replay.
