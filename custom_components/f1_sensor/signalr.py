@@ -24,9 +24,13 @@ CORE_NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate"
 CORE_CONNECT_URL = "wss://livetiming.formula1.com/signalrcore"
 RECORD_SEP = "\x1e"
 
-# Subscribe to core live streams used across the integration
-# Added: TimingData, DriverList, TimingAppData to support driver and tyre sensors
-# Added: TeamRadio to support team radio sensor
+# Subscribe to core live streams used across the integration.
+# Auth-protected streams (TeamRadio, PitStopSeries, ChampionshipPrediction)
+# are omitted — they require an F1TV JWT token that the integration does not
+# provide, so subscribing only generates empty responses.  The corresponding
+# coordinators and sensors are activated only in replay mode where the data
+# is available from archived .jsonStream files.
+# Position.z is also omitted — no coordinator consumes it.
 SUBSCRIBE_MSG = {
     "H": "Streaming",
     "M": "Subscribe",
@@ -46,9 +50,6 @@ SUBSCRIBE_MSG = {
             "DriverList",
             "TimingAppData",
             "TopThree",
-            "TeamRadio",
-            "PitStopSeries",
-            "ChampionshipPrediction",
             "DriverRaceInfo",
         ]
     ],
@@ -60,7 +61,6 @@ DEBUG_SUMMARY_STREAMS = (
     "TrackStatus",
     "TopThree",
     "TimingAppData",
-    "ChampionshipPrediction",
 )
 
 
@@ -115,9 +115,8 @@ class SignalRLegacyClient:
         self._startup_cutoff = self._t0 - dt.timedelta(seconds=30)
         _LOGGER.debug("SignalR connection established")
         _LOGGER.debug(
-            "Subscribed to RaceControlMessages, TrackStatus, SessionStatus, WeatherData, "
-            "LapCount, SessionInfo, SessionData, TimingData, CarData.z, DriverList, "
-            "TimingAppData, TopThree, TeamRadio"
+            "Subscribed to %s",
+            ", ".join(SUBSCRIBE_MSG["A"][0]),
         )
 
     async def ensure_connection(self) -> None:

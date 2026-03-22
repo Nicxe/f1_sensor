@@ -36,6 +36,7 @@ from .const import (
     CONF_REPLAY_START_REFERENCE,
     CONSTRUCTOR_STANDINGS_URL,
     DEFAULT_LIVE_DELAY_REFERENCE,
+    LIVE_DELAY_REFERENCE_FORMATION,
     DEFAULT_OPERATION_MODE,
     DEFAULT_REPLAY_START_REFERENCE,
     DOMAIN,
@@ -1583,11 +1584,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_state = LiveAvailabilityTracker()
         live_state.set_state(True, "replay-mode")
 
-    formation_tracker = FormationStartTracker(
-        hass,
-        bus=live_bus,
-        http_session=session,
-    )
+    formation_tracker = None
+    if operation_mode != OPERATION_MODE_LIVE:
+        formation_tracker = FormationStartTracker(
+            hass,
+            bus=live_bus,
+            http_session=session,
+        )
+
+    # Formation start reference requires a formation tracker.  When none exists
+    # (live mode, or development mode that fell back to live), reset a persisted
+    # formation reference to the default so calibration doesn't get stuck in
+    # "waiting" indefinitely.
+    if (
+        formation_tracker is None
+        and reference_controller.current == LIVE_DELAY_REFERENCE_FORMATION
+    ):
+        await reference_controller.async_set_reference(
+            DEFAULT_LIVE_DELAY_REFERENCE, source="no_formation_tracker_fallback"
+        )
 
     def _reload_entry():
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
@@ -1784,7 +1799,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await top_three_coordinator.async_config_entry_first_refresh()
 
     team_radio_coordinator = None
-    if enable_rc and need_team_radio:
+    if enable_rc and need_team_radio and operation_mode != OPERATION_MODE_LIVE:
         team_radio_coordinator = TeamRadioCoordinator(
             hass,
             session_coordinator,
@@ -1797,7 +1812,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await team_radio_coordinator.async_config_entry_first_refresh()
 
     pitstop_coordinator = None
-    if enable_rc and need_pitstops:
+    if enable_rc and need_pitstops and operation_mode != OPERATION_MODE_LIVE:
         pitstop_coordinator = PitStopCoordinator(
             hass,
             session_coordinator,
@@ -1812,7 +1827,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await pitstop_coordinator.async_config_entry_first_refresh()
 
     championship_prediction_coordinator = None
-    if enable_rc and need_championship_prediction:
+    if enable_rc and need_championship_prediction and operation_mode != OPERATION_MODE_LIVE:
         championship_prediction_coordinator = ChampionshipPredictionCoordinator(
             hass,
             session_coordinator,

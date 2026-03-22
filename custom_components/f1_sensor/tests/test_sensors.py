@@ -1289,7 +1289,8 @@ async def test_live_bus_stream_diagnostics_track_frames_and_keys(
         "LiveBus first frame for TrackStatus with keys=['Status', 'Message']"
         in caplog.text
     )
-    assert "ChampionshipPrediction:0/0 (none)" in caplog.text
+    # ChampionshipPrediction removed from DEBUG_SUMMARY_STREAMS (replay-only)
+    assert "TopThree:0/0 (none)" in caplog.text
 
 
 @pytest.mark.asyncio

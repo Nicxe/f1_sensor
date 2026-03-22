@@ -130,8 +130,8 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_race_lap_count](#race-lap)                 | Current race lap number|
 | [sensor.f1_track_weather](#track-weather)             | Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)|
 | [sensor.f1_driver_list](#driver-list)                 | Show list and details on all drivers, including team color, headshot URL etc| 
-| [sensor.f1_pitstops](#pit-stops)                      | Live pit stop events and aggregated pit stop series per car |
-| [sensor.f1_team_radio](#team-radio)                   | Latest team radio message and rolling history |
+| [sensor.f1_pitstops](#pit-stops)                      | Live pit stop events and aggregated pit stop series per car `(Replay Mode only)` |
+| [sensor.f1_team_radio](#team-radio)                   | Latest team radio message and rolling history `(Replay Mode only)` |
 | [sensor.f1_current_tyres](#current-tyres)             | Current tyre compound per driver |
 | [sensor.f1_tyre_statistics](#tyre-statistics)         | Aggregated tyre statistics per compound |
 | [sensor.f1_driver_positions](#driver-positions)       | Driver positions and lap times |
@@ -139,9 +139,9 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_race_control](#race-control)               | Race Control messages feed (flags, incidents, key updates) |
 | [sensor.f1_track_limits](#track-limits)               | Track limits violations per driver (deletions, warnings, penalties) |
 | [sensor.f1_investigations](#investigations)           | Active steward investigations and pending penalties |
-| [binary_sensor.f1_formation_start](#formation-start)  | Indicates when formation start procedure is ready |
-| [sensor.f1_championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) |
-| [sensor.f1_championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) |
+| [binary_sensor.f1_formation_start](#formation-start)  | Indicates when formation start procedure is ready `(Replay Mode only)` |
+| [sensor.f1_championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) `(Replay Mode only)` |
+| [sensor.f1_championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) `(Replay Mode only)` |
 | [binary_sensor.f1_overtake_mode](#overtake-mode)      | ON when track-wide overtake mode is enabled (2026 regulation, experimental) |
 | [sensor.f1_straight_mode](#straight-mode)             | Active aerodynamic straight mode state (2026 regulation, experimental) |
 
@@ -152,6 +152,12 @@ Use this section to understand the possible values for enum-type states and attr
 
 :::info Entities
 All of these entities update **only in relation to an active session**, typically starting less than an hour before and continuing for a few minutes after the session ends. Outside these windows, the entities will be set to **Unavailable** (not updating and not providing new data).
+:::
+
+:::note Replay Mode only entities
+Some entities are marked `(Replay Mode only)` in the table above. These entities are only available when playing back a session in [Replay Mode](/features/replay-mode). The underlying data streams require authentication that the integration does not currently support. In Replay Mode, the full session archive is available and these entities work normally.
+
+The affected entities are: Pit Stops, Team Radio, Championship Prediction (Drivers), Championship Prediction (Teams), and Formation Start.
 :::
 
 
@@ -594,7 +600,11 @@ The headshot URLs are provided by F1 and may change between sessions. This senso
 
 ## Pit Stops
 
-`sensor.f1_pitstops` - Live pit stop information from the F1 Live Timing feed, aggregated per car.
+:::note Replay Mode only
+This entity is only available in [Replay Mode](/features/replay-mode). The pit stop data stream requires authentication that the integration does not currently support during live sessions.
+:::
+
+`sensor.f1_pitstops` - Pit stop information from the F1 Live Timing feed, aggregated per car.
 
 **State**
 - Integer: total number of pit stops recorded in the current session, or `0` when none are available.
@@ -632,12 +642,16 @@ Each entry in `stops` contains:
 | pit_delta | number | Estimated loss vs a normal lap (seconds), when available |
 
 ::::info INFO
-Active during race and sprint sessions.
+Available during race and sprint sessions in Replay Mode.
 ::::
 
 ---
 
 ## Team Radio
+
+:::note Replay Mode only
+This entity is only available in [Replay Mode](/features/replay-mode). The team radio data stream requires authentication that the integration does not currently support during live sessions.
+:::
 
 Latest team radio clip with a rolling history, sourced from the Team Radio stream. This is a curated selection of radio traffic, similar to what is broadcast during TV coverage, not the full raw radio feed.
 
@@ -663,7 +677,7 @@ Latest team radio clip with a rolling history, sourced from the Team Radio strea
 | raw_message | object | Original payload from the live feed |
 
 ::::info INFO
-Updates during all live sessions when radio traffic is available.
+Available during Replay Mode sessions when radio traffic is present in the session archive.
 ::::
 
 ---
@@ -1700,7 +1714,11 @@ Noted: {{ noted }}, Under Investigation: {{ investigating }}
 
 ## Championship Prediction (Drivers)
 
-Predicted Drivers Championship winner and points table, sourced from the live ChampionshipPrediction stream.
+:::note Replay Mode only
+This entity is only available in [Replay Mode](/features/replay-mode). The championship prediction data stream requires authentication that the integration does not currently support during live sessions.
+:::
+
+Predicted Drivers Championship winner and points table, sourced from the ChampionshipPrediction stream.
 
 **State**
 - Predicted P1 driver TLA, or `unknown` when not available.
@@ -1828,7 +1846,11 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 ## Championship Prediction (Teams)
 
-Predicted Constructors Championship winner and points table, sourced from the live ChampionshipPrediction stream.
+:::note Replay Mode only
+This entity is only available in [Replay Mode](/features/replay-mode). The championship prediction data stream requires authentication that the integration does not currently support during live sessions.
+:::
+
+Predicted Constructors Championship winner and points table, sourced from the ChampionshipPrediction stream.
 
 **State**
 - Predicted P1 team name, or `unknown` when not available.
@@ -1959,7 +1981,11 @@ Each entry in `teams` (keyed by team key) contains:
 
 ## Formation Start
 
-Indicates when the formation start procedure is ready. Useful for triggering automations at race start.
+:::note Replay Mode only
+This entity is only available in [Replay Mode](/features/replay-mode). The underlying data stream used for formation start detection requires authentication that the integration does not currently support during live sessions.
+:::
+
+Indicates when the formation start procedure is ready. Useful for triggering automations at race start during replay.
 
 **State (on/off)**
 - `on` when formation start procedure is ready; otherwise `off`.
@@ -1983,7 +2009,7 @@ on
 | error | string | Error message if any issue occurred |
 
 ::::info INFO
-Active only during race and sprint sessions.
+Available during race and sprint sessions in Replay Mode.
 ::::
 
 ---

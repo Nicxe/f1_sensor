@@ -96,19 +96,15 @@ The `switch.f1_delay_calibration` entity exposes:
 Use `select.f1_live_delay_reference` to choose when the calibration timer starts:
 
 - **Session live** - Timer starts at lights out (races) or pit exit open (practice/qualifying). This is the most precise option.
-- **Formation start (race/sprint)** - Timer starts when the formation lap begins. This lets you focus on watching the start rather than pressing a button at lights out.
+- **Formation start (race/sprint)** - Timer starts when the formation lap begins. This lets you focus on watching the start rather than pressing a button at lights out. Only available during Replay Mode.
 - **Lap sync (race/sprint)** - Timer starts when the next lap completes during the race. This lets you synchronize at any point during the race, not just at the start.
 
-:::tip Formation start for races
-For races and sprints, formation start is often the better choice. The timer starts automatically when the formation lap begins, so you only need to press the button when you see the formation lap start on TV. Then you can sit back and enjoy the actual race start.
+:::note Formation start — Replay Mode only
+The formation start calibration reference is currently only available in [Replay Mode](/features/replay-mode). The underlying data stream used for formation start detection requires authentication not currently supported during live sessions. For live calibration, use **Session live** or **Lap sync** instead.
 :::
 
 :::tip Lap sync for mid-race calibration
 If you join a broadcast mid-race, or if your initial sync has drifted, lap sync lets you recalibrate without waiting for the next session. It works at any point during a race or sprint.
-:::
-
-:::info Formation lap timing
-The formation lap start point is estimated with approximately one second accuracy. The live data stream does not provide an exact marker for when the formation lap begins, so there may be a small offset.
 :::
 
 ### Step 1 - Arm the calibration
@@ -122,10 +118,11 @@ What happens next depends on the chosen reference:
 - When lights go out (race) or pit exit opens (practice/qualifying), the timer starts automatically
 - If the session is already live, timing starts immediately
 
-**Formation start reference (race/sprint):**
+**Formation start reference (race/sprint) — Replay Mode only:**
 - The integration waits for the formation lap marker
 - When the formation lap begins, the timer starts automatically
 - For practice and qualifying, it falls back to session live behavior
+- This reference is only available during Replay Mode
 
 **Lap sync reference (race/sprint):**
 - The integration waits for the next lap to complete

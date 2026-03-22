@@ -22,6 +22,7 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
     async_track_utc_time_change,
 )
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
@@ -335,6 +336,37 @@ async def async_setup_entry(
         sensors.append(sensor)
 
     async_add_entities(sensors, True)
+
+    # Remove orphaned entity registry entries for replay-only sensors whose
+    # coordinators are not created in the current operation mode.
+    _cleanup_orphaned_sensor_entities(hass, entry)
+
+
+def _cleanup_orphaned_sensor_entities(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Remove entity registry entries for replay-only sensors left over from a previous install.
+
+    Only runs in live mode where these coordinators are intentionally absent.
+    In replay/development mode a missing coordinator means the user disabled
+    the sensor — the registry entry should be kept.
+    """
+    data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+    from .const import OPERATION_MODE_LIVE as _LIVE  # noqa: PLC0415
+
+    if data.get("operation_mode") != _LIVE:
+        return
+    orphan_uids = [
+        f"{entry.entry_id}_team_radio",
+        f"{entry.entry_id}_pitstops",
+        f"{entry.entry_id}_championship_prediction_drivers",
+        f"{entry.entry_id}_championship_prediction_teams",
+    ]
+    registry = er.async_get(hass)
+    for uid in orphan_uids:
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, uid)
+        if entity_id is not None:
+            registry.async_remove(entity_id)
 
 
 class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):

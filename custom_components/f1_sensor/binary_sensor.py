@@ -12,6 +12,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -152,6 +153,17 @@ async def async_setup_entry(
             set_suggested_object_id(sensor, default_object_id("overtake_mode"))
             sensors.append(sensor)
     async_add_entities(sensors, True)
+
+    # Remove orphaned formation_start entity left over from a previous install.
+    # Only in live mode where the tracker is intentionally absent.
+    from .const import OPERATION_MODE_LIVE as _LIVE  # noqa: PLC0415
+
+    if data.get("operation_mode") == _LIVE:
+        uid = f"{entry.entry_id}_formation_start"
+        registry = er.async_get(hass)
+        entity_id = registry.async_get_entity_id("binary_sensor", DOMAIN, uid)
+        if entity_id is not None:
+            registry.async_remove(entity_id)
 
 
 class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
