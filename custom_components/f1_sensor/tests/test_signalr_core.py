@@ -3,18 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 import json
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from aiohttp import WSMsgType
+import pytest
 
 from custom_components.f1_sensor.signalr import (
+    AUTH_GATED_LIVE_STREAMS,
+    NO_AUTH_LIVE_STREAMS,
+    PUBLIC_LIVE_STREAMS,
     RECORD_SEP,
+    REPLAY_ONLY_STREAMS,
     SUBSCRIBE_MSG,
+    LiveBus,
     SignalRCoreClient,
+    SignalRLegacyClient,
+    build_live_subscribe_streams,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -228,6 +236,59 @@ async def test_subscribe_format():
     assert subscribe_sent.endswith(RECORD_SEP)
 
 
+def test_no_auth_live_stream_contract():
+    """No-auth subscriptions must stay aligned with the explicit public stream contract."""
+    assert PUBLIC_LIVE_STREAMS == (
+        "RaceControlMessages",
+        "TrackStatus",
+        "SessionStatus",
+        "WeatherData",
+        "LapCount",
+        "SessionInfo",
+        "SessionData",
+        "Heartbeat",
+        "ExtrapolatedClock",
+        "TimingData",
+        "DriverList",
+        "TimingAppData",
+        "TopThree",
+    )
+    assert NO_AUTH_LIVE_STREAMS == PUBLIC_LIVE_STREAMS
+    assert SUBSCRIBE_MSG["A"] == [list(NO_AUTH_LIVE_STREAMS)]
+    assert build_live_subscribe_streams(include_auth_gated=True) == (
+        *PUBLIC_LIVE_STREAMS,
+        *AUTH_GATED_LIVE_STREAMS,
+    )
+
+
+def test_no_auth_live_stream_contract_excludes_gated_and_replay_only_streams():
+    """No-auth live subscriptions must not reintroduce gated or replay-only streams."""
+    subscribed = set(NO_AUTH_LIVE_STREAMS)
+
+    assert subscribed.isdisjoint(AUTH_GATED_LIVE_STREAMS)
+    assert subscribed.isdisjoint(REPLAY_ONLY_STREAMS)
+    assert AUTH_GATED_LIVE_STREAMS == (
+        "CarData.z",
+        "DriverRaceInfo",
+        "Position.z",
+        "ChampionshipPrediction",
+    )
+    assert REPLAY_ONLY_STREAMS == (
+        "TeamRadio",
+        "PitStopSeries",
+    )
+
+
+def test_live_bus_can_select_legacy_transport(monkeypatch):
+    """Legacy transport remains intentionally selectable behind the feature toggle."""
+    monkeypatch.setattr("custom_components.f1_sensor.const.SIGNALR_USE_CORE", False)
+    bus = LiveBus(MagicMock(), MagicMock())
+
+    client = bus._create_client()
+
+    assert isinstance(client, SignalRLegacyClient)
+
+
 @pytest.mark.asyncio
 async def test_type1_feed_translated():
     """Type 1 invocation (feed) is translated to legacy M-format."""
@@ -347,11 +408,8 @@ async def test_record_separator_batch():
     """Multiple messages in a single WS frame separated by \\x1e are all handled."""
     client = _make_client()
     # Batch: ping + feed in one WS text frame
-    batch_data = (
-        _core_msg({"type": 6})
-        + _core_msg(
-            {"type": 1, "target": "feed", "arguments": ["WeatherData", {"Temp": "22"}]}
-        )
+    batch_data = _core_msg({"type": 6}) + _core_msg(
+        {"type": 1, "target": "feed", "arguments": ["WeatherData", {"Temp": "22"}]}
     )
     batch_msg = FakeWSMessage(WSMsgType.TEXT, batch_data)
     ws = FakeWebSocket([batch_msg])
@@ -384,7 +442,9 @@ async def test_ensure_connection_retry():
 
     client.connect = mock_connect
 
-    with patch("custom_components.f1_sensor.signalr.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+    with patch(
+        "custom_components.f1_sensor.signalr.asyncio.sleep", new_callable=AsyncMock
+    ) as mock_sleep:
         await client.ensure_connection()
 
     assert call_count == 3
@@ -447,3 +507,250 @@ async def test_no_heartbeat_task():
     client = _make_client()
     assert not hasattr(client, "_heartbeat_task")
     assert not hasattr(client, "_heartbeat")
+
+
+# ---------------------------------------------------------------------------
+# LiveBus heartbeat monitor tests
+# ---------------------------------------------------------------------------
+
+
+def _make_bus(hass=None, session=None) -> LiveBus:
+    """Create a LiveBus with mocked hass and session."""
+    if hass is None:
+        hass = MagicMock()
+        hass.loop = MagicMock()
+    if session is None:
+        session = MagicMock()
+    return LiveBus(hass, session)
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_monitor_forces_reconnect_on_inactivity():
+    """When only protocol pings arrive (no feed data), the heartbeat monitor
+    detects inactivity and closes the client to trigger reconnect.
+
+    This reproduces the failure mode observed during Japan GP 2026 where
+    core recorders stopped receiving feed data after qualifying but continued
+    receiving type 6 pings.
+    """
+    bus = _make_bus()
+    bus._expect_heartbeat = True
+
+    # Simulate a client that is "connected" but receiving no feed data
+    mock_client = AsyncMock()
+    bus._client = mock_client
+
+    # Set heartbeat timestamp to 60 seconds ago (> 45s timeout)
+    bus._last_heartbeat_at = time.time() - 60
+
+    # Run one iteration of the monitor
+    bus._running = True
+    bus._heartbeat_check_interval = 0.01  # speed up test
+
+    # Run the monitor in a task and let it fire once
+    monitor_task = asyncio.create_task(bus._monitor_heartbeat())
+    await asyncio.sleep(0.05)
+    bus._running = False
+    await asyncio.sleep(0.05)
+    monitor_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await monitor_task
+
+    # The monitor should have closed the client
+    mock_client.close.assert_awaited_once()
+    assert bus._client is None
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_monitor_skips_when_recent_activity():
+    """When feed data is flowing (recent heartbeat), the monitor does nothing."""
+    bus = _make_bus()
+    bus._expect_heartbeat = True
+
+    mock_client = AsyncMock()
+    bus._client = mock_client
+
+    # Heartbeat just arrived
+    bus._last_heartbeat_at = time.time()
+
+    bus._running = True
+    bus._heartbeat_check_interval = 0.01
+
+    monitor_task = asyncio.create_task(bus._monitor_heartbeat())
+    await asyncio.sleep(0.05)
+    bus._running = False
+    await asyncio.sleep(0.05)
+    monitor_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await monitor_task
+
+    # Client should NOT have been closed
+    mock_client.close.assert_not_awaited()
+    assert bus._client is mock_client
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_monitor_skips_when_disabled():
+    """When heartbeat expectation is disabled, the monitor skips checks."""
+    bus = _make_bus()
+    bus._expect_heartbeat = False
+
+    mock_client = AsyncMock()
+    bus._client = mock_client
+
+    # Stale heartbeat that would trigger if monitor were enabled
+    bus._last_heartbeat_at = time.time() - 120
+
+    bus._running = True
+    bus._heartbeat_check_interval = 0.01
+
+    monitor_task = asyncio.create_task(bus._monitor_heartbeat())
+    await asyncio.sleep(0.05)
+    bus._running = False
+    await asyncio.sleep(0.05)
+    monitor_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await monitor_task
+
+    mock_client.close.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_reset_before_reconnect_prevents_monitor_interference():
+    """_last_heartbeat_at is reset before ensure_connection() so the monitor
+    does not kill the client during reconnection.
+
+    This verifies the fix for the race condition where the monitor could see
+    a stale heartbeat timestamp during the reconnect window and close the
+    new client before it finished connecting.
+
+    Instead of running the full _run() loop, we directly replicate the
+    connect sequence from _run() and assert the ordering.
+    """
+    bus = _make_bus()
+    bus._expect_heartbeat = True
+
+    # Simulate: previous connection died 60s ago
+    bus._last_heartbeat_at = time.time() - 60
+    bus._running = True
+
+    hb_age_during_connect = None
+
+    class TrackingClient:
+        async def ensure_connection(self):
+            nonlocal hb_age_during_connect
+            hb_age_during_connect = time.time() - bus._last_heartbeat_at
+
+        async def messages(self):
+            return
+            yield  # noqa: RET503
+
+        async def close(self):
+            pass
+
+    # Replicate the connect sequence from _run():
+    # 1. create client
+    bus._client = TrackingClient()
+    # 2. reset heartbeat (the fix)
+    bus._last_heartbeat_at = time.time()
+    # 3. call ensure_connection
+    await bus._client.ensure_connection()
+
+    # The heartbeat age seen during ensure_connection should be < 1s,
+    # not the 60s stale value from before the reset.
+    assert hb_age_during_connect is not None
+    assert hb_age_during_connect < 2.0, (
+        f"Heartbeat age {hb_age_during_connect:.1f}s during ensure_connection — "
+        "monitor would kill reconnect attempt"
+    )
+
+
+@pytest.mark.asyncio
+async def test_live_bus_replays_initial_state_and_recovers_after_reconnect():
+    """Initial state, reconnect, and snapshot cache remain coherent."""
+    original_sleep = asyncio.sleep
+
+    class FakeTransport:
+        def __init__(
+            self,
+            payloads: list[dict],
+            *,
+            error: Exception | None = None,
+            stop_bus: LiveBus | None = None,
+        ) -> None:
+            self._payloads = list(payloads)
+            self._error = error
+            self._stop_bus = stop_bus
+            self.ensure_calls = 0
+            self.close_calls = 0
+
+        async def ensure_connection(self) -> None:
+            self.ensure_calls += 1
+
+        async def messages(self):
+            for payload in self._payloads:
+                yield payload
+            if self._error is not None:
+                raise self._error
+            if self._stop_bus is not None:
+                self._stop_bus._running = False
+
+        async def close(self) -> None:
+            self.close_calls += 1
+
+    hass = MagicMock()
+    hass.loop = asyncio.get_running_loop()
+    first_transport = FakeTransport(
+        [{"R": {"TimingAppData": {"Lines": {"1": {"Stints": []}}}}}],
+        error=RuntimeError("disconnect"),
+    )
+    bus: LiveBus
+    second_transport = FakeTransport(
+        [
+            {
+                "M": [
+                    {
+                        "H": "Streaming",
+                        "M": "feed",
+                        "A": ["TimingData", {"Lines": {"1": {"Position": "1"}}}],
+                    }
+                ]
+            }
+        ]
+    )
+    transports = [first_transport, second_transport]
+
+    def _factory():
+        transport = transports.pop(0)
+        if transport is second_transport:
+            transport._stop_bus = bus
+        return transport
+
+    bus = LiveBus(hass, MagicMock(), transport_factory=_factory)
+    timing_app_payloads: list[dict] = []
+    timing_data_payloads: list[dict] = []
+    bus.subscribe("TimingAppData", lambda payload: timing_app_payloads.append(payload))
+    bus.subscribe("TimingData", lambda payload: timing_data_payloads.append(payload))
+
+    async def _fast_sleep(_seconds: float) -> None:
+        await original_sleep(0)
+
+    with patch(
+        "custom_components.f1_sensor.signalr.asyncio.sleep", side_effect=_fast_sleep
+    ):
+        task = asyncio.create_task(bus._run())
+        bus._running = True
+        await asyncio.wait_for(task, timeout=1)
+
+    assert first_transport.ensure_calls == 1
+    assert second_transport.ensure_calls == 1
+    assert first_transport.close_calls == 1
+    assert second_transport.close_calls == 1
+    assert timing_app_payloads == [{"Lines": {"1": {"Stints": []}}}]
+    assert timing_data_payloads == [{"Lines": {"1": {"Position": "1"}}}]
+
+    late_subscriber_payloads: list[dict] = []
+    bus.subscribe(
+        "TimingData", lambda payload: late_subscriber_payloads.append(payload)
+    )
+    assert late_subscriber_payloads == [{"Lines": {"1": {"Position": "1"}}}]

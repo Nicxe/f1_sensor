@@ -13,7 +13,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     DOMAIN,
-    LIVE_DELAY_REFERENCE_FORMATION,
     LIVE_DELAY_REFERENCE_LAP_SYNC,
     LIVE_DELAY_REFERENCE_SESSION,
 )
@@ -45,13 +44,11 @@ async def async_setup_entry(
         "delay_reference_controller"
     )
     if reference_controller is not None:
-        formation_tracker = registry.get("formation_start_tracker")
         entity = F1LiveDelayReferenceSelect(
             reference_controller,
             f"{entry.entry_id}_live_delay_reference",
             entry.entry_id,
             name,
-            formation_available=formation_tracker is not None,
         )
         set_suggested_object_id(entity, default_object_id("live_delay_reference"))
         entities.append(entity)
@@ -105,8 +102,6 @@ class F1LiveDelayReferenceSelect(F1AuxEntity, SelectEntity):
         unique_id: str,
         entry_id: str,
         device_name: str,
-        *,
-        formation_available: bool = True,
     ) -> None:
         F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
         SelectEntity.__init__(self)
@@ -115,10 +110,6 @@ class F1LiveDelayReferenceSelect(F1AuxEntity, SelectEntity):
             "Session live": LIVE_DELAY_REFERENCE_SESSION,
             "Lap sync (race/sprint)": LIVE_DELAY_REFERENCE_LAP_SYNC,
         }
-        if formation_available:
-            self._option_to_value["Formation start (race/sprint)"] = (
-                LIVE_DELAY_REFERENCE_FORMATION
-            )
         self._value_to_option = {v: k for k, v in self._option_to_value.items()}
         self._current_option = self._value_to_option.get(
             controller.current, "Session live"

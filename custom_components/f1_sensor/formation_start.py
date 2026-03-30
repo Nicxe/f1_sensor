@@ -128,10 +128,12 @@ class FormationStartTracker:
         *,
         bus: LiveBus,
         http_session: ClientSession,
+        availability_guard: Callable[[], bool] | None = None,
     ) -> None:
         self._hass = hass
         self._bus = bus
         self._http = http_session
+        self._availability_guard = availability_guard
         self._listeners: list[Callable[[dict[str, Any]], None]] = []
         self._session_unsub: Callable[[], None] | None = None
         self._status_unsub: Callable[[], None] | None = None
@@ -181,6 +183,8 @@ class FormationStartTracker:
         Used by the replay engine to drive the sensor from stored index data rather
         than making a live HTTP request to the CarData stream.
         """
+        if not self._tracking_enabled():
+            return
         if (
             self._session_phase != "pre"
             or self._formation_start_utc is not None
@@ -290,6 +294,14 @@ class FormationStartTracker:
         self._live_best_delta = None
         self._live_max_seen = None
 
+    def _tracking_enabled(self) -> bool:
+        if self._availability_guard is None:
+            return True
+        try:
+            return bool(self._availability_guard())
+        except Exception:  # noqa: BLE001
+            return False
+
     def _handle_session_info(self, payload: dict) -> None:
         if not isinstance(payload, dict):
             return
@@ -363,6 +375,8 @@ class FormationStartTracker:
         )
 
     def _arm_probe_if_ready(self) -> None:
+        if not self._tracking_enabled():
+            return
         if not _is_race_or_sprint(self._session_type, self._session_name):
             return
         if self._formation_start_utc is not None or self._session_phase != "pre":
@@ -470,7 +484,8 @@ class FormationStartTracker:
 
     def _probe_allowed(self, session_id: str | None) -> bool:
         return (
-            session_id == self._session_id
+            self._tracking_enabled()
+            and session_id == self._session_id
             and self._resolution_allowed()
             and self._path is not None
         )

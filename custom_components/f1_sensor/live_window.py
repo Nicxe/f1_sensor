@@ -1064,6 +1064,9 @@ class LiveSessionSupervisor:
                 _build_static_url(window.path, "SessionStatus.jsonStream")
             )
         except Exception as err:
+            # Live no-auth sessions cannot rely on this endpoint always being
+            # reachable. Keep the session armed for a bounded slack window so
+            # transient fetch failures do not flap live availability.
             slack = window.end_utc + timedelta(hours=2)
             if now <= slack:
                 _LOGGER.warning(
@@ -1105,10 +1108,6 @@ class LiveSessionSupervisor:
         await self._bus.start()
         self._bus.set_heartbeat_expectation(True)
         self._availability.set_state(True, f"live-{window.session_name}")
-        if window.path:
-            await self._prime_metadata(window)
-        else:
-            _LOGGER.debug("Skipping metadata priming for %s (no path)", label)
         try:
             reason = await self._monitor_window(window, source=source)
         finally:
@@ -1128,92 +1127,6 @@ class LiveSessionSupervisor:
                     "Session index refresh failed after %s", label, exc_info=True
                 )
             self._current_window_source = "none"
-
-    async def _prime_metadata(self, window: SessionWindow) -> None:
-        url = _build_static_url(window.path, "SessionInfo.jsonStream")
-        status_url = _build_static_url(window.path, "SessionStatus.jsonStream")
-        data_url = _build_static_url(window.path, "SessionData.jsonStream")
-        session_status_payload: dict[str, Any] | None = None
-        for name, target in (
-            ("SessionInfo", url),
-            ("SessionStatus", status_url),
-            ("SessionData", data_url),
-        ):
-            try:
-                payload = await self._fetch_json(target)
-                if payload:
-                    if name in {"SessionInfo", "SessionStatus"} and isinstance(
-                        payload, dict
-                    ):
-                        self._bus.inject_message(name, payload)
-                    if name == "SessionStatus" and isinstance(payload, dict):
-                        session_status_payload = payload
-                    _LOGGER.debug(
-                        "%s prime %s keys=%s",
-                        window.label,
-                        name,
-                        list(payload.keys())[:5],
-                    )
-            except Exception:  # noqa: BLE001
-                _LOGGER.debug(
-                    "Failed priming %s for %s", name, window.label, exc_info=True
-                )
-        await self._prime_lap_count(window, session_status_payload)
-
-    async def _prime_lap_count(
-        self, window: SessionWindow, session_status: dict[str, Any] | None
-    ) -> None:
-        if not window.path or not _session_status_running(session_status):
-            return
-        url = _build_static_url(window.path, "LapCount.jsonStream")
-        try:
-            payload = await self._fetch_lapcount_snapshot(url)
-        except Exception:  # noqa: BLE001
-            _LOGGER.debug("Failed priming LapCount for %s", window.label, exc_info=True)
-            return
-        if not payload:
-            return
-        self._bus.inject_message("LapCount", payload)
-        _LOGGER.debug("%s prime LapCount payload=%s", window.label, payload)
-
-    async def _fetch_lapcount_snapshot(self, url: str) -> dict[str, int] | None:
-        async with asyncio.timeout(10):
-            async with self._http.get(url) as resp:
-                if resp.status == 404:
-                    return None
-                resp.raise_for_status()
-                text = await resp.text()
-        return self._parse_lapcount_snapshot(text)
-
-    @staticmethod
-    def _parse_lapcount_snapshot(payload: str | None) -> dict[str, int] | None:
-        if not isinstance(payload, str) or not payload.strip():
-            return None
-        snapshot: dict[str, int] = {}
-        for raw_line in payload.splitlines():
-            line = raw_line.lstrip("\ufeff").strip()
-            if not line or line.upper().startswith("URL:"):
-                continue
-            json_start = line.find("{")
-            if json_start == -1:
-                continue
-            try:
-                item = json.loads(line[json_start:])
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(item, dict):
-                continue
-            current_lap = _as_int(
-                item.get("CurrentLap") if "CurrentLap" in item else item.get("LapCount")
-            )
-            total_laps = _as_int(item.get("TotalLaps"))
-            if current_lap is not None and current_lap > 0:
-                snapshot["CurrentLap"] = current_lap
-            if total_laps is not None and total_laps > 0:
-                snapshot["TotalLaps"] = total_laps
-        if "CurrentLap" not in snapshot:
-            return None
-        return snapshot
 
     async def _monitor_window(self, window: SessionWindow, *, source: str) -> str:
         label = window.label

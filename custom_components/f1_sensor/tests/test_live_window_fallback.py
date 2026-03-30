@@ -6,7 +6,6 @@ from typing import Any
 from homeassistant.util import dt as dt_util
 import pytest
 
-from custom_components.f1_sensor.formation_start import FormationStartTracker
 import custom_components.f1_sensor.live_window as live_window
 from custom_components.f1_sensor.live_window import (
     EventTrackerScheduleSource,
@@ -312,231 +311,6 @@ async def test_index_200_without_windows_uses_event_tracker(hass) -> None:
     assert supervisor.fallback_active is True
 
 
-@pytest.mark.asyncio
-async def test_prime_metadata_injects_lapcount_snapshot_for_running_session(
-    hass,
-) -> None:
-    window = _mk_window(
-        meeting="Australian Grand Prix",
-        session="Race",
-        path="2026/2026-03-08_Australian_Grand_Prix/2026-03-08_Race/",
-    )
-    session_info_url = live_window._build_static_url(
-        window.path, "SessionInfo.jsonStream"
-    )
-    session_status_url = live_window._build_static_url(
-        window.path, "SessionStatus.jsonStream"
-    )
-    session_data_url = live_window._build_static_url(
-        window.path, "SessionData.jsonStream"
-    )
-    lapcount_url = live_window._build_static_url(window.path, "LapCount.jsonStream")
-    fake_http = _FakeHttp(
-        {
-            session_info_url: (200, '00:00:00.000{"Name":"Race"}'),
-            session_status_url: (
-                200,
-                '00:00:06.977{"Status":"Inactive","Started":"Inactive"}\n'
-                '01:02:19.743{"Status":"Started","Started":"Started"}',
-            ),
-            session_data_url: (200, '00:00:00.000{"Series":[]}'),
-            lapcount_url: (
-                200,
-                '00:00:04.058{"CurrentLap":1,"TotalLaps":58}\n'
-                '00:00:47.420{"CurrentLap":0,"TotalLaps":0}\n'
-                '01:33:50.988{"CurrentLap":27}',
-            ),
-        }
-    )
-    bus = _DummyBus()
-    supervisor = LiveSessionSupervisor(
-        hass,
-        _DummySessionCoordinator({}, status=200),
-        bus,
-        http_session=fake_http,  # type: ignore[arg-type]
-    )
-
-    await supervisor._prime_metadata(window)
-
-    assert bus.injected_messages == [
-        ("SessionInfo", {"Name": "Race"}),
-        ("SessionStatus", {"Status": "Started", "Started": "Started"}),
-        ("LapCount", {"CurrentLap": 27, "TotalLaps": 58}),
-    ]
-    assert fake_http.calls == [
-        session_info_url,
-        session_status_url,
-        session_data_url,
-        lapcount_url,
-    ]
-
-
-@pytest.mark.asyncio
-async def test_prime_metadata_skips_lapcount_when_session_not_running(hass) -> None:
-    window = _mk_window(
-        meeting="Australian Grand Prix",
-        session="Race",
-        path="2026/2026-03-08_Australian_Grand_Prix/2026-03-08_Race/",
-    )
-    session_info_url = live_window._build_static_url(
-        window.path, "SessionInfo.jsonStream"
-    )
-    session_status_url = live_window._build_static_url(
-        window.path, "SessionStatus.jsonStream"
-    )
-    session_data_url = live_window._build_static_url(
-        window.path, "SessionData.jsonStream"
-    )
-    lapcount_url = live_window._build_static_url(window.path, "LapCount.jsonStream")
-    fake_http = _FakeHttp(
-        {
-            session_info_url: (200, "{}"),
-            session_status_url: (
-                200,
-                '00:00:06.977{"Status":"Inactive","Started":"Inactive"}',
-            ),
-            session_data_url: (200, "{}"),
-            lapcount_url: (
-                200,
-                '00:00:04.058{"CurrentLap":1,"TotalLaps":58}',
-            ),
-        }
-    )
-    bus = _DummyBus()
-    supervisor = LiveSessionSupervisor(
-        hass,
-        _DummySessionCoordinator({}, status=200),
-        bus,
-        http_session=fake_http,  # type: ignore[arg-type]
-    )
-
-    await supervisor._prime_metadata(window)
-
-    assert bus.injected_messages == [
-        ("SessionStatus", {"Status": "Inactive", "Started": "Inactive"})
-    ]
-    assert fake_http.calls == [
-        session_info_url,
-        session_status_url,
-        session_data_url,
-    ]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("lapcount_status", "lapcount_body"),
-    [
-        (404, ""),
-        (200, "not-json"),
-    ],
-)
-async def test_prime_metadata_ignores_missing_or_invalid_lapcount_stream(
-    hass,
-    lapcount_status: int,
-    lapcount_body: str,
-) -> None:
-    window = _mk_window(
-        meeting="Australian Grand Prix",
-        session="Race",
-        path="2026/2026-03-08_Australian_Grand_Prix/2026-03-08_Race/",
-    )
-    session_info_url = live_window._build_static_url(
-        window.path, "SessionInfo.jsonStream"
-    )
-    session_status_url = live_window._build_static_url(
-        window.path, "SessionStatus.jsonStream"
-    )
-    session_data_url = live_window._build_static_url(
-        window.path, "SessionData.jsonStream"
-    )
-    lapcount_url = live_window._build_static_url(window.path, "LapCount.jsonStream")
-    fake_http = _FakeHttp(
-        {
-            session_info_url: (200, "{}"),
-            session_status_url: (
-                200,
-                '01:02:19.743{"Status":"Started","Started":"Started"}',
-            ),
-            session_data_url: (200, "{}"),
-            lapcount_url: (lapcount_status, lapcount_body),
-        }
-    )
-    bus = _DummyBus()
-    supervisor = LiveSessionSupervisor(
-        hass,
-        _DummySessionCoordinator({}, status=200),
-        bus,
-        http_session=fake_http,  # type: ignore[arg-type]
-    )
-
-    await supervisor._prime_metadata(window)
-
-    assert bus.injected_messages == [
-        ("SessionStatus", {"Status": "Started", "Started": "Started"})
-    ]
-
-
-@pytest.mark.asyncio
-async def test_prime_metadata_arms_formation_tracker_before_live_metadata_arrives(
-    hass,
-) -> None:
-    window = _mk_window(
-        meeting="Australian Grand Prix",
-        session="Race",
-        path="2026/2026-03-08_Australian_Grand_Prix/2026-03-08_Race/",
-        start=dt.datetime(2026, 3, 8, 4, 0, tzinfo=dt.UTC),
-        end=dt.datetime(2026, 3, 8, 6, 0, tzinfo=dt.UTC),
-    )
-    session_info_url = live_window._build_static_url(
-        window.path, "SessionInfo.jsonStream"
-    )
-    session_status_url = live_window._build_static_url(
-        window.path, "SessionStatus.jsonStream"
-    )
-    session_data_url = live_window._build_static_url(
-        window.path, "SessionData.jsonStream"
-    )
-    fake_http = _FakeHttp(
-        {
-            session_info_url: (
-                200,
-                (
-                    '00:00:00.000{"Type":"Race","Name":"Race","StartDate":"2026-03-08T04:00:00",'
-                    '"GmtOffset":"+00:00","Path":"2026/2026-03-08_Australian_Grand_Prix/2026-03-08_Race/"}'
-                ),
-            ),
-            session_status_url: (
-                200,
-                '00:00:06.977{"Status":"Inactive","Started":"Inactive"}',
-            ),
-            session_data_url: (200, '00:00:00.000{"Series":[]}'),
-        }
-    )
-    bus = _DummyBus()
-    tracker = FormationStartTracker(
-        hass,
-        bus=bus,  # type: ignore[arg-type]
-        http_session=object(),  # type: ignore[arg-type]
-    )
-    scheduled: list[str] = []
-    tracker._schedule_probe = lambda: scheduled.append("scheduled")  # type: ignore[method-assign]
-    tracker.add_listener(lambda _snapshot: None)
-    supervisor = LiveSessionSupervisor(
-        hass,
-        _DummySessionCoordinator({}, status=200),
-        bus,
-        http_session=fake_http,  # type: ignore[arg-type]
-    )
-
-    await supervisor._prime_metadata(window)
-
-    assert tracker.snapshot()["status"] == "pending"
-    assert tracker.snapshot()["session_type"] == "Race"
-    assert tracker.snapshot()["session_name"] == "Race"
-    assert tracker.snapshot()["scheduled_start"] == "2026-03-08T04:00:00+00:00"
-    assert scheduled == ["scheduled"]
-
-
 def test_event_tracker_parses_offset_correctly() -> None:
     source = EventTrackerScheduleSource(object())  # type: ignore[arg-type]
     payload = {
@@ -758,25 +532,6 @@ async def test_event_tracker_timeout_returns_last_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_prime_lap_count_timeout_does_not_inject_message(hass) -> None:
-    coord = _DummySessionCoordinator({}, status=200)
-    bus = _DummyBus()
-    timeout_http = _TimeoutHttp()
-    supervisor = LiveSessionSupervisor(
-        hass,
-        coord,
-        bus,
-        http_session=timeout_http,  # type: ignore[arg-type]
-    )
-    window = _mk_window(path="2026/1304/11465/")
-
-    await supervisor._prime_lap_count(window, {"Status": "Started", "Started": True})
-
-    assert bus.injected_messages == []
-    assert timeout_http.calls
-
-
-@pytest.mark.asyncio
 async def test_session_finished_timeout_returns_false(hass) -> None:
     coord = _DummySessionCoordinator({}, status=200)
     supervisor = LiveSessionSupervisor(
@@ -788,6 +543,96 @@ async def test_session_finished_timeout_returns_false(hass) -> None:
     window = _mk_window(path="2026/1304/11465/")
 
     assert await supervisor._session_finished(window) is False
+
+
+@pytest.mark.asyncio
+async def test_session_active_returns_true_for_non_terminal_status(hass) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    window = _mk_window(path="2026/1304/11465/")
+
+    async def _active_payload(_url: str) -> dict:
+        return {"Status": "Started"}
+
+    supervisor._fetch_json = _active_payload  # type: ignore[method-assign]
+
+    assert await supervisor._session_active(window) is True
+
+
+@pytest.mark.asyncio
+async def test_session_active_returns_false_for_terminal_status(hass) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    window = _mk_window(path="2026/1304/11465/")
+
+    async def _terminal_payload(_url: str) -> dict:
+        return {"Status": "Finished"}
+
+    supervisor._fetch_json = _terminal_payload  # type: ignore[method-assign]
+
+    assert await supervisor._session_active(window) is False
+
+
+@pytest.mark.asyncio
+async def test_session_active_timeout_inside_slack_returns_true(
+    monkeypatch, hass
+) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    now = dt_util.utcnow()
+    window = _mk_window(
+        path="2026/1304/11465/",
+        end=now - dt.timedelta(minutes=30),
+    )
+
+    async def _timeout(_url: str) -> dict:
+        raise TimeoutError
+
+    supervisor._fetch_json = _timeout  # type: ignore[method-assign]
+    monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
+
+    assert await supervisor._session_active(window) is True
+
+
+@pytest.mark.asyncio
+async def test_session_active_timeout_outside_slack_returns_false(
+    monkeypatch, hass
+) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    now = dt_util.utcnow()
+    window = _mk_window(
+        path="2026/1304/11465/",
+        end=now - dt.timedelta(hours=3),
+    )
+
+    async def _timeout(_url: str) -> dict:
+        raise TimeoutError
+
+    supervisor._fetch_json = _timeout  # type: ignore[method-assign]
+    monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
+
+    assert await supervisor._session_active(window) is False
 
 
 @pytest.mark.asyncio

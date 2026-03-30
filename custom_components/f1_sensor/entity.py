@@ -23,6 +23,7 @@ from .const import (
 _TRANSLATIONS_DIR = Path(__file__).parent / "translations"
 _ENTRY_NAME_SETTINGS: dict[str, tuple[str, str]] = {}
 _TRANSLATION_NAME_CACHE: dict[str, dict[str, str]] = {}
+_REPLAY_ONLY_ACTIVE_REASONS = frozenset({"replay", "replay-mode"})
 
 
 def _normalize_language(language: str | None) -> str:
@@ -203,6 +204,24 @@ def _safe_write_ha_state(entity: Entity) -> None:
 
     with suppress(Exception):
         loop.call_soon_threadsafe(entity.async_schedule_update_ha_state, False)
+
+
+def is_replay_only_stream_active(
+    hass: HomeAssistant | None, entry_id: str | None
+) -> bool:
+    """Return True when replay-only entities should expose live data."""
+    if hass is None or not entry_id:
+        return False
+    reg = hass.data.get(DOMAIN, {}).get(entry_id, {}) or {}
+    live_state = reg.get("live_state")
+    if live_state is None:
+        return False
+    is_live = bool(getattr(live_state, "is_live", False))
+    operation_mode = reg.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+    if operation_mode == OPERATION_MODE_DEVELOPMENT:
+        return is_live
+    reason = getattr(live_state, "reason", None)
+    return bool(is_live and reason in _REPLAY_ONLY_ACTIVE_REASONS)
 
 
 class F1BaseEntity(CoordinatorEntity):

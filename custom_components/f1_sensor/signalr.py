@@ -24,35 +24,55 @@ CORE_NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate"
 CORE_CONNECT_URL = "wss://livetiming.formula1.com/signalrcore"
 RECORD_SEP = "\x1e"
 
-# Subscribe to core live streams used across the integration.
-# Auth-protected streams (TeamRadio, PitStopSeries, ChampionshipPrediction)
-# are omitted — they require an F1TV JWT token that the integration does not
-# provide, so subscribing only generates empty responses.  The corresponding
-# coordinators and sensors are activated only in replay mode where the data
-# is available from archived .jsonStream files.
-# Position.z is also omitted — no coordinator consumes it.
+# Capability matrix for the current no-auth SignalR Core implementation.
+# Public live streams are subscribed during normal live sessions.
+# Auth-gated and replay-only streams stay defined here so future auth support
+# can extend the runtime contract without changing entity registration.
+PUBLIC_LIVE_STREAMS = (
+    "RaceControlMessages",
+    "TrackStatus",
+    "SessionStatus",
+    "WeatherData",
+    "LapCount",
+    "SessionInfo",
+    "SessionData",
+    "Heartbeat",
+    "ExtrapolatedClock",
+    "TimingData",
+    "DriverList",
+    "TimingAppData",
+    "TopThree",
+)
+
+AUTH_GATED_LIVE_STREAMS = (
+    "CarData.z",
+    "DriverRaceInfo",
+    "Position.z",
+    "ChampionshipPrediction",
+)
+
+REPLAY_ONLY_STREAMS = (
+    "TeamRadio",
+    "PitStopSeries",
+)
+
+
+def build_live_subscribe_streams(
+    *, include_auth_gated: bool = False
+) -> tuple[str, ...]:
+    """Return the SignalR streams that should be subscribed for live mode."""
+    streams = list(PUBLIC_LIVE_STREAMS)
+    if include_auth_gated:
+        streams.extend(AUTH_GATED_LIVE_STREAMS)
+    return tuple(streams)
+
+
+NO_AUTH_LIVE_STREAMS = build_live_subscribe_streams()
+
 SUBSCRIBE_MSG = {
     "H": "Streaming",
     "M": "Subscribe",
-    "A": [
-        [
-            "RaceControlMessages",
-            "TrackStatus",
-            "SessionStatus",
-            "WeatherData",
-            "LapCount",
-            "SessionInfo",
-            "SessionData",
-            "Heartbeat",
-            "ExtrapolatedClock",
-            "TimingData",
-            "CarData.z",
-            "DriverList",
-            "TimingAppData",
-            "TopThree",
-            "DriverRaceInfo",
-        ]
-    ],
+    "A": [list(NO_AUTH_LIVE_STREAMS)],
     "I": 1,
 }
 
@@ -307,11 +327,7 @@ class SignalRCoreClient:
                         # Invocation (feed) → translate to legacy M-format
                         target = payload.get("target", "")
                         arguments = payload.get("arguments", [])
-                        yield {
-                            "M": [
-                                {"H": "Streaming", "M": target, "A": arguments}
-                            ]
-                        }
+                        yield {"M": [{"H": "Streaming", "M": target, "A": arguments}]}
                     elif msg_type == 3:
                         # Completion (initial state) → translate to legacy R-format
                         result = payload.get("result")
@@ -421,8 +437,13 @@ class LiveBus:
                 try:
                     if self._client is None:
                         self._client = self._create_client()
-                    await self._client.ensure_connection()
+                    # Reset heartbeat timestamp *before* connecting so the
+                    # heartbeat monitor does not close the new client while
+                    # ensure_connection() is in progress (the monitor checks
+                    # every 5 s and would kill the client if the stale age
+                    # from the previous connection exceeds 45 s).
                     self._last_heartbeat_at = time.time()
+                    await self._client.ensure_connection()
                     _LOGGER.info("LiveBus connected to SignalR")
                     async for payload in self._client.messages():
                         # Dispatch feed messages by stream name

@@ -22,7 +22,6 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
     async_track_utc_time_change,
 )
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
@@ -42,6 +41,7 @@ from .entity import (
     F1AuxEntity,
     F1BaseEntity,
     default_object_id,
+    is_replay_only_stream_active,
     set_suggested_object_id,
 )
 from .helpers import (
@@ -85,6 +85,13 @@ WMO_CODE_TO_MDI = {
     96: "mdi:weather-lightning-rainy",
     99: "mdi:weather-lightning-rainy",
 }
+
+
+class _ReplayOnlyStreamMixin:
+    def _is_stream_active(self) -> bool:
+        return is_replay_only_stream_active(
+            getattr(self, "hass", None), getattr(self, "_entry_id", None)
+        )
 
 
 def _extract_driver_position(info: dict | None) -> str | None:
@@ -337,37 +344,6 @@ async def async_setup_entry(
 
     async_add_entities(sensors, True)
 
-    # Remove orphaned entity registry entries for replay-only sensors whose
-    # coordinators are not created in the current operation mode.
-    _cleanup_orphaned_sensor_entities(hass, entry)
-
-
-def _cleanup_orphaned_sensor_entities(
-    hass: HomeAssistant, entry: ConfigEntry
-) -> None:
-    """Remove entity registry entries for replay-only sensors left over from a previous install.
-
-    Only runs in live mode where these coordinators are intentionally absent.
-    In replay/development mode a missing coordinator means the user disabled
-    the sensor — the registry entry should be kept.
-    """
-    data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
-    from .const import OPERATION_MODE_LIVE as _LIVE  # noqa: PLC0415
-
-    if data.get("operation_mode") != _LIVE:
-        return
-    orphan_uids = [
-        f"{entry.entry_id}_team_radio",
-        f"{entry.entry_id}_pitstops",
-        f"{entry.entry_id}_championship_prediction_drivers",
-        f"{entry.entry_id}_championship_prediction_teams",
-    ]
-    registry = er.async_get(hass)
-    for uid in orphan_uids:
-        entity_id = registry.async_get_entity_id("sensor", DOMAIN, uid)
-        if entity_id is not None:
-            registry.async_remove(entity_id)
-
 
 class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
     """Diagnostic mode sensor for the live timing transport (idle/live/replay)."""
@@ -616,7 +592,9 @@ class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
         raise NotImplementedError
 
 
-class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
+class _ChampionshipPredictionBase(
+    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+):
     """Base for championship prediction sensors with shared restore logic."""
 
     _device_category = "championship"
@@ -4751,7 +4729,9 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         }
 
 
-class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+class F1TeamRadioSensor(
+    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+):
     """Sensor exposing the latest Team Radio clip.
 
     - State: latest clip UTC timestamp (ISO8601, TIMESTAMP device_class)
@@ -4945,7 +4925,9 @@ class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._last_utc = None
 
 
-class F1PitStopsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+class F1PitStopsSensor(
+    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+):
     """Live pit stops for all cars (aggregated).
 
     - State: total pit stops (int)
