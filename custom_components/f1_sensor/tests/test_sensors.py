@@ -1289,7 +1289,8 @@ async def test_live_bus_stream_diagnostics_track_frames_and_keys(
         "LiveBus first frame for TrackStatus with keys=['Status', 'Message']"
         in caplog.text
     )
-    assert "ChampionshipPrediction:0/0 (none)" in caplog.text
+    # ChampionshipPrediction removed from DEBUG_SUMMARY_STREAMS (replay-only)
+    assert "TopThree:0/0 (none)" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -1528,7 +1529,7 @@ async def test_weather_sensor_timeout_clears_stale_state(hass, monkeypatch) -> N
                             "season": "2026",
                             "round": "1",
                             "raceName": "Australian Grand Prix",
-                            "date": "2026-03-20",
+                            "date": "2099-03-20",
                             "time": "05:00:00Z",
                             "Circuit": {
                                 "circuitId": "albert_park",

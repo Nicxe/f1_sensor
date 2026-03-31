@@ -158,6 +158,9 @@ FAST_RETRY_SEC = 5
 MAX_RETRY_SEC = 60
 BACK_OFF_FACTOR = 2
 
+# SignalR protocol toggle: True = Core (/signalrcore), False = Legacy (/signalr)
+SIGNALR_USE_CORE = True
+
 # FIA document scraping defaults (best effort, update slug each season if FIA changes structure)
 FIA_DOCUMENTS_BASE_URL = (
     "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14"

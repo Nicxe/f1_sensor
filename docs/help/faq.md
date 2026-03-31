@@ -45,6 +45,22 @@ You can use those attributes in templates or in the calendar to know when FP1, F
 ### Live Data Questions
 
 
+<details>
+<summary>Why are some entities like Pit Stops, Team Radio, and Championship Prediction not available during live sessions?</summary>
+
+These entities depend on data streams from the F1 Live Timing API that require authentication the integration does not currently support. Since the data cannot be received reliably during live sessions, these entities are only created when you play back a session in [**Replay Mode**](/features/replay-mode), where the full session archive is available and all data works normally.
+
+The affected entities are:
+- `sensor.f1_pitstops`
+- `sensor.f1_team_radio`
+- `sensor.f1_championship_prediction_drivers`
+- `sensor.f1_championship_prediction_teams`
+- `binary_sensor.f1_formation_start`
+
+All other live entities, such as track status, session status, driver positions, race control messages, and weather, continue to work during live sessions as before.
+</details>
+
+
 
 <details>
 <summary>Why are the live sensors (e.g. track status, session status) not updating outside of race sessions?</summary>

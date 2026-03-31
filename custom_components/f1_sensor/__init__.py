@@ -18,7 +18,7 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_COMPONENT_LOADED
 from homeassistant.core import HomeAssistant, ServiceCall, callback as ha_callback
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
@@ -89,12 +89,18 @@ from .no_spoiler import NoSpoilerModeManager
 from .replay import ReplaySignalRClient
 from .replay_mode import ReplayController, ReplayState
 from .replay_start import ReplayStartReferenceController
-from .signalr import LiveBus
+from .signalr import (
+    AUTH_GATED_LIVE_STREAMS,
+    PUBLIC_LIVE_STREAMS,
+    REPLAY_ONLY_STREAMS,
+    LiveBus,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
 _REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode", "replay-preparing"})
+_REPLAY_ONLY_ACTIVE_REASONS = frozenset({"replay", "replay-mode"})
 _ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES = (
     "_track_time",
     "_session_time_remaining",
@@ -124,6 +130,10 @@ _FINISHING_PLUS_LAPS_RE = re.compile(r"^\+\d+\s+Laps?$", re.IGNORECASE)
 
 def _is_replay_delay_reason(reason: str | None) -> bool:
     return reason in _REPLAY_DELAY_REASONS
+
+
+def _is_replay_only_active_reason(reason: str | None) -> bool:
+    return reason in _REPLAY_ONLY_ACTIVE_REASONS
 
 
 def _is_activity_log_excluded_entity(entity_id: str | None) -> bool:
@@ -1583,10 +1593,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_state = LiveAvailabilityTracker()
         live_state.set_state(True, "replay-mode")
 
+    def _replay_only_streams_active() -> bool:
+        if operation_mode == OPERATION_MODE_DEVELOPMENT:
+            return True
+        return bool(getattr(live_state, "is_live", False)) and _is_replay_delay_reason(
+            getattr(live_state, "reason", None)
+        )
+
     formation_tracker = FormationStartTracker(
         hass,
         bus=live_bus,
         http_session=session,
+        availability_guard=_replay_only_streams_active,
     )
 
     def _reload_entry():
@@ -1702,7 +1720,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if sprint_results_coordinator:
         await sprint_results_coordinator.async_config_entry_first_refresh()
     if fia_documents_coordinator:
-        await fia_documents_coordinator.async_config_entry_first_refresh()
+        try:
+            await fia_documents_coordinator.async_config_entry_first_refresh()
+        except ConfigEntryNotReady as err:
+            fia_documents_coordinator.async_set_updated_data(
+                fia_documents_coordinator.build_empty_result()
+            )
+            _LOGGER.warning(
+                "FIA documents unavailable during setup; continuing without documents: %s",
+                err.__cause__ or err,
+            )
     await session_coordinator.async_config_entry_first_refresh()
     if track_status_coordinator:
         await track_status_coordinator.async_config_entry_first_refresh()
@@ -1720,6 +1747,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await lap_count_coordinator.async_config_entry_first_refresh()
 
     # Conditionally create live-stream coordinators (require enable_rc + sensor enabled).
+    # Replay/auth-gated coordinators stay registered in live mode and expose
+    # unavailable state until their backing stream capability becomes available.
     need_drivers = any(k in enabled for k in ("driver_list",))
     need_top_three = any(k in enabled for k in ("top_three",))
     need_team_radio = any(k in enabled for k in ("team_radio",))
@@ -1848,6 +1877,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "live_supervisor": live_supervisor,
         "live_schedule_fallback_source": event_tracker_source,
         "live_state": live_state,
+        "signalr_stream_capabilities": {
+            "public_live_streams": frozenset(PUBLIC_LIVE_STREAMS),
+            "auth_gated_live_streams": frozenset(AUTH_GATED_LIVE_STREAMS),
+            "replay_only_streams": frozenset(REPLAY_ONLY_STREAMS),
+            "auth_enabled": False,
+        },
         "operation_mode": operation_mode,
         "replay_file": replay_source,
         "live_delay_controller": delay_controller,
@@ -2036,7 +2071,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
-        self.available = True
+        self.available = False
         self._last_message = msg
         self.data_list = [msg]
         self.async_set_updated_data(msg)
@@ -2108,7 +2143,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
-        self.available = True
+        self.available = False
         self._last_message = None
         self.data_list: list[dict] = []
         self._deliver_handles: list[asyncio.Handle] = []
@@ -2312,7 +2347,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     def _deliver(self, item: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
-        self.available = True
+        self.available = False
         received_at = dt_util.utcnow().isoformat(timespec="seconds")
         # Maintain last message for visibility and parity with other coordinators
         self._last_message = item
@@ -2409,7 +2444,7 @@ class LiveModeCoordinator(DataUpdateCoordinator):
         )
         self._rc_coordinator = race_control_coordinator
         self._session_status_coordinator = session_status_coordinator
-        self.available = True
+        self.available = False
         self._state: dict = {"overtake_enabled": None, "straight_mode": None}
         self._rc_unsub: Callable[[], None] | None = None
         self._status_unsub: Callable[[], None] | None = None
@@ -2588,7 +2623,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
-        self.available = True
+        self.available = False
         self._last_message = msg
         self.data_list = [msg]
         self.async_set_updated_data(msg)
@@ -2658,7 +2693,7 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
-        self.available = True
+        self.available = False
         self._state: dict[str, Any] = {
             "latest": None,
             "history": [],
@@ -2700,8 +2735,9 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
-        self.available = is_live
-        if not is_live:
+        replay_available = bool(is_live and self._replay_mode)
+        self.available = replay_available
+        if not replay_available:
             _clear_delayed_ingest_state(self)
             self._state = {"latest": None, "history": []}
             # Notify entities to clear their state
@@ -2757,7 +2793,6 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
-        self.available = True
         # In replay/development mode, try to provide a static root URL even if the
         # transport did not annotate the payload (robust against file encoding quirks).
         with suppress(Exception):
@@ -2888,7 +2923,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
-        self.available = True
+        self.available = False
         self._bus = bus
         self._config_entry = config_entry
         self._unsubs: list[Callable[[], None]] = []
@@ -2938,8 +2973,9 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
-        self.available = is_live
-        if not is_live:
+        replay_available = bool(is_live and self._replay_mode)
+        self.available = replay_available
+        if not replay_available:
             _clear_delayed_ingest_state(self)
             self._reset_store()
 
@@ -3083,7 +3119,6 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
     def _deliver(self) -> None:
         if _is_no_spoiler_blocked(self):
             return
-        self.available = True
         self._refresh_pit_deltas()
         cars: dict[str, Any] = {}
         total = 0
@@ -3433,7 +3468,7 @@ class ChampionshipPredictionCoordinator(
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
-        self.available = True
+        self.available = False
         self._bus = bus
         self._config_entry = config_entry
 
@@ -3492,8 +3527,9 @@ class ChampionshipPredictionCoordinator(
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
-        self.available = is_live
-        if not is_live:
+        replay_available = bool(is_live and self._replay_mode)
+        self.available = replay_available
+        if not replay_available:
             _clear_delayed_ingest_state(self)
             self._reset_store()
 
@@ -3658,7 +3694,6 @@ class ChampionshipPredictionCoordinator(
     def _deliver(self) -> None:
         if _is_no_spoiler_blocked(self):
             return
-        self.available = True
 
         p1_rn, p1_entry = self._pick_predicted_driver_p1()
         ident = self._driver_map.get(str(p1_rn), {}) if p1_rn else {}
@@ -3922,7 +3957,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     fastest.update(fastest_updates)
                     changed = True
 
-            # Capture Line field as grid position (backup if DriverRaceInfo not available)
+            # Capture Line as the live no-auth fallback for grid position.
             if "Line" in info:
                 line_raw = info.get("Line")
                 try:
@@ -5247,13 +5282,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 self._unsubs.append(
                     bus.subscribe(
                         "LapHistory", _wrap_delayed_handler(self, self._on_lap_history)
-                    )
-                )
-            with suppress(Exception):
-                self._unsubs.append(
-                    bus.subscribe(
-                        "DriverRaceInfo",
-                        _wrap_delayed_handler(self, self._on_driver_race_info),
                     )
                 )
             with suppress(Exception):
@@ -6614,11 +6642,9 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         race = self._get_next_race()
         if not race:
-            return {"event_key": None, "race": None, "documents": []}
+            return self.build_empty_result()
 
         season = str(race.get("season") or datetime.utcnow().year)
-        round_ = str(race.get("round") or "")
-        event_key = f"{season}_{round_ or 'next'}"
 
         season_url = await self._get_season_url(season)
 
@@ -6642,17 +6668,28 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(f"Error parsing FIA documents: {err}") from err
 
-        result = {
-            "event_key": event_key,
-            "race": self._summarize_race(race),
-            "documents": docs,
-        }
+        result = self._build_result(race, docs)
         # No-spoiler: keep cache warm but don't deliver new data to entities.
         # On deactivation, the next refresh will deliver the full document list
         # including any documents published during the blackout period.
         if _is_no_spoiler_jolpica_blocked(self):
             return self.data
         return result
+
+    def build_empty_result(self) -> dict[str, Any]:
+        return self._build_result(self._get_next_race(), [])
+
+    def _build_result(self, race: dict | None, docs: list[dict]) -> dict[str, Any]:
+        if not race:
+            return {"event_key": None, "race": None, "documents": []}
+
+        season = str(race.get("season") or datetime.utcnow().year)
+        round_ = str(race.get("round") or "")
+        return {
+            "event_key": f"{season}_{round_ or 'next'}",
+            "race": self._summarize_race(race),
+            "documents": docs,
+        }
 
     async def _get_season_url(self, season: str) -> str:
         cached = self._season_url_cache.get(season)

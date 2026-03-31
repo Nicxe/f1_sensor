@@ -42,11 +42,13 @@ The integration organizes all entities across **six dedicated sub-devices**, whi
 | Device | What it contains |
 | --- | --- |
 | **Race** | Next race info, track time, race week indicator, season calendar |
-| **Championship** | Driver and constructor standings, points progression, championship predictions |
-| **Session** | Session status, track status, safety car, weather, timing sensors, formation start, overtake mode, straight mode |
-| **Drivers** | Driver list, tyres, tyre statistics, driver positions, team radio |
+| **Championship** | Driver and constructor standings, points progression, championship predictions* |
+| **Session** | Session status, track status, safety car, weather, timing sensors, formation start*, overtake mode, straight mode |
+| **Drivers** | Driver list, tyres, tyre statistics, driver positions, team radio*, pit stops* |
 | **Officials** | Race control messages, FIA documents, track limits, investigations |
 | **System** | Live delay, calibration controls, replay controls, live timing connectivity |
+
+*Entities marked with an asterisk are only available in [Replay Mode](/features/replay-mode).
 
 Each device exposes its own set of [device automation triggers](/automation#device-automation-triggers), making it straightforward to build automations directly from the UI without writing YAML.
 

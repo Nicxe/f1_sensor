@@ -13,7 +13,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     DOMAIN,
-    LIVE_DELAY_REFERENCE_FORMATION,
     LIVE_DELAY_REFERENCE_LAP_SYNC,
     LIVE_DELAY_REFERENCE_SESSION,
 )
@@ -109,7 +108,6 @@ class F1LiveDelayReferenceSelect(F1AuxEntity, SelectEntity):
         self._controller = controller
         self._option_to_value = {
             "Session live": LIVE_DELAY_REFERENCE_SESSION,
-            "Formation start (race/sprint)": LIVE_DELAY_REFERENCE_FORMATION,
             "Lap sync (race/sprint)": LIVE_DELAY_REFERENCE_LAP_SYNC,
         }
         self._value_to_option = {v: k for k, v in self._option_to_value.items()}

@@ -41,6 +41,7 @@ from .entity import (
     F1AuxEntity,
     F1BaseEntity,
     default_object_id,
+    is_replay_only_stream_active,
     set_suggested_object_id,
 )
 from .helpers import (
@@ -84,6 +85,13 @@ WMO_CODE_TO_MDI = {
     96: "mdi:weather-lightning-rainy",
     99: "mdi:weather-lightning-rainy",
 }
+
+
+class _ReplayOnlyStreamMixin:
+    def _is_stream_active(self) -> bool:
+        return is_replay_only_stream_active(
+            getattr(self, "hass", None), getattr(self, "_entry_id", None)
+        )
 
 
 def _extract_driver_position(info: dict | None) -> str | None:
@@ -584,7 +592,9 @@ class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
         raise NotImplementedError
 
 
-class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
+class _ChampionshipPredictionBase(
+    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+):
     """Base for championship prediction sensors with shared restore logic."""
 
     _device_category = "championship"
@@ -4719,7 +4729,9 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         }
 
 
-class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+class F1TeamRadioSensor(
+    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+):
     """Sensor exposing the latest Team Radio clip.
 
     - State: latest clip UTC timestamp (ISO8601, TIMESTAMP device_class)
@@ -4913,7 +4925,9 @@ class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._last_utc = None
 
 
-class F1PitStopsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+class F1PitStopsSensor(
+    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+):
     """Live pit stops for all cars (aggregated).
 
     - State: total pit stops (int)
