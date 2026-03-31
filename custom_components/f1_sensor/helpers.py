@@ -375,6 +375,10 @@ async def fetch_json(
     except Exception as err:
         if not fut.done():
             fut.set_exception(err)
+            # Mark the exception as retrieved so a lone producer does not emit
+            # "Future exception was never retrieved" when no request was coalesced.
+            with suppress(Exception):
+                fut.exception()
         raise
     finally:
         # Allow future consumers to see completed future for a short while,
@@ -504,6 +508,10 @@ async def fetch_text(
     except Exception as err:
         if not fut.done():
             fut.set_exception(err)
+            # Mark the exception as retrieved so a lone producer does not emit
+            # "Future exception was never retrieved" when no request was coalesced.
+            with suppress(Exception):
+                fut.exception()
         raise
     finally:
         try:

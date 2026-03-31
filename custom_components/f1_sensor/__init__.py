@@ -1507,6 +1507,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass,
             race_coordinator,
             session=http_session,
+            user_agent=ua_string,
             cache=http_cache,
             inflight=http_inflight,
             ttl_seconds=FIA_DOCS_POLL_INTERVAL,
@@ -6611,6 +6612,7 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
         race_coordinator: DataUpdateCoordinator,
         *,
         session=None,
+        user_agent: str | None = None,
         cache=None,
         inflight=None,
         ttl_seconds: int = FIA_DOCS_POLL_INTERVAL,
@@ -6628,6 +6630,7 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
             config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
+        self._headers = {"User-Agent": str(user_agent)} if user_agent else None
         self._race_coordinator = race_coordinator
         self._cache = cache
         self._inflight = inflight
@@ -6654,6 +6657,7 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
                     self.hass,
                     self._session,
                     season_url,
+                    headers=self._headers,
                     ttl_seconds=self._ttl,
                     cache=self._cache,
                     inflight=self._inflight,
@@ -6702,6 +6706,7 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
                     self.hass,
                     self._session,
                     FIA_SEASON_LIST_URL,
+                    headers=self._headers,
                     ttl_seconds=self._ttl,
                     cache=self._cache,
                     inflight=self._inflight,
@@ -6715,6 +6720,7 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
                         self.hass,
                         self._session,
                         FIA_DOCUMENTS_BASE_URL,
+                        headers=self._headers,
                         ttl_seconds=self._ttl,
                         cache=self._cache,
                         inflight=self._inflight,
