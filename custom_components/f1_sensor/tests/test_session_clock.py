@@ -1093,6 +1093,66 @@ async def test_session_clock_replay_pause_freezes_server_now_utc(
 
 
 @pytest.mark.asyncio
+async def test_session_clock_replay_pause_freezes_current_logical_time(
+    hass, monkeypatch
+) -> None:
+    """Pausing replay must freeze the current logical replay time, not jump
+    back to the last raw heartbeat timestamp."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    heartbeat_utc = _utc("2026-03-08T13:05:00Z")
+    mono_ref = time.monotonic()
+    coordinator._last_heartbeat_utc = heartbeat_utc
+    coordinator._last_heartbeat_mono = mono_ref
+    coordinator._replay_now_anchor_utc = heartbeat_utc
+    coordinator._replay_now_anchor_mono = mono_ref
+
+    paused_mono = mono_ref + 55.0
+    monkeypatch.setattr(time, "monotonic", lambda: paused_mono)
+    coordinator._on_replay_state_change({"state": ReplayState.PAUSED.value})
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PAUSED
+    )
+
+    now = coordinator._server_now_utc()
+    assert now == heartbeat_utc + timedelta(seconds=55)
+
+
+@pytest.mark.asyncio
+async def test_session_clock_replay_resume_keeps_pause_gap_out_of_logical_time(
+    hass, monkeypatch
+) -> None:
+    """Resuming replay must continue from the frozen replay time instead of
+    adding the wall-clock pause duration to the logical session time."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    heartbeat_utc = _utc("2026-03-08T13:05:00Z")
+    mono_ref = time.monotonic()
+    coordinator._last_heartbeat_utc = heartbeat_utc
+    coordinator._last_heartbeat_mono = mono_ref
+    coordinator._replay_now_anchor_utc = heartbeat_utc
+    coordinator._replay_now_anchor_mono = mono_ref
+
+    paused_mono = mono_ref + 55.0
+    monkeypatch.setattr(time, "monotonic", lambda: paused_mono)
+    coordinator._on_replay_state_change({"state": ReplayState.PAUSED.value})
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PAUSED
+    )
+
+    resumed_mono = paused_mono + 30.0
+    monkeypatch.setattr(time, "monotonic", lambda: resumed_mono)
+    coordinator._on_replay_state_change({"state": ReplayState.PLAYING.value})
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PLAYING
+    )
+
+    after_resume_mono = resumed_mono + 5.0
+    monkeypatch.setattr(time, "monotonic", lambda: after_resume_mono)
+
+    now = coordinator._server_now_utc()
+    assert now == heartbeat_utc + timedelta(seconds=60)
+
+
+@pytest.mark.asyncio
 async def test_session_clock_replay_full_lifecycle(hass, monkeypatch) -> None:
     """End-to-end test: replay plays, pauses, resumes, finishes —
     clock state transitions mirror what would happen in live mode."""
@@ -1129,6 +1189,7 @@ async def test_session_clock_replay_full_lifecycle(hass, monkeypatch) -> None:
     )
     # Fix heartbeat mono anchor to our known base
     coordinator._last_heartbeat_mono = mono_base
+    coordinator._replay_now_anchor_mono = mono_base
 
     # Simulate 5 seconds after heartbeat
     monkeypatch.setattr(time, "monotonic", lambda: mono_base + 5.0)

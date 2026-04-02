@@ -7719,6 +7719,10 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         self._race_start_utc: datetime | None = None
         self._last_heartbeat_utc: datetime | None = None
         self._last_heartbeat_mono: float | None = None
+        self._replay_now_anchor_utc: datetime | None = None
+        self._replay_now_anchor_mono: float | None = None
+        self._replay_frozen_now_utc: datetime | None = None
+        self._last_replay_state: ReplayState | None = None
         self._clock_anchor_segment_id: int | None = None
 
     @staticmethod
@@ -7807,8 +7811,11 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         )
         if hb_utc is None:
             return
+        mono_now = time.monotonic()
         self._last_heartbeat_utc = hb_utc
-        self._last_heartbeat_mono = time.monotonic()
+        self._last_heartbeat_mono = mono_now
+        self._replay_now_anchor_utc = hb_utc
+        self._replay_now_anchor_mono = mono_now
         self._schedule_deliver()
 
     def _on_session_status(self, msg: dict) -> None:
@@ -7894,31 +7901,67 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         """Return True when replay is explicitly paused."""
         return self._replay_controller_state() == ReplayState.PAUSED
 
-    def _on_replay_state_change(self, snapshot: dict) -> None:
-        """Handle replay controller state changes (pause/resume/seek)."""
-        state_str = snapshot.get("state", "")
-        if state_str in (
-            ReplayState.PAUSED.value,
-            ReplayState.PLAYING.value,
-            ReplayState.SEEKING.value,
+    def _replay_now_utc(self) -> datetime:
+        """Return the current logical replay time without applying freeze logic."""
+        if (
+            isinstance(self._replay_now_anchor_utc, datetime)
+            and self._replay_now_anchor_mono is not None
         ):
-            self._deliver()
-
-    def _server_now_utc(self) -> datetime:
-        if self._is_replay_temporarily_frozen():
-            if isinstance(self._last_heartbeat_utc, datetime):
-                return self._last_heartbeat_utc
-            if isinstance(self._clock_anchor_utc, datetime):
-                return self._clock_anchor_utc
+            elapsed = max(0.0, time.monotonic() - self._replay_now_anchor_mono)
+            return self._replay_now_anchor_utc + timedelta(seconds=elapsed)
         if (
             isinstance(self._last_heartbeat_utc, datetime)
             and self._last_heartbeat_mono is not None
         ):
             elapsed = max(0.0, time.monotonic() - self._last_heartbeat_mono)
-            now_utc = self._last_heartbeat_utc + timedelta(seconds=elapsed)
-        else:
-            now_utc = dt_util.utcnow()
-        return now_utc
+            return self._last_heartbeat_utc + timedelta(seconds=elapsed)
+        return dt_util.utcnow()
+
+    def _on_replay_state_change(self, snapshot: dict) -> None:
+        """Handle replay controller state changes (pause/resume/seek)."""
+        state_str = snapshot.get("state", "")
+        try:
+            state = ReplayState(state_str)
+        except ValueError:
+            return
+
+        was_frozen = self._last_replay_state in (
+            ReplayState.PAUSED,
+            ReplayState.SEEKING,
+        )
+        is_frozen = state in (ReplayState.PAUSED, ReplayState.SEEKING)
+
+        if is_frozen and not was_frozen:
+            self._replay_frozen_now_utc = self._replay_now_utc()
+        elif was_frozen and not is_frozen:
+            frozen_now = self._replay_frozen_now_utc
+            anchor_utc = self._replay_now_anchor_utc
+            if isinstance(frozen_now, datetime) and not (
+                isinstance(anchor_utc, datetime) and anchor_utc > frozen_now
+            ):
+                mono_now = time.monotonic()
+                self._replay_now_anchor_utc = frozen_now
+                self._replay_now_anchor_mono = mono_now
+            self._replay_frozen_now_utc = None
+
+        self._last_replay_state = state
+
+        if state in (
+            ReplayState.PAUSED,
+            ReplayState.PLAYING,
+            ReplayState.SEEKING,
+        ):
+            self._deliver()
+
+    def _server_now_utc(self) -> datetime:
+        if self._is_replay_temporarily_frozen():
+            if isinstance(self._replay_frozen_now_utc, datetime):
+                return self._replay_frozen_now_utc
+            if isinstance(self._last_heartbeat_utc, datetime):
+                return self._last_heartbeat_utc
+            if isinstance(self._clock_anchor_utc, datetime):
+                return self._clock_anchor_utc
+        return self._replay_now_utc()
 
     def _current_live_window(self):
         live_supervisor = self._live_supervisor
