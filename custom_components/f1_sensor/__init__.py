@@ -2072,7 +2072,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
-        self.available = False
+        self.available = True
         self._last_message = msg
         self.data_list = [msg]
         self.async_set_updated_data(msg)
@@ -2348,7 +2348,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     def _deliver(self, item: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
-        self.available = False
+        self.available = True
         received_at = dt_util.utcnow().isoformat(timespec="seconds")
         # Maintain last message for visibility and parity with other coordinators
         self._last_message = item
@@ -2624,7 +2624,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
-        self.available = False
+        self.available = True
         self._last_message = msg
         self.data_list = [msg]
         self.async_set_updated_data(msg)
@@ -3614,10 +3614,14 @@ class ChampionshipPredictionCoordinator(
             racing_number = str(info.get("RacingNumber") or rn).strip()
             if not racing_number:
                 continue
+            current = self._driver_map.get(racing_number) or {}
+            tla = info.get("Tla")
+            name = info.get("FullName") or info.get("BroadcastName")
+            team = info.get("TeamName")
             self._driver_map[racing_number] = {
-                "tla": info.get("Tla"),
-                "name": info.get("FullName") or info.get("BroadcastName"),
-                "team": info.get("TeamName"),
+                "tla": tla if tla not in (None, "") else current.get("tla"),
+                "name": name if name not in (None, "") else current.get("name"),
+                "team": team if team not in (None, "") else current.get("team"),
             }
         # identity update can change sensor state even without prediction deltas
         self._schedule_deliver()
