@@ -25,6 +25,8 @@ They require the F1 Sensor integration with live data enabled to function.
 | --- | --- |
 | [F1 Live Session](#f1-live-session-card) | Session status, track condition, weather, and lap counter |
 | [F1 Race Control](#f1-race-control-card) | Latest race control messages and flags |
+| [F1 Qualifying Timing](#f1-qualifying-timing-card) | Driver qualifying times, sector splits, and Q1/Q2/Q3 best laps |
+| [F1 Race Lap](#f1-race-lap-card) | Race order with lap times, tyre compound, stint age, and pit stops |
 | [F1 Tyre Statistics](#f1-tyre-statistics-card) | Tyre compounds, stint history, and best lap times per driver |
 | [F1 Pit Stop Overview](#f1-pit-stop-overview-card) | Pit stop timeline with tyre changes and pit times |
 | [F1 Driver Lap Times](#f1-driver-lap-times-card) | Live lap times and driver positions |
@@ -135,6 +137,65 @@ Shows the latest race control message with flag type and category. Automatically
 | --- | --- | --- |
 | `show_fia_logo` | `true` | Show the FIA logo in the card header |
 | `min_display_time` | `0` | Minimum time in milliseconds to display a message before updating |
+
+---
+
+### F1 Qualifying Timing Card
+
+`custom:f1-qualifying-timing-card`
+
+Shows all drivers' qualifying performance in a single table: live sector times (S1, S2, S3), last lap time, and best lap from each qualifying part (Q1, Q2, Q3). The current tyre compound and stint age are shown when the tyres sensor is connected. Drivers who have been knocked out are visually dimmed. The active qualifying part is shown as a badge in the card header.
+
+:::info Session availability
+This card is only shown during Qualifying and Sprint Qualifying. Outside these sessions the card displays a placeholder message.
+:::
+
+![Placeholder — F1 Qualifying Timing card screenshot](/img/placeholder_card_qualifying_timing.png)
+
+**Required entity:** `sensor.f1_driver_positions`
+
+**Optional entities:** `sensor.f1_current_tyres`, `sensor.f1_driver_list`, `sensor.f1_current_session`, `sensor.f1_session_status`
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `title` | `Qualifying` | Card title |
+| `show_header` | `true` | Show the card title header |
+| `show_table_header` | `true` | Show column labels above the table |
+| `show_team_logo` | `true` | Show team logo |
+| `team_logo_style` | `color` | Logo appearance: `color` (with white fallback) or `white` |
+
+---
+
+### F1 Race Lap Card
+
+`custom:f1-race-lap-card`
+
+Displays the live race order with each driver's current position, tyre compound, stint age, number of pit stops, last lap time, and personal fastest lap time. The driver holding the session fastest lap is highlighted in purple. The card title updates with the current lap number as the race progresses.
+
+:::info Session availability
+This card is only shown during Race and Sprint Race. Outside these sessions the card displays a placeholder message.
+:::
+
+![Placeholder — F1 Race Lap card screenshot](/img/placeholder_card_race_lap.png)
+
+**Required entities:** `sensor.f1_driver_positions`, `sensor.f1_current_session`
+
+**Optional entities:** `sensor.f1_race_lap_count`, `sensor.f1_session_status`, `sensor.f1_driver_list`, `sensor.f1_current_tyres`, `sensor.f1_pitstops`
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `title` | `Race Lap` | Card title |
+| `show_header` | `true` | Show the card title header |
+| `show_table_header` | `true` | Show column labels above the table |
+| `show_position` | `true` | Show current race position |
+| `show_team_logo` | `true` | Show team logo |
+| `team_logo_style` | `color` | Logo appearance: `color` (with white fallback) or `white` |
+| `show_status` | `true` | Show inline driver status (pit, retired, etc.) |
+| `show_tyre` | `true` | Show current tyre compound |
+| `show_tyre_age` | `true` | Show tyre stint age in laps |
+| `show_pit_count` | `true` | Show number of pit stops |
+| `show_last_lap` | `true` | Show last lap time |
+| `show_fastest_lap` | `true` | Show driver's personal fastest lap time |
 
 ---
 
