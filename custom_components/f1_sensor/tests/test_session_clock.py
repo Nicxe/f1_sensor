@@ -18,6 +18,7 @@ from custom_components.f1_sensor.const import (
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
 )
+from custom_components.f1_sensor.replay_mode import ReplayState
 from custom_components.f1_sensor.sensor import (
     F1RaceTimeToThreeHourLimitSensor,
     F1SessionTimeRemainingSensor,
@@ -694,3 +695,606 @@ async def test_race_three_hour_sensor_hidden_for_sprint(hass) -> None:
     state = hass.states.get(sensor.entity_id)
     assert state is not None
     assert state.state == "unavailable"
+
+
+@pytest.mark.asyncio
+async def test_session_clock_qualifying_break_does_not_show_stale_elapsed(
+    hass, monkeypatch
+) -> None:
+    """During the break between Q1 and Q2 the segment advances before new
+    ExtrapolatedClock data arrives.  The stale Q1 anchor (remaining=0) must
+    not be combined with the Q2 total to produce a misleading elapsed value."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    _apply_session_clock_events(
+        coordinator,
+        [
+            ("SessionInfo", {"Type": "Qualifying", "Name": "Qualifying"}),
+            # Q1 start & clock
+            (
+                "SessionData",
+                {"Series": {"1": {"Utc": "2026-03-07T05:00:00Z", "QualifyingPart": 1}}},
+            ),
+            (
+                "SessionData",
+                {
+                    "StatusSeries": {
+                        "1": {
+                            "Utc": "2026-03-07T05:00:00Z",
+                            "SessionStatus": "Started",
+                        }
+                    }
+                },
+            ),
+            (
+                "ExtrapolatedClock",
+                {
+                    "Utc": "2026-03-07T05:00:01Z",
+                    "Remaining": "00:17:59",
+                    "Extrapolating": True,
+                },
+            ),
+            # Q1 finished
+            (
+                "SessionData",
+                {
+                    "StatusSeries": {
+                        "10": {
+                            "Utc": "2026-03-07T05:18:00Z",
+                            "SessionStatus": "Finished",
+                        }
+                    }
+                },
+            ),
+            (
+                "ExtrapolatedClock",
+                {
+                    "Utc": "2026-03-07T05:18:00Z",
+                    "Remaining": "00:00:00",
+                    "Extrapolating": False,
+                },
+            ),
+            # Q2 qualifying part arrives during break — no ExtrapolatedClock yet
+            (
+                "SessionData",
+                {"Series": {"2": {"Utc": "2026-03-07T05:25:00Z", "QualifyingPart": 2}}},
+            ),
+        ],
+    )
+
+    now_utc = _utc("2026-03-07T05:26:00Z")
+    monkeypatch.setattr(coordinator, "_server_now_utc", lambda: now_utc)
+
+    state = coordinator._build_state()
+    assert state["session_part"] == 2
+    # Remaining and elapsed should be None — no Q2 clock data yet
+    assert state["clock_remaining_s"] is None
+    assert state["clock_elapsed_s"] is None
+
+
+@pytest.mark.asyncio
+async def test_session_clock_qualifying_break_recovers_when_new_clock_arrives(
+    hass, monkeypatch
+) -> None:
+    """After the qualifying break, the first ExtrapolatedClock for Q2 must
+    restore normal remaining and elapsed values."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    _apply_session_clock_events(
+        coordinator,
+        [
+            ("SessionInfo", {"Type": "Qualifying", "Name": "Qualifying"}),
+            (
+                "SessionData",
+                {"Series": {"1": {"Utc": "2026-03-07T05:00:00Z", "QualifyingPart": 1}}},
+            ),
+            (
+                "ExtrapolatedClock",
+                {
+                    "Utc": "2026-03-07T05:00:01Z",
+                    "Remaining": "00:17:59",
+                    "Extrapolating": True,
+                },
+            ),
+            (
+                "ExtrapolatedClock",
+                {
+                    "Utc": "2026-03-07T05:18:00Z",
+                    "Remaining": "00:00:00",
+                    "Extrapolating": False,
+                },
+            ),
+            # Q2 segment + start + new clock
+            (
+                "SessionData",
+                {"Series": {"2": {"Utc": "2026-03-07T05:25:00Z", "QualifyingPart": 2}}},
+            ),
+            (
+                "SessionData",
+                {
+                    "StatusSeries": {
+                        "14": {
+                            "Utc": "2026-03-07T05:26:00Z",
+                            "SessionStatus": "Started",
+                        }
+                    }
+                },
+            ),
+            (
+                "ExtrapolatedClock",
+                {
+                    "Utc": "2026-03-07T05:26:01Z",
+                    "Remaining": "00:14:59",
+                    "Extrapolating": True,
+                },
+            ),
+        ],
+    )
+
+    now_utc = _utc("2026-03-07T05:27:01Z")
+    monkeypatch.setattr(coordinator, "_server_now_utc", lambda: now_utc)
+
+    state = coordinator._build_state()
+    assert state["session_part"] == 2
+    assert state["clock_total_s"] == 15 * 60
+    assert state["clock_remaining_s"] == 899 - 60  # 839
+    assert state["clock_elapsed_s"] == 15 * 60 - state["clock_remaining_s"]
+    assert state["clock_running"] is True
+
+
+@pytest.mark.asyncio
+async def test_session_clock_race_overtime_phase(hass, monkeypatch) -> None:
+    """When the race 2-hour clock reaches 0 but status is still Started,
+    clock_phase should be 'overtime' rather than 'idle'."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    coordinator._session_info = {"Type": "Race", "Name": "Race"}
+    coordinator._clock_anchor_utc = _utc("2026-03-08T13:00:01Z")
+    coordinator._clock_anchor_remaining_s = 7199
+    coordinator._clock_anchor_extrapolating = True
+    coordinator._update_clock_total(0, 7199)
+    coordinator._last_heartbeat_utc = _utc("2026-03-08T15:00:05Z")
+    coordinator._last_heartbeat_mono = time.monotonic()
+
+    # Simulate: 2h+ have passed, remaining is now 0 but race still Started
+    coordinator._session_status = {"Status": "Started"}
+
+    now_utc = _utc("2026-03-08T15:01:00Z")
+    monkeypatch.setattr(coordinator, "_server_now_utc", lambda: now_utc)
+
+    state = coordinator._build_state()
+    assert state["clock_remaining_s"] == 0
+    assert state["clock_running"] is False
+    assert state["clock_phase"] == "overtime"
+
+
+class _FakeSessionManager:
+    """Minimal session manager that supports add_listener/notify."""
+
+    def __init__(self, state: ReplayState = ReplayState.IDLE) -> None:
+        self._state = state
+        self._listeners: list = []
+
+    def add_listener(self, callback):
+        self._listeners.append(callback)
+        callback(self._get_snapshot())
+
+        def _unsub():
+            if callback in self._listeners:
+                self._listeners.remove(callback)
+
+        return _unsub
+
+    def _get_snapshot(self) -> dict:
+        return {"state": self._state.value}
+
+    def notify(self, state: ReplayState) -> None:
+        self._state = state
+        snapshot = self._get_snapshot()
+        for listener in list(self._listeners):
+            listener(snapshot)
+
+
+class _FakeReplayController:
+    """Minimal replay controller exposing session_manager."""
+
+    def __init__(self) -> None:
+        self._sm = _FakeSessionManager()
+        self.state = ReplayState.IDLE
+
+    @property
+    def session_manager(self):
+        return self._sm
+
+
+@pytest.mark.asyncio
+async def test_session_clock_replay_pause_triggers_immediate_deliver(
+    hass, monkeypatch
+) -> None:
+    """When replay pauses, the clock coordinator should immediately update
+    clock_running=False and clock_phase='paused' without waiting for the
+    next stream message or tick."""
+    fake_rc = _FakeReplayController()
+    coordinator = SessionClockCoordinator(
+        hass, session_coord=object(), replay_controller=fake_rc
+    )
+    # Manually subscribe (normally done in async_config_entry_first_refresh)
+    coordinator._replay_state_unsub = fake_rc.session_manager.add_listener(
+        coordinator._on_replay_state_change
+    )
+
+    # Set up a running race clock
+    coordinator._session_info = {"Type": "Race", "Name": "Race"}
+    coordinator._session_status = {"Status": "Started"}
+    coordinator._clock_anchor_utc = _utc("2026-03-08T13:00:01Z")
+    coordinator._clock_anchor_remaining_s = 7000
+    coordinator._clock_anchor_extrapolating = True
+    coordinator._update_clock_total(0, 7000)
+    coordinator._last_heartbeat_utc = _utc("2026-03-08T13:00:06Z")
+    coordinator._last_heartbeat_mono = time.monotonic()
+
+    now_utc = _utc("2026-03-08T13:00:11Z")
+    monkeypatch.setattr(coordinator, "_server_now_utc", lambda: now_utc)
+
+    # Verify clock is running initially
+    coordinator._deliver()
+    state = coordinator.data
+    assert state["clock_running"] is True
+    assert state["clock_phase"] == "running"
+
+    # Simulate replay pause — make _replay_controller_state return PAUSED
+    fake_rc.state = ReplayState.PAUSED
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PAUSED
+    )
+
+    # Fire the session manager notification
+    fake_rc.session_manager.notify(ReplayState.PAUSED)
+
+    # The coordinator should have been delivered with paused state
+    state = coordinator.data
+    assert state["clock_running"] is False
+    assert state["clock_phase"] == "paused"
+
+
+@pytest.mark.asyncio
+async def test_session_clock_replay_resume_triggers_immediate_deliver(
+    hass, monkeypatch
+) -> None:
+    """When replay resumes from paused, the clock coordinator should
+    immediately update clock_running=True and restart the tick."""
+    fake_rc = _FakeReplayController()
+    coordinator = SessionClockCoordinator(
+        hass, session_coord=object(), replay_controller=fake_rc
+    )
+    coordinator._replay_state_unsub = fake_rc.session_manager.add_listener(
+        coordinator._on_replay_state_change
+    )
+
+    # Set up a race clock that was paused
+    coordinator._session_info = {"Type": "Race", "Name": "Race"}
+    coordinator._session_status = {"Status": "Started"}
+    coordinator._clock_anchor_utc = _utc("2026-03-08T13:00:01Z")
+    coordinator._clock_anchor_remaining_s = 7000
+    coordinator._clock_anchor_extrapolating = True
+    coordinator._update_clock_total(0, 7000)
+    coordinator._last_heartbeat_utc = _utc("2026-03-08T13:00:06Z")
+    coordinator._last_heartbeat_mono = time.monotonic()
+
+    now_utc = _utc("2026-03-08T13:00:11Z")
+    monkeypatch.setattr(coordinator, "_server_now_utc", lambda: now_utc)
+
+    # Start in paused state
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PAUSED
+    )
+    coordinator._deliver()
+    state = coordinator.data
+    assert state["clock_running"] is False
+    assert state["clock_phase"] == "paused"
+
+    # Simulate replay resume
+    fake_rc.state = ReplayState.PLAYING
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PLAYING
+    )
+
+    fake_rc.session_manager.notify(ReplayState.PLAYING)
+
+    state = coordinator.data
+    assert state["clock_running"] is True
+    assert state["clock_phase"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_session_clock_replay_seeking_freezes_clock(hass, monkeypatch) -> None:
+    """During a replay seek, time should freeze at the last heartbeat."""
+    fake_rc = _FakeReplayController()
+    coordinator = SessionClockCoordinator(
+        hass, session_coord=object(), replay_controller=fake_rc
+    )
+    coordinator._replay_state_unsub = fake_rc.session_manager.add_listener(
+        coordinator._on_replay_state_change
+    )
+
+    coordinator._session_info = {"Type": "Race", "Name": "Race"}
+    coordinator._session_status = {"Status": "Started"}
+    coordinator._clock_anchor_utc = _utc("2026-03-08T13:00:01Z")
+    coordinator._clock_anchor_remaining_s = 7000
+    coordinator._clock_anchor_extrapolating = True
+    coordinator._update_clock_total(0, 7000)
+    heartbeat_utc = _utc("2026-03-08T13:00:06Z")
+    coordinator._last_heartbeat_utc = heartbeat_utc
+    coordinator._last_heartbeat_mono = time.monotonic()
+
+    # Running state — clock advances with monotonic
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PLAYING
+    )
+    coordinator._deliver()
+    state = coordinator.data
+    assert state["clock_running"] is True
+
+    # Start seeking — clock should freeze at heartbeat
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.SEEKING
+    )
+    fake_rc.session_manager.notify(ReplayState.SEEKING)
+
+    state = coordinator.data
+    assert state["clock_running"] is False
+    assert state["clock_phase"] == "paused"
+    frozen_remaining = state["clock_remaining_s"]
+
+    # Even with time passing, the remaining should stay the same during seek
+    coordinator._deliver()
+    state2 = coordinator.data
+    assert state2["clock_remaining_s"] == frozen_remaining
+
+
+@pytest.mark.asyncio
+async def test_session_clock_replay_server_now_utc_uses_heartbeat(
+    hass, monkeypatch
+) -> None:
+    """In replay mode, _server_now_utc should derive time from the heartbeat
+    anchor, not from wall-clock. This ensures clock values follow replay time."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    heartbeat_utc = _utc("2026-03-08T13:00:00Z")
+    coordinator._last_heartbeat_utc = heartbeat_utc
+    mono_ref = time.monotonic()
+    coordinator._last_heartbeat_mono = mono_ref
+
+    # Simulate 5 seconds of monotonic time passing
+    monkeypatch.setattr(time, "monotonic", lambda: mono_ref + 5.0)
+
+    now = coordinator._server_now_utc()
+    expected = heartbeat_utc + timedelta(seconds=5)
+    assert abs((now - expected).total_seconds()) < 0.1
+
+
+@pytest.mark.asyncio
+async def test_session_clock_replay_pause_freezes_server_now_utc(
+    hass, monkeypatch
+) -> None:
+    """When replay is paused, _server_now_utc should return the frozen
+    heartbeat time and not advance with monotonic clock."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    heartbeat_utc = _utc("2026-03-08T13:05:00Z")
+    mono_ref = time.monotonic()
+    coordinator._last_heartbeat_utc = heartbeat_utc
+    coordinator._last_heartbeat_mono = mono_ref
+
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PAUSED
+    )
+
+    # Even with 30 seconds of monotonic time passing, server_now stays frozen
+    monkeypatch.setattr(time, "monotonic", lambda: mono_ref + 30.0)
+
+    now = coordinator._server_now_utc()
+    assert now == heartbeat_utc
+
+
+@pytest.mark.asyncio
+async def test_session_clock_replay_pause_freezes_current_logical_time(
+    hass, monkeypatch
+) -> None:
+    """Pausing replay must freeze the current logical replay time, not jump
+    back to the last raw heartbeat timestamp."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    heartbeat_utc = _utc("2026-03-08T13:05:00Z")
+    mono_ref = time.monotonic()
+    coordinator._last_heartbeat_utc = heartbeat_utc
+    coordinator._last_heartbeat_mono = mono_ref
+    coordinator._replay_now_anchor_utc = heartbeat_utc
+    coordinator._replay_now_anchor_mono = mono_ref
+
+    paused_mono = mono_ref + 55.0
+    monkeypatch.setattr(time, "monotonic", lambda: paused_mono)
+    coordinator._on_replay_state_change({"state": ReplayState.PAUSED.value})
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PAUSED
+    )
+
+    now = coordinator._server_now_utc()
+    assert now == heartbeat_utc + timedelta(seconds=55)
+
+
+@pytest.mark.asyncio
+async def test_session_clock_replay_resume_keeps_pause_gap_out_of_logical_time(
+    hass, monkeypatch
+) -> None:
+    """Resuming replay must continue from the frozen replay time instead of
+    adding the wall-clock pause duration to the logical session time."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    heartbeat_utc = _utc("2026-03-08T13:05:00Z")
+    mono_ref = time.monotonic()
+    coordinator._last_heartbeat_utc = heartbeat_utc
+    coordinator._last_heartbeat_mono = mono_ref
+    coordinator._replay_now_anchor_utc = heartbeat_utc
+    coordinator._replay_now_anchor_mono = mono_ref
+
+    paused_mono = mono_ref + 55.0
+    monkeypatch.setattr(time, "monotonic", lambda: paused_mono)
+    coordinator._on_replay_state_change({"state": ReplayState.PAUSED.value})
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PAUSED
+    )
+
+    resumed_mono = paused_mono + 30.0
+    monkeypatch.setattr(time, "monotonic", lambda: resumed_mono)
+    coordinator._on_replay_state_change({"state": ReplayState.PLAYING.value})
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PLAYING
+    )
+
+    after_resume_mono = resumed_mono + 5.0
+    monkeypatch.setattr(time, "monotonic", lambda: after_resume_mono)
+
+    now = coordinator._server_now_utc()
+    assert now == heartbeat_utc + timedelta(seconds=60)
+
+
+@pytest.mark.asyncio
+async def test_session_clock_replay_full_lifecycle(hass, monkeypatch) -> None:
+    """End-to-end test: replay plays, pauses, resumes, finishes —
+    clock state transitions mirror what would happen in live mode."""
+    fake_rc = _FakeReplayController()
+    coordinator = SessionClockCoordinator(
+        hass, session_coord=object(), replay_controller=fake_rc
+    )
+    coordinator._replay_state_unsub = fake_rc.session_manager.add_listener(
+        coordinator._on_replay_state_change
+    )
+
+    # Capture real monotonic at heartbeat time
+    mono_base = time.monotonic()
+
+    # Phase 1: Replay starts playing a practice session
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PLAYING
+    )
+    _apply_session_clock_events(
+        coordinator,
+        [
+            ("SessionInfo", {"Type": "Practice", "Name": "Practice 1"}),
+            ("SessionStatus", {"Status": "Started"}),
+            (
+                "ExtrapolatedClock",
+                {
+                    "Utc": "2026-03-06T01:30:01Z",
+                    "Remaining": "00:59:59",
+                    "Extrapolating": True,
+                },
+            ),
+            ("Heartbeat", {"Utc": "2026-03-06T01:30:06Z"}),
+        ],
+    )
+    # Fix heartbeat mono anchor to our known base
+    coordinator._last_heartbeat_mono = mono_base
+    coordinator._replay_now_anchor_mono = mono_base
+
+    # Simulate 5 seconds after heartbeat
+    monkeypatch.setattr(time, "monotonic", lambda: mono_base + 5.0)
+
+    state = coordinator._build_state()
+    assert state["clock_running"] is True
+    assert state["clock_phase"] == "running"
+    assert state["clock_remaining_s"] == 3589  # 59:59 - 10s
+    assert state["session_name"] == "Practice 1"
+
+    # Phase 2: User pauses replay
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PAUSED
+    )
+    fake_rc.session_manager.notify(ReplayState.PAUSED)
+
+    state = coordinator.data
+    assert state["clock_running"] is False
+    assert state["clock_phase"] == "paused"
+    paused_remaining = state["clock_remaining_s"]
+
+    # Phase 3: Real time passes while paused — remaining should not change
+    # because _server_now_utc freezes at last heartbeat during pause
+    monkeypatch.setattr(time, "monotonic", lambda: mono_base + 300.0)
+    coordinator._deliver()
+    state = coordinator.data
+    assert state["clock_remaining_s"] == paused_remaining
+
+    # Phase 4: User resumes replay — new heartbeat arrives
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PLAYING
+    )
+    coordinator._on_heartbeat({"Utc": "2026-03-06T01:30:11Z"})
+    mono_resume = mono_base + 301.0
+    coordinator._last_heartbeat_mono = mono_resume
+    monkeypatch.setattr(time, "monotonic", lambda: mono_resume)
+    fake_rc.session_manager.notify(ReplayState.PLAYING)
+
+    state = coordinator.data
+    assert state["clock_running"] is True
+    assert state["clock_phase"] == "running"
+
+    # Phase 5: Session finishes
+    coordinator._on_session_status({"Status": "Finished"})
+    coordinator._on_extrapolated_clock(
+        {
+            "Utc": "2026-03-06T02:30:00Z",
+            "Remaining": "00:00:00",
+            "Extrapolating": False,
+        }
+    )
+    coordinator._on_heartbeat({"Utc": "2026-03-06T02:30:05Z"})
+    mono_finish = mono_resume + 5.0
+    coordinator._last_heartbeat_mono = mono_finish
+    monkeypatch.setattr(time, "monotonic", lambda: mono_finish)
+    coordinator._deliver()
+
+    state = coordinator.data
+    assert state["clock_running"] is False
+    assert state["clock_phase"] == "finished"
+    assert state["clock_remaining_s"] == 0
+
+
+@pytest.mark.asyncio
+async def test_session_clock_should_tick_stops_during_seeking(
+    hass, monkeypatch
+) -> None:
+    """_should_tick should return False during SEEKING state, not just PAUSED."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    coordinator._session_info = {"Type": "Race", "Name": "Race"}
+    coordinator._session_status = {"Status": "Started"}
+    coordinator._clock_anchor_utc = _utc("2026-03-08T13:00:01Z")
+    coordinator._clock_anchor_remaining_s = 7000
+    coordinator._clock_anchor_extrapolating = True
+    coordinator._update_clock_total(0, 7000)
+    coordinator._last_heartbeat_utc = _utc("2026-03-08T13:00:06Z")
+    coordinator._last_heartbeat_mono = time.monotonic()
+
+    now_utc = _utc("2026-03-08T13:00:11Z")
+    monkeypatch.setattr(coordinator, "_server_now_utc", lambda: now_utc)
+
+    # Running — should tick
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PLAYING
+    )
+    state = coordinator._build_state()
+    assert coordinator._should_tick(state) is True
+
+    # Paused — should not tick
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PAUSED
+    )
+    state = coordinator._build_state()
+    assert coordinator._should_tick(state) is False
+
+    # Seeking — should not tick
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.SEEKING
+    )
+    state = coordinator._build_state()
+    assert coordinator._should_tick(state) is False
+
+    # Back to playing — should tick again
+    monkeypatch.setattr(
+        coordinator, "_replay_controller_state", lambda: ReplayState.PLAYING
+    )
+    state = coordinator._build_state()
+    assert coordinator._should_tick(state) is True

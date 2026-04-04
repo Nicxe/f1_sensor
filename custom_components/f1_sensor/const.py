@@ -61,7 +61,7 @@ DEFAULT_REPLAY_START_REFERENCE = REPLAY_START_REFERENCE_FORMATION
 # Gate for exposing development mode controls in the UI.
 # Keep this False in released versions to avoid confusing users;
 # flip to True locally when you want to work with replay/development mode.
-ENABLE_DEVELOPMENT_MODE_UI = False
+ENABLE_DEVELOPMENT_MODE_UI = True
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 
@@ -157,6 +157,9 @@ EVENT_TRACKER_ENV_REFRESH_TTL = 6 * 3600
 FAST_RETRY_SEC = 5
 MAX_RETRY_SEC = 60
 BACK_OFF_FACTOR = 2
+
+# SignalR protocol toggle: True = Core (/signalrcore), False = Legacy (/signalr)
+SIGNALR_USE_CORE = True
 
 # FIA document scraping defaults (best effort, update slug each season if FIA changes structure)
 FIA_DOCUMENTS_BASE_URL = (

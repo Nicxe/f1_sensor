@@ -23,19 +23,27 @@ from custom_components.f1_sensor.const import (
     STRAIGHT_MODE_LOW,
 )
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
-from custom_components.f1_sensor.sensor import F1StraightModeSensor, F1TrackStatusSensor
+from custom_components.f1_sensor.sensor import (
+    F1ChampionshipPredictionDriversSensor,
+    F1ChampionshipPredictionTeamsSensor,
+    F1PitStopsSensor,
+    F1StraightModeSensor,
+    F1TeamRadioSensor,
+    F1TrackStatusSensor,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class _LiveState:
-    def __init__(self, is_live: bool = False) -> None:
+    def __init__(self, is_live: bool = False, reason: str | None = "init") -> None:
         self.is_live = is_live
+        self.reason = reason
         self._listeners = []
 
     def add_listener(self, callback):
         self._listeners.append(callback)
-        callback(self.is_live, "init")
+        callback(self.is_live, self.reason)
 
         def _remove():
             if callback in self._listeners:
@@ -45,6 +53,7 @@ class _LiveState:
 
     def set_live(self, is_live: bool, reason: str | None = None) -> None:
         self.is_live = is_live
+        self.reason = reason
         for callback in list(self._listeners):
             callback(is_live, reason)
 
@@ -487,7 +496,7 @@ class _FormationTracker:
 @pytest.mark.asyncio
 async def test_formation_start_turns_off_once_session_goes_live(hass) -> None:
     entry_id = "test_entry"
-    live_state = _LiveState(True)
+    live_state = _LiveState(True, "replay-mode")
     hass.data.setdefault(DOMAIN, {})[entry_id] = {
         CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
         "live_state": live_state,
@@ -531,6 +540,152 @@ async def test_formation_start_turns_off_once_session_goes_live(hass) -> None:
     after = hass.states.get(entity.entity_id)
     assert after is not None
     assert after.state == "off"
+
+
+@pytest.mark.asyncio
+async def test_formation_start_is_unavailable_during_live_sessions(hass) -> None:
+    entry_id = "test_entry"
+    live_state = _LiveState(True, "live-Race")
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+        "live_state": live_state,
+        "live_bus": _LiveBus(0.0),
+    }
+    tracker = _FormationTracker(
+        {
+            "status": "ready",
+            "scheduled_start": "2026-03-08T03:59:00+00:00",
+            "formation_start": "2026-03-08T04:00:00+00:00",
+            "delta_seconds": 0.0,
+            "source": "replay_index",
+            "session_type": "Race",
+            "session_name": "Race",
+            "error": None,
+        }
+    )
+    entity = F1FormationStartBinarySensor(
+        tracker,
+        f"{entry_id}_formation_start",
+        entry_id,
+        "F1",
+    )
+
+    state = await _add_entity_and_get_state(hass, "binary_sensor", entity)
+
+    assert state.state == STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    ("factory", "restored_state", "attributes"),
+    [
+        (
+            lambda coordinator, entry_id: F1TeamRadioSensor(
+                coordinator, f"{entry_id}_team_radio", entry_id, "F1"
+            ),
+            "2026-03-08T04:00:00+00:00",
+            {"history": []},
+        ),
+        (
+            lambda coordinator, entry_id: F1PitStopsSensor(
+                coordinator, f"{entry_id}_pitstops", entry_id, "F1"
+            ),
+            "3",
+            {"cars": {}, "last_update": "2026-03-08T04:00:00+00:00"},
+        ),
+        (
+            lambda coordinator, entry_id: F1ChampionshipPredictionDriversSensor(
+                coordinator,
+                f"{entry_id}_championship_prediction_drivers",
+                entry_id,
+                "F1",
+            ),
+            "NOR",
+            {"drivers": {}, "predicted_driver_p1": None, "last_update": None},
+        ),
+        (
+            lambda coordinator, entry_id: F1ChampionshipPredictionTeamsSensor(
+                coordinator,
+                f"{entry_id}_championship_prediction_teams",
+                entry_id,
+                "F1",
+            ),
+            "McLaren",
+            {"teams": {}, "predicted_team_p1": None, "last_update": None},
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_replay_only_sensors_stay_unavailable_during_live_sessions(
+    hass, factory, restored_state, attributes
+) -> None:
+    entry_id = "test_entry"
+    live_state = _LiveState(True, "live-Race")
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+        "live_state": live_state,
+        "live_bus": _LiveBus(0.0),
+    }
+    coordinator = _build_coordinator(hass, None)
+    coordinator.available = False
+    entity = factory(coordinator, entry_id)
+    entity.async_get_last_state = AsyncMock(
+        return_value=State(f"sensor.{entity.unique_id}", restored_state, attributes)
+    )
+
+    state = await _add_entity_and_get_state(hass, "sensor", entity)
+
+    assert state.state == STATE_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_formation_start_is_unavailable_outside_replay(hass) -> None:
+    entry_id = "test_entry_live"
+    live_state = _LiveState(True)
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+        "live_state": live_state,
+    }
+    tracker = _FormationTracker(
+        {
+            "status": "ready",
+            "scheduled_start": "2026-03-08T03:59:00+00:00",
+            "formation_start": "2026-03-08T04:00:00+00:00",
+            "delta_seconds": 0.0,
+            "source": "cardata",
+            "session_type": "Race",
+            "session_name": "Race",
+            "error": None,
+        }
+    )
+    entity = F1FormationStartBinarySensor(
+        tracker,
+        f"{entry_id}_formation_start",
+        entry_id,
+        "F1",
+    )
+
+    initial = await _add_entity_and_get_state(hass, "binary_sensor", entity)
+
+    assert initial.state == STATE_UNAVAILABLE
+
+    live_state.set_live(True, "replay")
+    tracker.emit(
+        {
+            "status": "ready",
+            "scheduled_start": "2026-03-08T03:59:00+00:00",
+            "formation_start": "2026-03-08T04:00:00+00:00",
+            "delta_seconds": 0.0,
+            "source": "replay_index",
+            "session_type": "Race",
+            "session_name": "Race",
+            "error": None,
+        }
+    )
+    await hass.async_block_till_done()
+
+    after = hass.states.get(entity.entity_id)
+    assert after is not None
+    assert after.state == "on"
 
 
 @pytest.mark.asyncio

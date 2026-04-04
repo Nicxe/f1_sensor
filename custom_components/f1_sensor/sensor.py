@@ -41,6 +41,7 @@ from .entity import (
     F1AuxEntity,
     F1BaseEntity,
     default_object_id,
+    is_replay_only_stream_active,
     set_suggested_object_id,
 )
 from .helpers import (
@@ -84,6 +85,13 @@ WMO_CODE_TO_MDI = {
     96: "mdi:weather-lightning-rainy",
     99: "mdi:weather-lightning-rainy",
 }
+
+
+class _ReplayOnlyStreamMixin:
+    def _is_stream_active(self) -> bool:
+        return is_replay_only_stream_active(
+            getattr(self, "hass", None), getattr(self, "_entry_id", None)
+        )
 
 
 def _extract_driver_position(info: dict | None) -> str | None:
@@ -347,6 +355,13 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
     _attr_options = ["idle", "live", "replay"]
 
     _attr_translation_key = "live_timing_mode"
+    _tracked_streams = (
+        "SessionStatus",
+        "TrackStatus",
+        "TopThree",
+        "TimingAppData",
+        "ChampionshipPrediction",
+    )
 
     def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
         super().__init__(
@@ -422,6 +437,29 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
         except Exception:
             hb_age = activity_age = None
 
+        stream_diagnostics = {
+            stream: {
+                "frame_count": 0,
+                "last_seen_age_s": None,
+                "last_payload_keys": None,
+            }
+            for stream in self._tracked_streams
+        }
+        try:
+            if live_bus is not None and hasattr(live_bus, "stream_diagnostics"):
+                stream_diagnostics.update(
+                    live_bus.stream_diagnostics(self._tracked_streams)
+                )
+        except Exception:
+            stream_diagnostics = {
+                stream: {
+                    "frame_count": 0,
+                    "last_seen_age_s": None,
+                    "last_payload_keys": None,
+                }
+                for stream in self._tracked_streams
+            }
+
         attrs = {
             "reason": reason,
             "window": window,
@@ -449,6 +487,7 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
             "activity_age_s": (
                 round(activity_age, 1) if activity_age is not None else None
             ),
+            "streams": stream_diagnostics,
         }
         return mode, attrs
 
@@ -553,7 +592,9 @@ class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
         raise NotImplementedError
 
 
-class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
+class _ChampionshipPredictionBase(
+    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+):
     """Base for championship prediction sensors with shared restore logic."""
 
     _device_category = "championship"
@@ -618,6 +659,16 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
     """Sensor that returns date/time (ISO8601) for the next race in 'state'."""
 
     _device_category = "race"
+    _unrecorded_attributes = frozenset(
+        {
+            "last_5_winners",
+            "last_5_poles",
+            "top_5_driver_wins_here",
+            "top_5_constructor_wins_here",
+            "dnf_rate_last_5_stats",
+            "pole_to_win_conversion_last_5_stats",
+        }
+    )
 
     _attr_translation_key = "next_race"
 
@@ -625,6 +676,25 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._history_coordinator = None
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        self._history_coordinator = reg.get("next_race_history_coordinator")
+        if self._history_coordinator is not None:
+            removal = self._history_coordinator.async_add_listener(
+                self._handle_history_update
+            )
+            self.async_on_remove(removal)
+
+    @callback
+    def _handle_history_update(self) -> None:
+        self._safe_write_ha_state()
+
+    def _history_attributes(self) -> dict:
+        data = getattr(self._history_coordinator, "data", None)
+        return data if isinstance(data, dict) else {}
 
     @property
     def state(self):
@@ -706,6 +776,7 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         _populate("qualifying_start", qual_start)
         _populate("sprint_qualifying_start", sprint_quali_start)
         _populate("sprint_start", sprint_start)
+        attrs.update(self._history_attributes())
 
         return attrs
 
@@ -4658,7 +4729,9 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         }
 
 
-class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+class F1TeamRadioSensor(
+    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+):
     """Sensor exposing the latest Team Radio clip.
 
     - State: latest clip UTC timestamp (ISO8601, TIMESTAMP device_class)
@@ -4852,7 +4925,9 @@ class F1TeamRadioSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._last_utc = None
 
 
-class F1PitStopsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+class F1PitStopsSensor(
+    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+):
     """Live pit stops for all cars (aggregated).
 
     - State: total pit stops (int)

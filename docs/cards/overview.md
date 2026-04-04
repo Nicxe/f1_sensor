@@ -106,9 +106,13 @@ Each card has a built-in visual editor with two tabs: **Data Sources** for selec
 
 Displays an at-a-glance overview of the current session: session name and status, current track condition with flag color, live weather at the circuit, and a lap progress bar during the race.
 
+The replay-only formation start entity stays registered in Home Assistant and is unavailable outside Replay Mode.
+
 ![Placeholder — F1 Live Session card screenshot](/img/placeholder_card_live_session.png)
 
-**Required entities:** `sensor.f1_current_session`, `sensor.f1_session_status`, `binary_sensor.f1_formation_start`, `sensor.f1_race_lap_count`, `sensor.f1_track_status`, `sensor.f1_track_weather`, `sensor.f1_next_race`
+**Required entities:** `sensor.f1_current_session`, `sensor.f1_session_status`, `sensor.f1_race_lap_count`, `sensor.f1_track_status`, `sensor.f1_track_weather`, `sensor.f1_next_race`
+
+**Optional entity:** `binary_sensor.f1_formation_start` for Replay Mode formation-lap labeling
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -224,6 +228,8 @@ Displays the current tyre compound for each driver along with stint history and 
 
 Shows a full pit stop history for all drivers: stop number, tyre fitted, pit time, pit lane time, and a delta to the fastest pit stop of the session. Rows can be filtered to only show drivers who have stopped.
 
+The pit stop entity stays registered in Home Assistant and is unavailable outside Replay Mode.
+
 ![Placeholder — F1 Pit Stop Overview card screenshot](/img/placeholder_card_pitstops.png)
 
 **Required entities:** `sensor.f1_pitstops`, `sensor.f1_current_tyres`, `sensor.f1_driver_positions`, `sensor.f1_driver_list`
@@ -313,6 +319,8 @@ Shows how many track limit violations each driver has accumulated during the ses
 
 Displays the driver championship standings with predicted final points alongside current points, including a delta column showing the projected gain or loss.
 
+The predicted drivers entity stays registered in Home Assistant and is unavailable outside Replay Mode.
+
 ![Placeholder — F1 Championship Prediction Drivers card screenshot](/img/placeholder_card_prediction_drivers.png)
 
 **Required entities:** `sensor.f1_championship_prediction_drivers`, `sensor.f1_driver_list`
@@ -335,6 +343,8 @@ Displays the driver championship standings with predicted final points alongside
 `custom:f1-championship-prediction-teams-card`
 
 Displays the constructor championship standings with predicted final points and a delta column. Useful for tracking how the team battle is expected to develop over the remaining rounds.
+
+The predicted teams entity stays registered in Home Assistant and is unavailable outside Replay Mode.
 
 ![Placeholder — F1 Championship Prediction Teams card screenshot](/img/placeholder_card_prediction_teams.png)
 

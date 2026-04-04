@@ -382,6 +382,30 @@ async def test_aux_platforms_use_standard_english_object_ids(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_live_delay_reference_select_hides_formation_start_option(hass) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "RaceHub"})
+    entry.add_to_hass(hass)
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "delay_reference_controller": _DummyListenerManager(current="session_live"),
+        "formation_start_tracker": Mock(),
+    }
+
+    async_add_entities = Mock()
+    await select_platform.async_setup_entry(hass, entry, async_add_entities)
+
+    entities = {
+        entity.unique_id: entity for entity in async_add_entities.call_args[0][0]
+    }
+    select_entity = entities[f"{entry.entry_id}_live_delay_reference"]
+
+    assert select_entity.options == [
+        "Session live",
+        "Lap sync (race/sprint)",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_replay_status_sensor_uses_standard_english_object_id(hass) -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,

@@ -32,7 +32,8 @@ class _DummyBus:
     def __init__(self) -> None:
         self.started = False
         self.heartbeat_expected = False
-        self.injected_messages: list[tuple[str, dict]] = []
+        self.injected_messages: list[tuple[str, Any]] = []
+        self._callbacks: dict[str, list] = {}
 
     async def start(self) -> None:
         self.started = True
@@ -49,8 +50,20 @@ class _DummyBus:
     def last_stream_activity_age(self, *_streams: Any) -> float:
         return 0.0
 
-    def inject_message(self, stream: str, payload: dict) -> None:
+    def subscribe(self, stream: str, callback):
+        self._callbacks.setdefault(stream, []).append(callback)
+
+        def _remove() -> None:
+            callbacks = self._callbacks.get(stream)
+            if callbacks and callback in callbacks:
+                callbacks.remove(callback)
+
+        return _remove
+
+    def inject_message(self, stream: str, payload: Any) -> None:
         self.injected_messages.append((stream, payload))
+        for callback in list(self._callbacks.get(stream, [])):
+            callback(payload)
 
 
 class _FakeResponse:
@@ -298,162 +311,6 @@ async def test_index_200_without_windows_uses_event_tracker(hass) -> None:
     assert supervisor.fallback_active is True
 
 
-@pytest.mark.asyncio
-async def test_prime_metadata_injects_lapcount_snapshot_for_running_session(
-    hass,
-) -> None:
-    window = _mk_window(
-        meeting="Australian Grand Prix",
-        session="Race",
-        path="2026/2026-03-08_Australian_Grand_Prix/2026-03-08_Race/",
-    )
-    session_info_url = live_window._build_static_url(
-        window.path, "SessionInfo.jsonStream"
-    )
-    session_status_url = live_window._build_static_url(
-        window.path, "SessionStatus.jsonStream"
-    )
-    session_data_url = live_window._build_static_url(
-        window.path, "SessionData.jsonStream"
-    )
-    lapcount_url = live_window._build_static_url(window.path, "LapCount.jsonStream")
-    fake_http = _FakeHttp(
-        {
-            session_info_url: (200, '00:00:00.000{"Name":"Race"}'),
-            session_status_url: (
-                200,
-                '00:00:06.977{"Status":"Inactive","Started":"Inactive"}\n'
-                '01:02:19.743{"Status":"Started","Started":"Started"}',
-            ),
-            session_data_url: (200, '00:00:00.000{"Series":[]}'),
-            lapcount_url: (
-                200,
-                '00:00:04.058{"CurrentLap":1,"TotalLaps":58}\n'
-                '00:00:47.420{"CurrentLap":0,"TotalLaps":0}\n'
-                '01:33:50.988{"CurrentLap":27}',
-            ),
-        }
-    )
-    bus = _DummyBus()
-    supervisor = LiveSessionSupervisor(
-        hass,
-        _DummySessionCoordinator({}, status=200),
-        bus,
-        http_session=fake_http,  # type: ignore[arg-type]
-    )
-
-    await supervisor._prime_metadata(window)
-
-    assert bus.injected_messages == [("LapCount", {"CurrentLap": 27, "TotalLaps": 58})]
-    assert fake_http.calls == [
-        session_info_url,
-        session_status_url,
-        session_data_url,
-        lapcount_url,
-    ]
-
-
-@pytest.mark.asyncio
-async def test_prime_metadata_skips_lapcount_when_session_not_running(hass) -> None:
-    window = _mk_window(
-        meeting="Australian Grand Prix",
-        session="Race",
-        path="2026/2026-03-08_Australian_Grand_Prix/2026-03-08_Race/",
-    )
-    session_info_url = live_window._build_static_url(
-        window.path, "SessionInfo.jsonStream"
-    )
-    session_status_url = live_window._build_static_url(
-        window.path, "SessionStatus.jsonStream"
-    )
-    session_data_url = live_window._build_static_url(
-        window.path, "SessionData.jsonStream"
-    )
-    lapcount_url = live_window._build_static_url(window.path, "LapCount.jsonStream")
-    fake_http = _FakeHttp(
-        {
-            session_info_url: (200, "{}"),
-            session_status_url: (
-                200,
-                '00:00:06.977{"Status":"Inactive","Started":"Inactive"}',
-            ),
-            session_data_url: (200, "{}"),
-            lapcount_url: (
-                200,
-                '00:00:04.058{"CurrentLap":1,"TotalLaps":58}',
-            ),
-        }
-    )
-    bus = _DummyBus()
-    supervisor = LiveSessionSupervisor(
-        hass,
-        _DummySessionCoordinator({}, status=200),
-        bus,
-        http_session=fake_http,  # type: ignore[arg-type]
-    )
-
-    await supervisor._prime_metadata(window)
-
-    assert bus.injected_messages == []
-    assert fake_http.calls == [
-        session_info_url,
-        session_status_url,
-        session_data_url,
-    ]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("lapcount_status", "lapcount_body"),
-    [
-        (404, ""),
-        (200, "not-json"),
-    ],
-)
-async def test_prime_metadata_ignores_missing_or_invalid_lapcount_stream(
-    hass,
-    lapcount_status: int,
-    lapcount_body: str,
-) -> None:
-    window = _mk_window(
-        meeting="Australian Grand Prix",
-        session="Race",
-        path="2026/2026-03-08_Australian_Grand_Prix/2026-03-08_Race/",
-    )
-    session_info_url = live_window._build_static_url(
-        window.path, "SessionInfo.jsonStream"
-    )
-    session_status_url = live_window._build_static_url(
-        window.path, "SessionStatus.jsonStream"
-    )
-    session_data_url = live_window._build_static_url(
-        window.path, "SessionData.jsonStream"
-    )
-    lapcount_url = live_window._build_static_url(window.path, "LapCount.jsonStream")
-    fake_http = _FakeHttp(
-        {
-            session_info_url: (200, "{}"),
-            session_status_url: (
-                200,
-                '01:02:19.743{"Status":"Started","Started":"Started"}',
-            ),
-            session_data_url: (200, "{}"),
-            lapcount_url: (lapcount_status, lapcount_body),
-        }
-    )
-    bus = _DummyBus()
-    supervisor = LiveSessionSupervisor(
-        hass,
-        _DummySessionCoordinator({}, status=200),
-        bus,
-        http_session=fake_http,  # type: ignore[arg-type]
-    )
-
-    await supervisor._prime_metadata(window)
-
-    assert bus.injected_messages == []
-
-
 def test_event_tracker_parses_offset_correctly() -> None:
     source = EventTrackerScheduleSource(object())  # type: ignore[arg-type]
     payload = {
@@ -675,25 +532,6 @@ async def test_event_tracker_timeout_returns_last_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_prime_lap_count_timeout_does_not_inject_message(hass) -> None:
-    coord = _DummySessionCoordinator({}, status=200)
-    bus = _DummyBus()
-    timeout_http = _TimeoutHttp()
-    supervisor = LiveSessionSupervisor(
-        hass,
-        coord,
-        bus,
-        http_session=timeout_http,  # type: ignore[arg-type]
-    )
-    window = _mk_window(path="2026/1304/11465/")
-
-    await supervisor._prime_lap_count(window, {"Status": "Started", "Started": True})
-
-    assert bus.injected_messages == []
-    assert timeout_http.calls
-
-
-@pytest.mark.asyncio
 async def test_session_finished_timeout_returns_false(hass) -> None:
     coord = _DummySessionCoordinator({}, status=200)
     supervisor = LiveSessionSupervisor(
@@ -705,6 +543,174 @@ async def test_session_finished_timeout_returns_false(hass) -> None:
     window = _mk_window(path="2026/1304/11465/")
 
     assert await supervisor._session_finished(window) is False
+
+
+@pytest.mark.asyncio
+async def test_session_active_returns_true_for_non_terminal_status(hass) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    window = _mk_window(path="2026/1304/11465/")
+
+    async def _active_payload(_url: str) -> dict:
+        return {"Status": "Started"}
+
+    supervisor._fetch_json = _active_payload  # type: ignore[method-assign]
+
+    assert await supervisor._session_active(window) is True
+
+
+@pytest.mark.asyncio
+async def test_session_active_returns_false_for_terminal_status(hass) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    window = _mk_window(path="2026/1304/11465/")
+
+    async def _terminal_payload(_url: str) -> dict:
+        return {"Status": "Finished"}
+
+    supervisor._fetch_json = _terminal_payload  # type: ignore[method-assign]
+
+    assert await supervisor._session_active(window) is False
+
+
+@pytest.mark.asyncio
+async def test_session_active_timeout_inside_slack_returns_true(
+    monkeypatch, hass
+) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    now = dt_util.utcnow()
+    window = _mk_window(
+        path="2026/1304/11465/",
+        end=now - dt.timedelta(minutes=30),
+    )
+
+    async def _timeout(_url: str) -> dict:
+        raise TimeoutError
+
+    supervisor._fetch_json = _timeout  # type: ignore[method-assign]
+    monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
+
+    assert await supervisor._session_active(window) is True
+
+
+@pytest.mark.asyncio
+async def test_session_active_timeout_outside_slack_returns_false(
+    monkeypatch, hass
+) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    now = dt_util.utcnow()
+    window = _mk_window(
+        path="2026/1304/11465/",
+        end=now - dt.timedelta(hours=3),
+    )
+
+    async def _timeout(_url: str) -> dict:
+        raise TimeoutError
+
+    supervisor._fetch_json = _timeout  # type: ignore[method-assign]
+    monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
+
+    assert await supervisor._session_active(window) is False
+
+
+@pytest.mark.asyncio
+async def test_qualifying_monitor_window_allows_longer_post_finish_inactivity(
+    monkeypatch, hass
+) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    bus = _DummyBus()
+    bus.last_heartbeat_age = lambda: 80.0  # type: ignore[method-assign]
+    bus.last_stream_activity_age = lambda *_streams: 80.0  # type: ignore[method-assign]
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        bus,
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    now = dt_util.utcnow()
+    window = _mk_window(
+        session="Sprint Qualifying",
+        start=now - dt.timedelta(minutes=20),
+        end=now - dt.timedelta(seconds=10),
+    )
+    current_times = iter(
+        [
+            window.end_utc + dt.timedelta(seconds=5),
+            window.disconnect_at + dt.timedelta(seconds=1),
+        ]
+    )
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
+    monkeypatch.setattr(
+        live_window.dt_util,
+        "utcnow",
+        lambda: next(current_times, window.disconnect_at + dt.timedelta(seconds=1)),
+    )
+
+    reason = await supervisor._monitor_window(window, source="event_tracker")
+
+    assert reason == "disconnect-window-expired"
+
+
+@pytest.mark.asyncio
+async def test_practice_monitor_window_keeps_short_post_finish_inactivity_timeout(
+    monkeypatch, hass
+) -> None:
+    coord = _DummySessionCoordinator({}, status=200)
+    bus = _DummyBus()
+    bus.last_heartbeat_age = lambda: 80.0  # type: ignore[method-assign]
+    bus.last_stream_activity_age = lambda *_streams: 80.0  # type: ignore[method-assign]
+    supervisor = LiveSessionSupervisor(
+        hass,
+        coord,
+        bus,
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    now = dt_util.utcnow()
+    window = _mk_window(
+        session="Practice 1",
+        start=now - dt.timedelta(minutes=20),
+        end=now - dt.timedelta(seconds=10),
+    )
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
+    monkeypatch.setattr(
+        live_window.dt_util,
+        "utcnow",
+        lambda: window.end_utc + dt.timedelta(seconds=5),
+    )
+
+    reason = await supervisor._monitor_window(window, source="event_tracker")
+
+    assert reason == "heartbeat-timeout-80s"
 
 
 @pytest.mark.asyncio

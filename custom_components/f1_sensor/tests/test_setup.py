@@ -4,6 +4,7 @@ from contextlib import ExitStack
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.exceptions import ConfigEntryNotReady
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -29,6 +30,7 @@ from custom_components.f1_sensor.const import (
     OPERATION_MODE_LIVE,
     PLATFORMS,
 )
+from custom_components.f1_sensor.live_delay import LiveDelayReferenceController
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 
 
@@ -93,7 +95,20 @@ class FakeLiveSupervisor:
         return None
 
 
-def _coordinator_patches():
+class DummyRaceControlLogStore:
+    def __init__(self, *args, **kwargs) -> None:
+        return None
+
+    async def async_initialize(self) -> None:
+        return None
+
+    async def async_close(self) -> None:
+        return None
+
+
+def _coordinator_patches(
+    fia_documents_coordinator_cls=DummyCoordinator,
+):
     """Return context managers that replace all coordinator classes with DummyCoordinator."""
     return (
         patch("custom_components.f1_sensor.F1DataCoordinator", DummyCoordinator),
@@ -107,9 +122,29 @@ def _coordinator_patches():
         ),
         patch(
             "custom_components.f1_sensor.FiaDocumentsCoordinator",
-            DummyCoordinator,
+            fia_documents_coordinator_cls,
         ),
     )
+
+
+class FailingFiaDocumentsCoordinator(DummyCoordinator):
+    last_instance = None
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.data = None
+        FailingFiaDocumentsCoordinator.last_instance = self
+
+    async def async_config_entry_first_refresh(self) -> None:
+        err = ConfigEntryNotReady()
+        err.__cause__ = RuntimeError("403, message='Forbidden'")
+        raise err
+
+    def async_set_updated_data(self, data) -> None:
+        self.data = data
+
+    def build_empty_result(self) -> dict:
+        return {"event_key": None, "race": None, "documents": []}
 
 
 def test_activity_log_exclude_entity_matcher() -> None:
@@ -456,6 +491,215 @@ async def test_async_setup_entry_live_mode_wires_event_tracker_fallback(hass) ->
     assert result is True
     assert FakeLiveSupervisor.last_instance is not None
     assert FakeLiveSupervisor.last_instance.fallback_source is sentinel_source
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_live_mode_registers_replay_only_components(
+    hass,
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            "enable_race_control": True,
+            CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+            CONF_REPLAY_FILE: "",
+        },
+    )
+    entry.add_to_hass(hass)
+    sentinel_tracker = object()
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.EventTrackerScheduleSource",
+                lambda *_args, **_kwargs: object(),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionSupervisor",
+                FakeLiveSupervisor,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.TrackStatusCoordinator", DummyCoordinator
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.SessionStatusCoordinator", DummyCoordinator
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.SessionInfoCoordinator", DummyCoordinator
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.RaceControlCoordinator", DummyCoordinator
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.WeatherDataCoordinator", DummyCoordinator
+            )
+        )
+        stack.enter_context(
+            patch("custom_components.f1_sensor.LapCountCoordinator", DummyCoordinator)
+        )
+        stack.enter_context(
+            patch("custom_components.f1_sensor.LiveModeCoordinator", DummyCoordinator)
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.SessionClockCoordinator", DummyCoordinator
+            )
+        )
+        stack.enter_context(
+            patch("custom_components.f1_sensor.TopThreeCoordinator", DummyCoordinator)
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveDriversCoordinator", DummyCoordinator
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.FormationStartTracker",
+                lambda *_args, **_kwargs: sentinel_tracker,
+            )
+        )
+        for name in (
+            "TrackStatusCoordinator",
+            "SessionStatusCoordinator",
+            "SessionInfoCoordinator",
+            "SessionClockCoordinator",
+            "RaceControlCoordinator",
+            "WeatherDataCoordinator",
+            "LapCountCoordinator",
+            "LiveModeCoordinator",
+            "LiveDriversCoordinator",
+            "TopThreeCoordinator",
+            "TeamRadioCoordinator",
+            "PitStopCoordinator",
+            "ChampionshipPredictionCoordinator",
+        ):
+            stack.enter_context(
+                patch(f"custom_components.f1_sensor.{name}", DummyCoordinator)
+            )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.RaceControlLogStore",
+                DummyRaceControlLogStore,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor._async_register_race_control_log_interfaces",
+                lambda *_args, **_kwargs: None,
+            )
+        )
+        for cm in _coordinator_patches():
+            stack.enter_context(cm)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+
+        result = await async_setup_entry(hass, entry)
+
+    assert result is True
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    assert entry_data["operation_mode"] == OPERATION_MODE_LIVE
+    assert entry_data["formation_start_tracker"] is sentinel_tracker
+    assert entry_data["team_radio_coordinator"] is not None
+    assert entry_data["pitstop_coordinator"] is not None
+    assert entry_data["championship_prediction_coordinator"] is not None
+
+
+@pytest.mark.asyncio
+async def test_live_delay_reference_controller_rejects_formation_reference(
+    hass,
+) -> None:
+    controller = LiveDelayReferenceController(hass, "entry-1")
+
+    with (
+        patch.object(
+            controller._store,  # noqa: SLF001 - targeted storage load assertion
+            "async_load",
+            AsyncMock(return_value={"reference": "formation_start"}),
+        ),
+        patch.object(controller, "_async_commit", AsyncMock()),
+    ):
+        result = await controller.async_initialize("formation_start")
+
+    assert result == "session_live"
+    assert controller.current == "session_live"
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_continues_when_fia_documents_fail(
+    hass, mock_config_entry
+):
+    FailingFiaDocumentsCoordinator.last_instance = None
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        for cm in _coordinator_patches(
+            fia_documents_coordinator_cls=FailingFiaDocumentsCoordinator
+        ):
+            stack.enter_context(cm)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+
+        result = await async_setup_entry(hass, mock_config_entry)
+
+    assert result is True
+    hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
+        mock_config_entry, PLATFORMS
+    )
+    assert FailingFiaDocumentsCoordinator.last_instance is not None
+    assert FailingFiaDocumentsCoordinator.last_instance.data == {
+        "event_key": None,
+        "race": None,
+        "documents": [],
+    }
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor.no_spoiler import NoSpoilerModeManager
 
@@ -302,6 +303,91 @@ async def test_no_spoiler_switch_turn_off_deactivates_manager(hass) -> None:
 
     assert mgr.is_active is False
     assert switch.is_on is False
+
+
+@pytest.mark.asyncio
+async def test_no_spoiler_switch_is_recreated_after_owner_entry_reload(hass) -> None:
+    """The global switch should return when its owning entry is reloaded."""
+    from custom_components.f1_sensor import async_unload_entry
+    from custom_components.f1_sensor.const import DOMAIN
+    from custom_components.f1_sensor.switch import (
+        _NO_SPOILER_SWITCH_ENTRY_KEY,
+        async_setup_entry as async_setup_switch_entry,
+    )
+
+    entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
+    entry.add_to_hass(hass)
+
+    mgr = NoSpoilerModeManager(hass)
+    hass.data.setdefault(DOMAIN, {})["no_spoiler_manager"] = mgr
+    hass.data[DOMAIN][entry.entry_id] = {"calibration_manager": None}
+
+    created_entities: list[list[object]] = []
+
+    def _add_entities(entities) -> None:
+        created_entities.append(list(entities))
+
+    await async_setup_switch_entry(hass, entry, _add_entities)
+
+    assert len(created_entities) == 1
+    assert any(
+        getattr(entity, "unique_id", None) == "f1_sensor_no_spoiler_mode"
+        for entity in created_entities[0]
+    )
+    assert hass.data[DOMAIN][_NO_SPOILER_SWITCH_ENTRY_KEY] == entry.entry_id
+
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    result = await async_unload_entry(hass, entry)
+
+    assert result is True
+    assert _NO_SPOILER_SWITCH_ENTRY_KEY not in hass.data[DOMAIN]
+
+    hass.data[DOMAIN][entry.entry_id] = {"calibration_manager": None}
+    recreated_entities: list[list[object]] = []
+
+    def _add_recreated_entities(entities) -> None:
+        recreated_entities.append(list(entities))
+
+    await async_setup_switch_entry(hass, entry, _add_recreated_entities)
+
+    assert len(recreated_entities) == 1
+    assert any(
+        getattr(entity, "unique_id", None) == "f1_sensor_no_spoiler_mode"
+        for entity in recreated_entities[0]
+    )
+    assert hass.data[DOMAIN][_NO_SPOILER_SWITCH_ENTRY_KEY] == entry.entry_id
+
+
+@pytest.mark.asyncio
+async def test_no_spoiler_switch_recovers_from_stale_owner_marker(hass) -> None:
+    """A stale owner marker should not prevent the switch from being created."""
+    from custom_components.f1_sensor.const import DOMAIN
+    from custom_components.f1_sensor.switch import (
+        _NO_SPOILER_SWITCH_ENTRY_KEY,
+        async_setup_entry as async_setup_switch_entry,
+    )
+
+    entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
+    entry.add_to_hass(hass)
+
+    mgr = NoSpoilerModeManager(hass)
+    hass.data.setdefault(DOMAIN, {})["no_spoiler_manager"] = mgr
+    hass.data[DOMAIN][_NO_SPOILER_SWITCH_ENTRY_KEY] = "stale-entry"
+    hass.data[DOMAIN][entry.entry_id] = {"calibration_manager": None}
+
+    created_entities: list[list[object]] = []
+
+    def _add_entities(entities) -> None:
+        created_entities.append(list(entities))
+
+    await async_setup_switch_entry(hass, entry, _add_entities)
+
+    assert len(created_entities) == 1
+    assert any(
+        getattr(entity, "unique_id", None) == "f1_sensor_no_spoiler_mode"
+        for entity in created_entities[0]
+    )
+    assert hass.data[DOMAIN][_NO_SPOILER_SWITCH_ENTRY_KEY] == entry.entry_id
 
 
 # ---------------------------------------------------------------------------

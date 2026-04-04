@@ -11,12 +11,15 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor import (
+    ChampionshipPredictionCoordinator,
+    LapCountCoordinator,
     LiveModeCoordinator,
     RaceControlCoordinator,
     SessionClockCoordinator,
     SessionInfoCoordinator,
     SessionStatusCoordinator,
     TrackStatusCoordinator,
+    WeatherDataCoordinator,
     _build_replay_reset_callbacks,
 )
 from custom_components.f1_sensor.const import (
@@ -27,7 +30,9 @@ from custom_components.f1_sensor.const import (
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.replay_mode import (
     ReplayController,
+    ReplayFrame,
     ReplayIndex,
+    ReplaySessionManager,
     ReplayState,
 )
 
@@ -256,14 +261,6 @@ async def _setup_session_clock_harness(
     bus = FakeLiveBus()
     live_state = LiveAvailabilityTracker()
     entry = _make_config_entry(hass)
-    session_clock = SessionClockCoordinator(
-        hass,
-        session_coord=object(),
-        bus=bus,
-        config_entry=entry,
-        live_state=live_state,
-    )
-    await session_clock.async_config_entry_first_refresh()
     controller = ReplayController(
         hass,
         ENTRY_ID,
@@ -274,6 +271,15 @@ async def _setup_session_clock_harness(
             current=REPLAY_START_REFERENCE_SESSION
         ),
     )
+    session_clock = SessionClockCoordinator(
+        hass,
+        session_coord=object(),
+        bus=bus,
+        config_entry=entry,
+        live_state=live_state,
+        replay_controller=controller,
+    )
+    await session_clock.async_config_entry_first_refresh()
     index = _build_index(tmp_path, initial_state=initial_state, frames=frames)
     controller.session_manager._loaded_index = index
     controller.session_manager._state = ReplayState.READY
@@ -316,6 +322,58 @@ async def _setup_close_order_harness(
         "replay_reset_callbacks": [],
     }
     return controller, bus
+
+
+def test_build_initial_state_merges_timingapp_stints_without_tyre_stints(hass) -> None:
+    manager = ReplaySessionManager(hass, ENTRY_ID, AsyncMock())  # type: ignore[arg-type]
+    frames = [
+        ReplayFrame(
+            timestamp_ms=0,
+            stream="TimingAppData",
+            payload={
+                "Lines": {
+                    "16": {
+                        "GridRow": 1,
+                        "Stints": {"0": {"Compound": "MEDIUM", "TotalLaps": 12}},
+                    }
+                }
+            },
+        ),
+        ReplayFrame(
+            timestamp_ms=500,
+            stream="TimingAppData",
+            payload={
+                "Lines": {
+                    "16": {
+                        "CurrentLapIsValid": True,
+                        "Stints": {
+                            "0": {"LapTime": "1:23.000", "LapNumber": 5},
+                            "1": {"Compound": "SOFT", "New": "false", "TotalLaps": 3},
+                        },
+                    },
+                    "81": {
+                        "Stints": [{"Compound": "HARD", "New": "true", "TotalLaps": 8}]
+                    },
+                }
+            },
+        ),
+        ReplayFrame(
+            timestamp_ms=1_000,
+            stream="SessionStatus",
+            payload={"Status": "Started", "Started": True},
+        ),
+    ]
+
+    initial_state = manager._build_initial_state(frames, 1_000)
+
+    assert "TyreStintSeries" not in initial_state
+    timingapp = initial_state["TimingAppData"]
+    assert timingapp["Lines"]["16"]["GridRow"] == 1
+    assert timingapp["Lines"]["16"]["CurrentLapIsValid"] is True
+    assert timingapp["Lines"]["16"]["Stints"]["0"]["Compound"] == "MEDIUM"
+    assert timingapp["Lines"]["16"]["Stints"]["0"]["LapTime"] == "1:23.000"
+    assert timingapp["Lines"]["16"]["Stints"]["1"]["Compound"] == "SOFT"
+    assert timingapp["Lines"]["81"]["Stints"]["0"]["Compound"] == "HARD"
 
 
 @pytest.mark.asyncio
@@ -362,9 +420,108 @@ async def test_replay_seek_forward_replays_intermediate_state_changes(
     assert controller.state == ReplayState.PLAYING
     assert track.data["Status"] == "5"
     assert race_control.data["Message"] == RCM_OVERTAKE_ENABLED
+    assert race_control.available is True
     assert live_mode.data["overtake_enabled"] is True
 
     await controller.async_stop()
+
+
+@pytest.mark.asyncio
+async def test_replay_weather_and_lap_count_coordinators_stay_available_in_replay(
+    hass,
+) -> None:
+    bus = FakeLiveBus()
+    live_state = LiveAvailabilityTracker()
+    entry = _make_config_entry(hass)
+
+    weather = WeatherDataCoordinator(
+        hass,
+        session_coord=object(),
+        bus=bus,
+        config_entry=entry,
+        live_state=live_state,
+    )
+    lap_count = LapCountCoordinator(
+        hass,
+        session_coord=object(),
+        bus=bus,
+        config_entry=entry,
+        live_state=live_state,
+    )
+
+    await weather.async_config_entry_first_refresh()
+    await lap_count.async_config_entry_first_refresh()
+    live_state.set_state(True, "replay")
+
+    bus.inject_message("WeatherData", {"AirTemp": "19.4", "TrackTemp": "37.0"})
+    bus.inject_message("LapCount", {"CurrentLap": 1, "TotalLaps": 53})
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert weather.available is True
+    assert weather.data["AirTemp"] == "19.4"
+    assert lap_count.available is True
+    assert lap_count.data["CurrentLap"] == 1
+
+    await weather.async_close()
+    await lap_count.async_close()
+
+
+@pytest.mark.asyncio
+async def test_championship_prediction_preserves_driver_identity_on_sparse_updates(
+    hass,
+) -> None:
+    bus = FakeLiveBus()
+    live_state = LiveAvailabilityTracker()
+    entry = _make_config_entry(hass)
+
+    coordinator = ChampionshipPredictionCoordinator(
+        hass,
+        session_coord=object(),
+        bus=bus,
+        config_entry=entry,
+        live_state=live_state,
+    )
+
+    await coordinator.async_config_entry_first_refresh()
+    live_state.set_state(True, "replay")
+
+    bus.inject_message(
+        "DriverList",
+        {
+            "12": {
+                "RacingNumber": "12",
+                "Tla": "ANT",
+                "FullName": "Kimi ANTONELLI",
+                "TeamName": "Mercedes",
+            }
+        },
+    )
+    bus.inject_message(
+        "ChampionshipPrediction",
+        {
+            "Drivers": {
+                "12": {
+                    "RacingNumber": "12",
+                    "PredictedPosition": 1,
+                    "PredictedPoints": 72.0,
+                }
+            },
+            "Teams": {},
+        },
+    )
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert coordinator.data["predicted_driver_p1"]["tla"] == "ANT"
+
+    bus.inject_message("DriverList", {"12": {"Line": 2}})
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert coordinator.data["predicted_driver_p1"]["tla"] == "ANT"
+
+    await coordinator.async_close()
 
 
 @pytest.mark.asyncio

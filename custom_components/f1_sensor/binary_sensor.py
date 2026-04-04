@@ -34,6 +34,7 @@ from .entity import (
     F1AuxEntity,
     F1BaseEntity,
     default_object_id,
+    is_replay_only_stream_active,
     set_suggested_object_id,
 )
 from .formation_start import FormationStartTracker
@@ -429,20 +430,22 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         if self.hass is None:
             return self._is_on
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
-        live_state = reg.get("live_state")
-        is_live_window = (
-            bool(getattr(live_state, "is_live", False))
-            if live_state is not None
-            else None
-        )
-        if is_live_window is False:
+        if not self._is_stream_active():
             return False
         return self._is_on
 
     @property
+    def available(self) -> bool:
+        return self._is_stream_active()
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return self._attrs
+
+    def _is_stream_active(self) -> bool:
+        return is_replay_only_stream_active(
+            getattr(self, "hass", None), getattr(self, "_entry_id", None)
+        )
 
     def _handle_update(self, snapshot: dict[str, Any]) -> None:
         if not self._is_stream_active():
@@ -463,7 +466,7 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
         self._safe_write_ha_state()
 
     def _handle_live_state(self, is_live: bool, _reason: str | None) -> None:
-        if not is_live and not self._is_stream_active():
+        if not self._is_stream_active():
             self._clear_state()
         self._safe_write_ha_state()
 

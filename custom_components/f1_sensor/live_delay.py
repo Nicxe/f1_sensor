@@ -12,7 +12,6 @@ from homeassistant.helpers.storage import Store
 from .const import (
     DEFAULT_LIVE_DELAY_REFERENCE,
     DOMAIN,
-    LIVE_DELAY_REFERENCE_FORMATION,
     LIVE_DELAY_REFERENCE_LAP_SYNC,
     LIVE_DELAY_REFERENCE_SESSION,
 )
@@ -148,7 +147,6 @@ class LiveDelayReferenceController(StoredReferenceController):
             default=DEFAULT_LIVE_DELAY_REFERENCE,
             allowed={
                 LIVE_DELAY_REFERENCE_SESSION,
-                LIVE_DELAY_REFERENCE_FORMATION,
                 LIVE_DELAY_REFERENCE_LAP_SYNC,
             },
             log_label="Live delay reference",

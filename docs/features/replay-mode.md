@@ -12,6 +12,7 @@ Your lights can react to a red flag. Your dashboard can show live timing. Race C
 Replay Mode now includes experimental 30-second catch-up controls in Version 1. The feature is being tested in real setups, and additional refinement may still be needed in later updates.
 :::
 
+
 :::tip Watching it later? Keep your dashboard spoiler-free
 If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode, press play when your broadcast begins, and experience everything as if it were live — without any spoilers.
 :::
@@ -156,41 +157,6 @@ This feature is experimental. Real-world feedback will be used to improve the be
 
 ---
 
-## Replay Catch-Up
-
-:::warning Experimental feature
-The replay catch-up controls in Replay Mode are experimental.
-
-You can now move replay backward or forward in fixed 30-second steps with **Back 30 seconds** and **Forward 30 seconds**. This is an early version that is being tested in real setups, so more refinement may still be needed in future updates.
-:::
-
-The Version 1 replay catch-up controls are designed to help you manually line up Replay Mode with your broadcaster when the video is ahead or behind.
-
-### How the 30-second buttons work
-
-When you press **Forward 30 seconds**, the integration does not simply skip to a new position and ignore what happened in between. It quickly replays the events inside that 30-second window first, then continues from the new position.
-
-That means important state changes still land correctly. If a red flag, Race Control update, session clock change, or other tracked event happens inside those 30 seconds, the related entities still end up in the right state after the jump.
-
-When you press **Back 30 seconds**, Replay Mode rebuilds the replay state from the selected replay start point and then replays forward to the new position.
-
-### What to expect in Version 1
-
-- Catch-up uses fixed 30-second steps only
-- There is no free drag-to-seek slider yet
-- The feature is intended to make manual catch-up simpler, not to guarantee perfect sync with every broadcaster
-- Rewinding can replay the same historical event again, which means automations and notifications may trigger again by design
-
-### Best way to use it
-
-If your TV or streaming replay is slightly out of sync, pause Replay Mode and use the 30-second buttons until the on-screen action matches your Home Assistant entities again. A practical reference point is the session clock, track status, or the latest Race Control message.
-
-:::info
-This feature is experimental. Real-world feedback will be used to improve the behavior, controls, and timing in later updates.
-:::
-
----
-
 ## Media Player Entity
 
 The `media_player.f1_replay_player` entity provides standard media player controls for replay.
@@ -284,6 +250,24 @@ automation:
 ```
 
 Replace `media_player.apple_tv` with your actual media player entity. This works with any media player that reports play and pause states.
+
+---
+
+## Additional entities in Replay Mode
+
+Replay Mode provides access to all the same entities as a live session, plus several replay-only entities. These entities stay registered in Home Assistant at all times, but they are unavailable outside Replay Mode because the underlying data streams require authentication that is not currently supported during live sessions. When you start a replay, they begin updating normally.
+
+| Entity | Description |
+| --- | --- |
+| `sensor.f1_pitstops` | Pit stop events and timing per car |
+| `sensor.f1_team_radio` | Team radio clips with rolling history |
+| `sensor.f1_championship_prediction_drivers` | Predicted Drivers Championship standings |
+| `sensor.f1_championship_prediction_teams` | Predicted Constructors Championship standings |
+| `binary_sensor.f1_formation_start` | Formation start detection for race and sprint sessions |
+
+These entities remain present even before you start a replay. Outside Replay Mode they are unavailable, and when you start a replay they work like any other entity.
+
+For full details on each entity, see the [Live Data reference](/entities/live-data).
 
 ---
 
