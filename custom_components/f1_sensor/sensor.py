@@ -2129,7 +2129,7 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Sensor for live track weather via WeatherData feed.
 
     State: air temperature (Celsius). Attributes include track temp, humidity, pressure, rainfall,
-    wind speed and direction, with units. Restores last value on restart if no live data yet.
+    wind speed and direction, with units. Waits for fresh stream data before becoming available.
     """
 
     _device_category = "session"
@@ -2148,11 +2148,11 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_extra_state_attributes = {}
         self._last_timestamped_dt = None
         self._last_received_utc = None
-        # No stale timer: we keep last known value until a new payload arrives
+        # No stale timer: once a payload has arrived, keep it until a new payload arrives.
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        # Initialize from coordinator if available, else restore
+        # Initialize from coordinator if available, otherwise wait for a live payload.
         init = self._extract_current()
         updated = init is not None
         if init is not None:
@@ -2162,25 +2162,7 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     "TrackWeather: Initialized from coordinator: %s", init
                 )
         else:
-            if self._is_stream_active():
-                last = await self.async_get_last_state()
-                if last and last.state not in (None, "unknown", "unavailable"):
-                    # Restore last known state and attributes; do not clear due to age
-                    self._attr_native_value = self._to_float(last.state)
-                    attrs = dict(getattr(last, "attributes", {}) or {})
-                    for k in (
-                        "measurement_time",
-                        "measurement_age_seconds",
-                        "received_at",
-                    ):
-                        attrs.pop(k, None)
-                    self._attr_extra_state_attributes = attrs
-                    with suppress(Exception):
-                        getLogger(__name__).debug(
-                            "TrackWeather: Restored last state: %s", last.state
-                        )
-            else:
-                self._clear_state()
+            self._clear_state()
         self._handle_stream_state(updated)
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
@@ -2188,6 +2170,10 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         return
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._attr_native_value is not None
 
     def _to_float(self, value):
         try:

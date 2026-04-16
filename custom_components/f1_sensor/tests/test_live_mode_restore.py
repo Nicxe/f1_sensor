@@ -30,6 +30,7 @@ from custom_components.f1_sensor.sensor import (
     F1StraightModeSensor,
     F1TeamRadioSensor,
     F1TrackStatusSensor,
+    F1TrackWeatherSensor,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -635,6 +636,84 @@ async def test_replay_only_sensors_stay_unavailable_during_live_sessions(
     state = await _add_entity_and_get_state(hass, "sensor", entity)
 
     assert state.state == STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize("reason", ["live-Race", "replay"])
+@pytest.mark.asyncio
+async def test_track_weather_does_not_restore_before_first_payload(
+    hass, reason
+) -> None:
+    entry_id = "test_entry"
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+        "live_state": _LiveState(True, reason),
+        "live_bus": _LiveBus(0.0),
+    }
+    coordinator = _build_coordinator(hass, None)
+    entity = F1TrackWeatherSensor(
+        coordinator,
+        f"{entry_id}_track_weather",
+        entry_id,
+        "F1",
+    )
+    entity.async_get_last_state = AsyncMock(
+        return_value=State(
+            "sensor.f1_track_weather",
+            "27.4",
+            {"air_temperature": 27.4, "track_temperature": 34.6},
+        )
+    )
+
+    state = await _add_entity_and_get_state(hass, "sensor", entity)
+
+    assert state.state == STATE_UNAVAILABLE
+    entity.async_get_last_state.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_track_weather_becomes_available_after_first_payload(hass) -> None:
+    entry_id = "test_entry"
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+        "live_state": _LiveState(True, "live-Race"),
+        "live_bus": _LiveBus(0.0),
+    }
+    coordinator = _build_coordinator(hass, None)
+    entity = F1TrackWeatherSensor(
+        coordinator,
+        f"{entry_id}_track_weather",
+        entry_id,
+        "F1",
+    )
+
+    initial = await _add_entity_and_get_state(hass, "sensor", entity)
+    assert initial.state == STATE_UNAVAILABLE
+
+    coordinator.async_set_updated_data(
+        {
+            "AirTemp": "21.5",
+            "TrackTemp": "35.0",
+            "Humidity": "64",
+            "Pressure": "1014.2",
+            "Rainfall": "0",
+            "WindDirection": "90",
+            "WindSpeed": "2.1",
+        }
+    )
+    await hass.async_block_till_done()
+
+    state = hass.states.get(entity.entity_id)
+    assert state is not None
+    assert state.state == "21.5"
+    assert state.attributes["air_temperature"] == 21.5
+    assert state.attributes["track_temperature"] == 35.0
+
+    coordinator.async_set_updated_data(None)
+    await hass.async_block_till_done()
+
+    after_empty_update = hass.states.get(entity.entity_id)
+    assert after_empty_update is not None
+    assert after_empty_update.state == "21.5"
 
 
 @pytest.mark.asyncio
