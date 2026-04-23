@@ -31,6 +31,7 @@ from .calibration import LiveDelayCalibrationManager
 from .const import (
     API_URL,
     CONF_LIVE_DELAY_REFERENCE,
+    CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
     CONF_REPLAY_FILE,
     CONF_REPLAY_START_REFERENCE,
@@ -1574,7 +1575,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
-    live_bus = LiveBus(hass, session, transport_factory=transport_factory)
+    live_timing_auth_header = str(
+        entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "") or ""
+    ).strip()
+    if operation_mode != OPERATION_MODE_LIVE or not ENABLE_DEVELOPMENT_MODE_UI:
+        live_timing_auth_header = ""
+
+    def _handle_live_timing_auth_failed() -> None:
+        entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+        if isinstance(entry_data, dict):
+            capabilities = entry_data.get("signalr_stream_capabilities")
+            if isinstance(capabilities, dict):
+                capabilities["auth_enabled"] = False
+        entry.async_start_reauth(hass, data=entry.data)
+
+    live_bus = LiveBus(
+        hass,
+        session,
+        transport_factory=transport_factory,
+        auth_header=live_timing_auth_header,
+        auth_failed_callback=(
+            _handle_live_timing_auth_failed if live_timing_auth_header else None
+        ),
+    )
     live_supervisor: LiveSessionSupervisor | None = None
     event_tracker_source: EventTrackerScheduleSource | None = None
     live_state: LiveAvailabilityTracker
@@ -1882,7 +1905,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "public_live_streams": frozenset(PUBLIC_LIVE_STREAMS),
             "auth_gated_live_streams": frozenset(AUTH_GATED_LIVE_STREAMS),
             "replay_only_streams": frozenset(REPLAY_ONLY_STREAMS),
-            "auth_enabled": False,
+            "auth_enabled": live_bus.auth_enabled,
         },
         "operation_mode": operation_mode,
         "replay_file": replay_source,
@@ -5287,6 +5310,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 self._unsubs.append(
                     bus.subscribe(
                         "LapHistory", _wrap_delayed_handler(self, self._on_lap_history)
+                    )
+                )
+            with suppress(Exception):
+                self._unsubs.append(
+                    bus.subscribe(
+                        "DriverRaceInfo",
+                        _wrap_delayed_handler(self, self._on_driver_race_info),
                     )
                 )
             with suppress(Exception):

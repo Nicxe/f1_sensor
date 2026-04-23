@@ -19,9 +19,11 @@ from custom_components.f1_sensor.signalr import (
     REPLAY_ONLY_STREAMS,
     SUBSCRIBE_MSG,
     LiveBus,
+    SignalRAuthenticationError,
     SignalRCoreClient,
     SignalRLegacyClient,
     build_live_subscribe_streams,
+    build_subscribe_message,
 )
 
 # ---------------------------------------------------------------------------
@@ -47,6 +49,9 @@ class FakeWebSocket:
 
     async def send_str(self, data: str) -> None:
         self._sent.append(data)
+
+    async def send_json(self, data: dict) -> None:
+        self._sent.append(json.dumps(data))
 
     async def receive(self) -> FakeWSMessage:
         if self._messages:
@@ -236,6 +241,113 @@ async def test_subscribe_format():
     assert subscribe_sent.endswith(RECORD_SEP)
 
 
+@pytest.mark.asyncio
+async def test_core_auth_header_enables_auth_gated_streams():
+    """Core client sends the configured Authorization header and gated streams."""
+    client = SignalRCoreClient(MagicMock(), MagicMock(), auth_header="Bearer secret")
+
+    options_resp = AsyncMock()
+    options_resp.headers = {}
+    options_resp.__aenter__ = AsyncMock(return_value=options_resp)
+    options_resp.__aexit__ = AsyncMock(return_value=False)
+
+    post_resp = AsyncMock()
+    post_resp.raise_for_status = MagicMock()
+    post_resp.json = AsyncMock(return_value={"connectionToken": "t"})
+    post_resp.__aenter__ = AsyncMock(return_value=post_resp)
+    post_resp.__aexit__ = AsyncMock(return_value=False)
+
+    handshake_msg = FakeWSMessage(WSMsgType.TEXT, "{}" + RECORD_SEP)
+    ws = FakeWebSocket([handshake_msg])
+
+    client._session.options = MagicMock(return_value=options_resp)
+    client._session.post = MagicMock(return_value=post_resp)
+    client._session.ws_connect = AsyncMock(return_value=ws)
+
+    await client.connect()
+
+    assert client._session.options.call_args.kwargs["headers"]["Authorization"] == (
+        "Bearer secret"
+    )
+    assert client._session.post.call_args.kwargs["headers"]["Authorization"] == (
+        "Bearer secret"
+    )
+    assert client._session.ws_connect.call_args.kwargs["headers"]["Authorization"] == (
+        "Bearer secret"
+    )
+    subscribe_sent = ws._sent[1]
+    sub_json = json.loads(subscribe_sent.replace(RECORD_SEP, ""))
+    assert sub_json["arguments"] == [[*PUBLIC_LIVE_STREAMS, *AUTH_GATED_LIVE_STREAMS]]
+    assert set(sub_json["arguments"][0]).isdisjoint(REPLAY_ONLY_STREAMS)
+
+
+@pytest.mark.asyncio
+async def test_core_auth_handshake_error_raises_without_leaking_token():
+    """Auth failures raise the typed error without including the configured token."""
+    client = SignalRCoreClient(MagicMock(), MagicMock(), auth_header="Bearer secret")
+
+    options_resp = AsyncMock()
+    options_resp.headers = {}
+    options_resp.__aenter__ = AsyncMock(return_value=options_resp)
+    options_resp.__aexit__ = AsyncMock(return_value=False)
+
+    post_resp = AsyncMock()
+    post_resp.raise_for_status = MagicMock()
+    post_resp.json = AsyncMock(return_value={"connectionToken": "t"})
+    post_resp.__aenter__ = AsyncMock(return_value=post_resp)
+    post_resp.__aexit__ = AsyncMock(return_value=False)
+
+    handshake_msg = FakeWSMessage(
+        WSMsgType.TEXT,
+        json.dumps({"error": "Unauthorized"}) + RECORD_SEP,
+    )
+    ws = FakeWebSocket([handshake_msg])
+
+    client._session.options = MagicMock(return_value=options_resp)
+    client._session.post = MagicMock(return_value=post_resp)
+    client._session.ws_connect = AsyncMock(return_value=ws)
+
+    with pytest.raises(SignalRAuthenticationError) as exc:
+        await client.connect()
+
+    assert "secret" not in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_legacy_auth_header_enables_auth_gated_streams():
+    """Legacy client also sends Authorization and subscribes to gated streams."""
+    client = SignalRLegacyClient(MagicMock(), MagicMock(), auth_header="Bearer secret")
+
+    get_resp = AsyncMock()
+    get_resp.headers = {"Set-Cookie": "lb-cookie=1"}
+    get_resp.raise_for_status = MagicMock()
+    get_resp.json = AsyncMock(return_value={"ConnectionToken": "legacy-token"})
+    get_resp.__aenter__ = AsyncMock(return_value=get_resp)
+    get_resp.__aexit__ = AsyncMock(return_value=False)
+
+    ws = FakeWebSocket()
+    client._session.get = MagicMock(return_value=get_resp)
+    client._session.ws_connect = AsyncMock(return_value=ws)
+    task = MagicMock()
+    task.done.return_value = True
+
+    def _create_task(coro):
+        coro.close()
+        return task
+
+    with patch("asyncio.create_task", side_effect=_create_task):
+        await client.connect()
+
+    assert client._session.get.call_args.kwargs["headers"]["Authorization"] == (
+        "Bearer secret"
+    )
+    ws_headers = client._session.ws_connect.call_args.kwargs["headers"]
+    assert ws_headers["Authorization"] == "Bearer secret"
+    subscribe_json = json.loads(ws._sent[0])
+    assert subscribe_json == build_subscribe_message(include_auth_gated=True)
+    assert set(subscribe_json["A"][0]).isdisjoint(REPLAY_ONLY_STREAMS)
+
+
 def test_no_auth_live_stream_contract():
     """No-auth subscriptions must stay aligned with the explicit public stream contract."""
     assert PUBLIC_LIVE_STREAMS == (
@@ -287,6 +399,55 @@ def test_live_bus_can_select_legacy_transport(monkeypatch):
     client = bus._create_client()
 
     assert isinstance(client, SignalRLegacyClient)
+
+
+@pytest.mark.asyncio
+async def test_live_bus_falls_back_to_no_auth_after_auth_failure():
+    """Rejected auth disables auth and lets the next connection use public streams."""
+
+    class AuthFailTransport:
+        async def ensure_connection(self) -> None:
+            raise SignalRAuthenticationError("auth rejected")
+
+        async def messages(self):
+            if False:
+                yield {}
+
+        async def close(self) -> None:
+            return None
+
+    class StopTransport:
+        def __init__(self, bus: LiveBus) -> None:
+            self._bus = bus
+
+        async def ensure_connection(self) -> None:
+            return None
+
+        async def messages(self):
+            self._bus._running = False  # noqa: SLF001 - stop private test loop
+            if False:
+                yield {}
+
+        async def close(self) -> None:
+            return None
+
+    hass = MagicMock()
+    auth_failed = MagicMock()
+    bus = LiveBus(
+        hass,
+        MagicMock(),
+        auth_header="Bearer secret",
+        auth_failed_callback=auth_failed,
+    )
+    bus._running = True  # noqa: SLF001 - exercise private fallback loop directly
+    create_client = MagicMock(side_effect=[AuthFailTransport(), StopTransport(bus)])
+    bus._create_client = create_client  # noqa: SLF001 - control transport sequence
+
+    await bus._run()  # noqa: SLF001 - exercise private fallback loop directly
+
+    assert bus.auth_enabled is False
+    auth_failed.assert_called_once_with()
+    assert create_client.call_count == 2
 
 
 @pytest.mark.asyncio

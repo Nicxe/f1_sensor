@@ -9,7 +9,7 @@ import logging
 import time
 from typing import Any, Protocol
 
-from aiohttp import ClientSession, WSMsgType
+from aiohttp import ClientResponseError, ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,6 +56,8 @@ REPLAY_ONLY_STREAMS = (
     "PitStopSeries",
 )
 
+AUTH_FAILURE_STATUSES = frozenset({401, 403})
+
 
 def build_live_subscribe_streams(
     *, include_auth_gated: bool = False
@@ -67,14 +69,21 @@ def build_live_subscribe_streams(
     return tuple(streams)
 
 
+def build_subscribe_message(*, include_auth_gated: bool = False) -> dict[str, Any]:
+    """Return a SignalR legacy subscribe message for the selected capability set."""
+    return {
+        "H": "Streaming",
+        "M": "Subscribe",
+        "A": [
+            list(build_live_subscribe_streams(include_auth_gated=include_auth_gated))
+        ],
+        "I": 1,
+    }
+
+
 NO_AUTH_LIVE_STREAMS = build_live_subscribe_streams()
 
-SUBSCRIBE_MSG = {
-    "H": "Streaming",
-    "M": "Subscribe",
-    "A": [list(NO_AUTH_LIVE_STREAMS)],
-    "I": 1,
-}
+SUBSCRIBE_MSG = build_subscribe_message()
 
 DEBUG_SUMMARY_STREAMS = (
     "SessionStatus",
@@ -90,12 +99,69 @@ class LiveTransport(Protocol):
     async def close(self) -> None: ...
 
 
+class SignalRAuthenticationError(Exception):
+    """Raised when F1 Live Timing rejects the configured authorization."""
+
+
+def _normalize_auth_header(auth_header: str | None) -> str | None:
+    value = str(auth_header or "").strip()
+    return value or None
+
+
+def _authorization_headers(auth_header: str | None) -> dict[str, str]:
+    if not auth_header:
+        return {}
+    return {"Authorization": auth_header}
+
+
+def _is_authentication_error(err: Exception) -> bool:
+    if isinstance(err, ClientResponseError):
+        return err.status in AUTH_FAILURE_STATUSES
+    text = str(err).lower()
+    return any(
+        marker in text
+        for marker in (
+            "401",
+            "403",
+            "unauthorized",
+            "forbidden",
+            "auth",
+            "credential",
+        )
+    )
+
+
+def _is_authentication_close_error(error: object) -> bool:
+    text = str(error or "").lower()
+    return any(
+        marker in text
+        for marker in (
+            "401",
+            "403",
+            "unauthorized",
+            "forbidden",
+            "auth",
+            "credential",
+        )
+    )
+
+
 class SignalRLegacyClient:
     """Minimal legacy SignalR client for Formula 1 live timing."""
 
-    def __init__(self, hass: HomeAssistant, session: ClientSession) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session: ClientSession,
+        *,
+        auth_header: str | None = None,
+    ) -> None:
         self._hass = hass
         self._session = session
+        self._auth_header = _normalize_auth_header(auth_header)
+        self._subscribe_msg = build_subscribe_message(
+            include_auth_gated=self._auth_header is not None
+        )
         self._ws = None
         self._t0 = dt.datetime.now(dt.UTC)
         self._startup_cutoff = None
@@ -104,7 +170,11 @@ class SignalRLegacyClient:
     async def connect(self) -> None:
         _LOGGER.debug("Connecting to F1 SignalR service")
         params = {"clientProtocol": "1.5", "connectionData": HUB_DATA}
-        async with self._session.get(NEGOTIATE_URL, params=params) as resp:
+        async with self._session.get(
+            NEGOTIATE_URL,
+            params=params,
+            headers=_authorization_headers(self._auth_header),
+        ) as resp:
             resp.raise_for_status()
             data = await resp.json()
             token = data.get("ConnectionToken")
@@ -116,6 +186,7 @@ class SignalRLegacyClient:
         }
         if cookie:
             headers["Cookie"] = cookie
+        headers.update(_authorization_headers(self._auth_header))
 
         params = {
             "transport": "webSockets",
@@ -126,7 +197,7 @@ class SignalRLegacyClient:
         self._ws = await self._session.ws_connect(
             CONNECT_URL, params=params, headers=headers
         )
-        await self._ws.send_json(SUBSCRIBE_MSG)
+        await self._ws.send_json(self._subscribe_msg)
         # Renew the subscription every 5 minutes so Azure SignalR
         # inte stänger grupp‑anslutningen (20 min timeout).
         if self._heartbeat_task is None or self._heartbeat_task.done():
@@ -136,7 +207,7 @@ class SignalRLegacyClient:
         _LOGGER.debug("SignalR connection established")
         _LOGGER.debug(
             "Subscribed to %s",
-            ", ".join(SUBSCRIBE_MSG["A"][0]),
+            ", ".join(self._subscribe_msg["A"][0]),
         )
 
     async def ensure_connection(self) -> None:
@@ -150,7 +221,13 @@ class SignalRLegacyClient:
             try:
                 await self.connect()
                 return
+            except SignalRAuthenticationError:
+                raise
             except Exception as err:  # noqa: BLE001
+                if self._auth_header and _is_authentication_error(err):
+                    raise SignalRAuthenticationError(
+                        "F1 SignalR authorization was rejected"
+                    ) from err
                 _LOGGER.warning(
                     "SignalR reconnect failed (%s). Retrying in %s s …", err, delay
                 )
@@ -170,6 +247,14 @@ class SignalRLegacyClient:
                     payload = None
                 if payload is None:
                     continue
+                if (
+                    isinstance(payload, dict)
+                    and isinstance(payload.get("E"), str)
+                    and _is_authentication_close_error(payload.get("E"))
+                ):
+                    raise SignalRAuthenticationError(
+                        "F1 SignalR authorization was rejected"
+                    )
                 # Per-message payload logging suppressed to reduce verbosity
 
                 if "M" in payload:
@@ -196,7 +281,7 @@ class SignalRLegacyClient:
                 if self._ws is None or self._ws.closed:
                     break
                 try:
-                    await self._ws.send_json(SUBSCRIBE_MSG)
+                    await self._ws.send_json(self._subscribe_msg)
                     _LOGGER.debug("Heartbeat: subscriptions renewed")
                 except Exception as exc:  # pylint: disable=broad-except
                     _LOGGER.warning("Heartbeat failed: %s", exc)
@@ -221,9 +306,19 @@ class SignalRCoreClient:
     into legacy-format dicts so LiveBus._run() needs no changes.
     """
 
-    def __init__(self, hass: HomeAssistant, session: ClientSession) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session: ClientSession,
+        *,
+        auth_header: str | None = None,
+    ) -> None:
         self._hass = hass
         self._session = session
+        self._auth_header = _normalize_auth_header(auth_header)
+        self._subscribe_msg = build_subscribe_message(
+            include_auth_gated=self._auth_header is not None
+        )
         self._ws = None
         self._cookie: str | None = None
 
@@ -234,7 +329,9 @@ class SignalRCoreClient:
         # Step 1: OPTIONS to obtain AWSALBCORS load-balancer cookie
         try:
             async with self._session.options(
-                CORE_NEGOTIATE_URL, params=negotiate_params
+                CORE_NEGOTIATE_URL,
+                params=negotiate_params,
+                headers=_authorization_headers(self._auth_header),
             ) as resp:
                 cookie_header = resp.headers.get("Set-Cookie", "")
                 for part in cookie_header.split(","):
@@ -246,7 +343,7 @@ class SignalRCoreClient:
             _LOGGER.debug("OPTIONS request failed, continuing without cookie")
 
         # Step 2: POST negotiate to obtain connectionToken
-        headers = {}
+        headers = _authorization_headers(self._auth_header)
         if self._cookie:
             headers["Cookie"] = f"AWSALBCORS={self._cookie}"
         async with self._session.post(
@@ -257,7 +354,7 @@ class SignalRCoreClient:
             token = data.get("connectionToken") or data.get("ConnectionToken", "")
 
         # Step 3: WebSocket connect
-        ws_headers = {}
+        ws_headers = _authorization_headers(self._auth_header)
         if self._cookie:
             ws_headers["Cookie"] = f"AWSALBCORS={self._cookie}"
         self._ws = await self._session.ws_connect(
@@ -274,6 +371,12 @@ class SignalRCoreClient:
             if hs_data:
                 hs_json = json.loads(hs_data)
                 if "error" in hs_json:
+                    if self._auth_header and _is_authentication_close_error(
+                        hs_json["error"]
+                    ):
+                        raise SignalRAuthenticationError(
+                            "F1 SignalR Core authorization was rejected"
+                        )
                     raise ConnectionError(
                         f"SignalR Core handshake error: {hs_json['error']}"
                     )
@@ -284,7 +387,7 @@ class SignalRCoreClient:
         subscribe = {
             "type": 1,
             "target": "Subscribe",
-            "arguments": SUBSCRIBE_MSG["A"],
+            "arguments": self._subscribe_msg["A"],
             "invocationId": "0",
         }
         await self._ws.send_str(json.dumps(subscribe) + RECORD_SEP)
@@ -300,7 +403,13 @@ class SignalRCoreClient:
             try:
                 await self.connect()
                 return
+            except SignalRAuthenticationError:
+                raise
             except Exception as err:  # noqa: BLE001
+                if self._auth_header and _is_authentication_error(err):
+                    raise SignalRAuthenticationError(
+                        "F1 SignalR Core authorization was rejected"
+                    ) from err
                 _LOGGER.warning(
                     "SignalR Core reconnect failed (%s). Retrying in %s s …",
                     err,
@@ -344,6 +453,10 @@ class SignalRCoreClient:
                     elif msg_type == 7:
                         # Close
                         error = payload.get("error", "")
+                        if self._auth_header and _is_authentication_close_error(error):
+                            raise SignalRAuthenticationError(
+                                "F1 SignalR Core authorization was rejected"
+                            )
                         _LOGGER.warning(
                             "SignalR Core server closed connection: %s", error
                         )
@@ -369,10 +482,16 @@ class LiveBus:
         session: ClientSession,
         *,
         transport_factory: Callable[[], LiveTransport] | None = None,
+        auth_header: str | None = None,
+        auth_failed_callback: Callable[[], None] | None = None,
     ) -> None:
         self._hass = hass
         self._session = session
         self._transport_factory = transport_factory
+        self._auth_header = _normalize_auth_header(auth_header)
+        self._auth_enabled = self._auth_header is not None
+        self._auth_failed_callback = auth_failed_callback
+        self._auth_failed_reported = False
         self._client: LiveTransport | None = None
         self._task: asyncio.Task | None = None
         self._subs: dict[str, list[Callable[[StreamPayload], None]]] = {}
@@ -391,6 +510,11 @@ class LiveBus:
         self._heartbeat_guard: asyncio.Task | None = None
         self._heartbeat_timeout = 45.0
         self._heartbeat_check_interval = 5.0
+
+    @property
+    def auth_enabled(self) -> bool:
+        """Return whether the live connection is currently using auth."""
+        return self._auth_enabled
 
     def subscribe(
         self, stream: str, callback: Callable[[StreamPayload], None]
@@ -477,6 +601,22 @@ class LiveBus:
                                         # Dispatch if there are subscribers now
                                         if key in self._subs:
                                             self._dispatch(key, value)
+                except SignalRAuthenticationError:
+                    if self._auth_enabled:
+                        self._auth_enabled = False
+                        _LOGGER.warning(
+                            "Live timing authorization was rejected; falling back to public live timing"
+                        )
+                        if (
+                            self._auth_failed_callback is not None
+                            and not self._auth_failed_reported
+                        ):
+                            self._auth_failed_reported = True
+                            self._auth_failed_callback()
+                        continue
+                    _LOGGER.warning("LiveBus authorization error")
+                    if self._running:
+                        await asyncio.sleep(2)
                 except Exception as err:  # pragma: no cover - network errors
                     # Log replay-related errors at DEBUG since they're expected during replay stop
                     err_str = str(err)
@@ -579,8 +719,16 @@ class LiveBus:
         from .const import SIGNALR_USE_CORE
 
         if SIGNALR_USE_CORE:
-            return SignalRCoreClient(self._hass, self._session)
-        return SignalRLegacyClient(self._hass, self._session)
+            return SignalRCoreClient(
+                self._hass,
+                self._session,
+                auth_header=self._auth_header if self._auth_enabled else None,
+            )
+        return SignalRLegacyClient(
+            self._hass,
+            self._session,
+            auth_header=self._auth_header if self._auth_enabled else None,
+        )
 
     async def _monitor_heartbeat(self) -> None:
         with suppress(asyncio.CancelledError):

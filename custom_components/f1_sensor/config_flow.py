@@ -2,11 +2,17 @@ from pathlib import Path
 
 from homeassistant import config_entries
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.selector import (
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 import voluptuous as vol
 
 from .const import (
     CONF_ENTITY_NAME_LANGUAGE,
     CONF_ENTITY_NAME_MODE,
+    CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
     CONF_RACE_WEEK_START_DAY,
     CONF_RACE_WEEK_SUNDAY_START,
@@ -22,6 +28,12 @@ from .const import (
     RACE_WEEK_START_MONDAY,
     RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
+)
+
+_CONF_CLEAR_LIVE_TIMING_AUTH_HEADER = "clear_live_timing_auth_header"
+
+_AUTH_HEADER_SELECTOR = TextSelector(
+    TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="current-password")
 )
 
 RACE_WEEK_START_OPTIONS = {
@@ -79,6 +91,11 @@ def _build_sensor_options() -> dict:
     return options
 
 
+def _normalize_auth_header(value: object) -> str:
+    """Return a normalized live timing authorization header."""
+    return str(value or "").strip()
+
+
 class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
@@ -107,6 +124,12 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         race_week_start = self._normalize_race_week_start(current)
 
         if user_input is not None:
+            auth_header = _normalize_auth_header(
+                user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
+            )
+            if ENABLE_DEVELOPMENT_MODE_UI and auth_header:
+                user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
+
             # Resolve and validate operation mode
             mode = user_input.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
             if mode not in (OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT):
@@ -172,6 +195,9 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_REPLAY_FILE,
                         default=current.get(CONF_REPLAY_FILE, ""),
                     ): cv.string,
+                    vol.Optional(
+                        CONF_LIVE_TIMING_AUTH_HEADER, default=""
+                    ): _AUTH_HEADER_SELECTOR,
                 }
             )
         else:
@@ -192,6 +218,19 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         race_week_start = self._normalize_race_week_start(current)
 
         if user_input is not None:
+            auth_header = _normalize_auth_header(
+                user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
+            )
+            clear_auth_header = bool(
+                user_input.pop(_CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, False)
+            )
+            if auth_header:
+                if ENABLE_DEVELOPMENT_MODE_UI:
+                    user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
+            elif clear_auth_header:
+                if ENABLE_DEVELOPMENT_MODE_UI:
+                    user_input[CONF_LIVE_TIMING_AUTH_HEADER] = ""
+
             mode = user_input.get(
                 CONF_OPERATION_MODE,
                 current.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE),
@@ -293,11 +332,60 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ): cv.string,
                 }
             )
+            if ENABLE_DEVELOPMENT_MODE_UI:
+                schema_fields.update(
+                    {
+                        vol.Optional(
+                            CONF_LIVE_TIMING_AUTH_HEADER, default=""
+                        ): _AUTH_HEADER_SELECTOR,
+                        vol.Optional(
+                            _CONF_CLEAR_LIVE_TIMING_AUTH_HEADER,
+                            default=False,
+                        ): cv.boolean,
+                    }
+                )
 
         data_schema = vol.Schema(schema_fields)
 
         return self.async_show_form(
             step_id="reconfigure",
+            data_schema=data_schema,
+            errors=errors,
+        )
+
+    async def async_step_reauth(self, entry_data=None):
+        """Handle reauthentication for live timing authorization."""
+        if not ENABLE_DEVELOPMENT_MODE_UI:
+            return self.async_abort(reason="reauth_not_supported")
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input=None):
+        """Handle live timing authorization reauthentication."""
+        if not ENABLE_DEVELOPMENT_MODE_UI:
+            return self.async_abort(reason="reauth_not_supported")
+
+        errors = {}
+
+        if user_input is not None:
+            auth_header = _normalize_auth_header(
+                user_input.get(CONF_LIVE_TIMING_AUTH_HEADER)
+            )
+            if not auth_header:
+                errors[CONF_LIVE_TIMING_AUTH_HEADER] = "auth_header_required"
+            else:
+                return self.async_update_reload_and_abort(
+                    self._get_reauth_entry(),
+                    data_updates={CONF_LIVE_TIMING_AUTH_HEADER: auth_header},
+                )
+
+        data_schema = vol.Schema(
+            {
+                vol.Required(CONF_LIVE_TIMING_AUTH_HEADER): _AUTH_HEADER_SELECTOR,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
             data_schema=data_schema,
             errors=errors,
         )
