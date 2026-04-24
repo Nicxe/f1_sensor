@@ -12,6 +12,8 @@ from typing import Any, Protocol
 from aiohttp import ClientResponseError, ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
 
+from .helpers import normalize_live_timing_auth_header
+
 _LOGGER = logging.getLogger(__name__)
 
 StreamPayload = Any
@@ -47,7 +49,6 @@ PUBLIC_LIVE_STREAMS = (
 AUTH_GATED_LIVE_STREAMS = (
     "CarData.z",
     "DriverRaceInfo",
-    "Position.z",
     "ChampionshipPrediction",
 )
 
@@ -104,7 +105,7 @@ class SignalRAuthenticationError(Exception):
 
 
 def _normalize_auth_header(auth_header: str | None) -> str | None:
-    value = str(auth_header or "").strip()
+    value = normalize_live_timing_auth_header(auth_header)
     return value or None
 
 

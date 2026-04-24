@@ -20,7 +20,6 @@ class _StubBus:
     [
         (TeamRadioCoordinator, {}),
         (PitStopCoordinator, {}),
-        (ChampionshipPredictionCoordinator, {}),
     ],
 )
 @pytest.mark.asyncio
@@ -43,6 +42,44 @@ async def test_replay_only_coordinators_are_available_only_during_replay(
     await hass.async_block_till_done()
     assert coordinator.available is False
 
+    live_state.set_state(True, "replay")
+    await hass.async_block_till_done()
+    assert coordinator.available is True
+
+    live_state.set_state(False, "replay-stopped")
+    await hass.async_block_till_done()
+    assert coordinator.available is False
+
+
+@pytest.mark.asyncio
+async def test_championship_prediction_coordinator_is_available_for_auth_live_or_replay(
+    hass,
+) -> None:
+    live_state = LiveAvailabilityTracker()
+    bus = _StubBus()
+    bus.auth_enabled = False
+    coordinator = ChampionshipPredictionCoordinator(
+        hass,
+        session_coord=object(),
+        bus=bus,
+        live_state=live_state,
+    )
+    await hass.async_block_till_done()
+
+    assert coordinator.available is False
+
+    live_state.set_state(True, "live-Race")
+    await hass.async_block_till_done()
+    assert coordinator.available is False
+
+    bus.auth_enabled = True
+    live_state.set_state(False, "idle")
+    await hass.async_block_till_done()
+    live_state.set_state(True, "live-Race")
+    await hass.async_block_till_done()
+    assert coordinator.available is True
+
+    bus.auth_enabled = False
     live_state.set_state(True, "replay")
     await hass.async_block_till_done()
     assert coordinator.available is True

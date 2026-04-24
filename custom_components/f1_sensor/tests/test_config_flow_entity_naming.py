@@ -76,7 +76,7 @@ async def test_user_flow_stores_trimmed_live_timing_auth_header(
             "enabled_sensors": ["next_race"],
             "enable_race_control": False,
             CONF_RACE_WEEK_START_DAY: RACE_WEEK_START_MONDAY,
-            CONF_LIVE_TIMING_AUTH_HEADER: "  Bearer test-token  ",
+            CONF_LIVE_TIMING_AUTH_HEADER: "  Authorization: Bearer test-token  ",
         },
     )
 
@@ -213,11 +213,42 @@ async def test_reauth_updates_auth_header(hass, monkeypatch) -> None:
     flow.context = {"source": "reauth", "entry_id": entry.entry_id}
 
     result = await flow.async_step_reauth_confirm(
-        {CONF_LIVE_TIMING_AUTH_HEADER: "  Bearer new-token  "}
+        {CONF_LIVE_TIMING_AUTH_HEADER: "  Authorization: Bearer new-token  "}
     )
 
     assert result["type"] == "abort"
     assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == "Bearer new-token"
+
+
+async def test_reauth_can_clear_auth_header(hass, monkeypatch) -> None:
+    monkeypatch.setattr(config_flow_module, "ENABLE_DEVELOPMENT_MODE_UI", True)
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            "enable_race_control": False,
+            CONF_OPERATION_MODE: DEFAULT_OPERATION_MODE,
+            CONF_REPLAY_FILE: "",
+            CONF_RACE_WEEK_START_DAY: RACE_WEEK_START_MONDAY,
+            CONF_LIVE_TIMING_AUTH_HEADER: "Bearer old-token",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    flow = F1FlowHandler()
+    flow.hass = hass
+    flow.context = {"source": "reauth", "entry_id": entry.entry_id}
+
+    result = await flow.async_step_reauth_confirm(
+        {
+            CONF_LIVE_TIMING_AUTH_HEADER: "",
+            "clear_live_timing_auth_header": True,
+        }
+    )
+
+    assert result["type"] == "abort"
+    assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == ""
 
 
 async def test_reauth_requires_auth_header(hass, monkeypatch) -> None:

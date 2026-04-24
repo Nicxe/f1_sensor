@@ -522,7 +522,7 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
             "enable_race_control": False,
             CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
             CONF_REPLAY_FILE: "",
-            CONF_LIVE_TIMING_AUTH_HEADER: "Bearer test-token",
+            CONF_LIVE_TIMING_AUTH_HEADER: "Authorization: Bearer test-token",
         },
     )
     entry.add_to_hass(hass)

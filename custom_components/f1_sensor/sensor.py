@@ -41,6 +41,7 @@ from .entity import (
     F1AuxEntity,
     F1BaseEntity,
     default_object_id,
+    is_auth_gated_stream_active,
     is_replay_only_stream_active,
     set_suggested_object_id,
 )
@@ -592,9 +593,7 @@ class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
         raise NotImplementedError
 
 
-class _ChampionshipPredictionBase(
-    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
-):
+class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
     """Base for championship prediction sensors with shared restore logic."""
 
     _device_category = "championship"
@@ -631,6 +630,13 @@ class _ChampionshipPredictionBase(
     def _extract_current(self) -> dict | None:
         data = self.coordinator.data
         return data if isinstance(data, dict) else None
+
+    def _is_stream_active(self) -> bool:
+        hass = getattr(self, "hass", None)
+        entry_id = getattr(self, "_entry_id", None)
+        return is_replay_only_stream_active(hass, entry_id) or (
+            is_auth_gated_stream_active(hass, entry_id, "ChampionshipPrediction")
+        )
 
     def _handle_coordinator_update(self) -> None:
         payload = self._extract_current()

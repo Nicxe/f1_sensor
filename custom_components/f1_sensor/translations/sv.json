@@ -32,13 +32,15 @@
           "operation_mode": "Driftläge",
           "replay_file": "Sökväg till replay-dump",
           "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
-          "race_week_start_day": "Första dagen i tävlingsveckan"
+          "race_week_start_day": "Första dagen i tävlingsveckan",
+          "live_timing_auth_header": "Live timing-auktoriseringsvärde"
         },
         "data_description": {
           "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
           "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
           "enable_race_control": "Ansluter till Formula 1 Live Timing via SignalR för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
-          "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag."
+          "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
+          "live_timing_auth_header": "Valfritt värde från F1TV Token Helper för Formula 1 Live Timing. Klistra in `Bearer <JWT>`. Ta inte med `Authorization:`. Lämna tomt för att bara använda publik live timing."
         }
       },
       "reconfigure": {
@@ -49,19 +51,35 @@
           "operation_mode": "Driftläge",
           "replay_file": "Sökväg till replay-dump",
           "enable_race_control": "Aktivera live F1 API",
-          "race_week_start_day": "Första dagen i tävlingsveckan"
+          "race_week_start_day": "Första dagen i tävlingsveckan",
+          "live_timing_auth_header": "Live timing-auktoriseringsvärde",
+          "clear_live_timing_auth_header": "Rensa live timing-auktoriseringsvärde"
         },
         "data_description": {
           "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
           "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
           "enable_race_control": "Ansluter till Formula 1 Live Timing för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
-          "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag."
+          "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
+          "live_timing_auth_header": "Ange ett nytt värde från F1TV Token Helper för att uppdatera det. Klistra in `Bearer <JWT>`. Lämna tomt för att behålla nuvarande värde.",
+          "clear_live_timing_auth_header": "Ta bort det sparade live timing-auktoriseringsvärdet och fortsätt med endast publik live timing."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Uppdatera F1 live timing-auktorisering",
+        "data": {
+          "live_timing_auth_header": "Live timing-auktoriseringsvärde",
+          "clear_live_timing_auth_header": "Rensa live timing-auktoriseringsvärde"
+        },
+        "data_description": {
+          "live_timing_auth_header": "Ange ett nytt värde från F1TV Token Helper för Formula 1 Live Timing. Klistra in `Bearer <JWT>`.",
+          "clear_live_timing_auth_header": "Ta bort det sparade live timing-auktoriseringsvärdet och fortsätt med endast publik live timing."
         }
       }
     },
     "error": {
       "replay_required": "Välj en replay-dumpfil när utvecklingsläge är aktiverat.",
-      "replay_missing": "Replay-dumpfilen hittades inte eller är oläsbar."
+      "replay_missing": "Replay-dumpfilen hittades inte eller är oläsbar.",
+      "auth_header_required": "Ange live timing-auktoriseringsvärdet eller välj att rensa det."
     }
   },
   "entity": {

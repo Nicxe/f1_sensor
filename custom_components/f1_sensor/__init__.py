@@ -78,6 +78,7 @@ from .helpers import (
     fetch_json,
     fetch_text,
     get_next_race,
+    normalize_live_timing_auth_header,
     parse_fia_documents,
 )
 from .live_delay import LiveDelayController, LiveDelayReferenceController
@@ -95,6 +96,7 @@ from .signalr import (
     PUBLIC_LIVE_STREAMS,
     REPLAY_ONLY_STREAMS,
     LiveBus,
+    build_live_subscribe_streams,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -1575,9 +1577,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
-    live_timing_auth_header = str(
-        entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "") or ""
-    ).strip()
+    live_timing_auth_header = normalize_live_timing_auth_header(
+        entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "")
+    )
     if operation_mode != OPERATION_MODE_LIVE or not ENABLE_DEVELOPMENT_MODE_UI:
         live_timing_auth_header = ""
 
@@ -1587,6 +1589,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             capabilities = entry_data.get("signalr_stream_capabilities")
             if isinstance(capabilities, dict):
                 capabilities["auth_enabled"] = False
+                capabilities["active_live_streams"] = frozenset(
+                    build_live_subscribe_streams(include_auth_gated=False)
+                )
+            championship_prediction_coordinator = entry_data.get(
+                "championship_prediction_coordinator"
+            )
+            live_state = entry_data.get("live_state")
+            if (
+                championship_prediction_coordinator is not None
+                and live_state is not None
+                and hasattr(championship_prediction_coordinator, "_handle_live_state")
+            ):
+                with suppress(Exception):
+                    championship_prediction_coordinator._handle_live_state(  # noqa: SLF001
+                        bool(getattr(live_state, "is_live", False)),
+                        getattr(live_state, "reason", None),
+                    )
         entry.async_start_reauth(hass, data=entry.data)
 
     live_bus = LiveBus(
@@ -1906,6 +1925,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "auth_gated_live_streams": frozenset(AUTH_GATED_LIVE_STREAMS),
             "replay_only_streams": frozenset(REPLAY_ONLY_STREAMS),
             "auth_enabled": live_bus.auth_enabled,
+            "active_live_streams": frozenset(
+                build_live_subscribe_streams(include_auth_gated=live_bus.auth_enabled)
+            ),
         },
         "operation_mode": operation_mode,
         "replay_file": replay_source,
@@ -3552,8 +3574,14 @@ class ChampionshipPredictionCoordinator(
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         replay_available = bool(is_live and self._replay_mode)
-        self.available = replay_available
-        if not replay_available:
+        auth_live_available = bool(
+            is_live
+            and not self._replay_mode
+            and self._bus is not None
+            and self._bus.auth_enabled
+        )
+        self.available = replay_available or auth_live_available
+        if not self.available:
             _clear_delayed_ingest_state(self)
             self._reset_store()
 

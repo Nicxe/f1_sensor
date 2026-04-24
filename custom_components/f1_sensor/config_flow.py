@@ -29,6 +29,7 @@ from .const import (
     RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
 )
+from .helpers import normalize_live_timing_auth_header
 
 _CONF_CLEAR_LIVE_TIMING_AUTH_HEADER = "clear_live_timing_auth_header"
 
@@ -93,7 +94,7 @@ def _build_sensor_options() -> dict:
 
 def _normalize_auth_header(value: object) -> str:
     """Return a normalized live timing authorization header."""
-    return str(value or "").strip()
+    return normalize_live_timing_auth_header(value)
 
 
 class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -370,17 +371,28 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             auth_header = _normalize_auth_header(
                 user_input.get(CONF_LIVE_TIMING_AUTH_HEADER)
             )
-            if not auth_header:
-                errors[CONF_LIVE_TIMING_AUTH_HEADER] = "auth_header_required"
-            else:
+            clear_auth_header = bool(
+                user_input.get(_CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, False)
+            )
+            if auth_header:
                 return self.async_update_reload_and_abort(
                     self._get_reauth_entry(),
                     data_updates={CONF_LIVE_TIMING_AUTH_HEADER: auth_header},
                 )
+            if clear_auth_header:
+                return self.async_update_reload_and_abort(
+                    self._get_reauth_entry(),
+                    data_updates={CONF_LIVE_TIMING_AUTH_HEADER: ""},
+                )
+            if not auth_header:
+                errors[CONF_LIVE_TIMING_AUTH_HEADER] = "auth_header_required"
 
         data_schema = vol.Schema(
             {
                 vol.Required(CONF_LIVE_TIMING_AUTH_HEADER): _AUTH_HEADER_SELECTOR,
+                vol.Optional(_CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, default=False): (
+                    cv.boolean
+                ),
             }
         )
 

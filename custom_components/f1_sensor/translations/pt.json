@@ -8,7 +8,11 @@
           "enabled_sensors": "Sensores habilitados",
           "operation_mode": "Operation mode",
           "replay_file": "Replay dump path",
-          "race_week_start_day": "Primeiro dia da semana de corrida"
+          "race_week_start_day": "Primeiro dia da semana de corrida",
+          "live_timing_auth_header": "Live timing authorization value"
+        },
+        "data_description": {
+          "live_timing_auth_header": "Optional value from the F1TV Token Helper for Formula 1 Live Timing. Paste `Bearer <JWT>`. Do not include `Authorization:`. Leave blank to use public live timing only."
         }
       },
       "reconfigure": {
@@ -18,13 +22,31 @@
           "enabled_sensors": "Sensores habilitados",
           "operation_mode": "Operation mode",
           "replay_file": "Replay dump path",
-          "race_week_start_day": "Primeiro dia da semana de corrida"
+          "race_week_start_day": "Primeiro dia da semana de corrida",
+          "live_timing_auth_header": "Live timing authorization value",
+          "clear_live_timing_auth_header": "Clear live timing authorization value"
+        },
+        "data_description": {
+          "live_timing_auth_header": "Enter a new F1TV Token Helper value to update it. Paste `Bearer <JWT>`. Leave blank to keep the current value.",
+          "clear_live_timing_auth_header": "Remove the saved live timing authorization value and continue with public live timing only."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update F1 live timing authorization",
+        "data": {
+          "live_timing_auth_header": "Live timing authorization value",
+          "clear_live_timing_auth_header": "Clear live timing authorization value"
+        },
+        "data_description": {
+          "live_timing_auth_header": "Enter a new F1TV Token Helper value for Formula 1 Live Timing. Paste `Bearer <JWT>`.",
+          "clear_live_timing_auth_header": "Remove the saved live timing authorization value and continue with public live timing only."
         }
       }
     },
     "error": {
       "replay_required": "Select a replay dump file when Development mode is enabled.",
-      "replay_missing": "Replay dump file not found or unreadable."
+      "replay_missing": "Replay dump file not found or unreadable.",
+      "auth_header_required": "Enter the live timing authorization value or select clear."
     }
   },
   "entity": {
