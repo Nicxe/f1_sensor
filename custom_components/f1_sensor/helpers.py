@@ -250,7 +250,7 @@ def get_circuit_outline_url(
     legacy_name = F1_LEGACY_CIRCUIT_MAP_NAMES.get(circuit_id)
     if not legacy_name:
         return None
-    return f"{CIRCUIT_OUTLINE_LEGACY_CDN_BASE_URL}/{CIRCUIT_OUTLINE_LEGACY_CDN_PATH}/{legacy_name}.webp"
+    return f"{CIRCUIT_MAP_LEGACY_CDN_BASE_URL}/{CIRCUIT_OUTLINE_LEGACY_CDN_PATH}/{legacy_name}.webp"
 
 
 def get_circuit_outline_url(
