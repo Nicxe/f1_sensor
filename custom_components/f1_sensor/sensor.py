@@ -1233,9 +1233,11 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
         def _clean_result(r):
             return {
                 "number": r.get("number"),
+                "grid": r.get("grid"),
                 "position": r.get("position"),
                 "points": r.get("points"),
                 "status": r.get("status"),
+                "laps": r.get("laps"),
                 "driver": {
                     "permanentNumber": r.get("Driver", {}).get("permanentNumber"),
                     "code": r.get("Driver", {}).get("code"),
