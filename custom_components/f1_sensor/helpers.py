@@ -209,6 +209,29 @@ def get_circuit_map_url(
     return f"{CIRCUIT_MAP_LEGACY_CDN_BASE_URL}/{legacy_name}_Circuit.webp"
 
 
+def get_circuit_outline_url(
+    circuit_id: str | None, season: str | int | None = None
+) -> str | None:
+    """Return the preferred F1 circuit outline URL for a circuit and season."""
+    if not circuit_id:
+        return None
+
+    season_key = str(season) if season is not None else None
+    if season_key:
+        detailed_maps = F1_DETAILED_CIRCUIT_MAP_SLUGS.get(season_key, {})
+        detailed_slug = detailed_maps.get(circuit_id)
+        if detailed_slug:
+            return (
+                f"{CIRCUIT_MAP_DETAILED_CDN_BASE_URL}/{season_key}/track/"
+                f"{season_key}track{detailed_slug}whiteoutline.webp"
+            )
+
+    legacy_name = F1_LEGACY_CIRCUIT_MAP_NAMES.get(circuit_id)
+    if not legacy_name:
+        return None
+    return f"{CIRCUIT_OUTLINE_LEGACY_CDN_BASE_URL}/{legacy_name}_Circuit.webp"
+
+
 def format_entity_name(
     base_name: str | None, key: str | None, *, include_base: bool = True
 ) -> str:
