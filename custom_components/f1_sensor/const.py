@@ -209,7 +209,7 @@ F1_DETAILED_CIRCUIT_MAP_SLUGS: dict[str, dict[str, str]] = {
 }
 
 # Legacy circuit map support (official F1 track maps with DRS zones)
-CIRCUIT_MAP_LEGACY_CDN_BASE_URL = "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/"
+CIRCUIT_MAP_LEGACY_CDN_BASE_URL = "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets"
 CIRCUIT_MAP_LEGACY_CDN_PATH = "Circuit%20maps%2016x9"
 CIRCUIT_OUTLINE_LEGACY_CDN_PATH = "Track%20icons%204x3"
 
