@@ -1,6 +1,6 @@
 {
   "name": "f1-sensor",
-  "version": "4.1",
+  "version": "4.2",
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
@@ -14,25 +14,25 @@
     "write-heading-ids": "docusaurus write-heading-ids"
   },
   "dependencies": {
-    "@docusaurus/core": "3.9.2",
-    "@docusaurus/plugin-content-docs": "^3.9.2",
-    "@docusaurus/preset-classic": "3.9.2",
+    "@docusaurus/core": "3.10.0",
+    "@docusaurus/plugin-content-docs": "^3.10.0",
+    "@docusaurus/preset-classic": "3.10.0",
     "@easyops-cn/docusaurus-search-local": "^0.55.1",
     "@mdx-js/react": "^3.0.0",
     "clsx": "^2.0.0",
     "prism-react-renderer": "^2.3.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.5"
   },
   "devDependencies": {
-    "@docusaurus/module-type-aliases": "3.9.2",
-    "@docusaurus/types": "3.9.2",
-    "@nicxe/semantic-release-config": "^1.2.2",
+    "@docusaurus/module-type-aliases": "3.10.0",
+    "@docusaurus/types": "3.10.0",
+    "@nicxe/semantic-release-config": "^1.2.3",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/github": "^12.0.6",
     "@semantic-release/release-notes-generator": "^14.1.0",
-    "conventional-changelog-conventionalcommits": "^9.3.0",
+    "conventional-changelog-conventionalcommits": "^9.3.1",
     "semantic-release": "^25.0.3"
   },
   "browserslist": {
@@ -53,8 +53,9 @@
   "overrides": {
     "tar": "^7.5.10",
     "cross-spawn": "^7.0.6",
-    "brace-expansion": "^2.0.2",
+    "brace-expansion": "^2.0.3",
     "minimatch": "^3.1.4",
-    "serialize-javascript": "^7.0.3"
+    "serialize-javascript": ">=7.0.5",
+    "picomatch": ">=4.0.4"
   }
 }
