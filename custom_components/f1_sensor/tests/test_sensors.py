@@ -21,7 +21,10 @@ from custom_components.f1_sensor.const import (
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
 )
-from custom_components.f1_sensor.helpers import get_circuit_map_url
+from custom_components.f1_sensor.helpers import (
+    get_circuit_map_url,
+    get_circuit_outline_url,
+)
 from custom_components.f1_sensor.sensor import (
     F1ConstructorPointsProgressionSensor,
     F1ConstructorStandingsSensor,
@@ -851,6 +854,21 @@ def test_get_circuit_map_url_prefers_2026_detailed_maps() -> None:
     assert (
         get_circuit_map_url("imola", "2026")
         == "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Emilia_Romagna_Circuit.webp"
+    )
+
+
+def test_get_circuit_outline_url_prefers_2026_white_outline() -> None:
+    assert (
+        get_circuit_outline_url("albert_park", "2026")
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1/2026/track/2026trackmelbournewhiteoutline.webp"
+    )
+    assert (
+        get_circuit_outline_url("madring", "2026")
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1/2026/track/2026trackmadringwhiteoutline.webp"
+    )
+    assert (
+        get_circuit_outline_url("imola", "2026")
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Track%20icons%204x3/Emilia_Romagna.webp"
     )
 
 
