@@ -24,6 +24,8 @@ from . import const
 from .const import (
     CIRCUIT_MAP_DETAILED_CDN_BASE_URL,
     CIRCUIT_MAP_LEGACY_CDN_BASE_URL,
+    CIRCUIT_MAP_LEGACY_CDN_PATH,
+    CIRCUIT_OUTLINE_LEGACY_CDN_PATH,
     DOMAIN,
     F1_COUNTRY_CODES,
     F1_DETAILED_CIRCUIT_MAP_SLUGS,
@@ -225,7 +227,7 @@ def get_circuit_map_url(
     legacy_name = F1_LEGACY_CIRCUIT_MAP_NAMES.get(circuit_id)
     if not legacy_name:
         return None
-    return f"{CIRCUIT_MAP_LEGACY_CDN_BASE_URL}/{legacy_name}_Circuit.webp"
+    return f"{CIRCUIT_MAP_LEGACY_CDN_BASE_URL}/{CIRCUIT_MAP_LEGACY_CDN_PATH}/{legacy_name}_Circuit.webp"
 
 
 def get_circuit_outline_url(
@@ -248,7 +250,7 @@ def get_circuit_outline_url(
     legacy_name = F1_LEGACY_CIRCUIT_MAP_NAMES.get(circuit_id)
     if not legacy_name:
         return None
-    return f"{CIRCUIT_OUTLINE_LEGACY_CDN_BASE_URL}/{legacy_name}_Circuit.webp"
+    return f"{CIRCUIT_OUTLINE_LEGACY_CDN_BASE_URL}/{CIRCUIT_OUTLINE_LEGACY_CDN_PATH}/{legacy_name}.webp"
 
 
 def format_entity_name(
