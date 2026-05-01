@@ -881,9 +881,7 @@ def test_get_circuit_map_url_prefers_2026_detailed_maps() -> None:
         get_circuit_map_url("imola", "2026")
         == "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Emilia_Romagna_Circuit.webp"
     )
-    assert (
-        get_circuit_map_url("usa", "2026") is None
-    )
+    assert get_circuit_map_url("usa", "2026") is None
 
 
 def test_get_circuit_outline_url_prefers_2026_white_outline() -> None:
@@ -899,9 +897,7 @@ def test_get_circuit_outline_url_prefers_2026_white_outline() -> None:
         get_circuit_outline_url("imola", "2026")
         == "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Track%20icons%204x3/Emilia Romagna.webp"
     )
-    assert (
-        get_circuit_outline_url("usa", "2026") is None
-    )
+    assert get_circuit_outline_url("usa", "2026") is None
 
 
 @pytest.mark.asyncio
