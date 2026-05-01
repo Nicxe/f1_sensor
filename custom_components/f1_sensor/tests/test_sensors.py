@@ -275,41 +275,41 @@ def _build_race(
 
 
 def _build_last_race(
-        *,
-        season: str = "2026",
-        round_: str = "1",
-        race_name: str = "Australian Grand Prix",
-        circuit_id: str = "albert_park",
-        circuit_name: str = "Albert Park Grand Prix Circuit",
-        locality: str = "Melbourne",
-        country: str = "Australia",
-        date: str = "2026-03-08",
-        time: str = "04:00:00Z",
-        results_per_race: int = 20,
-    ) -> dict:
-        return {
-            "season": season,
-            "round": round_,
-            "raceName": race_name,
-            "url": f"https://example.com/races/{round_}",
-            "date": date,
-            "time": time,
-            "Circuit": {
-                "circuitId": circuit_id,
-                "url": f"https://example.com/circuits/{circuit_id}",
-                "circuitName": circuit_name,
-                "Location": {
-                    "lat": "-37.8497",
-                    "long": "144.968",
-                    "locality": locality,
-                    "country": country,
-                },
+    *,
+    season: str = "2026",
+    round_: str = "1",
+    race_name: str = "Australian Grand Prix",
+    circuit_id: str = "albert_park",
+    circuit_name: str = "Albert Park Grand Prix Circuit",
+    locality: str = "Melbourne",
+    country: str = "Australia",
+    date: str = "2026-03-08",
+    time: str = "04:00:00Z",
+    results_per_race: int = 20,
+) -> dict:
+    return {
+        "season": season,
+        "round": round_,
+        "raceName": race_name,
+        "url": f"https://example.com/races/{round_}",
+        "date": date,
+        "time": time,
+        "Circuit": {
+            "circuitId": circuit_id,
+            "url": f"https://example.com/circuits/{circuit_id}",
+            "circuitName": circuit_name,
+            "Location": {
+                "lat": "-37.8497",
+                "long": "144.968",
+                "locality": locality,
+                "country": country,
             },
-            "Results": [
-                _build_result_entry(driver_idx)
-                for driver_idx in range(1, results_per_race + 1)
-            ]
-        }
+        },
+        "Results": [
+            _build_result_entry(driver_idx)
+            for driver_idx in range(1, results_per_race + 1)
+        ],
+    }
 
 
 def _history_driver(
@@ -1657,6 +1657,7 @@ async def test_driver_list_sensor_handles_22_drivers(hass) -> None:
     assert state is not None
     assert state.state == "22"
     assert len(state.attributes["drivers"]) == 22
+
 
 @pytest.mark.asyncio
 async def test_last_race_sensor_attributes(hass) -> None:
