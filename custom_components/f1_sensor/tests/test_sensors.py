@@ -1696,9 +1696,9 @@ async def test_last_race_sensor_attributes(hass) -> None:
     state = await _add_sensor_and_get_state(hass, sensor)
 
     results = state.attributes["results"]
-    assert results[0]["position"] == 1
-    assert results[0]["grid"] == 1
-    assert results[0]["laps"] == 60
-    assert results[1]["position"] == 2
-    assert results[1]["grid"] == 2
-    assert results[1]["laps"] == 60
+    assert results[0]["position"] == "1"
+    assert results[0]["grid"] == "1"
+    assert results[0]["laps"] == "60"
+    assert results[1]["position"] == "2"
+    assert results[1]["grid"] == "2"
+    assert results[1]["laps"] == "60"
