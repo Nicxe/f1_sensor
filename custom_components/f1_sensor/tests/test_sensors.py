@@ -105,9 +105,11 @@ def _recorder_shared_attrs(state) -> tuple[dict, int]:
 def _build_result_entry(idx: int) -> dict:
     return {
         "number": str(idx),
+        "grid": str(idx),
         "position": str(idx),
         "points": str(max(0, 26 - idx)),
         "status": "Finished",
+        "laps": str(60),
         "Driver": {
             "driverId": f"driver{idx}",
             "code": f"D{idx:02d}",
