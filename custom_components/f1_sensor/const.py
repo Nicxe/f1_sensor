@@ -223,42 +223,6 @@ CIRCUIT_OUTLINE_LEGACY_CDN_PATH = "Track%20icons%204x3"
 F1_LEGACY_CIRCUIT_MAP_NAMES: dict[str, str] = {
     # Current and recent calendars
     "bahrain": "Bahrain",
-    "jeddah": "Saudi Arabia",
-    "albert_park": "Australia",
-    "suzuka": "Japan",
-    "shanghai": "China",
-    "miami": "Miami",
-    "imola": "Emilia Romagna",
-    "monaco": "Monaco",
-    "villeneuve": "Canada",
-    "catalunya": "Spain",
-    "red_bull_ring": "Austria",
-    "silverstone": "Great Britain",
-    "hungaroring": "Hungary",
-    "spa": "Belgium",
-    "zandvoort": "Netherlands",
-    "monza": "Italy",
-    "baku": "Azerbaijan",
-    "marina_bay": "Singapore",
-    "americas": "USA",
-    "rodriguez": "Mexico",
-    "interlagos": "Brazil",
-    "vegas": "Las Vegas",
-    "losail": "Qatar",
-    "yas_marina": "Abu Dhabi",
-    # Historic circuits
-    "portimao": "Portugal",
-    "istanbul": "Turkey",
-    "sochi": "Russia",
-    "ricard": "France",
-    "mugello": "Tuscany",
-    "nurburgring": "Eifel",
-}
-
-# Legacy fallback map from Ergast circuitId to F1 CDN filename (without suffix)
-F1_LEGACY_CIRCUIT_OUTLINE_NAMES: dict[str, str] = {
-    # Current and recent calendars
-    "bahrain": "Bahrain",
     "jeddah": "Saudi_Arabia",
     "albert_park": "Australia",
     "suzuka": "Japan",
@@ -282,6 +246,42 @@ F1_LEGACY_CIRCUIT_OUTLINE_NAMES: dict[str, str] = {
     "vegas": "Las_Vegas",
     "losail": "Qatar",
     "yas_marina": "Abu_Dhabi",
+    # Historic circuits
+    "portimao": "Portugal",
+    "istanbul": "Turkey",
+    "sochi": "Russia",
+    "ricard": "France",
+    "mugello": "Tuscany",
+    "nurburgring": "Eifel",
+}
+
+# Legacy fallback map from Ergast circuitId to F1 CDN filename (without suffix)
+F1_LEGACY_CIRCUIT_OUTLINE_NAMES: dict[str, str] = {
+    # Current and recent calendars
+    "bahrain": "Bahrain",
+    "jeddah": "Saudi Arabia",
+    "albert_park": "Australia",
+    "suzuka": "Japan",
+    "shanghai": "China",
+    "miami": "Miami",
+    "imola": "Emilia Romagna",
+    "monaco": "Monaco",
+    "villeneuve": "Canada",
+    "catalunya": "Spain",
+    "red_bull_ring": "Austria",
+    "silverstone": "Great Britain",
+    "hungaroring": "Hungary",
+    "spa": "Belgium",
+    "zandvoort": "Netherlands",
+    "monza": "Italy",
+    "baku": "Azerbaijan",
+    "marina_bay": "Singapore",
+    "americas": "USA",
+    "rodriguez": "Mexico",
+    "interlagos": "Brazil",
+    "vegas": "Las Vegas",
+    "losail": "Qatar",
+    "yas_marina": "Abu Dhabi",
     # Historic circuits
     "portimao": "Portugal",
     "istanbul": "Turkey",
