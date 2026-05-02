@@ -95,10 +95,15 @@ WMO_CODE_TO_MDI = {
 }
 
 
-class _ReplayOnlyStreamMixin:
+class _ReplayOrAuthGatedStreamMixin:
+    _auth_gated_stream: str | None = None
+
     def _is_stream_active(self) -> bool:
-        return is_replay_only_stream_active(
-            getattr(self, "hass", None), getattr(self, "_entry_id", None)
+        hass = getattr(self, "hass", None)
+        entry_id = getattr(self, "_entry_id", None)
+        return is_replay_only_stream_active(hass, entry_id) or (
+            self._auth_gated_stream is not None
+            and is_auth_gated_stream_active(hass, entry_id, self._auth_gated_stream)
         )
 
 
@@ -4842,7 +4847,7 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
 
 class F1TeamRadioSensor(
-    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+    _ReplayOrAuthGatedStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
 ):
     """Sensor exposing the latest Team Radio clip.
 
@@ -4854,6 +4859,7 @@ class F1TeamRadioSensor(
     _history_limit = 20
 
     _attr_translation_key = "team_radio"
+    _auth_gated_stream = "TeamRadio"
 
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
@@ -5038,7 +5044,7 @@ class F1TeamRadioSensor(
 
 
 class F1PitStopsSensor(
-    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+    _ReplayOrAuthGatedStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
 ):
     """Live pit stops for all cars (aggregated).
 
@@ -5050,6 +5056,7 @@ class F1PitStopsSensor(
     _unrecorded_attributes = frozenset({"cars"})
 
     _attr_translation_key = "pitstops"
+    _auth_gated_stream = "PitStopSeries"
 
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)

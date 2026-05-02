@@ -51,11 +51,22 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
         "signalr_stream_capabilities": {
             "public_live_streams": frozenset({"SessionStatus", "TrackStatus"}),
             "auth_gated_live_streams": frozenset(
-                {"CarData.z", "ChampionshipPrediction"}
+                {
+                    "CarData.z",
+                    "ChampionshipPrediction",
+                    "TeamRadio",
+                    "PitStopSeries",
+                }
             ),
-            "replay_only_streams": frozenset({"TeamRadio"}),
+            "replay_only_streams": frozenset(),
             "active_live_streams": frozenset(
-                {"SessionStatus", "TrackStatus", "ChampionshipPrediction"}
+                {
+                    "SessionStatus",
+                    "TrackStatus",
+                    "ChampionshipPrediction",
+                    "TeamRadio",
+                    "PitStopSeries",
+                }
             ),
             "auth_enabled": True,
         },
@@ -72,11 +83,17 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
     assert payload["runtime"]["signalr_stream_capabilities"] == {
         "auth_enabled": True,
         "public_live_streams": ["SessionStatus", "TrackStatus"],
-        "auth_gated_live_streams": ["CarData.z", "ChampionshipPrediction"],
-        "replay_only_streams": ["TeamRadio"],
+        "auth_gated_live_streams": [
+            "CarData.z",
+            "ChampionshipPrediction",
+            "PitStopSeries",
+            "TeamRadio",
+        ],
         "active_live_streams": [
             "ChampionshipPrediction",
+            "PitStopSeries",
             "SessionStatus",
+            "TeamRadio",
             "TrackStatus",
         ],
     }
@@ -111,11 +128,16 @@ async def test_diagnostics_hides_auth_state_when_development_ui_disabled(
         "signalr_stream_capabilities": {
             "public_live_streams": frozenset({"SessionStatus", "TrackStatus"}),
             "auth_gated_live_streams": frozenset(
-                {"CarData.z", "ChampionshipPrediction"}
+                {
+                    "CarData.z",
+                    "ChampionshipPrediction",
+                    "TeamRadio",
+                    "PitStopSeries",
+                }
             ),
-            "replay_only_streams": frozenset({"TeamRadio"}),
+            "replay_only_streams": frozenset(),
             "active_live_streams": frozenset(
-                {"SessionStatus", "ChampionshipPrediction"}
+                {"SessionStatus", "ChampionshipPrediction", "TeamRadio"}
             ),
             "auth_enabled": True,
         },
@@ -134,7 +156,6 @@ async def test_diagnostics_hides_auth_state_when_development_ui_disabled(
     assert "auth_gated_live_streams" not in capabilities
     assert capabilities == {
         "public_live_streams": ["SessionStatus", "TrackStatus"],
-        "replay_only_streams": ["TeamRadio"],
         "active_live_streams": ["SessionStatus"],
     }
     assert payload["entry"]["data"][CONF_LIVE_TIMING_AUTH_HEADER] == "**REDACTED**"

@@ -26,10 +26,9 @@ CORE_NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate"
 CORE_CONNECT_URL = "wss://livetiming.formula1.com/signalrcore"
 RECORD_SEP = "\x1e"
 
-# Capability matrix for the current no-auth SignalR Core implementation.
-# Public live streams are subscribed during normal live sessions.
-# Auth-gated and replay-only streams stay defined here so future auth support
-# can extend the runtime contract without changing entity registration.
+# Capability matrix for the current SignalR live implementation.
+# Public live streams are always subscribed during live sessions. Auth-gated
+# streams are added only when Live Timing authentication is configured.
 PUBLIC_LIVE_STREAMS = (
     "RaceControlMessages",
     "TrackStatus",
@@ -50,12 +49,11 @@ AUTH_GATED_LIVE_STREAMS = (
     "CarData.z",
     "DriverRaceInfo",
     "ChampionshipPrediction",
-)
-
-REPLAY_ONLY_STREAMS = (
     "TeamRadio",
     "PitStopSeries",
 )
+
+REPLAY_ONLY_STREAMS: tuple[str, ...] = ()
 
 AUTH_FAILURE_STATUSES = frozenset({401, 403})
 

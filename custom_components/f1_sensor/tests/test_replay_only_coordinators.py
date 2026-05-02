@@ -11,6 +11,8 @@ from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 
 
 class _StubBus:
+    auth_enabled = False
+
     def subscribe(self, _stream, _callback):
         return lambda: None
 
@@ -23,14 +25,15 @@ class _StubBus:
     ],
 )
 @pytest.mark.asyncio
-async def test_replay_only_coordinators_are_available_only_during_replay(
+async def test_replay_capable_coordinators_are_available_for_auth_live_or_replay(
     hass, coordinator_cls, extra_kwargs
 ) -> None:
     live_state = LiveAvailabilityTracker()
+    bus = _StubBus()
     coordinator = coordinator_cls(
         hass,
         session_coord=object(),
-        bus=_StubBus(),
+        bus=bus,
         live_state=live_state,
         **extra_kwargs,
     )
@@ -42,6 +45,16 @@ async def test_replay_only_coordinators_are_available_only_during_replay(
     await hass.async_block_till_done()
     assert coordinator.available is False
 
+    bus.auth_enabled = True
+    live_state.set_state(False, "idle")
+    await hass.async_block_till_done()
+    live_state.set_state(True, "live-Race")
+    await hass.async_block_till_done()
+    assert coordinator.available is True
+
+    bus.auth_enabled = False
+    live_state.set_state(False, "idle")
+    await hass.async_block_till_done()
     live_state.set_state(True, "replay")
     await hass.async_block_till_done()
     assert coordinator.available is True

@@ -807,12 +807,6 @@ variables:
   pre_alert_scene_id: "{{ automation_slug ~ '_pre_alert' }}"
 
   track_state: "{{ states(track_status_entity) | upper }}"
-  defer_wled_clear_restore: >-
-    {{
-      track_state == 'CLEAR'
-      and (snapshot_before_alert_enabled | bool)
-      and clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay']
-    }}
   session_phase: "{{ states(session_status_entity) | lower }}"
   notification_title: "F1 Track Status"
   notification_track_state: "{{ track_state }}"
@@ -887,6 +881,26 @@ variables:
     {% else %}
       {{ (session_scope_now_ok | bool) and trigger_to_phase in valid_session_phases and trigger_from_phase not in active_phases and trigger_to_phase in active_phases }}
     {% endif %}
+
+  clear_restore_scene_entity: >-
+    {% if session_entered_active | bool %}
+      {% if snapshot_pre_race_enabled | bool %}
+        {{ 'scene.' ~ pre_race_scene_id }}
+      {% else %}
+        {{ '' }}
+      {% endif %}
+    {% elif snapshot_before_alert_enabled | bool %}
+      {{ 'scene.' ~ pre_alert_scene_id }}
+    {% else %}
+      {{ '' }}
+    {% endif %}
+  clear_restore_scene_available: "{{ clear_restore_scene_entity | string | trim | length > 0 }}"
+  defer_wled_clear_restore: >-
+    {{
+      track_state == 'CLEAR'
+      and (clear_restore_scene_available | bool)
+      and clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay']
+    }}
 
   session_left_active: >
     {% if trigger.id != 'session_leave_active' %}
@@ -1141,7 +1155,7 @@ actions:
                       - choose:
                           - conditions:
                               - condition: template
-                                value_template: "{{ clear_behavior_mode_input == 'steady' or (clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay'] and not snapshot_before_alert_enabled) }}"
+                                value_template: "{{ clear_behavior_mode_input == 'steady' or (clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay'] and not (clear_restore_scene_available | bool)) }}"
                             sequence:
                               - choose:
                                   - conditions:
@@ -1167,16 +1181,16 @@ actions:
 
                           - conditions:
                               - condition: template
-                                value_template: "{{ clear_behavior_mode_input == 'restore_immediately' and snapshot_before_alert_enabled }}"
+                                value_template: "{{ clear_behavior_mode_input == 'restore_immediately' and (clear_restore_scene_available | bool) }}"
                             sequence:
                               - continue_on_error: true
                                 action: scene.turn_on
                                 data:
-                                  entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                                  entity_id: "{{ clear_restore_scene_entity | string | trim }}"
 
                           - conditions:
                               - condition: template
-                                value_template: "{{ clear_behavior_mode_input == 'restore_after_delay' and snapshot_before_alert_enabled }}"
+                                value_template: "{{ clear_behavior_mode_input == 'restore_after_delay' and (clear_restore_scene_available | bool) }}"
                             sequence:
                               - choose:
                                   - conditions:
@@ -1223,7 +1237,7 @@ actions:
                               - continue_on_error: true
                                 action: scene.turn_on
                                 data:
-                                  entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+                                  entity_id: "{{ clear_restore_scene_entity | string | trim }}"
 
                   - conditions:
                       - condition: template

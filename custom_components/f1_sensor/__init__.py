@@ -1621,20 +1621,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 capabilities["active_live_streams"] = frozenset(
                     build_live_subscribe_streams(include_auth_gated=False)
                 )
-            championship_prediction_coordinator = entry_data.get(
-                "championship_prediction_coordinator"
-            )
             live_state = entry_data.get("live_state")
-            if (
-                championship_prediction_coordinator is not None
-                and live_state is not None
-                and hasattr(championship_prediction_coordinator, "_handle_live_state")
-            ):
-                with suppress(Exception):
-                    championship_prediction_coordinator._handle_live_state(  # noqa: SLF001
-                        bool(getattr(live_state, "is_live", False)),
-                        getattr(live_state, "reason", None),
-                    )
+            if live_state is not None:
+                for coordinator_key in (
+                    "championship_prediction_coordinator",
+                    "team_radio_coordinator",
+                    "pitstop_coordinator",
+                ):
+                    coordinator = entry_data.get(coordinator_key)
+                    if coordinator is not None and hasattr(
+                        coordinator, "_handle_live_state"
+                    ):
+                        with suppress(Exception):
+                            coordinator._handle_live_state(  # noqa: SLF001
+                                bool(getattr(live_state, "is_live", False)),
+                                getattr(live_state, "reason", None),
+                            )
         entry.async_start_reauth(hass, data=entry.data)
 
     live_bus = LiveBus(
@@ -2815,8 +2817,14 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         replay_available = bool(is_live and self._replay_mode)
-        self.available = replay_available
-        if not replay_available:
+        auth_live_available = bool(
+            is_live
+            and not self._replay_mode
+            and self._bus is not None
+            and getattr(self._bus, "auth_enabled", False)
+        )
+        self.available = replay_available or auth_live_available
+        if not self.available:
             _clear_delayed_ingest_state(self)
             self._state = {"latest": None, "history": []}
             # Notify entities to clear their state
@@ -3053,8 +3061,14 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         replay_available = bool(is_live and self._replay_mode)
-        self.available = replay_available
-        if not replay_available:
+        auth_live_available = bool(
+            is_live
+            and not self._replay_mode
+            and self._bus is not None
+            and getattr(self._bus, "auth_enabled", False)
+        )
+        self.available = replay_available or auth_live_available
+        if not self.available:
             _clear_delayed_ingest_state(self)
             self._reset_store()
 

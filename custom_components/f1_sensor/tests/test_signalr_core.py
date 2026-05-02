@@ -383,11 +383,10 @@ def test_no_auth_live_stream_contract_excludes_gated_and_replay_only_streams():
         "CarData.z",
         "DriverRaceInfo",
         "ChampionshipPrediction",
-    )
-    assert REPLAY_ONLY_STREAMS == (
         "TeamRadio",
         "PitStopSeries",
     )
+    assert REPLAY_ONLY_STREAMS == ()
 
 
 def test_live_bus_can_select_legacy_transport(monkeypatch):
