@@ -4,16 +4,13 @@ title: Automation
 ---
 
 Automate your home based on live F1 data. These examples use [live data sensors](/entities/live-data) and [events](/entities/events) to trigger actions during sessions.
-
-:::tip Sync with your TV
+:::tip[Sync with your TV]
 For automations to match what you see on screen, configure the [Live Delay](/features/live-delay) to match your broadcast delay.
 :::
-
-:::info Ready-made blueprints
+:::info[Ready-made blueprints]
 Looking for an easy starting point? The [Blueprints](/blueprints/track-status-light) section has ready-made automations for light control and race control notifications — no YAML required.
 :::
-
-:::info Use entity IDs from this page
+:::info[Use entity IDs from this page]
 All examples below use the standard `entity_id`, such as `sensor.f1_session_status` and `binary_sensor.f1_safety_car`.
 
 If your Home Assistant UI shows translated display names, search for the documented `entity_id` or the `f1_` suffix in the entity picker. If you upgraded from an older release and already have a different registry ID, keep using your existing entity.
@@ -24,7 +21,6 @@ If your Home Assistant UI shows translated display names, search for the documen
 ## Device Automation Triggers
 
 The easiest way to build automations is through the Home Assistant UI using device triggers. Go to **Settings > Devices & Services > Devices**, select any F1 Sensor sub-device, and choose **Automations > Add trigger** to see the available triggers without writing any YAML.
-
 :::info
 Device triggers are the recommended starting point. They automatically reference the correct entity and are always kept in sync with the integration. YAML examples further down on this page show what happens under the hood.
 :::
@@ -123,7 +119,6 @@ action:
       message: "{{ trigger.calendar_event.summary }} starts in 30 minutes."
 mode: single
 ```
-
 :::tip
 Change the `offset` value to adjust how far in advance the reminder fires. Use `-1:00:0` for one hour, or `"-0:05:0"` for five minutes.
 :::

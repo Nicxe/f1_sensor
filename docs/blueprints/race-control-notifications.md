@@ -8,8 +8,7 @@ title: Race Control Notifications
 Get instant notifications whenever the race director sends a message — flag changes, safety car deployments, penalties, incident reports, and more.
 
 This blueprint listens to the [Race Control sensor](/entities/live-data#race-control) and forwards messages to any notification service you choose. All filtering is optional, so you can start simple and refine over time.
-
-:::tip Sync with your TV
+:::tip[Sync with your TV]
 For notifications to arrive at the right moment, configure the [Live Delay](/features/live-delay) to match your broadcast offset.
 :::
 
@@ -46,8 +45,7 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_race_contro
 ---
 
 ### Step 2 — Configure Source
-
-:::info Finding the right entities
+:::info[Finding the right entities]
 Use the standard `entity_id` from the docs when you search, for example `sensor.f1_race_control`, `sensor.f1_session_status`, and `sensor.f1_current_session`.
 
 Display names may be translated in Home Assistant. If you upgraded from an older release and already have a different registry ID, keep selecting your existing entity instead of trying to rename it to match the docs.
@@ -59,7 +57,6 @@ Display names may be translated in Home Assistant. If you upgraded from an older
 | **Require Active Session Phase** | Enable this to only receive notifications during specific session phases |
 | **Session Status Sensor** | Required if you enable phase filtering — select the `*_session_status` sensor |
 | **Active Session Phases** | Which phases should trigger notifications. Defaults to `live` and `suspended` |
-
 :::info
 The Session Status Sensor is only needed when **Require Active Session Phase** is turned on. If you leave it off, notifications arrive for all messages regardless of session state.
 :::
@@ -75,7 +72,6 @@ Limit notifications to specific session types. This is useful if you only want t
 | **Enable Current Session Filter** | When enabled, notifications are only sent during the selected session types. Disabled by default |
 | **Current Session Sensor** | Select the `*_current_session` sensor. Required when the filter is enabled |
 | **Allowed Current Sessions** | Which session types should send notifications. Defaults to all sessions |
-
 :::info
 When this filter is enabled, the automation checks the [Current Session](/entities/live-data#current-session) sensor to decide whether to send a notification. If the current session is not in the allowed list, the notification is suppressed regardless of other filter settings.
 :::
@@ -93,7 +89,6 @@ All filters are optional and collapsed by default. Leave them empty to receive e
 | **Allowed Categories** | Comma or semicolon-separated category names. Leave empty to allow all categories |
 | **Include Keywords** | Only notify when the message contains at least one of these words |
 | **Exclude Keywords** | Skip notifications when the message contains any of these words |
-
 :::info
 **Filter Out Blue Flags** is applied before the regular flag allow-list. If you enable it, blue flag messages are suppressed even when `BLUE` is included in **Allowed Flags**.
 :::

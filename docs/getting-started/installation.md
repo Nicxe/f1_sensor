@@ -37,7 +37,6 @@ Click the button below to automatically add the repository to HACS.
 1. Open **HACS** in Home Assistant  
 2. Search for **F1 Sensor**  
 3. Click **Download**
-
 :::tip
 When installed through HACS, you will automatically receive update notifications when new releases are available.
 :::
@@ -78,7 +77,6 @@ or
 ## Step 3 - Select which sensors to create
 
 During configuration, you choose exactly which data you want to include.
-
 :::info
 For example, you can choose to only create sensors for the next race and weather, without calendar or standings.
 

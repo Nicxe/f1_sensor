@@ -56,7 +56,6 @@ When Context7 is invoked, the AI receives the full F1 Sensor documentation inclu
 - Service calls and helper entities
 
 ---
-
 :::tip
 Context7 is most useful when writing automations or scripts that reference specific F1 Sensor entities. For general questions about Home Assistant, Context7 is not needed.
 :::
