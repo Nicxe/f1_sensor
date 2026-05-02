@@ -25,6 +25,13 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
+from .auth import (
+    AUTH_RUNTIME_STATUS,
+    AUTH_STATUS_OPTIONS,
+    F1TvAuthStatus,
+    async_add_f1tv_auth_status_listener,
+    is_auth_health_visible,
+)
 from .const import (
     CONF_OPERATION_MODE,
     DEFAULT_OPERATION_MODE,
@@ -41,6 +48,7 @@ from .entity import (
     F1AuxEntity,
     F1BaseEntity,
     default_object_id,
+    is_auth_gated_stream_active,
     is_replay_only_stream_active,
     set_suggested_object_id,
 )
@@ -87,10 +95,15 @@ WMO_CODE_TO_MDI = {
 }
 
 
-class _ReplayOnlyStreamMixin:
+class _ReplayOrAuthGatedStreamMixin:
+    _auth_gated_stream: str | None = None
+
     def _is_stream_active(self) -> bool:
-        return is_replay_only_stream_active(
-            getattr(self, "hass", None), getattr(self, "_entry_id", None)
+        hass = getattr(self, "hass", None)
+        entry_id = getattr(self, "_entry_id", None)
+        return is_replay_only_stream_active(hass, entry_id) or (
+            self._auth_gated_stream is not None
+            and is_auth_gated_stream_active(hass, entry_id, self._auth_gated_stream)
         )
 
 
@@ -330,6 +343,18 @@ async def async_setup_entry(
             set_suggested_object_id(sensor, default_object_id(key))
             sensors.append(sensor)
 
+    auth_status = data.get(AUTH_RUNTIME_STATUS)
+    if isinstance(auth_status, F1TvAuthStatus) and is_auth_health_visible(auth_status):
+        status_sensor = F1TvTokenStatusSensor(hass, entry.entry_id, base)
+        set_suggested_object_id(status_sensor, default_object_id("f1tv_token_status"))
+        sensors.append(status_sensor)
+
+        expires_sensor = F1TvTokenExpiresAtSensor(hass, entry.entry_id, base)
+        set_suggested_object_id(
+            expires_sensor, default_object_id("f1tv_token_expires_at")
+        )
+        sensors.append(expires_sensor)
+
     # Replay status sensor
     replay_controller = data.get("replay_controller")
     if replay_controller is not None:
@@ -345,6 +370,83 @@ async def async_setup_entry(
     async_add_entities(sensors, True)
 
 
+class _F1TvTokenSensorBase(F1AuxEntity, SensorEntity):
+    """Base for redacted F1TV token health sensors."""
+
+    _device_category = "system"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
+        super().__init__(
+            unique_id=f"{entry_id}_{self._attr_translation_key}",
+            entry_id=entry_id,
+            device_name=device_name,
+        )
+        self.hass = hass
+        self._entry_id = entry_id
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_add_f1tv_auth_status_listener(
+                self.hass,
+                self._entry_id,
+                lambda *_: self._safe_write_ha_state(),
+            )
+        )
+
+    def _status(self) -> F1TvAuthStatus | None:
+        data = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        status = data.get(AUTH_RUNTIME_STATUS)
+        return status if isinstance(status, F1TvAuthStatus) else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object | None]:
+        status = self._status()
+        if status is None:
+            return {
+                "auth_configured": False,
+                "used_for_live_timing": False,
+                "expires_at": None,
+                "reason": None,
+            }
+        return {
+            "auth_configured": status.configured,
+            "used_for_live_timing": status.used_for_live_timing,
+            "expires_at": status.expires_at_iso,
+            "reason": status.reason,
+        }
+
+
+class F1TvTokenStatusSensor(_F1TvTokenSensorBase):
+    """Diagnostic sensor exposing redacted F1TV token status."""
+
+    _attr_translation_key = "f1tv_token_status"
+    _attr_icon = "mdi:key-alert"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = list(AUTH_STATUS_OPTIONS)
+
+    @property
+    def native_value(self) -> str:
+        status = self._status()
+        return status.status if status is not None else "not_configured"
+
+
+class F1TvTokenExpiresAtSensor(_F1TvTokenSensorBase):
+    """Diagnostic timestamp for the saved F1TV token expiry."""
+
+    _attr_translation_key = "f1tv_token_expires_at"
+    _attr_icon = "mdi:calendar-clock"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    @property
+    def native_value(self) -> datetime.datetime | None:
+        status = self._status()
+        if status is None:
+            return None
+        return status.expires_at
+
+
 class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
     """Diagnostic mode sensor for the live timing transport (idle/live/replay)."""
 
@@ -355,12 +457,14 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
     _attr_options = ["idle", "live", "replay"]
 
     _attr_translation_key = "live_timing_mode"
-    _tracked_streams = (
+    _fallback_tracked_streams = (
         "SessionStatus",
         "TrackStatus",
         "TopThree",
         "TimingAppData",
         "ChampionshipPrediction",
+        "DriverRaceInfo",
+        "CarData.z",
     )
 
     def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
@@ -373,6 +477,27 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
         self.hass = hass
         self._entry_id = entry_id
         self._unsub_live_state = None
+
+    @staticmethod
+    def _stream_names(value: object) -> tuple[str, ...]:
+        if not isinstance(value, (set, frozenset, tuple, list)):
+            return ()
+        streams: list[str] = []
+        for stream in value:
+            if stream is None:
+                continue
+            name = str(stream).strip()
+            if name:
+                streams.append(name)
+        return tuple(sorted(streams))
+
+    def _diagnostic_streams(self, reg: dict) -> tuple[str, ...]:
+        capabilities = reg.get("signalr_stream_capabilities")
+        if isinstance(capabilities, dict):
+            active_streams = self._stream_names(capabilities.get("active_live_streams"))
+            if active_streams:
+                return active_streams
+        return self._fallback_tracked_streams
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -437,18 +562,19 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
         except Exception:
             hb_age = activity_age = None
 
+        diagnostic_streams = self._diagnostic_streams(reg)
         stream_diagnostics = {
             stream: {
                 "frame_count": 0,
                 "last_seen_age_s": None,
                 "last_payload_keys": None,
             }
-            for stream in self._tracked_streams
+            for stream in diagnostic_streams
         }
         try:
             if live_bus is not None and hasattr(live_bus, "stream_diagnostics"):
                 stream_diagnostics.update(
-                    live_bus.stream_diagnostics(self._tracked_streams)
+                    live_bus.stream_diagnostics(diagnostic_streams)
                 )
         except Exception:
             stream_diagnostics = {
@@ -457,7 +583,7 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
                     "last_seen_age_s": None,
                     "last_payload_keys": None,
                 }
-                for stream in self._tracked_streams
+                for stream in diagnostic_streams
             }
 
         attrs = {
@@ -592,9 +718,7 @@ class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
         raise NotImplementedError
 
 
-class _ChampionshipPredictionBase(
-    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
-):
+class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
     """Base for championship prediction sensors with shared restore logic."""
 
     _device_category = "championship"
@@ -631,6 +755,13 @@ class _ChampionshipPredictionBase(
     def _extract_current(self) -> dict | None:
         data = self.coordinator.data
         return data if isinstance(data, dict) else None
+
+    def _is_stream_active(self) -> bool:
+        hass = getattr(self, "hass", None)
+        entry_id = getattr(self, "_entry_id", None)
+        return is_replay_only_stream_active(hass, entry_id) or (
+            is_auth_gated_stream_active(hass, entry_id, "ChampionshipPrediction")
+        )
 
     def _handle_coordinator_update(self) -> None:
         payload = self._extract_current()
@@ -1233,9 +1364,11 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
         def _clean_result(r):
             return {
                 "number": r.get("number"),
+                "grid": r.get("grid"),
                 "position": r.get("position"),
                 "points": r.get("points"),
                 "status": r.get("status"),
+                "laps": r.get("laps"),
                 "driver": {
                     "permanentNumber": r.get("Driver", {}).get("permanentNumber"),
                     "code": r.get("Driver", {}).get("code"),
@@ -2129,7 +2262,7 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Sensor for live track weather via WeatherData feed.
 
     State: air temperature (Celsius). Attributes include track temp, humidity, pressure, rainfall,
-    wind speed and direction, with units. Restores last value on restart if no live data yet.
+    wind speed and direction, with units. Waits for fresh stream data before becoming available.
     """
 
     _device_category = "session"
@@ -2148,11 +2281,11 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_extra_state_attributes = {}
         self._last_timestamped_dt = None
         self._last_received_utc = None
-        # No stale timer: we keep last known value until a new payload arrives
+        # No stale timer: once a payload has arrived, keep it until a new payload arrives.
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        # Initialize from coordinator if available, else restore
+        # Initialize from coordinator if available, otherwise wait for a live payload.
         init = self._extract_current()
         updated = init is not None
         if init is not None:
@@ -2162,25 +2295,7 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     "TrackWeather: Initialized from coordinator: %s", init
                 )
         else:
-            if self._is_stream_active():
-                last = await self.async_get_last_state()
-                if last and last.state not in (None, "unknown", "unavailable"):
-                    # Restore last known state and attributes; do not clear due to age
-                    self._attr_native_value = self._to_float(last.state)
-                    attrs = dict(getattr(last, "attributes", {}) or {})
-                    for k in (
-                        "measurement_time",
-                        "measurement_age_seconds",
-                        "received_at",
-                    ):
-                        attrs.pop(k, None)
-                    self._attr_extra_state_attributes = attrs
-                    with suppress(Exception):
-                        getLogger(__name__).debug(
-                            "TrackWeather: Restored last state: %s", last.state
-                        )
-            else:
-                self._clear_state()
+            self._clear_state()
         self._handle_stream_state(updated)
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
@@ -2188,6 +2303,10 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         return
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._attr_native_value is not None
 
     def _to_float(self, value):
         try:
@@ -4730,7 +4849,7 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
 
 class F1TeamRadioSensor(
-    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+    _ReplayOrAuthGatedStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
 ):
     """Sensor exposing the latest Team Radio clip.
 
@@ -4742,6 +4861,7 @@ class F1TeamRadioSensor(
     _history_limit = 20
 
     _attr_translation_key = "team_radio"
+    _auth_gated_stream = "TeamRadio"
 
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
@@ -4926,7 +5046,7 @@ class F1TeamRadioSensor(
 
 
 class F1PitStopsSensor(
-    _ReplayOnlyStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
+    _ReplayOrAuthGatedStreamMixin, F1BaseEntity, RestoreEntity, SensorEntity
 ):
     """Live pit stops for all cars (aggregated).
 
@@ -4938,6 +5058,7 @@ class F1PitStopsSensor(
     _unrecorded_attributes = frozenset({"cars"})
 
     _attr_translation_key = "pitstops"
+    _auth_gated_stream = "PitStopSeries"
 
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)

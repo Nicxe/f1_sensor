@@ -22,6 +22,8 @@ REPLAY_CACHE_RETENTION_DAYS = (
 
 CONF_OPERATION_MODE = "operation_mode"
 CONF_REPLAY_FILE = "replay_file"
+CONF_LIVE_TIMING_AUTH_HEADER = "live_timing_auth_header"
+CONF_CLEAR_LIVE_TIMING_AUTH_HEADER = "clear_live_timing_auth_header"
 CONF_RACE_WEEK_SUNDAY_START = "race_week_sunday_start"
 CONF_RACE_WEEK_START_DAY = "race_week_start_day"
 RACE_WEEK_START_MONDAY = "monday"
@@ -60,8 +62,9 @@ DEFAULT_REPLAY_START_REFERENCE = REPLAY_START_REFERENCE_FORMATION
 
 # Gate for exposing development mode controls in the UI.
 # Keep this False in released versions to avoid confusing users;
-# flip to True locally when you want to work with replay/development mode.
-ENABLE_DEVELOPMENT_MODE_UI = True
+# flip to True locally when you want to work with development mode.
+# Read more here : https://nicxe.github.io/f1_sensor/help/beta-tester and https://nicxe.github.io/f1_sensor/help/experimental-testing
+ENABLE_DEVELOPMENT_MODE_UI = False
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 

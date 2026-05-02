@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+import base64
+from datetime import UTC, datetime, timedelta
+import json
 import logging
 import time
 from unittest.mock import MagicMock
@@ -16,6 +18,10 @@ from homeassistant.util.json import json_loads
 import pytest
 
 from custom_components.f1_sensor import F1NextRaceHistoryCoordinator
+from custom_components.f1_sensor.auth import (
+    AUTH_RUNTIME_STATUS,
+    evaluate_f1tv_auth_header,
+)
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     DOMAIN,
@@ -30,12 +36,15 @@ from custom_components.f1_sensor.sensor import (
     F1DriverPointsProgressionSensor,
     F1DriverPositionsSensor,
     F1DriverStandingsSensor,
+    F1LastRaceSensor,
     F1LiveTimingModeSensor,
     F1NextRaceSensor,
     F1PitStopsSensor,
     F1SeasonResultsSensor,
     F1SprintResultsSensor,
     F1TopThreePositionSensor,
+    F1TvTokenExpiresAtSensor,
+    F1TvTokenStatusSensor,
     F1WeatherSensor,
 )
 from custom_components.f1_sensor.signalr import LiveBus
@@ -68,6 +77,20 @@ def _build_coordinator(hass, data: dict) -> DataUpdateCoordinator:
     coordinator.data = data
     coordinator.available = True
     return coordinator
+
+
+def _jwt(exp: datetime) -> str:
+    def _part(value: dict) -> str:
+        raw = json.dumps(value, separators=(",", ":")).encode()
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+    return ".".join(
+        (
+            _part({"alg": "RS256", "typ": "JWT"}),
+            _part({"exp": int(exp.timestamp())}),
+            "signature",
+        )
+    )
 
 
 def _set_entry_context(hass, entry_id: str, *, stream_active: bool = False) -> None:
@@ -105,9 +128,11 @@ def _recorder_shared_attrs(state) -> tuple[dict, int]:
 def _build_result_entry(idx: int) -> dict:
     return {
         "number": str(idx),
+        "grid": str(idx),
         "position": str(idx),
         "points": str(max(0, 26 - idx)),
         "status": "Finished",
+        "laps": str(60),
         "Driver": {
             "driverId": f"driver{idx}",
             "code": f"D{idx:02d}",
@@ -268,6 +293,44 @@ def _build_race(
         "SecondPractice": {"date": "2026-03-06", "time": "05:00:00Z"},
         "ThirdPractice": {"date": "2026-03-07", "time": "01:30:00Z"},
         "Qualifying": {"date": "2026-03-07", "time": "05:00:00Z"},
+    }
+
+
+def _build_last_race(
+    *,
+    season: str = "2026",
+    round_: str = "1",
+    race_name: str = "Australian Grand Prix",
+    circuit_id: str = "albert_park",
+    circuit_name: str = "Albert Park Grand Prix Circuit",
+    locality: str = "Melbourne",
+    country: str = "Australia",
+    date: str = "2026-03-08",
+    time: str = "04:00:00Z",
+    results_per_race: int = 20,
+) -> dict:
+    return {
+        "season": season,
+        "round": round_,
+        "raceName": race_name,
+        "url": f"https://example.com/races/{round_}",
+        "date": date,
+        "time": time,
+        "Circuit": {
+            "circuitId": circuit_id,
+            "url": f"https://example.com/circuits/{circuit_id}",
+            "circuitName": circuit_name,
+            "Location": {
+                "lat": "-37.8497",
+                "long": "144.968",
+                "locality": locality,
+                "country": country,
+            },
+        },
+        "Results": [
+            _build_result_entry(driver_idx)
+            for driver_idx in range(1, results_per_race + 1)
+        ],
     }
 
 
@@ -1312,14 +1375,49 @@ async def test_live_timing_mode_sensor_exposes_stream_diagnostics(hass) -> None:
             "last_seen_age_s": 0.5,
             "last_payload_keys": ["Status", "Message"],
         },
+        "CarData.z": {
+            "frame_count": 12,
+            "last_seen_age_s": 0.2,
+            "last_payload_keys": ["Entries"],
+        },
     }
     hass.data[DOMAIN][entry_id]["live_bus"] = bus
+    hass.data[DOMAIN][entry_id]["signalr_stream_capabilities"] = {
+        "active_live_streams": frozenset(
+            {
+                "SessionStatus",
+                "TrackStatus",
+                "ChampionshipPrediction",
+                "DriverRaceInfo",
+                "CarData.z",
+            }
+        )
+    }
 
     sensor = F1LiveTimingModeSensor(hass, entry_id, "F1")
     state = await _add_sensor_and_get_state(hass, sensor)
 
+    bus.stream_diagnostics.assert_any_call(
+        (
+            "CarData.z",
+            "ChampionshipPrediction",
+            "DriverRaceInfo",
+            "SessionStatus",
+            "TrackStatus",
+        )
+    )
     assert state.attributes["heartbeat_age_s"] == 5.0
     assert state.attributes["activity_age_s"] == 2.0
+    assert state.attributes["streams"]["CarData.z"] == {
+        "frame_count": 12,
+        "last_seen_age_s": 0.2,
+        "last_payload_keys": ["Entries"],
+    }
+    assert state.attributes["streams"]["DriverRaceInfo"] == {
+        "frame_count": 0,
+        "last_seen_age_s": None,
+        "last_payload_keys": None,
+    }
     assert state.attributes["streams"]["SessionStatus"] == {
         "frame_count": 3,
         "last_seen_age_s": 1.0,
@@ -1336,6 +1434,44 @@ async def test_live_timing_mode_sensor_exposes_stream_diagnostics(hass) -> None:
         "last_payload_keys": None,
     }
     assert "TyreStintSeries" not in state.attributes["streams"]
+
+
+@pytest.mark.asyncio
+async def test_f1tv_token_status_sensor_exposes_safe_metadata(hass) -> None:
+    entry_id = "test_entry_f1tv_token_status"
+    expires_at = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    _set_entry_context(hass, entry_id, stream_active=False)
+    hass.data[DOMAIN][entry_id][AUTH_RUNTIME_STATUS] = evaluate_f1tv_auth_header(
+        f"Bearer {_jwt(expires_at)}",
+        used_for_live_timing=False,
+    )
+
+    sensor = F1TvTokenStatusSensor(hass, entry_id, "F1")
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == "valid"
+    assert state.attributes["auth_configured"] is True
+    assert state.attributes["used_for_live_timing"] is False
+    assert state.attributes["expires_at"] == expires_at.isoformat()
+    assert state.attributes["reason"] is None
+    assert "Bearer" not in str(state.attributes)
+
+
+@pytest.mark.asyncio
+async def test_f1tv_token_expires_at_sensor_exposes_timestamp(hass) -> None:
+    entry_id = "test_entry_f1tv_token_expires_at"
+    expires_at = (datetime.now(UTC) + timedelta(hours=2)).replace(microsecond=0)
+    _set_entry_context(hass, entry_id, stream_active=False)
+    hass.data[DOMAIN][entry_id][AUTH_RUNTIME_STATUS] = evaluate_f1tv_auth_header(
+        f"Bearer {_jwt(expires_at)}"
+    )
+
+    sensor = F1TvTokenExpiresAtSensor(hass, entry_id, "F1")
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == expires_at.isoformat()
+    assert state.attributes["auth_configured"] is True
+    assert state.attributes["expires_at"] == expires_at.isoformat()
 
 
 @pytest.mark.asyncio
@@ -1616,3 +1752,48 @@ async def test_driver_list_sensor_handles_22_drivers(hass) -> None:
     assert state is not None
     assert state.state == "22"
     assert len(state.attributes["drivers"]) == 22
+
+
+@pytest.mark.asyncio
+async def test_last_race_sensor_attributes(hass) -> None:
+    coordinator = _build_coordinator(
+        hass,
+        {
+            "MRData": {
+                "RaceTable": {
+                    "season": "2026",
+                    "Races": [
+                        _build_last_race(
+                            round_="16",
+                            race_name="Spanish Grand Prix",
+                            circuit_id="madring",
+                            circuit_name="Madring",
+                            locality="Madrid",
+                            country="Spain",
+                            date="2026-09-13",
+                            time="13:00:00Z",
+                            results_per_race=20,
+                        ),
+                    ],
+                }
+            }
+        },
+    )
+    entry_id = "test_entry_last_race"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1LastRaceSensor(
+        coordinator,
+        f"{entry_id}_last_race",
+        entry_id,
+        "F1",
+    )
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    results = state.attributes["results"]
+    assert results[0]["position"] == "1"
+    assert results[0]["grid"] == "1"
+    assert results[0]["laps"] == "60"
+    assert results[1]["position"] == "2"
+    assert results[1]["grid"] == "2"
+    assert results[1]["laps"] == "60"
