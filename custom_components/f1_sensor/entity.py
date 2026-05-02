@@ -224,6 +224,38 @@ def is_replay_only_stream_active(
     return bool(is_live and reason in _REPLAY_ONLY_ACTIVE_REASONS)
 
 
+def is_auth_gated_stream_active(
+    hass: HomeAssistant | None, entry_id: str | None, stream: str | None
+) -> bool:
+    """Return True when an auth-gated live stream should expose live data."""
+    if hass is None or not entry_id or not stream:
+        return False
+
+    reg = hass.data.get(DOMAIN, {}).get(entry_id, {}) or {}
+    if (
+        reg.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+        == OPERATION_MODE_DEVELOPMENT
+    ):
+        return False
+
+    live_state = reg.get("live_state")
+    if live_state is None or not bool(getattr(live_state, "is_live", False)):
+        return False
+
+    if getattr(live_state, "reason", None) in _REPLAY_ONLY_ACTIVE_REASONS:
+        return False
+
+    capabilities = reg.get("signalr_stream_capabilities")
+    if not isinstance(capabilities, dict) or not bool(capabilities.get("auth_enabled")):
+        return False
+
+    auth_gated_streams = capabilities.get("auth_gated_live_streams")
+    if not isinstance(auth_gated_streams, (set, frozenset, tuple, list)):
+        return False
+
+    return stream in auth_gated_streams
+
+
 class F1BaseEntity(CoordinatorEntity):
     """Common base entity for F1 sensors."""
 

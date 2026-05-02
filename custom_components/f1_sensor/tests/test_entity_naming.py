@@ -18,6 +18,10 @@ from custom_components.f1_sensor import (
     sensor as sensor_platform,
     switch as switch_platform,
 )
+from custom_components.f1_sensor.auth import (
+    AUTH_RUNTIME_STATUS,
+    evaluate_f1tv_auth_header,
+)
 from custom_components.f1_sensor.const import (
     CONF_ENTITY_NAME_LANGUAGE,
     CONF_ENTITY_NAME_MODE,
@@ -94,6 +98,42 @@ async def test_sensor_setup_entry_uses_translation_key_for_track_status(hass) ->
     assert entity.unique_id == f"{entry.entry_id}_track_status"
     assert entity._attr_translation_key == "track_status"
     assert entity._attr_suggested_object_id == "f1_track_status"
+
+
+@pytest.mark.asyncio
+async def test_sensor_setup_entry_does_not_add_token_sensors_without_saved_token(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "RaceHub",
+            "disabled_sensors": sorted(SUPPORTED_SENSOR_KEYS - {"track_status"}),
+        },
+    )
+    entry.add_to_hass(hass)
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "race_coordinator": Mock(),
+        "driver_coordinator": Mock(),
+        "constructor_coordinator": Mock(),
+        "last_race_coordinator": Mock(),
+        "season_results_coordinator": Mock(),
+        "sprint_results_coordinator": Mock(),
+        "track_status_coordinator": Mock(),
+        AUTH_RUNTIME_STATUS: evaluate_f1tv_auth_header(""),
+    }
+
+    async_add_entities = Mock()
+    await sensor_platform.async_setup_entry(hass, entry, async_add_entities)
+
+    entities = async_add_entities.call_args[0][0]
+    assert [entity.unique_id for entity in entities] == [
+        f"{entry.entry_id}_track_status"
+    ]
 
 
 @pytest.mark.asyncio

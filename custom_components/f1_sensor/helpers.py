@@ -44,6 +44,25 @@ _JOLPICA_UA_TEXT_HIT_LOGGED: set[str] = set()
 _ENTITY_NAME_ACRONYMS = {"f1": "F1", "fia": "FIA"}
 
 
+def normalize_live_timing_auth_header(value: object) -> str:
+    """Normalize a user-provided live timing Authorization value.
+
+    The stored value is the Authorization header value itself, typically
+    ``Bearer <JWT>``. Legacy inputs that include an ``Authorization:`` prefix are
+    accepted and normalized to the header value only.
+    """
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+
+    if match := re.match(
+        r"^authorization\s*:\s*(?P<header>.+)$", normalized, flags=re.IGNORECASE
+    ):
+        normalized = match.group("header").strip()
+
+    return normalized
+
+
 def _record_jolpica_miss(hass, key: str) -> None:
     """Dev-only: count Jolpica network MISS calls for periodic summary logging."""
     if not ENABLE_DEVELOPMENT_MODE_UI:

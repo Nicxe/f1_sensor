@@ -593,6 +593,81 @@ async def test_formation_start_is_unavailable_during_live_sessions(hass) -> None
             "3",
             {"cars": {}, "last_update": "2026-03-08T04:00:00+00:00"},
         ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_replay_capable_sensors_stay_unavailable_during_public_live(
+    hass, factory, restored_state, attributes
+) -> None:
+    entry_id = "test_entry"
+    live_state = _LiveState(True, "live-Race")
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+        "live_state": live_state,
+        "live_bus": _LiveBus(0.0),
+    }
+    coordinator = _build_coordinator(hass, None)
+    coordinator.available = False
+    entity = factory(coordinator, entry_id)
+    entity.async_get_last_state = AsyncMock(
+        return_value=State(f"sensor.{entity.unique_id}", restored_state, attributes)
+    )
+
+    state = await _add_entity_and_get_state(hass, "sensor", entity)
+
+    assert state.state == STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    ("factory", "restored_state", "attributes", "stream"),
+    [
+        (
+            lambda coordinator, entry_id: F1TeamRadioSensor(
+                coordinator, f"{entry_id}_team_radio", entry_id, "F1"
+            ),
+            "2026-03-08T04:00:00+00:00",
+            {"history": []},
+            "TeamRadio",
+        ),
+        (
+            lambda coordinator, entry_id: F1PitStopsSensor(
+                coordinator, f"{entry_id}_pitstops", entry_id, "F1"
+            ),
+            "3",
+            {"cars": {}, "last_update": "2026-03-08T04:00:00+00:00"},
+            "PitStopSeries",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_replay_capable_sensors_restore_during_auth_live(
+    hass, factory, restored_state, attributes, stream
+) -> None:
+    entry_id = "test_entry"
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+        "live_state": _LiveState(True, "live-Race"),
+        "live_bus": _LiveBus(0.0),
+        "signalr_stream_capabilities": {
+            "auth_enabled": True,
+            "auth_gated_live_streams": frozenset({stream}),
+        },
+    }
+    coordinator = _build_coordinator(hass, None)
+    coordinator.available = True
+    entity = factory(coordinator, entry_id)
+    entity.async_get_last_state = AsyncMock(
+        return_value=State(f"sensor.{entity.unique_id}", restored_state, attributes)
+    )
+
+    state = await _add_entity_and_get_state(hass, "sensor", entity)
+
+    assert state.state == restored_state
+
+
+@pytest.mark.parametrize(
+    ("factory", "restored_state", "attributes"),
+    [
         (
             lambda coordinator, entry_id: F1ChampionshipPredictionDriversSensor(
                 coordinator,
@@ -616,15 +691,18 @@ async def test_formation_start_is_unavailable_during_live_sessions(hass) -> None
     ],
 )
 @pytest.mark.asyncio
-async def test_replay_only_sensors_stay_unavailable_during_live_sessions(
+async def test_championship_prediction_sensors_stay_unavailable_in_public_live(
     hass, factory, restored_state, attributes
 ) -> None:
     entry_id = "test_entry"
-    live_state = _LiveState(True, "live-Race")
     hass.data.setdefault(DOMAIN, {})[entry_id] = {
         CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
-        "live_state": live_state,
+        "live_state": _LiveState(True, "live-Race"),
         "live_bus": _LiveBus(0.0),
+        "signalr_stream_capabilities": {
+            "auth_enabled": False,
+            "auth_gated_live_streams": frozenset({"ChampionshipPrediction"}),
+        },
     }
     coordinator = _build_coordinator(hass, None)
     coordinator.available = False
@@ -636,6 +714,108 @@ async def test_replay_only_sensors_stay_unavailable_during_live_sessions(
     state = await _add_entity_and_get_state(hass, "sensor", entity)
 
     assert state.state == STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    ("factory", "restored_state", "attributes"),
+    [
+        (
+            lambda coordinator, entry_id: F1ChampionshipPredictionDriversSensor(
+                coordinator,
+                f"{entry_id}_championship_prediction_drivers",
+                entry_id,
+                "F1",
+            ),
+            "NOR",
+            {"drivers": {}, "predicted_driver_p1": None, "last_update": None},
+        ),
+        (
+            lambda coordinator, entry_id: F1ChampionshipPredictionTeamsSensor(
+                coordinator,
+                f"{entry_id}_championship_prediction_teams",
+                entry_id,
+                "F1",
+            ),
+            "McLaren",
+            {"teams": {}, "predicted_team_p1": None, "last_update": None},
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_championship_prediction_sensors_restore_during_replay(
+    hass, factory, restored_state, attributes
+) -> None:
+    entry_id = "test_entry"
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+        "live_state": _LiveState(True, "replay-mode"),
+        "live_bus": _LiveBus(0.0),
+        "signalr_stream_capabilities": {
+            "auth_enabled": False,
+            "auth_gated_live_streams": frozenset({"ChampionshipPrediction"}),
+        },
+    }
+    coordinator = _build_coordinator(hass, None)
+    coordinator.available = True
+    entity = factory(coordinator, entry_id)
+    entity.async_get_last_state = AsyncMock(
+        return_value=State(f"sensor.{entity.unique_id}", restored_state, attributes)
+    )
+
+    state = await _add_entity_and_get_state(hass, "sensor", entity)
+
+    assert state.state == restored_state
+
+
+@pytest.mark.parametrize(
+    ("factory", "restored_state", "attributes"),
+    [
+        (
+            lambda coordinator, entry_id: F1ChampionshipPredictionDriversSensor(
+                coordinator,
+                f"{entry_id}_championship_prediction_drivers",
+                entry_id,
+                "F1",
+            ),
+            "NOR",
+            {"drivers": {}, "predicted_driver_p1": None, "last_update": None},
+        ),
+        (
+            lambda coordinator, entry_id: F1ChampionshipPredictionTeamsSensor(
+                coordinator,
+                f"{entry_id}_championship_prediction_teams",
+                entry_id,
+                "F1",
+            ),
+            "McLaren",
+            {"teams": {}, "predicted_team_p1": None, "last_update": None},
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_championship_prediction_sensors_restore_during_auth_live(
+    hass, factory, restored_state, attributes
+) -> None:
+    entry_id = "test_entry"
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+        "live_state": _LiveState(True, "live-Race"),
+        "live_bus": _LiveBus(0.0),
+        "signalr_stream_capabilities": {
+            "auth_enabled": True,
+            "auth_gated_live_streams": frozenset({"ChampionshipPrediction"}),
+        },
+    }
+    coordinator = _build_coordinator(hass, None)
+    coordinator.available = True
+    entity = factory(coordinator, entry_id)
+    entity.async_get_last_state = AsyncMock(
+        return_value=State(f"sensor.{entity.unique_id}", restored_state, attributes)
+    )
+
+    state = await _add_entity_and_get_state(hass, "sensor", entity)
+
+    assert state.state == restored_state
 
 
 @pytest.mark.parametrize("reason", ["live-Race", "replay"])

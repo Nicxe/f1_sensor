@@ -27,10 +27,23 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
+from .auth import (
+    AUTH_REPAIR_STATUSES,
+    AUTH_RUNTIME_STATUS,
+    AUTH_RUNTIME_STATUS_REFRESH_UNSUB,
+    async_cancel_f1tv_auth_status_refresh,
+    async_schedule_f1tv_auth_status_refresh,
+    async_set_runtime_f1tv_auth_status,
+    async_update_f1tv_auth_repair_issue,
+    evaluate_f1tv_auth_header,
+    is_auth_transport_enabled,
+    rejected_f1tv_auth_status,
+)
 from .calibration import LiveDelayCalibrationManager
 from .const import (
     API_URL,
     CONF_LIVE_DELAY_REFERENCE,
+    CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
     CONF_REPLAY_FILE,
     CONF_REPLAY_START_REFERENCE,
@@ -94,6 +107,7 @@ from .signalr import (
     PUBLIC_LIVE_STREAMS,
     REPLAY_ONLY_STREAMS,
     LiveBus,
+    build_live_subscribe_streams,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -1574,7 +1588,66 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
-    live_bus = LiveBus(hass, session, transport_factory=transport_factory)
+    live_timing_auth_status = evaluate_f1tv_auth_header(
+        entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "")
+    )
+    live_timing_auth_header = live_timing_auth_status.header
+    auth_transport_enabled = is_auth_transport_enabled()
+    auth_can_be_used = (
+        operation_mode == OPERATION_MODE_LIVE
+        and auth_transport_enabled
+        and live_timing_auth_status.status not in AUTH_REPAIR_STATUSES
+    )
+    if not auth_can_be_used:
+        live_timing_auth_header = ""
+    else:
+        live_timing_auth_status = evaluate_f1tv_auth_header(
+            live_timing_auth_header,
+            used_for_live_timing=True,
+        )
+
+    def _handle_live_timing_auth_failed() -> None:
+        entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+        if isinstance(entry_data, dict):
+            current_auth_status = entry_data.get(AUTH_RUNTIME_STATUS)
+            if current_auth_status is None:
+                current_auth_status = live_timing_auth_status
+            rejected_status = rejected_f1tv_auth_status(current_auth_status)
+            async_set_runtime_f1tv_auth_status(hass, entry.entry_id, rejected_status)
+            async_update_f1tv_auth_repair_issue(hass, entry, rejected_status)
+            capabilities = entry_data.get("signalr_stream_capabilities")
+            if isinstance(capabilities, dict):
+                capabilities["auth_enabled"] = False
+                capabilities["active_live_streams"] = frozenset(
+                    build_live_subscribe_streams(include_auth_gated=False)
+                )
+            live_state = entry_data.get("live_state")
+            if live_state is not None:
+                for coordinator_key in (
+                    "championship_prediction_coordinator",
+                    "team_radio_coordinator",
+                    "pitstop_coordinator",
+                ):
+                    coordinator = entry_data.get(coordinator_key)
+                    if coordinator is not None and hasattr(
+                        coordinator, "_handle_live_state"
+                    ):
+                        with suppress(Exception):
+                            coordinator._handle_live_state(  # noqa: SLF001
+                                bool(getattr(live_state, "is_live", False)),
+                                getattr(live_state, "reason", None),
+                            )
+        entry.async_start_reauth(hass, data=entry.data)
+
+    live_bus = LiveBus(
+        hass,
+        session,
+        transport_factory=transport_factory,
+        auth_header=live_timing_auth_header,
+        auth_failed_callback=(
+            _handle_live_timing_auth_failed if live_timing_auth_header else None
+        ),
+    )
     live_supervisor: LiveSessionSupervisor | None = None
     event_tracker_source: EventTrackerScheduleSource | None = None
     live_state: LiveAvailabilityTracker
@@ -1882,8 +1955,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "public_live_streams": frozenset(PUBLIC_LIVE_STREAMS),
             "auth_gated_live_streams": frozenset(AUTH_GATED_LIVE_STREAMS),
             "replay_only_streams": frozenset(REPLAY_ONLY_STREAMS),
-            "auth_enabled": False,
+            "auth_enabled": live_bus.auth_enabled,
+            "active_live_streams": frozenset(
+                build_live_subscribe_streams(include_auth_gated=live_bus.auth_enabled)
+            ),
         },
+        AUTH_RUNTIME_STATUS: live_timing_auth_status,
+        AUTH_RUNTIME_STATUS_REFRESH_UNSUB: None,
         "operation_mode": operation_mode,
         "replay_file": replay_source,
         "live_delay_controller": delay_controller,
@@ -1917,6 +1995,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _apply_activity_log_filter_excludes(hass)
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
     if isinstance(hass_data, dict):
+        async_update_f1tv_auth_repair_issue(hass, entry, live_timing_auth_status)
+        async_schedule_f1tv_auth_status_refresh(hass, entry)
 
         def _on_component_loaded(event):
             component = str((getattr(event, "data", {}) or {}).get("component") or "")
@@ -2737,8 +2817,14 @@ class TeamRadioCoordinator(DataUpdateCoordinator):
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         replay_available = bool(is_live and self._replay_mode)
-        self.available = replay_available
-        if not replay_available:
+        auth_live_available = bool(
+            is_live
+            and not self._replay_mode
+            and self._bus is not None
+            and getattr(self._bus, "auth_enabled", False)
+        )
+        self.available = replay_available or auth_live_available
+        if not self.available:
             _clear_delayed_ingest_state(self)
             self._state = {"latest": None, "history": []}
             # Notify entities to clear their state
@@ -2975,8 +3061,14 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         replay_available = bool(is_live and self._replay_mode)
-        self.available = replay_available
-        if not replay_available:
+        auth_live_available = bool(
+            is_live
+            and not self._replay_mode
+            and self._bus is not None
+            and getattr(self._bus, "auth_enabled", False)
+        )
+        self.available = replay_available or auth_live_available
+        if not self.available:
             _clear_delayed_ingest_state(self)
             self._reset_store()
 
@@ -3529,8 +3621,14 @@ class ChampionshipPredictionCoordinator(
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         replay_available = bool(is_live and self._replay_mode)
-        self.available = replay_available
-        if not replay_available:
+        auth_live_available = bool(
+            is_live
+            and not self._replay_mode
+            and self._bus is not None
+            and self._bus.auth_enabled
+        )
+        self.available = replay_available or auth_live_available
+        if not self.available:
             _clear_delayed_ingest_state(self)
             self._reset_store()
 
@@ -5292,6 +5390,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._unsubs.append(
                     bus.subscribe(
+                        "DriverRaceInfo",
+                        _wrap_delayed_handler(self, self._on_driver_race_info),
+                    )
+                )
+            with suppress(Exception):
+                self._unsubs.append(
+                    bus.subscribe(
                         "TrackStatus", _wrap_delayed_handler(self, self._on_trackstatus)
                     )
                 )
@@ -5312,10 +5417,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if isinstance(data_root, dict):
             data = data_root.pop(entry.entry_id, None)
         if isinstance(data, dict):
+            auth_status_unsub = data.pop(AUTH_RUNTIME_STATUS_REFRESH_UNSUB, None)
+            if callable(auth_status_unsub):
+                with suppress(Exception):
+                    auth_status_unsub()
             activity_filter_unsub = data.pop("activity_filter_unsub", None)
             if callable(activity_filter_unsub):
                 with suppress(Exception):
                     activity_filter_unsub()
+            async_cancel_f1tv_auth_status_refresh(hass, entry.entry_id)
             for name, obj in list(data.items()):
                 if obj is None:
                     continue
