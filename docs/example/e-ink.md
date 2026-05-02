@@ -8,8 +8,7 @@ title: E-ink Display
 A dedicated F1 schedule display built with ESPHome and an e-ink screen. It pulls data directly from the F1 Sensor integration and shows the upcoming race weekend — circuit, date, session times — in a clean, always-on format that works without a running screen or dashboard.
 
 This is a separate project maintained alongside F1 Sensor and is available as a ready-to-use ESPHome configuration.
-
-:::info Project repository
+:::info[Project repository]
 Full source, wiring instructions, and configuration files are available at:
 **[github.com/Nicxe/esphome](https://github.com/Nicxe/esphome)**
 :::
@@ -45,7 +44,6 @@ All data comes from the `sensor.f1_next_race` and `sensor.f1_current_season` ent
 2. Follow the hardware setup and wiring guide in the repository
 3. Flash the ESPHome configuration to your device
 4. The display will connect to Home Assistant and start pulling data from F1 Sensor automatically
-
 :::tip
 The display updates on a schedule and on demand when sensor data changes. Since e-ink displays retain their image without power, the race schedule stays visible even when the ESP is in deep sleep — making it very power-efficient.
 :::

@@ -59,7 +59,7 @@ const sidebars = {
       {
       type: 'category',
       label: 'Need Help?',
-      items: ['help/faq', 'help/Issues', 'help/contact', 'help/beta-tester'],
+      items: ['help/faq', 'help/Issues', 'help/contact', 'help/beta-tester', 'help/experimental-testing'],
     },
 
 
