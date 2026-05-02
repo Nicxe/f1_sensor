@@ -8,8 +8,7 @@ import useBaseUrl from '@docusaurus/useBaseUrl';
 # F1 Sensor Live Data Cards
 
 A collection of custom Lovelace cards built specifically for the F1 Sensor integration. The cards are designed to display live session data with an F1-styled dark interface and are kept up to date alongside the integration.
-
-:::info Separate repository
+:::info[Separate repository]
 The cards are maintained in a dedicated repository: [github.com/Nicxe/f1-sensor-live-data-card](https://github.com/Nicxe/f1-sensor-live-data-card)
 
 They require the F1 Sensor integration with live data enabled to function.
@@ -50,7 +49,6 @@ If the button above does not work, add the repository manually:
 3. Enter the repository URL: `https://github.com/Nicxe/f1-sensor-live-data-card`
 4. Set the type to **Dashboard**
 5. Click **Add**, then search for **F1 Sensor Live Data Card** and click **Download**
-
 :::tip
 When installed through HACS, you will automatically receive update notifications when new card versions are released.
 :::
@@ -145,8 +143,7 @@ Shows the latest race control message with flag type and category. Automatically
 `custom:f1-qualifying-timing-card`
 
 Shows all drivers' qualifying performance in a single table: live sector times (S1, S2, S3), last lap time, and best lap from each qualifying part (Q1, Q2, Q3). The current tyre compound and stint age are shown when the tyres sensor is connected. Drivers who have been knocked out are visually dimmed. The active qualifying part is shown as a badge in the card header.
-
-:::info Session availability
+:::info[Session availability]
 This card is only shown during Qualifying and Sprint Qualifying. Outside these sessions the card displays a placeholder message.
 :::
 
@@ -171,8 +168,7 @@ This card is only shown during Qualifying and Sprint Qualifying. Outside these s
 `custom:f1-race-lap-card`
 
 Displays the live race order with each driver's current position, tyre compound, stint age, number of pit stops, last lap time, and personal fastest lap time. The driver holding the session fastest lap is highlighted in purple. The card title updates with the current lap number as the race progresses.
-
-:::info Session availability
+:::info[Session availability]
 This card is only shown during Race and Sprint Race. Outside these sessions the card displays a placeholder message.
 :::
 

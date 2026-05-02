@@ -2,8 +2,7 @@
 id: Issues
 title: Known Issues
 ---
-
-::::caution **`sensor.f1_season_results`**
+:::warning[**`sensor.f1_season_results`**]
 The sensor may trigger a warning in the Home Assistant logs:
 
 ```yaml
@@ -21,4 +20,4 @@ recorder:
     entities:
       - sensor.f1_season_results
 ```
-::::
+:::

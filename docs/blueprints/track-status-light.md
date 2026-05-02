@@ -10,8 +10,7 @@ Turn any RGB light into a live F1 race status indicator. The light color changes
 The blueprint is built around the [Track Status](/entities/live-data#track-status) and [Session Status](/entities/live-data#session-status) sensors from F1 Sensor, and includes optional gates for presence, media player state, and a do-not-disturb time window.
 
 For WLED users, an optional advanced mode lets you map track states directly to WLED playlists or presets instead of plain RGB colors, giving you full control over animations, segments, and palettes.
-
-:::tip Sync with your TV
+:::tip[Sync with your TV]
 For the light to change at the same time as you see the flag on screen, configure the [Live Delay](/features/live-delay) to match your broadcast offset.
 :::
 
@@ -50,8 +49,7 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_track_statu
 ### Step 2 — Data Sources
 
 Link the blueprint to the correct F1 Sensor entities.
-
-:::info Finding the right entities
+:::info[Finding the right entities]
 Use the standard `entity_id` from the docs when you search, for example `sensor.f1_track_status`, `sensor.f1_session_status`, and `sensor.f1_current_session`.
 
 Display names may be translated in Home Assistant. If you upgraded from an older release and already have a different registry ID, keep selecting your existing entity instead of trying to rename it to match the docs.
@@ -62,8 +60,7 @@ Display names may be translated in Home Assistant. If you upgraded from an older
 | **Session Status Sensor** | Select the `*_session_status` sensor. This determines when the automation is active |
 | **Track Status Sensor** | Select the `*_track_status` sensor. This drives the light color |
 | **Active Session Phases** | The light only updates when the session is in one of these phases. Defaults to `live` and `suspended` |
-
-:::info Session phases
+:::info[Session phases]
 The session goes through a sequence of phases during an event. During `pre`, `break`, `finished`, `finalised`, and `ended` the light will not update unless you include those phases in the active list. See [Session Status values](/entities/live-data#session-status) for the full list.
 :::
 
@@ -78,7 +75,6 @@ Limit the automation to specific session types, for example only during Race and
 | **Enable Current Session Filter** | When enabled, the light only updates during the selected session types. Disabled by default |
 | **Current Session Sensor** | Select the `*_current_session` sensor. Required when the filter is enabled |
 | **Allowed Current Sessions** | Which session types should activate the light. Defaults to all sessions |
-
 :::info
 When this filter is enabled, the automation checks the [Current Session](/entities/live-data#current-session) sensor to decide whether to run. If the session type is not in the allowed list, light updates are suppressed entirely for that session.
 :::
@@ -94,8 +90,7 @@ When this filter is enabled, the automation checks the [Current Session](/entiti
 | **Transition Time** | How long color changes take in seconds. Defaults to `1s` |
 | **Snapshot Light At Session Start** | Saves the current light state when the session enters active phases. Used to restore the light to its pre-race state when the session ends. Defaults to `on` |
 | **Snapshot Before Alerts** | Saves the light state before a YELLOW, RED, SC, or VSC update. Used to restore the light after an alert clears. Defaults to `on` |
-
-:::info About snapshots
+:::info[About snapshots]
 Snapshots are temporary scenes stored in Home Assistant for the duration of the session. They allow the blueprint to restore your light to exactly how it looked before an incident — for example, going back to your normal living room scene once a yellow flag clears. They are automatically deleted when the session ends, unless you disable **Delete Runtime Scenes On Session End** in the session end settings.
 :::
 
@@ -104,7 +99,6 @@ Snapshots are temporary scenes stored in Home Assistant for the duration of the 
 ### Step 5 — WLED Advanced (Optional)
 
 If your light is a WLED device, you can map track states directly to WLED playlists or presets instead of using plain RGB colors. This gives you full control over animations, segments, and palettes for each flag state. This section is collapsed by default.
-
 :::info
 WLED Advanced mode only applies to a single light entity. If the light target is a group, normal light behavior is used instead.
 :::
@@ -140,7 +134,6 @@ Each track state can be assigned a WLED playlist and/or preset by name. The name
 | **Preset — Finished / Checkered Flag** | Preset shown when the session transitions to finished, before the end action runs (used if no playlist is set) |
 | **Playlist — Session End Neutral** | Playlist used when the session end action is **Set neutral color** |
 | **Preset — Session End Neutral** | Preset used when the session end action is **Set neutral color** (used if no playlist is set) |
-
 :::tip
 Create your playlists and presets in the WLED web UI first, then enter the exact matching name in the blueprint. Both playlists and presets can include custom effects, color palettes, segment layouts, and brightness — anything WLED supports.
 :::
@@ -216,7 +209,6 @@ Configure what the light does when the track status returns to CLEAR. This secti
 | Keep CLEAR color | Light switches to the CLEAR color and stays there |
 | Restore pre-alert scene immediately | Light restores to the state it was in before the alert, skipping the CLEAR color entirely |
 | CLEAR color then restore after delay | Light shows the CLEAR color briefly, then restores to the pre-alert state after the configured delay |
-
 :::info
 The restore options require **Snapshot Before Alerts** to be enabled in the Light Behavior section.
 :::
@@ -290,7 +282,6 @@ You can simulate track and session changes without waiting for a live session.
 3. Set the state manually to any valid value (e.g. `SC`, `RED`, `live`)
 
 The automation will react immediately as if the sensor had changed naturally.
-
 :::info
 Valid track status values: `CLEAR`, `YELLOW`, `VSC`, `SC`, `RED`
 

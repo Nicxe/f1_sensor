@@ -16,8 +16,7 @@ Actual delays vary by provider, but these ranges are common:
 • **Sports cable / OTT providers**: ~45–60 seconds or more depending on provider
 
 By setting the delay accordingly, Home Assistant can react in sync with the live pictures you are watching.
-
-:::info Standard entity IDs
+:::info[Standard entity IDs]
 This page uses the standard helper entity IDs for new installations: `number.f1_live_delay`, `switch.f1_delay_calibration`, `button.f1_delay_calibration_match`, and `select.f1_live_delay_reference`.
 
 If you upgraded from an older release and already have different registry IDs, keep using those existing entities. The integration does not rename installed entities automatically.
@@ -37,10 +36,9 @@ Everything else in the integration builds on top of this number.
 ![Manual Live Delay](/img/live_delay_manual.png)
 
 This method is simple and reliable. The guided calibration below is optional.
-
-  ::::tip
-  During the broadcast, they always show the moment the race clock flips to the start time, for example 15:00:00. If you look up an [atomic clock online](https://time.is/), you'll have an exact reference. Watch the time when the broadcast clock hits the start. So when the broadcast clock shows 15:00:00 and the race actually starts, the atomic clock reads 15:00:30. Then set a 30-second delay in the configuration.
-  ::::
+:::tip
+During the broadcast, they always show the moment the race clock flips to the start time, for example 15:00:00. If you look up an [atomic clock online](https://time.is/), you'll have an exact reference. Watch the time when the broadcast clock hits the start. So when the broadcast clock shows 15:00:00 and the race actually starts, the atomic clock reads 15:00:30. Then set a 30-second delay in the configuration.
+:::
 
 
 ---
@@ -97,8 +95,7 @@ Use `select.f1_live_delay_reference` to choose when the calibration timer starts
 
 - **Session live** - Timer starts at lights out (races) or pit exit open (practice/qualifying). This is the most precise option.
 - **Lap sync (race/sprint)** - Timer starts when the next lap completes during the race. This lets you synchronize at any point during the race, not just at the start.
-
-:::tip Lap sync for mid-race calibration
+:::tip[Lap sync for mid-race calibration]
 If you join a broadcast mid-race, or if your initial sync has drifted, lap sync lets you recalibrate without waiting for the next session. It works at any point during a race or sprint.
 :::
 
@@ -126,8 +123,7 @@ When you see the reference point on your TV, press `button.f1_delay_calibration_
 **With session live reference:** Press when you see lights out (race) or pit exit open (practice/qualifying).
 
 **With lap sync reference:** Press when you see the recorded lap complete on your TV. The status message tells you exactly which lap to look for.
-
-:::info When does the session go live?
+:::info[When does the session go live?]
 
 **Practice & Qualifying**
 The session starts when the pit exit turns green. F1 TV usually shows a countdown to this moment.
@@ -140,6 +136,6 @@ The session starts when all five lights go out and the race begins. This is **no
 
 **Race (lap sync)**
 The timer starts when the next lap completes. You can arm this at any point during the race. When the lap counter ticks, the timer starts and the status tells you which lap was recorded. Press the button when you see that same lap complete on TV.
-::::
+:::
 
 ---

@@ -8,8 +8,7 @@ title: F1 Replay Sync
 Keep your F1 replay in perfect sync with your TV. When you pause your main TV, the replay pauses automatically. When you resume, the replay resumes. No need to manually pause and unpause the replay every time you take a break.
 
 The blueprint works with any media player entity — Apple TV, a smart TV, or any other player that reports play and pause states.
-
-:::info Replay Mode required
+:::info[Replay Mode required]
 This blueprint requires [Replay Mode](/features/replay-mode) to be set up and a session to be loaded and playing.
 :::
 

@@ -182,10 +182,9 @@ For example, if the sensor state is `12` and the `total_laps` attribute is `56`,
 You likely need to enable the new live data sensors in the integration’s config.
 
 After updating to a version that introduces new sensors, open the F1 Sensor integration’s options (Reconfigure) and make sure “Enable live F1 API” or the relevant option is turned on. Once enabled and saved, the new sensors (e.g. session status, track status, etc.) will be created. 
-
-::::info
+:::info
 This step is required because live data is off by default until you opt-in.*
-::::
+:::
 </details>
 
 ---
