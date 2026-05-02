@@ -64,7 +64,7 @@ DEFAULT_REPLAY_START_REFERENCE = REPLAY_START_REFERENCE_FORMATION
 # Keep this False in released versions to avoid confusing users;
 # flip to True locally when you want to work with development mode.
 # Read more here : https://nicxe.github.io/f1_sensor/help/beta-tester and https://nicxe.github.io/f1_sensor/help/experimental-testing
-ENABLE_DEVELOPMENT_MODE_UI = False
+ENABLE_DEVELOPMENT_MODE_UI = True
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 

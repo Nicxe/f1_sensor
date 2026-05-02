@@ -112,6 +112,8 @@ from .signalr import (
 
 _LOGGER = logging.getLogger(__name__)
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
 _REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode", "replay-preparing"})
 _REPLAY_ONLY_ACTIVE_REASONS = frozenset({"replay", "replay-mode"})

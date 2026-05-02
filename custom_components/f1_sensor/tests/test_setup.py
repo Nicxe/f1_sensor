@@ -4,6 +4,7 @@ import base64
 from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 import json
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,6 +18,7 @@ from custom_components.f1_sensor import (
     _RC_LOG_RESET_EVENT,
     _RC_LOG_SERVICE,
     _RC_LOG_SERVICE_MARKER,
+    CONFIG_SCHEMA,
     RaceControlCoordinator,
     RaceControlLogStore,
     _is_activity_log_excluded_entity,
@@ -38,6 +40,14 @@ from custom_components.f1_sensor.const import (
 )
 from custom_components.f1_sensor.live_delay import LiveDelayReferenceController
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
+
+
+def test_config_schema_marks_integration_config_entry_only(caplog) -> None:
+    caplog.set_level(logging.ERROR)
+
+    assert CONFIG_SCHEMA({}) == {}
+    assert CONFIG_SCHEMA({DOMAIN: {}}) == {DOMAIN: {}}
+    assert "does not support YAML setup" in caplog.text
 
 
 class FakeLiveBus:
