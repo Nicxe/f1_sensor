@@ -10,6 +10,7 @@ from homeassistant.helpers.selector import (
 import voluptuous as vol
 
 from .const import (
+    CONF_CLEAR_LIVE_TIMING_AUTH_HEADER,
     CONF_ENTITY_NAME_LANGUAGE,
     CONF_ENTITY_NAME_MODE,
     CONF_LIVE_TIMING_AUTH_HEADER,
@@ -30,8 +31,6 @@ from .const import (
     RACE_WEEK_START_SUNDAY,
 )
 from .helpers import normalize_live_timing_auth_header
-
-_CONF_CLEAR_LIVE_TIMING_AUTH_HEADER = "clear_live_timing_auth_header"
 
 _AUTH_HEADER_SELECTOR = TextSelector(
     TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="current-password")
@@ -223,7 +222,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
             )
             clear_auth_header = bool(
-                user_input.pop(_CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, False)
+                user_input.pop(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, False)
             )
             if auth_header:
                 if ENABLE_DEVELOPMENT_MODE_UI:
@@ -340,7 +339,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_LIVE_TIMING_AUTH_HEADER, default=""
                         ): _AUTH_HEADER_SELECTOR,
                         vol.Optional(
-                            _CONF_CLEAR_LIVE_TIMING_AUTH_HEADER,
+                            CONF_CLEAR_LIVE_TIMING_AUTH_HEADER,
                             default=False,
                         ): cv.boolean,
                     }
@@ -372,7 +371,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input.get(CONF_LIVE_TIMING_AUTH_HEADER)
             )
             clear_auth_header = bool(
-                user_input.get(_CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, False)
+                user_input.get(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, False)
             )
             if auth_header:
                 return self.async_update_reload_and_abort(
@@ -390,7 +389,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema(
             {
                 vol.Required(CONF_LIVE_TIMING_AUTH_HEADER): _AUTH_HEADER_SELECTOR,
-                vol.Optional(_CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, default=False): (
+                vol.Optional(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, default=False): (
                     cv.boolean
                 ),
             }

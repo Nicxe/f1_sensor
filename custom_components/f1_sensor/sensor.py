@@ -25,6 +25,13 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
+from .auth import (
+    AUTH_RUNTIME_STATUS,
+    AUTH_STATUS_OPTIONS,
+    F1TvAuthStatus,
+    async_add_f1tv_auth_status_listener,
+    is_auth_health_visible,
+)
 from .const import (
     CONF_OPERATION_MODE,
     DEFAULT_OPERATION_MODE,
@@ -331,6 +338,18 @@ async def async_setup_entry(
             set_suggested_object_id(sensor, default_object_id(key))
             sensors.append(sensor)
 
+    auth_status = data.get(AUTH_RUNTIME_STATUS)
+    if isinstance(auth_status, F1TvAuthStatus) and is_auth_health_visible(auth_status):
+        status_sensor = F1TvTokenStatusSensor(hass, entry.entry_id, base)
+        set_suggested_object_id(status_sensor, default_object_id("f1tv_token_status"))
+        sensors.append(status_sensor)
+
+        expires_sensor = F1TvTokenExpiresAtSensor(hass, entry.entry_id, base)
+        set_suggested_object_id(
+            expires_sensor, default_object_id("f1tv_token_expires_at")
+        )
+        sensors.append(expires_sensor)
+
     # Replay status sensor
     replay_controller = data.get("replay_controller")
     if replay_controller is not None:
@@ -346,6 +365,83 @@ async def async_setup_entry(
     async_add_entities(sensors, True)
 
 
+class _F1TvTokenSensorBase(F1AuxEntity, SensorEntity):
+    """Base for redacted F1TV token health sensors."""
+
+    _device_category = "system"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
+        super().__init__(
+            unique_id=f"{entry_id}_{self._attr_translation_key}",
+            entry_id=entry_id,
+            device_name=device_name,
+        )
+        self.hass = hass
+        self._entry_id = entry_id
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_add_f1tv_auth_status_listener(
+                self.hass,
+                self._entry_id,
+                lambda *_: self._safe_write_ha_state(),
+            )
+        )
+
+    def _status(self) -> F1TvAuthStatus | None:
+        data = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        status = data.get(AUTH_RUNTIME_STATUS)
+        return status if isinstance(status, F1TvAuthStatus) else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object | None]:
+        status = self._status()
+        if status is None:
+            return {
+                "auth_configured": False,
+                "used_for_live_timing": False,
+                "expires_at": None,
+                "reason": None,
+            }
+        return {
+            "auth_configured": status.configured,
+            "used_for_live_timing": status.used_for_live_timing,
+            "expires_at": status.expires_at_iso,
+            "reason": status.reason,
+        }
+
+
+class F1TvTokenStatusSensor(_F1TvTokenSensorBase):
+    """Diagnostic sensor exposing redacted F1TV token status."""
+
+    _attr_translation_key = "f1tv_token_status"
+    _attr_icon = "mdi:key-alert"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = list(AUTH_STATUS_OPTIONS)
+
+    @property
+    def native_value(self) -> str:
+        status = self._status()
+        return status.status if status is not None else "not_configured"
+
+
+class F1TvTokenExpiresAtSensor(_F1TvTokenSensorBase):
+    """Diagnostic timestamp for the saved F1TV token expiry."""
+
+    _attr_translation_key = "f1tv_token_expires_at"
+    _attr_icon = "mdi:calendar-clock"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    @property
+    def native_value(self) -> datetime.datetime | None:
+        status = self._status()
+        if status is None:
+            return None
+        return status.expires_at
+
+
 class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
     """Diagnostic mode sensor for the live timing transport (idle/live/replay)."""
 
@@ -356,12 +452,14 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
     _attr_options = ["idle", "live", "replay"]
 
     _attr_translation_key = "live_timing_mode"
-    _tracked_streams = (
+    _fallback_tracked_streams = (
         "SessionStatus",
         "TrackStatus",
         "TopThree",
         "TimingAppData",
         "ChampionshipPrediction",
+        "DriverRaceInfo",
+        "CarData.z",
     )
 
     def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
@@ -374,6 +472,27 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
         self.hass = hass
         self._entry_id = entry_id
         self._unsub_live_state = None
+
+    @staticmethod
+    def _stream_names(value: object) -> tuple[str, ...]:
+        if not isinstance(value, (set, frozenset, tuple, list)):
+            return ()
+        streams: list[str] = []
+        for stream in value:
+            if stream is None:
+                continue
+            name = str(stream).strip()
+            if name:
+                streams.append(name)
+        return tuple(sorted(streams))
+
+    def _diagnostic_streams(self, reg: dict) -> tuple[str, ...]:
+        capabilities = reg.get("signalr_stream_capabilities")
+        if isinstance(capabilities, dict):
+            active_streams = self._stream_names(capabilities.get("active_live_streams"))
+            if active_streams:
+                return active_streams
+        return self._fallback_tracked_streams
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -438,18 +557,19 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
         except Exception:
             hb_age = activity_age = None
 
+        diagnostic_streams = self._diagnostic_streams(reg)
         stream_diagnostics = {
             stream: {
                 "frame_count": 0,
                 "last_seen_age_s": None,
                 "last_payload_keys": None,
             }
-            for stream in self._tracked_streams
+            for stream in diagnostic_streams
         }
         try:
             if live_bus is not None and hasattr(live_bus, "stream_diagnostics"):
                 stream_diagnostics.update(
-                    live_bus.stream_diagnostics(self._tracked_streams)
+                    live_bus.stream_diagnostics(diagnostic_streams)
                 )
         except Exception:
             stream_diagnostics = {
@@ -458,7 +578,7 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
                     "last_seen_age_s": None,
                     "last_payload_keys": None,
                 }
-                for stream in self._tracked_streams
+                for stream in diagnostic_streams
             }
 
         attrs = {

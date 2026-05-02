@@ -7,6 +7,10 @@ from unittest.mock import MagicMock
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor import diagnostics as diagnostics_module
+from custom_components.f1_sensor.auth import (
+    AUTH_RUNTIME_STATUS,
+    evaluate_f1tv_auth_header,
+)
 from custom_components.f1_sensor.const import (
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
@@ -18,7 +22,9 @@ from custom_components.f1_sensor.const import (
 async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(diagnostics_module, "ENABLE_DEVELOPMENT_MODE_UI", True)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="F1",
@@ -53,12 +59,15 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
             ),
             "auth_enabled": True,
         },
+        AUTH_RUNTIME_STATUS: evaluate_f1tv_auth_header("Bearer secret-token"),
     }
 
     payload = await diagnostics_module.async_get_config_entry_diagnostics(hass, entry)
 
     assert payload["entry"]["data"][CONF_LIVE_TIMING_AUTH_HEADER] == "**REDACTED**"
     assert payload["runtime"]["auth_configured"] is True
+    assert payload["runtime"]["f1tv_token"]["status"] == "invalid"
+    assert payload["runtime"]["f1tv_token"]["used_for_live_timing"] is False
     assert payload["runtime"]["auth_enabled"] is True
     assert payload["runtime"]["signalr_stream_capabilities"] == {
         "auth_enabled": True,
@@ -84,7 +93,9 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
 async def test_diagnostics_hides_auth_state_when_development_ui_disabled(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(diagnostics_module, "ENABLE_DEVELOPMENT_MODE_UI", False)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+    )
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="F1",
@@ -114,7 +125,10 @@ async def test_diagnostics_hides_auth_state_when_development_ui_disabled(
 
     runtime = payload["runtime"]
     capabilities = runtime["signalr_stream_capabilities"]
-    assert "auth_configured" not in runtime
+    assert runtime["auth_configured"] is True
+    assert runtime["f1tv_token"]["status"] == "invalid"
+    assert runtime["f1tv_token"]["configured"] is True
+    assert runtime["f1tv_token"]["used_for_live_timing"] is False
     assert "auth_enabled" not in runtime
     assert "auth_enabled" not in capabilities
     assert "auth_gated_live_streams" not in capabilities

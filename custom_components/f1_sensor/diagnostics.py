@@ -9,13 +9,18 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
+from .auth import (
+    AUTH_RUNTIME_STATUS,
+    F1TvAuthStatus,
+    evaluate_f1tv_auth_header,
+    is_auth_health_visible,
+    is_auth_transport_enabled,
+)
 from .const import (
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
     DOMAIN,
-    ENABLE_DEVELOPMENT_MODE_UI,
 )
-from .helpers import normalize_live_timing_auth_header
 
 TO_REDACT = {
     CONF_LIVE_TIMING_AUTH_HEADER,
@@ -96,10 +101,17 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     """Return diagnostics for one config entry."""
     entry_runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id, {}) or {}
-    include_auth = ENABLE_DEVELOPMENT_MODE_UI
+    runtime_auth_status = entry_runtime.get(AUTH_RUNTIME_STATUS)
+    auth_status = (
+        runtime_auth_status
+        if isinstance(runtime_auth_status, F1TvAuthStatus)
+        else evaluate_f1tv_auth_header(entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, ""))
+    )
+    include_auth_transport = is_auth_transport_enabled()
+    include_auth_health = is_auth_health_visible(auth_status)
     capabilities = _serialize_signalr_stream_capabilities(
         entry_runtime.get("signalr_stream_capabilities"),
-        include_auth=include_auth,
+        include_auth=include_auth_transport,
     )
     runtime: dict[str, Any] = {
         "operation_mode": entry_runtime.get(
@@ -108,12 +120,10 @@ async def async_get_config_entry_diagnostics(
         "signalr_stream_capabilities": capabilities,
     }
 
-    if include_auth:
-        runtime["auth_configured"] = bool(
-            normalize_live_timing_auth_header(
-                entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "")
-            )
-        )
+    if include_auth_health:
+        runtime["auth_configured"] = auth_status.configured
+        runtime["f1tv_token"] = auth_status.as_safe_dict()
+    if include_auth_transport:
         runtime["auth_enabled"] = bool(capabilities.get("auth_enabled"))
 
     live_bus = entry_runtime.get("live_bus")

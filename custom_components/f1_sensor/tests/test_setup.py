@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import base64
 from contextlib import ExitStack
+from datetime import UTC, datetime, timedelta
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -22,6 +26,7 @@ from custom_components.f1_sensor import (
     async_setup_entry,
     async_unload_entry,
 )
+from custom_components.f1_sensor.auth import f1tv_auth_repair_issue_id
 from custom_components.f1_sensor.const import (
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
@@ -64,6 +69,25 @@ class FakeLiveBus:
 
     def subscribe(self, _stream, _callback):
         return lambda: None
+
+
+def _jwt(exp: datetime) -> str:
+    def _part(value: dict) -> str:
+        raw = json.dumps(value, separators=(",", ":")).encode()
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+    return ".".join(
+        (
+            _part({"alg": "RS256", "typ": "JWT"}),
+            _part(
+                {
+                    "iat": int(datetime.now(UTC).timestamp()),
+                    "exp": int(exp.timestamp()),
+                }
+            ),
+            "signature",
+        )
+    )
 
 
 class DummyCoordinator:
@@ -514,7 +538,10 @@ async def test_async_setup_entry_live_mode_wires_event_tracker_fallback(hass) ->
 async def test_async_setup_entry_live_mode_exposes_auth_capability(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr("custom_components.f1_sensor.ENABLE_DEVELOPMENT_MODE_UI", True)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
+    token = _jwt(datetime.now(UTC) + timedelta(days=2))
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -522,7 +549,7 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
             "enable_race_control": False,
             CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
             CONF_REPLAY_FILE: "",
-            CONF_LIVE_TIMING_AUTH_HEADER: "Authorization: Bearer test-token",
+            CONF_LIVE_TIMING_AUTH_HEADER: f"Authorization: Bearer {token}",
         },
     )
     entry.add_to_hass(hass)
@@ -567,14 +594,17 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
 
     assert result is True
     assert FakeLiveBus.last_instance is not None
-    assert FakeLiveBus.last_instance.auth_header == "Bearer test-token"
+    assert FakeLiveBus.last_instance.auth_header == f"Bearer {token}"
     entry_data = hass.data[DOMAIN][entry.entry_id]
     assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is True
+    assert entry_data["f1tv_auth_status"].status == "valid"
+    assert entry_data["f1tv_auth_status"].used_for_live_timing is True
     entry.async_start_reauth = MagicMock()
 
     FakeLiveBus.last_instance.auth_failed_callback()
 
     assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is False
+    assert entry_data["f1tv_auth_status"].status == "rejected"
     entry.async_start_reauth.assert_called_once_with(hass, data=entry.data)
 
 
@@ -582,7 +612,10 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
 async def test_async_setup_entry_ignores_auth_when_development_ui_disabled(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr("custom_components.f1_sensor.ENABLE_DEVELOPMENT_MODE_UI", False)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+    )
+    token = _jwt(datetime.now(UTC) + timedelta(days=2))
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -590,7 +623,7 @@ async def test_async_setup_entry_ignores_auth_when_development_ui_disabled(
             "enable_race_control": False,
             CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
             CONF_REPLAY_FILE: "",
-            CONF_LIVE_TIMING_AUTH_HEADER: "Bearer test-token",
+            CONF_LIVE_TIMING_AUTH_HEADER: f"Bearer {token}",
         },
     )
     entry.add_to_hass(hass)
@@ -638,6 +671,81 @@ async def test_async_setup_entry_ignores_auth_when_development_ui_disabled(
     assert FakeLiveBus.last_instance.auth_header == ""
     entry_data = hass.data[DOMAIN][entry.entry_id]
     assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is False
+    assert entry_data["f1tv_auth_status"].status == "valid"
+    assert entry_data["f1tv_auth_status"].used_for_live_timing is False
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_warns_for_expired_auth_without_transport(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+    )
+    token = _jwt(datetime.now(UTC) - timedelta(hours=1))
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            "enable_race_control": False,
+            CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+            CONF_REPLAY_FILE: "",
+            CONF_LIVE_TIMING_AUTH_HEADER: f"Bearer {token}",
+        },
+    )
+    entry.add_to_hass(hass)
+    FakeLiveBus.last_instance = None
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.EventTrackerScheduleSource",
+                lambda *_args, **_kwargs: object(),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionSupervisor",
+                FakeLiveSupervisor,
+            )
+        )
+        for cm in _coordinator_patches():
+            stack.enter_context(cm)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+        result = await async_setup_entry(hass, entry)
+
+    assert result is True
+    assert FakeLiveBus.last_instance is not None
+    assert FakeLiveBus.last_instance.auth_header == ""
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is False
+    assert entry_data["f1tv_auth_status"].status == "expired"
+
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN, f1tv_auth_repair_issue_id(entry.entry_id)
+    )
+    assert issue is not None
+    assert issue.is_fixable is True
+    assert issue.severity is ir.IssueSeverity.WARNING
 
 
 @pytest.mark.asyncio

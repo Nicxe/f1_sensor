@@ -79,7 +79,32 @@
     "error": {
       "replay_required": "Välj en replay-dumpfil när utvecklingsläge är aktiverat.",
       "replay_missing": "Replay-dumpfilen hittades inte eller är oläsbar.",
-      "auth_header_required": "Ange live timing-auktoriseringsvärdet eller välj att rensa det."
+      "auth_header_required": "Ange live timing-auktoriseringsvärdet eller välj att rensa det.",
+      "invalid_auth_header": "Ange ett giltigt `Bearer <JWT>`-värde.",
+      "auth_token_missing_exp": "Token saknar utgångstid.",
+      "auth_token_expired": "Token har gått ut.",
+      "auth_token_expiring_soon": "Token går ut för snart. Skapa en ny token och försök igen."
+    }
+  },
+  "issues": {
+    "f1tv_token_attention_required": {
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "data": {
+              "live_timing_auth_header": "Live timing-auktoriseringsvärde",
+              "clear_live_timing_auth_header": "Rensa live timing-auktoriseringsvärde"
+            },
+            "data_description": {
+              "live_timing_auth_header": "Klistra in ett nytt `Bearer <JWT>`-värde från F1TV Token Helper.",
+              "clear_live_timing_auth_header": "Ta bort den sparade F1TV-token och fortsätt med endast publik live timing."
+            },
+            "description": "Den sparade F1TV-token för {name} behöver åtgärdas. Publik live timing fortsätter att fungera, men F1TV-only live-data används inte förrän token har bytts ut.",
+            "title": "Uppdatera F1TV live timing-token"
+          }
+        }
+      },
+      "title": "F1TV live timing-token behöver åtgärdas"
     }
   },
   "entity": {
@@ -143,6 +168,20 @@
       },
       "live_timing_mode": {
         "name": "Live timing-läge"
+      },
+      "f1tv_token_status": {
+        "name": "F1TV token-status",
+        "state": {
+          "not_configured": "Inte konfigurerad",
+          "valid": "Giltig",
+          "expiring_soon": "Går snart ut",
+          "expired": "Utgången",
+          "invalid": "Ogiltig",
+          "rejected": "Avvisad"
+        }
+      },
+      "f1tv_token_expires_at": {
+        "name": "F1TV-token går ut"
       },
       "driver_positions": {
         "name": "Förarpositioner"
