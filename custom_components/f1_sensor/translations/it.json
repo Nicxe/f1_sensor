@@ -1,30 +1,70 @@
 {
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Weekend di gara iniziato",
+      "race_week_ended": "Weekend di gara terminato",
+      "safety_car_deployed": "Safety car in pista",
+      "safety_car_cleared": "Safety car uscita dalla pista",
+      "formation_start_ready": "Giro di formazione pronto",
+      "overtake_mode_enabled": "Modalità Overtake attivata",
+      "overtake_mode_disabled": "Modalità Overtake disattivata",
+      "session_live": "Sessione in diretta",
+      "track_status_clear": "Stato pista: Bandiera verde",
+      "track_status_yellow": "Stato pista: Bandiera gialla",
+      "track_status_safety_car": "Stato pista: Safety car",
+      "track_status_vsc": "Stato pista: Virtual safety car",
+      "track_status_red_flag": "Stato pista: Bandiera rossa",
+      "new_race_control_message": "Nuovo messaggio dalla direzione gara",
+      "new_fia_document": "Nuovo documento FIA pubblicato",
+      "investigation_changed": "Stato investigazione cambiato",
+      "new_team_radio": "Nuovo team radio",
+      "live_timing_online": "Telemetria online",
+      "live_timing_offline": "Telemetria offline"
+    }
+  },
   "config": {
     "step": {
       "user": {
-        "title": "Configurazione sensore F1",
+        "title": "Impostazioni F1 Sensor",
         "data": {
           "sensor_name": "Nome dispositivo",
-          "enabled_sensors": "Sensori abilitati",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
+          "enabled_sensors": "Sensori attivati",
+          "operation_mode": "Modalità operativa",
+          "replay_file": "Percorso file replay",
+          "enable_race_control": "Attiva API F1 (Direzione gara/Pista/Sessione)",
           "race_week_start_day": "Primo giorno della settimana di gara"
+        },
+        "data_description": {
+          "operation_mode": "Scegli Live per connetterti a F1 SignalR, o Sviluppo per avviare il replay di un file locale.",
+          "replay_file": "Percorso assoluto a un file SignalR. Richiesto solo in modalità Sviluppo.",
+          "enable_race_control": "Si connette a F1 Live Timing con SignalR per ricevere aggiornamenti in diretta. Se disattivato, alcuni sensori non verranno creati.",
+          "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì."
         }
       },
       "reconfigure": {
-        "title": "Riconfigura sensore F1",
+        "title": "Riconfigura F1 Sensor",
         "data": {
           "sensor_name": "Nome dispositivo",
-          "enabled_sensors": "Sensori abilitati",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
+          "enabled_sensors": "Sensori attivati",
+          "operation_mode": "Modalità operativa",
+          "replay_file": "Percorso file replay",
+          "enable_race_control": "Attiva API F1 (Direzione gara/Pista/Sessione)",
           "race_week_start_day": "Primo giorno della settimana di gara"
+        },
+        "data_description": {
+          "operation_mode": "Scegli Live per connetterti a F1 SignalR, o Sviluppo per avviare il replay di un file locale.",
+          "replay_file": "Percorso assoluto a un file SignalR. Richiesto solo in modalità Sviluppo.",
+          "enable_race_control": "Si connette a F1 Live Timing con SignalR per ricevere aggiornamenti in diretta. Se disattivato, alcuni sensori non verranno creati.",
+          "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì."
         }
       }
     },
+    "abort": {
+      "reconfigure_successful": "F1 Sensor è stato riconfigurato con successo!"
+    },
     "error": {
-      "replay_required": "Select a replay dump file when Development mode is enabled.",
-      "replay_missing": "Replay dump file not found or unreadable."
+      "replay_required": "Scegli un file di replay quando la modalità Sviluppo è attivata.",
+      "replay_missing": "Il file di replay non è stato trovato o è illeggibile."
     }
   },
   "entity": {
@@ -32,47 +72,160 @@
       "next_race": {
         "name": "Prossima gara"
       },
+      "track_time": {
+        "name": "Orario della pista"
+      },
       "current_season": {
         "name": "Stagione attuale"
       },
       "driver_standings": {
-        "name": "Classifica piloti"
+        "name": "Campionato piloti"
       },
       "constructor_standings": {
-        "name": "Classifica costruttori"
+        "name": "Campionato costruttori"
       },
       "weather": {
         "name": "Meteo"
       },
+      "track_weather": {
+        "name": "Meteo in pista"
+      },
       "current_session": {
-        "name": "Sessione corrente"
+        "name": "Sessione attuale"
       },
       "last_race_results": {
-        "name": "Risultati ultima gara"
+        "name": "Risultati dell'ultima gara"
       },
       "season_results": {
         "name": "Risultati della stagione"
       },
       "sprint_results": {
-        "name": "Risultati sprint"
+        "name": "Risultati della sprint"
       },
       "race_control": {
         "name": "Direzione gara"
       },
+      "top_three_p1": {
+        "name": "Podio (P1)"
+      },
+      "top_three_p2": {
+        "name": "Podio (P2)"
+      },
+      "top_three_p3": {
+        "name": "Podio (P3)"
+      },
       "pitstops": {
         "name": "Pit stop"
+      },
+      "championship_prediction_drivers": {
+        "name": "Previsioni campionato piloti"
+      },
+      "championship_prediction_teams": {
+        "name": "Previsioni campionato costruttori"
       },
       "fia_documents": {
         "name": "Decisioni FIA"
       },
       "live_timing_mode": {
-        "name": "Modalità Live Timing"
+        "name": "Modalità telemetira"
+      },
+      "driver_positions": {
+        "name": "Posizione piloti"
       },
       "track_limits": {
         "name": "Track limits"
       },
       "investigations": {
-        "name": "Investigations & penalties"
+        "name": "Investigazioni e penalità"
+      },
+      "straight_mode": {
+        "name": "Modalità Straight",
+        "state": {
+          "normal_grip": "Aderenza normale",
+          "low_grip": "Aderenza bassa",
+          "disabled": "Disattivata"
+        }
+      },
+      "track_status": {
+        "name": "Stato pista"
+      },
+      "session_status": {
+        "name": "Stato sessione"
+      },
+      "session_time_remaining": {
+        "name": "Tempo rimanente"
+      },
+      "session_time_elapsed": {
+        "name": "Tempo trascorso"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "Tempo rimanente al limite di 3 ore"
+      },
+      "driver_list": {
+        "name": "Lista piloti"
+      },
+      "current_tyres": {
+        "name": "Gomme attuali"
+      },
+      "tyre_statistics": {
+        "name": "Statistiche gomme"
+      },
+      "team_radio": {
+        "name": "Team radio"
+      },
+      "race_lap_count": {
+        "name": "Numero giri"
+      },
+      "driver_points_progression": {
+        "name": "Driver points progression"
+      },
+      "constructor_points_progression": {
+        "name": "Constructor points progression"
+      },
+      "replay_status": {
+        "name": "Replay status"
+      }
+    },
+    "button": {
+      "delay_calibration_match": {
+        "name": "Match live delay"
+      },
+      "replay_load": {
+        "name": "Load session"
+      },
+      "replay_play": {
+        "name": "Play"
+      },
+      "replay_pause": {
+        "name": "Pause"
+      },
+      "replay_back_30": {
+        "name": "Back 30 seconds"
+      },
+      "replay_forward_30": {
+        "name": "Forward 30 seconds"
+      },
+      "replay_stop": {
+        "name": "Stop"
+      },
+      "replay_refresh": {
+        "name": "Refresh sessions"
+      },
+      "jolpica_ua_test": {
+        "name": "Jolpica user-agent test"
+      }
+    },
+    "switch": {
+      "delay_calibration": {
+        "name": "Delay calibration"
+      },
+      "no_spoiler_mode": {
+        "name": "No Spoiler Mode"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "Live delay"
       }
     },
     "media_player": {
@@ -96,21 +249,24 @@
     },
     "binary_sensor": {
       "race_week": {
-        "name": "Settimana di gara"
+        "name": "Race week"
       },
       "live_timing_online": {
-        "name": "Live Timing online"
+        "name": "Live timing online"
       },
       "safety_car": {
         "name": "Safety car"
       },
       "formation_start": {
         "name": "Formation start"
+      },
+      "overtake_mode": {
+        "name": "Overtake mode"
       }
     },
-    "switch": {
-      "no_spoiler_mode": {
-        "name": "Modalità senza spoiler"
+    "calendar": {
+      "season_calendar": {
+        "name": "Season calendar"
       }
     }
   }
