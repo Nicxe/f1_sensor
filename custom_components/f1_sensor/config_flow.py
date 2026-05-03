@@ -226,18 +226,13 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             auth_header = _normalize_auth_header(
                 user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
             )
-            clear_auth_header = bool(
-                user_input.pop(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, False)
-            )
+            user_input.pop(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, None)
             start_pairing = bool(user_input.pop(CONF_START_F1TV_PAIRING, False))
             if start_pairing and is_auth_feature_enabled():
                 return await self._async_start_f1tv_pairing(entry)
             if auth_header:
                 if is_auth_feature_enabled():
                     user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
-            elif clear_auth_header:
-                if is_auth_feature_enabled():
-                    user_input[CONF_LIVE_TIMING_AUTH_HEADER] = ""
 
             mode = user_input.get(
                 CONF_OPERATION_MODE,
@@ -346,10 +341,6 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         vol.Optional(
                             CONF_LIVE_TIMING_AUTH_HEADER, default=""
                         ): _AUTH_HEADER_SELECTOR,
-                        vol.Optional(
-                            CONF_CLEAR_LIVE_TIMING_AUTH_HEADER,
-                            default=False,
-                        ): cv.boolean,
                         vol.Optional(CONF_START_F1TV_PAIRING, default=False): (
                             cv.boolean
                         ),

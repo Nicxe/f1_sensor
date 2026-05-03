@@ -36,7 +36,7 @@ AUTH_PAIRING_SESSIONS = "f1tv_auth_pairing_sessions"
 AUTH_HTTP_VIEW_REGISTERED = "f1tv_auth_http_view_registered"
 AUTH_PAIRING_TTL = timedelta(minutes=5)
 AUTH_CALLBACK_MAX_BODY_BYTES = 16 * 1024
-F1TV_HELPER_PAIRING_URL = "https://nicxe.github.io/f1_sensor/"
+F1TV_HELPER_PAIRING_URL = "https://nicxe.github.io/f1_sensor/help/f1tv-token-helper"
 
 
 @dataclass

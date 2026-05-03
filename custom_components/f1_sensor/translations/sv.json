@@ -53,7 +53,6 @@
           "enable_race_control": "Aktivera live F1 API",
           "race_week_start_day": "Första dagen i tävlingsveckan",
           "live_timing_auth_header": "Live timing-auktoriseringsvärde",
-          "clear_live_timing_auth_header": "Rensa live timing-auktoriseringsvärde",
           "start_f1tv_pairing": "Anslut F1TV-åtkomst med Token Helper"
         },
         "data_description": {
@@ -62,7 +61,6 @@
           "enable_race_control": "Ansluter till Formula 1 Live Timing för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
           "live_timing_auth_header": "Avancerad reservväg. Ange ett nytt värde från F1TV Token Helper för att uppdatera det. Klistra in `Bearer <JWT>`. Lämna tomt för att behålla nuvarande värde.",
-          "clear_live_timing_auth_header": "Ta bort det sparade live timing-auktoriseringsvärdet och fortsätt med endast publik live timing.",
           "start_f1tv_pairing": "Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering."
         }
       },
@@ -280,6 +278,9 @@
       },
       "jolpica_ua_test": {
         "name": "Jolpica user-agent-test"
+      },
+      "clear_f1tv_access": {
+        "name": "Rensa F1TV-åtkomst"
       }
     },
     "switch": {

@@ -3,9 +3,17 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.f1_sensor.button import F1JolpicaUserAgentTestButton
-from custom_components.f1_sensor.const import DOMAIN
+from custom_components.f1_sensor.auth import (
+    AUTH_RUNTIME_STATUS,
+    AUTH_STATUS_NOT_CONFIGURED,
+)
+from custom_components.f1_sensor.button import (
+    F1ClearF1TvAccessButton,
+    F1JolpicaUserAgentTestButton,
+)
+from custom_components.f1_sensor.const import CONF_LIVE_TIMING_AUTH_HEADER, DOMAIN
 
 
 class _TimeoutSession:
@@ -52,3 +60,66 @@ async def test_jolpica_ua_button_timeout_reports_failure(hass, monkeypatch) -> N
     assert "Jolpica UA test FAILED" in message
     assert "ua_configured='configured-ua'" in message
     assert "ua_session='session-ua'" in message
+
+
+@pytest.mark.asyncio
+async def test_clear_f1tv_access_button_clears_saved_token_and_reloads(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            CONF_LIVE_TIMING_AUTH_HEADER: "Bearer existing-token",
+        },
+    )
+    entry.add_to_hass(hass)
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {}
+    hass.config_entries.async_reload = AsyncMock(return_value=True)
+
+    button = F1ClearF1TvAccessButton(
+        hass=hass,
+        unique_id=f"{entry.entry_id}_clear_f1tv_access",
+        entry=entry,
+        device_name="F1",
+    )
+
+    await button.async_press()
+
+    assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == ""
+    status = hass.data[DOMAIN][entry.entry_id][AUTH_RUNTIME_STATUS]
+    assert status.status == AUTH_STATUS_NOT_CONFIGURED
+    hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_clear_f1tv_access_button_is_inert_when_gate_closed(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            CONF_LIVE_TIMING_AUTH_HEADER: "Bearer existing-token",
+        },
+    )
+    entry.add_to_hass(hass)
+    hass.config_entries.async_reload = AsyncMock(return_value=True)
+
+    button = F1ClearF1TvAccessButton(
+        hass=hass,
+        unique_id=f"{entry.entry_id}_clear_f1tv_access",
+        entry=entry,
+        device_name="F1",
+    )
+
+    await button.async_press()
+
+    assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == "Bearer existing-token"
+    hass.config_entries.async_reload.assert_not_called()

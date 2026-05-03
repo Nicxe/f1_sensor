@@ -207,7 +207,7 @@ async def test_reconfigure_blank_auth_header_keeps_existing_value(
     assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == "Bearer existing-token"
 
 
-async def test_reconfigure_can_clear_auth_header(hass, monkeypatch) -> None:
+async def test_reconfigure_ignores_legacy_clear_auth_header(hass, monkeypatch) -> None:
     monkeypatch.setattr(
         "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
     )
@@ -244,7 +244,7 @@ async def test_reconfigure_can_clear_auth_header(hass, monkeypatch) -> None:
     )
 
     assert result["type"] == "abort"
-    assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == ""
+    assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == "Bearer existing-token"
 
 
 async def test_reauth_updates_auth_header(hass, monkeypatch) -> None:
