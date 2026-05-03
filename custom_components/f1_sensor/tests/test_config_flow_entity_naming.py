@@ -1,7 +1,16 @@
 from __future__ import annotations
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+import base64
+from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
+import json
 
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+from yarl import URL
+
+from custom_components.f1_sensor.auth_http import (
+    async_process_f1tv_pairing_callback,
+)
 from custom_components.f1_sensor.config_flow import (
     CONF_START_F1TV_PAIRING,
     F1FlowHandler,
@@ -23,6 +32,21 @@ from custom_components.f1_sensor.const import (
 def _schema_key_names(result: dict) -> set[str]:
     """Return the string field names from a config flow form schema."""
     return {str(key.schema) for key in result["data_schema"].schema}
+
+
+def _part(value: dict) -> str:
+    raw = json.dumps(value, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def _jwt(exp: datetime) -> str:
+    return ".".join(
+        (
+            _part({"alg": "RS256", "typ": "JWT"}),
+            _part({"exp": int(exp.timestamp())}),
+            "signature",
+        )
+    )
 
 
 async def test_user_flow_stores_entity_name_metadata(hass) -> None:
@@ -66,6 +90,26 @@ async def test_user_flow_hides_auth_header_when_development_ui_disabled(
     assert CONF_START_F1TV_PAIRING not in keys
 
 
+async def test_user_flow_shows_f1tv_pairing_when_development_ui_enabled(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
+
+    flow = F1FlowHandler()
+    flow.hass = hass
+    flow.context = {"source": "user"}
+
+    result = await flow.async_step_user()
+
+    assert result["type"] == "form"
+    keys = _schema_key_names(result)
+    assert CONF_LIVE_TIMING_AUTH_HEADER in keys
+    assert CONF_START_F1TV_PAIRING in keys
+    assert "clear_live_timing_auth_header" not in keys
+
+
 async def test_user_flow_stores_trimmed_live_timing_auth_header(
     hass, monkeypatch
 ) -> None:
@@ -89,6 +133,60 @@ async def test_user_flow_stores_trimmed_live_timing_auth_header(
 
     assert result["type"] == "create_entry"
     assert result["data"][CONF_LIVE_TIMING_AUTH_HEADER] == "Bearer test-token"
+
+
+async def test_user_flow_can_start_f1tv_pairing_when_development_ui_enabled(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
+    token = _jwt(datetime.now(UTC) + timedelta(days=2))
+
+    flow = F1FlowHandler()
+    flow.hass = hass
+    flow.context = {"source": "user"}
+    flow.flow_id = "flow-id"
+
+    result = await flow.async_step_user(
+        {
+            "sensor_name": "RaceHub",
+            "enabled_sensors": ["next_race"],
+            "enable_race_control": False,
+            CONF_RACE_WEEK_START_DAY: RACE_WEEK_START_MONDAY,
+            CONF_OPERATION_MODE: DEFAULT_OPERATION_MODE,
+            CONF_REPLAY_FILE: "",
+            CONF_START_F1TV_PAIRING: True,
+        },
+    )
+
+    assert result["type"] == "external"
+    assert result["step_id"] == "f1tv_pairing"
+    assert "subscription_token" not in result["url"]
+
+    helper_url = URL(result["url"])
+    status, response = await async_process_f1tv_pairing_callback(
+        hass,
+        {
+            "session_id": helper_url.query["session_id"],
+            "nonce": helper_url.query["nonce"],
+            "subscription_token": token,
+        },
+    )
+
+    assert status is HTTPStatus.OK
+    assert response["ok"] is True
+
+    result = await flow.async_step_f1tv_pairing(
+        {"session_id": helper_url.query["session_id"]}
+    )
+    assert result["type"] == "external_done"
+
+    result = await flow.async_step_f1tv_pairing_complete()
+
+    assert result["type"] == "create_entry"
+    assert result["title"] == "RaceHub"
+    assert result["data"][CONF_LIVE_TIMING_AUTH_HEADER] == f"Bearer {token}"
 
 
 async def test_reconfigure_hides_auth_header_when_development_ui_disabled(

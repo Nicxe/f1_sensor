@@ -11,6 +11,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.f1_sensor.auth_http import (
     AUTH_CALLBACK_MAX_BODY_BYTES,
     async_create_f1tv_pairing_session,
+    async_pop_f1tv_pairing_session_result,
     async_process_f1tv_pairing_callback,
 )
 from custom_components.f1_sensor.const import CONF_LIVE_TIMING_AUTH_HEADER, DOMAIN
@@ -60,6 +61,38 @@ async def test_pairing_session_contains_no_token_when_gate_open(hass, monkeypatc
     assert "subscription_token" not in session.helper_url
     assert "Bearer" not in session.helper_url
     assert "flow-id" in session.helper_url
+
+
+async def test_flow_pairing_callback_stores_runtime_result_without_entry(
+    hass, monkeypatch
+):
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
+    token = _jwt(datetime.now(UTC) + timedelta(days=2))
+    session = async_create_f1tv_pairing_session(hass, None, flow_id="flow-id")
+    assert session is not None
+    hass.config_entries.flow.async_configure = AsyncMock()
+
+    status, response = await async_process_f1tv_pairing_callback(
+        hass,
+        {
+            "session_id": session.session_id,
+            "nonce": session.nonce,
+            "subscription_token": token,
+        },
+    )
+
+    assert status is HTTPStatus.OK
+    assert response["ok"] is True
+    hass.config_entries.flow.async_configure.assert_awaited_once_with(
+        "flow-id", {"session_id": session.session_id}
+    )
+    result = async_pop_f1tv_pairing_session_result(hass, session.session_id, "flow-id")
+    assert result is not None
+    auth_header, auth_status = result
+    assert auth_header == f"Bearer {token}"
+    assert auth_status.configured is True
 
 
 async def test_valid_callback_saves_token_and_reloads_entry(hass, monkeypatch):

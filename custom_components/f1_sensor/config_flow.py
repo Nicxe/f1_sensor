@@ -12,6 +12,7 @@ import voluptuous as vol
 from .auth import is_auth_feature_enabled
 from .auth_http import (
     async_create_f1tv_pairing_session,
+    async_pop_f1tv_pairing_session_result,
     async_setup_f1tv_auth_http,
 )
 from .const import (
@@ -103,6 +104,8 @@ def _normalize_auth_header(value: object) -> str:
 
 class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
+    _pending_f1tv_setup_data: dict | None = None
+    _completed_f1tv_pairing_session_id: str | None = None
 
     def _current_backend_language(self) -> str:
         """Return the current backend language for new config entries."""
@@ -132,6 +135,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             auth_header = _normalize_auth_header(
                 user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
             )
+            start_pairing = bool(user_input.pop(CONF_START_F1TV_PAIRING, False))
             if is_auth_feature_enabled() and auth_header:
                 user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
 
@@ -162,6 +166,9 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input["disabled_sensors"] = sorted(all_keys - checked)
                 user_input[CONF_ENTITY_NAME_MODE] = ENTITY_NAME_MODE_LOCALIZED
                 user_input[CONF_ENTITY_NAME_LANGUAGE] = self._current_backend_language()
+                if start_pairing and is_auth_feature_enabled():
+                    self._pending_f1tv_setup_data = dict(user_input)
+                    return await self._async_start_f1tv_pairing(None)
                 return self.async_create_entry(
                     title=user_input["sensor_name"], data=user_input
                 )
@@ -203,6 +210,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Optional(
                         CONF_LIVE_TIMING_AUTH_HEADER, default=""
                     ): _AUTH_HEADER_SELECTOR,
+                    vol.Optional(CONF_START_F1TV_PAIRING, default=False): cv.boolean,
                 }
             )
         else:
@@ -409,7 +417,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _async_start_f1tv_pairing(self, entry):
         """Start the helper pairing external step."""
-        if not is_auth_feature_enabled() or entry is None:
+        if not is_auth_feature_enabled():
             return self.async_abort(reason="f1tv_pairing_unavailable")
         async_setup_f1tv_auth_http(self.hass)
         session = async_create_f1tv_pairing_session(
@@ -430,11 +438,26 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if not is_auth_feature_enabled():
             return self.async_abort(reason="f1tv_pairing_unavailable")
         if isinstance(user_input, dict) and user_input.get("session_id"):
+            self._completed_f1tv_pairing_session_id = str(user_input["session_id"])
             return self.async_external_step_done(next_step_id="f1tv_pairing_complete")
         return self.async_external_step_done(next_step_id="f1tv_pairing_failed")
 
     async def async_step_f1tv_pairing_complete(self, user_input=None):
         """Finish after the helper callback saved a token."""
+        pending = self._pending_f1tv_setup_data
+        if pending is not None:
+            session_id = self._completed_f1tv_pairing_session_id
+            result = async_pop_f1tv_pairing_session_result(
+                self.hass, session_id or "", self.flow_id
+            )
+            if result is None:
+                return self.async_abort(reason="f1tv_pairing_failed")
+            auth_header, _status = result
+            data = dict(pending)
+            data[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
+            self._pending_f1tv_setup_data = None
+            self._completed_f1tv_pairing_session_id = None
+            return self.async_create_entry(title=data["sensor_name"], data=data)
         return self.async_abort(reason="reconfigure_successful")
 
     async def async_step_f1tv_pairing_failed(self, user_input=None):
