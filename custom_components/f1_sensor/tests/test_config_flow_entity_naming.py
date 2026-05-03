@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.f1_sensor import config_flow as config_flow_module
-from custom_components.f1_sensor.config_flow import F1FlowHandler
+from custom_components.f1_sensor.config_flow import (
+    CONF_START_F1TV_PAIRING,
+    F1FlowHandler,
+)
 from custom_components.f1_sensor.const import (
     CONF_ENTITY_NAME_LANGUAGE,
     CONF_ENTITY_NAME_MODE,
@@ -47,7 +49,9 @@ async def test_user_flow_stores_entity_name_metadata(hass) -> None:
 async def test_user_flow_hides_auth_header_when_development_ui_disabled(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(config_flow_module, "ENABLE_DEVELOPMENT_MODE_UI", False)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+    )
 
     flow = F1FlowHandler()
     flow.hass = hass
@@ -59,12 +63,15 @@ async def test_user_flow_hides_auth_header_when_development_ui_disabled(
     keys = _schema_key_names(result)
     assert CONF_LIVE_TIMING_AUTH_HEADER not in keys
     assert "clear_live_timing_auth_header" not in keys
+    assert CONF_START_F1TV_PAIRING not in keys
 
 
 async def test_user_flow_stores_trimmed_live_timing_auth_header(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(config_flow_module, "ENABLE_DEVELOPMENT_MODE_UI", True)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
 
     flow = F1FlowHandler()
     flow.hass = hass
@@ -87,7 +94,9 @@ async def test_user_flow_stores_trimmed_live_timing_auth_header(
 async def test_reconfigure_hides_auth_header_when_development_ui_disabled(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(config_flow_module, "ENABLE_DEVELOPMENT_MODE_UI", False)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+    )
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -112,12 +121,56 @@ async def test_reconfigure_hides_auth_header_when_development_ui_disabled(
     keys = _schema_key_names(result)
     assert CONF_LIVE_TIMING_AUTH_HEADER not in keys
     assert "clear_live_timing_auth_header" not in keys
+    assert CONF_START_F1TV_PAIRING not in keys
+
+
+async def test_reconfigure_can_start_f1tv_pairing_when_development_ui_enabled(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            "enable_race_control": False,
+            "disabled_sensors": [],
+            CONF_OPERATION_MODE: DEFAULT_OPERATION_MODE,
+            CONF_REPLAY_FILE: "",
+            CONF_RACE_WEEK_START_DAY: RACE_WEEK_START_MONDAY,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    flow = F1FlowHandler()
+    flow.hass = hass
+    flow.context = {"source": "reconfigure", "entry_id": entry.entry_id}
+    flow.flow_id = "flow-id"
+
+    result = await flow.async_step_reconfigure(
+        {
+            "sensor_name": "F1",
+            "enabled_sensors": ["next_race"],
+            "enable_race_control": False,
+            CONF_RACE_WEEK_START_DAY: RACE_WEEK_START_MONDAY,
+            CONF_OPERATION_MODE: DEFAULT_OPERATION_MODE,
+            CONF_REPLAY_FILE: "",
+            CONF_START_F1TV_PAIRING: True,
+        },
+    )
+
+    assert result["type"] == "external"
+    assert result["step_id"] == "f1tv_pairing"
+    assert "subscription_token" not in result["url"]
 
 
 async def test_reconfigure_blank_auth_header_keeps_existing_value(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(config_flow_module, "ENABLE_DEVELOPMENT_MODE_UI", True)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -155,7 +208,9 @@ async def test_reconfigure_blank_auth_header_keeps_existing_value(
 
 
 async def test_reconfigure_can_clear_auth_header(hass, monkeypatch) -> None:
-    monkeypatch.setattr(config_flow_module, "ENABLE_DEVELOPMENT_MODE_UI", True)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -193,7 +248,9 @@ async def test_reconfigure_can_clear_auth_header(hass, monkeypatch) -> None:
 
 
 async def test_reauth_updates_auth_header(hass, monkeypatch) -> None:
-    monkeypatch.setattr(config_flow_module, "ENABLE_DEVELOPMENT_MODE_UI", True)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -221,7 +278,9 @@ async def test_reauth_updates_auth_header(hass, monkeypatch) -> None:
 
 
 async def test_reauth_can_clear_auth_header(hass, monkeypatch) -> None:
-    monkeypatch.setattr(config_flow_module, "ENABLE_DEVELOPMENT_MODE_UI", True)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -252,7 +311,9 @@ async def test_reauth_can_clear_auth_header(hass, monkeypatch) -> None:
 
 
 async def test_reauth_requires_auth_header(hass, monkeypatch) -> None:
-    monkeypatch.setattr(config_flow_module, "ENABLE_DEVELOPMENT_MODE_UI", True)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -277,7 +338,9 @@ async def test_reauth_requires_auth_header(hass, monkeypatch) -> None:
 
 
 async def test_reauth_is_hidden_when_development_ui_disabled(hass, monkeypatch) -> None:
-    monkeypatch.setattr(config_flow_module, "ENABLE_DEVELOPMENT_MODE_UI", False)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+    )
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={

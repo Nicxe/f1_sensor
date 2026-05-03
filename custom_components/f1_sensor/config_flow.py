@@ -9,6 +9,11 @@ from homeassistant.helpers.selector import (
 )
 import voluptuous as vol
 
+from .auth import is_auth_feature_enabled
+from .auth_http import (
+    async_create_f1tv_pairing_session,
+    async_setup_f1tv_auth_http,
+)
 from .const import (
     CONF_CLEAR_LIVE_TIMING_AUTH_HEADER,
     CONF_ENTITY_NAME_LANGUAGE,
@@ -22,7 +27,6 @@ from .const import (
     DEFAULT_OPERATION_MODE,
     DEFAULT_RACE_WEEK_START_DAY,
     DOMAIN,
-    ENABLE_DEVELOPMENT_MODE_UI,
     ENTITY_NAME_MODE_LOCALIZED,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
@@ -35,6 +39,7 @@ from .helpers import normalize_live_timing_auth_header
 _AUTH_HEADER_SELECTOR = TextSelector(
     TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="current-password")
 )
+CONF_START_F1TV_PAIRING = "start_f1tv_pairing"
 
 RACE_WEEK_START_OPTIONS = {
     RACE_WEEK_START_MONDAY: "Monday",
@@ -127,7 +132,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             auth_header = _normalize_auth_header(
                 user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
             )
-            if ENABLE_DEVELOPMENT_MODE_UI and auth_header:
+            if is_auth_feature_enabled() and auth_header:
                 user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
 
             # Resolve and validate operation mode
@@ -182,7 +187,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Only expose development-related controls when explicitly enabled.
         # This keeps the main setup simple for normal users.
-        if ENABLE_DEVELOPMENT_MODE_UI:
+        if is_auth_feature_enabled():
             schema_fields.update(
                 {
                     vol.Required(
@@ -224,11 +229,14 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             clear_auth_header = bool(
                 user_input.pop(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, False)
             )
+            start_pairing = bool(user_input.pop(CONF_START_F1TV_PAIRING, False))
+            if start_pairing and is_auth_feature_enabled():
+                return await self._async_start_f1tv_pairing(entry)
             if auth_header:
-                if ENABLE_DEVELOPMENT_MODE_UI:
+                if is_auth_feature_enabled():
                     user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
             elif clear_auth_header:
-                if ENABLE_DEVELOPMENT_MODE_UI:
+                if is_auth_feature_enabled():
                     user_input[CONF_LIVE_TIMING_AUTH_HEADER] = ""
 
             mode = user_input.get(
@@ -313,7 +321,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         # or when the existing entry is already in development mode (so it
         # remains editable even if the flag is later turned off).
         show_dev_controls = (
-            ENABLE_DEVELOPMENT_MODE_UI
+            is_auth_feature_enabled()
             or current.get(CONF_OPERATION_MODE) == OPERATION_MODE_DEVELOPMENT
         )
 
@@ -332,7 +340,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ): cv.string,
                 }
             )
-            if ENABLE_DEVELOPMENT_MODE_UI:
+            if is_auth_feature_enabled():
                 schema_fields.update(
                     {
                         vol.Optional(
@@ -342,6 +350,9 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_CLEAR_LIVE_TIMING_AUTH_HEADER,
                             default=False,
                         ): cv.boolean,
+                        vol.Optional(CONF_START_F1TV_PAIRING, default=False): (
+                            cv.boolean
+                        ),
                     }
                 )
 
@@ -355,13 +366,13 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth(self, entry_data=None):
         """Handle reauthentication for live timing authorization."""
-        if not ENABLE_DEVELOPMENT_MODE_UI:
+        if not is_auth_feature_enabled():
             return self.async_abort(reason="reauth_not_supported")
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(self, user_input=None):
         """Handle live timing authorization reauthentication."""
-        if not ENABLE_DEVELOPMENT_MODE_UI:
+        if not is_auth_feature_enabled():
             return self.async_abort(reason="reauth_not_supported")
 
         errors = {}
@@ -373,6 +384,9 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             clear_auth_header = bool(
                 user_input.get(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, False)
             )
+            start_pairing = bool(user_input.get(CONF_START_F1TV_PAIRING, False))
+            if start_pairing:
+                return await self._async_start_f1tv_pairing(self._get_reauth_entry())
             if auth_header:
                 return self.async_update_reload_and_abort(
                     self._get_reauth_entry(),
@@ -392,6 +406,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, default=False): (
                     cv.boolean
                 ),
+                vol.Optional(CONF_START_F1TV_PAIRING, default=False): cv.boolean,
             }
         )
 
@@ -400,6 +415,40 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=data_schema,
             errors=errors,
         )
+
+    async def _async_start_f1tv_pairing(self, entry):
+        """Start the helper pairing external step."""
+        if not is_auth_feature_enabled() or entry is None:
+            return self.async_abort(reason="f1tv_pairing_unavailable")
+        async_setup_f1tv_auth_http(self.hass)
+        session = async_create_f1tv_pairing_session(
+            self.hass,
+            entry,
+            flow_id=self.flow_id,
+        )
+        if session is None:
+            return self.async_abort(reason="f1tv_pairing_unavailable")
+        return self.async_external_step(
+            step_id="f1tv_pairing",
+            url=session.helper_url,
+            description_placeholders={"expires_at": session.expires_at_iso},
+        )
+
+    async def async_step_f1tv_pairing(self, user_input=None):
+        """Complete the helper pairing external step."""
+        if not is_auth_feature_enabled():
+            return self.async_abort(reason="f1tv_pairing_unavailable")
+        if isinstance(user_input, dict) and user_input.get("session_id"):
+            return self.async_external_step_done(next_step_id="f1tv_pairing_complete")
+        return self.async_external_step_done(next_step_id="f1tv_pairing_failed")
+
+    async def async_step_f1tv_pairing_complete(self, user_input=None):
+        """Finish after the helper callback saved a token."""
+        return self.async_abort(reason="reconfigure_successful")
+
+    async def async_step_f1tv_pairing_failed(self, user_input=None):
+        """Abort when the helper callback did not complete."""
+        return self.async_abort(reason="f1tv_pairing_failed")
 
     def _get_reconfigure_entry(self):
         """Return the config entry for this domain."""

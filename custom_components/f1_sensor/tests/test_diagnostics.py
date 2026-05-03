@@ -147,10 +147,8 @@ async def test_diagnostics_hides_auth_state_when_development_ui_disabled(
 
     runtime = payload["runtime"]
     capabilities = runtime["signalr_stream_capabilities"]
-    assert runtime["auth_configured"] is True
-    assert runtime["f1tv_token"]["status"] == "invalid"
-    assert runtime["f1tv_token"]["configured"] is True
-    assert runtime["f1tv_token"]["used_for_live_timing"] is False
+    assert "auth_configured" not in runtime
+    assert "f1tv_token" not in runtime
     assert "auth_enabled" not in runtime
     assert "auth_enabled" not in capabilities
     assert "auth_gated_live_streams" not in capabilities
@@ -158,5 +156,5 @@ async def test_diagnostics_hides_auth_state_when_development_ui_disabled(
         "public_live_streams": ["SessionStatus", "TrackStatus"],
         "active_live_streams": ["SessionStatus"],
     }
-    assert payload["entry"]["data"][CONF_LIVE_TIMING_AUTH_HEADER] == "**REDACTED**"
+    assert CONF_LIVE_TIMING_AUTH_HEADER not in payload["entry"]["data"]
     assert "secret-token" not in str(payload)

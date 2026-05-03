@@ -681,12 +681,12 @@ async def test_async_setup_entry_ignores_auth_when_development_ui_disabled(
     assert FakeLiveBus.last_instance.auth_header == ""
     entry_data = hass.data[DOMAIN][entry.entry_id]
     assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is False
-    assert entry_data["f1tv_auth_status"].status == "valid"
+    assert entry_data["f1tv_auth_status"].status == "not_configured"
     assert entry_data["f1tv_auth_status"].used_for_live_timing is False
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_warns_for_expired_auth_without_transport(
+async def test_async_setup_entry_suppresses_expired_auth_when_gate_disabled(
     hass, monkeypatch
 ) -> None:
     monkeypatch.setattr(
@@ -748,14 +748,12 @@ async def test_async_setup_entry_warns_for_expired_auth_without_transport(
     assert FakeLiveBus.last_instance.auth_header == ""
     entry_data = hass.data[DOMAIN][entry.entry_id]
     assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is False
-    assert entry_data["f1tv_auth_status"].status == "expired"
+    assert entry_data["f1tv_auth_status"].status == "not_configured"
 
     issue = ir.async_get(hass).async_get_issue(
         DOMAIN, f1tv_auth_repair_issue_id(entry.entry_id)
     )
-    assert issue is not None
-    assert issue.is_fixable is True
-    assert issue.severity is ir.IssueSeverity.WARNING
+    assert issue is None
 
 
 @pytest.mark.asyncio
