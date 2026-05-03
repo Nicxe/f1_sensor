@@ -36,9 +36,11 @@ from .auth import (
     async_set_runtime_f1tv_auth_status,
     async_update_f1tv_auth_repair_issue,
     evaluate_f1tv_auth_header,
+    is_auth_feature_enabled,
     is_auth_transport_enabled,
     rejected_f1tv_auth_status,
 )
+from .auth_http import async_setup_f1tv_auth_http
 from .calibration import LiveDelayCalibrationManager
 from .const import (
     API_URL,
@@ -1228,6 +1230,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         manager = NoSpoilerModeManager(hass)
         await manager.async_load()
         domain_root[_NO_SPOILER_MANAGER_KEY] = manager
+    async_setup_f1tv_auth_http(hass)
     return True
 
 
@@ -1590,8 +1593,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
+    auth_feature_enabled = is_auth_feature_enabled()
     live_timing_auth_status = evaluate_f1tv_auth_header(
-        entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "")
+        entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "") if auth_feature_enabled else ""
     )
     live_timing_auth_header = live_timing_auth_status.header
     auth_transport_enabled = is_auth_transport_enabled()
