@@ -177,8 +177,17 @@ async def test_index_has_windows_uses_primary(hass) -> None:
         ]
     }
     coord = _DummySessionCoordinator(payload, status=200)
+    fallback_window = _mk_window(
+        meeting="Bahrain",
+        session="Practice 1",
+        start=now + dt.timedelta(minutes=20),
+        end=now + dt.timedelta(hours=2),
+        meeting_key=1304,
+        session_key=11465,
+        path="",
+    )
     fallback = _StaticSource(
-        ScheduleFetchResult(windows=[_mk_window()], source="event_tracker")
+        ScheduleFetchResult(windows=[fallback_window], source="event_tracker")
     )
     supervisor = LiveSessionSupervisor(
         hass,
@@ -192,7 +201,201 @@ async def test_index_has_windows_uses_primary(hass) -> None:
 
     assert window is not None
     assert source == "index"
-    assert fallback.calls == 0
+    assert fallback.calls == 1
+    assert supervisor.schedule_source == "index"
+    assert supervisor.fallback_active is False
+
+
+@pytest.mark.asyncio
+async def test_healthy_index_with_early_race_time_uses_event_tracker(
+    monkeypatch, hass
+) -> None:
+    now = dt.datetime(2026, 5, 3, 16, 30, tzinfo=dt.UTC)
+    monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
+    index_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Race",
+        start=now + dt.timedelta(hours=3),
+        end=now + dt.timedelta(hours=5),
+        meeting_key=1284,
+        session_key=11280,
+        path="2026/2026-05-03_Miami_Grand_Prix/2026-05-03_Race/",
+    )
+    tracker_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Race",
+        start=now + dt.timedelta(minutes=30),
+        end=now + dt.timedelta(hours=2, minutes=30),
+        meeting_key=1284,
+        session_key=11280,
+    )
+    index = _StaticSource(
+        ScheduleFetchResult(
+            windows=[index_window],
+            source="index",
+            index_http_status=200,
+        )
+    )
+    fallback = _StaticSource(
+        ScheduleFetchResult(windows=[tracker_window], source="event_tracker")
+    )
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+        index_source=index,
+        fallback_source=fallback,
+    )
+
+    window, source = await supervisor._resolve_window()
+
+    assert window is not None
+    assert source == "event_tracker"
+    assert supervisor.schedule_source == "event_tracker"
+    assert supervisor.fallback_active is True
+    assert window.start_utc == tracker_window.start_utc
+    assert window.end_utc == tracker_window.end_utc
+    assert window.connect_at <= now
+    assert window.path == index_window.path
+    assert window.meeting_key == index_window.meeting_key
+    assert window.session_key == index_window.session_key
+
+
+@pytest.mark.asyncio
+async def test_healthy_index_with_early_fp1_time_matches_by_name(
+    monkeypatch, hass
+) -> None:
+    now = dt.datetime(2026, 5, 1, 14, 0, tzinfo=dt.UTC)
+    monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
+    index_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Practice 1",
+        start=now + dt.timedelta(hours=2),
+        end=now + dt.timedelta(hours=3),
+        meeting_key=None,
+        session_key=None,
+        path="2026/2026-05-03_Miami_Grand_Prix/2026-05-01_Practice_1/",
+    )
+    tracker_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="FP1",
+        start=index_window.start_utc - dt.timedelta(minutes=30),
+        end=index_window.end_utc,
+        meeting_key=None,
+        session_key=None,
+    )
+    index = _StaticSource(
+        ScheduleFetchResult(
+            windows=[index_window],
+            source="index",
+            index_http_status=200,
+        )
+    )
+    fallback = _StaticSource(
+        ScheduleFetchResult(windows=[tracker_window], source="event_tracker")
+    )
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+        index_source=index,
+        fallback_source=fallback,
+    )
+
+    window, source = await supervisor._resolve_window()
+
+    assert window is not None
+    assert source == "event_tracker"
+    assert window.start_utc == tracker_window.start_utc
+    assert window.session_name == "Practice 1"
+    assert window.path == index_window.path
+
+
+@pytest.mark.asyncio
+async def test_healthy_index_with_delayed_session_uses_event_tracker(
+    monkeypatch, hass
+) -> None:
+    now = dt.datetime(2026, 5, 2, 14, 0, tzinfo=dt.UTC)
+    monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
+    index_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Qualifying",
+        start=now + dt.timedelta(hours=2),
+        end=now + dt.timedelta(hours=3),
+        meeting_key=1284,
+        session_key=11276,
+    )
+    tracker_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Qualifying",
+        start=index_window.start_utc + dt.timedelta(minutes=20),
+        end=index_window.end_utc + dt.timedelta(minutes=20),
+        meeting_key=1284,
+        session_key=11276,
+    )
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+        index_source=_StaticSource(
+            ScheduleFetchResult(
+                windows=[index_window],
+                source="index",
+                index_http_status=200,
+            )
+        ),
+        fallback_source=_StaticSource(
+            ScheduleFetchResult(windows=[tracker_window], source="event_tracker")
+        ),
+    )
+
+    window, source = await supervisor._resolve_window()
+
+    assert window is not None
+    assert source == "event_tracker"
+    assert window.start_utc == tracker_window.start_utc
+    assert window.disconnect_at == tracker_window.disconnect_at
+
+
+@pytest.mark.asyncio
+async def test_event_tracker_failure_keeps_selectable_index_window(hass) -> None:
+    now = dt_util.utcnow()
+    index_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Race",
+        start=now + dt.timedelta(hours=2),
+        end=now + dt.timedelta(hours=4),
+        meeting_key=1284,
+        session_key=11280,
+    )
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+        index_source=_StaticSource(
+            ScheduleFetchResult(
+                windows=[index_window],
+                source="index",
+                index_http_status=200,
+            )
+        ),
+        fallback_source=_StaticSource(
+            ScheduleFetchResult(
+                windows=[],
+                source="event_tracker",
+                last_error="fallback-down",
+            )
+        ),
+    )
+
+    window, source = await supervisor._resolve_window()
+
+    assert window is index_window
+    assert source == "index"
     assert supervisor.schedule_source == "index"
     assert supervisor.fallback_active is False
 
@@ -732,7 +935,11 @@ async def test_switch_back_to_index_when_recovered(monkeypatch, hass) -> None:
     async def _no_sleep(_seconds: float) -> None:
         return None
 
-    async def _primary_window() -> SessionWindow | None:
+    async def _primary_window(
+        *,
+        active_window: SessionWindow | None = None,
+    ) -> SessionWindow | None:
+        del active_window
         return candidate_window
 
     monkeypatch.setattr(live_window.asyncio, "sleep", _no_sleep)
@@ -746,6 +953,184 @@ async def test_switch_back_to_index_when_recovered(monkeypatch, hass) -> None:
     reason = await supervisor._monitor_window(fallback_window, source="event_tracker")
 
     assert reason == "primary-source-recovered"
+
+
+@pytest.mark.asyncio
+async def test_event_tracker_monitor_does_not_recover_to_stale_index(
+    monkeypatch, hass
+) -> None:
+    now = dt_util.utcnow()
+    active_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Race",
+        start=now - dt.timedelta(minutes=10),
+        end=now + dt.timedelta(hours=1),
+        meeting_key=1284,
+        session_key=11280,
+    )
+    stale_index_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Race",
+        start=active_window.start_utc + dt.timedelta(hours=3),
+        end=active_window.end_utc + dt.timedelta(hours=3),
+        meeting_key=1284,
+        session_key=11280,
+        path="2026/2026-05-03_Miami_Grand_Prix/2026-05-03_Race/",
+    )
+    bus = _DummyBus()
+    heartbeat_ages = iter([0.0, 80.0])
+    activity_ages = iter([0.0, 80.0])
+    bus.last_heartbeat_age = lambda: next(heartbeat_ages, 80.0)  # type: ignore[method-assign]
+    bus.last_stream_activity_age = lambda *_streams: next(activity_ages, 80.0)  # type: ignore[method-assign]
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        bus,
+        http_session=object(),  # type: ignore[arg-type]
+        index_source=_StaticSource(
+            ScheduleFetchResult(
+                windows=[stale_index_window],
+                source="index",
+                index_http_status=200,
+            )
+        ),
+    )
+    current_times = iter(
+        [
+            now,
+            active_window.disconnect_at + dt.timedelta(seconds=1),
+        ]
+    )
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
+    monkeypatch.setattr(
+        live_window,
+        "PRIMARY_RECOVERY_CHECK_INTERVAL",
+        dt.timedelta(seconds=0),
+    )
+    monkeypatch.setattr(
+        live_window.dt_util,
+        "utcnow",
+        lambda: next(
+            current_times, active_window.disconnect_at + dt.timedelta(seconds=1)
+        ),
+    )
+
+    reason = await supervisor._monitor_window(active_window, source="event_tracker")
+
+    assert reason == "disconnect-window-expired"
+
+
+@pytest.mark.asyncio
+async def test_event_tracker_monitor_recovers_when_index_timing_matches(
+    monkeypatch, hass
+) -> None:
+    now = dt_util.utcnow()
+    active_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Race",
+        start=now - dt.timedelta(minutes=10),
+        end=now + dt.timedelta(hours=1),
+        meeting_key=1284,
+        session_key=11280,
+    )
+    index_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Race",
+        start=active_window.start_utc,
+        end=active_window.end_utc,
+        meeting_key=1284,
+        session_key=11280,
+        path="2026/2026-05-03_Miami_Grand_Prix/2026-05-03_Race/",
+    )
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+        index_source=_StaticSource(
+            ScheduleFetchResult(
+                windows=[index_window],
+                source="index",
+                index_http_status=200,
+            )
+        ),
+    )
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
+    monkeypatch.setattr(
+        live_window,
+        "PRIMARY_RECOVERY_CHECK_INTERVAL",
+        dt.timedelta(seconds=0),
+    )
+    monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
+
+    reason = await supervisor._monitor_window(active_window, source="event_tracker")
+
+    assert reason == "primary-source-recovered"
+
+
+@pytest.mark.asyncio
+async def test_event_tracker_window_extends_disconnect_on_live_activity(
+    monkeypatch, hass
+) -> None:
+    now = dt_util.utcnow()
+    bus = _DummyBus()
+    heartbeat_ages = iter([0.0, 80.0])
+    bus.last_heartbeat_age = lambda: next(heartbeat_ages, 80.0)  # type: ignore[method-assign]
+    bus.last_stream_activity_age = lambda *_streams: None  # type: ignore[method-assign]
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        bus,
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Race",
+        start=now - dt.timedelta(hours=2),
+        end=now - dt.timedelta(minutes=15),
+        meeting_key=1284,
+        session_key=11280,
+    )
+    original_disconnect = window.disconnect_at
+    current_times = iter(
+        [
+            original_disconnect + dt.timedelta(seconds=1),
+            original_disconnect
+            + live_window.POST_WINDOW_EXTENSION_STEP
+            + dt.timedelta(seconds=1),
+        ]
+    )
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
+    monkeypatch.setattr(
+        live_window.dt_util,
+        "utcnow",
+        lambda: next(
+            current_times,
+            original_disconnect
+            + live_window.POST_WINDOW_EXTENSION_STEP
+            + dt.timedelta(seconds=1),
+        ),
+    )
+
+    reason = await supervisor._monitor_window(window, source="event_tracker")
+
+    assert reason == "disconnect-window-expired"
+    assert (
+        window.disconnect_at
+        == original_disconnect + live_window.POST_WINDOW_EXTENSION_STEP
+    )
 
 
 @pytest.mark.asyncio

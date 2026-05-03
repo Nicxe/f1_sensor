@@ -45,6 +45,8 @@ DEFAULT_PRE_WINDOW = timedelta(minutes=60)
 DEFAULT_POST_WINDOW = timedelta(minutes=15)
 POST_WINDOW_EXTENSION_CAP = timedelta(minutes=30)
 POST_WINDOW_EXTENSION_STEP = timedelta(minutes=5)
+SCHEDULE_RECONCILIATION_HORIZON = timedelta(hours=48)
+SCHEDULE_TIME_MISMATCH_THRESHOLD = timedelta(minutes=5)
 IDLE_REFRESH = timedelta(minutes=15)
 ACTIVE_REFRESH = timedelta(seconds=20)
 HEARTBEAT_DRAIN_SECONDS = 60.0
@@ -323,6 +325,105 @@ def _clean_text(*values: Any, default: str = "") -> str:
         if text:
             return text
     return default
+
+
+def _normalize_match_text(value: Any) -> str:
+    text = str(value or "").casefold().replace("&", " and ")
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+def _normalize_session_match_text(value: Any) -> str:
+    text = _normalize_match_text(value)
+    compact = text.replace(" ", "")
+    aliases = {
+        "fp1": "practice 1",
+        "freepractice1": "practice 1",
+        "firstpractice": "practice 1",
+        "practice1": "practice 1",
+        "fp2": "practice 2",
+        "freepractice2": "practice 2",
+        "secondpractice": "practice 2",
+        "practice2": "practice 2",
+        "fp3": "practice 3",
+        "freepractice3": "practice 3",
+        "thirdpractice": "practice 3",
+        "practice3": "practice 3",
+        "sprintq": "sprint qualifying",
+        "sprintqualifying": "sprint qualifying",
+        "sprintshootout": "sprint qualifying",
+    }
+    return aliases.get(compact, text)
+
+
+def _keys_match(primary: SessionWindow, candidate: SessionWindow) -> bool:
+    primary_meeting = _as_int(primary.meeting_key)
+    candidate_meeting = _as_int(candidate.meeting_key)
+    primary_session = _as_int(primary.session_key)
+    candidate_session = _as_int(candidate.session_key)
+    if primary_session is None or candidate_session is None:
+        return False
+    if primary_meeting is not None and candidate_meeting is not None:
+        return (
+            primary_meeting == candidate_meeting
+            and primary_session == candidate_session
+        )
+    return primary_session == candidate_session
+
+
+def _names_match(primary: SessionWindow, candidate: SessionWindow) -> bool:
+    primary_meeting = _normalize_match_text(primary.meeting_name)
+    candidate_meeting = _normalize_match_text(candidate.meeting_name)
+    if primary_meeting and candidate_meeting and primary_meeting != candidate_meeting:
+        return False
+    primary_session = _normalize_session_match_text(primary.session_name)
+    candidate_session = _normalize_session_match_text(candidate.session_name)
+    return bool(primary_session and primary_session == candidate_session)
+
+
+def _same_session(primary: SessionWindow, candidate: SessionWindow) -> bool:
+    return _keys_match(primary, candidate) or _names_match(primary, candidate)
+
+
+def _find_matching_window(
+    primary: SessionWindow,
+    candidates: list[SessionWindow],
+) -> SessionWindow | None:
+    for candidate in candidates:
+        if _keys_match(primary, candidate):
+            return candidate
+    for candidate in candidates:
+        if _names_match(primary, candidate):
+            return candidate
+    return None
+
+
+def _window_times_differ(
+    primary: SessionWindow,
+    candidate: SessionWindow,
+    *,
+    threshold: timedelta = SCHEDULE_TIME_MISMATCH_THRESHOLD,
+) -> bool:
+    start_delta = abs(primary.start_utc - candidate.start_utc)
+    end_delta = abs(primary.end_utc - candidate.end_utc)
+    return start_delta > threshold or end_delta > threshold
+
+
+def _merge_index_metadata(
+    primary: SessionWindow,
+    candidate: SessionWindow,
+) -> SessionWindow:
+    return replace(
+        candidate,
+        meeting_name=primary.meeting_name or candidate.meeting_name,
+        session_name=primary.session_name or candidate.session_name,
+        path=primary.path or candidate.path,
+        meeting_key=primary.meeting_key
+        if primary.meeting_key is not None
+        else candidate.meeting_key,
+        session_key=primary.session_key
+        if primary.session_key is not None
+        else candidate.session_key,
+    )
 
 
 @dataclass
@@ -970,7 +1071,54 @@ class LiveSessionSupervisor:
         )
         return window
 
-    async def _resolve_primary_window(self) -> SessionWindow | None:
+    def _should_reconcile_window(self, window: SessionWindow) -> bool:
+        if self._fallback_active:
+            return True
+        now = dt_util.utcnow()
+        return now <= window.disconnect_at and (
+            window.start_utc - now <= SCHEDULE_RECONCILIATION_HORIZON
+        )
+
+    async def _reconcile_primary_window(
+        self,
+        primary_window: SessionWindow,
+    ) -> tuple[SessionWindow | None, str | None]:
+        if self._fallback_source is None or not self._should_reconcile_window(
+            primary_window
+        ):
+            return None, None
+
+        fallback_result = await self._fallback_source.async_fetch_windows(
+            pre_window=self._pre_window,
+            post_window=self._post_window,
+            active=self._fallback_active,
+        )
+        fallback_error = fallback_result.last_error
+        fallback_window = _find_matching_window(primary_window, fallback_result.windows)
+        if fallback_window is None:
+            return None, fallback_error
+        if not _window_times_differ(primary_window, fallback_window):
+            return None, fallback_error
+
+        reconciled = _merge_index_metadata(primary_window, fallback_window)
+        log_key = f"index_time_mismatch_{primary_window.meeting_key}_{primary_window.session_key}"
+        if self._should_log(log_key, interval_seconds=300):
+            _LOGGER.info(
+                "Using event-tracker timing for %s because index differs "
+                "(index=%s – %s, event_tracker=%s – %s)",
+                primary_window.label,
+                primary_window.start_utc.isoformat(),
+                primary_window.end_utc.isoformat(),
+                fallback_window.start_utc.isoformat(),
+                fallback_window.end_utc.isoformat(),
+            )
+        return reconciled, fallback_error
+
+    async def _resolve_primary_window(
+        self,
+        *,
+        active_window: SessionWindow | None = None,
+    ) -> SessionWindow | None:
         primary = await self._index_source.async_fetch_windows(
             pre_window=self._pre_window,
             post_window=self._post_window,
@@ -978,7 +1126,16 @@ class LiveSessionSupervisor:
         self._index_http_status = primary.index_http_status
         if primary.last_error:
             self._last_schedule_error = primary.last_error
-        return await self._select_window(primary.windows, source="index")
+        primary_window = await self._select_window(primary.windows, source="index")
+        if primary_window is None:
+            return None
+        current_window = active_window or self._current_window
+        if current_window is not None:
+            if not _same_session(primary_window, current_window):
+                return None
+            if _window_times_differ(primary_window, current_window):
+                return None
+        return primary_window
 
     @staticmethod
     def _fallback_context(primary: ScheduleFetchResult) -> str:
@@ -1002,6 +1159,31 @@ class LiveSessionSupervisor:
 
         primary_window = await self._select_window(primary.windows, source="index")
         if primary_window is not None:
+            reconciled_window, fallback_error = await self._reconcile_primary_window(
+                primary_window
+            )
+            if fallback_error:
+                self._last_schedule_error = fallback_error
+            if reconciled_window is not None:
+                selected_window = await self._select_window(
+                    [reconciled_window], source="event_tracker"
+                )
+                if selected_window is None:
+                    self._set_schedule_state(
+                        source="none",
+                        fallback_active=False,
+                        index_http_status=primary.index_http_status,
+                        error=fallback_error or primary.last_error,
+                    )
+                    return None, "none"
+                self._set_schedule_state(
+                    source="event_tracker",
+                    fallback_active=True,
+                    index_http_status=primary.index_http_status,
+                    error=fallback_error or primary.last_error,
+                    log_context="index-time-mismatch",
+                )
+                return selected_window, "event_tracker"
             self._set_schedule_state(
                 source="index",
                 fallback_active=False,
@@ -1131,11 +1313,7 @@ class LiveSessionSupervisor:
     async def _monitor_window(self, window: SessionWindow, *, source: str) -> str:
         label = window.label
         reason = "disconnect-window-expired"
-        max_disconnect_at = (
-            window.disconnect_at + POST_WINDOW_EXTENSION_CAP
-            if source == "index"
-            else window.disconnect_at
-        )
+        max_disconnect_at = window.disconnect_at + POST_WINDOW_EXTENSION_CAP
         while not self._stopped:
             await self._interruptible_sleep(ACTIVE_REFRESH.total_seconds())
             # If No Spoiler Mode was activated mid-session, close the connection immediately.
@@ -1155,15 +1333,11 @@ class LiveSessionSupervisor:
                 and ("qualifying" in session_name_l or "shootout" in session_name_l)
             )
             if now >= window.disconnect_at:
-                should_extend = (
-                    source == "index"
-                    and window.disconnect_at < max_disconnect_at
-                    and (
-                        (hb_age is not None and hb_age <= HEARTBEAT_DRAIN_SECONDS)
-                        or (
-                            activity_age is not None
-                            and activity_age <= HEARTBEAT_DRAIN_SECONDS
-                        )
+                should_extend = window.disconnect_at < max_disconnect_at and (
+                    (hb_age is not None and hb_age <= HEARTBEAT_DRAIN_SECONDS)
+                    or (
+                        activity_age is not None
+                        and activity_age <= HEARTBEAT_DRAIN_SECONDS
                     )
                 )
                 if should_extend:
@@ -1202,7 +1376,7 @@ class LiveSessionSupervisor:
                     >= PRIMARY_RECOVERY_CHECK_INTERVAL.total_seconds()
                 ):
                     self._last_primary_recovery_check = mono_now
-                    candidate = await self._resolve_primary_window()
+                    candidate = await self._resolve_primary_window(active_window=window)
                     if candidate is not None:
                         _LOGGER.info(
                             "switching back to index source (recovered): %s",
