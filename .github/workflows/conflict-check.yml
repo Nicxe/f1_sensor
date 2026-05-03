@@ -8,22 +8,99 @@ on:
 
 permissions:
   contents: read
+  issues: write
   pull-requests: write
 
 jobs:
   conflict:
     name: Check for merge conflicts
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: eps1lon/actions-label-merge-conflict@v3
+      - uses: actions/github-script@v8
         with:
-          dirtyLabel: "has-conflicts"
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          commentOnDirty: |
-            This PR has merge conflicts with the target branch and cannot be merged until they are resolved.
+          script: |
+            const dirtyLabel = "has-conflicts";
+            const commentOnDirty = `This PR has merge conflicts with the target branch and cannot be merged until they are resolved.
 
-            Please rebase or merge the target branch into your branch and resolve the conflicts locally, then push the updated branch.
-          commentOnClean: |
-            Merge conflicts have been resolved. Thank you!
+            Please rebase or merge the target branch into your branch and resolve the conflicts locally, then push the updated branch.`;
+            const commentOnClean = "Merge conflicts have been resolved. Thank you!";
+            const { owner, repo } = context.repo;
+
+            async function candidatePulls() {
+              if (context.payload.pull_request) {
+                return [context.payload.pull_request];
+              }
+
+              const base = context.ref.replace("refs/heads/", "");
+              return github.paginate(github.rest.pulls.list, {
+                owner,
+                repo,
+                state: "open",
+                base,
+                per_page: 100,
+              });
+            }
+
+            async function pullWithMergeableState(number) {
+              for (let attempt = 0; attempt < 10; attempt += 1) {
+                const { data: pull } = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: number,
+                });
+
+                if (pull.mergeable !== null && pull.mergeable_state !== "unknown") {
+                  return pull;
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 3000));
+              }
+
+              core.warning(`Mergeability is still unknown for PR #${number}`);
+              return null;
+            }
+
+            async function updateConflictLabel(pull) {
+              const current = await pullWithMergeableState(pull.number);
+              if (current === null) {
+                return;
+              }
+
+              const labels = current.labels.map((label) => label.name);
+              const hasDirtyLabel = labels.includes(dirtyLabel);
+              const isDirty = current.mergeable_state === "dirty";
+
+              if (isDirty && !hasDirtyLabel) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: current.number,
+                  labels: [dirtyLabel],
+                });
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: current.number,
+                  body: commentOnDirty,
+                });
+              }
+
+              if (!isDirty && hasDirtyLabel) {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: current.number,
+                  name: dirtyLabel,
+                });
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: current.number,
+                  body: commentOnClean,
+                });
+              }
+            }
+
+            for (const pull of await candidatePulls()) {
+              await updateConflictLabel(pull);
+            }
