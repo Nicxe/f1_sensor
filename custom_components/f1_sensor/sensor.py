@@ -1340,7 +1340,8 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
     @property
     def state(self):
         races = (
-            self.coordinator.data.get("MRData", {})
+            (self.coordinator.data or {})
+            .get("MRData", {})
             .get("RaceTable", {})
             .get("Races", [])
         )
@@ -1353,7 +1354,8 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         races = (
-            self.coordinator.data.get("MRData", {})
+            (self.coordinator.data or {})
+            .get("MRData", {})
             .get("RaceTable", {})
             .get("Races", [])
         )
@@ -1421,7 +1423,8 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
     @property
     def state(self):
         races = (
-            self.coordinator.data.get("MRData", {})
+            (self.coordinator.data or {})
+            .get("MRData", {})
             .get("RaceTable", {})
             .get("Races", [])
         )
@@ -1430,7 +1433,8 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         races = (
-            self.coordinator.data.get("MRData", {})
+            (self.coordinator.data or {})
+            .get("MRData", {})
             .get("RaceTable", {})
             .get("Races", [])
         )

@@ -6550,6 +6550,10 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             str(round_) if round_ is not None else "",
         )
 
+    @staticmethod
+    def _empty_result() -> dict[str, Any]:
+        return {"MRData": {"RaceTable": {"Races": []}}}
+
     async def _async_update_data(self):
         try:
             # Start with a large page size; use API-returned limit/offset/total for correctness
@@ -6659,7 +6663,12 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             }
             # No-spoiler: keep cache warm but don't deliver new data to entities.
             if _is_no_spoiler_jolpica_blocked(self):
-                return self.data
+                blocked_data = self.data
+                if isinstance(blocked_data, dict) and isinstance(
+                    blocked_data.get("MRData"), dict
+                ):
+                    return blocked_data
+                return self._empty_result()
             return result
         except Exception as err:
             raise UpdateFailed(f"Error fetching season results: {err}") from err
