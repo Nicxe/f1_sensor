@@ -104,12 +104,14 @@ async def async_get_config_entry_diagnostics(
     """Return diagnostics for one config entry."""
     entry_runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id, {}) or {}
     runtime_auth_status = entry_runtime.get(AUTH_RUNTIME_STATUS)
+    include_auth_transport = is_auth_transport_enabled()
     auth_status = (
         runtime_auth_status
-        if isinstance(runtime_auth_status, F1TvAuthStatus)
+        if include_auth_transport and isinstance(runtime_auth_status, F1TvAuthStatus)
         else evaluate_f1tv_auth_header(entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, ""))
+        if include_auth_transport
+        else evaluate_f1tv_auth_header("")
     )
-    include_auth_transport = is_auth_transport_enabled()
     include_auth_health = is_auth_health_visible(auth_status)
     capabilities = _serialize_signalr_stream_capabilities(
         entry_runtime.get("signalr_stream_capabilities"),
@@ -132,11 +134,15 @@ async def async_get_config_entry_diagnostics(
     if live_bus is not None:
         runtime["live_timing"] = _serialize_live_timing_runtime(live_bus)
 
+    entry_data = dict(entry.data)
+    if not include_auth_transport:
+        entry_data.pop(CONF_LIVE_TIMING_AUTH_HEADER, None)
+
     payload: dict[str, Any] = {
         "entry": {
             "entry_id": entry.entry_id,
             "title": entry.title,
-            "data": dict(entry.data),
+            "data": entry_data,
             "options": dict(entry.options),
         },
         "runtime": runtime,

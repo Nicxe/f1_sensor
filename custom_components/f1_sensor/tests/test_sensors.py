@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import json
 import logging
 import time
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import STATE_UNAVAILABLE, UnitOfTemperature
@@ -17,7 +17,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util.json import json_loads
 import pytest
 
-from custom_components.f1_sensor import F1NextRaceHistoryCoordinator
+from custom_components.f1_sensor import (
+    F1NextRaceHistoryCoordinator,
+    F1SeasonResultsCoordinator,
+)
 from custom_components.f1_sensor.auth import (
     AUTH_RUNTIME_STATUS,
     evaluate_f1tv_auth_header,
@@ -26,6 +29,7 @@ from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
+    SEASON_RESULTS_URL,
 )
 from custom_components.f1_sensor.helpers import get_circuit_map_url
 from custom_components.f1_sensor.sensor import (
@@ -36,7 +40,6 @@ from custom_components.f1_sensor.sensor import (
     F1DriverPointsProgressionSensor,
     F1DriverPositionsSensor,
     F1DriverStandingsSensor,
-    F1LastRaceSensor,
     F1LiveTimingModeSensor,
     F1NextRaceSensor,
     F1PitStopsSensor,
@@ -67,7 +70,7 @@ class _TimeoutSession:
         raise TimeoutError
 
 
-def _build_coordinator(hass, data: dict) -> DataUpdateCoordinator:
+def _build_coordinator(hass, data: dict | None) -> DataUpdateCoordinator:
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
@@ -128,11 +131,9 @@ def _recorder_shared_attrs(state) -> tuple[dict, int]:
 def _build_result_entry(idx: int) -> dict:
     return {
         "number": str(idx),
-        "grid": str(idx),
         "position": str(idx),
         "points": str(max(0, 26 - idx)),
         "status": "Finished",
-        "laps": str(60),
         "Driver": {
             "driverId": f"driver{idx}",
             "code": f"D{idx:02d}",
@@ -293,44 +294,6 @@ def _build_race(
         "SecondPractice": {"date": "2026-03-06", "time": "05:00:00Z"},
         "ThirdPractice": {"date": "2026-03-07", "time": "01:30:00Z"},
         "Qualifying": {"date": "2026-03-07", "time": "05:00:00Z"},
-    }
-
-
-def _build_last_race(
-    *,
-    season: str = "2026",
-    round_: str = "1",
-    race_name: str = "Australian Grand Prix",
-    circuit_id: str = "albert_park",
-    circuit_name: str = "Albert Park Grand Prix Circuit",
-    locality: str = "Melbourne",
-    country: str = "Australia",
-    date: str = "2026-03-08",
-    time: str = "04:00:00Z",
-    results_per_race: int = 20,
-) -> dict:
-    return {
-        "season": season,
-        "round": round_,
-        "raceName": race_name,
-        "url": f"https://example.com/races/{round_}",
-        "date": date,
-        "time": time,
-        "Circuit": {
-            "circuitId": circuit_id,
-            "url": f"https://example.com/circuits/{circuit_id}",
-            "circuitName": circuit_name,
-            "Location": {
-                "lat": "-37.8497",
-                "long": "144.968",
-                "locality": locality,
-                "country": country,
-            },
-        },
-        "Results": [
-            _build_result_entry(driver_idx)
-            for driver_idx in range(1, results_per_race + 1)
-        ],
     }
 
 
@@ -1184,6 +1147,72 @@ async def test_season_results_sensor_excludes_races_from_recorder(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_season_results_sensor_handles_missing_coordinator_data(hass) -> None:
+    coordinator = _build_coordinator(hass, None)
+    entry_id = "test_entry_season_results_missing"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1SeasonResultsSensor(
+        coordinator,
+        f"{entry_id}_season_results",
+        entry_id,
+        "F1",
+    )
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == "0"
+    assert state.attributes["races"] == []
+
+
+@pytest.mark.asyncio
+async def test_season_results_coordinator_no_spoiler_without_cached_data_returns_empty_payload(
+    hass, monkeypatch
+) -> None:
+    coordinator = F1SeasonResultsCoordinator(
+        hass,
+        SEASON_RESULTS_URL,
+        "Test Season Results Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        ttl_seconds=5,
+        persist_map={},
+        persist_save=MagicMock(),
+        season_source=None,
+    )
+    coordinator.data = None
+
+    payload = {
+        "MRData": {
+            "total": "1",
+            "limit": "200",
+            "offset": "0",
+            "RaceTable": {
+                "Races": [
+                    {
+                        "season": "2026",
+                        "round": "1",
+                        "Results": [{"position": "1"}],
+                    }
+                ]
+            },
+        }
+    }
+    mock_fetch = AsyncMock(return_value=payload)
+    monkeypatch.setattr("custom_components.f1_sensor.fetch_json", mock_fetch)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor._is_no_spoiler_jolpica_blocked",
+        lambda _coord: True,
+    )
+
+    data = await coordinator._async_update_data()
+
+    assert data == {"MRData": {"RaceTable": {"Races": []}}}
+    assert mock_fetch.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_sprint_results_sensor_excludes_races_from_recorder(hass) -> None:
     coordinator = _build_coordinator(hass, _build_sprint_results_data(race_count=2))
     entry_id = "test_entry_sprint_results"
@@ -1752,48 +1781,3 @@ async def test_driver_list_sensor_handles_22_drivers(hass) -> None:
     assert state is not None
     assert state.state == "22"
     assert len(state.attributes["drivers"]) == 22
-
-
-@pytest.mark.asyncio
-async def test_last_race_sensor_attributes(hass) -> None:
-    coordinator = _build_coordinator(
-        hass,
-        {
-            "MRData": {
-                "RaceTable": {
-                    "season": "2026",
-                    "Races": [
-                        _build_last_race(
-                            round_="16",
-                            race_name="Spanish Grand Prix",
-                            circuit_id="madring",
-                            circuit_name="Madring",
-                            locality="Madrid",
-                            country="Spain",
-                            date="2026-09-13",
-                            time="13:00:00Z",
-                            results_per_race=20,
-                        ),
-                    ],
-                }
-            }
-        },
-    )
-    entry_id = "test_entry_last_race"
-    _set_entry_context(hass, entry_id)
-
-    sensor = F1LastRaceSensor(
-        coordinator,
-        f"{entry_id}_last_race",
-        entry_id,
-        "F1",
-    )
-    state = await _add_sensor_and_get_state(hass, sensor)
-
-    results = state.attributes["results"]
-    assert results[0]["position"] == "1"
-    assert results[0]["grid"] == "1"
-    assert results[0]["laps"] == "60"
-    assert results[1]["position"] == "2"
-    assert results[1]["grid"] == "2"
-    assert results[1]["laps"] == "60"

@@ -82,12 +82,17 @@ class F1TvAuthStatus:
 
 def is_auth_transport_enabled() -> bool:
     """Return True when F1TV auth may be used for live timing transport."""
+    return is_auth_feature_enabled()
+
+
+def is_auth_feature_enabled() -> bool:
+    """Return True when any F1TV auth surface may be visible or active."""
     return const.ENABLE_DEVELOPMENT_MODE_UI
 
 
 def is_auth_health_visible(status: F1TvAuthStatus | None) -> bool:
     """Return True when redacted token health may be shown."""
-    return bool(is_auth_transport_enabled() or (status and status.configured))
+    return is_auth_feature_enabled()
 
 
 def _utcnow() -> datetime:
@@ -224,6 +229,9 @@ def async_update_f1tv_auth_repair_issue(
 ) -> None:
     """Create or clear the redacted F1TV token repair issue."""
     issue_id = _issue_id(entry.entry_id)
+    if not is_auth_feature_enabled():
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+        return
     if not status.issue_required:
         ir.async_delete_issue(hass, DOMAIN, issue_id)
         return
@@ -323,6 +331,18 @@ def async_schedule_f1tv_auth_status_refresh(
 
     if old_unsub := data.pop(AUTH_RUNTIME_STATUS_REFRESH_UNSUB, None):
         old_unsub()
+
+    if not is_auth_feature_enabled():
+        async_update_f1tv_auth_repair_issue(
+            hass,
+            entry,
+            F1TvAuthStatus(
+                status=AUTH_STATUS_NOT_CONFIGURED,
+                configured=False,
+                used_for_live_timing=False,
+            ),
+        )
+        return
 
     current = data.get(AUTH_RUNTIME_STATUS)
     if not isinstance(current, F1TvAuthStatus):

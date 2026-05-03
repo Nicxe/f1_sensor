@@ -116,7 +116,7 @@ const rows = harness._buildRows(
 process.stdout.write(
   JSON.stringify({
     callUsesSessionPart: source.includes(
-      "const rows = this._buildRows(positionDrivers, tyresDrivers, driverList, sessionPart);",
+      "rows = this._buildRows(positionDrivers, tyresDrivers, driverList, sessionPart);",
     ),
     sessionPart,
     rows,

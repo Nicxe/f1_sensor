@@ -18,6 +18,7 @@ from .auth import (
     async_update_f1tv_auth_repair_issue,
     evaluate_f1tv_auth_header,
     f1tv_auth_repair_issue_id,
+    is_auth_feature_enabled,
     validate_replacement_auth_header,
 )
 from .const import (
@@ -95,6 +96,8 @@ async def async_create_fix_flow(
     data: dict[str, str | int | float | None] | None,
 ) -> RepairsFlow:
     """Create a repair flow."""
+    if not is_auth_feature_enabled():
+        return ConfirmRepairFlow()
     if data and (entry_id := data.get("entry_id")):
         entry = hass.config_entries.async_get_entry(str(entry_id))
         if entry is not None and issue_id == f1tv_auth_repair_issue_id(entry.entry_id):

@@ -56,6 +56,18 @@ function extractConst(signature) {
   return source.slice(start, semicolon + 1);
 }
 
+function extractStatement(signature) {
+  const start = source.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`Statement not found: ${signature}`);
+  }
+  const semicolon = source.indexOf(";", start);
+  if (semicolon === -1) {
+    throw new Error(`Statement semicolon not found: ${signature}`);
+  }
+  return source.slice(start, semicolon + 1);
+}
+
 const classStart = source.indexOf("class F1PracticeTimingCard extends LitElement");
 const classEnd = source.indexOf("class F1PracticeTimingCardEditor extends LitElement");
 if (classStart === -1 || classEnd === -1 || classEnd <= classStart) {
@@ -67,7 +79,11 @@ const helperSources = [
   extractConst("const resolveEntityIdWithFallback = (hass, entityId) =>"),
   extractConst("const getEntityStateWithFallback = (hass, entityId) =>"),
   extractConst("const getStateAgeSeconds = (state, field = 'last_changed') =>"),
-  extractConst("const resolveLiveDelaySeconds = (hass, entityIds = []) =>"),
+  extractStatement("const POST_SESSION_RETENTION_SECONDS ="),
+  extractStatement("const TERMINAL_SESSION_STATUSES ="),
+  extractStatement("const isTerminalSessionStatus = (sessionStatusState) =>"),
+  extractConst("const getPostSessionAgeSeconds = (sessionState, sessionStatusState, stateMatchesLabel) =>"),
+  extractConst("const isSessionWithinPostSessionRetention = ("),
   extractConst("const shouldKeepSessionCardVisible = ("),
 ];
 
@@ -144,7 +160,7 @@ process.stdout.write(
     title: harness._buildTitle(payload.sessionState || {}),
     rows,
     usesPracticeRowsCall: classSource.includes(
-      "const rows = this._buildRows(positionDrivers, tyresDrivers, driverList);",
+      "rows = this._buildRows(positionDrivers, tyresDrivers, driverList);",
     ),
     readsPositionsFastestLap: classSource.includes(
       "positionsState?.attributes?.fastest_lap",

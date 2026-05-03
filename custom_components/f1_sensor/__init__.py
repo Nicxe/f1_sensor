@@ -36,9 +36,11 @@ from .auth import (
     async_set_runtime_f1tv_auth_status,
     async_update_f1tv_auth_repair_issue,
     evaluate_f1tv_auth_header,
+    is_auth_feature_enabled,
     is_auth_transport_enabled,
     rejected_f1tv_auth_status,
 )
+from .auth_http import async_setup_f1tv_auth_http
 from .calibration import LiveDelayCalibrationManager
 from .const import (
     API_URL,
@@ -111,6 +113,8 @@ from .signalr import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
 _REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode", "replay-preparing"})
@@ -1226,6 +1230,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         manager = NoSpoilerModeManager(hass)
         await manager.async_load()
         domain_root[_NO_SPOILER_MANAGER_KEY] = manager
+    async_setup_f1tv_auth_http(hass)
     return True
 
 
@@ -1588,8 +1593,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
+    auth_feature_enabled = is_auth_feature_enabled()
     live_timing_auth_status = evaluate_f1tv_auth_header(
-        entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "")
+        entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "") if auth_feature_enabled else ""
     )
     live_timing_auth_header = live_timing_auth_status.header
     auth_transport_enabled = is_auth_transport_enabled()
@@ -6544,6 +6550,10 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             str(round_) if round_ is not None else "",
         )
 
+    @staticmethod
+    def _empty_result() -> dict[str, Any]:
+        return {"MRData": {"RaceTable": {"Races": []}}}
+
     async def _async_update_data(self):
         try:
             # Start with a large page size; use API-returned limit/offset/total for correctness
@@ -6653,7 +6663,12 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             }
             # No-spoiler: keep cache warm but don't deliver new data to entities.
             if _is_no_spoiler_jolpica_blocked(self):
-                return self.data
+                blocked_data = self.data
+                if isinstance(blocked_data, dict) and isinstance(
+                    blocked_data.get("MRData"), dict
+                ):
+                    return blocked_data
+                return self._empty_result()
             return result
         except Exception as err:
             raise UpdateFailed(f"Error fetching season results: {err}") from err

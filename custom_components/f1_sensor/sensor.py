@@ -1340,7 +1340,8 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
     @property
     def state(self):
         races = (
-            self.coordinator.data.get("MRData", {})
+            (self.coordinator.data or {})
+            .get("MRData", {})
             .get("RaceTable", {})
             .get("Races", [])
         )
@@ -1353,7 +1354,8 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         races = (
-            self.coordinator.data.get("MRData", {})
+            (self.coordinator.data or {})
+            .get("MRData", {})
             .get("RaceTable", {})
             .get("Races", [])
         )
@@ -1364,11 +1366,9 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
         def _clean_result(r):
             return {
                 "number": r.get("number"),
-                "grid": r.get("grid"),
                 "position": r.get("position"),
                 "points": r.get("points"),
                 "status": r.get("status"),
-                "laps": r.get("laps"),
                 "driver": {
                     "permanentNumber": r.get("Driver", {}).get("permanentNumber"),
                     "code": r.get("Driver", {}).get("code"),
@@ -1423,7 +1423,8 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
     @property
     def state(self):
         races = (
-            self.coordinator.data.get("MRData", {})
+            (self.coordinator.data or {})
+            .get("MRData", {})
             .get("RaceTable", {})
             .get("Races", [])
         )
@@ -1432,7 +1433,8 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         races = (
-            self.coordinator.data.get("MRData", {})
+            (self.coordinator.data or {})
+            .get("MRData", {})
             .get("RaceTable", {})
             .get("Races", [])
         )
@@ -5882,13 +5884,75 @@ class F1TyreStatisticsSensor(_CoordinatorStreamSensorBase):
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
 
+    @staticmethod
+    def _compound_from_tyre_history(info: dict) -> str | None:
+        tyre_history = info.get("tyre_history")
+        if not isinstance(tyre_history, dict):
+            return None
+        stints = tyre_history.get("stints")
+        if not isinstance(stints, list):
+            return None
+        for stint in stints:
+            if not isinstance(stint, dict):
+                continue
+            compound = stint.get("compound")
+            if isinstance(compound, str):
+                compound = compound.strip().upper()
+                if compound and compound != "UNKNOWN":
+                    return compound
+        return None
+
+    def _update_waiting_for_compound_data(self, data: dict) -> bool:
+        drivers = data.get("drivers")
+        if not isinstance(drivers, dict) or not drivers:
+            return False
+
+        drivers_with_stints = 0
+        drivers_with_stint_laps = 0
+        drivers_with_compound = 0
+        for info in drivers.values():
+            if not isinstance(info, dict):
+                continue
+            tyre_history = info.get("tyre_history")
+            if (
+                isinstance(tyre_history, dict)
+                and isinstance(tyre_history.get("stints"), list)
+                and tyre_history["stints"]
+            ):
+                drivers_with_stints += 1
+            tyres = info.get("tyres")
+            if isinstance(tyres, dict) and tyres.get("stint_laps") is not None:
+                drivers_with_stint_laps += 1
+            if self._compound_from_tyre_history(info) is not None:
+                drivers_with_compound += 1
+
+        if drivers_with_compound > 0:
+            return False
+
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {
+            "status": "waiting_for_compound_data",
+            "source_stream": "TimingAppData",
+            "waiting_for": "Compound",
+            "drivers_seen": len(drivers),
+            "drivers_with_stints": drivers_with_stints,
+            "drivers_with_stint_laps": drivers_with_stint_laps,
+            "drivers_with_compound": drivers_with_compound,
+            "fastest_time": None,
+            "fastest_time_secs": None,
+            "deltas": {},
+            "compounds": {},
+            "start_compounds": [],
+        }
+        return True
+
     def _update_from_coordinator(self) -> bool:
         data = self.coordinator.data or {}
         if not isinstance(data, dict):
             return False
         tyre_stats = data.get("tyre_statistics", {}) if isinstance(data, dict) else {}
         if not isinstance(tyre_stats, dict) or not tyre_stats:
-            return False
+            return self._update_waiting_for_compound_data(data)
 
         fastest_compound = tyre_stats.get("fastest_compound")
         fastest_time = tyre_stats.get("fastest_time")
@@ -5896,6 +5960,8 @@ class F1TyreStatisticsSensor(_CoordinatorStreamSensorBase):
         deltas = tyre_stats.get("deltas", {})
         start_compounds = tyre_stats.get("start_compounds", [])
         compounds_raw = tyre_stats.get("compounds", {})
+        if not isinstance(compounds_raw, dict) or not compounds_raw:
+            return self._update_waiting_for_compound_data(data)
 
         # Enrich compounds with color info
         compounds = {}
@@ -5909,6 +5975,8 @@ class F1TyreStatisticsSensor(_CoordinatorStreamSensorBase):
 
         self._attr_native_value = fastest_compound
         self._attr_extra_state_attributes = {
+            "status": "ready",
+            "source_stream": "TimingAppData",
             "fastest_time": fastest_time,
             "fastest_time_secs": fastest_time_secs,
             "deltas": deltas,
