@@ -32,14 +32,14 @@
           "operation_mode": "Modalità operativa",
           "replay_file": "Percorso file replay",
           "enable_race_control": "Attiva API F1 (Direzione gara/Pista/Sessione)",
-          "race_week_start_day": "Primo giorno della settimana di gara"
+          "race_week_start_day": "Primo giorno della settimana di gara",
           "live_timing_auth_header": "Valore di autenticazione telemetria"
         },
         "data_description": {
           "operation_mode": "Scegli Live per connetterti a F1 SignalR, o Sviluppo per avviare il replay di un file locale.",
           "replay_file": "Percorso assoluto a un file SignalR. Richiesto solo in modalità Sviluppo.",
           "enable_race_control": "Si connette a F1 Live Timing con SignalR per ricevere aggiornamenti in diretta. Se disattivato, alcuni sensori non verranno creati.",
-          "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì."
+          "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì.",
           "live_timing_auth_header": "Valore opzionale dal token F1TV per la telemetria. Incolla il token Bearer completo, ma non includere Authorization:. Lascia vuoto per utilizzare solo la telemetria pubblica"
         }
       },
@@ -51,15 +51,15 @@
           "operation_mode": "Modalità operativa",
           "replay_file": "Percorso file replay",
           "enable_race_control": "Attiva API F1 (Direzione gara/Pista/Sessione)",
-          "race_week_start_day": "Primo giorno della settimana di gara"
+          "race_week_start_day": "Primo giorno della settimana di gara",
           "live_timing_auth_header": "Valore di autenticazione telemetria",
           "clear_live_timing_auth_header": "Elimina il valore di autenticazione telemetria"
-        ,
+        },
         "data_description": {
           "operation_mode": "Scegli Live per connetterti a F1 SignalR, o Sviluppo per avviare il replay di un file locale.",
           "replay_file": "Percorso assoluto a un file SignalR. Richiesto solo in modalità Sviluppo.",
           "enable_race_control": "Si connette a F1 Live Timing con SignalR per ricevere aggiornamenti in diretta. Se disattivato, alcuni sensori non verranno creati.",
-          "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì."
+          "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì.",
           "live_timing_auth_header": "Inserisci un nuovo token F1TV per aggiornarlo. Incolla il token Bearer completo. Lascia vuoto per tenere il valore attuale.",
           "clear_live_timing_auth_header": "Rimuovi il token di autenticazione e continua con la telemetria pubblica."
         }
@@ -81,7 +81,7 @@
     },
     "error": {
       "replay_required": "Scegli un file di replay quando la modalità Sviluppo è attivata.",
-      "replay_missing": "Il file di replay non è stato trovato o è illeggibile."
+      "replay_missing": "Il file di replay non è stato trovato o è illeggibile.",
       "auth_header_required": "Inserisci un token di autenticazione telemetria",
       "invalid_auth_header": "Inserisci un token Bearer valido",
       "auth_token_missing_exp": "Questo token non ha una data di scadenza",
