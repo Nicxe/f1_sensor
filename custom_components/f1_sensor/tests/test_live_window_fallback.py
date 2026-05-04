@@ -113,6 +113,9 @@ class _StaticSource:
         self._result = result
         self.calls = 0
 
+    def set_result(self, result: ScheduleFetchResult) -> None:
+        self._result = result
+
     async def async_fetch_windows(
         self,
         *,
@@ -398,6 +401,69 @@ async def test_event_tracker_failure_keeps_selectable_index_window(hass) -> None
     assert source == "index"
     assert supervisor.schedule_source == "index"
     assert supervisor.fallback_active is False
+
+
+@pytest.mark.asyncio
+async def test_reconnect_retains_recent_event_tracker_window_when_fallback_errors(
+    monkeypatch, hass
+) -> None:
+    now = dt.datetime(2026, 5, 3, 17, 30, tzinfo=dt.UTC)
+    monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
+    index_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Race",
+        start=now + dt.timedelta(hours=2),
+        end=now + dt.timedelta(hours=4),
+        meeting_key=1284,
+        session_key=11280,
+        path="2026/2026-05-03_Miami_Grand_Prix/2026-05-03_Race/",
+    )
+    tracker_window = _mk_window(
+        meeting="Miami Grand Prix",
+        session="Race",
+        start=now - dt.timedelta(minutes=30),
+        end=now + dt.timedelta(hours=1),
+        meeting_key=1284,
+        session_key=11280,
+    )
+    fallback = _StaticSource(
+        ScheduleFetchResult(windows=[tracker_window], source="event_tracker")
+    )
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+        index_source=_StaticSource(
+            ScheduleFetchResult(
+                windows=[index_window],
+                source="index",
+                index_http_status=200,
+            )
+        ),
+        fallback_source=fallback,
+    )
+
+    first_window, first_source = await supervisor._resolve_window()
+    fallback.set_result(
+        ScheduleFetchResult(
+            windows=[],
+            source="event_tracker",
+            last_error="fallback-timeout",
+        )
+    )
+    supervisor._current_window = None  # noqa: SLF001
+
+    second_window, second_source = await supervisor._resolve_window()
+
+    assert first_window is not None
+    assert first_source == "event_tracker"
+    assert second_window is not None
+    assert second_source == "event_tracker"
+    assert second_window.start_utc == tracker_window.start_utc
+    assert second_window.disconnect_at == tracker_window.disconnect_at
+    assert supervisor.schedule_source == "event_tracker"
+    assert supervisor.fallback_active is True
 
 
 @pytest.mark.asyncio

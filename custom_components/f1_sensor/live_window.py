@@ -870,6 +870,7 @@ class LiveSessionSupervisor:
         self._stopped = False
         self._current_window: SessionWindow | None = None
         self._current_window_source: str = "none"
+        self._last_event_tracker_window: SessionWindow | None = None
         self._availability = LiveAvailabilityTracker()
         self._schedule_source: str = "none"
         self._index_http_status: int | None = None
@@ -1079,6 +1080,33 @@ class LiveSessionSupervisor:
             window.start_utc - now <= SCHEDULE_RECONCILIATION_HORIZON
         )
 
+    def _recent_event_tracker_window(
+        self,
+        primary_window: SessionWindow,
+        *,
+        fallback_error: str | None,
+    ) -> SessionWindow | None:
+        if not fallback_error:
+            return None
+        recent = self._last_event_tracker_window
+        if recent is None:
+            return None
+        now = dt_util.utcnow()
+        if now > recent.disconnect_at:
+            return None
+        if not _same_session(primary_window, recent):
+            return None
+        if not _window_times_differ(primary_window, recent):
+            return None
+        log_key = f"retain_event_tracker_{primary_window.meeting_key}_{primary_window.session_key}"
+        if self._should_log(log_key, interval_seconds=300):
+            _LOGGER.info(
+                "Retaining recent event-tracker timing for %s while fallback is unavailable (%s)",
+                recent.label,
+                fallback_error,
+            )
+        return recent
+
     async def _reconcile_primary_window(
         self,
         primary_window: SessionWindow,
@@ -1096,6 +1124,11 @@ class LiveSessionSupervisor:
         fallback_error = fallback_result.last_error
         fallback_window = _find_matching_window(primary_window, fallback_result.windows)
         if fallback_window is None:
+            recent = self._recent_event_tracker_window(
+                primary_window, fallback_error=fallback_error
+            )
+            if recent is not None:
+                return recent, fallback_error
             return None, fallback_error
         if not _window_times_differ(primary_window, fallback_window):
             return None, fallback_error
@@ -1183,6 +1216,7 @@ class LiveSessionSupervisor:
                     error=fallback_error or primary.last_error,
                     log_context="index-time-mismatch",
                 )
+                self._last_event_tracker_window = selected_window
                 return selected_window, "event_tracker"
             self._set_schedule_state(
                 source="index",
@@ -1190,6 +1224,7 @@ class LiveSessionSupervisor:
                 index_http_status=primary.index_http_status,
                 error=primary.last_error,
             )
+            self._last_event_tracker_window = None
             return primary_window, "index"
 
         status = primary.index_http_status
@@ -1227,6 +1262,7 @@ class LiveSessionSupervisor:
                 error=fallback_result.last_error or primary.last_error,
                 log_context=fallback_context,
             )
+            self._last_event_tracker_window = fallback_window
             return fallback_window, "event_tracker"
 
         self._set_schedule_state(
