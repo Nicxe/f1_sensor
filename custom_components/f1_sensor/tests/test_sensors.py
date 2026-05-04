@@ -869,7 +869,7 @@ def test_get_circuit_outline_url_prefers_2026_white_outline() -> None:
     )
     assert (
         get_circuit_outline_url("imola", "2026")
-        == "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Track%20icons%204x3/Emilia Romagna.webp"
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Track%20icons%204x3/Emilia%20Romagna.webp"
     )
     assert get_circuit_outline_url("usa", "2026") is None
 
