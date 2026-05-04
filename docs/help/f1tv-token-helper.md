@@ -7,7 +7,7 @@ F1TV Token Helper connects your own Formula 1 browser session to F1 Sensor throu
 Use this page when Home Assistant opens an external website while you are connecting F1TV access.
 
 :::warning[Experimental feature]
-F1TV access is currently available only in development-gated test builds.
+F1TV access is currently a beta feature and requires F1 Sensor `v4.3.0-beta.3` or later.
 Public live timing continues to work without F1TV access.
 :::
 
@@ -15,6 +15,8 @@ Public live timing continues to work without F1TV access.
 
 The helper reads the F1TV live timing token from your local browser session and sends it to your own Home Assistant instance.
 It does not ask for your Formula 1 password, does not send the token to a project server, and does not make F1TV access required for public live timing.
+
+Install the helper from the [Chrome Web Store](https://chromewebstore.google.com/detail/f1tv-token-helper-beta/bbpgdcjohdjcechlffloekhpgdbjoafh) before you start pairing from Home Assistant.
 
 ## Step-by-step
 
@@ -48,6 +50,8 @@ Home Assistant stores only the live timing authorization value it needs.
 If the token expires later, public live timing continues to work.
 
 ## Troubleshooting
+
+For Home Assistant debug logs, see [Debug Logging and Logs](/help/debug-logging).
 
 ### The helper does not show Home Assistant pairing
 

@@ -23,7 +23,7 @@ const sidebars = {
       items: ['entities/static-data', 'entities/live-data', 'entities/diagnostics', 'entities/events'],
     },
 
-   {
+    {
       type: 'doc',
       label: 'Automation',
       id: 'automation',
@@ -43,6 +43,12 @@ const sidebars = {
 
     {
       type: 'category',
+      label: 'Testing',
+      items: ['help/beta-tester', 'help/experimental-testing', 'help/debug-logging'],
+    },
+
+    {
+      type: 'category',
       label: 'Showcase',
       items: [
         'example/e-ink',
@@ -55,30 +61,23 @@ const sidebars = {
       ],
     },
 
-
-      {
+    {
       type: 'category',
       label: 'Need Help?',
       items: [
         'help/faq',
         'help/Issues',
         'help/contact',
-        'help/beta-tester',
-        'help/experimental-testing',
         'help/f1tv-token-helper',
         'help/f1tv-token-helper-privacy',
       ],
     },
-
 
     {
       type: 'doc',
       label: 'Support the project',
       id: 'support',
     },
-
-
-
   ],
 };
 
