@@ -34,7 +34,7 @@ def _jwt(exp: datetime) -> str:
 
 async def test_pairing_session_is_not_created_when_gate_closed(hass, monkeypatch):
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", False
     )
     entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
     entry.add_to_hass(hass)
@@ -44,7 +44,7 @@ async def test_pairing_session_is_not_created_when_gate_closed(hass, monkeypatch
 
 async def test_pairing_session_contains_no_token_when_gate_open(hass, monkeypatch):
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
     entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
     entry.add_to_hass(hass)
@@ -67,7 +67,7 @@ async def test_flow_pairing_callback_stores_runtime_result_without_entry(
     hass, monkeypatch
 ):
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
     token = _jwt(datetime.now(UTC) + timedelta(days=2))
     session = async_create_f1tv_pairing_session(hass, None, flow_id="flow-id")
@@ -97,7 +97,7 @@ async def test_flow_pairing_callback_stores_runtime_result_without_entry(
 
 async def test_valid_callback_saves_token_and_reloads_entry(hass, monkeypatch):
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
     token = _jwt(datetime.now(UTC) + timedelta(days=2))
     entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
@@ -131,7 +131,7 @@ async def test_valid_callback_saves_token_and_reloads_entry(hass, monkeypatch):
 
 async def test_callback_rejects_invalid_nonce(hass, monkeypatch):
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
     token = _jwt(datetime.now(UTC) + timedelta(days=2))
     entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
@@ -155,7 +155,7 @@ async def test_callback_rejects_invalid_nonce(hass, monkeypatch):
 
 async def test_callback_rejects_reused_session(hass, monkeypatch):
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
     token = _jwt(datetime.now(UTC) + timedelta(days=2))
     entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
@@ -178,7 +178,7 @@ async def test_callback_rejects_reused_session(hass, monkeypatch):
 
 async def test_callback_rejects_token_in_query(hass, monkeypatch):
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
     entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
     entry.add_to_hass(hass)
@@ -196,7 +196,7 @@ async def test_callback_rejects_token_in_query(hass, monkeypatch):
 
 async def test_callback_rejects_oversized_body(hass, monkeypatch):
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
 
     status, response = await async_process_f1tv_pairing_callback(
@@ -211,7 +211,7 @@ async def test_callback_rejects_oversized_body(hass, monkeypatch):
 
 async def test_callback_is_inert_when_gate_closed(hass, monkeypatch):
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", False
     )
     entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
     entry.add_to_hass(hass)

@@ -25,6 +25,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
+from . import const
 from .auth import (
     AUTH_RUNTIME_STATUS,
     AUTH_STATUS_OPTIONS,
@@ -36,7 +37,6 @@ from .const import (
     CONF_OPERATION_MODE,
     DEFAULT_OPERATION_MODE,
     DOMAIN,
-    ENABLE_DEVELOPMENT_MODE_UI,
     LATEST_TRACK_STATUS,
     OPERATION_MODE_DEVELOPMENT,
     RACE_SWITCH_GRACE,
@@ -325,7 +325,7 @@ async def async_setup_entry(
             sensors.append(teams_sensor)
         elif key == "live_timing_diagnostics":
             # Dev-only diagnostic sensor; hide it fully unless dev UI is enabled.
-            if ENABLE_DEVELOPMENT_MODE_UI:
+            if const.ENABLE_DEVELOPMENT_MODE_UI:
                 sensor = F1LiveTimingModeSensor(
                     hass,
                     entry.entry_id,

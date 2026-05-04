@@ -101,7 +101,7 @@ async def test_sensor_setup_entry_uses_translation_key_for_track_status(hass) ->
 
 
 @pytest.mark.asyncio
-async def test_sensor_setup_entry_does_not_add_token_sensors_without_saved_token(
+async def test_sensor_setup_entry_adds_token_status_sensors_without_saved_token(
     hass, monkeypatch
 ) -> None:
     monkeypatch.setattr(
@@ -132,12 +132,19 @@ async def test_sensor_setup_entry_does_not_add_token_sensors_without_saved_token
 
     entities = async_add_entities.call_args[0][0]
     assert [entity.unique_id for entity in entities] == [
-        f"{entry.entry_id}_track_status"
+        f"{entry.entry_id}_track_status",
+        f"{entry.entry_id}_f1tv_token_status",
+        f"{entry.entry_id}_f1tv_token_expires_at",
     ]
 
 
 @pytest.mark.asyncio
-async def test_binary_sensor_setup_entry_uses_translation_keys(hass) -> None:
+async def test_binary_sensor_setup_entry_uses_translation_keys(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -170,6 +177,35 @@ async def test_binary_sensor_setup_entry_uses_translation_keys(hass) -> None:
     )
     assert object_ids[f"{entry.entry_id}_race_week"] == "f1_race_week"
     assert object_ids[f"{entry.entry_id}_live_timing_online"] == "f1_live_timing_online"
+
+
+@pytest.mark.asyncio
+async def test_binary_sensor_setup_entry_hides_live_timing_diagnostics_without_developer_ui(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "RaceHub",
+            "disabled_sensors": sorted(
+                SUPPORTED_SENSOR_KEYS - {"race_week", "live_timing_diagnostics"}
+            ),
+        },
+    )
+    entry.add_to_hass(hass)
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "race_coordinator": Mock(),
+    }
+
+    async_add_entities = Mock()
+    await binary_sensor_platform.async_setup_entry(hass, entry, async_add_entities)
+
+    entities = async_add_entities.call_args[0][0]
+    assert [entity.unique_id for entity in entities] == [f"{entry.entry_id}_race_week"]
 
 
 @pytest.mark.asyncio

@@ -87,7 +87,7 @@ def is_auth_transport_enabled() -> bool:
 
 def is_auth_feature_enabled() -> bool:
     """Return True when any F1TV auth surface may be visible or active."""
-    return const.ENABLE_DEVELOPMENT_MODE_UI
+    return const.ENABLE_EXPERIMENTAL_F1TV_AUTH
 
 
 def is_auth_health_visible(status: F1TvAuthStatus | None) -> bool:

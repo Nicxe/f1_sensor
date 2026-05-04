@@ -60,11 +60,14 @@ REPLAY_START_REFERENCE_SESSION = LIVE_DELAY_REFERENCE_SESSION
 REPLAY_START_REFERENCE_FORMATION = LIVE_DELAY_REFERENCE_FORMATION
 DEFAULT_REPLAY_START_REFERENCE = REPLAY_START_REFERENCE_FORMATION
 
-# Gate for exposing development mode controls in the UI.
-# Keep this False in released versions to avoid confusing users;
-# flip to True locally when you want to work with development mode.
-# Read more here : https://nicxe.github.io/f1_sensor/help/beta-tester and https://nicxe.github.io/f1_sensor/help/experimental-testing
-ENABLE_DEVELOPMENT_MODE_UI = True
+# Gate for exposing development mode controls in the UI. Keep this False in
+# released versions; flip to True locally when working with replay dumps.
+ENABLE_DEVELOPMENT_MODE_UI = False
+
+# Gate for the public experimental F1TV auth surface. This is intentionally
+# separate from development mode so F1TV access can be tested by users without
+# exposing replay/developer controls.
+ENABLE_EXPERIMENTAL_F1TV_AUTH = True
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 

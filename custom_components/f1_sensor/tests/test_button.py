@@ -12,6 +12,7 @@ from custom_components.f1_sensor.auth import (
 from custom_components.f1_sensor.button import (
     F1ClearF1TvAccessButton,
     F1JolpicaUserAgentTestButton,
+    async_setup_entry,
 )
 from custom_components.f1_sensor.const import CONF_LIVE_TIMING_AUTH_HEADER, DOMAIN
 
@@ -67,7 +68,7 @@ async def test_clear_f1tv_access_button_clears_saved_token_and_reloads(
     hass, monkeypatch
 ) -> None:
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -100,7 +101,7 @@ async def test_clear_f1tv_access_button_is_inert_when_gate_closed(
     hass, monkeypatch
 ) -> None:
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", False
     )
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -123,3 +124,32 @@ async def test_clear_f1tv_access_button_is_inert_when_gate_closed(
 
     assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == "Bearer existing-token"
     hass.config_entries.async_reload.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_jolpica_ua_button_is_not_added_when_only_f1tv_auth_is_public(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+    )
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            CONF_LIVE_TIMING_AUTH_HEADER: "Bearer existing-token",
+        },
+    )
+    entry.add_to_hass(hass)
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "http_session": _TimeoutSession()
+    }
+    added = []
+
+    await async_setup_entry(hass, entry, added.extend)
+
+    assert any(isinstance(entity, F1ClearF1TvAccessButton) for entity in added)
+    assert not any(isinstance(entity, F1JolpicaUserAgentTestButton) for entity in added)

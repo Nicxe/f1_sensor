@@ -20,11 +20,11 @@ from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
+from . import const
 from .const import (
     CIRCUIT_MAP_DETAILED_CDN_BASE_URL,
     CIRCUIT_MAP_LEGACY_CDN_BASE_URL,
     DOMAIN,
-    ENABLE_DEVELOPMENT_MODE_UI,
     F1_COUNTRY_CODES,
     F1_DETAILED_CIRCUIT_MAP_SLUGS,
     F1_LEGACY_CIRCUIT_MAP_NAMES,
@@ -65,7 +65,7 @@ def normalize_live_timing_auth_header(value: object) -> str:
 
 def _record_jolpica_miss(hass, key: str) -> None:
     """Dev-only: count Jolpica network MISS calls for periodic summary logging."""
-    if not ENABLE_DEVELOPMENT_MODE_UI:
+    if not const.ENABLE_DEVELOPMENT_MODE_UI:
         return
     try:
         root = hass.data.setdefault(DOMAIN, {})

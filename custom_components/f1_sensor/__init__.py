@@ -27,6 +27,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
+from . import const
 from .auth import (
     AUTH_REPAIR_STATUSES,
     AUTH_RUNTIME_STATUS,
@@ -55,7 +56,6 @@ from .const import (
     DEFAULT_REPLAY_START_REFERENCE,
     DOMAIN,
     DRIVER_STANDINGS_URL,
-    ENABLE_DEVELOPMENT_MODE_UI,
     FIA_DOCS_FETCH_TIMEOUT,
     FIA_DOCS_POLL_INTERVAL,
     FIA_DOCUMENTS_BASE_URL,
@@ -1097,7 +1097,7 @@ def _seed_driver_map_from_ergast(
 
 def _ensure_jolpica_stats_reporting(hass: HomeAssistant) -> None:
     """Register a dev-only periodic log of Jolpica network MISS counts."""
-    if not ENABLE_DEVELOPMENT_MODE_UI:
+    if not const.ENABLE_DEVELOPMENT_MODE_UI:
         return
     root = hass.data.setdefault(DOMAIN, {})
     stats = root.get(_JOLPICA_STATS_KEY)

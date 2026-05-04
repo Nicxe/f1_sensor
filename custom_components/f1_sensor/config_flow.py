@@ -9,6 +9,7 @@ from homeassistant.helpers.selector import (
 )
 import voluptuous as vol
 
+from . import const
 from .auth import is_auth_feature_enabled
 from .auth_http import (
     async_create_f1tv_pairing_session,
@@ -64,7 +65,7 @@ SENSOR_OPTIONS = {
     "constructor_points_progression": "Constructor points progression",
     "fia_documents": "FIA decisions",
     "calendar": "Season calendar",
-    # Live timing / SignalR backed (some require F1TV auth, marked "replay only")
+    # Live timing / SignalR backed.
     "current_session": "Current session (live)",
     "track_weather": "Track weather (live)",
     "race_lap_count": "Race lap count (live)",
@@ -79,10 +80,10 @@ SENSOR_OPTIONS = {
     "safety_car": "Safety car (live)",
     "formation_start": "Formation start (replay only)",
     "race_control": "Race control (live)",
-    "team_radio": "Team radio (replay only)",
+    "team_radio": "Team radio (experimental F1TV live/replay)",
     "top_three": "Top three (leader, live)",
-    "pitstops": "Pit stops (replay only)",
-    "championship_prediction": "Championship prediction (replay only)",
+    "pitstops": "Pit stops (experimental F1TV live/replay)",
+    "championship_prediction": "Championship prediction (experimental F1TV live/replay)",
     "driver_positions": "Driver positions (live)",
     "track_limits": "Track limits (live)",
     "investigations": "Investigations & penalties (live)",
@@ -93,7 +94,8 @@ SENSOR_OPTIONS = {
 
 def _build_sensor_options() -> dict:
     options = dict(SENSOR_OPTIONS)
-    options["live_timing_diagnostics"] = "Live timing online"
+    if const.ENABLE_DEVELOPMENT_MODE_UI:
+        options["live_timing_diagnostics"] = "Live timing online"
     return options
 
 
@@ -139,9 +141,13 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             if is_auth_feature_enabled() and auth_header:
                 user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
 
-            # Resolve and validate operation mode
+            # Resolve and validate operation mode. Development/replay controls stay
+            # tied to developer UI even when experimental F1TV auth is public.
             mode = user_input.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
-            if mode not in (OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT):
+            if not const.ENABLE_DEVELOPMENT_MODE_UI or mode not in (
+                OPERATION_MODE_LIVE,
+                OPERATION_MODE_DEVELOPMENT,
+            ):
                 mode = DEFAULT_OPERATION_MODE
             user_input[CONF_OPERATION_MODE] = mode
 
@@ -194,7 +200,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Only expose development-related controls when explicitly enabled.
         # This keeps the main setup simple for normal users.
-        if is_auth_feature_enabled():
+        if const.ENABLE_DEVELOPMENT_MODE_UI:
             schema_fields.update(
                 {
                     vol.Required(
@@ -207,15 +213,20 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_REPLAY_FILE,
                         default=current.get(CONF_REPLAY_FILE, ""),
                     ): cv.string,
-                    vol.Optional(
-                        CONF_LIVE_TIMING_AUTH_HEADER, default=""
-                    ): _AUTH_HEADER_SELECTOR,
-                    vol.Optional(CONF_START_F1TV_PAIRING, default=False): cv.boolean,
                 }
             )
         else:
             # In normal installations we always run in LIVE mode.
             current.setdefault(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+        if is_auth_feature_enabled():
+            schema_fields.update(
+                {
+                    vol.Optional(CONF_START_F1TV_PAIRING, default=False): cv.boolean,
+                    vol.Optional(
+                        CONF_LIVE_TIMING_AUTH_HEADER, default=""
+                    ): _AUTH_HEADER_SELECTOR,
+                }
+            )
 
         data_schema = vol.Schema(schema_fields)
 
@@ -246,7 +257,10 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_OPERATION_MODE,
                 current.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE),
             )
-            if mode not in (OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT):
+            if not const.ENABLE_DEVELOPMENT_MODE_UI or mode not in (
+                OPERATION_MODE_LIVE,
+                OPERATION_MODE_DEVELOPMENT,
+            ):
                 mode = DEFAULT_OPERATION_MODE
             user_input[CONF_OPERATION_MODE] = mode
 
@@ -320,13 +334,9 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             ): vol.In(RACE_WEEK_START_OPTIONS),
         }
 
-        # For reconfigure we show dev controls either when explicitly enabled
-        # or when the existing entry is already in development mode (so it
-        # remains editable even if the flag is later turned off).
-        show_dev_controls = (
-            is_auth_feature_enabled()
-            or current.get(CONF_OPERATION_MODE) == OPERATION_MODE_DEVELOPMENT
-        )
+        # Reconfigure keeps replay/development controls behind the developer UI
+        # gate, independently of the public experimental F1TV auth surface.
+        show_dev_controls = const.ENABLE_DEVELOPMENT_MODE_UI
 
         if show_dev_controls:
             schema_fields.update(
@@ -343,17 +353,15 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ): cv.string,
                 }
             )
-            if is_auth_feature_enabled():
-                schema_fields.update(
-                    {
-                        vol.Optional(
-                            CONF_LIVE_TIMING_AUTH_HEADER, default=""
-                        ): _AUTH_HEADER_SELECTOR,
-                        vol.Optional(CONF_START_F1TV_PAIRING, default=False): (
-                            cv.boolean
-                        ),
-                    }
-                )
+        if is_auth_feature_enabled():
+            schema_fields.update(
+                {
+                    vol.Optional(CONF_START_F1TV_PAIRING, default=False): cv.boolean,
+                    vol.Optional(
+                        CONF_LIVE_TIMING_AUTH_HEADER, default=""
+                    ): _AUTH_HEADER_SELECTOR,
+                }
+            )
 
         data_schema = vol.Schema(schema_fields)
 
@@ -401,11 +409,11 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         data_schema = vol.Schema(
             {
+                vol.Optional(CONF_START_F1TV_PAIRING, default=False): cv.boolean,
                 vol.Required(CONF_LIVE_TIMING_AUTH_HEADER): _AUTH_HEADER_SELECTOR,
                 vol.Optional(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, default=False): (
                     cv.boolean
                 ),
-                vol.Optional(CONF_START_F1TV_PAIRING, default=False): cv.boolean,
             }
         )
 
