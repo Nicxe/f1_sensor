@@ -20,6 +20,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .auth import (
+    F1TvAuthStatus,
     async_set_runtime_f1tv_auth_status,
     async_update_f1tv_auth_repair_issue,
     f1tv_auth_repair_issue_id,
@@ -45,13 +46,15 @@ class F1TvPairingSession:
 
     session_id: str
     nonce: str
-    entry_id: str
+    entry_id: str | None
     callback_url: str
     helper_url: str
     created_at: datetime
     expires_at: datetime
     flow_id: str | None = None
     used: bool = False
+    auth_header: str | None = None
+    auth_status: F1TvAuthStatus | None = None
 
     @property
     def expires_at_iso(self) -> str:
@@ -119,13 +122,13 @@ def async_get_f1tv_callback_url(hass: HomeAssistant) -> str:
 @callback
 def async_create_f1tv_pairing_session(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: ConfigEntry | None = None,
     *,
     flow_id: str | None = None,
     callback_url: str | None = None,
 ) -> F1TvPairingSession | None:
-    """Create a short-lived pairing session for one config entry."""
-    if not is_auth_feature_enabled():
+    """Create a short-lived pairing session for one config entry or setup flow."""
+    if not is_auth_feature_enabled() or (entry is None and flow_id is None):
         return None
 
     _cleanup_expired_pairing_sessions(hass)
@@ -144,7 +147,7 @@ def async_create_f1tv_pairing_session(
     session = F1TvPairingSession(
         session_id=session_id,
         nonce=nonce,
-        entry_id=entry.entry_id,
+        entry_id=entry.entry_id if entry is not None else None,
         callback_url=callback,
         helper_url=helper_url,
         created_at=now,
@@ -153,6 +156,24 @@ def async_create_f1tv_pairing_session(
     )
     _pairing_sessions(hass)[session_id] = session
     return session
+
+
+def async_pop_f1tv_pairing_session_result(
+    hass: HomeAssistant, session_id: str, flow_id: str | None
+) -> tuple[str, F1TvAuthStatus] | None:
+    """Return and remove a completed flow-only pairing result."""
+    session = _pairing_sessions(hass).get(session_id)
+    if (
+        session is None
+        or session.entry_id is not None
+        or session.flow_id != flow_id
+        or not session.used
+        or not session.auth_header
+        or session.auth_status is None
+    ):
+        return None
+    _pairing_sessions(hass).pop(session_id, None)
+    return session.auth_header, session.auth_status
 
 
 def _error_response(code: str, status: HTTPStatus) -> tuple[HTTPStatus, dict[str, Any]]:
@@ -199,6 +220,21 @@ async def async_process_f1tv_pairing_callback(
     )
     if error is not None or auth_header is None:
         return _error_response(error or "invalid_auth_header", HTTPStatus.BAD_REQUEST)
+
+    if session.entry_id is None:
+        session.used = True
+        session.auth_header = auth_header
+        session.auth_status = status
+        if session.flow_id:
+            with suppress(Exception):
+                await hass.config_entries.flow.async_configure(
+                    session.flow_id, {"session_id": session_id}
+                )
+        return HTTPStatus.OK, {
+            "ok": True,
+            "code": "connected",
+            "expires_at": status.expires_at_iso,
+        }
 
     entry = hass.config_entries.async_get_entry(session.entry_id)
     if entry is None:

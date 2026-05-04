@@ -38,7 +38,7 @@ def _jwt(exp: datetime) -> str:
 
 async def test_repair_flow_replaces_expired_token(hass, monkeypatch) -> None:
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
     old_token = _jwt(datetime.now(UTC) - timedelta(hours=1))
     new_token = _jwt(datetime.now(UTC) + timedelta(days=2))
@@ -76,7 +76,7 @@ async def test_repair_flow_replaces_expired_token(hass, monkeypatch) -> None:
 
 async def test_repair_flow_can_clear_token(hass, monkeypatch) -> None:
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
     old_token = _jwt(datetime.now(UTC) - timedelta(hours=1))
     entry = MockConfigEntry(
@@ -119,7 +119,7 @@ async def test_repair_flow_can_clear_token(hass, monkeypatch) -> None:
 
 async def test_repair_flow_rejects_invalid_replacement(hass, monkeypatch) -> None:
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -145,11 +145,11 @@ async def test_repair_flow_rejects_invalid_replacement(hass, monkeypatch) -> Non
     hass.config_entries.async_reload.assert_not_called()
 
 
-async def test_repair_flow_is_hidden_when_development_ui_disabled(
+async def test_repair_flow_is_hidden_when_experimental_auth_disabled(
     hass, monkeypatch
 ) -> None:
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", False
     )
     old_token = _jwt(datetime.now(UTC) - timedelta(hours=1))
     entry = MockConfigEntry(

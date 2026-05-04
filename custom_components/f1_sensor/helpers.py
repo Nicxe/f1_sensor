@@ -20,14 +20,17 @@ from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
+from . import const
 from .const import (
-    CIRCUIT_MAP_DETAILED_CDN_BASE_URL,
-    CIRCUIT_MAP_LEGACY_CDN_BASE_URL,
+    CIRCUIT_IMAGE_CDN_BASE_URL,
+    CIRCUIT_IMAGE_LEGACY_CDN_BASE_URL,
+    CIRCUIT_MAP_LEGACY_CDN_PATH,
+    CIRCUIT_OUTLINE_LEGACY_CDN_PATH,
     DOMAIN,
-    ENABLE_DEVELOPMENT_MODE_UI,
+    F1_CIRCUIT_IMAGE_SLUGS,
     F1_COUNTRY_CODES,
-    F1_DETAILED_CIRCUIT_MAP_SLUGS,
     F1_LEGACY_CIRCUIT_MAP_NAMES,
+    F1_LEGACY_CIRCUIT_OUTLINE_NAMES,
     FLAG_CDN_BASE_URL,
 )
 
@@ -65,7 +68,7 @@ def normalize_live_timing_auth_header(value: object) -> str:
 
 def _record_jolpica_miss(hass, key: str) -> None:
     """Dev-only: count Jolpica network MISS calls for periodic summary logging."""
-    if not ENABLE_DEVELOPMENT_MODE_UI:
+    if not const.ENABLE_DEVELOPMENT_MODE_UI:
         return
     try:
         root = hass.data.setdefault(DOMAIN, {})
@@ -214,18 +217,41 @@ def get_circuit_map_url(
 
     season_key = str(season) if season is not None else None
     if season_key:
-        detailed_maps = F1_DETAILED_CIRCUIT_MAP_SLUGS.get(season_key, {})
+        detailed_maps = F1_CIRCUIT_IMAGE_SLUGS.get(season_key, {})
         detailed_slug = detailed_maps.get(circuit_id)
         if detailed_slug:
             return (
-                f"{CIRCUIT_MAP_DETAILED_CDN_BASE_URL}/{season_key}/track/"
+                f"{CIRCUIT_IMAGE_CDN_BASE_URL}/{season_key}/track/"
                 f"{season_key}track{detailed_slug}detailed.webp"
             )
 
     legacy_name = F1_LEGACY_CIRCUIT_MAP_NAMES.get(circuit_id)
     if not legacy_name:
         return None
-    return f"{CIRCUIT_MAP_LEGACY_CDN_BASE_URL}/{legacy_name}_Circuit.webp"
+    return f"{CIRCUIT_IMAGE_LEGACY_CDN_BASE_URL}/{CIRCUIT_MAP_LEGACY_CDN_PATH}/{legacy_name}_Circuit.webp"
+
+
+def get_circuit_outline_url(
+    circuit_id: str | None, season: str | int | None = None
+) -> str | None:
+    """Return the preferred F1 circuit outline URL for a circuit and season."""
+    if not circuit_id:
+        return None
+
+    season_key = str(season) if season is not None else None
+    if season_key:
+        detailed_maps = F1_CIRCUIT_IMAGE_SLUGS.get(season_key, {})
+        detailed_slug = detailed_maps.get(circuit_id)
+        if detailed_slug:
+            return (
+                f"{CIRCUIT_IMAGE_CDN_BASE_URL}/{season_key}/track/"
+                f"{season_key}track{detailed_slug}whiteoutline.webp"
+            )
+
+    legacy_name = F1_LEGACY_CIRCUIT_OUTLINE_NAMES.get(circuit_id)
+    if not legacy_name:
+        return None
+    return f"{CIRCUIT_IMAGE_LEGACY_CDN_BASE_URL}/{CIRCUIT_OUTLINE_LEGACY_CDN_PATH}/{legacy_name}.webp"
 
 
 def format_entity_name(

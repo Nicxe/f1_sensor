@@ -25,6 +25,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
+from . import const
 from .auth import (
     AUTH_RUNTIME_STATUS,
     AUTH_STATUS_OPTIONS,
@@ -36,7 +37,6 @@ from .const import (
     CONF_OPERATION_MODE,
     DEFAULT_OPERATION_MODE,
     DOMAIN,
-    ENABLE_DEVELOPMENT_MODE_UI,
     LATEST_TRACK_STATUS,
     OPERATION_MODE_DEVELOPMENT,
     RACE_SWITCH_GRACE,
@@ -54,6 +54,7 @@ from .entity import (
 )
 from .helpers import (
     get_circuit_map_url,
+    get_circuit_outline_url,
     get_country_code,
     get_country_flag_url,
     get_next_race,
@@ -325,7 +326,7 @@ async def async_setup_entry(
             sensors.append(teams_sensor)
         elif key == "live_timing_diagnostics":
             # Dev-only diagnostic sensor; hide it fully unless dev UI is enabled.
-            if ENABLE_DEVELOPMENT_MODE_UI:
+            if const.ENABLE_DEVELOPMENT_MODE_UI:
                 sensor = F1LiveTimingModeSensor(
                     hass,
                     entry.entry_id,
@@ -892,6 +893,9 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
             "circuit_map_url": get_circuit_map_url(
                 circuit.get("circuitId"), race.get("season")
             ),
+            "circuit_outline_url": get_circuit_outline_url(
+                circuit.get("circuitId"), race.get("season")
+            ),
             "circuit_timezone": timezone,
         }
 
@@ -1028,6 +1032,9 @@ class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
             enriched["country_code"] = get_country_code(country)
             enriched["country_flag_url"] = get_country_flag_url(country)
             enriched["circuit_map_url"] = get_circuit_map_url(
+                circuit.get("circuitId"), race.get("season")
+            )
+            enriched["circuit_outline_url"] = get_circuit_outline_url(
                 circuit.get("circuitId"), race.get("season")
             )
             enriched_races.append(enriched)

@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 
+from . import const
 from .auth import (
     async_set_runtime_f1tv_auth_status,
     async_update_f1tv_auth_repair_issue,
@@ -18,7 +19,11 @@ from .auth import (
     is_auth_feature_enabled,
 )
 from .calibration import LiveDelayCalibrationManager
-from .const import API_URL, CONF_LIVE_TIMING_AUTH_HEADER, DOMAIN
+from .const import (
+    API_URL,
+    CONF_LIVE_TIMING_AUTH_HEADER,
+    DOMAIN,
+)
 from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
 from .replay_entities import (
     F1ReplayBackButton,
@@ -53,8 +58,8 @@ async def async_setup_entry(
         set_suggested_object_id(entity, default_object_id("delay_calibration_match"))
         entities.append(entity)
 
-    # Manual diagnostic button to verify which UA we send to Jolpica/Ergast.
-    # Only expose this in development-mode UI to avoid confusing normal users.
+    # Public experimental auth can be enabled without exposing developer-only
+    # Jolpica diagnostics.
     if is_auth_feature_enabled() and entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER):
         entity = F1ClearF1TvAccessButton(
             hass=hass,
@@ -65,7 +70,7 @@ async def async_setup_entry(
         set_suggested_object_id(entity, default_object_id("clear_f1tv_access"))
         entities.append(entity)
 
-    if is_auth_feature_enabled() and registry.get("http_session") is not None:
+    if const.ENABLE_DEVELOPMENT_MODE_UI and registry.get("http_session") is not None:
         entity = F1JolpicaUserAgentTestButton(
             hass=hass,
             entry_id=entry.entry_id,

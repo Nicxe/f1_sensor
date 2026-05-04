@@ -17,6 +17,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
+from . import const
 from .const import (
     CONF_OPERATION_MODE,
     CONF_RACE_WEEK_START_DAY,
@@ -101,7 +102,7 @@ async def async_setup_entry(
     race_week_start = _normalize_race_week_start(entry.data)
 
     sensors = []
-    if "live_timing_diagnostics" not in disabled:
+    if const.ENABLE_DEVELOPMENT_MODE_UI and "live_timing_diagnostics" not in disabled:
         sensor = F1LiveTimingOnlineBinarySensor(
             hass,
             entry.entry_id,

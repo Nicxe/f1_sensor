@@ -549,7 +549,7 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
     hass, monkeypatch
 ) -> None:
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
     )
     token = _jwt(datetime.now(UTC) + timedelta(days=2))
     entry = MockConfigEntry(
@@ -619,7 +619,7 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_ignores_auth_when_development_ui_disabled(
+async def test_async_setup_entry_uses_auth_when_development_ui_disabled(
     hass, monkeypatch
 ) -> None:
     monkeypatch.setattr(
@@ -678,11 +678,11 @@ async def test_async_setup_entry_ignores_auth_when_development_ui_disabled(
 
     assert result is True
     assert FakeLiveBus.last_instance is not None
-    assert FakeLiveBus.last_instance.auth_header == ""
+    assert FakeLiveBus.last_instance.auth_header == f"Bearer {token}"
     entry_data = hass.data[DOMAIN][entry.entry_id]
-    assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is False
-    assert entry_data["f1tv_auth_status"].status == "not_configured"
-    assert entry_data["f1tv_auth_status"].used_for_live_timing is False
+    assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is True
+    assert entry_data["f1tv_auth_status"].status == "valid"
+    assert entry_data["f1tv_auth_status"].used_for_live_timing is True
 
 
 @pytest.mark.asyncio
@@ -690,7 +690,7 @@ async def test_async_setup_entry_suppresses_expired_auth_when_gate_disabled(
     hass, monkeypatch
 ) -> None:
     monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
+        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", False
     )
     token = _jwt(datetime.now(UTC) - timedelta(hours=1))
     entry = MockConfigEntry(

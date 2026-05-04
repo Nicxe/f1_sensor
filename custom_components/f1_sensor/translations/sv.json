@@ -33,14 +33,16 @@
           "replay_file": "Sökväg till replay-dump",
           "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
           "race_week_start_day": "Första dagen i tävlingsveckan",
-          "live_timing_auth_header": "Live timing-auktoriseringsvärde"
+          "live_timing_auth_header": "Manuell reservväg: experimentellt F1TV-auktoriseringsvärde",
+          "start_f1tv_pairing": "Rekommenderat: Anslut experimentell F1TV-åtkomst med Token Helper"
         },
         "data_description": {
           "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
           "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
           "enable_race_control": "Ansluter till Formula 1 Live Timing via SignalR för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
-          "live_timing_auth_header": "Valfritt värde från F1TV Token Helper för Formula 1 Live Timing. Klistra in `Bearer <JWT>`. Ta inte med `Authorization:`. Lämna tomt för att bara använda publik live timing."
+          "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra bara in hela Bearer-token från F1TV Token Helper som avancerad reservväg. Lämna tomt för att bara använda publik live timing.",
+          "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. Experimentell F1TV-åtkomst är valfri; publik live timing fortsätter fungera utan den."
         }
       },
       "reconfigure": {
@@ -52,46 +54,46 @@
           "replay_file": "Sökväg till replay-dump",
           "enable_race_control": "Aktivera live F1 API",
           "race_week_start_day": "Första dagen i tävlingsveckan",
-          "live_timing_auth_header": "Live timing-auktoriseringsvärde",
-          "start_f1tv_pairing": "Anslut F1TV-åtkomst med Token Helper"
+          "live_timing_auth_header": "Manuell reservväg: experimentellt F1TV-auktoriseringsvärde",
+          "start_f1tv_pairing": "Rekommenderat: Anslut experimentell F1TV-åtkomst med Token Helper"
         },
         "data_description": {
           "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
           "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
           "enable_race_control": "Ansluter till Formula 1 Live Timing för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
-          "live_timing_auth_header": "Avancerad reservväg. Ange ett nytt värde från F1TV Token Helper för att uppdatera det. Klistra in `Bearer <JWT>`. Lämna tomt för att behålla nuvarande värde.",
-          "start_f1tv_pairing": "Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering."
+          "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra bara in en ny fullständig Bearer-token som avancerad reservväg. Lämna tomt för att behålla nuvarande värde.",
+          "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. Experimentell F1TV-åtkomst är valfri; publik live timing fortsätter fungera utan den."
         }
       },
       "reauth_confirm": {
-        "title": "Uppdatera F1 live timing-auktorisering",
+        "title": "Uppdatera experimentell F1TV live timing-auktorisering",
         "data": {
-          "live_timing_auth_header": "Live timing-auktoriseringsvärde",
-          "clear_live_timing_auth_header": "Rensa live timing-auktoriseringsvärde",
-          "start_f1tv_pairing": "Anslut F1TV-åtkomst med Token Helper"
+          "live_timing_auth_header": "Manuell reservväg: experimentellt F1TV-auktoriseringsvärde",
+          "clear_live_timing_auth_header": "Rensa experimentellt F1TV-auktoriseringsvärde",
+          "start_f1tv_pairing": "Rekommenderat: Anslut experimentell F1TV-åtkomst med Token Helper"
         },
         "data_description": {
-          "live_timing_auth_header": "Avancerad reservväg. Ange ett nytt värde från F1TV Token Helper för Formula 1 Live Timing. Klistra in `Bearer <JWT>`.",
-          "clear_live_timing_auth_header": "Ta bort det sparade live timing-auktoriseringsvärdet och fortsätt med endast publik live timing.",
-          "start_f1tv_pairing": "Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering."
+          "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra bara in en ny fullständig Bearer-token som avancerad reservväg.",
+          "clear_live_timing_auth_header": "Ta bort det sparade experimentella F1TV-auktoriseringsvärdet och fortsätt med endast publik live timing.",
+          "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. Experimentell F1TV-åtkomst är valfri; publik live timing fortsätter fungera utan den."
         }
       },
       "f1tv_pairing": {
-        "title": "Anslut F1TV-åtkomst",
-        "description": "Använd F1TV Token Helper för att skicka din token till Home Assistant. Den här pairingen går ut {expires_at}."
+        "title": "Anslut experimentell F1TV-åtkomst",
+        "description": "Använd F1TV Token Helper för att skicka din token till Home Assistant. Experimentell F1TV-åtkomst är valfri, och den här pairingen går ut {expires_at}."
       }
     },
     "abort": {
       "reconfigure_successful": "F1-sensorn har konfigurerats om.",
-      "f1tv_pairing_unavailable": "F1TV-pairing är inte tillgängligt i den här versionen.",
-      "f1tv_pairing_failed": "F1TV-pairingen slutfördes inte. Starta en ny pairing-session och försök igen."
+      "f1tv_pairing_unavailable": "Experimentell F1TV-pairing är inte tillgänglig i den här versionen.",
+      "f1tv_pairing_failed": "Experimentell F1TV-pairing slutfördes inte. Starta en ny pairing-session och försök igen."
     },
     "error": {
       "replay_required": "Välj en replay-dumpfil när utvecklingsläge är aktiverat.",
       "replay_missing": "Replay-dumpfilen hittades inte eller är oläsbar.",
-      "auth_header_required": "Ange live timing-auktoriseringsvärdet eller välj att rensa det.",
-      "invalid_auth_header": "Ange ett giltigt `Bearer <JWT>`-värde.",
+      "auth_header_required": "Ange det experimentella F1TV-auktoriseringsvärdet eller välj att rensa det.",
+      "invalid_auth_header": "Ange ett giltigt Bearer-tokenvärde.",
       "auth_token_missing_exp": "Token saknar utgångstid.",
       "auth_token_expired": "Token har gått ut.",
       "auth_token_expiring_soon": "Token går ut för snart. Skapa en ny token och försök igen."
@@ -103,19 +105,19 @@
         "step": {
           "confirm": {
             "data": {
-              "live_timing_auth_header": "Live timing-auktoriseringsvärde",
-              "clear_live_timing_auth_header": "Rensa live timing-auktoriseringsvärde"
+              "live_timing_auth_header": "Experimentellt F1TV-auktoriseringsvärde",
+              "clear_live_timing_auth_header": "Rensa experimentellt F1TV-auktoriseringsvärde"
             },
             "data_description": {
-              "live_timing_auth_header": "Klistra in ett nytt `Bearer <JWT>`-värde från F1TV Token Helper.",
-              "clear_live_timing_auth_header": "Ta bort den sparade F1TV-token och fortsätt med endast publik live timing."
+              "live_timing_auth_header": "Klistra in ett nytt Bearer-tokenvärde från F1TV Token Helper för experimentell F1TV-åtkomst.",
+              "clear_live_timing_auth_header": "Ta bort den sparade experimentella F1TV-token och fortsätt med endast publik live timing."
             },
-            "description": "Den sparade F1TV-token för {name} behöver åtgärdas. Publik live timing fortsätter att fungera, men F1TV-only live-data används inte förrän token har bytts ut.",
-            "title": "Uppdatera F1TV live timing-token"
+            "description": "Den sparade experimentella F1TV-token för {name} behöver åtgärdas. Publik live timing fortsätter fungera, men experimentell F1TV-live-data används inte förrän token har bytts ut.",
+            "title": "Uppdatera experimentell F1TV live timing-token"
           }
         }
       },
-      "title": "F1TV live timing-token behöver åtgärdas"
+      "title": "Experimentell F1TV live timing-token behöver åtgärdas"
     }
   },
   "entity": {
@@ -181,7 +183,7 @@
         "name": "Live timing-läge"
       },
       "f1tv_token_status": {
-        "name": "F1TV token-status",
+        "name": "Experimentell F1TV token-status",
         "state": {
           "not_configured": "Inte konfigurerad",
           "valid": "Giltig",
@@ -192,7 +194,7 @@
         }
       },
       "f1tv_token_expires_at": {
-        "name": "F1TV-token går ut"
+        "name": "Experimentell F1TV-token går ut"
       },
       "driver_positions": {
         "name": "Förarpositioner"
@@ -280,7 +282,7 @@
         "name": "Jolpica user-agent-test"
       },
       "clear_f1tv_access": {
-        "name": "Rensa F1TV-åtkomst"
+        "name": "Rensa experimentell F1TV-åtkomst"
       }
     },
     "switch": {

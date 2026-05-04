@@ -60,11 +60,14 @@ REPLAY_START_REFERENCE_SESSION = LIVE_DELAY_REFERENCE_SESSION
 REPLAY_START_REFERENCE_FORMATION = LIVE_DELAY_REFERENCE_FORMATION
 DEFAULT_REPLAY_START_REFERENCE = REPLAY_START_REFERENCE_FORMATION
 
-# Gate for exposing development mode controls in the UI.
-# Keep this False in released versions to avoid confusing users;
-# flip to True locally when you want to work with development mode.
-# Read more here : https://nicxe.github.io/f1_sensor/help/beta-tester and https://nicxe.github.io/f1_sensor/help/experimental-testing
-ENABLE_DEVELOPMENT_MODE_UI = True
+# Gate for exposing development mode controls in the UI. Keep this False in
+# released versions; flip to True locally when working with replay dumps.
+ENABLE_DEVELOPMENT_MODE_UI = False
+
+# Gate for the public experimental F1TV auth surface. This is intentionally
+# separate from development mode so F1TV access can be tested by users without
+# exposing replay/developer controls.
+ENABLE_EXPERIMENTAL_F1TV_AUTH = True
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 
@@ -177,12 +180,12 @@ FIA_DOCS_FETCH_TIMEOUT = 15
 FLAG_CDN_BASE_URL = "https://flagcdn.com/w80"
 
 # Detailed circuit map support (official F1 season-specific track maps)
-CIRCUIT_MAP_DETAILED_CDN_BASE_URL = (
+CIRCUIT_IMAGE_CDN_BASE_URL = (
     "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1"
 )
 
 # Verified 2026 detailed map slugs from official F1 race pages
-F1_DETAILED_CIRCUIT_MAP_SLUGS: dict[str, dict[str, str]] = {
+F1_CIRCUIT_IMAGE_SLUGS: dict[str, dict[str, str]] = {
     "2026": {
         "albert_park": "melbourne",
         "shanghai": "shanghai",
@@ -212,7 +215,9 @@ F1_DETAILED_CIRCUIT_MAP_SLUGS: dict[str, dict[str, str]] = {
 }
 
 # Legacy circuit map support (official F1 track maps with DRS zones)
-CIRCUIT_MAP_LEGACY_CDN_BASE_URL = "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9"
+CIRCUIT_IMAGE_LEGACY_CDN_BASE_URL = "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets"
+CIRCUIT_MAP_LEGACY_CDN_PATH = "Circuit%20maps%2016x9"
+CIRCUIT_OUTLINE_LEGACY_CDN_PATH = "Track%20icons%204x3"
 
 # Legacy fallback map from Ergast circuitId to F1 CDN filename (without suffix)
 F1_LEGACY_CIRCUIT_MAP_NAMES: dict[str, str] = {
@@ -241,6 +246,42 @@ F1_LEGACY_CIRCUIT_MAP_NAMES: dict[str, str] = {
     "vegas": "Las_Vegas",
     "losail": "Qatar",
     "yas_marina": "Abu_Dhabi",
+    # Historic circuits
+    "portimao": "Portugal",
+    "istanbul": "Turkey",
+    "sochi": "Russia",
+    "ricard": "France",
+    "mugello": "Tuscany",
+    "nurburgring": "Eifel",
+}
+
+# Legacy fallback map from Ergast circuitId to F1 CDN filename (without suffix)
+F1_LEGACY_CIRCUIT_OUTLINE_NAMES: dict[str, str] = {
+    # Current and recent calendars
+    "bahrain": "Bahrain",
+    "jeddah": "Saudi%20Arabia",
+    "albert_park": "Australia",
+    "suzuka": "Japan",
+    "shanghai": "China",
+    "miami": "Miami",
+    "imola": "Emilia%20Romagna",
+    "monaco": "Monaco",
+    "villeneuve": "Canada",
+    "catalunya": "Spain",
+    "red_bull_ring": "Austria",
+    "silverstone": "Great%20Britain",
+    "hungaroring": "Hungary",
+    "spa": "Belgium",
+    "zandvoort": "Netherlands",
+    "monza": "Italy",
+    "baku": "Azerbaijan",
+    "marina_bay": "Singapore",
+    "americas": "USA",
+    "rodriguez": "Mexico",
+    "interlagos": "Brazil",
+    "vegas": "Las%20Vegas",
+    "losail": "Qatar",
+    "yas_marina": "Abu%20Dhabi",
     # Historic circuits
     "portimao": "Portugal",
     "istanbul": "Turkey",
