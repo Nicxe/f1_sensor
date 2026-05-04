@@ -105,15 +105,21 @@
         "step": {
           "confirm": {
             "data": {
+              "start_f1tv_pairing": "Recommended: Connect experimental F1TV access with Token Helper",
               "live_timing_auth_header": "Experimental F1TV authorization value",
               "clear_live_timing_auth_header": "Clear experimental F1TV authorization value"
             },
             "data_description": {
+              "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually.",
               "live_timing_auth_header": "Paste a new Bearer token value from the F1TV Token Helper for experimental F1TV access.",
               "clear_live_timing_auth_header": "Remove the saved experimental F1TV token and continue with public live timing only."
             },
             "description": "The saved experimental F1TV token for {name} needs attention. Public live timing continues to work, but experimental F1TV live data will not be used until the token is replaced.",
             "title": "Update experimental F1TV live timing token"
+          },
+          "f1tv_pairing": {
+            "title": "Connect experimental F1TV access",
+            "description": "Use the F1TV Token Helper to send your token to Home Assistant. Experimental F1TV access is optional, and this pairing expires at {expires_at}."
           }
         }
       },
@@ -283,6 +289,9 @@
       },
       "clear_f1tv_access": {
         "name": "Clear experimental F1TV access"
+      },
+      "refresh_f1tv_access": {
+        "name": "Refresh experimental F1TV access"
       }
     },
     "switch": {

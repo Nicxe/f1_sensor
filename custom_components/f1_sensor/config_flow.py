@@ -25,6 +25,7 @@ from .const import (
     CONF_RACE_WEEK_START_DAY,
     CONF_RACE_WEEK_SUNDAY_START,
     CONF_REPLAY_FILE,
+    CONF_START_F1TV_PAIRING,
     DEFAULT_ENTITY_NAME_LANGUAGE,
     DEFAULT_OPERATION_MODE,
     DEFAULT_RACE_WEEK_START_DAY,
@@ -41,7 +42,6 @@ from .helpers import normalize_live_timing_auth_header
 _AUTH_HEADER_SELECTOR = TextSelector(
     TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="current-password")
 )
-CONF_START_F1TV_PAIRING = "start_f1tv_pairing"
 
 RACE_WEEK_START_OPTIONS = {
     RACE_WEEK_START_MONDAY: "Monday",

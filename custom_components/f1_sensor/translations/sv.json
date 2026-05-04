@@ -105,15 +105,21 @@
         "step": {
           "confirm": {
             "data": {
+              "start_f1tv_pairing": "Rekommenderat: Anslut experimentell F1TV-åtkomst med Token Helper",
               "live_timing_auth_header": "Experimentellt F1TV-auktoriseringsvärde",
               "clear_live_timing_auth_header": "Rensa experimentellt F1TV-auktoriseringsvärde"
             },
             "data_description": {
+              "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering.",
               "live_timing_auth_header": "Klistra in ett nytt Bearer-tokenvärde från F1TV Token Helper för experimentell F1TV-åtkomst.",
               "clear_live_timing_auth_header": "Ta bort den sparade experimentella F1TV-token och fortsätt med endast publik live timing."
             },
             "description": "Den sparade experimentella F1TV-token för {name} behöver åtgärdas. Publik live timing fortsätter fungera, men experimentell F1TV-live-data används inte förrän token har bytts ut.",
             "title": "Uppdatera experimentell F1TV live timing-token"
+          },
+          "f1tv_pairing": {
+            "title": "Anslut experimentell F1TV-åtkomst",
+            "description": "Använd F1TV Token Helper för att skicka din token till Home Assistant. Experimentell F1TV-åtkomst är valfri, och den här pairingen går ut {expires_at}."
           }
         }
       },
@@ -283,6 +289,9 @@
       },
       "clear_f1tv_access": {
         "name": "Rensa experimentell F1TV-åtkomst"
+      },
+      "refresh_f1tv_access": {
+        "name": "Uppdatera experimentell F1TV-åtkomst"
       }
     },
     "switch": {
