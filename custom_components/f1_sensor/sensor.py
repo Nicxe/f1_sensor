@@ -54,6 +54,7 @@ from .entity import (
 )
 from .helpers import (
     get_circuit_map_url,
+    get_circuit_outline_url,
     get_country_code,
     get_country_flag_url,
     get_next_race,
@@ -892,6 +893,9 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
             "circuit_map_url": get_circuit_map_url(
                 circuit.get("circuitId"), race.get("season")
             ),
+            "circuit_outline_url": get_circuit_outline_url(
+                circuit.get("circuitId"), race.get("season")
+            ),
             "circuit_timezone": timezone,
         }
 
@@ -1028,6 +1032,9 @@ class F1CurrentSeasonSensor(F1BaseEntity, SensorEntity):
             enriched["country_code"] = get_country_code(country)
             enriched["country_flag_url"] = get_country_flag_url(country)
             enriched["circuit_map_url"] = get_circuit_map_url(
+                circuit.get("circuitId"), race.get("season")
+            )
+            enriched["circuit_outline_url"] = get_circuit_outline_url(
                 circuit.get("circuitId"), race.get("season")
             )
             enriched_races.append(enriched)

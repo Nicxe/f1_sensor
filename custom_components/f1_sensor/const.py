@@ -180,12 +180,12 @@ FIA_DOCS_FETCH_TIMEOUT = 15
 FLAG_CDN_BASE_URL = "https://flagcdn.com/w80"
 
 # Detailed circuit map support (official F1 season-specific track maps)
-CIRCUIT_MAP_DETAILED_CDN_BASE_URL = (
+CIRCUIT_IMAGE_CDN_BASE_URL = (
     "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1"
 )
 
 # Verified 2026 detailed map slugs from official F1 race pages
-F1_DETAILED_CIRCUIT_MAP_SLUGS: dict[str, dict[str, str]] = {
+F1_CIRCUIT_IMAGE_SLUGS: dict[str, dict[str, str]] = {
     "2026": {
         "albert_park": "melbourne",
         "shanghai": "shanghai",
@@ -215,7 +215,9 @@ F1_DETAILED_CIRCUIT_MAP_SLUGS: dict[str, dict[str, str]] = {
 }
 
 # Legacy circuit map support (official F1 track maps with DRS zones)
-CIRCUIT_MAP_LEGACY_CDN_BASE_URL = "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9"
+CIRCUIT_IMAGE_LEGACY_CDN_BASE_URL = "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets"
+CIRCUIT_MAP_LEGACY_CDN_PATH = "Circuit%20maps%2016x9"
+CIRCUIT_OUTLINE_LEGACY_CDN_PATH = "Track%20icons%204x3"
 
 # Legacy fallback map from Ergast circuitId to F1 CDN filename (without suffix)
 F1_LEGACY_CIRCUIT_MAP_NAMES: dict[str, str] = {
@@ -244,6 +246,42 @@ F1_LEGACY_CIRCUIT_MAP_NAMES: dict[str, str] = {
     "vegas": "Las_Vegas",
     "losail": "Qatar",
     "yas_marina": "Abu_Dhabi",
+    # Historic circuits
+    "portimao": "Portugal",
+    "istanbul": "Turkey",
+    "sochi": "Russia",
+    "ricard": "France",
+    "mugello": "Tuscany",
+    "nurburgring": "Eifel",
+}
+
+# Legacy fallback map from Ergast circuitId to F1 CDN filename (without suffix)
+F1_LEGACY_CIRCUIT_OUTLINE_NAMES: dict[str, str] = {
+    # Current and recent calendars
+    "bahrain": "Bahrain",
+    "jeddah": "Saudi%20Arabia",
+    "albert_park": "Australia",
+    "suzuka": "Japan",
+    "shanghai": "China",
+    "miami": "Miami",
+    "imola": "Emilia%20Romagna",
+    "monaco": "Monaco",
+    "villeneuve": "Canada",
+    "catalunya": "Spain",
+    "red_bull_ring": "Austria",
+    "silverstone": "Great%20Britain",
+    "hungaroring": "Hungary",
+    "spa": "Belgium",
+    "zandvoort": "Netherlands",
+    "monza": "Italy",
+    "baku": "Azerbaijan",
+    "marina_bay": "Singapore",
+    "americas": "USA",
+    "rodriguez": "Mexico",
+    "interlagos": "Brazil",
+    "vegas": "Las%20Vegas",
+    "losail": "Qatar",
+    "yas_marina": "Abu%20Dhabi",
     # Historic circuits
     "portimao": "Portugal",
     "istanbul": "Turkey",
