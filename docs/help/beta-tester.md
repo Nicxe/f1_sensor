@@ -5,9 +5,7 @@ title: BETA-test
 
 Do you want to help shape the future of this integration?
 By becoming a beta tester, you play an active role in improving functionality, stability, and overall user experience.
-
-
-::::danger Important recommendations
+:::danger[Important recommendations]
 
 Beta versions are not guaranteed to be stable. For that reason:
 * Do not install beta versions in your production Home Assistant instance
@@ -15,7 +13,7 @@ Beta versions are not guaranteed to be stable. For that reason:
 * Expect breaking changes, incomplete features, and temporary limitations
 
 If something breaks, that is part of the process, and also where your contribution is most valuable.
-::::
+:::
 
 
 ## What it means to be a beta tester
@@ -81,11 +79,11 @@ To test the latest beta version of the integration, you install it directly thro
 * Verify the installed version under the integration details
 * Enable debug logging if you plan to report issues
 
-::::important 
+:::warning
 * Beta versions may contain unfinished features or breaking changes
 * Do not install beta versions in a production Home Assistant instance
 * Always read the release notes before updating, especially for beta releases
-::::
+:::
 
 ### Enable Debug Logging
 
@@ -111,11 +109,9 @@ When creating a GitHub issue, include:
 * What you were doing when the issue occurred
 * What you expected to happen
 * Relevant debug log output
-
-
-:::important
+:::warning
 Debug logging can generate a lot of log data. Disable debug logging once you are done testing to keep logs clean
-::::
+:::
 
 
 ---
@@ -144,10 +140,9 @@ This makes the replay behavior as close to a real live session as possible and i
 Below are example replay dumps from different sessions during the 2025 season that can be used for testing. Each dump represents a specific session and can be replayed independently by updating the replay dump path.
 
 More dumps may be added over time as additional sessions are recorded and prepared for testing.
-
-::::tip Replay dumps 
+:::tip[Replay dumps]
 You can find the Replay dumps **[here](https://github.com/Nicxe/f1_sensor/tree/develop/replay_dumps)**
-::::
+:::
 
 
 ### How to enable development mode
@@ -187,10 +182,9 @@ Report these in Issues: https://github.com/Nicxe/f1_sensor/issues
 **Questions, ideas, and general discussions.**
 
 Use Discussions instead: https://github.com/Nicxe/f1_sensor/discussions/190
-
-:::info PLEASE
+:::info[PLEASE]
 Using the correct channel helps keep development focused and efficient.
-::::
+:::
 
 ### How to write a good issue
 
@@ -227,10 +221,9 @@ As a beta tester, you may be asked to:
 * Test a proposed fix
 * Verify that an issue is resolved in a new release
 * Provide feedback on changes or behavior
-
-::::info
+:::info
 Following up on your own issues helps close them faster and improves quality for everyone.
-::::
+:::
 
 
 Thank you for helping improve the integration and for taking the time to report issues clearly and thoughtfully.

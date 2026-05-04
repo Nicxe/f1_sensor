@@ -60,8 +60,7 @@ No Spoiler Mode is controlled by a single global switch:
 | `switch.f1_sensor_no_spoiler_mode` | Turn No Spoiler Mode on or off |
 
 The switch is available under the F1 system device, alongside the live delay calibration switch. It controls the mode for all your F1 Sensor entries at once.
-
-:::info One switch for everything
+:::info[One switch for everything]
 If you have multiple F1 Sensor config entries, there is still only one No Spoiler Mode switch. Activating it blocks spoiler data across all entries simultaneously.
 :::
 
