@@ -85,6 +85,7 @@ SENSOR_OPTIONS = {
     "pitstops": "Pit stops (experimental F1TV live/replay)",
     "championship_prediction": "Championship prediction (experimental F1TV live/replay)",
     "driver_positions": "Driver positions (live)",
+    "starting_grid": "Starting grid (live)",
     "track_limits": "Track limits (live)",
     "investigations": "Investigations & penalties (live)",
     "overtake_mode": "Overtake mode (live)",

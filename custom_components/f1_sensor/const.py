@@ -108,6 +108,7 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "live_timing_diagnostics",
         "tyre_statistics",
         "driver_positions",
+        "starting_grid",
         "track_limits",
         "investigations",
         "calendar",

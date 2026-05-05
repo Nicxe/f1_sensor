@@ -205,6 +205,9 @@
       "driver_positions": {
         "name": "Driver positions"
       },
+      "starting_grid": {
+        "name": "Starting grid"
+      },
       "track_limits": {
         "name": "Track limits"
       },

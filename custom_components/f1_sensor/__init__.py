@@ -111,6 +111,7 @@ from .signalr import (
     LiveBus,
     build_live_subscribe_streams,
 )
+from .starting_grid import StartingGridCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1590,6 +1591,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     race_control_log_store = None
     live_mode_coordinator = None
     top_three_coordinator = None
+    starting_grid_coordinator = None
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
@@ -1714,6 +1716,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         replay_controller=replay_controller,
     )
 
+    if "starting_grid" in enabled:
+        starting_grid_coordinator = StartingGridCoordinator(
+            hass,
+            session_coordinator,
+            bus=live_bus,
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+        )
+
     if enable_rc:
         track_status_coordinator = TrackStatusCoordinator(
             hass,
@@ -1811,6 +1827,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 err.__cause__ or err,
             )
     await session_coordinator.async_config_entry_first_refresh()
+    if starting_grid_coordinator:
+        await starting_grid_coordinator.async_config_entry_first_refresh()
     if track_status_coordinator:
         await track_status_coordinator.async_config_entry_first_refresh()
     if session_status_coordinator:
@@ -1945,6 +1963,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
         _RC_LOG_STORE_KEY: race_control_log_store if enable_rc else None,
         "live_mode_coordinator": live_mode_coordinator if enable_rc else None,
+        "starting_grid_coordinator": starting_grid_coordinator,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
         "top_three_coordinator": top_three_coordinator,
@@ -1983,6 +2002,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             session_clock_coordinator,
             race_control_coordinator if enable_rc else None,
             live_mode_coordinator if enable_rc else None,
+            starting_grid_coordinator,
             weather_data_coordinator if enable_rc else None,
             lap_count_coordinator if enable_rc else None,
             top_three_coordinator,
@@ -5533,6 +5553,10 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
     if isinstance(coordinator, ChampionshipPredictionCoordinator):
         _clear_delayed_ingest_state(coordinator)
         coordinator._reset_store()
+        return
+
+    if isinstance(coordinator, StartingGridCoordinator):
+        coordinator.reset_runtime_state("replay_reset")
         return
 
     if isinstance(coordinator, LiveDriversCoordinator):

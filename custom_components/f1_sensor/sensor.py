@@ -264,6 +264,7 @@ async def async_setup_entry(
         "current_tyres": (F1CurrentTyresSensor, data.get("drivers_coordinator")),
         "tyre_statistics": (F1TyreStatisticsSensor, data.get("drivers_coordinator")),
         "driver_positions": (F1DriverPositionsSensor, data.get("drivers_coordinator")),
+        "starting_grid": (F1StartingGridSensor, data.get("starting_grid_coordinator")),
         "fia_documents": (F1FiaDocumentsSensor, data.get("fia_documents_coordinator")),
         "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
         "straight_mode": (F1StraightModeSensor, data.get("live_mode_coordinator")),
@@ -6002,6 +6003,117 @@ class F1TyreStatisticsSensor(_CoordinatorStreamSensorBase):
     @property
     def state(self):
         return self._attr_native_value
+
+
+class F1StartingGridSensor(F1BaseEntity, RestoreEntity, SensorEntity):
+    """Sensor exposing the currently relevant starting grid for the weekend."""
+
+    _device_category = "session"
+    _unrecorded_attributes = frozenset({"grid"})
+    _attr_translation_key = "starting_grid"
+
+    _ATTR_KEYS = (
+        "status",
+        "grid_context",
+        "weekend_key",
+        "weekend_format",
+        "meeting_name",
+        "session_key",
+        "source_session_name",
+        "target_session_name",
+        "source",
+        "source_updated_at",
+        "cleared_at",
+        "cleared_reason",
+        "grid_count",
+        "grid",
+    )
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:grid"
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = self._empty_attributes()
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        updated = self._update_from_coordinator()
+        if not updated:
+            await self._restore_if_relevant()
+        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
+        self.async_on_remove(removal)
+        self.async_write_ha_state()
+
+    def _handle_coordinator_update(self) -> None:
+        prev_state = self._attr_native_value
+        prev_attrs = self._attr_extra_state_attributes
+        self._update_from_coordinator()
+        if (
+            prev_state == self._attr_native_value
+            and prev_attrs == self._attr_extra_state_attributes
+        ):
+            return
+        self._safe_write_ha_state()
+
+    def _update_from_coordinator(self) -> bool:
+        data = self.coordinator.data
+        if not isinstance(data, dict) or data.get("status") is None:
+            return False
+        self._apply_payload(data)
+        return True
+
+    async def _restore_if_relevant(self) -> bool:
+        last = await self.async_get_last_state()
+        if not last or last.state in (None, "unknown", "unavailable"):
+            return False
+        attrs = dict(getattr(last, "attributes", {}) or {})
+        current = (
+            self.coordinator.data if isinstance(self.coordinator.data, dict) else {}
+        )
+        current_weekend = current.get("weekend_key")
+        current_context = current.get("grid_context")
+        if not current_weekend or attrs.get("weekend_key") != current_weekend:
+            return False
+        if current_context and attrs.get("grid_context") != current_context:
+            return False
+        if attrs.get("status") == "completed" or current.get("status") == "completed":
+            return False
+        restored = {key: attrs.get(key) for key in self._ATTR_KEYS}
+        restored["status"] = str(last.state)
+        grid = attrs.get("grid")
+        restored["grid"] = grid if isinstance(grid, list) else []
+        restored["grid_count"] = len(restored["grid"])
+        self._apply_payload(restored)
+        return True
+
+    def _apply_payload(self, data: dict) -> None:
+        status = data.get("status")
+        self._attr_native_value = str(status) if status is not None else None
+        attrs = self._empty_attributes()
+        for key in self._ATTR_KEYS:
+            if key == "grid":
+                grid = data.get("grid")
+                attrs["grid"] = grid if isinstance(grid, list) else []
+            else:
+                attrs[key] = data.get(key)
+        attrs["status"] = self._attr_native_value
+        attrs["grid_count"] = len(attrs["grid"])
+        self._attr_extra_state_attributes = attrs
+
+    @classmethod
+    def _empty_attributes(cls) -> dict:
+        attrs = dict.fromkeys(cls._ATTR_KEYS)
+        attrs["grid"] = []
+        attrs["grid_count"] = 0
+        return attrs
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def extra_state_attributes(self):
+        return self._attr_extra_state_attributes
 
 
 class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):

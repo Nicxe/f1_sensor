@@ -205,6 +205,9 @@
       "driver_positions": {
         "name": "Förarpositioner"
       },
+      "starting_grid": {
+        "name": "Startgrid"
+      },
       "track_limits": {
         "name": "Spårgränser"
       },
