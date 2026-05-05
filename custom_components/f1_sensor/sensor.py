@@ -1374,6 +1374,7 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
             return {
                 "number": r.get("number"),
                 "position": r.get("position"),
+                "grid": r.get("grid"),
                 "points": r.get("points"),
                 "status": r.get("status"),
                 "driver": {
@@ -6022,6 +6023,8 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 },
                 "completed_laps": 45,
                 "status": "on_track",
+                "gap_to_leader": "+1.234",
+                "interval_to_position_ahead": "+0.456",
                 "in_pit": False,
                 "pit_out": False,
                 "retired": False,
@@ -6285,6 +6288,8 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 drv.setdefault("fastest_lap_time", None)
                 drv.setdefault("fastest_lap_time_secs", None)
                 drv.setdefault("fastest_lap_lap", None)
+                drv.setdefault("gap_to_leader", None)
+                drv.setdefault("interval_to_position_ahead", None)
                 drv.setdefault("q1_time", None)
                 drv.setdefault("q1_knocked_out", None)
                 drv.setdefault("q1_position", None)
@@ -6385,6 +6390,8 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     "completed_laps", lap_history.get("last_recorded_lap", 0)
                 ),
                 "status": status,
+                "gap_to_leader": timing.get("gap_to_leader"),
+                "interval_to_position_ahead": timing.get("interval"),
                 "fastest_lap": is_fastest,
                 "fastest_lap_time": fastest.get("time") if is_fastest else None,
                 "fastest_lap_time_secs": (

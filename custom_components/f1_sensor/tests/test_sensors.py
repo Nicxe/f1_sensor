@@ -43,6 +43,7 @@ from custom_components.f1_sensor.sensor import (
     F1DriverPointsProgressionSensor,
     F1DriverPositionsSensor,
     F1DriverStandingsSensor,
+    F1LastRaceSensor,
     F1LiveTimingModeSensor,
     F1NextRaceSensor,
     F1PitStopsSensor,
@@ -170,6 +171,57 @@ def _build_season_results_data(
             }
         )
     return {"MRData": {"RaceTable": {"season": season, "Races": races}}}
+
+
+@pytest.mark.asyncio
+async def test_last_race_results_sensor_exposes_grid_position(hass) -> None:
+    coordinator = _build_coordinator(
+        hass,
+        {
+            "MRData": {
+                "RaceTable": {
+                    "Races": [
+                        {
+                            "round": "11",
+                            "raceName": "Austrian Grand Prix",
+                            "Circuit": {},
+                            "Results": [
+                                {
+                                    "number": "4",
+                                    "position": "1",
+                                    "positionText": "1",
+                                    "grid": "2",
+                                    "points": "25",
+                                    "status": "Finished",
+                                    "Driver": {
+                                        "permanentNumber": "4",
+                                        "code": "NOR",
+                                        "givenName": "Lando",
+                                        "familyName": "Norris",
+                                    },
+                                    "Constructor": {
+                                        "constructorId": "mclaren",
+                                        "name": "McLaren",
+                                    },
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        },
+    )
+    sensor = F1LastRaceSensor(
+        coordinator,
+        "test_entry_last_race_results",
+        "test_entry",
+        "F1",
+    )
+
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == "Norris"
+    assert state.attributes["results"][0]["grid"] == "2"
 
 
 def _build_sprint_results_data(

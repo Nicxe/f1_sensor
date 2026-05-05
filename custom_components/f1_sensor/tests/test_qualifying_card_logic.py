@@ -52,10 +52,16 @@ const methodSources = [
   extractMethod("_resolveDisplayQualifyingPart(sessionState, ...parts)"),
   extractMethod("_normalizeQualifyingPart(value)"),
   extractMethod("_inferQualifyingPartFromDrivers(drivers)"),
+  extractMethod("_asDriversList(value)"),
+  extractMethod("_hasUsableDriversEntity(entityState)"),
 ];
 
 const Harness = new Function(
   `
+  const isUnavailableLikeEntityState = (entityState) => {
+    const state = String(entityState?.state || "").trim().toLowerCase();
+    return state === "unavailable" || state === "unknown";
+  };
   const COMPOUND_FALLBACK = {
     SOFT: "#ff3b30",
     MEDIUM: "#ffd60a",
@@ -118,6 +124,18 @@ process.stdout.write(
     callUsesSessionPart: source.includes(
       "rows = this._buildRows(positionDrivers, tyresDrivers, driverList, sessionPart);",
     ),
+    renderUsesUsableDriversEntity: source.includes(
+      "positionsState && this._hasUsableDriversEntity(positionsState)",
+    ),
+    renderNormalizesPositionDrivers: source.includes(
+      "const positionDrivers = this._asDriversList(positionsState?.attributes?.drivers);",
+    ),
+    unknownStateWithDriversUsable: harness._hasUsableDriversEntity({
+      state: "unknown",
+      attributes: {
+        drivers: payload.positionDrivers,
+      },
+    }),
     sessionPart,
     rows,
   }),
@@ -183,6 +201,29 @@ def test_qualifying_card_reuses_inferred_qpart_for_rows() -> None:
     assert result["sessionPart"] == 2
     assert result["rows"][0]["position"] == 3
     assert result["rows"][0]["current_segment_best_lap"] == "1:19.525"
+
+
+def test_qualifying_card_uses_replay_attributes_when_position_state_unknown() -> None:
+    """Replay qualifying can expose driver attributes while the lap state is unknown."""
+    result = _run_card_probe(
+        current_q_part=1,
+        position_drivers=[
+            {
+                "racing_number": "16",
+                "tla": "LEC",
+                "team": "Ferrari",
+                "q1_time": "1:27.456",
+                "q1_position": 1,
+                "current_position": None,
+            }
+        ],
+    )
+
+    assert result["renderUsesUsableDriversEntity"] is True
+    assert result["renderNormalizesPositionDrivers"] is True
+    assert result["unknownStateWithDriversUsable"] is True
+    assert result["rows"][0]["position"] == 1
+    assert result["rows"][0]["current_segment_best_lap"] == "1:27.456"
 
 
 def test_qualifying_card_normalizes_string_qpart_for_rows() -> None:
