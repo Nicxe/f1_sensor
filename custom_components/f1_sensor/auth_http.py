@@ -14,6 +14,7 @@ from urllib.parse import urlencode
 
 from aiohttp import web
 from homeassistant.components.http import KEY_HASS, HomeAssistantView
+from homeassistant.components.repairs import repairs_flow_manager
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
@@ -52,6 +53,7 @@ class F1TvPairingSession:
     created_at: datetime
     expires_at: datetime
     flow_id: str | None = None
+    flow_manager: str | None = None
     used: bool = False
     auth_header: str | None = None
     auth_status: F1TvAuthStatus | None = None
@@ -125,6 +127,7 @@ def async_create_f1tv_pairing_session(
     entry: ConfigEntry | None = None,
     *,
     flow_id: str | None = None,
+    flow_manager: str | None = None,
     callback_url: str | None = None,
 ) -> F1TvPairingSession | None:
     """Create a short-lived pairing session for one config entry or setup flow."""
@@ -153,6 +156,7 @@ def async_create_f1tv_pairing_session(
         created_at=now,
         expires_at=expires_at,
         flow_id=flow_id,
+        flow_manager=flow_manager,
     )
     _pairing_sessions(hass)[session_id] = session
     return session
@@ -225,11 +229,7 @@ async def async_process_f1tv_pairing_callback(
         session.used = True
         session.auth_header = auth_header
         session.auth_status = status
-        if session.flow_id:
-            with suppress(Exception):
-                await hass.config_entries.flow.async_configure(
-                    session.flow_id, {"session_id": session_id}
-                )
+        await _async_complete_pairing_flow(hass, session, session_id)
         return HTTPStatus.OK, {
             "ok": True,
             "code": "connected",
@@ -251,17 +251,32 @@ async def async_process_f1tv_pairing_callback(
     ir.async_delete_issue(hass, DOMAIN, issue_id)
     await hass.config_entries.async_reload(entry.entry_id)
 
-    if session.flow_id:
-        with suppress(Exception):
-            await hass.config_entries.flow.async_configure(
-                session.flow_id, {"session_id": session_id}
-            )
+    await _async_complete_pairing_flow(hass, session, session_id)
 
     return HTTPStatus.OK, {
         "ok": True,
         "code": "connected",
         "expires_at": status.expires_at_iso,
     }
+
+
+async def _async_complete_pairing_flow(
+    hass: HomeAssistant, session: F1TvPairingSession, session_id: str
+) -> None:
+    """Notify the owning flow that helper pairing has completed."""
+    if not session.flow_id:
+        return
+    with suppress(Exception):
+        if session.flow_manager == "repairs":
+            manager = repairs_flow_manager(hass)
+            if manager is not None:
+                await manager.async_configure(
+                    session.flow_id, {"session_id": session_id}
+                )
+            return
+        await hass.config_entries.flow.async_configure(
+            session.flow_id, {"session_id": session_id}
+        )
 
 
 class F1TvAuthCallbackView(HomeAssistantView):

@@ -21,9 +21,14 @@ from .auth import (
     is_auth_feature_enabled,
     validate_replacement_auth_header,
 )
+from .auth_http import (
+    async_create_f1tv_pairing_session,
+    async_setup_f1tv_auth_http,
+)
 from .const import (
     CONF_CLEAR_LIVE_TIMING_AUTH_HEADER,
     CONF_LIVE_TIMING_AUTH_HEADER,
+    CONF_START_F1TV_PAIRING,
 )
 
 _AUTH_HEADER_SELECTOR = TextSelector(
@@ -51,6 +56,9 @@ class F1TvTokenRepairFlow(RepairsFlow):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            if bool(user_input.get(CONF_START_F1TV_PAIRING, False)):
+                return await self._async_start_f1tv_pairing()
+
             if bool(user_input.get(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, False)):
                 await self._async_save_auth_header("")
                 return self.async_create_entry(title="", data={})
@@ -67,6 +75,7 @@ class F1TvTokenRepairFlow(RepairsFlow):
             step_id="confirm",
             data_schema=vol.Schema(
                 {
+                    vol.Optional(CONF_START_F1TV_PAIRING, default=False): cv.boolean,
                     vol.Optional(CONF_LIVE_TIMING_AUTH_HEADER): _AUTH_HEADER_SELECTOR,
                     vol.Optional(
                         CONF_CLEAR_LIVE_TIMING_AUTH_HEADER,
@@ -77,6 +86,37 @@ class F1TvTokenRepairFlow(RepairsFlow):
             errors=errors,
             description_placeholders={"name": self._entry.title or "F1"},
         )
+
+    async def _async_start_f1tv_pairing(self) -> FlowResult:
+        """Start the helper pairing external step."""
+        if not is_auth_feature_enabled():
+            return self.async_abort(reason="f1tv_pairing_unavailable")
+        async_setup_f1tv_auth_http(self.hass)
+        session = async_create_f1tv_pairing_session(
+            self.hass,
+            self._entry,
+            flow_id=self.flow_id,
+            flow_manager="repairs",
+        )
+        if session is None:
+            return self.async_abort(reason="f1tv_pairing_unavailable")
+        return self.async_external_step(
+            step_id="f1tv_pairing",
+            url=session.helper_url,
+            description_placeholders={"expires_at": session.expires_at_iso},
+        )
+
+    async def async_step_f1tv_pairing(
+        self, user_input: dict[str, object] | None = None
+    ) -> FlowResult:
+        """Finish the external helper step."""
+        return self.async_external_step_done(next_step_id="f1tv_pairing_complete")
+
+    async def async_step_f1tv_pairing_complete(
+        self, user_input: dict[str, object] | None = None
+    ) -> FlowResult:
+        """Complete the repair after the callback updates the entry."""
+        return self.async_create_entry(title="", data={})
 
     async def _async_save_auth_header(self, auth_header: str) -> None:
         data = dict(self._entry.data)

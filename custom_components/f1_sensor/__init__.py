@@ -111,6 +111,7 @@ from .signalr import (
     LiveBus,
     build_live_subscribe_streams,
 )
+from .starting_grid import StartingGridCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1590,6 +1591,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     race_control_log_store = None
     live_mode_coordinator = None
     top_three_coordinator = None
+    starting_grid_coordinator = None
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
@@ -1627,6 +1629,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 capabilities["active_live_streams"] = frozenset(
                     build_live_subscribe_streams(include_auth_gated=False)
                 )
+            formation_tracker = entry_data.get("formation_start_tracker")
+            if formation_tracker is not None and hasattr(formation_tracker, "reset"):
+                with suppress(Exception):
+                    formation_tracker.reset(status="unavailable")
             live_state = entry_data.get("live_state")
             if live_state is not None:
                 for coordinator_key in (
@@ -1673,18 +1679,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_state = LiveAvailabilityTracker()
         live_state.set_state(True, "replay-mode")
 
-    def _replay_only_streams_active() -> bool:
+    def _formation_start_stream_active() -> bool:
         if operation_mode == OPERATION_MODE_DEVELOPMENT:
             return True
-        return bool(getattr(live_state, "is_live", False)) and _is_replay_delay_reason(
-            getattr(live_state, "reason", None)
+        if not bool(getattr(live_state, "is_live", False)):
+            return False
+        reason = getattr(live_state, "reason", None)
+        if _is_replay_delay_reason(reason):
+            return True
+        capabilities = (
+            hass.data.get(DOMAIN, {})
+            .get(entry.entry_id, {})
+            .get("signalr_stream_capabilities")
         )
+        if isinstance(capabilities, dict):
+            auth_gated_streams = capabilities.get("auth_gated_live_streams")
+            return bool(
+                capabilities.get("auth_enabled")
+                and isinstance(auth_gated_streams, (set, frozenset, tuple, list))
+                and "CarData.z" in auth_gated_streams
+            )
+        return bool(live_bus.auth_enabled and "CarData.z" in AUTH_GATED_LIVE_STREAMS)
 
     formation_tracker = FormationStartTracker(
         hass,
         bus=live_bus,
         http_session=session,
-        availability_guard=_replay_only_streams_active,
+        availability_guard=_formation_start_stream_active,
     )
 
     def _reload_entry():
@@ -1713,6 +1734,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         formation_tracker=formation_tracker,
         replay_controller=replay_controller,
     )
+
+    if "starting_grid" in enabled:
+        starting_grid_coordinator = StartingGridCoordinator(
+            hass,
+            session_coordinator,
+            bus=live_bus,
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+            live_state=live_state,
+        )
 
     if enable_rc:
         track_status_coordinator = TrackStatusCoordinator(
@@ -1811,6 +1847,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 err.__cause__ or err,
             )
     await session_coordinator.async_config_entry_first_refresh()
+    if starting_grid_coordinator:
+        await starting_grid_coordinator.async_config_entry_first_refresh()
     if track_status_coordinator:
         await track_status_coordinator.async_config_entry_first_refresh()
     if session_status_coordinator:
@@ -1945,6 +1983,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
         _RC_LOG_STORE_KEY: race_control_log_store if enable_rc else None,
         "live_mode_coordinator": live_mode_coordinator if enable_rc else None,
+        "starting_grid_coordinator": starting_grid_coordinator,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
         "top_three_coordinator": top_three_coordinator,

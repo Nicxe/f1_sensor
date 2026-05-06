@@ -544,7 +544,9 @@ async def test_formation_start_turns_off_once_session_goes_live(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_formation_start_is_unavailable_during_live_sessions(hass) -> None:
+async def test_formation_start_is_unavailable_during_public_live_sessions(
+    hass,
+) -> None:
     entry_id = "test_entry"
     live_state = _LiveState(True, "live-Race")
     hass.data.setdefault(DOMAIN, {})[entry_id] = {
@@ -574,6 +576,44 @@ async def test_formation_start_is_unavailable_during_live_sessions(hass) -> None
     state = await _add_entity_and_get_state(hass, "binary_sensor", entity)
 
     assert state.state == STATE_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_formation_start_is_available_during_auth_live_sessions(hass) -> None:
+    entry_id = "test_entry"
+    live_state = _LiveState(True, "live-Race")
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+        "live_state": live_state,
+        "live_bus": _LiveBus(0.0),
+        "signalr_stream_capabilities": {
+            "auth_enabled": True,
+            "auth_gated_live_streams": frozenset({"CarData.z"}),
+        },
+    }
+    tracker = _FormationTracker(
+        {
+            "status": "ready",
+            "scheduled_start": "2026-03-08T03:59:00+00:00",
+            "formation_start": "2026-03-08T04:00:00+00:00",
+            "delta_seconds": 0.0,
+            "source": "signalr_cardata",
+            "session_type": "Race",
+            "session_name": "Race",
+            "error": None,
+        }
+    )
+    entity = F1FormationStartBinarySensor(
+        tracker,
+        f"{entry_id}_formation_start",
+        entry_id,
+        "F1",
+    )
+
+    state = await _add_entity_and_get_state(hass, "binary_sensor", entity)
+
+    assert state.state == "on"
+    assert state.attributes["source"] == "signalr_cardata"
 
 
 @pytest.mark.parametrize(

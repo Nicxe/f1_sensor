@@ -1,4 +1,4 @@
-"""Regression tests for timing-card layout and replay-only pit UX."""
+"""Regression tests for timing-card layout and auth-aware availability UX."""
 
 from __future__ import annotations
 
@@ -7,11 +7,18 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+
+
+class DummyCoordinator(SimpleNamespace):
+    def async_add_listener(self, _listener):
+        return lambda: None
+
 
 NODE_PROBE_SCRIPT = r"""
 const fs = require("node:fs");
@@ -43,6 +50,18 @@ function extractConst(signature) {
   const braceStart = source.indexOf("{", start);
   const end = findMatchingBrace(source, braceStart);
   const semicolon = source.indexOf(";", end);
+  return source.slice(start, semicolon + 1);
+}
+
+function extractStatement(signature) {
+  const start = source.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`Statement not found: ${signature}`);
+  }
+  const semicolon = source.indexOf(";", start);
+  if (semicolon === -1) {
+    throw new Error(`Statement semicolon not found: ${signature}`);
+  }
   return source.slice(start, semicolon + 1);
 }
 
@@ -108,6 +127,18 @@ function buildHost(data = {}) {
 }
 
 const helperSources = [
+  extractConst("const resolveEntityIdWithFallback = (hass, entityId) =>"),
+  extractConst("const getEntityStateWithFallback = (hass, entityId) =>"),
+  extractConst("const isUnavailableLikeEntityState = (entityState) =>"),
+  extractStatement("const DEFAULT_F1TV_AUTH_STATUS_ENTITY ="),
+  extractStatement("const F1TV_AUTH_ATTENTION_STATES ="),
+  extractConst("const findF1TvAuthStatusEntity = (hass) =>"),
+  extractConst("const resolveF1TvAuthStatus = (hass, entityId) =>"),
+  extractConst("const buildF1DataAvailabilityNotice = (hass, config, feature) =>"),
+  extractConst("const resolveF1DataAvailabilityNotice = ("),
+  extractConst("const normalizeF1GapMode = (value, fallback = 'ahead') =>"),
+  extractConst("const normalizeF1GapValue = (value) =>"),
+  extractConst("const formatF1DeltaSeconds = (value, zeroValue = '--') =>"),
   extractConst("const measureRenderedCardWidth = (host) =>"),
   extractConst("const DEFAULT_RESPONSIVE_BREAKPOINTS ="),
   extractConst("const getResponsiveBreakpoints = (host) =>"),
@@ -116,6 +147,7 @@ const helperSources = [
 ];
 
 const liveSessionClass = extractClass("class F1LiveSessionCard extends LitElement {");
+const driverLapTimesClass = extractClass("class F1DriverLapTimesCard extends LitElement {");
 const qualifyingClass = extractClass("class F1QualifyingTimingCard extends LitElement {");
 const practiceClass = extractClass("class F1PracticeTimingCard extends LitElement {");
 const raceLapClass = extractClass("class F1RaceLapCard extends LitElement {");
@@ -123,9 +155,15 @@ const driversClass = extractClass("class F1ChampionshipPredictionDriversCard ext
 const driversEditorClass = extractClass("class F1ChampionshipPredictionDriversCardEditor extends LitElement {");
 const teamsClass = extractClass("class F1ChampionshipPredictionTeamsCard extends LitElement {");
 const teamsEditorClass = extractClass("class F1ChampionshipPredictionTeamsCardEditor extends LitElement {");
+const pitStopClass = extractClass("class F1PitStopOverviewCard extends LitElement {");
+const pitStopEditorClass = extractClass("class F1PitStopOverviewCardEditor extends LitElement {");
+const raceLapEditorClass = extractClass("class F1RaceLapCardEditor extends LitElement {");
 
 const Harnesses = new Function(
   `
+  const LEGACY_ENTITY_ID_FALLBACKS = {};
+  const COMPOUND_FALLBACK = {};
+
   ${helperSources.join("\n\n")}
 
   class LiveSessionHarness {
@@ -133,11 +171,48 @@ const Harnesses = new Function(
   }
 
   class QualifyingHarness {
+    constructor(config = {}) {
+      this.config = {
+        show_team_logo: false,
+        show_full_name: false,
+        team_logo_style: 'color',
+        ...config,
+      };
+      this.hass = {};
+    }
+
     ${extractMethod(qualifyingClass, "getGridOptions() {")}
+    ${extractMethod(qualifyingClass, "_columns(layoutMode = 'wide', sessionPart = null, showDelta = false) {")}
+    ${extractMethod(qualifyingClass, "_buildRows(positionDrivers, tyresDrivers, driverList, currentQPart) {")}
+    ${extractMethod(qualifyingClass, "_applyCurrentSegmentDeltas(rows) {")}
+    ${extractMethod(qualifyingClass, "_normalizeQualifyingPart(value) {")}
+    ${extractMethod(qualifyingClass, "_inferQualifyingPartFromDrivers(drivers) {")}
+    ${extractMethod(qualifyingClass, "_resolveLastLapTime(pos) {")}
+    ${extractMethod(qualifyingClass, "_sectorClass(overallFastest, personalFastest, hasTiming) {")}
+    ${extractMethod(qualifyingClass, "_statusInfo(pos) {")}
+    ${extractMethod(qualifyingClass, "_normalizeColor(value) {")}
+    ${extractMethod(qualifyingClass, "_parsePosition(value) {")}
+    ${extractMethod(qualifyingClass, "_parseLapTimeSeconds(value) {")}
   }
 
   class PracticeHarness {
     ${extractMethod(practiceClass, "getGridOptions() {")}
+  }
+
+  class DriverLapTimesHarness {
+    constructor(config = {}) {
+      this.config = {
+        show_position: true,
+        show_team_logo: true,
+        show_tla: true,
+        show_gap: true,
+        show_last_lap: true,
+        show_best_lap: true,
+        ...config,
+      };
+    }
+
+    ${extractMethod(driverLapTimesClass, "_columns(lapNumbers = [], layoutMode = 'wide', gapMode = 'ahead') {")}
   }
 
   class RaceLapHarness {
@@ -146,6 +221,7 @@ const Harnesses = new Function(
         show_position: true,
         show_team_logo: true,
         show_full_name: false,
+        show_gap: true,
         show_tyre: true,
         show_tyre_age: true,
         show_pit_count: true,
@@ -156,13 +232,15 @@ const Harnesses = new Function(
     }
 
     ${extractMethod(raceLapClass, "getGridOptions() {")}
-    ${extractMethod(raceLapClass, "_columns(layoutMode = 'wide', suppressPit = false) {")}
+    ${extractMethod(raceLapClass, "_columns(layoutMode = 'wide', suppressPit = false, gapMode = 'ahead') {")}
   }
 
   return {
     measureRenderedCardWidth,
     getResponsiveLayoutMode,
+    resolveF1DataAvailabilityNotice,
     LiveSessionHarness,
+    DriverLapTimesHarness,
     QualifyingHarness,
     PracticeHarness,
     RaceLapHarness,
@@ -190,10 +268,44 @@ if (payload.action === "measure_width") {
   result = new Klass(payload.config || {}).getGridOptions();
 } else if (payload.action === "install_options") {
   result = extractInstallOptions(payload.className);
+} else if (payload.action === "driver_lap_columns") {
+  result = new Harnesses.DriverLapTimesHarness(payload.config || {})._columns(
+    payload.lapNumbers || [],
+    payload.layoutMode || "wide",
+    payload.gapMode || "ahead",
+  );
+} else if (payload.action === "qualifying_columns") {
+  result = new Harnesses.QualifyingHarness(payload.config || {})._columns(
+    payload.layoutMode || "wide",
+    payload.sessionPart ?? null,
+    Boolean(payload.showDelta),
+  );
+} else if (payload.action === "qualifying_rows") {
+  result = new Harnesses.QualifyingHarness(payload.config || {})._buildRows(
+    payload.positionDrivers || [],
+    payload.tyresDrivers || [],
+    payload.driverList || [],
+    payload.currentQPart ?? null,
+  ).map((row) => ({
+    rn: row.rn,
+    position: row.position,
+    current_segment_best_lap: row.current_segment_best_lap,
+    current_segment_delta: row.current_segment_delta,
+    current_segment_delta_secs: row.current_segment_delta_secs,
+  }));
 } else if (payload.action === "race_lap_columns") {
   result = new Harnesses.RaceLapHarness(payload.config || {})._columns(
     payload.layoutMode || "wide",
     Boolean(payload.suppressPit),
+    payload.gapMode || "ahead",
+  );
+} else if (payload.action === "availability_notice") {
+  result = Harnesses.resolveF1DataAvailabilityNotice(
+    { states: payload.hassStates || {} },
+    payload.config || {},
+    payload.feature || "predicted_points",
+    payload.dataUnavailable !== false,
+    payload.featureEnabled !== false,
   );
 } else if (payload.action === "source_checks") {
   result = {
@@ -205,10 +317,27 @@ if (payload.action === "measure_width") {
     teamsCardAvoidsLongTitle: !teamsClass.includes("Championship Standings Teams"),
     teamsEditorUsesShortTitle: teamsEditorClass.includes("Constructor Championship"),
     teamsEditorAvoidsLongTitle: !teamsEditorClass.includes("Championship Standings Teams"),
-    raceLapReplayNotePresent: raceLapClass.includes("Pit stop data is available in Replay Mode only"),
+    driversOldReplayOnlyCopyRemoved: !driversClass.includes("Predicted points available in Replay Mode only")
+      && !driversEditorClass.includes("Replay Mode only"),
+    teamsOldReplayOnlyCopyRemoved: !teamsClass.includes("Predicted points available in Replay Mode only")
+      && !teamsEditorClass.includes("Replay Mode only"),
+    pitStopOldReplayOnlyCopyRemoved: !pitStopClass.includes("Pit stop data is available in Replay Mode only")
+      && !pitStopEditorClass.includes("Replay Mode only"),
+    raceLapOldReplayOnlyCopyRemoved: !raceLapClass.includes("Pit stop data is available in Replay Mode only")
+      && !raceLapEditorClass.includes("Replay Mode only"),
+    raceLapAuthNoticePresent: raceLapClass.includes("resolveF1DataAvailabilityNotice("),
     raceLapPitSuppressionCallPresent: raceLapClass.includes(
       "Boolean(this.config.pitstops_entity) && !pitDataAvailable",
     ),
+    driverLapTimesGapFieldsPresent: driverLapTimesClass.includes("gap_to_leader")
+      && driverLapTimesClass.includes("interval_to_position_ahead")
+      && driverLapTimesClass.includes("_renderGapModeToggle(gapMode)"),
+    raceLapGapFieldsPresent: raceLapClass.includes("gap_to_leader")
+      && raceLapClass.includes("interval_to_position_ahead")
+      && raceLapClass.includes("_renderGapModeToggle(gapMode)"),
+    qualifyingDeltaPresent: qualifyingClass.includes("_applyCurrentSegmentDeltas(rows)")
+      && qualifyingClass.includes("current_segment_delta")
+      && qualifyingClass.includes("formatF1DeltaSeconds(delta, '--')"),
     qualifyingRowHeightPresent: qualifyingClass.includes(".qt-row:not(.header)")
       && qualifyingClass.includes("height: var(--f1-live-table-row-height, 34px);"),
     practiceRowHeightPresent: practiceClass.includes(".pt-row:not(.header)")
@@ -224,7 +353,7 @@ process.stdout.write(JSON.stringify(result));
 """
 
 
-def _run_probe(payload: dict) -> dict | list | str | int:
+def _run_probe(payload: dict) -> dict | list | str | int | None:
     """Execute a small Node probe against the actual card source."""
     if not CARD_PATH.exists():
         pytest.skip(f"card JS not found at {CARD_PATH}")
@@ -318,8 +447,351 @@ def test_race_lap_columns_hide_pit_count_when_pit_sensor_is_unavailable() -> Non
     assert all(column["key"] != "pit_count" for column in suppressed_columns)
 
 
-def test_timing_card_source_keeps_replay_only_pit_behavior_and_short_titles() -> None:
-    """Lock the user-facing replay-only pit UX and shorter default headers."""
+def test_driver_positions_sensor_exposes_public_race_gap_fields(hass) -> None:
+    """TimingData gaps should be exposed without relying on auth-gated streams."""
+    from custom_components.f1_sensor.sensor import F1DriverPositionsSensor
+
+    coord = DummyCoordinator(
+        data={
+            "lap_current": 12,
+            "lap_total": 58,
+            "drivers": {
+                "16": {
+                    "identity": {
+                        "tla": "LEC",
+                        "name": "Charles Leclerc",
+                        "team": "Ferrari",
+                    },
+                    "lap_history": {
+                        "grid_position": "2",
+                        "laps": {"12": "1:32.100"},
+                        "completed_laps": 12,
+                    },
+                    "timing": {
+                        "position": "2",
+                        "gap_to_leader": "+1.234",
+                        "interval": "+0.456",
+                    },
+                    "sectors": {},
+                }
+            },
+        }
+    )
+    sensor = F1DriverPositionsSensor(coord, "uid", "entry", "F1")
+    sensor.hass = hass
+    sensor._session_info_coordinator = SimpleNamespace(
+        data={"Type": "Race", "Name": "Race"}
+    )
+
+    assert sensor._update_from_coordinator(initial=True) is True
+
+    driver = sensor._attr_extra_state_attributes["drivers"][0]
+    assert driver["gap_to_leader"] == "+1.234"
+    assert driver["interval_to_position_ahead"] == "+0.456"
+
+
+def test_driver_lap_times_gap_column_can_switch_mode_and_hide() -> None:
+    ahead_columns = _run_probe(
+        {
+            "action": "driver_lap_columns",
+            "layoutMode": "wide",
+            "gapMode": "ahead",
+        }
+    )
+    leader_columns = _run_probe(
+        {
+            "action": "driver_lap_columns",
+            "layoutMode": "wide",
+            "gapMode": "leader",
+        }
+    )
+    hidden_columns = _run_probe(
+        {
+            "action": "driver_lap_columns",
+            "layoutMode": "wide",
+            "config": {"show_gap": False},
+        }
+    )
+
+    assert (
+        next(column for column in ahead_columns if column["key"] == "gap")["label"]
+        == "INT"
+    )
+    assert (
+        next(column for column in leader_columns if column["key"] == "gap")["label"]
+        == "GAP"
+    )
+    assert all(column["key"] != "gap" for column in hidden_columns)
+
+
+def test_race_lap_gap_column_can_switch_mode_and_hide() -> None:
+    ahead_columns = _run_probe(
+        {
+            "action": "race_lap_columns",
+            "layoutMode": "wide",
+            "gapMode": "ahead",
+        }
+    )
+    leader_columns = _run_probe(
+        {
+            "action": "race_lap_columns",
+            "layoutMode": "wide",
+            "gapMode": "leader",
+        }
+    )
+    hidden_columns = _run_probe(
+        {
+            "action": "race_lap_columns",
+            "layoutMode": "wide",
+            "config": {"show_gap": False},
+        }
+    )
+
+    assert (
+        next(column for column in ahead_columns if column["key"] == "gap")["label"]
+        == "Int"
+    )
+    assert (
+        next(column for column in leader_columns if column["key"] == "gap")["label"]
+        == "Gap"
+    )
+    assert all(column["key"] != "gap" for column in hidden_columns)
+
+
+def test_qualifying_delta_column_is_optional_and_uses_current_q_part() -> None:
+    hidden_columns = _run_probe(
+        {
+            "action": "qualifying_columns",
+            "layoutMode": "wide",
+            "sessionPart": 2,
+            "showDelta": False,
+        }
+    )
+    visible_columns = _run_probe(
+        {
+            "action": "qualifying_columns",
+            "layoutMode": "wide",
+            "sessionPart": 2,
+            "showDelta": True,
+        }
+    )
+    rows = _run_probe(
+        {
+            "action": "qualifying_rows",
+            "currentQPart": 2,
+            "positionDrivers": [
+                {
+                    "racing_number": "1",
+                    "tla": "VER",
+                    "current_position": "1",
+                    "q2_time": "1:10.000",
+                    "q2_position": 1,
+                },
+                {
+                    "racing_number": "16",
+                    "tla": "LEC",
+                    "current_position": "2",
+                    "q2_time": "1:10.345",
+                    "q2_position": 2,
+                },
+                {
+                    "racing_number": "44",
+                    "tla": "HAM",
+                    "current_position": "3",
+                },
+            ],
+        }
+    )
+
+    assert all(column["key"] != "delta" for column in hidden_columns)
+    assert any(column["key"] == "delta" for column in visible_columns)
+    assert rows[0] == {
+        "rn": "1",
+        "position": 1,
+        "current_segment_best_lap": "1:10.000",
+        "current_segment_delta": "--",
+        "current_segment_delta_secs": 0,
+    }
+    assert rows[1]["rn"] == "16"
+    assert rows[1]["position"] == 2
+    assert rows[1]["current_segment_best_lap"] == "1:10.345"
+    assert rows[1]["current_segment_delta"] == "+0.345"
+    assert rows[1]["current_segment_delta_secs"] == pytest.approx(0.345)
+    assert rows[2] == {
+        "rn": "44",
+        "position": None,
+        "current_segment_best_lap": None,
+        "current_segment_delta": None,
+        "current_segment_delta_secs": None,
+    }
+
+
+def _auth_state(
+    state: str, *, configured: bool, used_for_live_timing: bool = False
+) -> dict:
+    return {
+        "state": state,
+        "attributes": {
+            "auth_configured": configured,
+            "used_for_live_timing": used_for_live_timing,
+        },
+    }
+
+
+def test_prediction_notice_explains_missing_auth_by_default() -> None:
+    result = _run_probe(
+        {
+            "action": "availability_notice",
+            "feature": "predicted_points",
+            "hassStates": {
+                "sensor.f1_f1tv_token_status": _auth_state(
+                    "not_configured", configured=False
+                )
+            },
+        }
+    )
+
+    assert result == {
+        "tone": "info",
+        "message": "Predicted points are hidden because F1TV access is not configured. They are still available in Replay Mode.",
+    }
+
+
+def test_pit_stop_notice_explains_missing_auth_by_default() -> None:
+    result = _run_probe(
+        {
+            "action": "availability_notice",
+            "feature": "pit_stops",
+            "hassStates": {
+                "sensor.f1_f1tv_token_status": _auth_state(
+                    "not_configured", configured=False
+                )
+            },
+        }
+    )
+
+    assert result == {
+        "tone": "info",
+        "message": "Pit stop data is hidden because F1TV access is not configured. It is still available in Replay Mode.",
+    }
+
+
+def test_availability_notice_can_hide_non_actionable_info() -> None:
+    result = _run_probe(
+        {
+            "action": "availability_notice",
+            "feature": "predicted_points",
+            "config": {"show_availability_notice": False},
+            "hassStates": {
+                "sensor.f1_f1tv_token_status": _auth_state(
+                    "not_configured", configured=False
+                )
+            },
+        }
+    )
+
+    assert result is None
+
+
+def test_availability_notice_keeps_auth_attention_visible_when_hidden() -> None:
+    result = _run_probe(
+        {
+            "action": "availability_notice",
+            "feature": "predicted_points",
+            "config": {"show_availability_notice": False},
+            "hassStates": {
+                "sensor.f1_f1tv_token_status": _auth_state("rejected", configured=True)
+            },
+        }
+    )
+
+    assert result == {
+        "tone": "warning",
+        "message": "F1TV access needs attention, so live predicted points are hidden. Replay data remains available.",
+    }
+
+
+def test_availability_notice_is_hidden_for_valid_auth() -> None:
+    result = _run_probe(
+        {
+            "action": "availability_notice",
+            "feature": "predicted_points",
+            "hassStates": {
+                "sensor.f1_f1tv_token_status": _auth_state(
+                    "valid", configured=True, used_for_live_timing=True
+                )
+            },
+        }
+    )
+
+    assert result is None
+
+
+def test_availability_notice_auto_detects_prefixed_auth_status_entity() -> None:
+    result = _run_probe(
+        {
+            "action": "availability_notice",
+            "feature": "pit_stops",
+            "hassStates": {
+                "sensor.f1_system_f1_f1tv_token_status": _auth_state(
+                    "valid", configured=True, used_for_live_timing=True
+                )
+            },
+        }
+    )
+
+    assert result is None
+
+
+def test_availability_notice_handles_missing_auth_status_sensor() -> None:
+    result = _run_probe(
+        {
+            "action": "availability_notice",
+            "feature": "predicted_points",
+            "hassStates": {},
+        }
+    )
+
+    assert result == {
+        "tone": "info",
+        "message": "Predicted points are available in Replay Mode or live when F1TV access is active.",
+    }
+
+
+def test_availability_notice_is_not_rendered_when_data_is_available() -> None:
+    result = _run_probe(
+        {
+            "action": "availability_notice",
+            "feature": "predicted_points",
+            "dataUnavailable": False,
+            "hassStates": {
+                "sensor.f1_f1tv_token_status": _auth_state("valid", configured=True)
+            },
+        }
+    )
+
+    assert result is None
+
+
+def test_availability_notice_is_not_rendered_when_feature_is_disabled() -> None:
+    result = _run_probe(
+        {
+            "action": "availability_notice",
+            "feature": "pit_stops",
+            "featureEnabled": False,
+            "hassStates": {
+                "sensor.f1_f1tv_token_status": _auth_state(
+                    "not_configured", configured=False
+                )
+            },
+        }
+    )
+
+    assert result is None
+
+
+def test_timing_card_source_keeps_auth_aware_notices_and_short_titles() -> None:
+    """Lock the auth-aware availability UX and shorter default headers."""
     result = _run_probe({"action": "source_checks"})
 
     assert result == {
@@ -331,8 +803,15 @@ def test_timing_card_source_keeps_replay_only_pit_behavior_and_short_titles() ->
         "teamsCardAvoidsLongTitle": True,
         "teamsEditorUsesShortTitle": True,
         "teamsEditorAvoidsLongTitle": True,
-        "raceLapReplayNotePresent": True,
+        "driversOldReplayOnlyCopyRemoved": True,
+        "teamsOldReplayOnlyCopyRemoved": True,
+        "pitStopOldReplayOnlyCopyRemoved": True,
+        "raceLapOldReplayOnlyCopyRemoved": True,
+        "raceLapAuthNoticePresent": True,
         "raceLapPitSuppressionCallPresent": True,
+        "driverLapTimesGapFieldsPresent": True,
+        "raceLapGapFieldsPresent": True,
+        "qualifyingDeltaPresent": True,
         "qualifyingRowHeightPresent": True,
         "practiceRowHeightPresent": True,
         "raceLapRowHeightPresent": True,

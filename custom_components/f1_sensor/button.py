@@ -18,6 +18,10 @@ from .auth import (
     evaluate_f1tv_auth_header,
     is_auth_feature_enabled,
 )
+from .auth_http import (
+    async_create_f1tv_pairing_session,
+    async_setup_f1tv_auth_http,
+)
 from .calibration import LiveDelayCalibrationManager
 from .const import (
     API_URL,
@@ -68,6 +72,16 @@ async def async_setup_entry(
             unique_id=f"{entry.entry_id}_clear_f1tv_access",
         )
         set_suggested_object_id(entity, default_object_id("clear_f1tv_access"))
+        entities.append(entity)
+
+    if is_auth_feature_enabled():
+        entity = F1RefreshF1TvAccessButton(
+            hass=hass,
+            entry=entry,
+            device_name=name,
+            unique_id=f"{entry.entry_id}_refresh_f1tv_access",
+        )
+        set_suggested_object_id(entity, default_object_id("refresh_f1tv_access"))
         entities.append(entity)
 
     if const.ENABLE_DEVELOPMENT_MODE_UI and registry.get("http_session") is not None:
@@ -141,6 +155,51 @@ class F1ClearF1TvAccessButton(F1AuxEntity, ButtonEntity):
         async_set_runtime_f1tv_auth_status(self.hass, self._entry.entry_id, status)
         async_update_f1tv_auth_repair_issue(self.hass, self._entry, status)
         await self.hass.config_entries.async_reload(self._entry.entry_id)
+
+
+class F1RefreshF1TvAccessButton(F1AuxEntity, ButtonEntity):
+    """Button that starts a manual F1TV Token Helper pairing session."""
+
+    _device_category = "system"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:key-change"
+    _attr_translation_key = "refresh_f1tv_access"
+
+    def __init__(
+        self,
+        *,
+        hass: HomeAssistant,
+        unique_id: str,
+        entry: ConfigEntry,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, unique_id, entry.entry_id, device_name)
+        ButtonEntity.__init__(self)
+        self.hass = hass
+        self._entry = entry
+
+    async def async_press(self) -> None:
+        if not is_auth_feature_enabled():
+            return
+
+        async_setup_f1tv_auth_http(self.hass)
+        session = async_create_f1tv_pairing_session(self.hass, self._entry)
+        if session is None:
+            return
+
+        message = (
+            "Open the F1TV Token Helper to refresh experimental F1TV access.\n\n"
+            f"[Open F1TV Token Helper]({session.helper_url})\n\n"
+            f"This pairing expires at {session.expires_at_iso}."
+        )
+        result = persistent_notification.async_create(
+            self.hass,
+            message,
+            title="F1TV token refresh",
+            notification_id=f"{DOMAIN}_f1tv_token_refresh_{self._entry.entry_id}",
+        )
+        if isawaitable(result):
+            await result
 
 
 class F1MatchDelayButton(F1AuxEntity, ButtonEntity):
