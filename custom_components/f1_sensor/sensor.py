@@ -1547,6 +1547,7 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Sensor that tracks FIA decision documents per race weekend."""
 
     _device_category = "officials"
+    _unrecorded_attributes = frozenset({"documents"})
     _DOC1_RESET_PATTERN = re.compile(
         r"\bdoc(?:ument)?(?:\s+(?:no\.?|number))?\s*0*1\b",
         re.IGNORECASE,
@@ -1562,10 +1563,11 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:file-document-alert"
         self._attr_native_value = 0
-        self._attr_extra_state_attributes = {"documents": []}
+        self._attr_extra_state_attributes = self._build_attributes(None, [], None)
         self._documents: list[dict] = []
         self._seen_urls: set[str] = set()
         self._event_key: str | None = None
+        self._race: dict | None = None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -1602,6 +1604,8 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                         "published": published,
                     }
                 ]
+        race = attrs.get("race")
+        self._race = race if isinstance(race, dict) else None
         self._sort_documents()
 
         latest = (
@@ -1610,7 +1614,9 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_native_value = (
             self._extract_doc_number(latest.get("name")) if latest else 0
         )
-        self._attr_extra_state_attributes = self._build_latest_attributes(latest)
+        self._attr_extra_state_attributes = self._build_attributes(
+            latest, self._documents, self._race
+        )
 
     def _handle_coordinator_update(self) -> None:
         changed = self._update_from_coordinator()
@@ -1629,14 +1635,19 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         data = self.coordinator.data or {}
         updated = False
         event_key = data.get("event_key")
+        race = data.get("race") if isinstance(data.get("race"), dict) else None
         documents = (
             data.get("documents") if isinstance(data.get("documents"), list) else []
         )
 
         if isinstance(event_key, str) and event_key and event_key != self._event_key:
             self._event_key = event_key
+            self._race = race
             self._documents = []
             self._seen_urls = set()
+            updated = True
+        elif race != self._race:
+            self._race = race
             updated = True
 
         # Process documents from oldest to newest so that "Doc 1" for the
@@ -1677,7 +1688,7 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self._select_latest_document(self._documents) if self._documents else None
         )
         new_state = self._extract_doc_number(latest.get("name")) if latest else 0
-        attrs = self._build_latest_attributes(latest)
+        attrs = self._build_attributes(latest, self._documents, self._race)
 
         if (
             force
@@ -1776,14 +1787,57 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         return best_doc or docs[-1]
 
     @classmethod
-    def _build_latest_attributes(cls, latest: dict | None) -> dict:
-        """Build attributes for the latest document only."""
-        if not isinstance(latest, dict) or not latest:
+    def _clean_document_attribute(cls, doc: dict | None) -> dict:
+        """Return a compact, stable document shape for state attributes."""
+        if not isinstance(doc, dict) or not doc:
             return {}
+        name = doc.get("name")
+        number = cls._extract_doc_number(name)
+        cleaned = {
+            "name": name,
+            "url": doc.get("url"),
+            "published": doc.get("published"),
+        }
+        if number:
+            cleaned["document_number"] = number
+        return cleaned
+
+    @staticmethod
+    def _clean_race_attribute(race: dict | None) -> dict | None:
+        """Return compact race context for frontend cards."""
+        if not isinstance(race, dict) or not race:
+            return None
         return {
-            "name": latest.get("name"),
-            "url": latest.get("url"),
-            "published": latest.get("published"),
+            "season": race.get("season"),
+            "round": race.get("round"),
+            "race_name": race.get("race_name"),
+            "race_date": race.get("race_date"),
+            "race_time": race.get("race_time"),
+            "circuit_name": race.get("circuit_name"),
+            "locality": race.get("locality"),
+            "country": race.get("country"),
+        }
+
+    @classmethod
+    def _build_attributes(
+        cls,
+        latest: dict | None,
+        documents: list[dict] | None,
+        race: dict | None,
+    ) -> dict:
+        """Build frontend-friendly attributes while keeping latest fields flat."""
+        cleaned_documents = [
+            cleaned
+            for doc in documents or []
+            if (cleaned := cls._clean_document_attribute(doc))
+        ]
+        latest_cleaned = cls._clean_document_attribute(latest)
+        return {
+            "name": latest_cleaned.get("name"),
+            "url": latest_cleaned.get("url"),
+            "published": latest_cleaned.get("published"),
+            "documents": cleaned_documents,
+            "race": cls._clean_race_attribute(race),
         }
 
 

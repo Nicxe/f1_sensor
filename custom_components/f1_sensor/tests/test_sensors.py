@@ -5,6 +5,9 @@ import base64
 from datetime import UTC, datetime, timedelta
 import json
 import logging
+from pathlib import Path
+import shutil
+import subprocess
 import time
 from unittest.mock import AsyncMock, MagicMock
 
@@ -43,6 +46,7 @@ from custom_components.f1_sensor.sensor import (
     F1DriverPointsProgressionSensor,
     F1DriverPositionsSensor,
     F1DriverStandingsSensor,
+    F1FiaDocumentsSensor,
     F1LastRaceSensor,
     F1LiveTimingModeSensor,
     F1NextRaceSensor,
@@ -58,6 +62,116 @@ from custom_components.f1_sensor.signalr import LiveBus
 
 _LOGGER = logging.getLogger(__name__)
 MAX_STATE_ATTRS_BYTES = 16384
+ROOT = Path(__file__).resolve().parents[3]
+CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+
+FIA_DOCUMENTS_CARD_PROBE_SCRIPT = r"""
+const fs = require("node:fs");
+
+const payload = JSON.parse(process.env.FIA_DOCUMENTS_CARD_PAYLOAD || "{}");
+const source = fs.readFileSync(process.env.FIA_DOCUMENTS_CARD_PATH, "utf8");
+
+function findMatchingBrace(text, openIndex) {
+  let depth = 0;
+  for (let idx = openIndex; idx < text.length; idx += 1) {
+    const ch = text[idx];
+    if (ch === "{") {
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return idx;
+      }
+    }
+  }
+  throw new Error(`Unmatched brace starting at ${openIndex}`);
+}
+
+function extractClass(signature) {
+  const start = source.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`Class signature not found: ${signature}`);
+  }
+  const braceStart = source.indexOf("{", start);
+  const end = findMatchingBrace(source, braceStart);
+  return source.slice(start, end + 1);
+}
+
+function extractMethod(classSource, signature) {
+  const start = classSource.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`Method signature not found: ${signature}`);
+  }
+  const braceStart = classSource.indexOf("{", start);
+  const end = findMatchingBrace(classSource, braceStart);
+  return classSource.slice(start, end + 1);
+}
+
+const classSource = extractClass("class F1FiaDocumentsCard extends LitElement {");
+const methodSources = [
+  extractMethod(classSource, "_normalizeVisibleRows(value) {"),
+  extractMethod(classSource, "_normalizeListMaxHeightValue(value) {"),
+  extractMethod(classSource, "_resolveListMaxHeight() {"),
+  extractMethod(classSource, "_extractDocumentNumber(name, explicitNumber = null) {"),
+  extractMethod(classSource, "_cleanDocumentTitle(name) {"),
+  extractMethod(classSource, "_normalizeDocument(item, fallbackIndex = 0) {"),
+  extractMethod(classSource, "_buildDocuments(entity) {"),
+  extractMethod(classSource, "_sortDocuments(documents) {"),
+  extractMethod(classSource, "_parseDateTs(value) {"),
+  extractMethod(classSource, "_documentTypeLabel(title) {"),
+  extractMethod(classSource, "_documentToneClass(title) {"),
+  extractMethod(classSource, "_normalizeTextKey(value) {"),
+  extractMethod(classSource, "_documentsMatchRace(documents, race) {"),
+  extractMethod(classSource, "_resolveRaceContext(documentEntity, lastRaceEntity, documents) {"),
+  extractMethod(classSource, "_formatRaceContext(race) {"),
+  extractMethod(classSource, "_resolveDocumentCount(documents, documentEntity) {"),
+];
+
+const Harness = new Function(
+  `
+  class Harness {
+    constructor(config = {}) {
+      this.config = {
+        sort_order: "newest",
+        visible_rows: 8,
+        list_max_height: 0,
+        show_race_context: true,
+        ...config,
+      };
+    }
+
+    ${methodSources.join("\n\n")}
+  }
+
+  return Harness;
+`,
+)();
+
+const harness = new Harness(payload.config || {});
+
+let result;
+if (payload.action === "documents") {
+  result = harness._buildDocuments(payload.entity || {});
+} else if (payload.action === "height") {
+  result = harness._resolveListMaxHeight();
+} else if (payload.action === "race_context") {
+  const docs = harness._buildDocuments(payload.entity || {});
+  result = harness._resolveRaceContext(
+    payload.entity || {},
+    payload.lastRaceEntity || null,
+    docs,
+  );
+} else if (payload.action === "race_label") {
+  result = harness._formatRaceContext(payload.race || null);
+} else if (payload.action === "document_count") {
+  const docs = harness._buildDocuments(payload.entity || {});
+  result = harness._resolveDocumentCount(docs, payload.entity || {});
+} else {
+  throw new Error(`Unknown action: ${payload.action}`);
+}
+
+process.stdout.write(JSON.stringify(result));
+"""
 
 
 class _LiveState:
@@ -130,6 +244,26 @@ def _recorder_shared_attrs(state) -> tuple[dict, int]:
     }
     shared_attrs_bytes = json_bytes(recorded)
     return json_loads(shared_attrs_bytes), len(shared_attrs_bytes)
+
+
+def _run_fia_documents_card_probe(payload: dict) -> dict | list | int | None:
+    if not CARD_PATH.exists():
+        pytest.skip(f"card JS not found at {CARD_PATH}")
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for FIA documents card regression tests")
+
+    proc = subprocess.run(
+        [node, "-e", FIA_DOCUMENTS_CARD_PROBE_SCRIPT],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            "FIA_DOCUMENTS_CARD_PAYLOAD": json.dumps(payload),
+            "FIA_DOCUMENTS_CARD_PATH": str(CARD_PATH),
+        },
+    )
+    return json.loads(proc.stdout)
 
 
 def _build_result_entry(idx: int) -> dict:
@@ -223,6 +357,187 @@ async def test_last_race_results_sensor_exposes_grid_position(hass) -> None:
 
     assert state.state == "Norris"
     assert state.attributes["results"][0]["grid"] == "2"
+
+
+@pytest.mark.asyncio
+async def test_fia_documents_sensor_exposes_list_and_race_context(hass) -> None:
+    coordinator = _build_coordinator(
+        hass,
+        {
+            "event_key": "2026_6",
+            "race": {
+                "season": "2026",
+                "round": "6",
+                "race_name": "Miami Grand Prix",
+                "race_date": "2026-05-03",
+                "race_time": "20:00:00Z",
+                "circuit_name": "Miami International Autodrome",
+                "locality": "Miami",
+                "country": "USA",
+            },
+            "documents": [
+                {
+                    "name": "Doc 102 - Championship Points",
+                    "url": "https://www.fia.com/doc-102.pdf",
+                    "published": "2026-05-03T23:15:00+00:00",
+                },
+                {
+                    "name": "Doc 1 - Event Notes",
+                    "url": "https://www.fia.com/doc-1.pdf",
+                    "published": "2026-05-01T10:00:00+00:00",
+                },
+            ],
+        },
+    )
+    sensor = F1FiaDocumentsSensor(
+        coordinator,
+        "test_entry_fia_documents",
+        "test_entry",
+        "F1",
+    )
+
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == "102"
+    assert state.attributes["name"] == "Doc 102 - Championship Points"
+    assert state.attributes["documents"] == [
+        {
+            "name": "Doc 1 - Event Notes",
+            "url": "https://www.fia.com/doc-1.pdf",
+            "published": "2026-05-01T10:00:00+00:00",
+            "document_number": 1,
+        },
+        {
+            "name": "Doc 102 - Championship Points",
+            "url": "https://www.fia.com/doc-102.pdf",
+            "published": "2026-05-03T23:15:00+00:00",
+            "document_number": 102,
+        },
+    ]
+    assert state.attributes["race"]["race_name"] == "Miami Grand Prix"
+    assert "documents" in state.state_info["unrecorded_attributes"]
+
+
+def test_fia_documents_card_sorts_documents_and_keeps_latest_fallback() -> None:
+    list_result = _run_fia_documents_card_probe(
+        {
+            "action": "documents",
+            "entity": {
+                "state": "10",
+                "attributes": {
+                    "documents": [
+                        {
+                            "name": "Doc 2 - Summons",
+                            "url": "https://www.fia.com/doc-2.pdf",
+                            "published": "2026-05-01T12:00:00+00:00",
+                        },
+                        {
+                            "name": "Doc 10 - Final Classification",
+                            "url": "https://www.fia.com/doc-10.pdf",
+                            "published": "2026-05-02T12:00:00+00:00",
+                        },
+                    ]
+                },
+            },
+        }
+    )
+
+    assert [item["documentNumber"] for item in list_result] == [10, 2]
+    assert list_result[0]["title"] == "Final Classification"
+    assert list_result[0]["typeLabel"] == "Classified"
+    assert list_result[1]["toneClass"] == "tone-yellow"
+
+    fallback_result = _run_fia_documents_card_probe(
+        {
+            "action": "documents",
+            "entity": {
+                "state": "102",
+                "attributes": {
+                    "name": "Doc 102 - Championship Points",
+                    "url": "https://www.fia.com/doc-102.pdf",
+                    "published": "2026-05-03T23:15:00+00:00",
+                },
+            },
+        }
+    )
+
+    assert len(fallback_result) == 1
+    assert fallback_result[0]["documentNumber"] == 102
+    assert fallback_result[0]["title"] == "Championship Points"
+
+
+def test_fia_documents_card_uses_visible_rows_and_safe_race_context() -> None:
+    assert (
+        _run_fia_documents_card_probe(
+            {"action": "height", "config": {"visible_rows": 5}}
+        )
+        == 340
+    )
+    assert (
+        _run_fia_documents_card_probe(
+            {"action": "height", "config": {"visible_rows": 5, "list_max_height": 500}}
+        )
+        == 500
+    )
+
+    race_context = _run_fia_documents_card_probe(
+        {
+            "action": "race_context",
+            "entity": {
+                "attributes": {
+                    "race": {
+                        "round": "5",
+                        "race_name": "Emilia Romagna Grand Prix",
+                        "locality": "Imola",
+                        "country": "Italy",
+                    },
+                    "documents": [
+                        {
+                            "name": "Doc 102 - Championship Points",
+                            "url": (
+                                "https://www.fia.com/system/files/decision-document/"
+                                "2026_miami_grand_prix_-_championship_points.pdf"
+                            ),
+                        }
+                    ],
+                }
+            },
+            "lastRaceEntity": {
+                "attributes": {
+                    "round": "4",
+                    "race_name": "Miami Grand Prix",
+                    "circuit_locality": "Miami",
+                    "circuit_country": "USA",
+                }
+            },
+        }
+    )
+
+    assert race_context["race_name"] == "Miami Grand Prix"
+    assert (
+        _run_fia_documents_card_probe({"action": "race_label", "race": race_context})
+        == "Round 4 \u00b7 Miami Grand Prix \u00b7 Miami, USA"
+    )
+
+    assert (
+        _run_fia_documents_card_probe(
+            {
+                "action": "document_count",
+                "entity": {
+                    "state": "102",
+                    "attributes": {
+                        "documents": [
+                            {
+                                "name": "Doc 95 - Checks",
+                                "url": "https://www.fia.com/doc-95.pdf",
+                            }
+                        ]
+                    },
+                },
+            }
+        )
+        == 102
+    )
 
 
 def _build_sprint_results_data(
