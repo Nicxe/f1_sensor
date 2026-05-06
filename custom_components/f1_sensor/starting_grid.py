@@ -808,8 +808,9 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                 recent.append((end, session))
         if active:
             active.sort(
-                key=lambda session: session_start(session)
-                or datetime.max.replace(tzinfo=UTC)
+                key=lambda session: (
+                    session_start(session) or datetime.max.replace(tzinfo=UTC)
+                )
             )
             return active[0]
         if future:
