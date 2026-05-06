@@ -503,7 +503,7 @@ class LiveBus:
         self._last_logged: float = time.time()
         self._log_interval: float = 10.0  # seconds
         # Cache last payload per stream so new subscribers receive latest snapshot immediately
-        self._last_payload: dict[str, dict[str, Any]] = {}
+        self._last_payload: dict[str, StreamPayload] = {}
         self._expect_heartbeat = False
         self._last_heartbeat_at: float | None = None
         self._heartbeat_guard: asyncio.Task | None = None
@@ -525,9 +525,8 @@ class LiveBus:
         with suppress(Exception):
             if stream in self._last_payload:
                 data = self._last_payload.get(stream)
-                if isinstance(data, dict):
-                    with suppress(Exception):
-                        callback(data)
+                with suppress(Exception):
+                    callback(data)
 
         def _unsub() -> None:
             with suppress(Exception):
@@ -583,7 +582,7 @@ class LiveBus:
                                                     stream = args[0]
                                                     data = args[1]
                                                     # Cache latest even if no subscribers yet
-                                                    if isinstance(data, dict):
+                                                    if data is not None:
                                                         self._last_payload[stream] = (
                                                             data
                                                         )
@@ -595,7 +594,7 @@ class LiveBus:
                                 if isinstance(result, dict):
                                     for key, value in result.items():
                                         # Cache last payload for key
-                                        if isinstance(value, dict):
+                                        if value is not None:
                                             self._last_payload[key] = value
                                         # Dispatch if there are subscribers now
                                         if key in self._subs:
@@ -644,7 +643,7 @@ class LiveBus:
             if stream == "Heartbeat":
                 self._last_heartbeat_at = time.time()
             # Cache last payload for new subscribers
-            if isinstance(data, dict):
+            if data is not None:
                 self._last_payload[stream] = data
             if _LOGGER.isEnabledFor(logging.DEBUG) and self._stream_frames[stream] == 1:
                 _LOGGER.debug(

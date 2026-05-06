@@ -1629,6 +1629,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 capabilities["active_live_streams"] = frozenset(
                     build_live_subscribe_streams(include_auth_gated=False)
                 )
+            formation_tracker = entry_data.get("formation_start_tracker")
+            if formation_tracker is not None and hasattr(formation_tracker, "reset"):
+                with suppress(Exception):
+                    formation_tracker.reset(status="unavailable")
             live_state = entry_data.get("live_state")
             if live_state is not None:
                 for coordinator_key in (
@@ -1675,18 +1679,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_state = LiveAvailabilityTracker()
         live_state.set_state(True, "replay-mode")
 
-    def _replay_only_streams_active() -> bool:
+    def _formation_start_stream_active() -> bool:
         if operation_mode == OPERATION_MODE_DEVELOPMENT:
             return True
-        return bool(getattr(live_state, "is_live", False)) and _is_replay_delay_reason(
-            getattr(live_state, "reason", None)
+        if not bool(getattr(live_state, "is_live", False)):
+            return False
+        reason = getattr(live_state, "reason", None)
+        if _is_replay_delay_reason(reason):
+            return True
+        capabilities = (
+            hass.data.get(DOMAIN, {})
+            .get(entry.entry_id, {})
+            .get("signalr_stream_capabilities")
         )
+        if isinstance(capabilities, dict):
+            auth_gated_streams = capabilities.get("auth_gated_live_streams")
+            return bool(
+                capabilities.get("auth_enabled")
+                and isinstance(auth_gated_streams, (set, frozenset, tuple, list))
+                and "CarData.z" in auth_gated_streams
+            )
+        return bool(live_bus.auth_enabled and "CarData.z" in AUTH_GATED_LIVE_STREAMS)
 
     formation_tracker = FormationStartTracker(
         hass,
         bus=live_bus,
         http_session=session,
-        availability_guard=_replay_only_streams_active,
+        availability_guard=_formation_start_stream_active,
     )
 
     def _reload_entry():
@@ -1728,6 +1747,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             persist_map=persisted_map,
             persist_save=persisted.schedule_save,
             config_entry=entry,
+            live_state=live_state,
         )
 
     if enable_rc:
@@ -2002,7 +2022,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             session_clock_coordinator,
             race_control_coordinator if enable_rc else None,
             live_mode_coordinator if enable_rc else None,
-            starting_grid_coordinator,
             weather_data_coordinator if enable_rc else None,
             lap_count_coordinator if enable_rc else None,
             top_three_coordinator,
@@ -5553,10 +5572,6 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
     if isinstance(coordinator, ChampionshipPredictionCoordinator):
         _clear_delayed_ingest_state(coordinator)
         coordinator._reset_store()
-        return
-
-    if isinstance(coordinator, StartingGridCoordinator):
-        coordinator.reset_runtime_state("replay_reset")
         return
 
     if isinstance(coordinator, LiveDriversCoordinator):

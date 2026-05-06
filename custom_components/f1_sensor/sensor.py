@@ -1452,6 +1452,7 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
             return {
                 "number": r.get("number"),
                 "position": r.get("position"),
+                "grid": r.get("grid"),
                 "points": r.get("points"),
                 "status": r.get("status"),
                 "driver": {
@@ -1503,6 +1504,7 @@ class F1SprintResultsSensor(F1BaseEntity, SensorEntity):
         return {
             "number": result.get("number"),
             "position": result.get("position"),
+            "grid": result.get("grid"),
             "points": result.get("points"),
             "status": result.get("status"),
             "driver": {

@@ -26,6 +26,11 @@ class _SessionCoord:
         self.data = data or {}
 
 
+class _LiveState:
+    def __init__(self, reason: str | None = None) -> None:
+        self.reason = reason
+
+
 def _session_info(
     name: str,
     session_type: str,
@@ -103,8 +108,15 @@ def _timing_data() -> dict:
     }
 
 
-def _make_coordinator(hass, index: dict | None = None) -> StartingGridCoordinator:
-    return StartingGridCoordinator(hass, _SessionCoord(index), bus=None)
+def _make_coordinator(
+    hass,
+    index: dict | None = None,
+    *,
+    live_state: _LiveState | None = None,
+) -> StartingGridCoordinator:
+    return StartingGridCoordinator(
+        hass, _SessionCoord(index), bus=None, live_state=live_state
+    )
 
 
 @pytest.mark.asyncio
@@ -219,6 +231,65 @@ async def test_sprint_grid_clears_before_race_qualifying_grid(hass) -> None:
     assert coordinator.data["status"] == STATUS_PROVISIONAL
     assert coordinator.data["grid_context"] == CONTEXT_RACE
     assert coordinator.data["grid"][0]["qualifying_segment"] == "Q3"
+
+
+@pytest.mark.asyncio
+async def test_replay_session_info_does_not_clear_current_grid(hass) -> None:
+    live_state = _LiveState()
+    coordinator = _make_coordinator(hass, live_state=live_state)
+
+    coordinator._on_session_info(_session_info("Qualifying", "Qualifying"))
+    coordinator._on_driver_list(_driver_list())
+    coordinator._on_timing_data(_timing_data())
+    coordinator._on_session_status({"Status": "Finalised"})
+    before = coordinator.data
+
+    live_state.reason = "replay"
+    coordinator._on_session_info(
+        _session_info(
+            "Practice 1",
+            "Practice",
+            meeting_key=99,
+            session_key=990,
+            status="Started",
+        )
+    )
+
+    assert coordinator.data == before
+    assert coordinator.data["weekend_key"] == "meeting:1"
+    assert coordinator.data["status"] == STATUS_PROVISIONAL
+    assert coordinator.data["grid_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_replay_gridpos_does_not_replace_current_grid(hass) -> None:
+    live_state = _LiveState()
+    coordinator = _make_coordinator(hass, live_state=live_state)
+
+    coordinator._on_session_info(_session_info("Qualifying", "Qualifying"))
+    coordinator._on_driver_list(_driver_list())
+    coordinator._on_timing_data(_timing_data())
+    coordinator._on_session_status({"Status": "Finalised"})
+    coordinator._on_session_info(
+        _session_info("Race", "Race", session_key=11, status="Started")
+    )
+    coordinator._on_timing_app_data(
+        {"Lines": {"1": {"GridPos": 1}, "2": {"GridPos": 2}, "3": {"GridPos": 3}}}
+    )
+    before = coordinator.data
+
+    live_state.reason = "replay"
+    coordinator._on_timing_app_data(
+        {"Lines": {"1": {"GridPos": 3}, "2": {"GridPos": 1}, "3": {"GridPos": 2}}}
+    )
+
+    assert coordinator.data == before
+    assert coordinator.data["status"] == STATUS_CONFIRMED
+    assert [row["racing_number"] for row in coordinator.data["grid"]] == [
+        "1",
+        "2",
+        "3",
+    ]
 
 
 @pytest.mark.asyncio

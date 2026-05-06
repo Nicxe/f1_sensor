@@ -49,6 +49,7 @@ SESSION_KIND_OTHER = "other"
 
 STARTED_STATUSES = {"Started", "Resumed", "GreenFlag", "Green"}
 FINISHED_STATUSES = {"Finished", "Finalised", "Ends"}
+REPLAY_REASONS = {"replay", "replay-mode", "replay-preparing"}
 
 
 class StartingGridCoordinator(DataUpdateCoordinator):
@@ -67,6 +68,7 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         persist_map: dict | None = None,
         persist_save: Callable[[], None] | None = None,
         config_entry: ConfigEntry | None = None,
+        live_state: Any | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -83,6 +85,7 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         self._inflight = inflight
         self._persist = persist_map
         self._persist_save = persist_save
+        self._live_state = live_state
         self._unsubs: list[Callable[[], None]] = []
         self._archive_task: asyncio.Task | None = None
         self._archive_fetch_keys: set[tuple[str, str]] = set()
@@ -167,6 +170,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                 self._unsubs.append(bus.subscribe(stream, handler))
 
     async def _async_update_data(self) -> dict[str, Any]:
+        if self._is_replay_active():
+            return self._state
         self._sync_from_index_if_idle()
         return self._state
 
@@ -194,6 +199,10 @@ class StartingGridCoordinator(DataUpdateCoordinator):
 
     def _publish(self) -> None:
         self.async_set_updated_data(dict(self._state))
+
+    def _is_replay_active(self) -> bool:
+        reason = getattr(self._live_state, "reason", None)
+        return str(reason or "") in REPLAY_REASONS
 
     def _set_state_fields(self, **updates: Any) -> None:
         changed = False
@@ -302,6 +311,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
             self._maybe_schedule_archive_fetch(context)
 
     def _on_session_info(self, payload: dict[str, Any]) -> None:
+        if self._is_replay_active():
+            return
         if not isinstance(payload, dict):
             return
         weekend_key = self._weekend_key_from_session_info(payload)
@@ -337,6 +348,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         self._apply_session_lifecycle()
 
     def _on_session_status(self, payload: dict[str, Any]) -> None:
+        if self._is_replay_active():
+            return
         if not isinstance(payload, dict):
             return
         status = self._status_from_payload(payload)
@@ -407,6 +420,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                 )
 
     def _on_driver_list(self, payload: dict[str, Any]) -> None:
+        if self._is_replay_active():
+            return
         if not isinstance(payload, dict):
             return
         changed = self._merge_driver_list(payload)
@@ -424,6 +439,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                 )
 
     def _on_timing_data(self, payload: dict[str, Any]) -> None:
+        if self._is_replay_active():
+            return
         if not isinstance(payload, dict):
             return
         kind = self._current_session_kind()
@@ -444,6 +461,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                 )
 
     def _on_timing_app_data(self, payload: dict[str, Any]) -> None:
+        if self._is_replay_active():
+            return
         if not isinstance(payload, dict):
             return
         kind = self._current_session_kind()
@@ -639,6 +658,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         }
 
     def _maybe_schedule_archive_fetch(self, context: str) -> None:
+        if self._is_replay_active():
+            return
         if self._qualifying_entries.get(context):
             return
         session = self._index_source_session(context)
@@ -657,12 +678,18 @@ class StartingGridCoordinator(DataUpdateCoordinator):
 
     async def _fetch_archive_context(self, context: str, path: str) -> None:
         try:
+            if self._is_replay_active():
+                return
             driver_list = await self._fetch_stream(path, "DriverList")
+            if self._is_replay_active():
+                return
             if driver_list:
                 for payload in self._iter_json_stream(driver_list):
                     self._merge_driver_list(payload)
 
             timing_data = await self._fetch_stream(path, "TimingData")
+            if self._is_replay_active():
+                return
             if timing_data:
                 for payload in self._iter_json_stream(timing_data):
                     self._merge_timing_data(payload, context)

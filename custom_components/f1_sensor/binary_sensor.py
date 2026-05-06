@@ -35,6 +35,7 @@ from .entity import (
     F1AuxEntity,
     F1BaseEntity,
     default_object_id,
+    is_auth_gated_stream_active,
     is_replay_only_stream_active,
     set_suggested_object_id,
 )
@@ -444,9 +445,11 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
         return self._attrs
 
     def _is_stream_active(self) -> bool:
+        hass = getattr(self, "hass", None)
+        entry_id = getattr(self, "_entry_id", None)
         return is_replay_only_stream_active(
-            getattr(self, "hass", None), getattr(self, "_entry_id", None)
-        )
+            hass, entry_id
+        ) or is_auth_gated_stream_active(hass, entry_id, "CarData.z")
 
     def _handle_update(self, snapshot: dict[str, Any]) -> None:
         if not self._is_stream_active():

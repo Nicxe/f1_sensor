@@ -136,6 +136,7 @@ def _build_result_entry(idx: int) -> dict:
     return {
         "number": str(idx),
         "position": str(idx),
+        "grid": str(idx + 1),
         "points": str(max(0, 26 - idx)),
         "status": "Finished",
         "Driver": {
@@ -1211,6 +1212,7 @@ async def test_season_results_sensor_excludes_races_from_recorder(hass) -> None:
     state = await _add_sensor_and_get_state(hass, sensor)
 
     assert "races" in state.attributes
+    assert state.attributes["races"][0]["results"][0]["grid"] == "2"
     assert state.state_info is not None
     assert "races" in state.state_info["unrecorded_attributes"]
 
@@ -1299,6 +1301,7 @@ async def test_sprint_results_sensor_excludes_races_from_recorder(hass) -> None:
     state = await _add_sensor_and_get_state(hass, sensor)
 
     assert "races" in state.attributes
+    assert state.attributes["races"][0]["results"][0]["grid"] == "2"
     assert state.state_info is not None
     assert "races" in state.state_info["unrecorded_attributes"]
 
