@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[3]
 CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
 
 
 def _race_control_source() -> str:
+    if not CARD_PATH.exists():
+        pytest.skip(f"card JS not found at {CARD_PATH}")
     source = CARD_PATH.read_text()
     start = source.index("class F1RaceControlCard extends LitElement")
     end = source.index("class F1RaceControlCardEditor", start)

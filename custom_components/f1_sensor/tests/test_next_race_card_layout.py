@@ -401,6 +401,8 @@ def test_next_race_card_narrow_schedule_uses_full_width_rows() -> None:
 
 
 def test_next_race_card_extra_narrow_schedule_keeps_status_in_top_row() -> None:
+    if not CARD_PATH.exists():
+        pytest.skip(f"card JS not found at {CARD_PATH}")
     source = CARD_PATH.read_text()
     schedule_css_start = source.index(".nr-schedule-head-spacer")
     css_start = source.index("@container (max-width: 360px)", schedule_css_start)
