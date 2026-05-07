@@ -373,6 +373,45 @@ def test_next_race_card_schedule_places_next_chip_in_right_status_column() -> No
     )
 
 
+def test_next_race_card_narrow_schedule_uses_full_width_rows() -> None:
+    result = _run_probe(
+        {
+            "action": "weekend_panel",
+            "config": {"show_schedule": True, "show_track_time": True},
+            "layoutMode": "narrow",
+            "nextRace": {
+                "circuit_timezone": "America/New_York",
+                "first_practice_start_utc": "2099-05-21T18:30:00Z",
+                "sprint_qualifying_start_utc": "2099-05-22T22:30:00Z",
+                "race_start_utc": "2099-05-24T22:00:00Z",
+            },
+            "sessionStatus": {"state": "pre"},
+        }
+    )
+
+    assert "nr-schedule-row narrow" in result
+    assert "nr-schedule-row-date" in result
+    sprint_index = result.index('nr-schedule-session-name">Sprint Qualifying</span>')
+    fp1_index = result.index('nr-schedule-session-name">FP1</span>')
+
+    assert sprint_index < result.index("nr-schedule-inline-times", sprint_index)
+    assert result.index("nr-schedule-row-status", fp1_index) < result.index(
+        "nr-schedule-row-bottom", fp1_index
+    )
+
+
+def test_next_race_card_extra_narrow_schedule_keeps_status_in_top_row() -> None:
+    source = CARD_PATH.read_text()
+    schedule_css_start = source.index(".nr-schedule-head-spacer")
+    css_start = source.index("@container (max-width: 360px)", schedule_css_start)
+    css_end = source.index(".nr-secondary-panel", css_start)
+    extra_narrow_css = source[css_start:css_end]
+
+    assert ".nr-schedule-row.narrow .nr-schedule-row-top" not in extra_narrow_css
+    assert ".nr-schedule-row.narrow .nr-schedule-row-bottom" in extra_narrow_css
+    assert ".nr-schedule-row.narrow .nr-schedule-row-status" not in extra_narrow_css
+
+
 def test_next_race_card_schedule_hides_track_column_when_disabled() -> None:
     result = _run_probe(
         {
