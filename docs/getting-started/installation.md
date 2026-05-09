@@ -92,6 +92,8 @@ You can always change this later via
 
 Once configuration is complete, the sensors are created automatically and are ready to be used in dashboards, automations, and templates.
 
+The Live Data Cards are bundled with F1 Sensor. After Home Assistant restarts, the integration registers the dashboard card resource automatically, so you do not need to install a separate HACS dashboard repository for the cards.
+
 ---
 
 ![Install and configure](/img/install_config.gif)
