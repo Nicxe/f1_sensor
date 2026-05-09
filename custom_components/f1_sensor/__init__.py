@@ -86,6 +86,7 @@ from .entity import (
     unregister_entry_name_settings,
 )
 from .formation_start import FormationStartTracker
+from .frontend import async_ensure_live_data_card_frontend
 from .helpers import (
     PersistentCache,
     build_user_agent,
@@ -2090,6 +2091,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _on_no_spoiler_changed
             )
 
+    await async_ensure_live_data_card_frontend(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
