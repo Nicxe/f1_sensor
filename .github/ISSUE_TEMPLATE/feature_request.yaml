@@ -12,6 +12,20 @@ body:
         - label: All information in this issue is written in English. Issues containing non-English content will be closed without response.
           required: true
 
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of F1 Sensor would this improve?
+      options:
+        - Integration
+        - Live data card
+        - Blueprint
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
   - type: textarea
     id: problem
     attributes:
