@@ -14,6 +14,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  card-assets:
+    name: Validate bundled card assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check bundled live data card syntax
+        run: >
+          node --check
+          custom_components/f1_sensor/www/f1-sensor-live-data-card/f1-sensor-live-data-card.js
+
   validate:
     uses: nicxe/.github/.github/workflows/reusable-validate-integration.yml@main
     with:
