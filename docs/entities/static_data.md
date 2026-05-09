@@ -4,8 +4,7 @@ title: Static Data
 ---
 
 Information that rarely changes, such as schedules, drivers, circuits, and championship standings.
-
-:::info Entity IDs vs display names
+:::info[Entity IDs vs display names]
 This page documents the standard `entity_id` for each entity, for example `sensor.f1_next_race`.
 
 Display names can be translated in Home Assistant, and older installations may already have a different registry ID. When you look up an entity in Home Assistant, use the documented `entity_id` or search for the `f1_` suffix instead of relying on the display name alone.
@@ -29,11 +28,9 @@ Display names can be translated in Home Assistant, and older installations may a
 | [sensor.f1_sprint_results](#sprint-results)                                       | Sprint classification results |
 | [sensor.f1_fia_documents](#fia-decision-documents)                                | FIA decisions and documents for the current weekend |
 | [calendar.f1_season_calendar](#season-calendar)                                   | Full season calendar with all sessions              |
-
-
-::::info
+:::info
 Many schedule timestamps are provided in three variants: an explicit UTC value (for example `race_start_utc`), a Home Assistant local-time value (for example `race_start`), and a circuit-local value (for example `race_start_local`). The circuit-local timestamps use the circuit's timezone so you can build automations against local session times.
-::::
+:::
 
 ---
 
@@ -61,6 +58,7 @@ Many schedule timestamps are provided in three variants: an explicit UTC value (
 | country_code | string | ISO country code (e.g., "GB", "IT", "US") |
 | country_flag_url | string | URL to country flag image |
 | circuit_map_url | string | URL to official circuit map image |
+| circuit_outline_url | string | URL to circuit outline image when available |
 | circuit_timezone | string | Local timezone (best effort) |
 | race_start_utc | string | Race start (UTC ISO‑8601) |
 | race_start | string | Race start in Home Assistant local time |
@@ -136,6 +134,7 @@ Each entry in `races` contains the standard Ergast race data plus:
 | country_code | string | ISO country code (e.g., "GB", "IT", "US") |
 | country_flag_url | string | URL to country flag image |
 | circuit_map_url | string | URL to official circuit map image |
+| circuit_outline_url | string | URL to circuit outline image when available |
 
 ---
 
@@ -433,7 +432,7 @@ Verstappen
 | race_start_utc | string | Race start (UTC ISO‑8601) |
 | race_start | string | Race start in Home Assistant local time |
 | race_start_local | string | Race start in circuit local time |
-| results | list | Cleaned results array: `{number, position, points, status, driver{permanentNumber, code, givenName, familyName}, constructor{constructorId, name}}` |
+| results | list | Cleaned results array: `{number, grid, position, points, status, driver{permanentNumber, code, givenName, familyName}, constructor{constructorId, name}}` |
 
 
 ---
@@ -454,11 +453,8 @@ Verstappen
 
 | Attribute | Type | Description |
 | --- | --- | --- |
-| races | list | For each race: `{round, race_name, results:[…]}` where each result has same shape as in “Last Race Results” |
-
-
-
-::::caution Known Issue
+| races | list | For each race: `{round, race_name, results:[...]}` where each result has the same shape as in [Last Race Results](#last-race-results), including the `grid` field |
+:::warning[Known Issue]
 `sensor.f1_season_results` may trigger a warning in the Home Assistant logs:
 
 ```yaml
@@ -476,7 +472,7 @@ recorder:
     entities:
       - sensor.f1_season_results
 ```
-::::
+:::
 
 
 
@@ -644,8 +640,7 @@ Each entry in `series.series` contains:
 ```
 
 </details>
-
-:::tip Chart Integration
+:::tip[Chart Integration]
 The `series` attribute is pre-formatted for use with charting libraries like ApexCharts. See the [Season Progression Charts](/example/season-progression-charts) example for a complete implementation.
 :::
 
@@ -823,8 +818,7 @@ Each entry in `series.series` contains:
 ```
 
 </details>
-
-:::tip Chart Integration
+:::tip[Chart Integration]
 The `series` attribute is pre-formatted for use with charting libraries like ApexCharts. See the [Season Progression Charts](/example/season-progression-charts) example for a complete implementation.
 :::
 
@@ -881,6 +875,7 @@ Each entry in `results` contains:
 | Field | Type | Description |
 | --- | --- | --- |
 | number | string | Car number |
+| grid | string | Sprint starting grid position |
 | position | string | Final position |
 | points | string | Points awarded |
 | status | string | Finish status |
@@ -890,10 +885,9 @@ Each entry in `results` contains:
 ---
 
 ## FIA Decision Documents
-
-::::caution BETA
+:::warning[BETA]
 This sensor is in BETA. Data structure and availability may change as the upstream feed and parsing are refined.
-::::
+:::
 
 Collects FIA decisions and official documents for the current race weekend.
 
@@ -912,8 +906,32 @@ Collects FIA decisions and official documents for the current race weekend.
 | name | string | Document title (e.g., "Doc 27 - Penalty Decision") |
 | url | string | URL to the FIA document |
 | published | string | ISO‑8601 timestamp when the document was published |
+| documents | list | Rolling list of up to 100 documents for the current weekend |
+| race | object | Compact race context for the document set |
 
-The sensor maintains a history of up to 100 documents internally. When a new race weekend starts (detected by "Document 1"), the history is reset.
+Each entry in `documents` contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| name | string | Document title |
+| url | string | URL to the FIA document |
+| published | string | ISO-8601 timestamp when available |
+| document_number | number | FIA document number when it can be parsed from the title |
+
+The `race` object contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| season | string | Season year |
+| round | string | Round number |
+| race_name | string | Grand Prix name |
+| race_date | string | Race date |
+| race_time | string | Race start time |
+| circuit_name | string | Circuit name |
+| locality | string | Circuit locality |
+| country | string | Circuit country |
+
+The sensor maintains a history of up to 100 documents. When a new race weekend starts, detected by FIA "Document 1", the history is reset. The state prefers the highest parsed FIA document number so the sensor does not move backwards when the FIA page publishes older or incomplete metadata.
 
 ---
 
@@ -947,10 +965,9 @@ The calendar appears in the Home Assistant calendar panel and shows each session
 | Sprint Qualifying | 45 min |
 | Sprint | 35 min |
 | Race | 120 min |
-
-::::info
+:::info
 Session end times are estimated based on standard session lengths. Actual sessions may run shorter or longer due to red flags or delays.
-::::
+:::
 
 **Automation example**
 
@@ -971,7 +988,6 @@ action:
       message: "{{ trigger.calendar_event.summary }} starts in 30 minutes"
 mode: single
 ```
-
-::::tip
+:::tip
 The calendar entity complements `sensor.f1_current_season`. Use the sensor when you need race data in templates and attributes. Use the calendar when you want a visual schedule or calendar-based automations.
-::::
+:::

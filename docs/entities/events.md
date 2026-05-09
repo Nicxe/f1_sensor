@@ -55,7 +55,6 @@ data:
     Message: INCIDENT INVOLVING CAR 81 (PIA) NOTED - YELLOW FLAG INFRINGEMENT
   received_at: "2025-09-19T12:40:44+00:00"
 ```
-
 :::info
 Race Control is now exposed both as a [sensor](/entities/live-data#race-control) (for dashboards and history) and as events (for real-time automations and triggers).
 The event stream remains available as a complementary, low-latency feed alongside the sensor.
