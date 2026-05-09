@@ -1,7 +1,7 @@
 <!--
   Target the correct branch:
   - Docs or blueprint changes (standalone, no code) → `content` branch
-  - Code changes (integration, sensors, fixes, features, tests) → `dev` branch
+  - Code changes (integration, sensors, bundled card code, fixes, features, tests) → `dev` branch
   - PRs targeting `main` or `beta` are closed automatically.
   If you are unsure whether your change fits the project direction, open an issue first.
 -->
@@ -21,6 +21,7 @@ Fixes #
 - [ ] 🐛 Bug fix (corrects existing behavior without breaking anything)
 - [ ] 🚀 New feature (adds functionality)
 - [ ] ⚠️ Breaking change (existing automations, entities, or config will stop working or behave differently)
+- [ ] 🏎️ Bundled live data card code
 - [ ] 📋 Blueprint (new or updated blueprint)
 - [ ] 📚 Documentation only
 - [ ] 🔧 Refactoring or internal cleanup
@@ -35,6 +36,7 @@ Fixes #
 ## Checklist
 
 - [ ] I have read [CONTRIBUTING.md](../CONTRIBUTING.md) and am targeting the correct branch
+- [ ] Changes under `custom_components/f1_sensor/www/**` target `dev` as bundled card code, not the standalone documentation path — if applicable
 - [ ] Code is formatted and passes lint check (`ruff format` and `ruff check`) — if applicable
 - [ ] Tests have been added or updated and pass locally — if applicable
 - [ ] Translations updated if new UI strings were added — if applicable

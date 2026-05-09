@@ -5,10 +5,10 @@ title: Live Data Cards
 
 # F1 Sensor Live Data Cards
 
-A collection of custom Lovelace cards built specifically for the F1 Sensor integration. The cards are maintained in a dedicated repository and follow the entity structure exposed by the integration.
+A collection of custom Lovelace cards built specifically for the F1 Sensor integration. The cards are bundled with F1 Sensor and follow the entity structure exposed by the integration.
 
-:::info[Separate repository]
-The cards are maintained in [github.com/Nicxe/f1-sensor-live-data-card](https://github.com/Nicxe/f1-sensor-live-data-card).
+:::info[Bundled with F1 Sensor]
+The live data cards are included with F1 Sensor. Home Assistant registers the bundled dashboard resource automatically when the integration starts.
 
 They require the F1 Sensor integration. Cards that use live-only or auth-gated entities need those entities enabled in the integration.
 :::
@@ -44,28 +44,41 @@ They require the F1 Sensor integration. Cards that use live-only or auth-gated e
 
 ## Installation
 
-### Recommended - HACS
+### Bundled installation
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Nicxe&repository=f1-sensor-live-data-card&category=plugin)
+Install or update [F1 Sensor](/getting-started/installation), then restart Home Assistant. The integration copies the bundled card assets to Home Assistant and registers the Lovelace resource as a JavaScript module.
 
-If the button above does not work, add the repository manually:
-
-1. Open **HACS** in Home Assistant.
-2. Open the three-dot menu and select **Custom repositories**.
-3. Enter `https://github.com/Nicxe/f1-sensor-live-data-card`.
-4. Set the type to **Dashboard**.
-5. Add the repository, search for **F1 Sensor Live Data Card**, and download it.
+You do not need to add `f1-sensor-live-data-card` as a separate HACS dashboard repository for the bundled cards.
 
 :::tip
-When installed through HACS, Home Assistant notifies you when new card versions are released.
+If you updated from the old standalone card, restart Home Assistant and reload your browser so the dashboard loads the latest bundled card assets.
+:::
+
+### Migrating from the old standalone card
+
+Existing dashboard card types do not change. Keep using the same `custom:f1-...` card types in your dashboards.
+
+After you confirm the bundled card loads correctly, you can remove the old standalone HACS dashboard repository:
+
+1. Open **HACS** in Home Assistant.
+2. Find **F1 Sensor Live Data Card** in the dashboard or frontend section.
+3. Remove the standalone card repository.
+4. Restart Home Assistant.
+5. Reload your browser or clear the Home Assistant frontend cache.
+
+If you previously added a manual dashboard resource, open **Settings > Dashboards**, open the three-dot menu, select **Resources**, and remove old standalone entries such as `/local/f1-sensor-live-data-card.js` or `/hacsfiles/f1-sensor-live-data-card/...`.
+
+:::info[Automatic resource registration]
+F1 Sensor manages the bundled resource at `/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=...` with type **JavaScript Module**. If your installation had one old resource entry, F1 Sensor updates it. If it had multiple old entries, remove the extra stale entries manually after confirming the bundled card works.
 :::
 
 <details>
-<summary>Manual installation</summary>
+<summary>Manual fallback</summary>
 
-1. Download `f1-sensor-live-data-card.js` from the [latest release](https://github.com/Nicxe/f1-sensor-live-data-card/releases).
-2. Copy the file to `config/www/f1-sensor-live-data-card/`.
-3. Register the resource in Home Assistant.
+Use this only if automatic resource registration is unavailable in your Home Assistant setup.
+
+1. Copy the files from `custom_components/f1_sensor/www/f1-sensor-live-data-card/` to `config/www/f1-sensor-live-data-card/`.
+2. Register the resource in Home Assistant.
 
 **Via the UI**: Go to **Settings > Dashboards**, open the three-dot menu, select **Resources**, then **Add Resource**. Set the URL to `/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js` and the type to **JavaScript Module**.
 
@@ -146,8 +159,6 @@ Displays an at-a-glance overview of the current session, including session name,
 
 Shows the next race, countdown, weekend schedule, circuit map, track time, weather, and optional historical context. It can prefer live track weather during an active session and fall back to the normal next-race weather forecast.
 
-![Placeholder - F1 Next Race card screenshot](/img/placeholder_card_next_race.png)
-
 **Required entity:** `sensor.f1_next_race`
 
 **Optional entities:** `sensor.f1_weather`, `sensor.f1_track_weather`, `sensor.f1_current_session`, `sensor.f1_session_status`
@@ -172,8 +183,6 @@ Shows the next race, countdown, weekend schedule, circuit map, track time, weath
 `custom:f1-season-calendar-card`
 
 Displays the current season schedule as a compact race list. Past races can be dimmed or hidden, and the next race can be highlighted.
-
-![Placeholder - F1 Season Calendar card screenshot](/img/placeholder_card_season_calendar.png)
 
 **Required entity:** `sensor.f1_current_season`
 
@@ -218,8 +227,6 @@ Shows Race Control messages with category, flag state, and optional FIA branding
 `custom:f1-fia-documents-card`
 
 Lists FIA decision documents and official PDFs for the current race weekend. It can show the latest document only or a full document list with race context.
-
-![Placeholder - F1 FIA Documents card screenshot](/img/placeholder_card_fia_documents.png)
 
 **Required entity:** `sensor.f1_fia_documents`
 
@@ -285,8 +292,6 @@ This card is designed for Qualifying and Sprint Qualifying. Outside those sessio
 `custom:f1-practice-timing-card`
 
 Shows practice order with driver status, tyres, tyre age, last lap, fastest lap, and optional timing indicators.
-
-![Placeholder - F1 Practice Timing card screenshot](/img/placeholder_card_practice_timing.png)
 
 **Required entity:** `sensor.f1_driver_positions`
 
@@ -357,8 +362,6 @@ This card is designed for Race and Sprint sessions. Some columns depend on data 
 
 Shows the currently relevant starting grid for the weekend. Sprint weekends use Sprint Qualifying for the Sprint grid and Qualifying for the Race grid. Normal weekends use Qualifying for the Race grid.
 
-![Placeholder - F1 Starting Grid card screenshot](/img/placeholder_card_starting_grid.png)
-
 **Required entity:** `sensor.f1_starting_grid`
 
 | Option | Default | Description |
@@ -387,8 +390,6 @@ Shows the currently relevant starting grid for the weekend. Sprint weekends use 
 `custom:f1-last-race-results-card`
 
 Shows the latest race result, season race results, or sprint results with a session selector. It supports grid position, position delta, points, status, team logos, and No Spoiler Mode.
-
-![Placeholder - F1 Last Race Results card screenshot](/img/placeholder_card_last_race_results.png)
 
 **Required entity:** `sensor.f1_last_race_results`
 
@@ -623,8 +624,6 @@ Displays current constructor standings beside predicted final standings, predict
 `custom:f1-replay-control-card`
 
 Provides a purpose-built Replay Mode dashboard control. It combines season and session selectors, start reference selection, load/play/pause/stop controls, 30-second seek buttons, refresh, status details, and progress.
-
-![Placeholder - F1 Replay Control card screenshot](/img/placeholder_card_replay_control.png)
 
 **Required entities:** `sensor.f1_replay_status`, `select.f1_replay_year`, `select.f1_replay_session`, `button.f1_replay_load`, `button.f1_replay_play`, `button.f1_replay_pause`, `button.f1_replay_stop`, `media_player.f1_replay_player`
 
