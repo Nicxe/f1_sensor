@@ -44,8 +44,7 @@ jobs:
               return (
                 labels.includes('card') ||
                 component.includes('live data card') ||
-                component.includes('both integration and card') ||
-                extractField(issue.body, 'Old Standalone Card Version') !== ''
+                component.includes('both integration and card')
               );
             };
             const buildComment = cardIssue => {
