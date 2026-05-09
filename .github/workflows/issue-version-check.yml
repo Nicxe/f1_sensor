@@ -47,11 +47,9 @@ jobs:
             const issueNumber = context.payload.issue.number;
             const existingLabels = context.payload.issue.labels.map(l => l.name);
             const component = extractField(body, 'Component').toLowerCase();
-            const oldStandaloneCardVersion = normalize(extractField(body, 'Old Standalone Card Version'));
             const isCardRelated =
               component.includes('live data card') ||
-              component.includes('both integration and card') ||
-              oldStandaloneCardVersion !== '';
+              component.includes('both integration and card');
 
             // Extract reported version from issue body
             const reportedVersion = normalize(extractField(body, 'F1 Sensor Version'));
@@ -59,9 +57,6 @@ jobs:
 
             const betaVersions = [];
             if (isBeta(reportedVersion)) betaVersions.push(`F1 Sensor ${reportedVersion}`);
-            if (oldStandaloneCardVersion && isBeta(oldStandaloneCardVersion)) {
-              betaVersions.push(`standalone live data card ${oldStandaloneCardVersion}`);
-            }
 
             // Beta version — acknowledge as tester, skip outdated check
             if (betaVersions.length > 0) {
@@ -138,10 +133,6 @@ jobs:
                 '1. Go to **HACS** in your Home Assistant sidebar',
                 '2. Find **F1 Sensor**, click **Download**, and select the latest version',
                 isCardRelated ? '3. Restart Home Assistant, then reload your browser so the dashboard loads fresh card assets' : '3. Restart Home Assistant',
-                ...(isCardRelated && oldStandaloneCardVersion ? [
-                  '',
-                  `You also reported standalone live data card version **${oldStandaloneCardVersion}**. That is useful context for card migration issues, but the update check is based on the installed F1 Sensor version.`,
-                ] : []),
                 '',
                 'If the issue persists after updating, please comment here and we\'ll continue investigating.',
                 'If we don\'t hear back within **24 hours**, this issue will be automatically closed.',
