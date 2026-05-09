@@ -69,43 +69,11 @@ body:
       description: If running in Container or VM, what architecture is it?
       placeholder: e.g. aarch64, armv7, amd64
 
-  - type: dropdown
-    id: card_install_path
-    attributes:
-      label: Card Install Path
-      description: Only needed for live data card issues.
-      options:
-        - Bundled with F1 Sensor
-        - Standalone HACS dashboard repo
-        - Manual resource
-        - Not sure
-
-  - type: input
-    id: dashboard_resource_url
-    attributes:
-      label: Dashboard Resource URL
-      description: Only needed for live data card issues. Add the resource URL if it is visible in your dashboard resources.
-      placeholder: e.g. /local/f1-sensor-live-data-card/f1-sensor-live-data-card.js
-
-  - type: input
-    id: browser_device
-    attributes:
-      label: Browser and Device
-      description: Only needed for live data card issues.
-      placeholder: e.g. Chrome on Windows, Safari on iPhone, Fully Kiosk on tablet
-
   - type: textarea
     id: screenshot_or_recording
     attributes:
       label: Screenshot or Screen Recording
       description: Only needed for live data card display issues. Drag and drop images or recordings here.
-
-  - type: input
-    id: old_standalone_card_version
-    attributes:
-      label: Old Standalone Card Version
-      description: Only fill this in if the standalone HACS dashboard card is still installed.
-      placeholder: e.g. 1.4.0
 
   - type: textarea
     id: current_behavior
