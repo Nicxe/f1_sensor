@@ -44,6 +44,23 @@ You can use those attributes in templates or in the calendar to know when FP1, F
 
 ### Live Data Questions
 
+<details>
+<summary>Do I still need to install the separate F1 Sensor Live Data Card repository?</summary>
+
+No. The Live Data Cards are bundled with F1 Sensor. Install or update the integration, restart Home Assistant, and F1 Sensor registers the dashboard card resource automatically.
+
+If you previously installed `f1-sensor-live-data-card` as a separate HACS dashboard repository, keep your dashboard card configuration unchanged. After confirming the bundled card loads correctly, remove the old standalone card repository and any stale dashboard resource entries so Home Assistant does not keep loading an older card file.
+</details>
+
+
+<details>
+<summary>Why does a dashboard still show an old card after updating F1 Sensor?</summary>
+
+Home Assistant and your browser can cache dashboard JavaScript. Restart Home Assistant after updating F1 Sensor, then reload the browser tab or clear the Home Assistant frontend cache.
+
+If the old standalone card was installed before, also check **Settings > Dashboards > Resources** and remove stale entries such as `/local/f1-sensor-live-data-card.js` or `/hacsfiles/f1-sensor-live-data-card/...`. Keep the bundled F1 Sensor resource that points to `/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=...`.
+</details>
+
 
 <details>
 <summary>Why are some entities like Pit Stops, Team Radio, and Championship Prediction not available during live sessions?</summary>
@@ -182,10 +199,9 @@ For example, if the sensor state is `12` and the `total_laps` attribute is `56`,
 You likely need to enable the new live data sensors in the integration’s config.
 
 After updating to a version that introduces new sensors, open the F1 Sensor integration’s options (Reconfigure) and make sure “Enable live F1 API” or the relevant option is turned on. Once enabled and saved, the new sensors (e.g. session status, track status, etc.) will be created. 
-
-::::info
+:::info
 This step is required because live data is off by default until you opt-in.*
-::::
+:::
 </details>
 
 ---

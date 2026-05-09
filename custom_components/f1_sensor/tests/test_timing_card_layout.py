@@ -12,7 +12,14 @@ from types import SimpleNamespace
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+CARD_PATH = (
+    ROOT
+    / "custom_components"
+    / "f1_sensor"
+    / "www"
+    / "f1-sensor-live-data-card"
+    / "f1-sensor-live-data-card.js"
+)
 
 
 class DummyCoordinator(SimpleNamespace):
@@ -127,6 +134,13 @@ function buildHost(data = {}) {
 }
 
 const helperSources = [
+  extractConst("const TEAM_LOGO_URLS ="),
+  extractConst("const TEAM_LOGO_ALIASES ="),
+  extractStatement("const TEAM_LOGO_FORCE_WHITE ="),
+  extractConst("const toColorLogoUrl = (url) =>"),
+  extractConst("const normalizeTeamName = (team) =>"),
+  extractConst("const getTeamLogoUrl = (team, size = 28, variant = 'white') =>"),
+  extractConst("const getTeamLogoMeta = (team, size = 28, style = 'color', preferColor = false) =>"),
   extractConst("const resolveEntityIdWithFallback = (hass, entityId) =>"),
   extractConst("const getEntityStateWithFallback = (hass, entityId) =>"),
   extractConst("const isUnavailableLikeEntityState = (entityState) =>"),
@@ -158,6 +172,9 @@ const teamsEditorClass = extractClass("class F1ChampionshipPredictionTeamsCardEd
 const pitStopClass = extractClass("class F1PitStopOverviewCard extends LitElement {");
 const pitStopEditorClass = extractClass("class F1PitStopOverviewCardEditor extends LitElement {");
 const raceLapEditorClass = extractClass("class F1RaceLapCardEditor extends LitElement {");
+const investigationsClass = extractClass("class F1InvestigationsCard extends LitElement {");
+const trackLimitsClass = extractClass("class F1TrackLimitsCard extends LitElement {");
+const startingGridClass = extractClass("class F1StartingGridCard extends LitElement {");
 
 const Harnesses = new Function(
   `
@@ -187,6 +204,10 @@ const Harnesses = new Function(
     ${extractMethod(qualifyingClass, "_applyCurrentSegmentDeltas(rows) {")}
     ${extractMethod(qualifyingClass, "_normalizeQualifyingPart(value) {")}
     ${extractMethod(qualifyingClass, "_inferQualifyingPartFromDrivers(drivers) {")}
+    ${extractMethod(qualifyingClass, "_normalizeSectorDisplayMode(value) {")}
+    ${extractMethod(qualifyingClass, "_resolveSectorDisplay(pos, idx, mode = 'current') {")}
+    ${extractMethod(qualifyingClass, "_sectorFromSource(pos, idx, source) {")}
+    ${extractMethod(qualifyingClass, "_parseSectorSeconds(value) {")}
     ${extractMethod(qualifyingClass, "_resolveLastLapTime(pos) {")}
     ${extractMethod(qualifyingClass, "_sectorClass(overallFastest, personalFastest, hasTiming) {")}
     ${extractMethod(qualifyingClass, "_statusInfo(pos) {")}
@@ -196,7 +217,22 @@ const Harnesses = new Function(
   }
 
   class PracticeHarness {
+    constructor(config = {}) {
+      this.config = {
+        show_position: true,
+        show_team_logo: true,
+        show_full_name: false,
+        show_status: true,
+        show_tyre: true,
+        show_tyre_age: true,
+        show_last_lap: true,
+        show_fastest_lap: true,
+        ...config,
+      };
+    }
+
     ${extractMethod(practiceClass, "getGridOptions() {")}
+    ${extractMethod(practiceClass, "_columns(layoutMode = 'wide') {")}
   }
 
   class DriverLapTimesHarness {
@@ -235,6 +271,23 @@ const Harnesses = new Function(
     ${extractMethod(raceLapClass, "_columns(layoutMode = 'wide', suppressPit = false, gapMode = 'ahead') {")}
   }
 
+  class PitStopHarness {
+    constructor(config = {}) {
+      this.config = {
+        show_tla: true,
+        show_full_name: false,
+        show_tyre: true,
+        show_pit_count: true,
+        show_pit_time: true,
+        show_pit_lane_time: true,
+        show_pit_delta: true,
+        ...config,
+      };
+    }
+
+    ${extractMethod(pitStopClass, "_columns(rows, layoutMode = 'wide', suppressPit = false) {")}
+  }
+
   return {
     measureRenderedCardWidth,
     getResponsiveLayoutMode,
@@ -244,6 +297,9 @@ const Harnesses = new Function(
     QualifyingHarness,
     PracticeHarness,
     RaceLapHarness,
+    PitStopHarness,
+    normalizeTeamName,
+    getTeamLogoMeta,
   };
 `,
 )();
@@ -280,6 +336,10 @@ if (payload.action === "measure_width") {
     payload.sessionPart ?? null,
     Boolean(payload.showDelta),
   );
+} else if (payload.action === "practice_columns") {
+  result = new Harnesses.PracticeHarness(payload.config || {})._columns(
+    payload.layoutMode || "wide",
+  );
 } else if (payload.action === "qualifying_rows") {
   result = new Harnesses.QualifyingHarness(payload.config || {})._buildRows(
     payload.positionDrivers || [],
@@ -299,6 +359,12 @@ if (payload.action === "measure_width") {
     Boolean(payload.suppressPit),
     payload.gapMode || "ahead",
   );
+} else if (payload.action === "pit_stop_columns") {
+  result = new Harnesses.PitStopHarness(payload.config || {})._columns(
+    payload.rows || [],
+    payload.layoutMode || "wide",
+    Boolean(payload.suppressPit),
+  );
 } else if (payload.action === "availability_notice") {
   result = Harnesses.resolveF1DataAvailabilityNotice(
     { states: payload.hassStates || {} },
@@ -307,6 +373,17 @@ if (payload.action === "measure_width") {
     payload.dataUnavailable !== false,
     payload.featureEnabled !== false,
   );
+} else if (payload.action === "team_logo_meta") {
+  const logo = Harnesses.getTeamLogoMeta(
+    payload.team,
+    payload.size || 24,
+    payload.style || "color",
+    Boolean(payload.preferColor),
+  );
+  result = {
+    normalized: Harnesses.normalizeTeamName(payload.team),
+    logo,
+  };
 } else if (payload.action === "source_checks") {
   result = {
     driversCardUsesShortTitle: driversClass.includes("Driver Championship"),
@@ -338,6 +415,18 @@ if (payload.action === "measure_width") {
     qualifyingDeltaPresent: qualifyingClass.includes("_applyCurrentSegmentDeltas(rows)")
       && qualifyingClass.includes("current_segment_delta")
       && qualifyingClass.includes("formatF1DeltaSeconds(delta, '--')"),
+    qualifyingDeltaColumnDynamic: qualifyingClass.includes("minmax(58px, 0.72fr)")
+      && qualifyingClass.includes(".qt-cell.center .qt-delta"),
+    tableCardsAvoidMaxContentTables: [
+      pitStopClass,
+      driverLapTimesClass,
+      practiceClass,
+      raceLapClass,
+      startingGridClass,
+    ].every((cardSource) => !cardSource.includes("min-width: max-content")
+      && !cardSource.includes("width: max-content")),
+    incidentTablesUseMinmaxColumns: investigationsClass.includes("minmax(90px, 0.85fr)")
+      && trackLimitsClass.includes("minmax(90px, 0.7fr)"),
     qualifyingRowHeightPresent: qualifyingClass.includes(".qt-row:not(.header)")
       && qualifyingClass.includes("height: var(--f1-live-table-row-height, 34px);"),
     practiceRowHeightPresent: practiceClass.includes(".pt-row:not(.header)")
@@ -409,6 +498,25 @@ def test_overflowing_content_still_uses_narrow_layout_breakpoints() -> None:
 
 
 @pytest.mark.parametrize(
+    "team_name",
+    [
+        "Cadillac",
+        "Cadillac F1 Team",
+        "Cadillac Ferrari",
+        "Cadillac Formula 1 Team",
+    ],
+)
+def test_team_logo_lookup_resolves_cadillac_constructor_names(team_name: str) -> None:
+    """Cadillac should render a team logo for current standings and live feeds."""
+    result = _run_probe({"action": "team_logo_meta", "team": team_name})
+
+    assert result["normalized"] == "Cadillac"
+    assert result["logo"]["src"].endswith(
+        "/common/f1/2026/cadillac/2026cadillaclogowhite.webp"
+    )
+
+
+@pytest.mark.parametrize(
     "class_name",
     [
         "F1LiveSessionCard",
@@ -445,6 +553,38 @@ def test_race_lap_columns_hide_pit_count_when_pit_sensor_is_unavailable() -> Non
 
     assert any(column["key"] == "pit_count" for column in visible_columns)
     assert all(column["key"] != "pit_count" for column in suppressed_columns)
+
+
+def test_pit_stop_narrow_layout_keeps_tyre_column_readable() -> None:
+    """Small Pit Stops cards should protect tyres before shrinking numeric columns."""
+    columns = _run_probe(
+        {
+            "action": "pit_stop_columns",
+            "layoutMode": "narrow",
+            "rows": [{"pit_lane_time_num": 21.4, "pit_delta_num": 1.2}],
+        }
+    )
+
+    assert [column["key"] for column in columns] == [
+        "tla",
+        "tyre",
+        "pit_count",
+        "pit_time",
+        "pit_delta",
+    ]
+    assert (
+        next(column for column in columns if column["key"] == "tla")["width"]
+        == "minmax(90px, 1.18fr)"
+    )
+    assert (
+        next(column for column in columns if column["key"] == "tyre")["width"]
+        == "minmax(50px, 0.64fr)"
+    )
+    assert all(
+        column["width"].startswith("minmax(")
+        for column in columns
+        if column["key"] in {"pit_count", "pit_time", "pit_delta"}
+    )
 
 
 def test_driver_positions_sensor_exposes_public_race_gap_fields(hass) -> None:
@@ -556,6 +696,61 @@ def test_race_lap_gap_column_can_switch_mode_and_hide() -> None:
         == "Gap"
     )
     assert all(column["key"] != "gap" for column in hidden_columns)
+
+
+def test_qualifying_medium_layout_distributes_extra_width_across_timing_columns() -> (
+    None
+):
+    """Wider medium cards should not leave all spare width after the driver."""
+    columns = _run_probe(
+        {
+            "action": "qualifying_columns",
+            "layoutMode": "medium",
+            "sessionPart": 1,
+            "showDelta": True,
+        }
+    )
+    widths = {column["key"]: column["width"] for column in columns}
+
+    assert widths["tla"] == "minmax(92px, 0.72fr)"
+    assert widths["sector_1"] == "minmax(62px, 0.72fr)"
+    assert widths["sector_2"] == "minmax(62px, 0.72fr)"
+    assert widths["sector_3"] == "minmax(62px, 0.72fr)"
+    assert widths["last_lap"] == "minmax(78px, 0.95fr)"
+    assert widths["best_session"] == "minmax(78px, 0.95fr)"
+    assert widths["delta"] == "minmax(58px, 0.72fr)"
+
+
+def test_timing_table_cards_use_dynamic_minmax_columns() -> None:
+    """Shared timing tables should distribute available width across data columns."""
+    driver_lap_widths = {
+        column["key"]: column["width"]
+        for column in _run_probe(
+            {
+                "action": "driver_lap_columns",
+                "layoutMode": "wide",
+                "lapNumbers": [1, 2, 3],
+                "config": {"show_lap_history": True},
+            }
+        )
+    }
+    practice_widths = {
+        column["key"]: column["width"]
+        for column in _run_probe({"action": "practice_columns", "layoutMode": "wide"})
+    }
+    race_widths = {
+        column["key"]: column["width"]
+        for column in _run_probe({"action": "race_lap_columns", "layoutMode": "wide"})
+    }
+
+    assert driver_lap_widths["tla"] == "minmax(96px, 0.7fr)"
+    assert driver_lap_widths["last_lap"] == "minmax(76px, 0.9fr)"
+    assert driver_lap_widths["lap_3"] == "minmax(82px, 0.95fr)"
+    assert practice_widths["driver"] == "minmax(96px, 0.7fr)"
+    assert practice_widths["fastest_lap"] == "minmax(82px, 1fr)"
+    assert race_widths["driver"] == "minmax(96px, 0.7fr)"
+    assert race_widths["gap"] == "minmax(58px, 0.62fr)"
+    assert race_widths["fastest_lap"] == "minmax(82px, 1fr)"
 
 
 def test_qualifying_delta_column_is_optional_and_uses_current_q_part() -> None:
@@ -812,6 +1007,9 @@ def test_timing_card_source_keeps_auth_aware_notices_and_short_titles() -> None:
         "driverLapTimesGapFieldsPresent": True,
         "raceLapGapFieldsPresent": True,
         "qualifyingDeltaPresent": True,
+        "qualifyingDeltaColumnDynamic": True,
+        "tableCardsAvoidMaxContentTables": True,
+        "incidentTablesUseMinmaxColumns": True,
         "qualifyingRowHeightPresent": True,
         "practiceRowHeightPresent": True,
         "raceLapRowHeightPresent": True,

@@ -16,8 +16,18 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const normalize = v => v.trim().replace(/^v/i, '');
+            const cleanValue = v => {
+              const value = (v || '').trim();
+              return /^_?no response_?$/i.test(value) ? '' : value;
+            };
+            const normalize = v => cleanValue(v).replace(/^v/i, '');
             const isBeta = v => /beta/i.test(v);
+            const extractField = (body, label) => {
+              const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const pattern = new RegExp(`### ${escaped}\\s*\\n+([^#]+?)(?=\\n### |$)`, 'i');
+              const match = body.match(pattern);
+              return match ? cleanValue(match[1]) : '';
+            };
 
             const ensureLabel = async (name, color, description) => {
               try {
@@ -36,15 +46,20 @@ jobs:
             const body = context.payload.issue.body || '';
             const issueNumber = context.payload.issue.number;
             const existingLabels = context.payload.issue.labels.map(l => l.name);
+            const component = extractField(body, 'Component').toLowerCase();
+            const isCardRelated =
+              component.includes('live data card') ||
+              component.includes('both integration and card');
 
             // Extract reported version from issue body
-            const versionMatch = body.match(/### F1 Sensor Version\s*\n+([^\n#]+)/);
-            if (!versionMatch) return;
-            const reportedVersion = normalize(versionMatch[1]);
+            const reportedVersion = normalize(extractField(body, 'F1 Sensor Version'));
             if (!reportedVersion) return;
 
+            const betaVersions = [];
+            if (isBeta(reportedVersion)) betaVersions.push(`F1 Sensor ${reportedVersion}`);
+
             // Beta version — acknowledge as tester, skip outdated check
-            if (isBeta(reportedVersion)) {
+            if (betaVersions.length > 0) {
               if (existingLabels.includes('beta')) return;
 
               await ensureLabel('beta', 'bfd4f2', 'Reported on a beta version');
@@ -61,14 +76,14 @@ jobs:
                 body: [
                   '👋 Thanks for testing the beta and taking the time to report this!',
                   '',
-                  `You're running **${reportedVersion}**, which is a pre-release version. Beta feedback is valuable and helps improve the integration before stable releases.`,
+                  `You're running **${betaVersions.join('** and **')}**, which includes a pre-release version. Beta feedback is valuable and helps improve F1 Sensor before stable releases.`,
                   '',
                   'If this issue is affecting your day-to-day use of F1 Sensor, you can revert to the latest stable release via HACS at any time.',
                   '',
                   '**How to switch back to a stable release via HACS:**',
                   '1. Go to **HACS** in your Home Assistant sidebar',
                   '2. Find **F1 Sensor**, click **Download**, and select the latest stable version',
-                  '3. Restart Home Assistant',
+                  isCardRelated ? '3. Restart Home Assistant, then reload your browser so the dashboard loads fresh card assets' : '3. Restart Home Assistant',
                   '',
                   'We\'ll look into this — thanks again for helping test!',
                 ].join('\n'),
@@ -117,7 +132,7 @@ jobs:
                 '**How to update via HACS:**',
                 '1. Go to **HACS** in your Home Assistant sidebar',
                 '2. Find **F1 Sensor**, click **Download**, and select the latest version',
-                '3. Restart Home Assistant',
+                isCardRelated ? '3. Restart Home Assistant, then reload your browser so the dashboard loads fresh card assets' : '3. Restart Home Assistant',
                 '',
                 'If the issue persists after updating, please comment here and we\'ll continue investigating.',
                 'If we don\'t hear back within **24 hours**, this issue will be automatically closed.',

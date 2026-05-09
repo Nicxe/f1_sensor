@@ -14,11 +14,10 @@ A big thank you to Boredmthfkr for sharing his full setup with all of us. If you
 
 So, I was asked by Niklas to share my steps with the community, if anyone wants to replicate the cards I used. Here we go\!  
 Let’s start by giving a big “Thank you\!” to Stimo for his work on this integration. Looking at the Roadmap, I imagine more awesome cards with stats and data coming.   
-
-::::info **Disclaimer**
+:::info[**Disclaimer**]
 I am in no way a software developer or possess coding skills, just ideas and I had help from 2 AIs in order to finetune and create the cards (Gemini & Claude). Keep in mind that AIs might not be able to solve a problem. I had many interactions trying to troubleshoot some issues with an AI and had to switch to another to get the desired results. FYI: Claude helped the most, even with the fact that I used the free plan, and with Gemini I used the Pro plan… This is NOT a statement that one is better than the other, just a hint not to rely just on one AI and to persevere and maybe try another if you don’t get to the bottom of it.  
 Also, I am documenting this after the fact and after more than a week, so I might have missed something. Hopefully not…
-::::
+:::
 
 
 ## Prerequisites:
@@ -113,10 +112,9 @@ sensor:
           "Cadillac F1 Team": "https://media.formula1.com/image/upload/c_lfill,w_3392/q_auto/v1740000000/common/f1/2026/cadillac/2026cadillaccarright.webp"
         }
 ```
-
-::::caution Important
+:::warning[Important]
 Restart HA before adding the cards
-::::
+:::
 
 ---
 ## The cards

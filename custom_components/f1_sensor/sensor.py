@@ -6501,10 +6501,56 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             _sectors = info.get("sectors", {})
             _cur = _sectors.get("current", {})
             _bst = _sectors.get("best", {})
+            _pb = _sectors.get("personal_best", {})
 
             def _sec(idx: int, field: str, _c: dict = _cur) -> object:
                 s = _c.get(idx)
                 return s.get(field) if isinstance(s, dict) else None
+
+            def _best_sec(
+                idx: int, field: str = "time", _pb: dict = _pb, _bst: dict = _bst
+            ) -> object:
+                s = _pb.get(idx)
+                if isinstance(s, dict):
+                    return s.get(field)
+                if field == "time":
+                    return _bst.get(idx)
+                return None
+
+            def _sector_detail(idx: int) -> dict[str, object]:
+                return {
+                    "number": idx + 1,
+                    "time": _sec(idx, "time"),
+                    "value": _sec(idx, "value"),
+                    "lap": _sec(idx, "lap"),
+                    "overall_fastest": _sec(idx, "overall_fastest"),
+                    "personal_fastest": _sec(idx, "personal_fastest"),
+                    "source": _sec(idx, "source"),
+                }
+
+            def _best_sector_detail(idx: int) -> dict[str, object]:
+                return {
+                    "number": idx + 1,
+                    "time": _best_sec(idx),
+                    "value": _best_sec(idx, "value"),
+                    "lap": _best_sec(idx, "lap"),
+                    "session_part": _best_sec(idx, "session_part"),
+                    "overall_fastest": _best_sec(idx, "overall_fastest"),
+                    "personal_fastest": _best_sec(idx, "personal_fastest"),
+                    "source": _best_sec(idx, "source"),
+                }
+
+            sectors_out = {
+                "state": _sectors.get("state"),
+                "current_lap": _sectors.get("current_lap"),
+                "last_completed_sector": _sectors.get("last_completed_sector"),
+                "current": {
+                    f"sector_{idx + 1}": _sector_detail(idx) for idx in (0, 1, 2)
+                },
+                "personal_best": {
+                    f"sector_{idx + 1}": _best_sector_detail(idx) for idx in (0, 1, 2)
+                },
+            }
 
             # Normalize team color
             team_color = identity.get("team_color")
@@ -6569,15 +6615,31 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "sector_1": _sec(0, "time"),
                 "sector_2": _sec(1, "time"),
                 "sector_3": _sec(2, "time"),
+                "sector_1_lap": _sec(0, "lap"),
+                "sector_2_lap": _sec(1, "lap"),
+                "sector_3_lap": _sec(2, "lap"),
+                "sector_1_source": _sec(0, "source"),
+                "sector_2_source": _sec(1, "source"),
+                "sector_3_source": _sec(2, "source"),
                 "sector_1_overall_fastest": _sec(0, "overall_fastest"),
                 "sector_1_personal_fastest": _sec(0, "personal_fastest"),
                 "sector_2_overall_fastest": _sec(1, "overall_fastest"),
                 "sector_2_personal_fastest": _sec(1, "personal_fastest"),
                 "sector_3_overall_fastest": _sec(2, "overall_fastest"),
                 "sector_3_personal_fastest": _sec(2, "personal_fastest"),
-                "best_sector_1": _bst.get(0),
-                "best_sector_2": _bst.get(1),
-                "best_sector_3": _bst.get(2),
+                "best_sector_1": _best_sec(0),
+                "best_sector_2": _best_sec(1),
+                "best_sector_3": _best_sec(2),
+                "best_sector_1_lap": _best_sec(0, "lap"),
+                "best_sector_2_lap": _best_sec(1, "lap"),
+                "best_sector_3_lap": _best_sec(2, "lap"),
+                "best_sector_1_session_part": _best_sec(0, "session_part"),
+                "best_sector_2_session_part": _best_sec(1, "session_part"),
+                "best_sector_3_session_part": _best_sec(2, "session_part"),
+                "sector_state": _sectors.get("state"),
+                "sector_current_lap": _sectors.get("current_lap"),
+                "last_completed_sector": _sectors.get("last_completed_sector"),
+                "sectors": sectors_out,
                 "q1_time": _q1_time,
                 "q1_knocked_out": _q1_ko,
                 "q1_position": None,

@@ -86,6 +86,7 @@ from .entity import (
     unregister_entry_name_settings,
 )
 from .formation_start import FormationStartTracker
+from .frontend import async_ensure_live_data_card_frontend
 from .helpers import (
     PersistentCache,
     build_user_agent,
@@ -2090,6 +2091,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _on_no_spoiler_changed
             )
 
+    await async_ensure_live_data_card_frontend(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
@@ -4259,29 +4261,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "completed_laps": 0,
                 },
             )
-            entry.setdefault(
-                "sectors",
-                {
-                    "current": {
-                        0: {
-                            "time": None,
-                            "overall_fastest": None,
-                            "personal_fastest": None,
-                        },
-                        1: {
-                            "time": None,
-                            "overall_fastest": None,
-                            "personal_fastest": None,
-                        },
-                        2: {
-                            "time": None,
-                            "overall_fastest": None,
-                            "personal_fastest": None,
-                        },
-                    },
-                    "best": {0: None, 1: None, 2: None},
-                },
-            )
+            self._ensure_sector_state(entry)
             timing = entry["timing"]
             lap_history = entry["lap_history"]
 
@@ -4425,34 +4405,215 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         for drv_entry in self._state["drivers"].values():
                             s = drv_entry.get("sectors")
                             if s:
-                                s["best"] = {0: None, 1: None, 2: None}
-                                for _i in (0, 1, 2):
-                                    s["current"][_i] = {
-                                        "time": None,
-                                        "overall_fastest": None,
-                                        "personal_fastest": None,
-                                    }
+                                self._reset_sector_state(s, reset_best=True)
         if position_changed:
             self._recompute_leader_from_state()
         return changed
+
+    @staticmethod
+    def _empty_current_sector() -> dict[str, Any]:
+        return {
+            "time": None,
+            "value": None,
+            "lap": None,
+            "overall_fastest": None,
+            "personal_fastest": None,
+            "source": None,
+        }
+
+    @staticmethod
+    def _empty_personal_best_sector() -> dict[str, Any]:
+        return {
+            "time": None,
+            "value": None,
+            "lap": None,
+            "session_part": None,
+            "overall_fastest": None,
+            "personal_fastest": None,
+            "source": None,
+        }
+
+    @classmethod
+    def _empty_sector_state(cls) -> dict[str, Any]:
+        return {
+            "current": {idx: cls._empty_current_sector() for idx in (0, 1, 2)},
+            "best": {0: None, 1: None, 2: None},
+            "personal_best": {
+                idx: cls._empty_personal_best_sector() for idx in (0, 1, 2)
+            },
+            "current_lap": None,
+            "last_completed_sector": None,
+            "state": "awaiting_s1",
+        }
+
+    @classmethod
+    def _normalize_current_sector(cls, value: object) -> dict[str, Any]:
+        sector = cls._empty_current_sector()
+        if not isinstance(value, dict):
+            return sector
+        sector.update(
+            {
+                "time": value.get("time"),
+                "value": value.get("value"),
+                "lap": value.get("lap"),
+                "overall_fastest": value.get("overall_fastest"),
+                "personal_fastest": value.get("personal_fastest"),
+                "source": value.get("source"),
+            }
+        )
+        if sector["source"] is None and sector["time"] is not None:
+            sector["source"] = "current"
+        return sector
+
+    @classmethod
+    def _normalize_personal_best_sector(
+        cls, value: object, fallback_time: object = None
+    ) -> dict[str, Any]:
+        sector = cls._empty_personal_best_sector()
+        if isinstance(value, dict):
+            sector.update(
+                {
+                    "time": value.get("time"),
+                    "value": value.get("value"),
+                    "lap": value.get("lap"),
+                    "session_part": value.get("session_part"),
+                    "overall_fastest": value.get("overall_fastest"),
+                    "personal_fastest": value.get("personal_fastest"),
+                    "source": value.get("source"),
+                }
+            )
+        elif fallback_time is not None:
+            sector["time"] = fallback_time
+        if sector["source"] is None and sector["time"] is not None:
+            sector["source"] = "personal_best"
+        return sector
+
+    @classmethod
+    def _derive_sector_progress_state(cls, sectors: dict[str, Any]) -> str:
+        current = sectors.get("current") if isinstance(sectors, dict) else {}
+        if not isinstance(current, dict):
+            return "awaiting_s1"
+        has_s1 = cls._normalize_current_sector(current.get(0)).get("time") is not None
+        has_s2 = cls._normalize_current_sector(current.get(1)).get("time") is not None
+        has_s3 = cls._normalize_current_sector(current.get(2)).get("time") is not None
+        if has_s3:
+            return "lap_complete"
+        if has_s2:
+            return "s2_done"
+        if has_s1:
+            return "s1_done"
+        return "awaiting_s1"
+
+    @classmethod
+    def _ensure_sector_state(cls, entry: dict[str, Any]) -> dict[str, Any]:
+        sectors = entry.get("sectors")
+        if not isinstance(sectors, dict):
+            sectors = cls._empty_sector_state()
+            entry["sectors"] = sectors
+            return sectors
+
+        current = sectors.setdefault("current", {})
+        if not isinstance(current, dict):
+            current = {}
+            sectors["current"] = current
+        for idx in (0, 1, 2):
+            current[idx] = cls._normalize_current_sector(current.get(idx))
+
+        best = sectors.setdefault("best", {0: None, 1: None, 2: None})
+        if not isinstance(best, dict):
+            best = {0: None, 1: None, 2: None}
+            sectors["best"] = best
+        for idx in (0, 1, 2):
+            best.setdefault(idx, None)
+
+        personal_best = sectors.setdefault("personal_best", {})
+        if not isinstance(personal_best, dict):
+            personal_best = {}
+            sectors["personal_best"] = personal_best
+        for idx in (0, 1, 2):
+            personal_best[idx] = cls._normalize_personal_best_sector(
+                personal_best.get(idx), best.get(idx)
+            )
+            if best.get(idx) is None and personal_best[idx].get("time") is not None:
+                best[idx] = personal_best[idx]["time"]
+
+        sectors.setdefault("current_lap", None)
+        sectors.setdefault("last_completed_sector", None)
+        sectors["state"] = cls._derive_sector_progress_state(sectors)
+        return sectors
+
+    @classmethod
+    def _clear_current_sector(cls, sectors: dict[str, Any], idx: int) -> bool:
+        current = sectors.get("current")
+        if not isinstance(current, dict) or idx not in (0, 1, 2):
+            return False
+        empty = cls._empty_current_sector()
+        if current.get(idx) == empty:
+            return False
+        current[idx] = empty
+        return True
+
+    @classmethod
+    def _reset_sector_state(cls, sectors: dict[str, Any], *, reset_best: bool) -> None:
+        sectors["current"] = {idx: cls._empty_current_sector() for idx in (0, 1, 2)}
+        if reset_best:
+            sectors["best"] = {0: None, 1: None, 2: None}
+            sectors["personal_best"] = {
+                idx: cls._empty_personal_best_sector() for idx in (0, 1, 2)
+            }
+        else:
+            cls._ensure_sector_state({"sectors": sectors})
+        sectors["current_lap"] = None
+        sectors["last_completed_sector"] = None
+        sectors["state"] = "awaiting_s1"
+
+    @staticmethod
+    def _driver_completed_laps(entry: dict[str, Any]) -> int | None:
+        lap_history = entry.get("lap_history")
+        if not isinstance(lap_history, dict):
+            return None
+        for key in ("completed_laps", "last_recorded_lap"):
+            value = lap_history.get(key)
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                continue
+            if parsed >= 0:
+                return parsed
+        return None
+
+    def _current_sector_lap(
+        self, entry: dict[str, Any], sectors: dict[str, Any], idx: int
+    ) -> int | None:
+        if idx in (1, 2):
+            current_lap = sectors.get("current_lap")
+            try:
+                parsed = int(current_lap)
+            except (TypeError, ValueError):
+                parsed = None
+            if parsed is not None and parsed > 0:
+                return parsed
+        completed_laps = self._driver_completed_laps(entry)
+        return completed_laps + 1 if completed_laps is not None else None
 
     def _merge_sectors(self, rn: str, entry: dict, sectors_raw: object) -> bool:
         """Merge sector timing data for a driver from a TimingData delta.
 
         Handles the three sectors (indexed 0-2). When sector 0 (S1) arrives,
         sectors 1 and 2 from the previous lap are cleared unless they are also
-        updated in the same message. Updates are skipped during SC/VSC periods;
-        those are cleared when track status transitions into a yellow/SC/VSC state.
+        updated in the same message. When S3 arrives on its own, S1/S2 are
+        cleared so the card shows the lap-complete transition instead of stale
+        earlier sectors. Updates are skipped during SC/VSC periods; those are
+        cleared when track status transitions into a yellow/SC/VSC state.
         """
         _SC_VSC = {"2", "3", "4", "5", "6", "7"}
         if self._state.get("track_status") in _SC_VSC:
             return False
 
-        sectors = entry.get("sectors")
-        if not isinstance(sectors, dict):
-            return False
+        sectors = self._ensure_sector_state(entry)
         current = sectors["current"]
         best = sectors["best"]
+        personal_best = sectors["personal_best"]
 
         # Normalise to list of (idx, sector_dict) — stream sends list or dict delta
         if isinstance(sectors_raw, list):
@@ -4481,28 +4642,31 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             time_secs = self._parse_laptime_secs(value_str)
             if time_secs is None:
                 continue
+            sector_lap = self._current_sector_lap(entry, sectors, idx)
             updates[idx] = {
                 "time": time_secs,
+                "value": value_str,
+                "lap": sector_lap,
                 "overall_fastest": bool(sd.get("OverallFastest", False)),
                 "personal_fastest": bool(sd.get("PersonalFastest", False)),
+                "source": "current",
             }
 
         if not updates:
             return False
 
         changed = False
+        full_lap_update = set(updates) == {0, 1, 2}
 
         # New S1 starts a lap: clear S2 and S3 from the previous lap unless
         # they are also being updated in this message (rare but possible in replay)
         if 0 in updates:
+            if sectors.get("current_lap") != updates[0]["lap"]:
+                sectors["current_lap"] = updates[0]["lap"]
+                changed = True
             for clear_idx in (1, 2):
                 if clear_idx not in updates and current[clear_idx]["time"] is not None:
-                    current[clear_idx] = {
-                        "time": None,
-                        "overall_fastest": None,
-                        "personal_fastest": None,
-                    }
-                    changed = True
+                    changed = self._clear_current_sector(sectors, clear_idx) or changed
 
         # Apply sector updates and refresh personal best
         for idx, data in updates.items():
@@ -4513,7 +4677,32 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 best[idx] is None or data["time"] < best[idx]
             ):
                 best[idx] = data["time"]
+                session = self._state.get("session")
+                session_part = (
+                    session.get("part") if isinstance(session, dict) else None
+                )
+                personal_best[idx] = {
+                    **data,
+                    "session_part": session_part,
+                    "source": "personal_best",
+                }
                 changed = True
+            sectors["last_completed_sector"] = {
+                "number": idx + 1,
+                **data,
+            }
+
+        if 2 in updates and not full_lap_update:
+            for clear_idx in (0, 1):
+                changed = self._clear_current_sector(sectors, clear_idx) or changed
+            if sectors.get("current_lap") != updates[2]["lap"]:
+                sectors["current_lap"] = updates[2]["lap"]
+                changed = True
+
+        state = self._derive_sector_progress_state(sectors)
+        if sectors.get("state") != state:
+            sectors["state"] = state
+            changed = True
 
         return changed
 
@@ -4534,12 +4723,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             for drv_entry in self._state["drivers"].values():
                 s = drv_entry.get("sectors")
                 if isinstance(s, dict):
-                    for i in (0, 1, 2):
-                        s["current"][i] = {
-                            "time": None,
-                            "overall_fastest": None,
-                            "personal_fastest": None,
-                        }
+                    self._reset_sector_state(s, reset_best=False)
             self._schedule_deliver()
 
     def set_delay(self, seconds: int) -> None:
@@ -4913,7 +5097,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         lap_key = str(use_lap_num)
         prev_time = lap_history["laps"].get(lap_key)
         if prev_time == lap_time and last_lap_num >= use_lap_num:
-            return False
+            return self._mark_sector_lap_completed(entry, use_lap_num)
         lap_history["laps"][lap_key] = lap_time
         if last_lap_num < use_lap_num:
             lap_history["last_recorded_lap"] = use_lap_num
@@ -4924,7 +5108,52 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 lap_history["completed_laps"] = use_lap_num
 
         self._update_fastest_lap(rn, use_lap_num, lap_time)
+        self._mark_sector_lap_completed(entry, use_lap_num)
         return True
+
+    def _mark_sector_lap_completed(self, entry: dict[str, Any], lap_num: int) -> bool:
+        """Mark current sector progress as a completed lap."""
+        sectors = entry.get("sectors")
+        if not isinstance(sectors, dict):
+            return False
+
+        sectors = self._ensure_sector_state(entry)
+        current = sectors["current"]
+        changed = False
+        s3 = current.get(2)
+        s3_time = s3.get("time") if isinstance(s3, dict) else None
+
+        if s3_time is not None:
+            for idx in (0, 1):
+                changed = self._clear_current_sector(sectors, idx) or changed
+            if s3.get("lap") != lap_num:
+                s3["lap"] = lap_num
+                changed = True
+            last_completed = {
+                "number": 3,
+                **s3,
+            }
+            if sectors.get("last_completed_sector") != last_completed:
+                sectors["last_completed_sector"] = last_completed
+                changed = True
+            if sectors.get("current_lap") != lap_num:
+                sectors["current_lap"] = lap_num
+                changed = True
+            if sectors.get("state") != "lap_complete":
+                sectors["state"] = "lap_complete"
+                changed = True
+            return changed
+
+        for idx in (0, 1):
+            changed = self._clear_current_sector(sectors, idx) or changed
+        if sectors.get("current_lap") is not None:
+            sectors["current_lap"] = None
+            changed = True
+        state = self._derive_sector_progress_state(sectors)
+        if sectors.get("state") != state:
+            sectors["state"] = state
+            changed = True
+        return changed
 
     def _update_fastest_lap(self, rn: str, lap_num: int | None, lap_time: str) -> bool:
         """Update overall fastest lap if the provided lap is quicker."""

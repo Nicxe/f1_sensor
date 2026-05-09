@@ -2,8 +2,9 @@
 id: Issues
 title: Known Issues
 ---
+Use the [F1 Sensor issue tracker](https://github.com/Nicxe/f1_sensor/issues) for both integration and Live Data Card bugs. For dashboard card problems, select **Live data card** in the issue form component field and include a screenshot or screen recording when the problem is visual.
 
-::::caution **`sensor.f1_season_results`**
+:::warning[**`sensor.f1_season_results`**]
 The sensor may trigger a warning in the Home Assistant logs:
 
 ```yaml
@@ -21,4 +22,4 @@ recorder:
     entities:
       - sensor.f1_season_results
 ```
-::::
+:::

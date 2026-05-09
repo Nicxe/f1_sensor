@@ -52,6 +52,12 @@ const methodSources = [
   extractMethod("_resolveDisplayQualifyingPart(sessionState, ...parts)"),
   extractMethod("_normalizeQualifyingPart(value)"),
   extractMethod("_inferQualifyingPartFromDrivers(drivers)"),
+  extractMethod("_normalizeSectorDisplayMode(value)"),
+  extractMethod("_resolveSectorDisplay(pos, idx, mode = 'current')"),
+  extractMethod("_sectorFromSource(pos, idx, source)"),
+  extractMethod("_parseSectorSeconds(value)"),
+  extractMethod("_parseLapTimeSeconds(value)"),
+  extractMethod("_sectorClass(overallFastest, personalFastest, hasTiming)"),
   extractMethod("_asDriversList(value)"),
   extractMethod("_hasUsableDriversEntity(entityState)"),
 ];
@@ -326,3 +332,35 @@ def test_qualifying_card_sorts_untimed_q3_drivers_after_timed_rows() -> None:
     assert [row["tla"] for row in result["rows"]] == ["HAM", "PIA"]
     assert result["rows"][0]["position"] == 2
     assert result["rows"][1]["position"] is None
+
+
+def test_qualifying_card_shows_current_sectors_before_personal_best() -> None:
+    """Default sector display must stay aligned with live lap progress."""
+    result = _run_card_probe(
+        current_q_part=1,
+        position_drivers=[
+            {
+                "racing_number": "16",
+                "tla": "LEC",
+                "team": "Ferrari",
+                "q1_time": "1:27.456",
+                "q1_position": 1,
+                "current_position": "1",
+                "sector_1": 28.111,
+                "sector_1_source": "current",
+                "sector_1_personal_fastest": False,
+                "sector_2": None,
+                "sector_3": None,
+                "best_sector_1": 27.900,
+                "best_sector_2": 31.200,
+                "best_sector_3": 28.300,
+                "sector_state": "s1_done",
+            }
+        ],
+    )
+
+    row = result["rows"][0]
+    assert row["sector_1"] == 28.111
+    assert row["sector_1_source"] == "current"
+    assert row["sector_2"] is None
+    assert row["sector_3"] is None
