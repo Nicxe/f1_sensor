@@ -17,7 +17,10 @@ from homeassistant.components.lovelace.const import (
     LOVELACE_DATA,
 )
 from homeassistant.const import CONF_ID, CONF_TYPE
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback as ha_callback
+from homeassistant.helpers import issue_registry as ir
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,6 +38,7 @@ LIVE_DATA_CARD_ASSET_FILENAMES = (
 MANAGED_LIVE_DATA_CARD_RESOURCE_URL = (
     "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js"
 )
+STALE_LIVE_DATA_CARD_RESOURCES_ISSUE_ID = "stale_live_data_card_resources"
 OLD_LIVE_DATA_CARD_RESOURCE_URL_PATHS = frozenset(
     {
         "/hacsfiles/f1-sensor-live-data-card/f1-sensor-live-data-card.js",
@@ -44,6 +48,13 @@ OLD_LIVE_DATA_CARD_RESOURCE_URL_PATHS = frozenset(
 )
 RUNTIME_LIVE_DATA_CARD_DIR_PARTS = ("www", "f1-sensor-live-data-card")
 _RESOURCE_TYPE_MODULE = "module"
+_STALE_LIVE_DATA_CARD_RESOURCES_TRANSLATION_KEY = (
+    STALE_LIVE_DATA_CARD_RESOURCES_ISSUE_ID
+)
+_LIVE_DATA_CARD_CLEANUP_DOCS_URL = (
+    "https://nicxe.github.io/f1_sensor/cards/cards-overview"
+    "#migrating-from-the-old-standalone-card"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,23 +139,27 @@ async def _async_ensure_lovelace_resource(
     items = list(async_items() or [])
     desired_url = _managed_resource_url(cache_key)
     managed_item = _find_first_resource(items, _is_managed_resource_url)
+    old_items = _find_old_live_data_card_resources(items)
     if managed_item is not None:
         await _async_update_resource_if_needed(resources, managed_item, desired_url)
+        _async_update_stale_live_data_card_resource_issue(hass, len(old_items))
         return
 
-    old_items = [
-        item
-        for item in items
-        if _is_old_live_data_card_resource_url(str(item.get(CONF_URL, "")))
-    ]
     if old_items:
         if len(old_items) > 1:
             _LOGGER.info(
                 "Found multiple old F1 Sensor live data card resources; updating one and leaving the rest for manual cleanup"
             )
-        await _async_update_resource_if_needed(resources, old_items[0], desired_url)
+        resource_updated = await _async_update_resource_if_needed(
+            resources, old_items[0], desired_url
+        )
+        stale_resource_count = (
+            len(old_items) - 1 if resource_updated else len(old_items)
+        )
+        _async_update_stale_live_data_card_resource_issue(hass, stale_resource_count)
         return
 
+    _async_update_stale_live_data_card_resource_issue(hass, 0)
     async_create_item = getattr(resources, "async_create_item", None)
     if not callable(async_create_item):
         _LOGGER.debug("Lovelace resource collection is read-only")
@@ -161,6 +176,17 @@ def _find_first_resource(
         if matcher(str(item.get(CONF_URL, ""))):
             return item
     return None
+
+
+def _find_old_live_data_card_resources(
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return resources that still point at known standalone card URLs."""
+    return [
+        item
+        for item in items
+        if _is_old_live_data_card_resource_url(str(item.get(CONF_URL, "")))
+    ]
 
 
 def _get_lovelace_resources(hass: HomeAssistant) -> Any | None:
@@ -180,20 +206,47 @@ async def _async_update_resource_if_needed(
     resources: Any,
     item: dict[str, Any],
     desired_url: str,
-) -> None:
+) -> bool:
     """Update a Lovelace resource only when URL or type needs changing."""
     if (
         item.get(CONF_URL) == desired_url
         and item.get(CONF_TYPE) == _RESOURCE_TYPE_MODULE
     ):
-        return
+        return True
 
     item_id = item.get(CONF_ID)
     async_update_item = getattr(resources, "async_update_item", None)
     if not isinstance(item_id, str) or not callable(async_update_item):
         _LOGGER.debug("Lovelace resource collection is read-only")
-        return
+        return False
     await async_update_item(item_id, _resource_payload(desired_url))
+    return True
+
+
+@ha_callback
+def _async_update_stale_live_data_card_resource_issue(
+    hass: HomeAssistant,
+    stale_resource_count: int,
+) -> None:
+    """Create or clear the stale standalone card resource repair issue."""
+    if stale_resource_count <= 0:
+        ir.async_delete_issue(hass, DOMAIN, STALE_LIVE_DATA_CARD_RESOURCES_ISSUE_ID)
+        return
+
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        STALE_LIVE_DATA_CARD_RESOURCES_ISSUE_ID,
+        data={"stale_resource_count": stale_resource_count},
+        is_fixable=False,
+        is_persistent=True,
+        learn_more_url=_LIVE_DATA_CARD_CLEANUP_DOCS_URL,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=_STALE_LIVE_DATA_CARD_RESOURCES_TRANSLATION_KEY,
+        translation_placeholders={
+            "stale_resource_count": str(stale_resource_count),
+        },
+    )
 
 
 def _is_managed_resource_url(url: str) -> bool:

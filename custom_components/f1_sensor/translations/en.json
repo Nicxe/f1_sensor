@@ -100,6 +100,10 @@
     }
   },
   "issues": {
+    "stale_live_data_card_resources": {
+      "description": "F1 Sensor now bundles and manages the live data cards. Home Assistant still has stale Lovelace resource entries for the old standalone card ({stale_resource_count} detected), which can cause duplicate or outdated card behavior. Confirm that the bundled card works, then remove the old standalone HACS dashboard repository and the stale Lovelace resource entries. Restart Home Assistant or reload Lovelace resources and hard refresh the browser if stale card UI remains.",
+      "title": "Old standalone F1 live data card resources detected"
+    },
     "f1tv_token_attention_required": {
       "fix_flow": {
         "step": {

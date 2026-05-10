@@ -7,9 +7,11 @@ from types import SimpleNamespace
 from typing import Any
 
 from homeassistant.components.lovelace.const import LOVELACE_DATA
+from homeassistant.helpers import issue_registry as ir
 import pytest
 
 from custom_components.f1_sensor import frontend
+from custom_components.f1_sensor.const import DOMAIN
 
 
 class DummyLovelaceResources:
@@ -68,6 +70,12 @@ def _write_bundled_assets(source_dir: Path, js_source: str) -> None:
             path.write_bytes(filename.encode())
 
 
+def _stale_resource_issue(hass):
+    return ir.async_get(hass).async_get_issue(
+        DOMAIN, frontend.STALE_LIVE_DATA_CARD_RESOURCES_ISSUE_ID
+    )
+
+
 def test_sync_bundled_assets_copies_card_files_and_changes_cache_key(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -110,6 +118,27 @@ async def test_lovelace_resource_creation_is_idempotent(hass) -> None:
             "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=abc123",
         }
     ]
+    assert _stale_resource_issue(hass) is None
+
+
+@pytest.mark.asyncio
+async def test_managed_lovelace_resource_does_not_create_repair_issue(hass) -> None:
+    resources = DummyLovelaceResources(
+        [
+            {
+                "id": "managed",
+                "type": "module",
+                "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=abc123",
+            }
+        ]
+    )
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
+
+    await frontend._async_ensure_lovelace_resource(hass, "abc123")
+
+    assert resources.created == 0
+    assert resources.updated == 0
+    assert _stale_resource_issue(hass) is None
 
 
 @pytest.mark.asyncio
@@ -136,6 +165,41 @@ async def test_lovelace_resource_updates_existing_old_hacs_resource(hass) -> Non
             "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=newkey",
         }
     ]
+    assert _stale_resource_issue(hass) is None
+
+
+@pytest.mark.asyncio
+async def test_managed_resource_with_old_resource_creates_repair_issue(hass) -> None:
+    resources = DummyLovelaceResources(
+        [
+            {
+                "id": "managed",
+                "type": "module",
+                "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=oldkey",
+            },
+            {
+                "id": "old-hacs",
+                "type": "js",
+                "url": "/hacsfiles/f1-sensor-live-data-card/f1-sensor-live-data-card.js",
+            },
+        ]
+    )
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
+
+    await frontend._async_ensure_lovelace_resource(hass, "newkey")
+
+    assert resources.created == 0
+    assert resources.updated == 1
+    assert resources.items[0]["url"].endswith("?v=newkey")
+    assert resources.items[1]["url"] == (
+        "/hacsfiles/f1-sensor-live-data-card/f1-sensor-live-data-card.js"
+    )
+    issue = _stale_resource_issue(hass)
+    assert issue is not None
+    assert issue.data == {"stale_resource_count": 1}
+    assert issue.is_fixable is False
+    assert issue.severity is ir.IssueSeverity.WARNING
+    assert issue.translation_placeholders == {"stale_resource_count": "1"}
 
 
 @pytest.mark.asyncio
@@ -170,6 +234,76 @@ async def test_lovelace_resource_leaves_extra_old_resources_for_cleanup(hass) ->
         "type": "js",
         "url": "/local/f1-sensor-live-data-card.js",
     }
+    issue = _stale_resource_issue(hass)
+    assert issue is not None
+    assert issue.data == {"stale_resource_count": 1}
+
+
+@pytest.mark.asyncio
+async def test_stale_resource_repair_issue_clears_after_cleanup(hass) -> None:
+    resources = DummyLovelaceResources(
+        [
+            {
+                "id": "managed",
+                "type": "module",
+                "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=cachekey",
+            },
+            {
+                "id": "old-local",
+                "type": "js",
+                "url": "/local/f1-sensor-live-data-card.js",
+            },
+        ]
+    )
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
+
+    await frontend._async_ensure_lovelace_resource(hass, "cachekey")
+    assert _stale_resource_issue(hass) is not None
+
+    resources.items = [resources.items[0]]
+    await frontend._async_ensure_lovelace_resource(hass, "cachekey")
+
+    assert _stale_resource_issue(hass) is None
+
+
+@pytest.mark.asyncio
+async def test_unrelated_lovelace_resources_do_not_create_repair_issue(hass) -> None:
+    resources = DummyLovelaceResources(
+        [
+            {
+                "id": "unrelated",
+                "type": "module",
+                "url": "/hacsfiles/other-card/other-card.js",
+            },
+        ]
+    )
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
+
+    await frontend._async_ensure_lovelace_resource(hass, "cachekey")
+
+    assert resources.created == 1
+    assert _stale_resource_issue(hass) is None
+
+
+@pytest.mark.asyncio
+async def test_old_resource_that_cannot_be_updated_creates_repair_issue(hass) -> None:
+    resources = DummyLovelaceResources(
+        [
+            {
+                "type": "js",
+                "url": "/local/f1-sensor-live-data-card.js",
+            }
+        ]
+    )
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
+
+    await frontend._async_ensure_lovelace_resource(hass, "cachekey")
+
+    assert resources.created == 0
+    assert resources.updated == 0
+    issue = _stale_resource_issue(hass)
+    assert issue is not None
+    assert issue.data == {"stale_resource_count": 1}
 
 
 @pytest.mark.asyncio
