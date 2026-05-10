@@ -8292,7 +8292,7 @@ class F1LastRaceResultsCard extends LitElement {
     .cpd-cell.points-secondary {
       color: var(--ts-muted);
     }
-    
+
     .cpd-cell.align {
       justify-content: center;
       text-align: center;

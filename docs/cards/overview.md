@@ -72,6 +72,10 @@ If you previously added a manual dashboard resource, open **Settings > Dashboard
 F1 Sensor manages the bundled resource at `/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=...` with type **JavaScript Module**. If your installation had one old resource entry, F1 Sensor updates it. If it had multiple old entries, remove the extra stale entries manually after confirming the bundled card works.
 :::
 
+:::warning[Stale resource repair]
+Home Assistant Repairs may show **Old standalone F1 live data card resources detected** when old standalone resource URLs are still configured. Confirm the bundled cards work first, then remove the old standalone HACS dashboard repository and stale dashboard resources. Restart Home Assistant or reload Lovelace resources, then hard refresh the browser if the old card UI remains.
+:::
+
 <details>
 <summary>Manual fallback</summary>
 

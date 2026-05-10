@@ -50,6 +50,8 @@ You can use those attributes in templates or in the calendar to know when FP1, F
 No. The Live Data Cards are bundled with F1 Sensor. Install or update the integration, restart Home Assistant, and F1 Sensor registers the dashboard card resource automatically.
 
 If you previously installed `f1-sensor-live-data-card` as a separate HACS dashboard repository, keep your dashboard card configuration unchanged. After confirming the bundled card loads correctly, remove the old standalone card repository and any stale dashboard resource entries so Home Assistant does not keep loading an older card file.
+
+If Home Assistant Repairs reports **Old standalone F1 live data card resources detected**, it means one or more old standalone resource URLs are still configured. Remove those old resources after confirming the bundled card works.
 </details>
 
 
@@ -59,6 +61,8 @@ If you previously installed `f1-sensor-live-data-card` as a separate HACS dashbo
 Home Assistant and your browser can cache dashboard JavaScript. Restart Home Assistant after updating F1 Sensor, then reload the browser tab or clear the Home Assistant frontend cache.
 
 If the old standalone card was installed before, also check **Settings > Dashboards > Resources** and remove stale entries such as `/local/f1-sensor-live-data-card.js` or `/hacsfiles/f1-sensor-live-data-card/...`. Keep the bundled F1 Sensor resource that points to `/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=...`.
+
+The same cleanup clears the Home Assistant Repairs warning for stale standalone live data card resources.
 </details>
 
 
