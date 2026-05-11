@@ -163,6 +163,8 @@ Displays an at-a-glance overview of the current session, including session name,
 
 Shows the next race, countdown, weekend schedule, circuit map, track time, weather, and optional historical context. It can prefer live track weather during an active session and fall back to the normal next-race weather forecast.
 
+![Placeholder - F1 Next Race card screenshot](/img/placeholder_card_next_race.png)
+
 **Required entity:** `sensor.f1_next_race`
 
 **Optional entities:** `sensor.f1_weather`, `sensor.f1_track_weather`, `sensor.f1_current_session`, `sensor.f1_session_status`
@@ -187,6 +189,8 @@ Shows the next race, countdown, weekend schedule, circuit map, track time, weath
 `custom:f1-season-calendar-card`
 
 Displays the current season schedule as a compact race list. Past races can be dimmed or hidden, and the next race can be highlighted.
+
+![Placeholder - F1 Season Calendar card screenshot](/img/placeholder_card_season_calendar.png)
 
 **Required entity:** `sensor.f1_current_season`
 
@@ -231,6 +235,8 @@ Shows Race Control messages with category, flag state, and optional FIA branding
 `custom:f1-fia-documents-card`
 
 Lists FIA decision documents and official PDFs for the current race weekend. It can show the latest document only or a full document list with race context.
+
+![Placeholder - F1 FIA Documents card screenshot](/img/placeholder_card_fia_documents.png)
 
 **Required entity:** `sensor.f1_fia_documents`
 
@@ -296,6 +302,8 @@ This card is designed for Qualifying and Sprint Qualifying. Outside those sessio
 `custom:f1-practice-timing-card`
 
 Shows practice order with driver status, tyres, tyre age, last lap, fastest lap, and optional timing indicators.
+
+![Placeholder - F1 Practice Timing card screenshot](/img/placeholder_card_practice_timing.png)
 
 **Required entity:** `sensor.f1_driver_positions`
 
@@ -366,6 +374,8 @@ This card is designed for Race and Sprint sessions. Some columns depend on data 
 
 Shows the currently relevant starting grid for the weekend. Sprint weekends use Sprint Qualifying for the Sprint grid and Qualifying for the Race grid. Normal weekends use Qualifying for the Race grid.
 
+![Placeholder - F1 Starting Grid card screenshot](/img/placeholder_card_starting_grid.png)
+
 **Required entity:** `sensor.f1_starting_grid`
 
 | Option | Default | Description |
@@ -394,6 +404,8 @@ Shows the currently relevant starting grid for the weekend. Sprint weekends use 
 `custom:f1-last-race-results-card`
 
 Shows the latest race result, season race results, or sprint results with a session selector. It supports grid position, position delta, points, status, team logos, and No Spoiler Mode.
+
+![Placeholder - F1 Last Race Results card screenshot](/img/placeholder_card_last_race_results.png)
 
 **Required entity:** `sensor.f1_last_race_results`
 
@@ -628,6 +640,8 @@ Displays current constructor standings beside predicted final standings, predict
 `custom:f1-replay-control-card`
 
 Provides a purpose-built Replay Mode dashboard control. It combines season and session selectors, start reference selection, load/play/pause/stop controls, 30-second seek buttons, refresh, status details, and progress.
+
+![Placeholder - F1 Replay Control card screenshot](/img/placeholder_card_replay_control.png)
 
 **Required entities:** `sensor.f1_replay_status`, `select.f1_replay_year`, `select.f1_replay_session`, `button.f1_replay_load`, `button.f1_replay_play`, `button.f1_replay_pause`, `button.f1_replay_stop`, `media_player.f1_replay_player`
 
