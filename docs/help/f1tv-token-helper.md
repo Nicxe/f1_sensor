@@ -18,6 +18,11 @@ It does not ask for your Formula 1 password, does not send the token to a projec
 
 Install the helper from the [Chrome Web Store](https://chromewebstore.google.com/detail/f1tv-token-helper-beta/bbpgdcjohdjcechlffloekhpgdbjoafh) before you start pairing from Home Assistant.
 
+:::info
+F1TV live timing tokens are short-lived. Expect to renew F1TV access about every four days.
+Home Assistant shows a repair issue in the UI when F1TV access needs renewal.
+:::
+
 ## Step-by-step
 
 ### Step 1 - Keep this tab open
@@ -34,11 +39,12 @@ If it does not find the pairing automatically, open **Pairing link** in the help
 ### Step 2 - Sign in if needed
 
 1. If the helper says no token is available, select **Sign in**.
-2. Sign in to Formula 1 in the browser.
-3. Return to the helper and select **Fetch**.
+2. Formula 1 opens in a new browser tab. Sign in there.
+3. After signing in, return to the original tab that Home Assistant opened.
+4. Open **F1TV Token Helper** from that original tab and select **Fetch**.
 
-The helper keeps the Home Assistant pairing while you sign in.
-You should not need to start over in Home Assistant unless the pairing expires.
+The helper keeps the Home Assistant pairing in the original Home Assistant tab while you sign in.
+Use that tab when you fetch the token, because **Send to Home Assistant** needs the original pairing link.
 
 ### Step 3 - Send to Home Assistant
 
@@ -49,26 +55,55 @@ You should not need to start over in Home Assistant unless the pairing expires.
 Home Assistant stores only the live timing authorization value it needs.
 If the token expires later, public live timing continues to work.
 
-After pairing, `sensor.f1_f1tv_token_status` and `sensor.f1_f1tv_token_expires_at` show the saved token health. You can start a new pairing later with `button.f1_refresh_f1tv_access` or remove the saved token with `button.f1_clear_f1tv_access`.
+After pairing, `sensor.f1_f1tv_token_status` and `sensor.f1_f1tv_token_expires_at` show the saved token health.
+The token normally needs to be renewed about every four days.
+You can start a new pairing later with `button.f1_refresh_f1tv_access` or remove the saved token with `button.f1_clear_f1tv_access`.
 
 ## Troubleshooting
 
 For Home Assistant debug logs, see [Debug Logging and Logs](/help/debug-logging).
 
-### The helper does not show Home Assistant pairing
+<details>
+<summary>The helper does not show Home Assistant pairing</summary>
 
 Keep this page as the active tab and open the helper again.
 If that does not work, copy the full browser URL from this page, open **Pairing link** in the helper, paste the URL, and select **Connect**.
 
-### The helper says the pairing expired
+</details>
+
+<details>
+<summary>Send to Home Assistant does not work after signing in</summary>
+
+Formula 1 opens in a new tab when you select **Sign in**.
+After you have signed in, go back to the original tab that Home Assistant opened and open **F1TV Token Helper** there.
+The helper needs that original tab so it can use the Home Assistant pairing link when you select **Send to Home Assistant**.
+
+</details>
+
+<details>
+<summary>The helper says the pairing expired</summary>
 
 Return to Home Assistant and start **Connect F1TV access** again.
 Pairing links are intentionally short-lived.
 
-### Home Assistant cannot be reached
+</details>
+
+<details>
+<summary>The F1TV token expires after a few days</summary>
+
+This is expected.
+F1TV live timing tokens are short-lived and normally need to be renewed about every four days.
+Start a new pairing with `button.f1_refresh_f1tv_access` when the token status shows that F1TV access needs attention.
+
+</details>
+
+<details>
+<summary>Home Assistant cannot be reached</summary>
 
 Make sure the Home Assistant URL in the pairing link is reachable from the same browser.
 If you are away from home, use a Home Assistant URL that your browser can access.
+
+</details>
 
 ## Privacy
 
