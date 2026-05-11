@@ -54,7 +54,6 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
                 {
                     "CarData.z",
                     "ChampionshipPrediction",
-                    "TeamRadio",
                     "PitStopSeries",
                 }
             ),
@@ -64,7 +63,6 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
                     "SessionStatus",
                     "TrackStatus",
                     "ChampionshipPrediction",
-                    "TeamRadio",
                     "PitStopSeries",
                 }
             ),
@@ -87,13 +85,11 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
             "CarData.z",
             "ChampionshipPrediction",
             "PitStopSeries",
-            "TeamRadio",
         ],
         "active_live_streams": [
             "ChampionshipPrediction",
             "PitStopSeries",
             "SessionStatus",
-            "TeamRadio",
             "TrackStatus",
         ],
     }
@@ -131,13 +127,12 @@ async def test_diagnostics_hides_auth_state_when_experimental_auth_disabled(
                 {
                     "CarData.z",
                     "ChampionshipPrediction",
-                    "TeamRadio",
                     "PitStopSeries",
                 }
             ),
             "replay_only_streams": frozenset(),
             "active_live_streams": frozenset(
-                {"SessionStatus", "ChampionshipPrediction", "TeamRadio"}
+                {"SessionStatus", "ChampionshipPrediction"}
             ),
             "auth_enabled": True,
         },

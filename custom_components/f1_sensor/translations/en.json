@@ -17,7 +17,6 @@
       "new_race_control_message": "New race control message",
       "new_fia_document": "New FIA document published",
       "investigation_changed": "Investigation status changed",
-      "new_team_radio": "New team radio message",
       "live_timing_online": "Live timing came online",
       "live_timing_offline": "Live timing went offline"
     }
@@ -249,9 +248,6 @@
       },
       "tyre_statistics": {
         "name": "Tyre statistics"
-      },
-      "team_radio": {
-        "name": "Team radio"
       },
       "race_lap_count": {
         "name": "Race lap count"

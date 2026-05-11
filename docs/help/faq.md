@@ -67,13 +67,12 @@ The same cleanup clears the Home Assistant Repairs warning for stale standalone 
 
 
 <details>
-<summary>Why are some entities like Pit Stops, Team Radio, and Championship Prediction not available during live sessions?</summary>
+<summary>Why are some entities like Pit Stops and Championship Prediction unavailable without F1TV Auth testing?</summary>
 
-These entities depend on data streams from the F1 Live Timing API that require authentication the integration does not currently support. Since the data cannot be received reliably during live sessions, these entities are only created when you play back a session in [**Replay Mode**](/features/replay-mode), where the full session archive is available and all data works normally.
+These entities depend on data streams that are not part of public live timing. They can update in [**Replay Mode**](/features/replay-mode), and they can be tested during real live sessions when experimental [F1TV Auth testing](/help/experimental-testing) is paired with a valid token. Without that token, they remain unavailable while public live timing continues.
 
 The affected entities are:
 - `sensor.f1_pitstops`
-- `sensor.f1_team_radio`
 - `sensor.f1_championship_prediction_drivers`
 - `sensor.f1_championship_prediction_teams`
 - `binary_sensor.f1_formation_start`

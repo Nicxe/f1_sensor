@@ -254,7 +254,6 @@ Replay Mode provides access to all the same entities as a live session, plus sev
 | Entity | Description |
 | --- | --- |
 | `sensor.f1_pitstops` | Pit stop events and timing per car |
-| `sensor.f1_team_radio` | Team radio clips with rolling history |
 | `sensor.f1_championship_prediction_drivers` | Predicted Drivers Championship standings |
 | `sensor.f1_championship_prediction_teams` | Predicted Constructors Championship standings |
 | `binary_sensor.f1_formation_start` | Formation start detection for race and sprint sessions |

@@ -17,7 +17,6 @@
       "new_race_control_message": "Nytt Race Control-meddelande",
       "new_fia_document": "Nytt FIA-dokument publicerat",
       "investigation_changed": "Utredningsstatus ändrad",
-      "new_team_radio": "Nytt teamradio-meddelande",
       "live_timing_online": "Live timing online",
       "live_timing_offline": "Live timing offline"
     }
@@ -245,9 +244,6 @@
       },
       "tyre_statistics": {
         "name": "Däckstatistik"
-      },
-      "team_radio": {
-        "name": "Teamradio"
       },
       "race_lap_count": {
         "name": "Varvsräkning"

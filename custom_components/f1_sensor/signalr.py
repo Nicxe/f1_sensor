@@ -49,7 +49,6 @@ AUTH_GATED_LIVE_STREAMS = (
     "CarData.z",
     "DriverRaceInfo",
     "ChampionshipPrediction",
-    "TeamRadio",
     "PitStopSeries",
 )
 

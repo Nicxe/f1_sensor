@@ -53,7 +53,6 @@ The first authentication beta is intended to test these auth-gated live streams:
 CarData.z
 DriverRaceInfo
 ChampionshipPrediction
-TeamRadio
 PitStopSeries
 ```
 
@@ -61,7 +60,7 @@ In **Live Mode**, these streams should not be expected to update with public liv
 They should be tested live only after you add a valid F1TV token.
 
 Some auth-gated features also have replay support.
-For example, Championship Prediction, Team Radio, and Pit Stops can use the recorded session archive in **Replay Mode**, but they require F1TV authentication when you test them during a real live session.
+For example, Championship Prediction and Pit Stops can use the recorded session archive in **Replay Mode**, but they require F1TV authentication when you test them during a real live session.
 
 If the token is missing, expired, or rejected, auth-gated live data should become unavailable or stop receiving F1TV-only updates while public live timing continues.
 

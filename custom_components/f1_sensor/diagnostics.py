@@ -40,7 +40,6 @@ _TRACKED_STREAMS = (
     "ChampionshipPrediction",
     "DriverRaceInfo",
     "CarData.z",
-    "TeamRadio",
     "PitStopSeries",
 )
 

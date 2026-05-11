@@ -129,7 +129,6 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_track_weather](#track-weather)             | Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)|
 | [sensor.f1_driver_list](#driver-list)                 | Show list and details on all drivers, including team color, headshot URL etc| 
 | [sensor.f1_pitstops](#pit-stops)                      | Live pit stop events and aggregated pit stop series per car `(Replay Mode or F1TV Auth testing)` |
-| [sensor.f1_team_radio](#team-radio)                   | Latest team radio message and rolling history `(Replay Mode or F1TV Auth testing)` |
 | [sensor.f1_current_tyres](#current-tyres)             | Current tyre compound per driver |
 | [sensor.f1_tyre_statistics](#tyre-statistics)         | Aggregated tyre statistics per compound |
 | [sensor.f1_driver_positions](#driver-positions)       | Driver positions and lap times |
@@ -149,8 +148,8 @@ Use this section to understand the possible values for enum-type states and attr
 :::info[Entities]
 All of these entities update **only in relation to an active session**, typically starting less than an hour before and continuing for a few minutes after the session ends. Outside these windows, the entities will be set to **Unavailable** (not updating and not providing new data).
 :::
-:::note[Replay and F1TV Auth testing entities]
-Some entities stay registered in Home Assistant even when their upstream streams are not available. Pit Stops, Team Radio, and Championship Prediction can update in [Replay Mode](/features/replay-mode) and can be tested during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
+:::info[Replay and F1TV Auth testing entities]
+Some entities stay registered in Home Assistant even when their upstream streams are not available. Pit Stops and Championship Prediction can update in [Replay Mode](/features/replay-mode) and can be tested during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
 
 Formation Start can also be tested live when the required authenticated stream is available.
 :::
@@ -583,7 +582,7 @@ The headshot URLs are provided by F1 and may change between sessions. This senso
 ---
 
 ## Pit Stops
-:::note[Replay Mode or F1TV Auth testing]
+:::info[Replay Mode or F1TV Auth testing]
 This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
 :::
 
@@ -626,41 +625,6 @@ Each entry in `stops` contains:
 :::info[INFO]
 Available during race and sprint sessions in Replay Mode, and during live F1TV Auth testing when the authenticated stream is available.
 :::
-
----
-
-## Team Radio
-:::note[Replay Mode or F1TV Auth testing]
-This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
-:::
-
-Latest team radio clip with a rolling history, sourced from the Team Radio stream. This is a curated selection of radio traffic, similar to what is broadcast during TV coverage, not the full raw radio feed.
-
-**State**
-- ISO‑8601 timestamp of the most recent radio clip, or `unknown` when none are available.
-
-**Example**
-```text
-2026-03-14T15:22:31Z
-```
-
-**Attributes**
-
-| Attribute | Type | Description |
-| --- | --- | --- |
-| utc | string | ISO‑8601 timestamp of the radio clip |
-| received_at | string | ISO‑8601 timestamp when Home Assistant received the message |
-| racing_number | string | Car number of the driver (e.g., "1", "44") |
-| path | string | Relative path to the audio file |
-| clip_url | string | Full URL to the audio clip |
-| sequence | number | Message counter for deduplication |
-| history | list | Rolling list of recent radio clips (up to 20), each with `utc`, `racing_number`, `path`, and `clip_url` |
-| raw_message | object | Original payload from the live feed |
-:::info[INFO]
-Available during Replay Mode sessions when radio traffic is present in the session archive.
-:::
-
----
 
 ## Current Tyres
 
@@ -1769,7 +1733,7 @@ Noted: {{ noted }}, Under Investigation: {{ investigating }}
 ---
 
 ## Championship Prediction (Drivers)
-:::note[Replay Mode or F1TV Auth testing]
+:::info[Replay Mode or F1TV Auth testing]
 This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
 :::
 
@@ -1900,7 +1864,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 ---
 
 ## Championship Prediction (Teams)
-:::note[Replay Mode or F1TV Auth testing]
+:::info[Replay Mode or F1TV Auth testing]
 This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
 :::
 
@@ -2034,7 +1998,7 @@ Each entry in `teams` (keyed by team key) contains:
 ---
 
 ## Formation Start
-:::note[Replay Mode or F1TV Auth testing]
+:::info[Replay Mode or F1TV Auth testing]
 This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
 :::
 
