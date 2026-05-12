@@ -17,7 +17,6 @@
       "new_race_control_message": "Nuovo messaggio dalla direzione gara",
       "new_fia_document": "Nuovo documento FIA pubblicato",
       "investigation_changed": "Stato investigazione cambiato",
-      "new_team_radio": "Nuovo team radio",
       "live_timing_online": "Telemetria online",
       "live_timing_offline": "Telemetria offline"
     }
@@ -238,9 +237,6 @@
       },
       "tyre_statistics": {
         "name": "Statistiche gomme"
-      },
-      "team_radio": {
-        "name": "Team radio"
       },
       "race_lap_count": {
         "name": "Numero giri"

@@ -41,7 +41,7 @@ The integration organizes all entities across **six dedicated sub-devices**, whi
 | **Race** | Next race info, track time, race week indicator, season calendar |
 | **Championship** | Driver and constructor standings, points progression, championship predictions* |
 | **Session** | Session status, track status, safety car, weather, timing sensors, starting grid, formation start*, overtake mode, straight mode |
-| **Drivers** | Driver list, tyres, tyre statistics, driver positions, team radio*, pit stops* |
+| **Drivers** | Driver list, tyres, tyre statistics, driver positions, pit stops* |
 | **Officials** | Race control messages, FIA documents, track limits, investigations |
 | **System** | Live delay, calibration controls, replay controls, live timing connectivity, F1TV token status and controls |
 
@@ -62,7 +62,7 @@ When enabling live data, you can set an initial delay to better align live updat
 
 For detailed instructions on syncing with your TV, including guided calibration, see [Live Delay](/features/live-delay).
 
-Public live timing works without F1TV access. Experimental [F1TV Auth testing](/help/experimental-testing) is optional and only needed when you want to test auth-gated live timing streams such as Team Radio, Pit Stops, Championship Prediction, or formation start data during a real live session.
+Public live timing works without F1TV access. Experimental [F1TV Auth testing](/help/experimental-testing) is optional and only needed when you want to test auth-gated live timing streams such as Pit Stops, Championship Prediction, or formation start data during a real live session.
 :::tip[Quick start]
 A typical streaming delay is 30–45 seconds. You can always fine-tune this later using the [Live Delay](/features/live-delay) feature.
 :::

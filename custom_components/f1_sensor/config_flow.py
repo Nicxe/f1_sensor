@@ -80,7 +80,6 @@ SENSOR_OPTIONS = {
     "safety_car": "Safety car (live)",
     "formation_start": "Formation start (replay or live with F1TV access)",
     "race_control": "Race control (live)",
-    "team_radio": "Team radio (experimental F1TV live/replay)",
     "top_three": "Top three (leader, live)",
     "pitstops": "Pit stops (experimental F1TV live/replay)",
     "championship_prediction": "Championship prediction (experimental F1TV live/replay)",

@@ -58,12 +58,6 @@ Triggers are organized per sub-device. Only triggers whose backing entity is ena
 | New FIA document | A new FIA document is published |
 | Investigation changed | An investigation or penalty status changes |
 
-### Drivers device
-
-| Trigger | Fires when |
-| --- | --- |
-| New team radio | A new team radio clip is available |
-
 ### System device
 
 | Trigger | Fires when |

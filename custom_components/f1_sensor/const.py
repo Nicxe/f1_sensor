@@ -102,7 +102,6 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "fia_documents",
         "race_control",
         "top_three",
-        "team_radio",
         "pitstops",
         "championship_prediction",
         "live_timing_diagnostics",
