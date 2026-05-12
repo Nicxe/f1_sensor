@@ -44,15 +44,35 @@ You can use those attributes in templates or in the calendar to know when FP1, F
 
 ### Live Data Questions
 
+<details>
+<summary>Do I still need to install the separate F1 Sensor Live Data Card repository?</summary>
+
+No. The Live Data Cards are bundled with F1 Sensor. Install or update the integration, restart Home Assistant, and F1 Sensor registers the dashboard card resource automatically.
+
+If you previously installed `f1-sensor-live-data-card` as a separate HACS dashboard repository, keep your dashboard card configuration unchanged. After confirming the bundled card loads correctly, remove the old standalone card repository and any stale dashboard resource entries so Home Assistant does not keep loading an older card file.
+
+If Home Assistant Repairs reports **Old standalone F1 live data card resources detected**, it means one or more old standalone resource URLs are still configured. Remove those old resources after confirming the bundled card works.
+</details>
+
 
 <details>
-<summary>Why are some entities like Pit Stops, Team Radio, and Championship Prediction not available during live sessions?</summary>
+<summary>Why does a dashboard still show an old card after updating F1 Sensor?</summary>
 
-These entities depend on data streams from the F1 Live Timing API that require authentication the integration does not currently support. Since the data cannot be received reliably during live sessions, these entities are only created when you play back a session in [**Replay Mode**](/features/replay-mode), where the full session archive is available and all data works normally.
+Home Assistant and your browser can cache dashboard JavaScript. Restart Home Assistant after updating F1 Sensor, then reload the browser tab or clear the Home Assistant frontend cache.
+
+If the old standalone card was installed before, also check **Settings > Dashboards > Resources** and remove stale entries such as `/local/f1-sensor-live-data-card.js` or `/hacsfiles/f1-sensor-live-data-card/...`. Keep the bundled F1 Sensor resource that points to `/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=...`.
+
+The same cleanup clears the Home Assistant Repairs warning for stale standalone live data card resources.
+</details>
+
+
+<details>
+<summary>Why are some entities like Pit Stops and Championship Prediction unavailable without F1TV Auth testing?</summary>
+
+These entities depend on data streams that are not part of public live timing. They can update in [**Replay Mode**](/features/replay-mode), and they can be tested during real live sessions when experimental [F1TV Auth testing](/help/experimental-testing) is paired with a valid token. Without that token, they remain unavailable while public live timing continues.
 
 The affected entities are:
 - `sensor.f1_pitstops`
-- `sensor.f1_team_radio`
 - `sensor.f1_championship_prediction_drivers`
 - `sensor.f1_championship_prediction_teams`
 - `binary_sensor.f1_formation_start`

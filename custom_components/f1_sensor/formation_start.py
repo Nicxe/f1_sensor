@@ -370,8 +370,10 @@ class FormationStartTracker:
         )
 
     def _live_cardata_allowed(self) -> bool:
-        return self._resolution_allowed() and _is_race_or_sprint(
-            self._session_type, self._session_name
+        return (
+            self._tracking_enabled()
+            and self._resolution_allowed()
+            and _is_race_or_sprint(self._session_type, self._session_name)
         )
 
     def _arm_probe_if_ready(self) -> None:

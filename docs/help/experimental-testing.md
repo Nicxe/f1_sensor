@@ -18,7 +18,7 @@ F1TV Auth adds a short-lived live timing authorization value so the integration 
 
 The current beta flow uses Home Assistant pairing:
 
-1. Install or update F1 Sensor `v4.3.0-beta.3` or later in Home Assistant.
+1. Install or update F1 Sensor `v4.3.0-beta.4` or later in Home Assistant.
 2. Install **F1TV Token Helper BETA** from the [Chrome Web Store](https://chromewebstore.google.com/detail/f1tv-token-helper-beta/bbpgdcjohdjcechlffloekhpgdbjoafh).
 3. Start **Connect F1TV access with Token Helper** in Home Assistant.
 4. Open the pairing page from Home Assistant.
@@ -53,7 +53,6 @@ The first authentication beta is intended to test these auth-gated live streams:
 CarData.z
 DriverRaceInfo
 ChampionshipPrediction
-TeamRadio
 PitStopSeries
 ```
 
@@ -61,7 +60,7 @@ In **Live Mode**, these streams should not be expected to update with public liv
 They should be tested live only after you add a valid F1TV token.
 
 Some auth-gated features also have replay support.
-For example, Championship Prediction, Team Radio, and Pit Stops can use the recorded session archive in **Replay Mode**, but they require F1TV authentication when you test them during a real live session.
+For example, Championship Prediction and Pit Stops can use the recorded session archive in **Replay Mode**, but they require F1TV authentication when you test them during a real live session.
 
 If the token is missing, expired, or rejected, auth-gated live data should become unavailable or stop receiving F1TV-only updates while public live timing continues.
 
@@ -72,7 +71,7 @@ If the token is missing, expired, or rejected, auth-gated live data should becom
 Before you start, make sure you have:
 
 1. A non-production Home Assistant instance.
-2. F1 Sensor `v4.3.0-beta.3` or later installed.
+2. F1 Sensor `v4.3.0-beta.4` or later installed.
 3. Access to Home Assistant logs.
 4. A Formula 1 account with the required F1TV access for live timing.
 5. Chrome or another Chromium-based browser.
@@ -83,7 +82,7 @@ See [Debug Logging and Logs](/help/debug-logging) for the recommended logging se
 
 ## Step 1 - Install the beta version
 
-Install F1 Sensor `v4.3.0-beta.3` or later through HACS.
+Install F1 Sensor `v4.3.0-beta.4` or later through HACS.
 
 1. Open **HACS** in Home Assistant.
 2. Open **F1 Sensor**.
@@ -92,7 +91,7 @@ Install F1 Sensor `v4.3.0-beta.3` or later through HACS.
 5. Choose the latest beta version.
 6. Restart Home Assistant after the installation completes.
 
-After Home Assistant restarts, verify that the installed version is `v4.3.0-beta.3` or later.
+After Home Assistant restarts, verify that the installed version is `v4.3.0-beta.4` or later.
 
 ## Step 2 - Install the helper from Chrome Web Store
 
@@ -157,6 +156,15 @@ sensor.f1_f1tv_token_expires_at
 Use `sensor.f1_f1tv_token_status` to see whether the token is valid, expiring soon, expired, invalid, or rejected.
 Use `sensor.f1_f1tv_token_expires_at` to see when the current token expires.
 
+The integration also exposes two helper buttons when experimental F1TV access is available:
+
+```text
+button.f1_refresh_f1tv_access
+button.f1_clear_f1tv_access
+```
+
+Use `button.f1_refresh_f1tv_access` to start a new Token Helper pairing from Home Assistant. Use `button.f1_clear_f1tv_access` to remove the saved token and return to public live timing only.
+
 When the token expires or is rejected, public live timing should continue to work.
 Only the F1TV-authenticated live data needs a fresh token.
 
@@ -184,7 +192,7 @@ If that does not work, copy the full browser URL from the pairing page, open **P
 
 ### The helper opens but only manual export is available
 
-Make sure you are using F1 Sensor `v4.3.0-beta.3` or later and that you started **Connect F1TV access with Token Helper** from Home Assistant.
+Make sure you are using F1 Sensor `v4.3.0-beta.4` or later and that you started **Connect F1TV access with Token Helper** from Home Assistant.
 Older beta builds did not include the normal pairing flow.
 
 ### Home Assistant rejects the pairing

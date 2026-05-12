@@ -10,6 +10,11 @@ tests:
       - any-glob-to-any-file:
           - "custom_components/f1_sensor/tests/**"
 
+card:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "custom_components/f1_sensor/www/**"
+
 blueprint:
   - changed-files:
       - any-glob-to-any-file:

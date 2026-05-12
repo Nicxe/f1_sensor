@@ -35,8 +35,6 @@ _TRIGGER_MAP: dict[str, tuple[str, str, str | None]] = {
     "new_race_control_message": ("race_control", "sensor", None),
     "new_fia_document": ("fia_documents", "sensor", None),
     "investigation_changed": ("investigations", "sensor", None),
-    # Drivers device
-    "new_team_radio": ("team_radio", "sensor", None),
     # System device
     "live_timing_online": ("live_timing_online", "binary_sensor", "on"),
     "live_timing_offline": ("live_timing_online", "binary_sensor", "off"),

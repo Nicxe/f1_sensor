@@ -58,6 +58,7 @@ Many schedule timestamps are provided in three variants: an explicit UTC value (
 | country_code | string | ISO country code (e.g., "GB", "IT", "US") |
 | country_flag_url | string | URL to country flag image |
 | circuit_map_url | string | URL to official circuit map image |
+| circuit_outline_url | string | URL to circuit outline image when available |
 | circuit_timezone | string | Local timezone (best effort) |
 | race_start_utc | string | Race start (UTC ISO‑8601) |
 | race_start | string | Race start in Home Assistant local time |
@@ -133,6 +134,7 @@ Each entry in `races` contains the standard Ergast race data plus:
 | country_code | string | ISO country code (e.g., "GB", "IT", "US") |
 | country_flag_url | string | URL to country flag image |
 | circuit_map_url | string | URL to official circuit map image |
+| circuit_outline_url | string | URL to circuit outline image when available |
 
 ---
 
@@ -430,7 +432,7 @@ Verstappen
 | race_start_utc | string | Race start (UTC ISO‑8601) |
 | race_start | string | Race start in Home Assistant local time |
 | race_start_local | string | Race start in circuit local time |
-| results | list | Cleaned results array: `{number, position, points, status, driver{permanentNumber, code, givenName, familyName}, constructor{constructorId, name}}` |
+| results | list | Cleaned results array: `{number, grid, position, points, status, driver{permanentNumber, code, givenName, familyName}, constructor{constructorId, name}}` |
 
 
 ---
@@ -451,7 +453,7 @@ Verstappen
 
 | Attribute | Type | Description |
 | --- | --- | --- |
-| races | list | For each race: `{round, race_name, results:[…]}` where each result has same shape as in “Last Race Results” |
+| races | list | For each race: `{round, race_name, results:[...]}` where each result has the same shape as in [Last Race Results](#last-race-results), including the `grid` field |
 :::warning[Known Issue]
 `sensor.f1_season_results` may trigger a warning in the Home Assistant logs:
 
@@ -873,6 +875,7 @@ Each entry in `results` contains:
 | Field | Type | Description |
 | --- | --- | --- |
 | number | string | Car number |
+| grid | string | Sprint starting grid position |
 | position | string | Final position |
 | points | string | Points awarded |
 | status | string | Finish status |
@@ -903,8 +906,32 @@ Collects FIA decisions and official documents for the current race weekend.
 | name | string | Document title (e.g., "Doc 27 - Penalty Decision") |
 | url | string | URL to the FIA document |
 | published | string | ISO‑8601 timestamp when the document was published |
+| documents | list | Rolling list of up to 100 documents for the current weekend |
+| race | object | Compact race context for the document set |
 
-The sensor maintains a history of up to 100 documents internally. When a new race weekend starts (detected by "Document 1"), the history is reset.
+Each entry in `documents` contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| name | string | Document title |
+| url | string | URL to the FIA document |
+| published | string | ISO-8601 timestamp when available |
+| document_number | number | FIA document number when it can be parsed from the title |
+
+The `race` object contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| season | string | Season year |
+| round | string | Round number |
+| race_name | string | Grand Prix name |
+| race_date | string | Race date |
+| race_time | string | Race start time |
+| circuit_name | string | Circuit name |
+| locality | string | Circuit locality |
+| country | string | Circuit country |
+
+The sensor maintains a history of up to 100 documents. When a new race weekend starts, detected by FIA "Document 1", the history is reset. The state prefers the highest parsed FIA document number so the sensor does not move backwards when the FIA page publishes older or incomplete metadata.
 
 ---
 

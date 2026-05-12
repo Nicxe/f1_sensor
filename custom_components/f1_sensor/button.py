@@ -11,8 +11,23 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 
+from . import const
+from .auth import (
+    async_set_runtime_f1tv_auth_status,
+    async_update_f1tv_auth_repair_issue,
+    evaluate_f1tv_auth_header,
+    is_auth_feature_enabled,
+)
+from .auth_http import (
+    async_create_f1tv_pairing_session,
+    async_setup_f1tv_auth_http,
+)
 from .calibration import LiveDelayCalibrationManager
-from .const import API_URL, DOMAIN, ENABLE_DEVELOPMENT_MODE_UI
+from .const import (
+    API_URL,
+    CONF_LIVE_TIMING_AUTH_HEADER,
+    DOMAIN,
+)
 from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
 from .replay_entities import (
     F1ReplayBackButton,
@@ -47,9 +62,29 @@ async def async_setup_entry(
         set_suggested_object_id(entity, default_object_id("delay_calibration_match"))
         entities.append(entity)
 
-    # Manual diagnostic button to verify which UA we send to Jolpica/Ergast.
-    # Only expose this in development-mode UI to avoid confusing normal users.
-    if ENABLE_DEVELOPMENT_MODE_UI and registry.get("http_session") is not None:
+    # Public experimental auth can be enabled without exposing developer-only
+    # Jolpica diagnostics.
+    if is_auth_feature_enabled() and entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER):
+        entity = F1ClearF1TvAccessButton(
+            hass=hass,
+            entry=entry,
+            device_name=name,
+            unique_id=f"{entry.entry_id}_clear_f1tv_access",
+        )
+        set_suggested_object_id(entity, default_object_id("clear_f1tv_access"))
+        entities.append(entity)
+
+    if is_auth_feature_enabled():
+        entity = F1RefreshF1TvAccessButton(
+            hass=hass,
+            entry=entry,
+            device_name=name,
+            unique_id=f"{entry.entry_id}_refresh_f1tv_access",
+        )
+        set_suggested_object_id(entity, default_object_id("refresh_f1tv_access"))
+        entities.append(entity)
+
+    if const.ENABLE_DEVELOPMENT_MODE_UI and registry.get("http_session") is not None:
         entity = F1JolpicaUserAgentTestButton(
             hass=hass,
             entry_id=entry.entry_id,
@@ -83,6 +118,88 @@ async def async_setup_entry(
 
     if entities:
         async_add_entities(entities)
+
+
+class F1ClearF1TvAccessButton(F1AuxEntity, ButtonEntity):
+    """Diagnostic button that removes the saved F1TV authorization value."""
+
+    _device_category = "system"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:key-remove"
+    _attr_translation_key = "clear_f1tv_access"
+
+    def __init__(
+        self,
+        *,
+        hass: HomeAssistant,
+        unique_id: str,
+        entry: ConfigEntry,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, unique_id, entry.entry_id, device_name)
+        ButtonEntity.__init__(self)
+        self.hass = hass
+        self._entry = entry
+
+    async def async_press(self) -> None:
+        if not is_auth_feature_enabled():
+            return
+
+        data = dict(self._entry.data)
+        if not data.get(CONF_LIVE_TIMING_AUTH_HEADER):
+            return
+
+        data[CONF_LIVE_TIMING_AUTH_HEADER] = ""
+        status = evaluate_f1tv_auth_header("")
+        self.hass.config_entries.async_update_entry(self._entry, data=data)
+        async_set_runtime_f1tv_auth_status(self.hass, self._entry.entry_id, status)
+        async_update_f1tv_auth_repair_issue(self.hass, self._entry, status)
+        await self.hass.config_entries.async_reload(self._entry.entry_id)
+
+
+class F1RefreshF1TvAccessButton(F1AuxEntity, ButtonEntity):
+    """Button that starts a manual F1TV Token Helper pairing session."""
+
+    _device_category = "system"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:key-change"
+    _attr_translation_key = "refresh_f1tv_access"
+
+    def __init__(
+        self,
+        *,
+        hass: HomeAssistant,
+        unique_id: str,
+        entry: ConfigEntry,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, unique_id, entry.entry_id, device_name)
+        ButtonEntity.__init__(self)
+        self.hass = hass
+        self._entry = entry
+
+    async def async_press(self) -> None:
+        if not is_auth_feature_enabled():
+            return
+
+        async_setup_f1tv_auth_http(self.hass)
+        session = async_create_f1tv_pairing_session(self.hass, self._entry)
+        if session is None:
+            return
+
+        message = (
+            "Open the F1TV Token Helper to refresh experimental F1TV access.\n\n"
+            f"[Open F1TV Token Helper]({session.helper_url})\n\n"
+            f"This pairing expires at {session.expires_at_iso}."
+        )
+        result = persistent_notification.async_create(
+            self.hass,
+            message,
+            title="F1TV token refresh",
+            notification_id=f"{DOMAIN}_f1tv_token_refresh_{self._entry.entry_id}",
+        )
+        if isawaitable(result):
+            await result
 
 
 class F1MatchDelayButton(F1AuxEntity, ButtonEntity):
