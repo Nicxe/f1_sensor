@@ -45,7 +45,7 @@ Not all data is blocked. Schedule and calendar data is always kept up to date so
 - Driver and constructor standings
 - Championship predictions
 - FIA documents and race control messages
-- Team radio and pit stop data
+- Pit stop data
 
 When you deactivate the mode, all frozen data is refreshed immediately and delivered to your entities at once. If any FIA documents were published during the blackout, they all appear at the same time.
 

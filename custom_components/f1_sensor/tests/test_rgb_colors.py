@@ -263,6 +263,55 @@ def test_tyre_statistics_compound_color_rgb(hass):
     soft = compounds["SOFT"]
     assert soft["compound_color"] == "#FF0000"
     assert soft["compound_color_rgb"] == [255, 0, 0]
+    assert sensor._attr_extra_state_attributes["status"] == "ready"
+
+
+def test_tyre_statistics_reports_waiting_for_compound_data(hass):
+    coord = DummyCoordinator(
+        data={
+            "drivers": {
+                "1": {
+                    "identity": {"tla": "NOR", "team_color": "F47600"},
+                    "tyres": {"stint_laps": 10},
+                    "tyre_history": {
+                        "current_stint_index": 0,
+                        "stints": [
+                            {
+                                "stint_index": 0,
+                                "total_laps": 10,
+                                "best_lap_time": "1:31.885",
+                                "best_lap_time_secs": 91.885,
+                            }
+                        ],
+                    },
+                },
+                "81": {
+                    "identity": {"tla": "PIA", "team_color": "F47600"},
+                    "tyres": {},
+                    "tyre_history": {
+                        "current_stint_index": 0,
+                        "stints": [{"stint_index": 0}],
+                    },
+                },
+            },
+            "tyre_statistics": {},
+        }
+    )
+    sensor = F1TyreStatisticsSensor(coord, "uid", "entry", "F1")
+    sensor.hass = hass
+
+    assert sensor._update_from_coordinator() is True
+
+    attrs = sensor._attr_extra_state_attributes
+    assert sensor.state is None
+    assert attrs["status"] == "waiting_for_compound_data"
+    assert attrs["source_stream"] == "TimingAppData"
+    assert attrs["waiting_for"] == "Compound"
+    assert attrs["drivers_seen"] == 2
+    assert attrs["drivers_with_stints"] == 2
+    assert attrs["drivers_with_stint_laps"] == 1
+    assert attrs["drivers_with_compound"] == 0
+    assert attrs["compounds"] == {}
 
 
 # ---------------------------------------------------------------------------

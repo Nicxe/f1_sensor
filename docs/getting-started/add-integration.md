@@ -40,12 +40,12 @@ The integration organizes all entities across **six dedicated sub-devices**, whi
 | --- | --- |
 | **Race** | Next race info, track time, race week indicator, season calendar |
 | **Championship** | Driver and constructor standings, points progression, championship predictions* |
-| **Session** | Session status, track status, safety car, weather, timing sensors, formation start*, overtake mode, straight mode |
-| **Drivers** | Driver list, tyres, tyre statistics, driver positions, team radio*, pit stops* |
+| **Session** | Session status, track status, safety car, weather, timing sensors, starting grid, formation start*, overtake mode, straight mode |
+| **Drivers** | Driver list, tyres, tyre statistics, driver positions, pit stops* |
 | **Officials** | Race control messages, FIA documents, track limits, investigations |
-| **System** | Live delay, calibration controls, replay controls, live timing connectivity |
+| **System** | Live delay, calibration controls, replay controls, live timing connectivity, F1TV token status and controls |
 
-*Entities marked with an asterisk are only available in [Replay Mode](/features/replay-mode).
+*Entities marked with an asterisk depend on Replay Mode or experimental F1TV Auth testing, depending on the selected feature.
 
 Each device exposes its own set of [device automation triggers](/automation#device-automation-triggers), making it straightforward to build automations directly from the UI without writing YAML.
 :::warning[Upgrading from v3 to v4]
@@ -61,6 +61,8 @@ All entity IDs remain unchanged, so automations and dashboard cards that referen
 When enabling live data, you can set an initial delay to better align live updates with your TV broadcast.
 
 For detailed instructions on syncing with your TV, including guided calibration, see [Live Delay](/features/live-delay).
+
+Public live timing works without F1TV access. Experimental [F1TV Auth testing](/help/experimental-testing) is optional and only needed when you want to test auth-gated live timing streams such as Pit Stops, Championship Prediction, or formation start data during a real live session.
 :::tip[Quick start]
 A typical streaming delay is 30–45 seconds. You can always fine-tune this later using the [Live Delay](/features/live-delay) feature.
 :::

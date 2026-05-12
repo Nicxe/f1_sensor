@@ -17,6 +17,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
+from . import const
 from .const import (
     CONF_OPERATION_MODE,
     CONF_RACE_WEEK_START_DAY,
@@ -34,6 +35,7 @@ from .entity import (
     F1AuxEntity,
     F1BaseEntity,
     default_object_id,
+    is_auth_gated_stream_active,
     is_replay_only_stream_active,
     set_suggested_object_id,
 )
@@ -101,7 +103,7 @@ async def async_setup_entry(
     race_week_start = _normalize_race_week_start(entry.data)
 
     sensors = []
-    if "live_timing_diagnostics" not in disabled:
+    if const.ENABLE_DEVELOPMENT_MODE_UI and "live_timing_diagnostics" not in disabled:
         sensor = F1LiveTimingOnlineBinarySensor(
             hass,
             entry.entry_id,
@@ -443,9 +445,11 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
         return self._attrs
 
     def _is_stream_active(self) -> bool:
+        hass = getattr(self, "hass", None)
+        entry_id = getattr(self, "_entry_id", None)
         return is_replay_only_stream_active(
-            getattr(self, "hass", None), getattr(self, "_entry_id", None)
-        )
+            hass, entry_id
+        ) or is_auth_gated_stream_active(hass, entry_id, "CarData.z")
 
     def _handle_update(self, snapshot: dict[str, Any]) -> None:
         if not self._is_stream_active():

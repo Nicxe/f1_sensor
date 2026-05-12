@@ -1,4 +1,26 @@
 {
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Kilpailuviikko on alkanut",
+      "race_week_ended": "Kilpailuviikko on päättynyt",
+      "safety_car_deployed": "Turva-auto radalla",
+      "safety_car_cleared": "Turva-auto poistunut",
+      "formation_start_ready": "Lämmittelykierroksen aloitus valmis",
+      "overtake_mode_enabled": "Ohitustila käytössä",
+      "overtake_mode_disabled": "Ohitustila pois käytöstä",
+      "session_live": "Sessio alkoi",
+      "track_status_clear": "Radan tila: Selvä",
+      "track_status_yellow": "Radan tila: Keltainen lippu",
+      "track_status_safety_car": "Radan tila: Turva-auto",
+      "track_status_vsc": "Radan tila: Virtuaalinen turva-auto",
+      "track_status_red_flag": "Radan tila: Punainen lippu",
+      "new_race_control_message": "Uusi viesti kilpailun johdolta",
+      "new_fia_document": "Uusi FIA:n dokumentti julkaistu",
+      "investigation_changed": "Tutkinnan tila muuttui",
+      "live_timing_online": "Live-ajoitus yhdistetty",
+      "live_timing_offline": "Live-ajoitus katkaistu"
+    }
+  },
   "config": {
     "step": {
       "user": {
@@ -6,9 +28,20 @@
         "data": {
           "sensor_name": "Laitteen nimi",
           "enabled_sensors": "Käytössä olevat anturit",
-          "operation_mode": "Operation mode",
+          "operation_mode": "Toimintatila",
           "replay_file": "Replay dump path",
-          "race_week_start_day": "Kilpailuviikon ensimmäinen päivä"
+          "enable_race_control": "Ota käyttöön live F1 API (Race Control/Track/Session)",
+          "race_week_start_day": "Kilpailuviikon ensimmäinen päivä",
+          "live_timing_auth_header": "Manual backup: experimental F1TV authorization value",
+          "start_f1tv_pairing": "Recommended: Connect experimental F1TV access with Token Helper"
+        },
+        "data_description": {
+          "operation_mode": "Valitse Live yhdistääksesi Formula 1 SignalR:ään tai Development toistaaksesi tallennetun tiedoston paikallisesti.",
+          "replay_file": "Absoluuttinen polku tallennettuun SignalR-tiedostoon. Vaaditaan vain Development-tilassa.",
+          "enable_race_control": "Yhdistää Formula 1 Live Timingiin SignalR:n kautta live-päivitysten vastaanottamiseksi. Jos tämä on pois käytöstä, näitä live-antureita ei luoda.",
+          "race_week_start_day": "Valitse alkaako kilpailuviikko lauantaina, sunnuntaina vai maanantaina.",
+          "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste the full Bearer token from the F1TV Token Helper only as an advanced fallback. Leave blank to use public live timing only.",
+          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. Experimental F1TV access is optional; public live timing continues without it."
         }
       },
       "reconfigure": {
@@ -16,21 +49,62 @@
         "data": {
           "sensor_name": "Laitteen nimi",
           "enabled_sensors": "Käytössä olevat anturit",
-          "operation_mode": "Operation mode",
+          "operation_mode": "Toimintatila",
           "replay_file": "Replay dump path",
-          "race_week_start_day": "Kilpailuviikon ensimmäinen päivä"
+          "enable_race_control": "Ota käyttöön live F1 API",
+          "race_week_start_day": "Kilpailuviikon ensimmäinen päivä",
+          "live_timing_auth_header": "Manual backup: experimental F1TV authorization value",
+          "start_f1tv_pairing": "Recommended: Connect experimental F1TV access with Token Helper"
+        },
+        "data_description": {
+          "operation_mode": "Valitse Live yhdistääksesi Formula 1 SignalR:ään tai Development toistaaksesi tallennetun tiedoston paikallisesti.",
+          "replay_file": "Absoluuttinen polku tallennettuun SignalR-tiedostoon. Vaaditaan vain Development-tilassa.",
+          "enable_race_control": "Yhdistää Formula 1 Live Timingiin live-päivitysten vastaanottamiseksi. Jos tämä on pois käytöstä, näitä live-antureita ei luoda.",
+          "race_week_start_day": "Valitse alkaako kilpailuviikko lauantaina, sunnuntaina vai maanantaina.",
+          "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
+          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. Experimental F1TV access is optional; public live timing continues without it."
         }
+      },
+      "reauth_confirm": {
+        "data": {
+          "live_timing_auth_header": "Manual backup: experimental F1TV authorization value",
+          "clear_live_timing_auth_header": "Clear experimental F1TV authorization value",
+          "start_f1tv_pairing": "Recommended: Connect experimental F1TV access with Token Helper"
+        },
+        "data_description": {
+          "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback.",
+          "clear_live_timing_auth_header": "Remove the saved experimental F1TV authorization value and continue with public live timing only.",
+          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. Experimental F1TV access is optional; public live timing continues without it."
+        },
+        "title": "Update experimental F1TV live timing authorization"
+      },
+      "f1tv_pairing": {
+        "title": "Connect experimental F1TV access",
+        "description": "Use the F1TV Token Helper to send your token to Home Assistant. Experimental F1TV access is optional, and this pairing expires at {expires_at}."
       }
+    },
+    "abort": {
+      "reconfigure_successful": "F1-anturin määritys onnistui.",
+      "f1tv_pairing_unavailable": "Experimental F1TV pairing is not available in this build.",
+      "f1tv_pairing_failed": "Experimental F1TV pairing did not complete. Start a new pairing session and try again."
     },
     "error": {
       "replay_required": "Select a replay dump file when Development mode is enabled.",
-      "replay_missing": "Replay dump file not found or unreadable."
+      "replay_missing": "Replay dump file not found or unreadable.",
+      "auth_header_required": "Enter the experimental F1TV authorization value or select clear.",
+      "invalid_auth_header": "Enter a valid Bearer token value.",
+      "auth_token_missing_exp": "The token does not include an expiry time.",
+      "auth_token_expired": "The token has expired.",
+      "auth_token_expiring_soon": "The token expires too soon. Generate a new token and try again."
     }
   },
   "entity": {
     "sensor": {
       "next_race": {
         "name": "Seuraava kilpailu"
+      },
+      "track_time": {
+        "name": "Rata-aika"
       },
       "current_season": {
         "name": "Nykyinen kausi"
@@ -44,6 +118,9 @@
       "weather": {
         "name": "Sää"
       },
+      "track_weather": {
+        "name": "Radan sää"
+      },
       "current_session": {
         "name": "Käynnissä oleva sessio"
       },
@@ -54,13 +131,28 @@
         "name": "Kausitulokset"
       },
       "sprint_results": {
-        "name": "Sprinttulokset"
+        "name": "Sprinttitulokset"
       },
       "race_control": {
         "name": "Kisavalvonta"
       },
+      "top_three_p1": {
+        "name": "Kolme parasta (P1)"
+      },
+      "top_three_p2": {
+        "name": "Kolme parasta (P2)"
+      },
+      "top_three_p3": {
+        "name": "Kolme parasta (P3)"
+      },
       "pitstops": {
         "name": "Varikkopysähdykset"
+      },
+      "championship_prediction_drivers": {
+        "name": "Mestaruusennuste (kuljettajat)"
+      },
+      "championship_prediction_teams": {
+        "name": "Mestaruusennuste (tallit)"
       },
       "fia_documents": {
         "name": "FIA-päätökset"
@@ -68,11 +160,117 @@
       "live_timing_mode": {
         "name": "Live timing -tila"
       },
+      "driver_positions": {
+        "name": "Kuljettajien sijoitukset"
+      },
       "track_limits": {
-        "name": "Track limits"
+        "name": "Ratarajat"
       },
       "investigations": {
-        "name": "Investigations & penalties"
+        "name": "Tutkinnat ja rangaistukset"
+      },
+      "straight_mode": {
+        "name": "Straight mode",
+        "state": {
+          "normal_grip": "Normaali pito",
+          "low_grip": "Heikko pito",
+          "disabled": "Pois käytöstä"
+        }
+      },
+      "track_status": {
+        "name": "Radan tila"
+      },
+      "session_status": {
+        "name": "Session tila"
+      },
+      "session_time_remaining": {
+        "name": "Sessiota jäljellä"
+      },
+      "session_time_elapsed": {
+        "name": "Sessiota kulunut"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "Aikaa 3 tunnin rajaan"
+      },
+      "driver_list": {
+        "name": "Kuljettajalista"
+      },
+      "current_tyres": {
+        "name": "Nykyiset renkaat"
+      },
+      "tyre_statistics": {
+        "name": "Rengastilastot"
+      },
+      "race_lap_count": {
+        "name": "Kierrosmäärä"
+      },
+      "driver_points_progression": {
+        "name": "Kuljettajien pisteiden kehitys"
+      },
+      "constructor_points_progression": {
+        "name": "Valmistajien pisteiden kehitys"
+      },
+      "replay_status": {
+        "name": "Replay status"
+      },
+      "f1tv_token_status": {
+        "name": "Experimental F1TV token status",
+        "state": {
+          "not_configured": "Not configured",
+          "valid": "Valid",
+          "expiring_soon": "Expiring soon",
+          "expired": "Expired",
+          "invalid": "Invalid",
+          "rejected": "Rejected"
+        }
+      },
+      "f1tv_token_expires_at": {
+        "name": "Experimental F1TV token expires at"
+      }
+    },
+    "button": {
+      "delay_calibration_match": {
+        "name": "Kohdista live-viiveeseen"
+      },
+      "replay_load": {
+        "name": "Lataa sessio"
+      },
+      "replay_play": {
+        "name": "Toista"
+      },
+      "replay_pause": {
+        "name": "Keskeytä"
+      },
+      "replay_back_30": {
+        "name": "30 sekuntia taaksepäin"
+      },
+      "replay_forward_30": {
+        "name": "30 sekuntia eteenpäin"
+      },
+      "replay_stop": {
+        "name": "Lopeta"
+      },
+      "replay_refresh": {
+        "name": "Päivitä sessiot"
+      },
+      "jolpica_ua_test": {
+        "name": "Jolpica user-agent test"
+      },
+      "clear_f1tv_access": {
+        "name": "Clear experimental F1TV access"
+      }
+    },
+    "switch": {
+      "delay_calibration": {
+        "name": "Viiveen kalibrointi"
+      },
+      "no_spoiler_mode": {
+        "name": "Ei spoilereita -tila"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "Live-viive"
       }
     },
     "media_player": {
@@ -105,12 +303,36 @@
         "name": "Turva-auto"
       },
       "formation_start": {
-        "name": "Formation start"
+        "name": "Lämmittelykierroksen alku"
+      },
+      "overtake_mode": {
+        "name": "Ohitustila"
       }
     },
-    "switch": {
-      "no_spoiler_mode": {
-        "name": "Ei spoilereita -tila"
+    "calendar": {
+      "season_calendar": {
+        "name": "Kausikalenteri"
+      }
+    }
+  },
+  "issues": {
+    "f1tv_token_attention_required": {
+      "title": "Experimental F1TV live timing token needs attention",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "data": {
+              "live_timing_auth_header": "Experimental F1TV authorization value",
+              "clear_live_timing_auth_header": "Clear experimental F1TV authorization value"
+            },
+            "data_description": {
+              "live_timing_auth_header": "Paste a new Bearer token value from the F1TV Token Helper for experimental F1TV access.",
+              "clear_live_timing_auth_header": "Remove the saved experimental F1TV token and continue with public live timing only."
+            },
+            "description": "The saved experimental F1TV token for {name} needs attention. Public live timing continues to work, but experimental F1TV live data will not be used until the token is replaced.",
+            "title": "Update experimental F1TV live timing token"
+          }
+        }
       }
     }
   }

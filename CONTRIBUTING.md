@@ -8,7 +8,7 @@ This project uses two contribution paths depending on what you are changing.
 
 ### Code changes
 
-For changes to the integration itself — sensors, binary sensors, configuration flow, coordinator logic, fixes, features, tests — use the code path:
+For changes to the integration itself — sensors, binary sensors, configuration flow, coordinator logic, bundled Live Data Card code, fixes, features, tests — use the code path:
 
 - `dev` — the active development branch. All code contributions must target this branch.
 - `beta` — pre-release testing. Promoted from `dev` by the maintainer.
@@ -29,6 +29,7 @@ No version bump or release is triggered when only documentation or blueprint fil
 | What I am changing | Target branch |
 |---|---|
 | Integration code, sensors, fixes, features | `dev` |
+| Bundled Live Data Card code in `custom_components/f1_sensor/www/**` | `dev` |
 | Tests only | `dev` |
 | Documentation for an upcoming code change | `dev` (keep docs with the code) |
 | Standalone documentation fix or update | `content` |

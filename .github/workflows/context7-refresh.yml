@@ -12,8 +12,24 @@ jobs:
     steps:
       - name: Trigger Context7 re-index
         run: |
-          curl -s -X POST https://context7.com/api/v1/refresh \
-            -H "Authorization: Bearer ${{ secrets.CONTEXT7_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{"libraryName": "/websites/nicxe_github_io_f1_sensor"}' \
-            --fail-with-body
+          for i in 1 2 3; do
+            response=$(curl -s -w "\n%{http_code}" -X POST https://context7.com/api/v1/refresh \
+              -H "Authorization: Bearer ${{ secrets.CONTEXT7_API_KEY }}" \
+              -H "Content-Type: application/json" \
+              -d '{"libraryName": "/websites/nicxe_github_io_f1_sensor"}')
+            http_code=$(echo "$response" | tail -1)
+            body=$(echo "$response" | sed '$d')
+            if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+              echo "Success: $body"
+              exit 0
+            fi
+            if echo "$body" | grep -q "user-has-active-task"; then
+              echo "Another indexing job is running, retrying in 30s... (attempt $i/3)"
+              sleep 30
+              continue
+            fi
+            echo "Request failed ($http_code): $body"
+            exit 1
+          done
+          echo "Context7 still busy after 3 attempts, giving up."
+          exit 1

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+import base64
+from datetime import UTC, datetime, timedelta
+import json
 import logging
+from pathlib import Path
+import shutil
+import subprocess
 import time
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import STATE_UNAVAILABLE, UnitOfTemperature
@@ -15,13 +20,24 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util.json import json_loads
 import pytest
 
-from custom_components.f1_sensor import F1NextRaceHistoryCoordinator
+from custom_components.f1_sensor import (
+    F1NextRaceHistoryCoordinator,
+    F1SeasonResultsCoordinator,
+)
+from custom_components.f1_sensor.auth import (
+    AUTH_RUNTIME_STATUS,
+    evaluate_f1tv_auth_header,
+)
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
+    SEASON_RESULTS_URL,
 )
-from custom_components.f1_sensor.helpers import get_circuit_map_url
+from custom_components.f1_sensor.helpers import (
+    get_circuit_map_url,
+    get_circuit_outline_url,
+)
 from custom_components.f1_sensor.sensor import (
     F1ConstructorPointsProgressionSensor,
     F1ConstructorStandingsSensor,
@@ -30,18 +46,132 @@ from custom_components.f1_sensor.sensor import (
     F1DriverPointsProgressionSensor,
     F1DriverPositionsSensor,
     F1DriverStandingsSensor,
+    F1FiaDocumentsSensor,
+    F1LastRaceSensor,
     F1LiveTimingModeSensor,
     F1NextRaceSensor,
     F1PitStopsSensor,
     F1SeasonResultsSensor,
     F1SprintResultsSensor,
     F1TopThreePositionSensor,
+    F1TvTokenExpiresAtSensor,
+    F1TvTokenStatusSensor,
     F1WeatherSensor,
 )
 from custom_components.f1_sensor.signalr import LiveBus
 
 _LOGGER = logging.getLogger(__name__)
 MAX_STATE_ATTRS_BYTES = 16384
+ROOT = Path(__file__).resolve().parents[3]
+CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+
+FIA_DOCUMENTS_CARD_PROBE_SCRIPT = r"""
+const fs = require("node:fs");
+
+const payload = JSON.parse(process.env.FIA_DOCUMENTS_CARD_PAYLOAD || "{}");
+const source = fs.readFileSync(process.env.FIA_DOCUMENTS_CARD_PATH, "utf8");
+
+function findMatchingBrace(text, openIndex) {
+  let depth = 0;
+  for (let idx = openIndex; idx < text.length; idx += 1) {
+    const ch = text[idx];
+    if (ch === "{") {
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return idx;
+      }
+    }
+  }
+  throw new Error(`Unmatched brace starting at ${openIndex}`);
+}
+
+function extractClass(signature) {
+  const start = source.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`Class signature not found: ${signature}`);
+  }
+  const braceStart = source.indexOf("{", start);
+  const end = findMatchingBrace(source, braceStart);
+  return source.slice(start, end + 1);
+}
+
+function extractMethod(classSource, signature) {
+  const start = classSource.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`Method signature not found: ${signature}`);
+  }
+  const braceStart = classSource.indexOf("{", start);
+  const end = findMatchingBrace(classSource, braceStart);
+  return classSource.slice(start, end + 1);
+}
+
+const classSource = extractClass("class F1FiaDocumentsCard extends LitElement {");
+const methodSources = [
+  extractMethod(classSource, "_normalizeVisibleRows(value) {"),
+  extractMethod(classSource, "_normalizeListMaxHeightValue(value) {"),
+  extractMethod(classSource, "_resolveListMaxHeight() {"),
+  extractMethod(classSource, "_extractDocumentNumber(name, explicitNumber = null) {"),
+  extractMethod(classSource, "_cleanDocumentTitle(name) {"),
+  extractMethod(classSource, "_normalizeDocument(item, fallbackIndex = 0) {"),
+  extractMethod(classSource, "_buildDocuments(entity) {"),
+  extractMethod(classSource, "_sortDocuments(documents) {"),
+  extractMethod(classSource, "_parseDateTs(value) {"),
+  extractMethod(classSource, "_documentTypeLabel(title) {"),
+  extractMethod(classSource, "_documentToneClass(title) {"),
+  extractMethod(classSource, "_normalizeTextKey(value) {"),
+  extractMethod(classSource, "_documentsMatchRace(documents, race) {"),
+  extractMethod(classSource, "_resolveRaceContext(documentEntity, lastRaceEntity, documents) {"),
+  extractMethod(classSource, "_formatRaceContext(race) {"),
+  extractMethod(classSource, "_resolveDocumentCount(documents, documentEntity) {"),
+];
+
+const Harness = new Function(
+  `
+  class Harness {
+    constructor(config = {}) {
+      this.config = {
+        sort_order: "newest",
+        visible_rows: 8,
+        list_max_height: 0,
+        show_race_context: true,
+        ...config,
+      };
+    }
+
+    ${methodSources.join("\n\n")}
+  }
+
+  return Harness;
+`,
+)();
+
+const harness = new Harness(payload.config || {});
+
+let result;
+if (payload.action === "documents") {
+  result = harness._buildDocuments(payload.entity || {});
+} else if (payload.action === "height") {
+  result = harness._resolveListMaxHeight();
+} else if (payload.action === "race_context") {
+  const docs = harness._buildDocuments(payload.entity || {});
+  result = harness._resolveRaceContext(
+    payload.entity || {},
+    payload.lastRaceEntity || null,
+    docs,
+  );
+} else if (payload.action === "race_label") {
+  result = harness._formatRaceContext(payload.race || null);
+} else if (payload.action === "document_count") {
+  const docs = harness._buildDocuments(payload.entity || {});
+  result = harness._resolveDocumentCount(docs, payload.entity || {});
+} else {
+  throw new Error(`Unknown action: ${payload.action}`);
+}
+
+process.stdout.write(JSON.stringify(result));
+"""
 
 
 class _LiveState:
@@ -58,7 +188,7 @@ class _TimeoutSession:
         raise TimeoutError
 
 
-def _build_coordinator(hass, data: dict) -> DataUpdateCoordinator:
+def _build_coordinator(hass, data: dict | None) -> DataUpdateCoordinator:
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
@@ -68,6 +198,20 @@ def _build_coordinator(hass, data: dict) -> DataUpdateCoordinator:
     coordinator.data = data
     coordinator.available = True
     return coordinator
+
+
+def _jwt(exp: datetime) -> str:
+    def _part(value: dict) -> str:
+        raw = json.dumps(value, separators=(",", ":")).encode()
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+    return ".".join(
+        (
+            _part({"alg": "RS256", "typ": "JWT"}),
+            _part({"exp": int(exp.timestamp())}),
+            "signature",
+        )
+    )
 
 
 def _set_entry_context(hass, entry_id: str, *, stream_active: bool = False) -> None:
@@ -102,10 +246,31 @@ def _recorder_shared_attrs(state) -> tuple[dict, int]:
     return json_loads(shared_attrs_bytes), len(shared_attrs_bytes)
 
 
+def _run_fia_documents_card_probe(payload: dict) -> dict | list | int | None:
+    if not CARD_PATH.exists():
+        pytest.skip(f"card JS not found at {CARD_PATH}")
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for FIA documents card regression tests")
+
+    proc = subprocess.run(
+        [node, "-e", FIA_DOCUMENTS_CARD_PROBE_SCRIPT],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            "FIA_DOCUMENTS_CARD_PAYLOAD": json.dumps(payload),
+            "FIA_DOCUMENTS_CARD_PATH": str(CARD_PATH),
+        },
+    )
+    return json.loads(proc.stdout)
+
+
 def _build_result_entry(idx: int) -> dict:
     return {
         "number": str(idx),
         "position": str(idx),
+        "grid": str(idx + 1),
         "points": str(max(0, 26 - idx)),
         "status": "Finished",
         "Driver": {
@@ -141,6 +306,238 @@ def _build_season_results_data(
             }
         )
     return {"MRData": {"RaceTable": {"season": season, "Races": races}}}
+
+
+@pytest.mark.asyncio
+async def test_last_race_results_sensor_exposes_grid_position(hass) -> None:
+    coordinator = _build_coordinator(
+        hass,
+        {
+            "MRData": {
+                "RaceTable": {
+                    "Races": [
+                        {
+                            "round": "11",
+                            "raceName": "Austrian Grand Prix",
+                            "Circuit": {},
+                            "Results": [
+                                {
+                                    "number": "4",
+                                    "position": "1",
+                                    "positionText": "1",
+                                    "grid": "2",
+                                    "points": "25",
+                                    "status": "Finished",
+                                    "Driver": {
+                                        "permanentNumber": "4",
+                                        "code": "NOR",
+                                        "givenName": "Lando",
+                                        "familyName": "Norris",
+                                    },
+                                    "Constructor": {
+                                        "constructorId": "mclaren",
+                                        "name": "McLaren",
+                                    },
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        },
+    )
+    sensor = F1LastRaceSensor(
+        coordinator,
+        "test_entry_last_race_results",
+        "test_entry",
+        "F1",
+    )
+
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == "Norris"
+    assert state.attributes["results"][0]["grid"] == "2"
+
+
+@pytest.mark.asyncio
+async def test_fia_documents_sensor_exposes_list_and_race_context(hass) -> None:
+    coordinator = _build_coordinator(
+        hass,
+        {
+            "event_key": "2026_6",
+            "race": {
+                "season": "2026",
+                "round": "6",
+                "race_name": "Miami Grand Prix",
+                "race_date": "2026-05-03",
+                "race_time": "20:00:00Z",
+                "circuit_name": "Miami International Autodrome",
+                "locality": "Miami",
+                "country": "USA",
+            },
+            "documents": [
+                {
+                    "name": "Doc 102 - Championship Points",
+                    "url": "https://www.fia.com/doc-102.pdf",
+                    "published": "2026-05-03T23:15:00+00:00",
+                },
+                {
+                    "name": "Doc 1 - Event Notes",
+                    "url": "https://www.fia.com/doc-1.pdf",
+                    "published": "2026-05-01T10:00:00+00:00",
+                },
+            ],
+        },
+    )
+    sensor = F1FiaDocumentsSensor(
+        coordinator,
+        "test_entry_fia_documents",
+        "test_entry",
+        "F1",
+    )
+
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == "102"
+    assert state.attributes["name"] == "Doc 102 - Championship Points"
+    assert state.attributes["documents"] == [
+        {
+            "name": "Doc 1 - Event Notes",
+            "url": "https://www.fia.com/doc-1.pdf",
+            "published": "2026-05-01T10:00:00+00:00",
+            "document_number": 1,
+        },
+        {
+            "name": "Doc 102 - Championship Points",
+            "url": "https://www.fia.com/doc-102.pdf",
+            "published": "2026-05-03T23:15:00+00:00",
+            "document_number": 102,
+        },
+    ]
+    assert state.attributes["race"]["race_name"] == "Miami Grand Prix"
+    assert "documents" in state.state_info["unrecorded_attributes"]
+
+
+def test_fia_documents_card_sorts_documents_and_keeps_latest_fallback() -> None:
+    list_result = _run_fia_documents_card_probe(
+        {
+            "action": "documents",
+            "entity": {
+                "state": "10",
+                "attributes": {
+                    "documents": [
+                        {
+                            "name": "Doc 2 - Summons",
+                            "url": "https://www.fia.com/doc-2.pdf",
+                            "published": "2026-05-01T12:00:00+00:00",
+                        },
+                        {
+                            "name": "Doc 10 - Final Classification",
+                            "url": "https://www.fia.com/doc-10.pdf",
+                            "published": "2026-05-02T12:00:00+00:00",
+                        },
+                    ]
+                },
+            },
+        }
+    )
+
+    assert [item["documentNumber"] for item in list_result] == [10, 2]
+    assert list_result[0]["title"] == "Final Classification"
+    assert list_result[0]["typeLabel"] == "Classified"
+    assert list_result[1]["toneClass"] == "tone-yellow"
+
+    fallback_result = _run_fia_documents_card_probe(
+        {
+            "action": "documents",
+            "entity": {
+                "state": "102",
+                "attributes": {
+                    "name": "Doc 102 - Championship Points",
+                    "url": "https://www.fia.com/doc-102.pdf",
+                    "published": "2026-05-03T23:15:00+00:00",
+                },
+            },
+        }
+    )
+
+    assert len(fallback_result) == 1
+    assert fallback_result[0]["documentNumber"] == 102
+    assert fallback_result[0]["title"] == "Championship Points"
+
+
+def test_fia_documents_card_uses_visible_rows_and_safe_race_context() -> None:
+    assert (
+        _run_fia_documents_card_probe(
+            {"action": "height", "config": {"visible_rows": 5}}
+        )
+        == 340
+    )
+    assert (
+        _run_fia_documents_card_probe(
+            {"action": "height", "config": {"visible_rows": 5, "list_max_height": 500}}
+        )
+        == 500
+    )
+
+    race_context = _run_fia_documents_card_probe(
+        {
+            "action": "race_context",
+            "entity": {
+                "attributes": {
+                    "race": {
+                        "round": "5",
+                        "race_name": "Emilia Romagna Grand Prix",
+                        "locality": "Imola",
+                        "country": "Italy",
+                    },
+                    "documents": [
+                        {
+                            "name": "Doc 102 - Championship Points",
+                            "url": (
+                                "https://www.fia.com/system/files/decision-document/"
+                                "2026_miami_grand_prix_-_championship_points.pdf"
+                            ),
+                        }
+                    ],
+                }
+            },
+            "lastRaceEntity": {
+                "attributes": {
+                    "round": "4",
+                    "race_name": "Miami Grand Prix",
+                    "circuit_locality": "Miami",
+                    "circuit_country": "USA",
+                }
+            },
+        }
+    )
+
+    assert race_context["race_name"] == "Miami Grand Prix"
+    assert (
+        _run_fia_documents_card_probe({"action": "race_label", "race": race_context})
+        == "Round 4 \u00b7 Miami Grand Prix \u00b7 Miami, USA"
+    )
+
+    assert (
+        _run_fia_documents_card_probe(
+            {
+                "action": "document_count",
+                "entity": {
+                    "state": "102",
+                    "attributes": {
+                        "documents": [
+                            {
+                                "name": "Doc 95 - Checks",
+                                "url": "https://www.fia.com/doc-95.pdf",
+                            }
+                        ]
+                    },
+                },
+            }
+        )
+        == 102
+    )
 
 
 def _build_sprint_results_data(
@@ -852,6 +1249,23 @@ def test_get_circuit_map_url_prefers_2026_detailed_maps() -> None:
         get_circuit_map_url("imola", "2026")
         == "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Emilia_Romagna_Circuit.webp"
     )
+    assert get_circuit_map_url("usa", "2026") is None
+
+
+def test_get_circuit_outline_url_prefers_2026_white_outline() -> None:
+    assert (
+        get_circuit_outline_url("albert_park", "2026")
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1/2026/track/2026trackmelbournewhiteoutline.webp"
+    )
+    assert (
+        get_circuit_outline_url("madring", "2026")
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1/2026/track/2026trackmadringwhiteoutline.webp"
+    )
+    assert (
+        get_circuit_outline_url("imola", "2026")
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Track%20icons%204x3/Emilia%20Romagna.webp"
+    )
+    assert get_circuit_outline_url("usa", "2026") is None
 
 
 @pytest.mark.asyncio
@@ -1113,11 +1527,78 @@ async def test_season_results_sensor_excludes_races_from_recorder(hass) -> None:
     state = await _add_sensor_and_get_state(hass, sensor)
 
     assert "races" in state.attributes
+    assert state.attributes["races"][0]["results"][0]["grid"] == "2"
     assert state.state_info is not None
     assert "races" in state.state_info["unrecorded_attributes"]
 
     shared_attrs, _ = _recorder_shared_attrs(state)
     assert "races" not in shared_attrs
+
+
+@pytest.mark.asyncio
+async def test_season_results_sensor_handles_missing_coordinator_data(hass) -> None:
+    coordinator = _build_coordinator(hass, None)
+    entry_id = "test_entry_season_results_missing"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1SeasonResultsSensor(
+        coordinator,
+        f"{entry_id}_season_results",
+        entry_id,
+        "F1",
+    )
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == "0"
+    assert state.attributes["races"] == []
+
+
+@pytest.mark.asyncio
+async def test_season_results_coordinator_no_spoiler_without_cached_data_returns_empty_payload(
+    hass, monkeypatch
+) -> None:
+    coordinator = F1SeasonResultsCoordinator(
+        hass,
+        SEASON_RESULTS_URL,
+        "Test Season Results Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        ttl_seconds=5,
+        persist_map={},
+        persist_save=MagicMock(),
+        season_source=None,
+    )
+    coordinator.data = None
+
+    payload = {
+        "MRData": {
+            "total": "1",
+            "limit": "200",
+            "offset": "0",
+            "RaceTable": {
+                "Races": [
+                    {
+                        "season": "2026",
+                        "round": "1",
+                        "Results": [{"position": "1"}],
+                    }
+                ]
+            },
+        }
+    }
+    mock_fetch = AsyncMock(return_value=payload)
+    monkeypatch.setattr("custom_components.f1_sensor.fetch_json", mock_fetch)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor._is_no_spoiler_jolpica_blocked",
+        lambda _coord: True,
+    )
+
+    data = await coordinator._async_update_data()
+
+    assert data == {"MRData": {"RaceTable": {"Races": []}}}
+    assert mock_fetch.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -1135,6 +1616,7 @@ async def test_sprint_results_sensor_excludes_races_from_recorder(hass) -> None:
     state = await _add_sensor_and_get_state(hass, sensor)
 
     assert "races" in state.attributes
+    assert state.attributes["races"][0]["results"][0]["grid"] == "2"
     assert state.state_info is not None
     assert "races" in state.state_info["unrecorded_attributes"]
 
@@ -1312,14 +1794,49 @@ async def test_live_timing_mode_sensor_exposes_stream_diagnostics(hass) -> None:
             "last_seen_age_s": 0.5,
             "last_payload_keys": ["Status", "Message"],
         },
+        "CarData.z": {
+            "frame_count": 12,
+            "last_seen_age_s": 0.2,
+            "last_payload_keys": ["Entries"],
+        },
     }
     hass.data[DOMAIN][entry_id]["live_bus"] = bus
+    hass.data[DOMAIN][entry_id]["signalr_stream_capabilities"] = {
+        "active_live_streams": frozenset(
+            {
+                "SessionStatus",
+                "TrackStatus",
+                "ChampionshipPrediction",
+                "DriverRaceInfo",
+                "CarData.z",
+            }
+        )
+    }
 
     sensor = F1LiveTimingModeSensor(hass, entry_id, "F1")
     state = await _add_sensor_and_get_state(hass, sensor)
 
+    bus.stream_diagnostics.assert_any_call(
+        (
+            "CarData.z",
+            "ChampionshipPrediction",
+            "DriverRaceInfo",
+            "SessionStatus",
+            "TrackStatus",
+        )
+    )
     assert state.attributes["heartbeat_age_s"] == 5.0
     assert state.attributes["activity_age_s"] == 2.0
+    assert state.attributes["streams"]["CarData.z"] == {
+        "frame_count": 12,
+        "last_seen_age_s": 0.2,
+        "last_payload_keys": ["Entries"],
+    }
+    assert state.attributes["streams"]["DriverRaceInfo"] == {
+        "frame_count": 0,
+        "last_seen_age_s": None,
+        "last_payload_keys": None,
+    }
     assert state.attributes["streams"]["SessionStatus"] == {
         "frame_count": 3,
         "last_seen_age_s": 1.0,
@@ -1336,6 +1853,44 @@ async def test_live_timing_mode_sensor_exposes_stream_diagnostics(hass) -> None:
         "last_payload_keys": None,
     }
     assert "TyreStintSeries" not in state.attributes["streams"]
+
+
+@pytest.mark.asyncio
+async def test_f1tv_token_status_sensor_exposes_safe_metadata(hass) -> None:
+    entry_id = "test_entry_f1tv_token_status"
+    expires_at = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    _set_entry_context(hass, entry_id, stream_active=False)
+    hass.data[DOMAIN][entry_id][AUTH_RUNTIME_STATUS] = evaluate_f1tv_auth_header(
+        f"Bearer {_jwt(expires_at)}",
+        used_for_live_timing=False,
+    )
+
+    sensor = F1TvTokenStatusSensor(hass, entry_id, "F1")
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == "valid"
+    assert state.attributes["auth_configured"] is True
+    assert state.attributes["used_for_live_timing"] is False
+    assert state.attributes["expires_at"] == expires_at.isoformat()
+    assert state.attributes["reason"] is None
+    assert "Bearer" not in str(state.attributes)
+
+
+@pytest.mark.asyncio
+async def test_f1tv_token_expires_at_sensor_exposes_timestamp(hass) -> None:
+    entry_id = "test_entry_f1tv_token_expires_at"
+    expires_at = (datetime.now(UTC) + timedelta(hours=2)).replace(microsecond=0)
+    _set_entry_context(hass, entry_id, stream_active=False)
+    hass.data[DOMAIN][entry_id][AUTH_RUNTIME_STATUS] = evaluate_f1tv_auth_header(
+        f"Bearer {_jwt(expires_at)}"
+    )
+
+    sensor = F1TvTokenExpiresAtSensor(hass, entry_id, "F1")
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == expires_at.isoformat()
+    assert state.attributes["auth_configured"] is True
+    assert state.attributes["expires_at"] == expires_at.isoformat()
 
 
 @pytest.mark.asyncio

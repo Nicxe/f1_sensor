@@ -25,11 +25,11 @@ Whether you want your lights to react to a safety car or build dashboards that v
 
 ### 🃏 Live Data Cards
 
-A companion collection of custom Lovelace cards is available for displaying live session data directly on your dashboards — tyre strategy, pit stops, lap times, investigations, race control, and more.
+F1 Sensor includes custom Lovelace cards for displaying live session data directly on your dashboards — tyre strategy, pit stops, lap times, investigations, race control, and more.
 
 <img alt="F1 Sensor Live Data Cards" src="https://github.com/user-attachments/assets/9ec7b6c0-9584-4647-baac-03407d73ef99" />
 
-👉 **[github.com/Nicxe/f1-sensor-live-data-card](https://github.com/Nicxe/f1-sensor-live-data-card)**
+The card assets are bundled with the integration and registered automatically in Home Assistant. Existing dashboard card types stay the same, so you can keep your current dashboard configuration after updating.
 
 ---
 
@@ -51,6 +51,7 @@ Explore what’s possible with F1 Sensor. From dashboards to automations, check 
 ### 🍻 Support the Project
 
 If you enjoy using `F1 Sensor`, you can find ways to [**Support the project here**](https://nicxe.github.io/f1_sensor/support) and help keep the data flowing.
+<br>
 <br>
 <br>
 <br>

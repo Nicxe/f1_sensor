@@ -27,10 +27,26 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
+from . import const
+from .auth import (
+    AUTH_REPAIR_STATUSES,
+    AUTH_RUNTIME_STATUS,
+    AUTH_RUNTIME_STATUS_REFRESH_UNSUB,
+    async_cancel_f1tv_auth_status_refresh,
+    async_schedule_f1tv_auth_status_refresh,
+    async_set_runtime_f1tv_auth_status,
+    async_update_f1tv_auth_repair_issue,
+    evaluate_f1tv_auth_header,
+    is_auth_feature_enabled,
+    is_auth_transport_enabled,
+    rejected_f1tv_auth_status,
+)
+from .auth_http import async_setup_f1tv_auth_http
 from .calibration import LiveDelayCalibrationManager
 from .const import (
     API_URL,
     CONF_LIVE_DELAY_REFERENCE,
+    CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
     CONF_REPLAY_FILE,
     CONF_REPLAY_START_REFERENCE,
@@ -40,7 +56,6 @@ from .const import (
     DEFAULT_REPLAY_START_REFERENCE,
     DOMAIN,
     DRIVER_STANDINGS_URL,
-    ENABLE_DEVELOPMENT_MODE_UI,
     FIA_DOCS_FETCH_TIMEOUT,
     FIA_DOCS_POLL_INTERVAL,
     FIA_DOCUMENTS_BASE_URL,
@@ -71,6 +86,7 @@ from .entity import (
     unregister_entry_name_settings,
 )
 from .formation_start import FormationStartTracker
+from .frontend import async_ensure_live_data_card_frontend
 from .helpers import (
     PersistentCache,
     build_user_agent,
@@ -94,9 +110,13 @@ from .signalr import (
     PUBLIC_LIVE_STREAMS,
     REPLAY_ONLY_STREAMS,
     LiveBus,
+    build_live_subscribe_streams,
 )
+from .starting_grid import StartingGridCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
 _REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode", "replay-preparing"})
@@ -1079,7 +1099,7 @@ def _seed_driver_map_from_ergast(
 
 def _ensure_jolpica_stats_reporting(hass: HomeAssistant) -> None:
     """Register a dev-only periodic log of Jolpica network MISS counts."""
-    if not ENABLE_DEVELOPMENT_MODE_UI:
+    if not const.ENABLE_DEVELOPMENT_MODE_UI:
         return
     root = hass.data.setdefault(DOMAIN, {})
     stats = root.get(_JOLPICA_STATS_KEY)
@@ -1212,6 +1232,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         manager = NoSpoilerModeManager(hass)
         await manager.async_load()
         domain_root[_NO_SPOILER_MANAGER_KEY] = manager
+    async_setup_f1tv_auth_http(hass)
     return True
 
 
@@ -1571,10 +1592,74 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     race_control_log_store = None
     live_mode_coordinator = None
     top_three_coordinator = None
+    starting_grid_coordinator = None
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
-    live_bus = LiveBus(hass, session, transport_factory=transport_factory)
+    auth_feature_enabled = is_auth_feature_enabled()
+    live_timing_auth_status = evaluate_f1tv_auth_header(
+        entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "") if auth_feature_enabled else ""
+    )
+    live_timing_auth_header = live_timing_auth_status.header
+    auth_transport_enabled = is_auth_transport_enabled()
+    auth_can_be_used = (
+        operation_mode == OPERATION_MODE_LIVE
+        and auth_transport_enabled
+        and live_timing_auth_status.status not in AUTH_REPAIR_STATUSES
+    )
+    if not auth_can_be_used:
+        live_timing_auth_header = ""
+    else:
+        live_timing_auth_status = evaluate_f1tv_auth_header(
+            live_timing_auth_header,
+            used_for_live_timing=True,
+        )
+
+    def _handle_live_timing_auth_failed() -> None:
+        entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+        if isinstance(entry_data, dict):
+            current_auth_status = entry_data.get(AUTH_RUNTIME_STATUS)
+            if current_auth_status is None:
+                current_auth_status = live_timing_auth_status
+            rejected_status = rejected_f1tv_auth_status(current_auth_status)
+            async_set_runtime_f1tv_auth_status(hass, entry.entry_id, rejected_status)
+            async_update_f1tv_auth_repair_issue(hass, entry, rejected_status)
+            capabilities = entry_data.get("signalr_stream_capabilities")
+            if isinstance(capabilities, dict):
+                capabilities["auth_enabled"] = False
+                capabilities["active_live_streams"] = frozenset(
+                    build_live_subscribe_streams(include_auth_gated=False)
+                )
+            formation_tracker = entry_data.get("formation_start_tracker")
+            if formation_tracker is not None and hasattr(formation_tracker, "reset"):
+                with suppress(Exception):
+                    formation_tracker.reset(status="unavailable")
+            live_state = entry_data.get("live_state")
+            if live_state is not None:
+                for coordinator_key in (
+                    "championship_prediction_coordinator",
+                    "pitstop_coordinator",
+                ):
+                    coordinator = entry_data.get(coordinator_key)
+                    if coordinator is not None and hasattr(
+                        coordinator, "_handle_live_state"
+                    ):
+                        with suppress(Exception):
+                            coordinator._handle_live_state(  # noqa: SLF001
+                                bool(getattr(live_state, "is_live", False)),
+                                getattr(live_state, "reason", None),
+                            )
+        entry.async_start_reauth(hass, data=entry.data)
+
+    live_bus = LiveBus(
+        hass,
+        session,
+        transport_factory=transport_factory,
+        auth_header=live_timing_auth_header,
+        auth_failed_callback=(
+            _handle_live_timing_auth_failed if live_timing_auth_header else None
+        ),
+    )
     live_supervisor: LiveSessionSupervisor | None = None
     event_tracker_source: EventTrackerScheduleSource | None = None
     live_state: LiveAvailabilityTracker
@@ -1594,18 +1679,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         live_state = LiveAvailabilityTracker()
         live_state.set_state(True, "replay-mode")
 
-    def _replay_only_streams_active() -> bool:
+    def _formation_start_stream_active() -> bool:
         if operation_mode == OPERATION_MODE_DEVELOPMENT:
             return True
-        return bool(getattr(live_state, "is_live", False)) and _is_replay_delay_reason(
-            getattr(live_state, "reason", None)
+        if not bool(getattr(live_state, "is_live", False)):
+            return False
+        reason = getattr(live_state, "reason", None)
+        if _is_replay_delay_reason(reason):
+            return True
+        capabilities = (
+            hass.data.get(DOMAIN, {})
+            .get(entry.entry_id, {})
+            .get("signalr_stream_capabilities")
         )
+        if isinstance(capabilities, dict):
+            auth_gated_streams = capabilities.get("auth_gated_live_streams")
+            return bool(
+                capabilities.get("auth_enabled")
+                and isinstance(auth_gated_streams, (set, frozenset, tuple, list))
+                and "CarData.z" in auth_gated_streams
+            )
+        return bool(live_bus.auth_enabled and "CarData.z" in AUTH_GATED_LIVE_STREAMS)
 
     formation_tracker = FormationStartTracker(
         hass,
         bus=live_bus,
         http_session=session,
-        availability_guard=_replay_only_streams_active,
+        availability_guard=_formation_start_stream_active,
     )
 
     def _reload_entry():
@@ -1634,6 +1734,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         formation_tracker=formation_tracker,
         replay_controller=replay_controller,
     )
+
+    if "starting_grid" in enabled:
+        starting_grid_coordinator = StartingGridCoordinator(
+            hass,
+            session_coordinator,
+            bus=live_bus,
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+            live_state=live_state,
+        )
 
     if enable_rc:
         track_status_coordinator = TrackStatusCoordinator(
@@ -1732,6 +1847,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 err.__cause__ or err,
             )
     await session_coordinator.async_config_entry_first_refresh()
+    if starting_grid_coordinator:
+        await starting_grid_coordinator.async_config_entry_first_refresh()
     if track_status_coordinator:
         await track_status_coordinator.async_config_entry_first_refresh()
     if session_status_coordinator:
@@ -1752,7 +1869,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # unavailable state until their backing stream capability becomes available.
     need_drivers = any(k in enabled for k in ("driver_list",))
     need_top_three = any(k in enabled for k in ("top_three",))
-    need_team_radio = any(k in enabled for k in ("team_radio",))
     need_pitstops = any(k in enabled for k in ("pitstops",))
     need_championship_prediction = any(
         k in enabled for k in ("championship_prediction",)
@@ -1804,19 +1920,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         await top_three_coordinator.async_config_entry_first_refresh()
 
-    team_radio_coordinator = None
-    if enable_rc and need_team_radio:
-        team_radio_coordinator = TeamRadioCoordinator(
-            hass,
-            session_coordinator,
-            live_delay,
-            bus=live_bus,
-            config_entry=entry,
-            delay_controller=delay_controller,
-            live_state=live_state,
-        )
-        await team_radio_coordinator.async_config_entry_first_refresh()
-
     pitstop_coordinator = None
     if enable_rc and need_pitstops:
         pitstop_coordinator = PitStopCoordinator(
@@ -1866,10 +1969,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
         _RC_LOG_STORE_KEY: race_control_log_store if enable_rc else None,
         "live_mode_coordinator": live_mode_coordinator if enable_rc else None,
+        "starting_grid_coordinator": starting_grid_coordinator,
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
         "top_three_coordinator": top_three_coordinator,
-        "team_radio_coordinator": team_radio_coordinator,
         "pitstop_coordinator": pitstop_coordinator,
         "championship_prediction_coordinator": championship_prediction_coordinator,
         "drivers_coordinator": drivers_coordinator,
@@ -1882,8 +1985,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "public_live_streams": frozenset(PUBLIC_LIVE_STREAMS),
             "auth_gated_live_streams": frozenset(AUTH_GATED_LIVE_STREAMS),
             "replay_only_streams": frozenset(REPLAY_ONLY_STREAMS),
-            "auth_enabled": False,
+            "auth_enabled": live_bus.auth_enabled,
+            "active_live_streams": frozenset(
+                build_live_subscribe_streams(include_auth_gated=live_bus.auth_enabled)
+            ),
         },
+        AUTH_RUNTIME_STATUS: live_timing_auth_status,
+        AUTH_RUNTIME_STATUS_REFRESH_UNSUB: None,
         "operation_mode": operation_mode,
         "replay_file": replay_source,
         "live_delay_controller": delay_controller,
@@ -1902,7 +2010,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             weather_data_coordinator if enable_rc else None,
             lap_count_coordinator if enable_rc else None,
             top_three_coordinator,
-            team_radio_coordinator,
             pitstop_coordinator,
             championship_prediction_coordinator,
             drivers_coordinator,
@@ -1917,6 +2024,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _apply_activity_log_filter_excludes(hass)
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
     if isinstance(hass_data, dict):
+        async_update_f1tv_auth_repair_issue(hass, entry, live_timing_auth_status)
+        async_schedule_f1tv_auth_status_refresh(hass, entry)
 
         def _on_component_loaded(event):
             component = str((getattr(event, "data", {}) or {}).get("component") or "")
@@ -1965,6 +2074,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _on_no_spoiler_changed
             )
 
+    await async_ensure_live_data_card_frontend(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
@@ -2664,231 +2774,6 @@ class LapCountCoordinator(DataUpdateCoordinator):
             self.async_set_updated_data(self._last_message)
 
 
-class TeamRadioCoordinator(DataUpdateCoordinator):
-    """Coordinator for TeamRadio updates using SignalR.
-
-    Normaliserar TeamRadio-flödet till en enkel struktur:
-        data = {
-            "latest": { ...normaliserad capture... } | None,
-            "history": [ { ...capture... }, ... ],
-        }
-    """
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        session_coord: LiveSessionCoordinator,
-        delay_seconds: int = 0,
-        bus: LiveBus | None = None,
-        config_entry: ConfigEntry | None = None,
-        delay_controller: LiveDelayController | None = None,
-        live_state: LiveAvailabilityTracker | None = None,
-        history_limit: int = 20,
-    ) -> None:
-        super().__init__(
-            hass,
-            coordinator_logger("team_radio", suppress_manual=True),
-            name="F1 Team Radio Coordinator",
-            update_interval=None,
-            config_entry=config_entry,
-        )
-        self._session = async_get_clientsession(hass)
-        self._session_coord = session_coord
-        self.available = False
-        self._state: dict[str, Any] = {
-            "latest": None,
-            "history": [],
-        }
-        self._history_limit = max(1, int(history_limit or 20))
-        self._deliver_handle: asyncio.Handle | None = None
-        self._bus = bus
-        self._unsub: Callable[[], None] | None = None
-        self._delay_listener: Callable[[], None] | None = None
-        _init_delayed_ingest_state(self)
-        self._delay = max(0, int(delay_seconds or 0))
-        self._replay_mode = False
-        if delay_controller is not None:
-            self._delay_listener = delay_controller.add_listener(self.set_delay)
-        self._config_entry = config_entry
-        self._dev_mode = (
-            bool(config_entry)
-            and config_entry.data.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
-            == OPERATION_MODE_DEVELOPMENT
-        )
-        self._replay_static_root: str | None = None
-        self._live_state_unsub: Callable[[], None] | None = None
-        if live_state is not None:
-            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
-
-    async def async_close(self, *_):
-        self._unsub = _call_unsub(self._unsub)
-        self._deliver_handle = _cancel_handle(self._deliver_handle)
-        self._delay_listener = _call_unsub(self._delay_listener)
-        self._live_state_unsub = _call_unsub(self._live_state_unsub)
-        _close_delayed_ingest_state(self)
-
-    async def _async_update_data(self):
-        return self._state
-
-    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
-        if reason == "init":
-            return
-        self._replay_mode = _is_replay_delay_reason(reason)
-        if self._replay_mode:
-            _clear_delayed_ingest_state(self)
-        replay_available = bool(is_live and self._replay_mode)
-        self.available = replay_available
-        if not replay_available:
-            _clear_delayed_ingest_state(self)
-            self._state = {"latest": None, "history": []}
-            # Notify entities to clear their state
-            self.async_set_updated_data(self._state)
-
-    def set_delay(self, seconds: int) -> None:
-        _apply_delay_with_queue(self, seconds)
-
-    def _on_bus_message(self, msg: dict) -> None:
-        if not isinstance(msg, dict):
-            return
-        self._deliver(msg)
-
-    @staticmethod
-    def _normalize_captures(payload: dict) -> list[dict]:
-        """Extract a flat list of capture dicts from a TeamRadio payload."""
-        if not isinstance(payload, dict):
-            return []
-        captures = payload.get("Captures")
-        static_root = payload.get("_static_root")
-        result: list[dict] = []
-        try:
-            if isinstance(captures, list):
-                for item in captures:
-                    if isinstance(item, dict):
-                        copy = dict(item)
-                        if static_root and "_static_root" not in copy:
-                            copy["_static_root"] = static_root
-                        result.append(copy)
-            elif isinstance(captures, dict):
-                # Some dumps use numeric keys: {"Captures":{"1":{...},"2":{...}}}
-                numeric_keys = [k for k in captures.keys() if str(k).isdigit()]
-                if numeric_keys:
-                    numeric_keys.sort(key=lambda x: int(x))
-                    for key in numeric_keys:
-                        val = captures.get(key)
-                        if isinstance(val, dict):
-                            copy = dict(val)
-                            if static_root and "_static_root" not in copy:
-                                copy["_static_root"] = static_root
-                            result.append(copy)
-                else:
-                    for val in captures.values():
-                        if isinstance(val, dict):
-                            copy = dict(val)
-                            if static_root and "_static_root" not in copy:
-                                copy["_static_root"] = static_root
-                            result.append(copy)
-        except Exception:
-            return result
-        return result
-
-    def _deliver(self, msg: dict) -> None:
-        if _is_no_spoiler_blocked(self):
-            return
-        # In replay/development mode, try to provide a static root URL even if the
-        # transport did not annotate the payload (robust against file encoding quirks).
-        with suppress(Exception):
-            if (
-                self._dev_mode
-                and self._replay_static_root
-                and isinstance(msg, dict)
-                and "_static_root" not in msg
-            ):
-                msg = dict(msg)
-                msg["_static_root"] = self._replay_static_root
-        captures = self._normalize_captures(msg)
-        if not captures:
-            return
-        # Use the last capture as "latest"
-        latest = captures[-1]
-        history: list[dict] = list(self._state.get("history") or [])
-        history.extend(captures)
-        if len(history) > self._history_limit:
-            history = history[-self._history_limit :]
-        self._state = {
-            "latest": latest,
-            "history": history,
-        }
-        self.async_set_updated_data(self._state)
-        if _LOGGER.isEnabledFor(logging.DEBUG):
-            with suppress(Exception):
-                _LOGGER.debug(
-                    "TeamRadio delivered at %s latest=%s history_len=%s",
-                    dt_util.utcnow().isoformat(timespec="seconds"),
-                    {
-                        "Utc": latest.get("Utc"),
-                        "RacingNumber": latest.get("RacingNumber"),
-                        "Path": latest.get("Path"),
-                    },
-                    len(history),
-                )
-
-    async def async_config_entry_first_refresh(self):
-        await super().async_config_entry_first_refresh()
-        # Best-effort: derive static root from the replay file's URL header so sensors
-        # can build full clip URLs during replay.
-        if self._dev_mode and self._config_entry:
-            with suppress(Exception):
-                from pathlib import Path as _Path
-
-                replay_source = str(
-                    self._config_entry.data.get(CONF_REPLAY_FILE, "") or ""
-                ).strip()
-                if replay_source:
-                    replay_path = _Path(replay_source).expanduser()
-
-                    def _read_static_root() -> str | None:
-                        try:
-                            with replay_path.open("r", encoding="utf-8") as fh:
-                                # Scan a bit deeper than the first non-empty line; some dumps
-                                # may have the URL header later (or be prepended with comments).
-                                # We keep this bounded to avoid reading huge files in full.
-                                max_lines = 500
-                                for idx, raw in enumerate(fh):
-                                    if idx >= max_lines:
-                                        break
-                                    line = raw.lstrip("\ufeff").strip()
-                                    if not line:
-                                        continue
-                                    if line.upper().startswith("URL:"):
-                                        try:
-                                            _, url = line.split(":", 1)
-                                        except ValueError:
-                                            return None
-                                        full_url = url.strip().rstrip("/")
-                                        if not full_url:
-                                            return None
-                                        parts = full_url.split("/")
-                                        if len(parts) <= 1:
-                                            return None
-                                        # Drop the final segment (e.g. TeamRadio.jsonStream)
-                                        return "/".join(parts[:-1])
-                        except Exception:
-                            return None
-                        return None
-
-                    static_root = await self.hass.async_add_executor_job(
-                        _read_static_root
-                    )
-                    if static_root:
-                        self._replay_static_root = str(static_root)
-        try:
-            self._unsub = (
-                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe("TeamRadio", _wrap_delayed_handler(self, self._on_bus_message))  # type: ignore[attr-defined]
-        except Exception:
-            self._unsub = None
-
-
 class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
     """Coordinator aggregating live pit stops for all cars.
 
@@ -2975,8 +2860,14 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         replay_available = bool(is_live and self._replay_mode)
-        self.available = replay_available
-        if not replay_available:
+        auth_live_available = bool(
+            is_live
+            and not self._replay_mode
+            and self._bus is not None
+            and getattr(self._bus, "auth_enabled", False)
+        )
+        self.available = replay_available or auth_live_available
+        if not self.available:
             _clear_delayed_ingest_state(self)
             self._reset_store()
 
@@ -3529,8 +3420,14 @@ class ChampionshipPredictionCoordinator(
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         replay_available = bool(is_live and self._replay_mode)
-        self.available = replay_available
-        if not replay_available:
+        auth_live_available = bool(
+            is_live
+            and not self._replay_mode
+            and self._bus is not None
+            and self._bus.auth_enabled
+        )
+        self.available = replay_available or auth_live_available
+        if not self.available:
             _clear_delayed_ingest_state(self)
             self._reset_store()
 
@@ -4116,29 +4013,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "completed_laps": 0,
                 },
             )
-            entry.setdefault(
-                "sectors",
-                {
-                    "current": {
-                        0: {
-                            "time": None,
-                            "overall_fastest": None,
-                            "personal_fastest": None,
-                        },
-                        1: {
-                            "time": None,
-                            "overall_fastest": None,
-                            "personal_fastest": None,
-                        },
-                        2: {
-                            "time": None,
-                            "overall_fastest": None,
-                            "personal_fastest": None,
-                        },
-                    },
-                    "best": {0: None, 1: None, 2: None},
-                },
-            )
+            self._ensure_sector_state(entry)
             timing = entry["timing"]
             lap_history = entry["lap_history"]
 
@@ -4282,34 +4157,215 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         for drv_entry in self._state["drivers"].values():
                             s = drv_entry.get("sectors")
                             if s:
-                                s["best"] = {0: None, 1: None, 2: None}
-                                for _i in (0, 1, 2):
-                                    s["current"][_i] = {
-                                        "time": None,
-                                        "overall_fastest": None,
-                                        "personal_fastest": None,
-                                    }
+                                self._reset_sector_state(s, reset_best=True)
         if position_changed:
             self._recompute_leader_from_state()
         return changed
+
+    @staticmethod
+    def _empty_current_sector() -> dict[str, Any]:
+        return {
+            "time": None,
+            "value": None,
+            "lap": None,
+            "overall_fastest": None,
+            "personal_fastest": None,
+            "source": None,
+        }
+
+    @staticmethod
+    def _empty_personal_best_sector() -> dict[str, Any]:
+        return {
+            "time": None,
+            "value": None,
+            "lap": None,
+            "session_part": None,
+            "overall_fastest": None,
+            "personal_fastest": None,
+            "source": None,
+        }
+
+    @classmethod
+    def _empty_sector_state(cls) -> dict[str, Any]:
+        return {
+            "current": {idx: cls._empty_current_sector() for idx in (0, 1, 2)},
+            "best": {0: None, 1: None, 2: None},
+            "personal_best": {
+                idx: cls._empty_personal_best_sector() for idx in (0, 1, 2)
+            },
+            "current_lap": None,
+            "last_completed_sector": None,
+            "state": "awaiting_s1",
+        }
+
+    @classmethod
+    def _normalize_current_sector(cls, value: object) -> dict[str, Any]:
+        sector = cls._empty_current_sector()
+        if not isinstance(value, dict):
+            return sector
+        sector.update(
+            {
+                "time": value.get("time"),
+                "value": value.get("value"),
+                "lap": value.get("lap"),
+                "overall_fastest": value.get("overall_fastest"),
+                "personal_fastest": value.get("personal_fastest"),
+                "source": value.get("source"),
+            }
+        )
+        if sector["source"] is None and sector["time"] is not None:
+            sector["source"] = "current"
+        return sector
+
+    @classmethod
+    def _normalize_personal_best_sector(
+        cls, value: object, fallback_time: object = None
+    ) -> dict[str, Any]:
+        sector = cls._empty_personal_best_sector()
+        if isinstance(value, dict):
+            sector.update(
+                {
+                    "time": value.get("time"),
+                    "value": value.get("value"),
+                    "lap": value.get("lap"),
+                    "session_part": value.get("session_part"),
+                    "overall_fastest": value.get("overall_fastest"),
+                    "personal_fastest": value.get("personal_fastest"),
+                    "source": value.get("source"),
+                }
+            )
+        elif fallback_time is not None:
+            sector["time"] = fallback_time
+        if sector["source"] is None and sector["time"] is not None:
+            sector["source"] = "personal_best"
+        return sector
+
+    @classmethod
+    def _derive_sector_progress_state(cls, sectors: dict[str, Any]) -> str:
+        current = sectors.get("current") if isinstance(sectors, dict) else {}
+        if not isinstance(current, dict):
+            return "awaiting_s1"
+        has_s1 = cls._normalize_current_sector(current.get(0)).get("time") is not None
+        has_s2 = cls._normalize_current_sector(current.get(1)).get("time") is not None
+        has_s3 = cls._normalize_current_sector(current.get(2)).get("time") is not None
+        if has_s3:
+            return "lap_complete"
+        if has_s2:
+            return "s2_done"
+        if has_s1:
+            return "s1_done"
+        return "awaiting_s1"
+
+    @classmethod
+    def _ensure_sector_state(cls, entry: dict[str, Any]) -> dict[str, Any]:
+        sectors = entry.get("sectors")
+        if not isinstance(sectors, dict):
+            sectors = cls._empty_sector_state()
+            entry["sectors"] = sectors
+            return sectors
+
+        current = sectors.setdefault("current", {})
+        if not isinstance(current, dict):
+            current = {}
+            sectors["current"] = current
+        for idx in (0, 1, 2):
+            current[idx] = cls._normalize_current_sector(current.get(idx))
+
+        best = sectors.setdefault("best", {0: None, 1: None, 2: None})
+        if not isinstance(best, dict):
+            best = {0: None, 1: None, 2: None}
+            sectors["best"] = best
+        for idx in (0, 1, 2):
+            best.setdefault(idx, None)
+
+        personal_best = sectors.setdefault("personal_best", {})
+        if not isinstance(personal_best, dict):
+            personal_best = {}
+            sectors["personal_best"] = personal_best
+        for idx in (0, 1, 2):
+            personal_best[idx] = cls._normalize_personal_best_sector(
+                personal_best.get(idx), best.get(idx)
+            )
+            if best.get(idx) is None and personal_best[idx].get("time") is not None:
+                best[idx] = personal_best[idx]["time"]
+
+        sectors.setdefault("current_lap", None)
+        sectors.setdefault("last_completed_sector", None)
+        sectors["state"] = cls._derive_sector_progress_state(sectors)
+        return sectors
+
+    @classmethod
+    def _clear_current_sector(cls, sectors: dict[str, Any], idx: int) -> bool:
+        current = sectors.get("current")
+        if not isinstance(current, dict) or idx not in (0, 1, 2):
+            return False
+        empty = cls._empty_current_sector()
+        if current.get(idx) == empty:
+            return False
+        current[idx] = empty
+        return True
+
+    @classmethod
+    def _reset_sector_state(cls, sectors: dict[str, Any], *, reset_best: bool) -> None:
+        sectors["current"] = {idx: cls._empty_current_sector() for idx in (0, 1, 2)}
+        if reset_best:
+            sectors["best"] = {0: None, 1: None, 2: None}
+            sectors["personal_best"] = {
+                idx: cls._empty_personal_best_sector() for idx in (0, 1, 2)
+            }
+        else:
+            cls._ensure_sector_state({"sectors": sectors})
+        sectors["current_lap"] = None
+        sectors["last_completed_sector"] = None
+        sectors["state"] = "awaiting_s1"
+
+    @staticmethod
+    def _driver_completed_laps(entry: dict[str, Any]) -> int | None:
+        lap_history = entry.get("lap_history")
+        if not isinstance(lap_history, dict):
+            return None
+        for key in ("completed_laps", "last_recorded_lap"):
+            value = lap_history.get(key)
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                continue
+            if parsed >= 0:
+                return parsed
+        return None
+
+    def _current_sector_lap(
+        self, entry: dict[str, Any], sectors: dict[str, Any], idx: int
+    ) -> int | None:
+        if idx in (1, 2):
+            current_lap = sectors.get("current_lap")
+            try:
+                parsed = int(current_lap)
+            except (TypeError, ValueError):
+                parsed = None
+            if parsed is not None and parsed > 0:
+                return parsed
+        completed_laps = self._driver_completed_laps(entry)
+        return completed_laps + 1 if completed_laps is not None else None
 
     def _merge_sectors(self, rn: str, entry: dict, sectors_raw: object) -> bool:
         """Merge sector timing data for a driver from a TimingData delta.
 
         Handles the three sectors (indexed 0-2). When sector 0 (S1) arrives,
         sectors 1 and 2 from the previous lap are cleared unless they are also
-        updated in the same message. Updates are skipped during SC/VSC periods;
-        those are cleared when track status transitions into a yellow/SC/VSC state.
+        updated in the same message. When S3 arrives on its own, S1/S2 are
+        cleared so the card shows the lap-complete transition instead of stale
+        earlier sectors. Updates are skipped during SC/VSC periods; those are
+        cleared when track status transitions into a yellow/SC/VSC state.
         """
         _SC_VSC = {"2", "3", "4", "5", "6", "7"}
         if self._state.get("track_status") in _SC_VSC:
             return False
 
-        sectors = entry.get("sectors")
-        if not isinstance(sectors, dict):
-            return False
+        sectors = self._ensure_sector_state(entry)
         current = sectors["current"]
         best = sectors["best"]
+        personal_best = sectors["personal_best"]
 
         # Normalise to list of (idx, sector_dict) — stream sends list or dict delta
         if isinstance(sectors_raw, list):
@@ -4338,28 +4394,31 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             time_secs = self._parse_laptime_secs(value_str)
             if time_secs is None:
                 continue
+            sector_lap = self._current_sector_lap(entry, sectors, idx)
             updates[idx] = {
                 "time": time_secs,
+                "value": value_str,
+                "lap": sector_lap,
                 "overall_fastest": bool(sd.get("OverallFastest", False)),
                 "personal_fastest": bool(sd.get("PersonalFastest", False)),
+                "source": "current",
             }
 
         if not updates:
             return False
 
         changed = False
+        full_lap_update = set(updates) == {0, 1, 2}
 
         # New S1 starts a lap: clear S2 and S3 from the previous lap unless
         # they are also being updated in this message (rare but possible in replay)
         if 0 in updates:
+            if sectors.get("current_lap") != updates[0]["lap"]:
+                sectors["current_lap"] = updates[0]["lap"]
+                changed = True
             for clear_idx in (1, 2):
                 if clear_idx not in updates and current[clear_idx]["time"] is not None:
-                    current[clear_idx] = {
-                        "time": None,
-                        "overall_fastest": None,
-                        "personal_fastest": None,
-                    }
-                    changed = True
+                    changed = self._clear_current_sector(sectors, clear_idx) or changed
 
         # Apply sector updates and refresh personal best
         for idx, data in updates.items():
@@ -4370,7 +4429,32 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 best[idx] is None or data["time"] < best[idx]
             ):
                 best[idx] = data["time"]
+                session = self._state.get("session")
+                session_part = (
+                    session.get("part") if isinstance(session, dict) else None
+                )
+                personal_best[idx] = {
+                    **data,
+                    "session_part": session_part,
+                    "source": "personal_best",
+                }
                 changed = True
+            sectors["last_completed_sector"] = {
+                "number": idx + 1,
+                **data,
+            }
+
+        if 2 in updates and not full_lap_update:
+            for clear_idx in (0, 1):
+                changed = self._clear_current_sector(sectors, clear_idx) or changed
+            if sectors.get("current_lap") != updates[2]["lap"]:
+                sectors["current_lap"] = updates[2]["lap"]
+                changed = True
+
+        state = self._derive_sector_progress_state(sectors)
+        if sectors.get("state") != state:
+            sectors["state"] = state
+            changed = True
 
         return changed
 
@@ -4391,12 +4475,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             for drv_entry in self._state["drivers"].values():
                 s = drv_entry.get("sectors")
                 if isinstance(s, dict):
-                    for i in (0, 1, 2):
-                        s["current"][i] = {
-                            "time": None,
-                            "overall_fastest": None,
-                            "personal_fastest": None,
-                        }
+                    self._reset_sector_state(s, reset_best=False)
             self._schedule_deliver()
 
     def set_delay(self, seconds: int) -> None:
@@ -4770,7 +4849,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         lap_key = str(use_lap_num)
         prev_time = lap_history["laps"].get(lap_key)
         if prev_time == lap_time and last_lap_num >= use_lap_num:
-            return False
+            return self._mark_sector_lap_completed(entry, use_lap_num)
         lap_history["laps"][lap_key] = lap_time
         if last_lap_num < use_lap_num:
             lap_history["last_recorded_lap"] = use_lap_num
@@ -4781,7 +4860,52 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 lap_history["completed_laps"] = use_lap_num
 
         self._update_fastest_lap(rn, use_lap_num, lap_time)
+        self._mark_sector_lap_completed(entry, use_lap_num)
         return True
+
+    def _mark_sector_lap_completed(self, entry: dict[str, Any], lap_num: int) -> bool:
+        """Mark current sector progress as a completed lap."""
+        sectors = entry.get("sectors")
+        if not isinstance(sectors, dict):
+            return False
+
+        sectors = self._ensure_sector_state(entry)
+        current = sectors["current"]
+        changed = False
+        s3 = current.get(2)
+        s3_time = s3.get("time") if isinstance(s3, dict) else None
+
+        if s3_time is not None:
+            for idx in (0, 1):
+                changed = self._clear_current_sector(sectors, idx) or changed
+            if s3.get("lap") != lap_num:
+                s3["lap"] = lap_num
+                changed = True
+            last_completed = {
+                "number": 3,
+                **s3,
+            }
+            if sectors.get("last_completed_sector") != last_completed:
+                sectors["last_completed_sector"] = last_completed
+                changed = True
+            if sectors.get("current_lap") != lap_num:
+                sectors["current_lap"] = lap_num
+                changed = True
+            if sectors.get("state") != "lap_complete":
+                sectors["state"] = "lap_complete"
+                changed = True
+            return changed
+
+        for idx in (0, 1):
+            changed = self._clear_current_sector(sectors, idx) or changed
+        if sectors.get("current_lap") is not None:
+            sectors["current_lap"] = None
+            changed = True
+        state = self._derive_sector_progress_state(sectors)
+        if sectors.get("state") != state:
+            sectors["state"] = state
+            changed = True
+        return changed
 
     def _update_fastest_lap(self, rn: str, lap_num: int | None, lap_time: str) -> bool:
         """Update overall fastest lap if the provided lap is quicker."""
@@ -5292,6 +5416,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._unsubs.append(
                     bus.subscribe(
+                        "DriverRaceInfo",
+                        _wrap_delayed_handler(self, self._on_driver_race_info),
+                    )
+                )
+            with suppress(Exception):
+                self._unsubs.append(
+                    bus.subscribe(
                         "TrackStatus", _wrap_delayed_handler(self, self._on_trackstatus)
                     )
                 )
@@ -5312,10 +5443,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if isinstance(data_root, dict):
             data = data_root.pop(entry.entry_id, None)
         if isinstance(data, dict):
+            auth_status_unsub = data.pop(AUTH_RUNTIME_STATUS_REFRESH_UNSUB, None)
+            if callable(auth_status_unsub):
+                with suppress(Exception):
+                    auth_status_unsub()
             activity_filter_unsub = data.pop("activity_filter_unsub", None)
             if callable(activity_filter_unsub):
                 with suppress(Exception):
                     activity_filter_unsub()
+            async_cancel_f1tv_auth_status_refresh(hass, entry.entry_id)
             for name, obj in list(data.items()):
                 if obj is None:
                     continue
@@ -5401,12 +5537,6 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
         coordinator._last_message = None
         coordinator.data_list = []
         coordinator.async_set_updated_data(None)
-        return
-
-    if isinstance(coordinator, TeamRadioCoordinator):
-        _clear_delayed_ingest_state(coordinator)
-        coordinator._state = {"latest": None, "history": []}
-        coordinator.async_set_updated_data(coordinator._state)
         return
 
     if isinstance(coordinator, PitStopCoordinator):
@@ -6434,6 +6564,10 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             str(round_) if round_ is not None else "",
         )
 
+    @staticmethod
+    def _empty_result() -> dict[str, Any]:
+        return {"MRData": {"RaceTable": {"Races": []}}}
+
     async def _async_update_data(self):
         try:
             # Start with a large page size; use API-returned limit/offset/total for correctness
@@ -6543,7 +6677,12 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             }
             # No-spoiler: keep cache warm but don't deliver new data to entities.
             if _is_no_spoiler_jolpica_blocked(self):
-                return self.data
+                blocked_data = self.data
+                if isinstance(blocked_data, dict) and isinstance(
+                    blocked_data.get("MRData"), dict
+                ):
+                    return blocked_data
+                return self._empty_result()
             return result
         except Exception as err:
             raise UpdateFailed(f"Error fetching season results: {err}") from err

@@ -3,7 +3,7 @@ id: diagnostics
 title: Diagnostics
 ---
 
-Diagnostic entities are intended for troubleshooting and advanced automations. Some of them are only created when you enable the corresponding options during configuration.
+Diagnostic entities are intended for troubleshooting and advanced automations. Some entities are only created when the corresponding feature is enabled during configuration.
 
 ## Entities Summary
 
@@ -11,12 +11,15 @@ Diagnostic entities are intended for troubleshooting and advanced automations. S
 | --- | --- |
 | [sensor.f1_live_timing_mode](#live-timing-mode) | Current live timing mode (`idle`, `live`, `replay`) |
 | [binary_sensor.f1_live_timing_online](#live-timing-online) | Live timing connectivity indicator |
-| [sensor.f1_replay_status](#replay-status) | Replay state and progress (Replay Mode) |
+| [sensor.f1_replay_status](#replay-status) | Replay state and progress |
+| [sensor.f1_f1tv_token_status](#f1tv-token-status) | Redacted F1TV token health status |
+| [sensor.f1_f1tv_token_expires_at](#f1tv-token-expires-at) | Expiry time for the saved F1TV live timing token |
 
 ---
 
 ## Live Timing Mode
-`sensor.f1_live_timing_mode` - Diagnostic sensor showing which mode the integration is currently in.
+
+`sensor.f1_live_timing_mode` - Diagnostic sensor showing which mode the integration is currently using.
 
 **State (enum)**
 - One of: `idle`, `live`, `replay`.
@@ -37,6 +40,7 @@ Diagnostic entities are intended for troubleshooting and advanced automations. S
 ---
 
 ## Live Timing Online
+
 `binary_sensor.f1_live_timing_online` - Diagnostic connectivity indicator for the live timing transport.
 
 **State (on/off)**
@@ -49,29 +53,30 @@ Diagnostic entities are intended for troubleshooting and advanced automations. S
 | --- | --- | --- |
 | mode | string | One of `idle`, `live`, `replay` |
 | reason | string | Why the current live timing state is active (best effort) |
-| online_threshold_s | number | Maximum age (seconds) before the stream is considered offline |
+| online_threshold_s | number | Maximum age in seconds before the stream is considered offline |
 | heartbeat_age_s | number | Seconds since last heartbeat frame (best effort) |
 | activity_age_s | number | Seconds since last stream activity (best effort) |
-| effective_age_s | number | The age value used for the online check (best effort) |
+| effective_age_s | number | Age value used for the online check (best effort) |
 
 ---
 
 ## Replay Status
+
 `sensor.f1_replay_status` - Replay Mode status and progress.
 
 **State (enum)**
-- One of: `idle`, `selected`, `loading`, `ready`, `playing`, `paused`.
+- One of: `idle`, `selected`, `loading`, `ready`, `playing`, `paused`, `seeking`.
 
 **Attributes**
 
 | Attribute | Type | Description |
 | --- | --- | --- |
 | selected_session | string | Name of the selected session |
-| download_progress | number | Download progress percentage (0–100) |
+| download_progress | number | Download progress percentage from 0 to 100 |
 | download_error | string | Error message if download failed |
-| playback_position_s | number | Current playback position in seconds (relative to chosen start reference) |
+| playback_position_s | number | Current playback position in seconds, relative to the chosen start reference |
 | playback_position_formatted | string | Current position as `HH:MM:SS` |
-| playback_total_s | number | Total playback duration in seconds (relative to chosen start reference) |
+| playback_total_s | number | Total playback duration in seconds, relative to the chosen start reference |
 | playback_total_formatted | string | Total duration as `HH:MM:SS` |
 | session_start_offset_s | number | Start offset in seconds from the underlying session archive (best effort) |
 | paused | boolean | True when playback is paused |
@@ -81,3 +86,50 @@ Diagnostic entities are intended for troubleshooting and advanced automations. S
 | index_status | string | Index status such as `ok`, `no_data`, or `error` (best effort) |
 | index_error | string | Error details when index fetch fails (best effort) |
 
+---
+
+## F1TV Token Status
+
+`sensor.f1_f1tv_token_status` - Redacted status for the optional F1TV live timing token.
+
+:::warning[Experimental feature]
+F1TV access is optional and experimental. Public live timing continues to work without a token. Only auth-gated live timing streams depend on this status.
+:::
+
+**State (enum)**
+- One of: `not_configured`, `valid`, `expiring_soon`, `expired`, `invalid`, `rejected`.
+
+| Value | Description |
+| --- | --- |
+| `not_configured` | No F1TV live timing token has been paired |
+| `valid` | A token is saved and can be used for auth-gated live timing |
+| `expiring_soon` | The saved token is still usable but should be replaced soon |
+| `expired` | The saved token has expired |
+| `invalid` | The saved token could not be parsed or validated |
+| `rejected` | Formula 1 rejected the saved token |
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| auth_configured | boolean | True when a token is saved |
+| used_for_live_timing | boolean | True when the token is currently being used for auth-gated live timing |
+| expires_at | string | ISO-8601 expiry timestamp, or `null` |
+| reason | string | Redacted reason when the token is invalid, expired, or rejected |
+
+---
+
+## F1TV Token Expires At
+
+`sensor.f1_f1tv_token_expires_at` - Timestamp sensor showing when the saved F1TV live timing token expires.
+
+**State**
+- Timestamp, or `unknown` when no valid expiry is available.
+
+**Attributes**
+
+This sensor exposes the same redacted attributes as [F1TV Token Status](#f1tv-token-status): `auth_configured`, `used_for_live_timing`, `expires_at`, and `reason`.
+
+:::tip
+Use `sensor.f1_f1tv_token_status` for automations that need to detect invalid or rejected tokens. Use this timestamp sensor when you want reminders before the token expires.
+:::

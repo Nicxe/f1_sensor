@@ -105,6 +105,24 @@ async def test_s1_does_not_clear_s2_s3_when_all_arrive_together(hass) -> None:
     assert sectors["current"][0]["time"] == pytest.approx(27.0)
     assert sectors["current"][1]["time"] == pytest.approx(32.0)
     assert sectors["current"][2]["time"] == pytest.approx(28.0)
+    assert sectors["state"] == "lap_complete"
+
+
+@pytest.mark.asyncio
+async def test_s3_arrival_clears_s1_s2_and_marks_lap_complete(hass) -> None:
+    coord = _make_coord(hass)
+
+    coord._merge_timingdata(_sector_payload("44", "27.0", "32.0", None))
+    sectors = coord._state["drivers"]["44"]["sectors"]
+    assert sectors["state"] == "s2_done"
+
+    coord._merge_timingdata(_sector_payload("44", None, None, "28.0"))
+    sectors = coord._state["drivers"]["44"]["sectors"]
+    assert sectors["current"][0]["time"] is None
+    assert sectors["current"][1]["time"] is None
+    assert sectors["current"][2]["time"] == pytest.approx(28.0)
+    assert sectors["state"] == "lap_complete"
+    assert sectors["last_completed_sector"]["number"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +165,8 @@ async def test_personal_fastest_updates_best_sector(hass) -> None:
     )
     sectors = coord._state["drivers"]["44"]["sectors"]
     assert sectors["best"][0] == pytest.approx(26.5)
+    assert sectors["personal_best"][0]["time"] == pytest.approx(26.5)
+    assert sectors["personal_best"][0]["source"] == "personal_best"
 
     # New lap: slower S1 without PersonalFastest — best should not change
     coord._merge_timingdata(
@@ -497,21 +517,70 @@ def _payload_with_sectors() -> dict:
                     "current": {
                         0: {
                             "time": 27.456,
+                            "value": "27.456",
+                            "lap": 4,
                             "overall_fastest": False,
                             "personal_fastest": True,
+                            "source": "current",
                         },
                         1: {
                             "time": None,
+                            "value": None,
+                            "lap": None,
                             "overall_fastest": None,
                             "personal_fastest": None,
+                            "source": None,
                         },
                         2: {
                             "time": None,
+                            "value": None,
+                            "lap": None,
                             "overall_fastest": None,
                             "personal_fastest": None,
+                            "source": None,
                         },
                     },
                     "best": {0: 26.789, 1: None, 2: None},
+                    "personal_best": {
+                        0: {
+                            "time": 26.789,
+                            "value": "26.789",
+                            "lap": 3,
+                            "session_part": 1,
+                            "overall_fastest": False,
+                            "personal_fastest": True,
+                            "source": "personal_best",
+                        },
+                        1: {
+                            "time": None,
+                            "value": None,
+                            "lap": None,
+                            "session_part": None,
+                            "overall_fastest": None,
+                            "personal_fastest": None,
+                            "source": None,
+                        },
+                        2: {
+                            "time": None,
+                            "value": None,
+                            "lap": None,
+                            "session_part": None,
+                            "overall_fastest": None,
+                            "personal_fastest": None,
+                            "source": None,
+                        },
+                    },
+                    "current_lap": 4,
+                    "state": "s1_done",
+                    "last_completed_sector": {
+                        "number": 1,
+                        "time": 27.456,
+                        "value": "27.456",
+                        "lap": 4,
+                        "overall_fastest": False,
+                        "personal_fastest": True,
+                        "source": "current",
+                    },
                 },
             }
         },
@@ -534,14 +603,25 @@ def test_sensor_maps_sector_fields(hass) -> None:
     driver = next(d for d in attrs["drivers"] if d["racing_number"] == "44")
 
     assert driver["sector_1"] == pytest.approx(27.456)
+    assert driver["sector_1_lap"] == 4
+    assert driver["sector_1_source"] == "current"
     assert driver["sector_1_personal_fastest"] is True
     assert driver["sector_1_overall_fastest"] is False
     assert driver["sector_2"] is None
     assert driver["sector_2_personal_fastest"] is None
     assert driver["sector_3"] is None
     assert driver["best_sector_1"] == pytest.approx(26.789)
+    assert driver["best_sector_1_lap"] == 3
+    assert driver["best_sector_1_session_part"] == 1
     assert driver["best_sector_2"] is None
     assert driver["best_sector_3"] is None
+    assert driver["sector_state"] == "s1_done"
+    assert driver["sector_current_lap"] == 4
+    assert driver["last_completed_sector"]["number"] == 1
+    assert driver["sectors"]["current"]["sector_1"]["time"] == pytest.approx(27.456)
+    assert driver["sectors"]["personal_best"]["sector_1"]["time"] == pytest.approx(
+        26.789
+    )
 
 
 def test_sensor_sector_fields_absent_when_no_sector_data(hass) -> None:

@@ -64,7 +64,6 @@ async def test_download_stream_timeout_returns_empty_list(hass) -> None:
     frames = await manager._download_stream(
         "https://livetiming.formula1.com/static/test.jsonStream",
         "TimingData",
-        "https://livetiming.formula1.com/static",
     )
 
     assert frames == []

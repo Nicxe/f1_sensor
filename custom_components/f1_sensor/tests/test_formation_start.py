@@ -474,6 +474,31 @@ async def test_live_cardata_after_session_live_does_not_emit_ready(hass) -> None
 
 
 @pytest.mark.asyncio
+async def test_live_cardata_is_ignored_when_availability_guard_is_false(hass) -> None:
+    bus = _CachingBus()
+    tracker = FormationStartTracker(
+        hass,
+        bus=bus,  # type: ignore[arg-type]
+        http_session=object(),  # type: ignore[arg-type]
+        availability_guard=lambda: False,
+    )
+    tracker._schedule_probe = Mock()  # type: ignore[method-assign]
+    target = dt_util.utcnow().replace(microsecond=0)
+
+    tracker.add_listener(lambda _snapshot: None)
+    tracker._handle_session_info(_session_info_payload(start_utc=target))
+    bus.emit(
+        "CarData.z",
+        _make_cardata_payload(_iso_utc(target + timedelta(milliseconds=80))),
+    )
+    await hass.async_block_till_done()
+
+    assert tracker.snapshot()["status"] == "idle"
+    assert tracker.snapshot()["source"] is None
+    assert tracker.formation_start_utc is None
+
+
+@pytest.mark.asyncio
 async def test_timeout_with_valid_partial_result_succeeds(hass) -> None:
     target = dt_util.utcnow().replace(microsecond=0)
     lines = [_make_cardata_line(_iso_utc(target - timedelta(milliseconds=500)))]
@@ -638,15 +663,18 @@ async def test_live_bus_dispatches_non_dict_cardata_without_breaking_dict_stream
 ) -> None:
     bus = LiveBus(hass, Mock())
     received: list[str] = []
+    late_received: list[str] = []
 
     bus.subscribe("CarData.z", lambda payload: received.append(payload))
     bus.inject_message("CarData.z", _make_cardata_payload(_iso_utc(dt_util.utcnow())))
+    bus.subscribe("CarData.z", lambda payload: late_received.append(payload))
     bus.inject_message("SessionStatus", {"Status": "Started"})
 
     diagnostics = bus.stream_diagnostics(["CarData.z", "SessionStatus"])
 
     assert len(received) == 1
     assert isinstance(received[0], str)
+    assert late_received == received
     assert diagnostics["CarData.z"] == {
         "frame_count": 1,
         "last_seen_age_s": 0.0,

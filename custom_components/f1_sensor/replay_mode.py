@@ -50,7 +50,6 @@ REPLAY_STREAMS = [
     "DriverList",
     "TimingAppData",
     "TopThree",
-    "TeamRadio",
     "PitStopSeries",
     "ChampionshipPrediction",
     "DriverRaceInfo",
@@ -574,14 +573,13 @@ class ReplaySessionManager:
         # Download all streams
         all_frames: list[ReplayFrame] = []
         total_streams = len(REPLAY_STREAMS)
-        static_root = f"{STATIC_BASE}/{session.path}"
 
         for i, stream in enumerate(REPLAY_STREAMS):
             self._download_progress = (i / total_streams) * 0.9
             self._notify_listeners()
 
             stream_url = f"{STATIC_BASE}/{session.path}/{stream}.jsonStream"
-            frames = await self._download_stream(stream_url, stream, static_root)
+            frames = await self._download_stream(stream_url, stream)
             all_frames.extend(frames)
 
         if not all_frames:
@@ -697,9 +695,7 @@ class ReplaySessionManager:
             formation_initial_state=formation_initial_state,
         )
 
-    async def _download_stream(
-        self, url: str, stream_name: str, static_root: str
-    ) -> list[ReplayFrame]:
+    async def _download_stream(self, url: str, stream_name: str) -> list[ReplayFrame]:
         """Download a single .jsonStream file and parse into frames."""
         frames: list[ReplayFrame] = []
 
@@ -738,10 +734,6 @@ class ReplaySessionManager:
             try:
                 timestamp_ms = self._parse_timestamp_to_ms(timestamp_str)
                 payload = json.loads(json_str)
-
-                # Annotate TeamRadio payloads with static_root for clip URL construction
-                if stream_name == "TeamRadio" and isinstance(payload, dict):
-                    payload["_static_root"] = static_root
 
                 frames.append(
                     ReplayFrame(

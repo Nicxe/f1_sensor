@@ -157,6 +157,60 @@ async def test_blueprint_syncs_track_light_when_session_enters_active(
 
 
 @pytest.mark.asyncio
+async def test_blueprint_restores_pre_race_scene_after_start_clear_delay(
+    hass: HomeAssistant,
+) -> None:
+    await _install_blueprint(hass)
+    calls = _register_services(hass)
+    await _set_states(
+        hass,
+        {
+            "light.test_track_status": "off",
+            "sensor.test_track_status": "CLEAR",
+            "sensor.test_session_status": "pre",
+        },
+    )
+
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "snapshot_pre_race": True,
+            "snapshot_before_alert": True,
+            "clear_behavior_mode": "restore_after_delay",
+            "clear_restore_delay_s": 0,
+        },
+    )
+    calls.clear()
+
+    await _set_states(hass, {"sensor.test_session_status": "live"})
+
+    assert calls == [
+        (
+            "scene.create",
+            {
+                "scene_id": "automation_track_status_blueprint_test_pre_race",
+                "snapshot_entities": ["light.test_track_status"],
+            },
+        ),
+        (
+            "light.turn_on",
+            {
+                "entity_id": ["light.test_track_status"],
+                "brightness_pct": 100,
+                "rgb_color": [11, 22, 33],
+                "transition": 0,
+            },
+        ),
+        (
+            "scene.turn_on",
+            {
+                "entity_id": "scene.automation_track_status_blueprint_test_pre_race",
+            },
+        ),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_blueprint_ignores_internal_session_updates_without_track_change(
     hass: HomeAssistant,
 ) -> None:

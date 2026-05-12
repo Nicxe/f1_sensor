@@ -52,10 +52,22 @@ const methodSources = [
   extractMethod("_resolveDisplayQualifyingPart(sessionState, ...parts)"),
   extractMethod("_normalizeQualifyingPart(value)"),
   extractMethod("_inferQualifyingPartFromDrivers(drivers)"),
+  extractMethod("_normalizeSectorDisplayMode(value)"),
+  extractMethod("_resolveSectorDisplay(pos, idx, mode = 'current')"),
+  extractMethod("_sectorFromSource(pos, idx, source)"),
+  extractMethod("_parseSectorSeconds(value)"),
+  extractMethod("_parseLapTimeSeconds(value)"),
+  extractMethod("_sectorClass(overallFastest, personalFastest, hasTiming)"),
+  extractMethod("_asDriversList(value)"),
+  extractMethod("_hasUsableDriversEntity(entityState)"),
 ];
 
 const Harness = new Function(
   `
+  const isUnavailableLikeEntityState = (entityState) => {
+    const state = String(entityState?.state || "").trim().toLowerCase();
+    return state === "unavailable" || state === "unknown";
+  };
   const COMPOUND_FALLBACK = {
     SOFT: "#ff3b30",
     MEDIUM: "#ffd60a",
@@ -116,8 +128,20 @@ const rows = harness._buildRows(
 process.stdout.write(
   JSON.stringify({
     callUsesSessionPart: source.includes(
-      "const rows = this._buildRows(positionDrivers, tyresDrivers, driverList, sessionPart);",
+      "rows = this._buildRows(positionDrivers, tyresDrivers, driverList, sessionPart);",
     ),
+    renderUsesUsableDriversEntity: source.includes(
+      "positionsState && this._hasUsableDriversEntity(positionsState)",
+    ),
+    renderNormalizesPositionDrivers: source.includes(
+      "const positionDrivers = this._asDriversList(positionsState?.attributes?.drivers);",
+    ),
+    unknownStateWithDriversUsable: harness._hasUsableDriversEntity({
+      state: "unknown",
+      attributes: {
+        drivers: payload.positionDrivers,
+      },
+    }),
     sessionPart,
     rows,
   }),
@@ -183,6 +207,29 @@ def test_qualifying_card_reuses_inferred_qpart_for_rows() -> None:
     assert result["sessionPart"] == 2
     assert result["rows"][0]["position"] == 3
     assert result["rows"][0]["current_segment_best_lap"] == "1:19.525"
+
+
+def test_qualifying_card_uses_replay_attributes_when_position_state_unknown() -> None:
+    """Replay qualifying can expose driver attributes while the lap state is unknown."""
+    result = _run_card_probe(
+        current_q_part=1,
+        position_drivers=[
+            {
+                "racing_number": "16",
+                "tla": "LEC",
+                "team": "Ferrari",
+                "q1_time": "1:27.456",
+                "q1_position": 1,
+                "current_position": None,
+            }
+        ],
+    )
+
+    assert result["renderUsesUsableDriversEntity"] is True
+    assert result["renderNormalizesPositionDrivers"] is True
+    assert result["unknownStateWithDriversUsable"] is True
+    assert result["rows"][0]["position"] == 1
+    assert result["rows"][0]["current_segment_best_lap"] == "1:27.456"
 
 
 def test_qualifying_card_normalizes_string_qpart_for_rows() -> None:
@@ -285,3 +332,35 @@ def test_qualifying_card_sorts_untimed_q3_drivers_after_timed_rows() -> None:
     assert [row["tla"] for row in result["rows"]] == ["HAM", "PIA"]
     assert result["rows"][0]["position"] == 2
     assert result["rows"][1]["position"] is None
+
+
+def test_qualifying_card_shows_current_sectors_before_personal_best() -> None:
+    """Default sector display must stay aligned with live lap progress."""
+    result = _run_card_probe(
+        current_q_part=1,
+        position_drivers=[
+            {
+                "racing_number": "16",
+                "tla": "LEC",
+                "team": "Ferrari",
+                "q1_time": "1:27.456",
+                "q1_position": 1,
+                "current_position": "1",
+                "sector_1": 28.111,
+                "sector_1_source": "current",
+                "sector_1_personal_fastest": False,
+                "sector_2": None,
+                "sector_3": None,
+                "best_sector_1": 27.900,
+                "best_sector_2": 31.200,
+                "best_sector_3": 28.300,
+                "sector_state": "s1_done",
+            }
+        ],
+    )
+
+    row = result["rows"][0]
+    assert row["sector_1"] == 28.111
+    assert row["sector_1_source"] == "current"
+    assert row["sector_2"] is None
+    assert row["sector_3"] is None

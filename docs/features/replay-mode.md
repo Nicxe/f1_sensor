@@ -59,6 +59,10 @@ The media player entity lets you control replay using any media player integrati
 | --- | --- |
 | `sensor.f1_replay_status` | Shows current replay state and progress |
 
+### Dashboard card
+
+The [F1 Replay Control card](/cards/cards-overview#f1-replay-control-card) combines the Replay Mode selectors, load/play/pause/stop controls, 30-second seek buttons, refresh button, and progress display in one Lovelace card.
+
 ---
 
 ## Using Replay Mode
@@ -250,7 +254,6 @@ Replay Mode provides access to all the same entities as a live session, plus sev
 | Entity | Description |
 | --- | --- |
 | `sensor.f1_pitstops` | Pit stop events and timing per car |
-| `sensor.f1_team_radio` | Team radio clips with rolling history |
 | `sensor.f1_championship_prediction_drivers` | Predicted Drivers Championship standings |
 | `sensor.f1_championship_prediction_teams` | Predicted Constructors Championship standings |
 | `binary_sensor.f1_formation_start` | Formation start detection for race and sprint sessions |

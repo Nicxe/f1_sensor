@@ -128,18 +128,18 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_race_lap_count](#race-lap)                 | Current race lap number|
 | [sensor.f1_track_weather](#track-weather)             | Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)|
 | [sensor.f1_driver_list](#driver-list)                 | Show list and details on all drivers, including team color, headshot URL etc| 
-| [sensor.f1_pitstops](#pit-stops)                      | Live pit stop events and aggregated pit stop series per car `(Replay Mode only)` |
-| [sensor.f1_team_radio](#team-radio)                   | Latest team radio message and rolling history `(Replay Mode only)` |
+| [sensor.f1_pitstops](#pit-stops)                      | Live pit stop events and aggregated pit stop series per car `(Replay Mode or F1TV Auth testing)` |
 | [sensor.f1_current_tyres](#current-tyres)             | Current tyre compound per driver |
 | [sensor.f1_tyre_statistics](#tyre-statistics)         | Aggregated tyre statistics per compound |
 | [sensor.f1_driver_positions](#driver-positions)       | Driver positions and lap times |
+| [sensor.f1_starting_grid](#starting-grid)             | Provisional or confirmed Sprint/Race starting grid |
 | [sensor.f1_top_three_p1](#top-three)                  | Dedicated sensors for current P1, P2 and P3 |
 | [sensor.f1_race_control](#race-control)               | Race Control messages feed (flags, incidents, key updates) |
 | [sensor.f1_track_limits](#track-limits)               | Track limits violations per driver (deletions, warnings, penalties) |
 | [sensor.f1_investigations](#investigations)           | Active steward investigations and pending penalties |
-| [binary_sensor.f1_formation_start](#formation-start)  | Indicates when formation start procedure is ready `(Replay Mode only)` |
-| [sensor.f1_championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) `(Replay Mode only)` |
-| [sensor.f1_championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) `(Replay Mode only)` |
+| [binary_sensor.f1_formation_start](#formation-start)  | Indicates when formation start procedure is ready `(Replay Mode or F1TV Auth testing)` |
+| [sensor.f1_championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) `(Replay Mode or F1TV Auth testing)` |
+| [sensor.f1_championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) `(Replay Mode or F1TV Auth testing)` |
 | [binary_sensor.f1_overtake_mode](#overtake-mode)      | ON when track-wide overtake mode is enabled (2026 regulation, experimental) |
 | [sensor.f1_straight_mode](#straight-mode)             | Active aerodynamic straight mode state (2026 regulation, experimental) |
 
@@ -148,10 +148,10 @@ Use this section to understand the possible values for enum-type states and attr
 :::info[Entities]
 All of these entities update **only in relation to an active session**, typically starting less than an hour before and continuing for a few minutes after the session ends. Outside these windows, the entities will be set to **Unavailable** (not updating and not providing new data).
 :::
-:::note[Replay Mode only entities]
-Some entities are marked `(Replay Mode only)` in the table above. These entities stay registered in Home Assistant, but they are unavailable outside [Replay Mode](/features/replay-mode) because the underlying data streams require authentication that the integration does not currently support during live sessions. When you start a replay, they begin updating normally.
+:::info[Replay and F1TV Auth testing entities]
+Some entities stay registered in Home Assistant even when their upstream streams are not available. Pit Stops and Championship Prediction can update in [Replay Mode](/features/replay-mode) and can be tested during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
 
-The affected entities are: Pit Stops, Team Radio, Championship Prediction (Drivers), Championship Prediction (Teams), and Formation Start.
+Formation Start can also be tested live when the required authenticated stream is available.
 :::
 
 
@@ -582,8 +582,8 @@ The headshot URLs are provided by F1 and may change between sessions. This senso
 ---
 
 ## Pit Stops
-:::note[Replay Mode only]
-This entity stays registered in Home Assistant and is unavailable outside [Replay Mode](/features/replay-mode). The pit stop data stream requires authentication that the integration does not currently support during live sessions.
+:::info[Replay Mode or F1TV Auth testing]
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
 :::
 
 `sensor.f1_pitstops` - Pit stop information from the F1 Live Timing feed, aggregated per car.
@@ -623,43 +623,8 @@ Each entry in `stops` contains:
 | pit_lane_time | number | Total pit lane time (seconds), when available |
 | pit_delta | number | Estimated loss vs a normal lap (seconds), when available |
 :::info[INFO]
-Available during race and sprint sessions in Replay Mode.
+Available during race and sprint sessions in Replay Mode, and during live F1TV Auth testing when the authenticated stream is available.
 :::
-
----
-
-## Team Radio
-:::note[Replay Mode only]
-This entity stays registered in Home Assistant and is unavailable outside [Replay Mode](/features/replay-mode). The team radio data stream requires authentication that the integration does not currently support during live sessions.
-:::
-
-Latest team radio clip with a rolling history, sourced from the Team Radio stream. This is a curated selection of radio traffic, similar to what is broadcast during TV coverage, not the full raw radio feed.
-
-**State**
-- ISO‑8601 timestamp of the most recent radio clip, or `unknown` when none are available.
-
-**Example**
-```text
-2026-03-14T15:22:31Z
-```
-
-**Attributes**
-
-| Attribute | Type | Description |
-| --- | --- | --- |
-| utc | string | ISO‑8601 timestamp of the radio clip |
-| received_at | string | ISO‑8601 timestamp when Home Assistant received the message |
-| racing_number | string | Car number of the driver (e.g., "1", "44") |
-| path | string | Relative path to the audio file |
-| clip_url | string | Full URL to the audio clip |
-| sequence | number | Message counter for deduplication |
-| history | list | Rolling list of recent radio clips (up to 20), each with `utc`, `racing_number`, `path`, and `clip_url` |
-| raw_message | object | Original payload from the live feed |
-:::info[INFO]
-Available during Replay Mode sessions when radio traffic is present in the session archive.
-:::
-
----
 
 ## Current Tyres
 
@@ -994,6 +959,8 @@ Each entry in `drivers` contains:
 | laps | object | Map of lap numbers to lap times (e.g., `{"1": "1:32.456", "2": "1:31.789"}`) |
 | completed_laps | number | Number of laps completed by this driver |
 | status | string | Driver status: `on_track`, `pit_in`, `pit_out`, or `out` |
+| gap_to_leader | string | Public live timing gap to the session leader when available |
+| interval_to_position_ahead | string | Public live timing interval to the car directly ahead when available |
 | in_pit | boolean | Whether driver is currently in pit lane |
 | pit_out | boolean | Whether driver just exited pits |
 | retired | boolean | Whether driver has retired from the session |
@@ -1005,6 +972,12 @@ Each entry in `drivers` contains:
 | sector_1 | number | Current sector 1 time in seconds; `null` while sector has not been completed this lap |
 | sector_2 | number | Current sector 2 time in seconds; `null` while not yet completed |
 | sector_3 | number | Current sector 3 time in seconds; `null` while not yet completed |
+| sector_1_lap | number | Lap number associated with the current sector 1 value |
+| sector_2_lap | number | Lap number associated with the current sector 2 value |
+| sector_3_lap | number | Lap number associated with the current sector 3 value |
+| sector_1_source | string | Source used for the current sector 1 value |
+| sector_2_source | string | Source used for the current sector 2 value |
+| sector_3_source | string | Source used for the current sector 3 value |
 | sector_1_overall_fastest | boolean | True if the current sector 1 time is the fastest by any driver this session |
 | sector_1_personal_fastest | boolean | True if the current sector 1 time is this driver's personal best |
 | sector_2_overall_fastest | boolean | True if the current sector 2 time is the overall fastest |
@@ -1014,6 +987,16 @@ Each entry in `drivers` contains:
 | best_sector_1 | number | Driver's personal best sector 1 time this session (or segment, in qualifying) |
 | best_sector_2 | number | Driver's personal best sector 2 time this session (or segment, in qualifying) |
 | best_sector_3 | number | Driver's personal best sector 3 time this session (or segment, in qualifying) |
+| best_sector_1_lap | number | Lap number for the driver's personal best sector 1 |
+| best_sector_2_lap | number | Lap number for the driver's personal best sector 2 |
+| best_sector_3_lap | number | Lap number for the driver's personal best sector 3 |
+| best_sector_1_session_part | string | Qualifying segment/session part for the best sector 1 value |
+| best_sector_2_session_part | string | Qualifying segment/session part for the best sector 2 value |
+| best_sector_3_session_part | string | Qualifying segment/session part for the best sector 3 value |
+| sector_state | string | Current sector tracking state for the driver |
+| sector_current_lap | number | Lap currently being tracked for sector timing |
+| last_completed_sector | number | Last completed sector number |
+| sectors | object | Structured sector details with `current` and `personal_best` sector objects |
 | q1_time | string | Best lap time set in Q1; `null` if no time was set or outside qualifying |
 | q1_knocked_out | boolean | True if the driver did not advance past Q1; `null` outside qualifying |
 | q1_position | number | Finishing rank in Q1 based on best lap time; `null` if no time was set |
@@ -1282,10 +1265,113 @@ Each entry in `drivers` contains:
 Fastest lap details are only exposed during races and sprints. In practice and qualifying, `fastest_lap` is `null` and each driver has `fastest_lap: false`.
 :::
 :::info
-Sector times (`sector_1`, `sector_2`, `sector_3`) update live as drivers complete each sector during a lap. They are set to `null` until the sector is crossed, and reset at the start of each new lap. The `best_sector_*` fields hold the driver's personal best for the current session — or the current qualifying segment if in Q1, Q2, or Q3.
+Sector times (`sector_1`, `sector_2`, `sector_3`) update live as drivers complete each sector during a lap. The companion `sector_*_lap` and `sector_*_source` fields identify which lap and timing source produced the value. The `sectors` object exposes the same data in a structured shape with `current.sector_1`, `current.sector_2`, `current.sector_3`, and matching `personal_best` sector objects.
+:::
+:::info
+Gap data (`gap_to_leader` and `interval_to_position_ahead`) comes from public live timing when available. These fields may be `null` or blank outside race/sprint running, at the start of a session, or when the broadcast feed withholds intervals.
 :::
 :::info
 Qualifying segment data (`q1_time`, `q2_time`, `q3_time` and their associated `_knocked_out` and `_position` fields) is only populated during qualifying and sprint shootout sessions. In all other session types these fields are `null`. All 20 drivers are always present regardless of whether they set a time. `q1_knocked_out: true` means the driver did not advance to Q2, and `q2_knocked_out: true` means the driver did not reach Q3.
+:::
+
+---
+
+## Starting Grid
+
+`sensor.f1_starting_grid` - Current weekend starting grid for the next relevant Sprint or Race. The sensor keeps old grid data from previous weekends from appearing as current data, and clears the grid when the related start is no longer relevant.
+
+On a normal race weekend, the sensor builds a Race grid from Qualifying. On a sprint weekend, it first builds a Sprint grid from Sprint Qualifying, then clears that grid after the Sprint and builds the Race grid from Qualifying.
+
+**State (enum)**
+- One of: `waiting_for_sprint_qualifying`, `waiting_for_qualifying`, `collecting`, `provisional`, `confirmed`, `completed`.
+
+| Value | Description |
+| --- | --- |
+| `waiting_for_sprint_qualifying` | A sprint weekend is active or likely, and the sensor is waiting for Sprint Qualifying before it can build a Sprint grid. `grid` is empty. |
+| `waiting_for_qualifying` | The sensor is waiting for Qualifying before it can build a Race grid. This is used on normal weekends before Qualifying, and on sprint weekends after the Sprint has finished. `grid` is empty. |
+| `collecting` | Sprint Qualifying, Qualifying, Sprint, or Race is active and the sensor is collecting timing or grid-position data. `grid` can still be empty until enough data has arrived. |
+| `provisional` | A preliminary grid has been built from qualifying timing data. This follows the qualifying order and may still change because of grid penalties, pit-lane starts, or other official updates. |
+| `confirmed` | The grid has been confirmed from the live timing grid-position data for the Sprint or Race. This is the best available source and can show movement from the original qualifying order. |
+| `completed` | The Race has finished or been finalised, and no active starting grid is exposed. `grid` is empty. On sprint weekends, finishing the Sprint changes the sensor back to `waiting_for_qualifying` instead of `completed`, because the Race grid is still pending. |
+
+**Example**
+```text
+confirmed
+```
+
+### Grid context and source
+
+`grid_context` explains which start the grid applies to:
+
+| Value | Description |
+| --- | --- |
+| `sprint` | The active grid applies to the Sprint |
+| `race` | The active grid applies to the Race |
+| `none` | No active grid should be shown |
+
+`source` explains where the current grid came from:
+
+| Value | Description |
+| --- | --- |
+| `live_timing_qualifying` | A provisional grid built from live qualifying timing data |
+| `live_timing_archive` | A provisional grid restored from Formula 1's static live timing archive after Qualifying or Sprint Qualifying |
+| `live_timing_gridpos` | A confirmed grid built from live timing grid-position data before the Sprint or Race |
+| `null` | No active grid is currently available |
+
+:::info
+Archive data is only used while there is still a relevant upcoming Sprint or Race. After the Race has finished, the sensor stays `completed` and does not restore historical grid data for that weekend.
+:::
+
+### Weekend flow
+
+On a normal weekend, the expected flow is `waiting_for_qualifying` → `collecting` → `provisional` → `confirmed` → `completed`.
+
+On a sprint weekend, the expected flow is `waiting_for_sprint_qualifying` → `collecting` → `provisional` → `confirmed` for the Sprint. After the Sprint finishes, the Sprint grid is cleared and the sensor moves to `waiting_for_qualifying` for the Race grid. After the Race finishes, the sensor moves to `completed`.
+
+When a new race weekend is detected, the sensor clears the previous grid, resets the driver rows, and starts waiting for the relevant qualifying session. Replay Mode does not replace or clear the live Starting Grid sensor, so replaying an older session will not overwrite the current or upcoming weekend grid.
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| status | string | Same value as the sensor state |
+| grid_context | string | `sprint`, `race`, or `none`, depending on which start the grid applies to |
+| weekend_key | string | Weekend identifier used to keep restored data scoped to the current race weekend |
+| weekend_format | string | `normal`, `sprint`, or `unknown` |
+| meeting_name | string | Race weekend name |
+| session_key | string | Source session identifier when available |
+| source_session_name | string | Session used to build the grid, such as `Sprint Qualifying` or `Qualifying` |
+| target_session_name | string | Session the grid applies to, such as `Sprint` or `Race` |
+| source | string | `live_timing_qualifying`, `live_timing_archive`, `live_timing_gridpos`, or `null` |
+| source_updated_at | string | ISO-8601 timestamp for the last source update |
+| cleared_at | string | ISO-8601 timestamp when the grid was cleared |
+| cleared_reason | string | Reason the grid was cleared, such as `new_weekend`, `sprint_completed`, or `race_completed` |
+| grid_count | number | Number of drivers in the grid |
+| grid | list | Ordered starting grid rows |
+
+Each entry in `grid` contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| grid_position | number | Starting grid position |
+| qualifying_position | number | Original qualifying position |
+| racing_number | string | Car number |
+| tla | string | Driver TLA |
+| driver_name | string | Driver name |
+| team_name | string | Team name |
+| team_color | string | Team color |
+| qualifying_time | string | Best qualifying time used for the grid row |
+| qualifying_time_secs | number | Best qualifying time in seconds |
+| qualifying_segment | string | Q/SQ segment, such as `Q3` or `SQ3` |
+| qualifying_lap | number | Lap number for the qualifying time |
+| segment_times | list | Segment timing details used to derive the row |
+| grid_delta | number | Difference between grid position and qualifying position |
+| changed_from_qualifying | boolean | True when penalties or grid updates moved the driver |
+| source | string | Source used for this grid row |
+| grid_context | string | `sprint` or `race` |
+
+:::info
+The grid is provisional when it is built from qualifying timing and confirmed when the live timing `GridPos` stream supplies final positions. The `grid` attribute is marked as unrecorded to avoid storing large race-weekend payloads in the Home Assistant recorder.
 :::
 
 ---
@@ -1685,8 +1771,8 @@ Noted: {{ noted }}, Under Investigation: {{ investigating }}
 ---
 
 ## Championship Prediction (Drivers)
-:::note[Replay Mode only]
-This entity stays registered in Home Assistant and is unavailable outside [Replay Mode](/features/replay-mode). The championship prediction data stream requires authentication that the integration does not currently support during live sessions.
+:::info[Replay Mode or F1TV Auth testing]
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
 :::
 
 Predicted Drivers Championship winner and points table, sourced from the ChampionshipPrediction stream.
@@ -1816,8 +1902,8 @@ Each entry in `drivers` (keyed by racing number) contains:
 ---
 
 ## Championship Prediction (Teams)
-:::note[Replay Mode only]
-This entity stays registered in Home Assistant and is unavailable outside [Replay Mode](/features/replay-mode). The championship prediction data stream requires authentication that the integration does not currently support during live sessions.
+:::info[Replay Mode or F1TV Auth testing]
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
 :::
 
 Predicted Constructors Championship winner and points table, sourced from the ChampionshipPrediction stream.
@@ -1950,11 +2036,11 @@ Each entry in `teams` (keyed by team key) contains:
 ---
 
 ## Formation Start
-:::note[Replay Mode only]
-This entity stays registered in Home Assistant and is unavailable outside [Replay Mode](/features/replay-mode). The underlying data stream used for formation start detection requires authentication that the integration does not currently support during live sessions.
+:::info[Replay Mode or F1TV Auth testing]
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
 :::
 
-Indicates when the formation start procedure is ready. Useful for triggering automations at race start during replay.
+Indicates when the formation start procedure is ready. Useful for triggering automations at race start during replay or authenticated live testing.
 
 **State (on/off)**
 - `on` when formation start procedure is ready; otherwise `off`.

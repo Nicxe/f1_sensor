@@ -1,30 +1,124 @@
 {
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Weekend di gara iniziato",
+      "race_week_ended": "Weekend di gara terminato",
+      "safety_car_deployed": "Safety car in pista",
+      "safety_car_cleared": "Safety car uscita dalla pista",
+      "formation_start_ready": "Giro di formazione pronto",
+      "overtake_mode_enabled": "Modalità Overtake attivata",
+      "overtake_mode_disabled": "Modalità Overtake disattivata",
+      "session_live": "Sessione in diretta",
+      "track_status_clear": "Stato pista: Bandiera verde",
+      "track_status_yellow": "Stato pista: Bandiera gialla",
+      "track_status_safety_car": "Stato pista: Safety car",
+      "track_status_vsc": "Stato pista: Virtual safety car",
+      "track_status_red_flag": "Stato pista: Bandiera rossa",
+      "new_race_control_message": "Nuovo messaggio dalla direzione gara",
+      "new_fia_document": "Nuovo documento FIA pubblicato",
+      "investigation_changed": "Stato investigazione cambiato",
+      "live_timing_online": "Telemetria online",
+      "live_timing_offline": "Telemetria offline"
+    }
+  },
   "config": {
     "step": {
       "user": {
-        "title": "Configurazione sensore F1",
+        "title": "Impostazioni F1 Sensor",
         "data": {
           "sensor_name": "Nome dispositivo",
-          "enabled_sensors": "Sensori abilitati",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
-          "race_week_start_day": "Primo giorno della settimana di gara"
+          "enabled_sensors": "Sensori attivati",
+          "operation_mode": "Modalità operativa",
+          "replay_file": "Percorso file replay",
+          "enable_race_control": "Attiva API F1 (Direzione gara/Pista/Sessione)",
+          "race_week_start_day": "Primo giorno della settimana di gara",
+          "live_timing_auth_header": "Backup manuale: valore di autorizzazione F1TV sperimentale",
+          "start_f1tv_pairing": "Consigliato: collega accesso F1TV sperimentale con Token Helper"
+        },
+        "data_description": {
+          "operation_mode": "Scegli Live per connetterti a F1 SignalR, o Sviluppo per avviare il replay di un file locale.",
+          "replay_file": "Percorso assoluto a un file SignalR. Richiesto solo in modalità Sviluppo.",
+          "enable_race_control": "Si connette a F1 Live Timing con SignalR per ricevere aggiornamenti in diretta. Se disattivato, alcuni sensori non verranno creati.",
+          "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì.",
+          "live_timing_auth_header": "Backup manuale se il pairing con Token Helper non funziona. Incolla il token Bearer completo da F1TV Token Helper solo come fallback avanzato. Lascia vuoto per usare solo la telemetria pubblica.",
+          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV sperimentale è facoltativo; la telemetria pubblica continua a funzionare senza token."
         }
       },
       "reconfigure": {
-        "title": "Riconfigura sensore F1",
+        "title": "Riconfigura F1 Sensor",
         "data": {
           "sensor_name": "Nome dispositivo",
-          "enabled_sensors": "Sensori abilitati",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
-          "race_week_start_day": "Primo giorno della settimana di gara"
+          "enabled_sensors": "Sensori attivati",
+          "operation_mode": "Modalità operativa",
+          "replay_file": "Percorso file replay",
+          "enable_race_control": "Attiva API F1 (Direzione gara/Pista/Sessione)",
+          "race_week_start_day": "Primo giorno della settimana di gara",
+          "live_timing_auth_header": "Backup manuale: valore di autorizzazione F1TV sperimentale",
+          "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV sperimentale",
+          "start_f1tv_pairing": "Consigliato: collega accesso F1TV sperimentale con Token Helper"
+        },
+        "data_description": {
+          "operation_mode": "Scegli Live per connetterti a F1 SignalR, o Sviluppo per avviare il replay di un file locale.",
+          "replay_file": "Percorso assoluto a un file SignalR. Richiesto solo in modalità Sviluppo.",
+          "enable_race_control": "Si connette a F1 Live Timing con SignalR per ricevere aggiornamenti in diretta. Se disattivato, alcuni sensori non verranno creati.",
+          "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì.",
+          "live_timing_auth_header": "Backup manuale se il pairing con Token Helper non funziona. Incolla un nuovo token Bearer completo solo come fallback avanzato. Lascia vuoto per mantenere il valore attuale.",
+          "clear_live_timing_auth_header": "Rimuovi il valore di autorizzazione F1TV sperimentale salvato e continua solo con la telemetria pubblica.",
+          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV sperimentale è facoltativo; la telemetria pubblica continua a funzionare senza token."
         }
+      },
+      "reauth_confirm": {
+        "title": "Aggiorna autorizzazione F1TV sperimentale",
+        "data": {
+          "live_timing_auth_header": "Backup manuale: valore di autorizzazione F1TV sperimentale",
+          "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV sperimentale",
+          "start_f1tv_pairing": "Consigliato: collega accesso F1TV sperimentale con Token Helper"
+        },
+        "data_description": {
+          "live_timing_auth_header": "Backup manuale se il pairing con Token Helper non funziona. Incolla un nuovo token Bearer completo solo come fallback avanzato.",
+          "clear_live_timing_auth_header": "Rimuovi il valore di autorizzazione F1TV sperimentale salvato e continua solo con la telemetria pubblica.",
+          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV sperimentale è facoltativo; la telemetria pubblica continua a funzionare senza token."
+        }
+      },
+      "f1tv_pairing": {
+        "title": "Connetti accesso F1TV sperimentale",
+        "description": "Usa F1TV Token Helper per inviare il token a Home Assistant. L’accesso F1TV sperimentale è facoltativo e questo pairing scade alle {expires_at}."
       }
     },
+    "abort": {
+      "reconfigure_successful": "F1 Sensor è stato riconfigurato con successo",
+      "f1tv_pairing_unavailable": "Il pairing F1TV sperimentale non è disponibile in questa build.",
+      "f1tv_pairing_failed": "Il pairing F1TV sperimentale non è stato completato. Avvia una nuova sessione e riprova."
+    },
     "error": {
-      "replay_required": "Select a replay dump file when Development mode is enabled.",
-      "replay_missing": "Replay dump file not found or unreadable."
+      "replay_required": "Scegli un file di replay quando la modalità Sviluppo è attivata.",
+      "replay_missing": "Il file di replay non è stato trovato o è illeggibile.",
+      "auth_header_required": "Inserisci il valore di autorizzazione F1TV sperimentale o seleziona la rimozione.",
+      "invalid_auth_header": "Inserisci un token Bearer valido.",
+      "auth_token_missing_exp": "Questo token non ha una data di scadenza.",
+      "auth_token_expired": "Questo token è scaduto.",
+      "auth_token_expiring_soon": "Il token scadrà a breve, generane un altro e riprova."
+    }
+  },
+  "issues": {
+    "f1tv_token_attention_required": {
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "data": {
+              "live_timing_auth_header": "Valore di autorizzazione F1TV sperimentale",
+              "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV sperimentale"
+            },
+            "data_description": {
+              "live_timing_auth_header": "Incolla un nuovo token Bearer da F1TV Token Helper per l’accesso F1TV sperimentale.",
+              "clear_live_timing_auth_header": "Rimuovi il token F1TV sperimentale salvato e continua solo con la telemetria pubblica."
+            },
+            "description": "Il token F1TV sperimentale salvato per {name} ha bisogno di attenzione. La telemetria pubblica continua a funzionare, ma i dati live F1TV sperimentali non saranno usati finché il token non verrà sostituito.",
+            "title": "Aggiorna il token F1TV sperimentale"
+          }
+        }
+      },
+      "title": "Il token F1TV sperimentale ha bisogno di attenzione"
     }
   },
   "entity": {
@@ -32,85 +126,215 @@
       "next_race": {
         "name": "Prossima gara"
       },
+      "track_time": {
+        "name": "Orario della pista"
+      },
       "current_season": {
         "name": "Stagione attuale"
       },
       "driver_standings": {
-        "name": "Classifica piloti"
+        "name": "Campionato piloti"
       },
       "constructor_standings": {
-        "name": "Classifica costruttori"
+        "name": "Campionato costruttori"
       },
       "weather": {
         "name": "Meteo"
       },
+      "track_weather": {
+        "name": "Meteo in pista"
+      },
       "current_session": {
-        "name": "Sessione corrente"
+        "name": "Sessione attuale"
       },
       "last_race_results": {
-        "name": "Risultati ultima gara"
+        "name": "Risultati dell'ultima gara"
       },
       "season_results": {
         "name": "Risultati della stagione"
       },
       "sprint_results": {
-        "name": "Risultati sprint"
+        "name": "Risultati della sprint"
       },
       "race_control": {
         "name": "Direzione gara"
       },
+      "top_three_p1": {
+        "name": "Podio (P1)"
+      },
+      "top_three_p2": {
+        "name": "Podio (P2)"
+      },
+      "top_three_p3": {
+        "name": "Podio (P3)"
+      },
       "pitstops": {
         "name": "Pit stop"
+      },
+      "championship_prediction_drivers": {
+        "name": "Previsioni campionato piloti"
+      },
+      "championship_prediction_teams": {
+        "name": "Previsioni campionato costruttori"
       },
       "fia_documents": {
         "name": "Decisioni FIA"
       },
       "live_timing_mode": {
-        "name": "Modalità Live Timing"
+        "name": "Modalità telemetria"
+      },
+      "f1tv_token_status": {
+        "name": "Stato token F1TV sperimentale",
+        "state": {
+          "not_configured": "Non configurato",
+          "valid": "Valido",
+          "expiring_soon": "Scade a breve",
+          "expired": "Scaduto",
+          "invalid": "Non valido",
+          "rejected": "Rifiutato"
+        }
+      },
+      "f1tv_token_expires_at": {
+        "name": "Il token F1TV sperimentale scade il"
+      },
+      "driver_positions": {
+        "name": "Posizione piloti"
       },
       "track_limits": {
         "name": "Track limits"
       },
       "investigations": {
-        "name": "Investigations & penalties"
+        "name": "Investigazioni e penalità"
+      },
+      "straight_mode": {
+        "name": "Modalità Straight",
+        "state": {
+          "normal_grip": "Aderenza normale",
+          "low_grip": "Aderenza bassa",
+          "disabled": "Disattivata"
+        }
+      },
+      "track_status": {
+        "name": "Stato pista"
+      },
+      "session_status": {
+        "name": "Stato sessione"
+      },
+      "session_time_remaining": {
+        "name": "Tempo rimanente"
+      },
+      "session_time_elapsed": {
+        "name": "Tempo trascorso"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "Tempo rimanente al limite di 3 ore"
+      },
+      "driver_list": {
+        "name": "Lista piloti"
+      },
+      "current_tyres": {
+        "name": "Gomme attuali"
+      },
+      "tyre_statistics": {
+        "name": "Statistiche gomme"
+      },
+      "race_lap_count": {
+        "name": "Numero giri"
+      },
+      "driver_points_progression": {
+        "name": "Punti piloti"
+      },
+      "constructor_points_progression": {
+        "name": "Punti costruttori"
+      },
+      "replay_status": {
+        "name": "Stato replay"
+      }
+    },
+    "button": {
+      "delay_calibration_match": {
+        "name": "Imposta ritardo diretta"
+      },
+      "replay_load": {
+        "name": "Carica sessione"
+      },
+      "replay_play": {
+        "name": "Avvia"
+      },
+      "replay_pause": {
+        "name": "Pausa"
+      },
+      "replay_back_30": {
+        "name": "Indietro 30 secondi"
+      },
+      "replay_forward_30": {
+        "name": "Avanti 30 secondi"
+      },
+      "replay_stop": {
+        "name": "Stop"
+      },
+      "replay_refresh": {
+        "name": "Ricarica sessioni"
+      },
+      "jolpica_ua_test": {
+        "name": "Jolpica user-agent test"
+      },
+      "clear_f1tv_access": {
+        "name": "Rimuovi accesso F1TV sperimentale"
+      }
+    },
+    "switch": {
+      "delay_calibration": {
+        "name": "Calibrazione ritardo diretta"
+      },
+      "no_spoiler_mode": {
+        "name": "Modalità No Spoiler"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "Ritardo diretta"
       }
     },
     "media_player": {
       "replay_player": {
-        "name": "Replay player"
+        "name": "Replay"
       }
     },
     "select": {
       "live_delay_reference": {
-        "name": "Live delay reference"
+        "name": "Riferimento ritardo diretta"
       },
       "replay_year": {
-        "name": "Replay year"
+        "name": "Anno replay"
       },
       "replay_session": {
-        "name": "Replay session"
+        "name": "Sessione replay"
       },
       "replay_start_reference": {
-        "name": "Replay start reference"
+        "name": "Riferimento avvio sessione"
       }
     },
     "binary_sensor": {
       "race_week": {
-        "name": "Settimana di gara"
+        "name": "Weekend di gara"
       },
       "live_timing_online": {
-        "name": "Live Timing online"
+        "name": "Telemetria online"
       },
       "safety_car": {
         "name": "Safety car"
       },
       "formation_start": {
-        "name": "Formation start"
+        "name": "Giro di formazione"
+      },
+      "overtake_mode": {
+        "name": "Modalità Overtake"
       }
     },
-    "switch": {
-      "no_spoiler_mode": {
-        "name": "Modalità senza spoiler"
+    "calendar": {
+      "season_calendar": {
+        "name": "Calendario stagione"
       }
     }
   }
