@@ -335,6 +335,9 @@
       "safety_car": {
         "name": "Säkerhetsbil"
       },
+      "on_track_incident": {
+        "name": "Incident på banan"
+      },
       "formation_start": {
         "name": "Formationsstart"
       },

@@ -208,3 +208,60 @@ action:
 mode: queued
 max: 10
 ```
+
+---
+
+### Possible on-track incident notification
+
+Uses the [`f1_sensor_incident` event](/entities/events#on-track-incident) to notify only for confirmed medium or high confidence incidents during race, sprint, or qualifying sessions.
+
+:::tip[Sync with your TV]
+Incident events respect Live Delay, so set [Live Delay](/features/live-delay) to match your broadcast if you want notifications to line up with the pictures.
+:::
+
+```yaml
+alias: F1 - Possible on-track incident
+description: Notify for confirmed likely stopped cars or on-track incidents
+trigger:
+  - platform: event
+    event_type: f1_sensor_incident
+condition:
+  - condition: template
+    value_template: "{{ trigger.event.data.phase == 'confirmed' }}"
+  - condition: template
+    value_template: "{{ trigger.event.data.confidence in ['medium', 'high'] }}"
+  - condition: template
+    value_template: "{{ trigger.event.data.session.session_type in ['race', 'sprint', 'qualifying'] }}"
+action:
+  - service: notify.mobile_app_your_phone
+    data:
+      title: "Possible F1 incident"
+      message: >
+        {{ trigger.event.data.driver.tla }} may have stopped on track
+        during {{ trigger.event.data.session.session_name }}.
+mode: queued
+max: 5
+```
+
+The wording is intentionally neutral. F1 Sensor detects likely stopped cars and on-track incidents, not guaranteed crashes.
+
+---
+
+### Dashboard trigger for active incidents
+
+Use the [On-track Incident binary sensor](/entities/live-data#on-track-incident) when you only need to know whether any confirmed incident is currently active.
+
+```yaml
+alias: F1 - Incident indicator on
+description: Turn on a scene while a confirmed incident is active
+trigger:
+  - platform: state
+    entity_id: binary_sensor.f1_on_track_incident
+    to: "on"
+condition: []
+action:
+  - service: scene.turn_on
+    target:
+      entity_id: scene.f1_caution
+mode: single
+```

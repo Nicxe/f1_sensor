@@ -61,6 +61,20 @@ After Home Assistant restarts:
 
 These details make it easier to match log entries to the behavior you saw.
 
+## Incident detection reports
+
+For false positive or missing on-track incident reports, include the same basic log package plus:
+
+1. Session type and session name.
+2. Driver or car number involved.
+3. Approximate real-world time and, if relevant, broadcast time.
+4. Current `sensor.f1_track_status` state.
+5. Latest Race Control message around the incident.
+6. The `f1_sensor_incident` event payload, if one fired.
+7. Whether Live Delay, Replay Mode, No Spoiler Mode, or experimental F1TV Auth was active.
+
+Do not include raw F1TV tokens, authorization headers, browser session data, or large telemetry dumps.
+
 ## Find raw logs
 
 Use Home Assistant raw logs if you need to copy a smaller log excerpt manually.

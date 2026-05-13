@@ -45,9 +45,25 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
             "last_payload_keys": ["Drivers", "Teams"],
         }
     }
+    incident_coordinator = MagicMock()
+    incident_coordinator.available = True
+    incident_coordinator.data = {
+        "active_count": 1,
+        "highest_confidence": "high",
+        "latest_incident_id": "2026-miami-race-10-2026-05-03T17:00:01Z",
+        "latest_driver_number": "10",
+        "latest_driver_tla": "GAS",
+        "latest_reason": "timing_stopped_with_race_control",
+        "latest_phase": "confirmed",
+        "session_type": "race",
+        "session_name": "Race",
+        "data_quality": "live",
+        "active_incidents": [{"large": "detail"}],
+    }
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "operation_mode": OPERATION_MODE_LIVE,
         "live_bus": live_bus,
+        "incident_coordinator": incident_coordinator,
         "signalr_stream_capabilities": {
             "public_live_streams": frozenset({"SessionStatus", "TrackStatus"}),
             "auth_gated_live_streams": frozenset(
@@ -100,6 +116,20 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
         "last_seen_age_s": 1.0,
         "last_payload_keys": ["Drivers", "Teams"],
     }
+    assert payload["runtime"]["incident_detection"] == {
+        "active_count": 1,
+        "highest_confidence": "high",
+        "latest_incident_id": "2026-miami-race-10-2026-05-03T17:00:01Z",
+        "latest_driver_number": "10",
+        "latest_driver_tla": "GAS",
+        "latest_reason": "timing_stopped_with_race_control",
+        "latest_phase": "confirmed",
+        "session_type": "race",
+        "session_name": "Race",
+        "data_quality": "live",
+        "available": True,
+    }
+    assert "active_incidents" not in str(payload["runtime"]["incident_detection"])
     assert "secret-token" not in str(payload)
 
 

@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncGenerator, Callable
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import suppress
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -65,7 +66,7 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when replay index contents change in a way that
 # requires re-downloading cached sessions.
-CACHE_VERSION = 8
+CACHE_VERSION = 9
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 
@@ -846,6 +847,65 @@ class ReplaySessionManager:
     def _has_timingapp_state(state: dict[str, Any]) -> bool:
         return isinstance(state, dict) and bool(state)
 
+    def _merge_timingdata_state(self, state: dict[str, Any], payload: dict) -> None:
+        """Accumulate TimingData frames into a replay bootstrap snapshot."""
+        if not isinstance(payload, dict):
+            return
+
+        for key, value in payload.items():
+            if key != "Lines":
+                state[key] = deepcopy(value)
+
+        lines = payload.get("Lines")
+        if not isinstance(lines, dict):
+            return
+
+        cur_lines = state.setdefault("Lines", {})
+        for rn, line_data in lines.items():
+            if not isinstance(line_data, dict):
+                continue
+            rn_key = str(rn)
+            entry = cur_lines.setdefault(rn_key, {})
+            self._deep_merge_replay_state(entry, line_data)
+
+    def _deep_merge_replay_state(self, target: Any, delta: Any) -> Any:
+        if isinstance(target, dict) and isinstance(delta, dict):
+            for key, value in delta.items():
+                current = target.get(key)
+                if isinstance(current, dict) and isinstance(value, dict):
+                    self._deep_merge_replay_state(current, value)
+                elif isinstance(current, list) and isinstance(value, dict):
+                    self._merge_replay_list_state(current, value)
+                else:
+                    target[key] = deepcopy(value)
+            return target
+        if isinstance(target, list) and isinstance(delta, dict):
+            return self._merge_replay_list_state(target, delta)
+        return deepcopy(delta)
+
+    def _merge_replay_list_state(
+        self, target: list[Any], delta: dict[str, Any]
+    ) -> list[Any]:
+        for key, value in delta.items():
+            try:
+                idx = int(key)
+            except (TypeError, ValueError):
+                continue
+            if idx < 0:
+                continue
+            while len(target) <= idx:
+                target.append(None)
+            current = target[idx]
+            if isinstance(current, dict) and isinstance(value, dict):
+                self._deep_merge_replay_state(current, value)
+            else:
+                target[idx] = deepcopy(value)
+        return target
+
+    @staticmethod
+    def _has_timingdata_state(state: dict[str, Any]) -> bool:
+        return isinstance(state, dict) and bool(state.get("Lines"))
+
     def _merge_lap_history_state(
         self,
         state: dict[str, Any],
@@ -1030,6 +1090,7 @@ class ReplaySessionManager:
             "withheld": False,
         }
         timingapp_state: dict[str, Any] = {}
+        timingdata_state: dict[str, Any] = {}
         lap_history_state: dict[str, Any] = {}
         last_lap_times: dict[str, str] = {}
 
@@ -1046,7 +1107,7 @@ class ReplaySessionManager:
                 self._merge_lap_history_state(
                     lap_history_state, last_lap_times, frame.payload
                 )
-                initial_state[frame.stream] = frame.payload
+                self._merge_timingdata_state(timingdata_state, frame.payload)
             elif frame.stream == "DriverRaceInfo" and isinstance(frame.payload, dict):
                 self._extract_grid_from_driver_race_info(
                     lap_history_state, frame.payload
@@ -1065,6 +1126,8 @@ class ReplaySessionManager:
             }
         if self._has_timingapp_state(timingapp_state):
             initial_state["TimingAppData"] = timingapp_state
+        if self._has_timingdata_state(timingdata_state):
+            initial_state["TimingData"] = timingdata_state
         if self._has_lap_history_state(lap_history_state):
             initial_state["LapHistory"] = lap_history_state
 

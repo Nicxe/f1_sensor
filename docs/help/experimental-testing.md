@@ -66,6 +66,12 @@ If the token is missing, expired, or rejected, auth-gated live data should becom
 
 `Position.z` has been observed as auth-gated, but it is intentionally excluded from the first test build because it is high frequency and the integration does not currently use it.
 
+## Incident detection and F1TV Auth
+
+Likely on-track incident detection works with public live timing and does not require F1TV Auth.
+
+Experimental F1TV Auth can help test future early-warning signals from `CarData.z`, such as very low speed before a car is officially marked as stopped. These signals should be treated as candidates, not proof of a crash, and public live timing must continue to work if the token is missing, expired, or rejected.
+
 ## Prerequisites
 
 Before you start, make sure you have:

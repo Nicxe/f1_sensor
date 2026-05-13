@@ -78,6 +78,7 @@ SENSOR_OPTIONS = {
     "session_time_elapsed": "Session time elapsed (live)",
     "race_time_to_three_hour_limit": "Race time to 3h limit (live)",
     "safety_car": "Safety car (live)",
+    "on_track_incident": "On-track incident (live)",
     "formation_start": "Formation start (replay or live with F1TV access)",
     "race_control": "Race control (live)",
     "top_three": "Top three (leader, live)",

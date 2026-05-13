@@ -132,6 +132,17 @@ async def async_setup_entry(
             )
             set_suggested_object_id(sensor, default_object_id("safety_car"))
             sensors.append(sensor)
+    if "on_track_incident" not in disabled:
+        coord = data.get("incident_coordinator")
+        if coord:
+            sensor = F1OnTrackIncidentBinarySensor(
+                coord,
+                f"{entry.entry_id}_on_track_incident",
+                entry.entry_id,
+                base,
+            )
+            set_suggested_object_id(sensor, default_object_id("on_track_incident"))
+            sensors.append(sensor)
     if "formation_start" not in disabled:
         tracker: FormationStartTracker | None = data.get("formation_start_tracker")
         if tracker is not None:
@@ -378,6 +389,102 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
         self._attr_extra_state_attributes = {}
         self._last_ts = None
         self._forced_unavailable = True
+
+
+_ON_TRACK_INCIDENT_ATTR_KEYS = (
+    "active_count",
+    "highest_confidence",
+    "latest_incident_id",
+    "latest_driver_number",
+    "latest_driver_tla",
+    "latest_reason",
+    "latest_phase",
+    "session_type",
+    "session_name",
+    "data_quality",
+)
+_CONFIRMED_INCIDENT_PHASES = frozenset({"confirmed", "updated"})
+_CONFIDENCE_RANK = {"low": 0, "medium": 1, "high": 2}
+
+
+class F1OnTrackIncidentBinarySensor(F1AuxEntity, BinarySensorEntity):
+    """Binary sensor indicating whether a confirmed on-track incident is active."""
+
+    _device_category = "session"
+    _attr_device_class = None
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:alert-circle-outline"
+    _attr_translation_key = "on_track_incident"
+    _unrecorded_attributes = frozenset({"active_incidents"})
+
+    def __init__(
+        self,
+        coordinator: Any | None,
+        unique_id: str,
+        entry_id: str,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
+        BinarySensorEntity.__init__(self)
+        self.coordinator = coordinator
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if self.coordinator is None:
+            return
+        removal = self.coordinator.async_add_listener(self._safe_write_ha_state)
+        self.async_on_remove(removal)
+
+    @property
+    def available(self) -> bool:
+        coordinator = self.coordinator
+        if coordinator is None:
+            return False
+        with suppress(Exception):
+            return bool(coordinator.available)
+        return True
+
+    @property
+    def is_on(self) -> bool:
+        return self._confirmed_active_count() > 0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self._data()
+        attrs = {key: data.get(key) for key in _ON_TRACK_INCIDENT_ATTR_KEYS}
+        confirmed = self._confirmed_active_incidents()
+        attrs["active_count"] = len(confirmed)
+        attrs["highest_confidence"] = self._highest_confidence(confirmed)
+        return attrs
+
+    def _data(self) -> dict[str, Any]:
+        data = getattr(self.coordinator, "data", None)
+        return data if isinstance(data, dict) else {}
+
+    def _confirmed_active_incidents(self) -> list[dict[str, Any]]:
+        incidents = self._data().get("active_incidents")
+        if not isinstance(incidents, list):
+            return []
+        return [
+            incident
+            for incident in incidents
+            if isinstance(incident, dict)
+            and incident.get("phase") in _CONFIRMED_INCIDENT_PHASES
+        ]
+
+    def _confirmed_active_count(self) -> int:
+        return len(self._confirmed_active_incidents())
+
+    @staticmethod
+    def _highest_confidence(incidents: list[dict[str, Any]]) -> str | None:
+        confidence_values = [
+            confidence
+            for incident in incidents
+            if isinstance(confidence := incident.get("confidence"), str)
+        ]
+        if not confidence_values:
+            return None
+        return max(confidence_values, key=lambda value: _CONFIDENCE_RANK.get(value, -1))
 
 
 class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):

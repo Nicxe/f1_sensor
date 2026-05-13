@@ -125,6 +125,7 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_race_three_hour_limit](#race-three-hour-limit) | Time remaining until the FIA 3-hour race duration cap `(beta)` |
 | [sensor.f1_track_status](#track-status)               | Current track status |
 | [binary_sensor.f1_safety_car](#safety-car)            | Safety Car (SC) or Virtual Safety Car (VSC) is active|  
+| [binary_sensor.f1_on_track_incident](#on-track-incident) | Likely stopped car or on-track incident is active |
 | [sensor.f1_race_lap_count](#race-lap)                 | Current race lap number|
 | [sensor.f1_track_weather](#track-weather)             | Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)|
 | [sensor.f1_driver_list](#driver-list)                 | Show list and details on all drivers, including team color, headshot URL etc| 
@@ -384,6 +385,47 @@ on
 | Attribute | Type | Description |
 | --- | --- | --- |
 | track_status | string | Normalized track status (`CLEAR`, `YELLOW`, `VSC`, `SC`, `RED`) |
+
+---
+
+## On-track Incident
+
+`binary_sensor.f1_on_track_incident` - On while F1 Sensor has a confirmed likely stopped car or on-track incident for the active session.
+
+:::warning[Not crash detection]
+This entity detects likely stopped cars and on-track incidents from live timing, track status, and Race Control context. It does not prove that a crash happened, and it may also represent a technical failure, spin, red flag stop, or another neutral on-track situation.
+:::
+
+**State (on/off)**
+- `on` when at least one confirmed incident is active.
+- `off` when no confirmed incident is active.
+- `unavailable` when live or replay data is not available enough to report a reliable state.
+
+**Example**
+```text
+on
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| active_count | number | Number of confirmed active incidents |
+| highest_confidence | string | Highest active confidence: `medium` or `high` |
+| latest_incident_id | string | Stable identifier for the most recent incident update |
+| latest_driver_number | string | Car number for the latest incident update |
+| latest_driver_tla | string | Driver abbreviation for the latest incident update |
+| latest_reason | string | Neutral reason code for the latest update |
+| latest_phase | string | Latest phase: `candidate`, `confirmed`, `updated`, or `cleared` |
+| session_type | string | Lowercase session type, such as `race`, `sprint`, `qualifying`, or `practice` |
+| session_name | string | Human-readable session name |
+| data_quality | string | Data source quality, such as `live`, `replay`, `stale`, or `bootstrap` |
+
+The entity intentionally keeps attributes small and stable. Use the [`f1_sensor_incident` event](/entities/events#on-track-incident) for detailed automation triggers and notification text.
+
+:::info[Session support]
+Incident detection is designed for race, sprint, qualifying, and practice sessions. Practice alerts are more conservative because practice sessions naturally contain more slow running, pit activity, and testing-style behavior.
+:::
 
 ---
 

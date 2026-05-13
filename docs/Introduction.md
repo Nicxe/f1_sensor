@@ -42,6 +42,7 @@ Take your setup to the next level:
 - [**Live Delay**](/features/live-delay) – Sync live data with your TV broadcast
 - [**Replay Mode**](/features/replay-mode) – Relive historical sessions with full Home Assistant integration and experimental 30-second catch-up controls
 - [**No Spoiler Mode**](/features/no-spoiler-mode) – Freeze your dashboard until you are ready to watch
+- **On-track incident alerts** – Detect likely stopped cars or on-track incidents during live and replayed sessions without treating them as guaranteed crash detection
 
 ### Showcase
 

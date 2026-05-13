@@ -35,6 +35,9 @@ TO_REDACT = {
 _TRACKED_STREAMS = (
     "SessionStatus",
     "TrackStatus",
+    "RaceControlMessages",
+    "TimingData",
+    "DriverList",
     "TopThree",
     "TimingAppData",
     "ChampionshipPrediction",
@@ -96,6 +99,27 @@ def _serialize_live_timing_runtime(live_bus: object) -> dict[str, Any]:
     return runtime
 
 
+def _serialize_incident_runtime(coordinator: object) -> dict[str, Any]:
+    """Return a small incident detection diagnostics summary."""
+    data = getattr(coordinator, "data", None)
+    if not isinstance(data, dict):
+        return {}
+
+    return {
+        "active_count": data.get("active_count"),
+        "highest_confidence": data.get("highest_confidence"),
+        "latest_incident_id": data.get("latest_incident_id"),
+        "latest_driver_number": data.get("latest_driver_number"),
+        "latest_driver_tla": data.get("latest_driver_tla"),
+        "latest_reason": data.get("latest_reason"),
+        "latest_phase": data.get("latest_phase"),
+        "session_type": data.get("session_type"),
+        "session_name": data.get("session_name"),
+        "data_quality": data.get("data_quality"),
+        "available": bool(getattr(coordinator, "available", False)),
+    }
+
+
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -132,6 +156,12 @@ async def async_get_config_entry_diagnostics(
     live_bus = entry_runtime.get("live_bus")
     if live_bus is not None:
         runtime["live_timing"] = _serialize_live_timing_runtime(live_bus)
+
+    incident_coordinator = entry_runtime.get("incident_coordinator")
+    if incident_coordinator is not None:
+        runtime["incident_detection"] = _serialize_incident_runtime(
+            incident_coordinator
+        )
 
     entry_data = dict(entry.data)
     if not include_auth_transport:

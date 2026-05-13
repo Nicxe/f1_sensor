@@ -302,6 +302,9 @@
       "safety_car": {
         "name": "Turva-auto"
       },
+      "on_track_incident": {
+        "name": "Ratatapahtuma"
+      },
       "formation_start": {
         "name": "Lämmittelykierroksen alku"
       },

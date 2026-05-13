@@ -46,8 +46,11 @@ Not all data is blocked. Schedule and calendar data is always kept up to date so
 - Championship predictions
 - FIA documents and race control messages
 - Pit stop data
+- On-track incident detection and incident notifications while the mode is active
 
 When you deactivate the mode, all frozen data is refreshed immediately and delivered to your entities at once. If any FIA documents were published during the blackout, they all appear at the same time.
+
+Incident alerts are treated as spoiler-sensitive. While No Spoiler Mode is active, new live incident events are blocked from dashboards and notification automations. They are not sent later as push notifications from the live session; use [Replay Mode](/features/replay-mode) when you are ready to watch the session with incident alerts.
 
 ---
 

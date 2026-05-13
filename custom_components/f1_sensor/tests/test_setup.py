@@ -862,6 +862,7 @@ async def test_async_setup_entry_live_mode_registers_replay_only_components(
             "RaceControlCoordinator",
             "WeatherDataCoordinator",
             "LapCountCoordinator",
+            "IncidentCoordinator",
             "LiveModeCoordinator",
             "LiveDriversCoordinator",
             "TopThreeCoordinator",
@@ -893,6 +894,7 @@ async def test_async_setup_entry_live_mode_registers_replay_only_components(
     entry_data = hass.data[DOMAIN][entry.entry_id]
     assert entry_data["operation_mode"] == OPERATION_MODE_LIVE
     assert entry_data["formation_start_tracker"] is sentinel_tracker
+    assert entry_data["incident_coordinator"] is not None
     assert entry_data["pitstop_coordinator"] is not None
     assert entry_data["championship_prediction_coordinator"] is not None
 

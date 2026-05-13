@@ -339,6 +339,9 @@
       "safety_car": {
         "name": "Safety car"
       },
+      "on_track_incident": {
+        "name": "On-track incident"
+      },
       "formation_start": {
         "name": "Formation start"
       },

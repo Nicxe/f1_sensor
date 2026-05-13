@@ -5,6 +5,8 @@ title: Diagnostics
 
 Diagnostic entities are intended for troubleshooting and advanced automations. Some entities are only created when the corresponding feature is enabled during configuration.
 
+Downloaded diagnostics from **Settings > Devices & Services > F1 Sensor > Diagnostics** include a small runtime summary for live timing and incident detection. The diagnostics output is intended for support and does not include raw high-frequency telemetry, authorization headers, cookies, or tokens.
+
 ## Entities Summary
 
 | Entity | Info |
@@ -14,6 +16,32 @@ Diagnostic entities are intended for troubleshooting and advanced automations. S
 | [sensor.f1_replay_status](#replay-status) | Replay state and progress |
 | [sensor.f1_f1tv_token_status](#f1tv-token-status) | Redacted F1TV token health status |
 | [sensor.f1_f1tv_token_expires_at](#f1tv-token-expires-at) | Expiry time for the saved F1TV live timing token |
+
+---
+
+## Incident Detection Diagnostics
+
+When incident detection is available, the downloaded diagnostics file includes an `incident_detection` runtime summary.
+
+**Fields**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| active_count | number | Number of currently active incident records |
+| highest_confidence | string | Highest active confidence, such as `medium` or `high` |
+| latest_incident_id | string | Stable identifier for the most recent incident update |
+| latest_driver_number | string | Car number for the latest incident update |
+| latest_driver_tla | string | Driver abbreviation for the latest incident update |
+| latest_reason | string | Neutral reason code for the latest update |
+| latest_phase | string | Latest incident phase |
+| session_type | string | Lowercase session type, such as `race`, `sprint`, `qualifying`, or `practice` |
+| session_name | string | Human-readable session name |
+| data_quality | string | Data source quality, such as `live`, `replay`, or `bootstrap` |
+| available | boolean | Whether the incident coordinator is currently available |
+
+:::info
+Diagnostics intentionally show counts and latest metadata only. Use the [`f1_sensor_incident` event](/entities/events#on-track-incident) when you need the full event payload for automations or troubleshooting.
+:::
 
 ---
 

@@ -158,6 +158,9 @@
       "safety_car": {
         "name": "Sicherheitsauto"
       },
+      "on_track_incident": {
+        "name": "Zwischenfall auf der Strecke"
+      },
       "formation_start": {
         "name": "Formation start"
       }

@@ -325,6 +325,9 @@
       "safety_car": {
         "name": "Safety car"
       },
+      "on_track_incident": {
+        "name": "Incidente in pista"
+      },
       "formation_start": {
         "name": "Giro di formazione"
       },
