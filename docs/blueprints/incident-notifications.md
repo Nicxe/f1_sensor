@@ -70,6 +70,8 @@ The default filters are intentionally conservative.
 
 Practice sessions can include installation laps, garage work, slow running, and testing procedures. Enable Practice only if you are comfortable with more alerts, or require `high` confidence for Practice.
 
+If you enable Candidate events, some alerts can come from F1TV Auth `CarData.z` low-speed telemetry correlated with yellow flag, Virtual Safety Car, Safety Car, or red flag context. Keep these alerts conservative because they are earlier than confirmed public timing or Race Control evidence.
+
 ---
 
 ## Notification wording

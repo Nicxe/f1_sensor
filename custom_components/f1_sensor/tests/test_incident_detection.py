@@ -182,6 +182,49 @@ def test_normalize_race_control_extracts_driver_number_from_message() -> None:
     assert "race_control_incident" in signals[0].signals
 
 
+def test_normalize_race_control_ignores_pit_lane_yellow_context() -> None:
+    signals = normalize_race_control_messages(
+        {
+            "Messages": [
+                {
+                    "Utc": BASE.isoformat().replace("+00:00", "Z"),
+                    "Category": "Other",
+                    "Message": "YELLOW IN PIT LANE",
+                }
+            ]
+        },
+        BASE,
+        session=SESSION,
+        drivers=DRIVERS,
+    )
+
+    assert len(signals) == 1
+    assert signals[0].signals == ()
+
+
+def test_normalize_race_control_ignores_lap_deletion_yellow_context() -> None:
+    signals = normalize_race_control_messages(
+        {
+            "Messages": [
+                {
+                    "Utc": BASE.isoformat().replace("+00:00", "Z"),
+                    "Category": "Other",
+                    "Message": (
+                        "CAR 87 (BEA) TIME 1:29.883 DELETED - DOUBLE YELLOW AT TURN 1"
+                    ),
+                }
+            ]
+        },
+        BASE,
+        session=SESSION,
+        drivers=DRIVERS,
+    )
+
+    assert len(signals) == 1
+    assert signals[0].racing_number == "87"
+    assert signals[0].signals == ()
+
+
 def test_normalize_race_control_without_driver_is_global_signal() -> None:
     signals = _race_control(BASE, "RED FLAG", flag="RED")
 
@@ -213,6 +256,43 @@ def test_normalize_driver_list_creates_driver_metadata_signal() -> None:
         team="Alpine",
         team_color="#0093CC",
     )
+
+
+def test_normalize_driver_list_ignores_position_only_delta() -> None:
+    signals = normalize_driver_list(
+        {"10": {"Line": 2}},
+        BASE,
+        session=SESSION,
+    )
+
+    assert signals == []
+
+
+def test_driver_list_position_delta_does_not_overwrite_driver_identity() -> None:
+    detector = IncidentDetector()
+    detector.process_signals(
+        normalize_driver_list(
+            {
+                "10": {
+                    "Tla": "GAS",
+                    "FullName": "Pierre Gasly",
+                    "TeamName": "Alpine",
+                }
+            },
+            BASE,
+            session=SESSION,
+        )
+    )
+    detector.process_signals(normalize_driver_list({"10": {"Line": 2}}, BASE))
+    _bootstrap_clean(detector)
+
+    changes = detector.process_signals(
+        _timing(BASE + timedelta(seconds=1), stopped=True)
+    )
+
+    assert len(changes) == 1
+    assert changes[0].driver.tla == "GAS"
+    assert changes[0].driver.name == "Pierre Gasly"
 
 
 def test_normalize_session_data_extracts_terminal_status() -> None:

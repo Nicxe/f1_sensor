@@ -157,6 +157,7 @@ _INCIDENT_STREAMS: tuple[str, ...] = (
     "TrackStatus",
     "RaceControlMessages",
     "TimingData",
+    "CarData.z",
 )
 _INCIDENT_BOOTSTRAP_SKIP_STREAMS = frozenset({"RaceControlMessages", "TrackStatus"})
 _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(

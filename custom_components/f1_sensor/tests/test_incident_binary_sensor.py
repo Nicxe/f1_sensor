@@ -13,7 +13,10 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor import binary_sensor as binary_sensor_platform
-from custom_components.f1_sensor.binary_sensor import F1OnTrackIncidentBinarySensor
+from custom_components.f1_sensor.binary_sensor import (
+    F1OnTrackIncidentBinarySensor,
+    F1PossibleOnTrackIncidentBinarySensor,
+)
 from custom_components.f1_sensor.const import DOMAIN, SUPPORTED_SENSOR_KEYS
 
 _LOGGER = logging.getLogger(__name__)
@@ -128,6 +131,40 @@ async def test_on_track_incident_setup_entry_uses_incident_coordinator(hass) -> 
 
 
 @pytest.mark.asyncio
+async def test_possible_on_track_incident_setup_entry_uses_incident_coordinator(
+    hass,
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "RaceHub",
+            "disabled_sensors": sorted(
+                SUPPORTED_SENSOR_KEYS - {"possible_on_track_incident"}
+            ),
+        },
+    )
+    entry.add_to_hass(hass)
+    coordinator = _coordinator(hass, _coordinator_data([]))
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "race_coordinator": Mock(),
+        "incident_coordinator": coordinator,
+    }
+
+    async_add_entities = Mock()
+    await binary_sensor_platform.async_setup_entry(hass, entry, async_add_entities)
+
+    entities = async_add_entities.call_args[0][0]
+    assert len(entities) == 1
+    entity = entities[0]
+    assert isinstance(entity, F1PossibleOnTrackIncidentBinarySensor)
+    assert entity.coordinator is coordinator
+    assert entity.unique_id == f"{entry.entry_id}_possible_on_track_incident"
+    assert entity._attr_translation_key == "possible_on_track_incident"
+    assert entity._attr_has_entity_name is True
+    assert entity._attr_suggested_object_id == "f1_possible_on_track_incident"
+
+
+@pytest.mark.asyncio
 async def test_on_track_incident_state_and_attributes_follow_confirmed_incidents(
     hass,
 ) -> None:
@@ -212,6 +249,40 @@ async def test_on_track_incident_ignores_active_candidates(hass) -> None:
     assert state.state == STATE_OFF
     assert state.attributes["active_count"] == 0
     assert state.attributes["highest_confidence"] is None
+
+
+@pytest.mark.asyncio
+async def test_possible_on_track_incident_turns_on_for_active_candidates(hass) -> None:
+    coordinator = _coordinator(
+        hass,
+        _coordinator_data(
+            [_incident(phase="candidate", confidence="medium")],
+            latest_phase="candidate",
+        ),
+    )
+    entity = F1PossibleOnTrackIncidentBinarySensor(
+        coordinator,
+        "incident-entry_possible_on_track_incident",
+        "incident-entry",
+        "F1",
+    )
+
+    state = await _add_entity_and_get_state(hass, entity)
+
+    assert state.state == STATE_ON
+    assert state.attributes["active_count"] == 1
+    assert state.attributes["highest_confidence"] == "medium"
+    assert state.attributes["latest_phase"] == "candidate"
+
+    coordinator.async_set_updated_data(_coordinator_data([], latest_phase="cleared"))
+    await hass.async_block_till_done()
+
+    state = hass.states.get(entity.entity_id)
+    assert state is not None
+    assert state.state == STATE_OFF
+    assert state.attributes["active_count"] == 0
+    assert state.attributes["highest_confidence"] is None
+    assert state.attributes["latest_phase"] == "cleared"
 
 
 @pytest.mark.asyncio

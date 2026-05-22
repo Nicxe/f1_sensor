@@ -161,6 +161,9 @@
       "on_track_incident": {
         "name": "Zwischenfall auf der Strecke"
       },
+      "possible_on_track_incident": {
+        "name": "Möglicher Zwischenfall auf der Strecke"
+      },
       "formation_start": {
         "name": "Formation start"
       }

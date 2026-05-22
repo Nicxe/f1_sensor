@@ -22,6 +22,8 @@ Use this event for notifications and automations that should react immediately t
 The event describes a likely stopped car or on-track incident. It does not guarantee that a crash happened. Keep notification wording neutral unless Race Control explicitly says more.
 :::
 
+When F1TV Auth is configured and the authenticated live timing stream is available, F1 Sensor can also publish earlier `candidate` events from `CarData.z` low-speed telemetry correlated with yellow flag, Virtual Safety Car, Safety Car, or red flag context. These candidates are useful for advanced automations, but they are not confirmed incidents until public timing or Race Control provides stronger evidence.
+
 **Phases**
 
 | Phase | Meaning |
@@ -36,7 +38,7 @@ The event describes a likely stopped car or on-track incident. It does not guara
 | Confidence | Meaning |
 | --- | --- |
 | `low` | Weak or early signal, normally not user-facing |
-| `medium` | Reasonable incident candidate, such as a stopped car that is not in pit lane |
+| `medium` | Reasonable incident candidate, such as a stopped car that is not in pit lane or an auth-based low-speed candidate with flag context |
 | `high` | Strong context, such as stopped timing data combined with yellow flag, Safety Car, red flag, or Race Control context |
 
 #### Example payload

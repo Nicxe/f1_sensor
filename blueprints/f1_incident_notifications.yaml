@@ -152,6 +152,10 @@ variables:
   reason_label: >-
     {% if incident_phase == 'cleared' %}
       cleared
+    {% elif incident_reason == 'race_control_stopped_with_car_low_speed' %}
+      stopped
+    {% elif incident_reason.startswith('car_low_speed') %}
+      may have stopped
     {% elif incident_reason == 'timing_stopped' %}
       stopped
     {% elif incident_reason == 'race_control' %}

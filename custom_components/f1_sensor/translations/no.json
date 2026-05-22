@@ -161,6 +161,9 @@
       "on_track_incident": {
         "name": "Hendelse på banen"
       },
+      "possible_on_track_incident": {
+        "name": "Mulig hendelse på banen"
+      },
       "formation_start": {
         "name": "Formation start"
       }

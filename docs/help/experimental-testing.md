@@ -70,7 +70,7 @@ If the token is missing, expired, or rejected, auth-gated live data should becom
 
 Likely on-track incident detection works with public live timing and does not require F1TV Auth.
 
-Experimental F1TV Auth can help test future early-warning signals from `CarData.z`, such as very low speed before a car is officially marked as stopped. These signals should be treated as candidates, not proof of a crash, and public live timing must continue to work if the token is missing, expired, or rejected.
+Experimental F1TV Auth can also test early-warning `candidate` signals from `CarData.z`, such as very low speed before a car is officially marked as stopped. These signals are correlated with flag or Safety Car context and should be treated as candidates, not proof of a crash. Public live timing must continue to work if the token is missing, expired, or rejected.
 
 ## Prerequisites
 

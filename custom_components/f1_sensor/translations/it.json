@@ -5,6 +5,10 @@
       "race_week_ended": "Weekend di gara terminato",
       "safety_car_deployed": "Safety car in pista",
       "safety_car_cleared": "Safety car uscita dalla pista",
+      "possible_on_track_incident_detected": "Possibile incidente in pista rilevato",
+      "possible_on_track_incident_cleared": "Possibile incidente in pista risolto",
+      "on_track_incident_detected": "Incidente in pista rilevato",
+      "on_track_incident_cleared": "Incidente in pista risolto",
       "formation_start_ready": "Giro di formazione pronto",
       "overtake_mode_enabled": "Modalità Overtake attivata",
       "overtake_mode_disabled": "Modalità Overtake disattivata",
@@ -327,6 +331,9 @@
       },
       "on_track_incident": {
         "name": "Incidente in pista"
+      },
+      "possible_on_track_incident": {
+        "name": "Possibile incidente in pista"
       },
       "formation_start": {
         "name": "Giro di formazione"

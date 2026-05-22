@@ -22,6 +22,18 @@ _TRIGGER_MAP: dict[str, tuple[str, str, str | None]] = {
     # Session device
     "safety_car_deployed": ("safety_car", "binary_sensor", "on"),
     "safety_car_cleared": ("safety_car", "binary_sensor", "off"),
+    "possible_on_track_incident_detected": (
+        "possible_on_track_incident",
+        "binary_sensor",
+        "on",
+    ),
+    "possible_on_track_incident_cleared": (
+        "possible_on_track_incident",
+        "binary_sensor",
+        "off",
+    ),
+    "on_track_incident_detected": ("on_track_incident", "binary_sensor", "on"),
+    "on_track_incident_cleared": ("on_track_incident", "binary_sensor", "off"),
     "formation_start_ready": ("formation_start", "binary_sensor", "on"),
     "overtake_mode_enabled": ("overtake_mode", "binary_sensor", "on"),
     "overtake_mode_disabled": ("overtake_mode", "binary_sensor", "off"),

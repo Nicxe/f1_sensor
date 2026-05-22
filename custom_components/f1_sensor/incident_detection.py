@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from collections import deque
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -7,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 import json
 import re
 from typing import Any
+import zlib
 
 DEFAULT_SESSION_KEY = "unknown-session"
 
@@ -53,7 +55,6 @@ SESSION_ACTIVE_STATUSES = frozenset(
 )
 SESSION_TERMINAL_STATUSES = frozenset(
     {
-        "Aborted",
         "Ended",
         "Ends",
         "Finalised",
@@ -130,7 +131,13 @@ _SAFETY_CAR_KEYWORDS = frozenset(
 
 _CAR_WORD_RE = re.compile(r"\b(?:CAR|CARS|DRIVER|DRIVERS)\s+(\d{1,3})\b", re.I)
 _NUMBER_TLA_RE = re.compile(r"\b(\d{1,3})\s*\([A-Z]{2,4}\)\b", re.I)
+_RACE_CONTROL_LAP_DELETION_RE = re.compile(r"\b(?:LAP\s+DELETED|TIME\b.*\bDELETED)\b")
 _NON_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+_CAR_DATA_SPEED_CHANNEL = "2"
+_CAR_DATA_MAX_REASONABLE_SPEED_KPH = 450.0
+_CAR_LOW_SPEED_SIGNAL = "car_low_speed"
+_CAR_MOVING_SIGNAL = "car_moving"
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,6 +267,13 @@ class _ActiveIncident:
     data_quality: str
 
 
+@dataclass(frozen=True, slots=True)
+class _CarSpeedSample:
+    observed_at: datetime
+    speed_kph: float
+    data_quality: str
+
+
 @dataclass(slots=True)
 class _DriverState:
     in_pit: bool | None = None
@@ -270,6 +284,9 @@ class _DriverState:
     seen_stopped_signal: bool = False
     active_incident: _ActiveIncident | None = None
     last_cleared_at: datetime | None = None
+    car_speed_samples: deque[_CarSpeedSample] = field(
+        default_factory=lambda: deque(maxlen=512)
+    )
 
 
 @dataclass(slots=True)
@@ -297,12 +314,30 @@ class IncidentDetector:
         pit_out_hold: timedelta = timedelta(seconds=6),
         cooldown: timedelta = timedelta(seconds=120),
         max_history: int = 256,
+        car_low_speed_threshold_kph: float = 10.0,
+        car_stationary_threshold_kph: float = 3.0,
+        car_moving_clear_threshold_kph: float = 20.0,
+        car_low_speed_duration: timedelta = timedelta(seconds=5),
+        car_stationary_duration: timedelta = timedelta(seconds=2),
+        car_moving_clear_duration: timedelta = timedelta(seconds=5),
+        car_context_window: timedelta = timedelta(seconds=20),
+        car_data_stale_after: timedelta = timedelta(seconds=10),
+        car_candidate_limit: int = 3,
     ) -> None:
         self._correlation_window = correlation_window
         self._pit_out_hold = pit_out_hold
         self._cooldown = cooldown
         self._sessions: dict[str, _SessionState] = {}
         self._max_history = max(1, max_history)
+        self._car_low_speed_threshold_kph = max(0.0, car_low_speed_threshold_kph)
+        self._car_stationary_threshold_kph = max(0.0, car_stationary_threshold_kph)
+        self._car_moving_clear_threshold_kph = max(0.0, car_moving_clear_threshold_kph)
+        self._car_low_speed_duration = car_low_speed_duration
+        self._car_stationary_duration = car_stationary_duration
+        self._car_moving_clear_duration = car_moving_clear_duration
+        self._car_context_window = car_context_window
+        self._car_data_stale_after = car_data_stale_after
+        self._car_candidate_limit = max(1, car_candidate_limit)
 
     def process_signals(
         self, signals: Iterable[IncidentSignal]
@@ -389,6 +424,8 @@ class IncidentDetector:
     def _process_signal(
         self, state: _SessionState, signal: IncidentSignal
     ) -> list[IncidentChange]:
+        if signal.driver is not None:
+            state.drivers[signal.driver.racing_number] = signal.driver
         if signal.kind == "session_context" and signal.session is not None:
             state.metadata = _merge_session_metadata(state.metadata, signal.session)
             return []
@@ -404,6 +441,8 @@ class IncidentDetector:
             return self._apply_race_control(state, signal)
         if signal.kind == "data_gap":
             return []
+        if signal.kind == "car_speed" and signal.racing_number is not None:
+            return self._apply_car_speed(state, signal)
         if signal.kind.startswith("timing_") and signal.racing_number is not None:
             return self._apply_timing(state, signal)
         return []
@@ -464,6 +503,7 @@ class IncidentDetector:
             changes.append(self._make_change(active, PHASE_UPDATED))
             self._remember_incident(state, active.incident_id)
             state.driver_states[rn] = driver_state
+        changes.extend(self._start_car_candidates_from_context(state, signal))
         return changes
 
     def _apply_race_control(
@@ -475,7 +515,7 @@ class IncidentDetector:
 
         changes: list[IncidentChange] = []
         if signal.racing_number is None:
-            return changes
+            return self._start_car_candidates_from_context(state, signal)
 
         driver_state = self._driver_state(state, signal.racing_number)
         active = driver_state.active_incident
@@ -490,12 +530,49 @@ class IncidentDetector:
             active.race_control = rc_context
             _extend_unique(active.signals, signal.signals or ("race_control_incident",))
             active.updated_at = signal.observed_at
+            if (
+                active.phase == PHASE_CANDIDATE
+                and _CAR_LOW_SPEED_SIGNAL in active.signals
+            ):
+                previous = (
+                    active.phase,
+                    active.confidence,
+                    active.reason,
+                    tuple(active.signals),
+                    active.race_control,
+                )
+                if "race_control_stopped" in signal.signals:
+                    active.phase = PHASE_CONFIRMED
+                    active.confidence = CONFIDENCE_HIGH
+                    active.reason = "race_control_stopped_with_car_low_speed"
+                    changes.append(self._make_change(active, PHASE_CONFIRMED))
+                    self._remember_incident(state, active.incident_id)
+                    return changes
+                active.reason = "car_low_speed_with_race_control"
+                current = (
+                    active.phase,
+                    active.confidence,
+                    active.reason,
+                    tuple(active.signals),
+                    active.race_control,
+                )
+                if current == previous:
+                    return []
+                changes.append(self._make_change(active, PHASE_UPDATED))
+                self._remember_incident(state, active.incident_id)
+                return changes
             if _confidence_gt(CONFIDENCE_HIGH, active.confidence):
                 active.confidence = CONFIDENCE_HIGH
                 active.reason = "timing_stopped_with_race_control"
                 changes.append(self._make_change(active, PHASE_UPDATED))
                 self._remember_incident(state, active.incident_id)
             return changes
+
+        car_candidate = self._start_car_candidate_from_context(
+            state, signal.racing_number, signal
+        )
+        if car_candidate:
+            return car_candidate
 
         if not driver_state.seen_stopped_signal or not state.active:
             return []
@@ -560,6 +637,207 @@ class IncidentDetector:
             return []
         return self._start_or_update_stopped_incident(
             state, signal.racing_number, signal
+        )
+
+    def _apply_car_speed(
+        self, state: _SessionState, signal: IncidentSignal
+    ) -> list[IncidentChange]:
+        driver_state = self._driver_state(state, signal.racing_number)
+        speed = _coerce_float(signal.value)
+        if speed is None:
+            return []
+
+        sample = _CarSpeedSample(
+            observed_at=signal.observed_at,
+            speed_kph=speed,
+            data_quality=signal.data_quality,
+        )
+        driver_state.car_speed_samples.append(sample)
+        self._prune_car_speed_samples(driver_state, signal.observed_at)
+
+        if signal.data_quality in {DATA_QUALITY_BOOTSTRAP, DATA_QUALITY_STALE}:
+            return []
+        if not state.active:
+            return []
+
+        moving_change = self._clear_car_candidate_after_movement(
+            driver_state, signal, speed
+        )
+        if moving_change:
+            return moving_change
+
+        if speed > self._car_low_speed_threshold_kph:
+            return []
+
+        track_context, race_context, context_signals = self._find_context(
+            state,
+            signal.racing_number,
+            signal.observed_at,
+            window=self._car_context_window,
+        )
+        if not context_signals:
+            return []
+        if not self._car_candidate_allowed(driver_state, signal.observed_at):
+            return []
+        return self._start_or_update_car_candidate(
+            state,
+            signal.racing_number,
+            signal,
+            track_context=track_context,
+            race_context=race_context,
+            context_signals=context_signals,
+        )
+
+    def _start_car_candidates_from_context(
+        self, state: _SessionState, context_signal: IncidentSignal
+    ) -> list[IncidentChange]:
+        if context_signal.data_quality in {DATA_QUALITY_BOOTSTRAP, DATA_QUALITY_STALE}:
+            return []
+        if not state.active:
+            return []
+
+        candidates = [
+            rn
+            for rn, driver_state in state.driver_states.items()
+            if self._car_candidate_allowed(driver_state, context_signal.observed_at)
+            and self._car_low_speed_context(driver_state, context_signal.observed_at)
+            is not None
+        ]
+        if len(candidates) > self._car_candidate_limit:
+            return []
+
+        changes: list[IncidentChange] = []
+        for rn in candidates:
+            changes.extend(
+                self._start_car_candidate_from_context(state, rn, context_signal)
+            )
+        return changes
+
+    def _start_car_candidate_from_context(
+        self, state: _SessionState, racing_number: str, context_signal: IncidentSignal
+    ) -> list[IncidentChange]:
+        driver_state = self._driver_state(state, racing_number)
+        if not self._car_candidate_allowed(driver_state, context_signal.observed_at):
+            return []
+        if (
+            self._car_low_speed_context(driver_state, context_signal.observed_at)
+            is None
+        ):
+            return []
+
+        track_context, race_context, context_signals = self._context_from_signal(
+            state, racing_number, context_signal
+        )
+        if not context_signals:
+            return []
+
+        return self._start_or_update_car_candidate(
+            state,
+            racing_number,
+            context_signal,
+            track_context=track_context,
+            race_context=race_context,
+            context_signals=context_signals,
+        )
+
+    def _start_or_update_car_candidate(
+        self,
+        state: _SessionState,
+        racing_number: str,
+        signal: IncidentSignal,
+        *,
+        track_context: TrackStatusContext,
+        race_context: RaceControlContext,
+        context_signals: list[str],
+    ) -> list[IncidentChange]:
+        driver_state = self._driver_state(state, racing_number)
+        active = driver_state.active_incident
+        if active is None and not self._has_car_candidate_capacity(state):
+            return []
+        if not self._car_candidate_allowed(driver_state, signal.observed_at):
+            return []
+        low_speed = self._car_low_speed_context(driver_state, signal.observed_at)
+        if low_speed is None:
+            return []
+        low_speed_started_at, stationary = low_speed
+        if self._is_in_cooldown(driver_state, signal.observed_at):
+            return []
+
+        driver = self._driver_metadata(state, racing_number, signal.driver)
+        signals = [_CAR_LOW_SPEED_SIGNAL, *context_signals]
+        if stationary:
+            signals.insert(0, "car_stationary")
+        reason = _reason_for_car_context(
+            track_context=track_context,
+            race_context=race_context,
+        )
+        confidence = CONFIDENCE_MEDIUM
+
+        if active is None:
+            active = _ActiveIncident(
+                incident_id=_build_incident_id(
+                    state.metadata.session_key, racing_number, low_speed_started_at
+                ),
+                phase=PHASE_CANDIDATE,
+                confidence=confidence,
+                reason=reason,
+                driver=driver,
+                session=state.metadata,
+                track_status=track_context,
+                race_control=race_context,
+                signals=signals,
+                started_at=low_speed_started_at,
+                updated_at=signal.observed_at,
+                data_quality=signal.data_quality,
+            )
+            driver_state.active_incident = active
+            self._remember_incident(state, active.incident_id)
+            return [self._make_change(active, PHASE_CANDIDATE)]
+
+        if active.phase != PHASE_CANDIDATE:
+            return []
+
+        previous_signals = tuple(active.signals)
+        previous_confidence = active.confidence
+        previous_reason = active.reason
+        active.driver = driver
+        active.session = state.metadata
+        active.track_status = _merge_track_context(active.track_status, track_context)
+        active.race_control = _merge_race_context(active.race_control, race_context)
+        _extend_unique(active.signals, signals)
+        if _confidence_gt(confidence, active.confidence):
+            active.confidence = confidence
+        active.reason = reason or active.reason
+        if (
+            previous_signals == tuple(active.signals)
+            and previous_confidence == active.confidence
+            and previous_reason == active.reason
+        ):
+            return []
+        active.updated_at = signal.observed_at
+        self._remember_incident(state, active.incident_id)
+        return [self._make_change(active, PHASE_UPDATED)]
+
+    def _clear_car_candidate_after_movement(
+        self, driver_state: _DriverState, signal: IncidentSignal, speed: float
+    ) -> list[IncidentChange]:
+        active = driver_state.active_incident
+        if active is None or active.phase != PHASE_CANDIDATE:
+            return []
+        if _CAR_LOW_SPEED_SIGNAL not in active.signals:
+            return []
+        if speed <= self._car_moving_clear_threshold_kph:
+            return []
+        moving_since = self._car_moving_since(driver_state)
+        if moving_since is None:
+            return []
+        if signal.observed_at - moving_since < self._car_moving_clear_duration:
+            return []
+        return self._clear_driver_incident(
+            driver_state,
+            signal,
+            reason="car_moving",
+            signal_name=_CAR_MOVING_SIGNAL,
         )
 
     def _start_candidate_incident(
@@ -687,8 +965,14 @@ class IncidentDetector:
         return [change]
 
     def _find_context(
-        self, state: _SessionState, racing_number: str, at: datetime
+        self,
+        state: _SessionState,
+        racing_number: str,
+        at: datetime,
+        *,
+        window: timedelta | None = None,
     ) -> tuple[TrackStatusContext, RaceControlContext, list[str]]:
+        correlation_window = self._correlation_window if window is None else window
         track_context = TrackStatusContext()
         race_context = RaceControlContext()
         signals: list[str] = []
@@ -696,7 +980,7 @@ class IncidentDetector:
         for signal in reversed(state.track_status_history):
             if signal.track_status not in TRACK_STATUS_INCIDENT_CONTEXT:
                 continue
-            if not _is_within(signal.observed_at, at, self._correlation_window):
+            if not _is_within(signal.observed_at, at, correlation_window):
                 continue
             track_context = TrackStatusContext(signal.track_status, signal.message)
             signals.append("track_status_" + signal.track_status.lower())
@@ -707,7 +991,7 @@ class IncidentDetector:
                 continue
             if signal.racing_number not in (None, racing_number):
                 continue
-            if not _is_within(signal.observed_at, at, self._correlation_window):
+            if not _is_within(signal.observed_at, at, correlation_window):
                 continue
             race_context = RaceControlContext(
                 signal.message, signal.category, signal.flag
@@ -753,6 +1037,123 @@ class IncidentDetector:
         if state.last_cleared_at is None:
             return False
         return timedelta(0) <= at - state.last_cleared_at < self._cooldown
+
+    def _prune_car_speed_samples(self, state: _DriverState, at: datetime) -> None:
+        retention = max(
+            self._correlation_window,
+            timedelta(seconds=90),
+            key=lambda value: value.total_seconds(),
+        )
+        cutoff = at - retention
+        while (
+            state.car_speed_samples and state.car_speed_samples[0].observed_at < cutoff
+        ):
+            state.car_speed_samples.popleft()
+
+    def _car_candidate_allowed(self, state: _DriverState, at: datetime) -> bool:
+        if state.in_pit is True:
+            return False
+        if self._is_recent_pit_out(state, at):
+            return False
+        if self._is_in_cooldown(state, at):
+            return False
+        active = state.active_incident
+        return active is None or active.phase == PHASE_CANDIDATE
+
+    def _has_car_candidate_capacity(self, state: _SessionState) -> bool:
+        active_car_candidates = 0
+        for driver_state in state.driver_states.values():
+            active = driver_state.active_incident
+            if (
+                active is not None
+                and active.phase == PHASE_CANDIDATE
+                and _CAR_LOW_SPEED_SIGNAL in active.signals
+            ):
+                active_car_candidates += 1
+        return active_car_candidates < self._car_candidate_limit
+
+    def _car_low_speed_context(
+        self, state: _DriverState, at: datetime
+    ) -> tuple[datetime, bool] | None:
+        samples = self._valid_car_samples(state, at)
+        if not samples:
+            return None
+
+        latest = samples[-1]
+        if latest.speed_kph > self._car_low_speed_threshold_kph:
+            return None
+
+        low_speed_started_at = latest.observed_at
+        stationary_started_at = (
+            latest.observed_at
+            if latest.speed_kph <= self._car_stationary_threshold_kph
+            else None
+        )
+        for sample in reversed(samples[:-1]):
+            if sample.speed_kph > self._car_low_speed_threshold_kph:
+                break
+            low_speed_started_at = sample.observed_at
+            if sample.speed_kph <= self._car_stationary_threshold_kph:
+                stationary_started_at = sample.observed_at
+            else:
+                stationary_started_at = None
+
+        low_speed_duration = at - low_speed_started_at
+        stationary = (
+            stationary_started_at is not None
+            and at - stationary_started_at >= self._car_stationary_duration
+        )
+        if low_speed_duration < self._car_low_speed_duration and not stationary:
+            return None
+        return low_speed_started_at, stationary
+
+    def _car_moving_since(self, state: _DriverState) -> datetime | None:
+        samples = [
+            sample
+            for sample in state.car_speed_samples
+            if sample.data_quality not in {DATA_QUALITY_BOOTSTRAP, DATA_QUALITY_STALE}
+        ]
+        if not samples:
+            return None
+        latest = samples[-1]
+        if latest.speed_kph <= self._car_moving_clear_threshold_kph:
+            return None
+        moving_since = latest.observed_at
+        for sample in reversed(samples[:-1]):
+            if sample.speed_kph <= self._car_moving_clear_threshold_kph:
+                break
+            moving_since = sample.observed_at
+        return moving_since
+
+    def _valid_car_samples(
+        self, state: _DriverState, at: datetime
+    ) -> list[_CarSpeedSample]:
+        freshness_window = min(
+            self._car_context_window,
+            self._car_data_stale_after,
+            key=lambda value: value.total_seconds(),
+        )
+        samples = [
+            sample
+            for sample in state.car_speed_samples
+            if sample.data_quality not in {DATA_QUALITY_BOOTSTRAP, DATA_QUALITY_STALE}
+            and timedelta(0) <= at - sample.observed_at <= freshness_window
+        ]
+        samples.sort(key=lambda sample: sample.observed_at)
+        return samples
+
+    def _context_from_signal(
+        self,
+        state: _SessionState,
+        racing_number: str,
+        context_signal: IncidentSignal,
+    ) -> tuple[TrackStatusContext, RaceControlContext, list[str]]:
+        return self._find_context(
+            state,
+            racing_number,
+            context_signal.observed_at,
+            window=self._car_context_window,
+        )
 
     def _remember_incident(self, state: _SessionState, incident_id: str) -> None:
         if incident_id not in state.incident_history:
@@ -834,6 +1235,14 @@ def normalize_stream(
             payload,
             observed_at,
             session=session,
+            data_quality=data_quality,
+        )
+    if stream == "CarData.z":
+        return normalize_car_data(
+            payload,
+            observed_at,
+            session=session,
+            drivers=drivers,
             data_quality=data_quality,
         )
     return []
@@ -1111,6 +1520,17 @@ def normalize_driver_list(
         rn = _normalize_racing_number(raw_driver.get("RacingNumber") or key)
         if rn is None:
             continue
+        if not any(
+            field in raw_driver
+            for field in (
+                "Tla",
+                "FullName",
+                "BroadcastName",
+                "TeamName",
+                "TeamColour",
+            )
+        ):
+            continue
         driver = DriverMetadata(
             racing_number=rn,
             tla=_uppercase_or_none(raw_driver.get("Tla")),
@@ -1134,6 +1554,53 @@ def normalize_driver_list(
     return signals
 
 
+def normalize_car_data(
+    payload: Any,
+    observed_at: datetime | str | None = None,
+    *,
+    session: SessionMetadata | None = None,
+    drivers: Mapping[str, DriverMetadata] | None = None,
+    data_quality: str = DATA_QUALITY_LIVE,
+) -> list[IncidentSignal]:
+    """Normalize CarData.z speed samples into incident detector signals."""
+    observed = _parse_utc(observed_at)
+    session_key = _session_key(session)
+    signals: list[IncidentSignal] = []
+    for entry in _extract_car_data_entries(payload):
+        entry_observed = _parse_utc(_timestamp_from_payload(entry), default=observed)
+        cars = entry.get("Cars")
+        if not isinstance(cars, Mapping):
+            continue
+        for rn_raw, car in cars.items():
+            if not isinstance(car, Mapping):
+                continue
+            rn = _normalize_racing_number(car.get("RacingNumber") or rn_raw)
+            if rn is None:
+                continue
+            speed = _car_speed_from_payload(car)
+            if speed is None:
+                continue
+            signals.append(
+                IncidentSignal(
+                    kind="car_speed",
+                    observed_at=entry_observed,
+                    session_key=session_key,
+                    racing_number=rn,
+                    value=speed,
+                    data_quality=data_quality,
+                    driver=_lookup_driver(drivers, rn),
+                    session=session,
+                    signals=("car_speed",),
+                )
+            )
+    return signals
+
+
+def decode_car_data_payload(payload: Any) -> list[Mapping[str, Any]]:
+    """Decode raw or already-decoded CarData.z payloads into entry mappings."""
+    return _extract_car_data_entries(payload)
+
+
 def normalize_session_type(value: Any) -> str:
     text = str(value or "").strip().lower()
     if not text:
@@ -1142,6 +1609,82 @@ def normalize_session_type(value: Any) -> str:
         if any(needle in text for needle in needles):
             return normalized
     return "unknown"
+
+
+def _extract_car_data_entries(payload: Any) -> list[Mapping[str, Any]]:
+    if isinstance(payload, Mapping):
+        entries = payload.get("Entries")
+        if isinstance(entries, list):
+            return [entry for entry in entries if isinstance(entry, Mapping)]
+        if isinstance(payload.get("Cars"), Mapping):
+            return [payload]
+        return []
+    if isinstance(payload, list):
+        return [entry for entry in payload if isinstance(entry, Mapping)]
+
+    text = _decode_text_payload(payload)
+    if text is None:
+        return []
+
+    entries: list[Mapping[str, Any]] = []
+    for line in text.splitlines() or [text]:
+        line = line.strip()
+        if not line:
+            continue
+        decoded = _decode_car_data_line(line)
+        if isinstance(decoded, Mapping):
+            raw_entries = decoded.get("Entries")
+            if isinstance(raw_entries, list):
+                entries.extend(
+                    entry for entry in raw_entries if isinstance(entry, Mapping)
+                )
+            elif isinstance(decoded.get("Cars"), Mapping):
+                entries.append(decoded)
+    return entries
+
+
+def _decode_text_payload(payload: Any) -> str | None:
+    if isinstance(payload, bytes):
+        return payload.decode("utf-8", errors="ignore")
+    if isinstance(payload, str):
+        return payload
+    return None
+
+
+def _decode_car_data_line(line: str) -> Mapping[str, Any] | None:
+    if not line or line.startswith("URL:"):
+        return None
+    encoded = line
+    if '"' in line:
+        try:
+            _, rest = line.split('"', 1)
+            encoded = rest.split('"', 1)[0]
+        except ValueError:
+            return None
+    encoded = encoded.strip()
+    if not encoded:
+        return None
+    try:
+        raw = base64.b64decode(encoded)
+        payload = zlib.decompress(raw, wbits=-15)
+        decoded = json.loads(payload)
+    except Exception:  # noqa: BLE001
+        return None
+    return decoded if isinstance(decoded, Mapping) else None
+
+
+def _car_speed_from_payload(car: Mapping[str, Any]) -> float | None:
+    channels = car.get("Channels")
+    if not isinstance(channels, Mapping):
+        return None
+    speed = _coerce_float(
+        channels.get(_CAR_DATA_SPEED_CHANNEL)
+        if _CAR_DATA_SPEED_CHANNEL in channels
+        else channels.get(int(_CAR_DATA_SPEED_CHANNEL))
+    )
+    if speed is None or speed < 0 or speed > _CAR_DATA_MAX_REASONABLE_SPEED_KPH:
+        return None
+    return speed
 
 
 def _normalize_signal_datetime(signal: IncidentSignal) -> IncidentSignal:
@@ -1245,6 +1788,22 @@ def _coerce_bool(value: Any) -> bool | None:
     return None
 
 
+def _coerce_float(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    return None
+
+
 def _normalize_track_status_value(payload: Mapping[str, Any]) -> str | None:
     message = str(payload.get("Message") or payload.get("TrackStatus") or "").upper()
     status = str(payload.get("Status") or "").strip()
@@ -1292,7 +1851,8 @@ def _race_control_signal_names(item: Mapping[str, Any]) -> tuple[str, ...]:
     names: list[str] = []
     if any(word in text for word in _RACE_CONTROL_CLEAR_WORDS):
         names.append("race_control_clear")
-    if "DOUBLE YELLOW" in text or "YELLOW" in text:
+    yellow_is_context = _race_control_yellow_is_context(text)
+    if yellow_is_context:
         names.append("race_control_yellow")
     if "RED FLAG" in text or re.search(r"\bRED\b", text):
         names.append("race_control_red")
@@ -1300,9 +1860,21 @@ def _race_control_signal_names(item: Mapping[str, Any]) -> tuple[str, ...]:
         names.append("race_control_safety_car")
     if "STOPPED" in text or re.search(r"\bSTOP\b", text):
         names.append("race_control_stopped")
-    if any(word in text for word in _INCIDENT_KEYWORDS):
+    if any(word in text for word in _INCIDENT_KEYWORDS) and (
+        "YELLOW" not in text or yellow_is_context
+    ):
         names.append("race_control_incident")
     return tuple(dict.fromkeys(names))
+
+
+def _race_control_yellow_is_context(text: str) -> bool:
+    if "YELLOW" not in text:
+        return False
+    if "PIT LANE" in text:
+        return False
+    if "DELETED" in text and _RACE_CONTROL_LAP_DELETION_RE.search(text):
+        return False
+    return True
 
 
 def _race_control_is_context(signal: IncidentSignal) -> bool:
@@ -1466,6 +2038,41 @@ def _reason_for_context(
     if track_context is not None and track_context.status is not None:
         return "timing_stopped_with_track_status"
     return "timing_stopped"
+
+
+def _reason_for_car_context(
+    *,
+    track_context: TrackStatusContext | None = None,
+    race_context: RaceControlContext | None = None,
+) -> str:
+    if track_context is not None and track_context.status is not None:
+        if track_context.status == TRACK_STATUS_SC:
+            return "car_low_speed_with_safety_car_context"
+        if track_context.status == TRACK_STATUS_VSC:
+            return "car_low_speed_with_vsc_context"
+        if track_context.status == TRACK_STATUS_RED:
+            return "car_low_speed_with_red_flag_context"
+    if race_context is not None and race_context.message is not None:
+        return "car_low_speed_with_race_control"
+    if track_context is not None and track_context.status is not None:
+        return "car_low_speed_with_track_status"
+    return "car_low_speed"
+
+
+def _merge_track_context(
+    current: TrackStatusContext, new: TrackStatusContext
+) -> TrackStatusContext:
+    if new.status is not None or new.message is not None:
+        return new
+    return current
+
+
+def _merge_race_context(
+    current: RaceControlContext, new: RaceControlContext
+) -> RaceControlContext:
+    if new.message is not None or new.category is not None or new.flag is not None:
+        return new
+    return current
 
 
 def _append_unique(values: list[str], value: str) -> None:

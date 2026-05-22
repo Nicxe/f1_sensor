@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 import json
 import logging
 from typing import Any
@@ -111,6 +112,25 @@ def _timing(stopped: bool) -> dict[str, Any]:
     }
 
 
+def _cardata(at, speed: int = 0) -> dict[str, Any]:
+    return {
+        "Entries": [
+            {
+                "Utc": at.isoformat().replace("+00:00", "Z"),
+                "Cars": {"10": {"Channels": {"2": speed}}},
+            }
+        ]
+    }
+
+
+def _track_status(at, status: str = "2", message: str = "Yellow") -> dict[str, Any]:
+    return {
+        "Utc": at.isoformat().replace("+00:00", "Z"),
+        "Status": status,
+        "Message": message,
+    }
+
+
 def _race_control() -> dict[str, Any]:
     return {
         "Messages": [
@@ -211,6 +231,41 @@ async def test_incident_events_confirm_update_dedupe_and_clear(hass) -> None:
         assert events[-1]["incident_id"] == confirmed["incident_id"]
         assert coordinator.data["active_count"] == 0
         assert coordinator.data["latest_phase"] == "cleared"
+    finally:
+        unsub()
+        await coordinator.async_close()
+
+
+@pytest.mark.asyncio
+async def test_incident_cardata_candidate_event_is_deduped_and_not_confirmed(
+    hass,
+) -> None:
+    bus = FakeIncidentLiveBus(auth_header="Bearer secret-token")
+    events = []
+    unsub = hass.bus.async_listen(
+        _INCIDENT_EVENT, lambda event: events.append(event.data)
+    )
+    coordinator = await _coordinator(hass, bus)
+    base = datetime.now(UTC).replace(microsecond=0)
+
+    try:
+        await _prime_context(hass, bus)
+        bus.emit("CarData.z", _cardata(base, 0))
+        bus.emit("CarData.z", _cardata(base + timedelta(seconds=2), 0))
+        bus.emit("TrackStatus", _track_status(base + timedelta(seconds=5)))
+        await hass.async_block_till_done()
+
+        assert [event["phase"] for event in events] == ["candidate"]
+        candidate = events[-1]
+        assert candidate["confidence"] == "medium"
+        assert candidate["reason"] == "car_low_speed_with_track_status"
+        assert "car_low_speed" in candidate["signals"]
+        assert coordinator.data["active_count"] == 1
+
+        bus.emit("TrackStatus", _track_status(base + timedelta(seconds=6)))
+        await hass.async_block_till_done()
+
+        assert [event["phase"] for event in events] == ["candidate"]
     finally:
         unsub()
         await coordinator.async_close()
