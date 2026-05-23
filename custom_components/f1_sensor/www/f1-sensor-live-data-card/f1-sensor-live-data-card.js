@@ -12226,8 +12226,8 @@ class F1LiveSessionCard extends LitElement {
                 </div>
               ` : null}
               <div class="ls-weather-col">
-                <span class="ls-weather-label">Rain</span>
-                <span class="ls-weather-value">${weather.rainfall > 0 ? 'Yes' : 'No'}</span>
+                <span class="ls-weather-label">Weather</span>
+                <span class="ls-weather-value">${weather.rainfall > 0 ? 'Wet' : 'Dry'}</span>
               </div>
             </div>
           ` : null}
