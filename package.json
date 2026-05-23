@@ -57,6 +57,12 @@
     "brace-expansion": "^2.0.3",
     "minimatch": "^3.1.4",
     "serialize-javascript": ">=7.0.5",
-    "picomatch": ">=4.0.4"
+    "picomatch": ">=4.0.4",
+    "ip-address": "^10.1.1",
+    "qs": "^6.15.2",
+    "uuid": "^11.1.1",
+    "webpack-dev-server": {
+      "ws": "^8.20.1"
+    }
   }
 }
