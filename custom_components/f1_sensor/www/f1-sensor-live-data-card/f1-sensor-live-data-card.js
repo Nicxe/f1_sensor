@@ -11195,71 +11195,202 @@ class F1LiveSessionCard extends LitElement {
       letter-spacing: 0.04em;
     }
 
-    .ls-time-value {
-      font-family: 'Formula1 Display', Arial, sans-serif;
-      font-weight: 700;
-      font-size: clamp(11px, 1.5vw, 13px);
-      color: var(--ls-text);
-    }
+	    .ls-time-value {
+	      font-family: 'Formula1 Display', Arial, sans-serif;
+	      font-weight: 700;
+	      font-size: clamp(11px, 1.5vw, 13px);
+	      color: var(--ls-text);
+	    }
 
-    @container (max-width: 400px) {
-      .ls-weather {
-        gap: clamp(6px, 1vw, 10px);
-      }
-      .ls-weather-col {
-        flex: 0 1 auto;
-      }
-      .ls-laps-group {
-        display: none;
-      }
-    }
+	    .ls-layout-compact {
+	      gap: 8px;
+	      padding: 10px 12px;
+	    }
 
-    @container (max-width: 760px) {
-      .ls-laps-group,
-      .ls-time-group {
-        margin-left: 0;
-        padding-left: 0;
-        border-left: none;
-        flex: 1 1 150px;
-      }
+	    .ls-layout-compact .ls-header {
+	      display: grid;
+	      grid-template-columns: minmax(0, 1fr) auto;
+	      align-items: center;
+	      gap: 8px 10px;
+	    }
 
-      .ls-status-group {
-        margin-left: 0;
-        width: 100%;
-        align-items: flex-start;
-      }
+	    .ls-layout-compact .ls-session-info {
+	      flex: 1 1 auto;
+	      width: auto;
+	    }
 
-      .ls-status-row {
-        justify-content: flex-start;
-      }
-    }
+	    .ls-layout-compact .ls-flag {
+	      width: 24px;
+	    }
 
-    @container (max-width: 520px) {
-      .ls-header {
-        flex-direction: column;
-      }
+	    .ls-layout-compact .ls-gp-name {
+	      font-size: 13px;
+	      line-height: 1.05;
+	    }
 
-      .ls-session-info,
-      .ls-laps-group,
-      .ls-time-group,
-      .ls-status-group {
-        width: 100%;
-      }
+	    .ls-layout-compact .ls-session-type {
+	      gap: 4px;
+	      font-size: 9px;
+	      line-height: 1.2;
+	    }
 
-      .ls-weather {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
+	    .ls-layout-compact .ls-laps-group,
+	    .ls-layout-compact .ls-time-group {
+	      margin-left: 0;
+	      padding-left: 0;
+	      border-left: none;
+	      width: auto;
+	    }
 
-      .ls-weather-col {
-        align-items: flex-start;
-      }
+	    .ls-layout-compact .ls-laps-group {
+	      grid-column: 1 / 2;
+	      flex: 1 1 auto;
+	    }
 
-      .ls-weather-value {
-        text-align: left;
-      }
-    }
-  `];
+	    .ls-layout-compact .ls-time-group {
+	      grid-column: 2 / 3;
+	      justify-self: end;
+	      align-items: flex-end;
+	      gap: 2px;
+	    }
+
+	    .ls-layout-compact .ls-time-row {
+	      gap: 4px;
+	    }
+
+	    .ls-layout-compact .ls-status-group {
+	      grid-column: 2 / 3;
+	      grid-row: 1;
+	      justify-self: end;
+	      margin-left: 0;
+	      width: auto;
+	      align-items: flex-end;
+	    }
+
+	    .ls-layout-compact .ls-status-row {
+	      justify-content: flex-end;
+	    }
+
+	    .ls-layout-compact .ls-status-pill {
+	      padding: 4px 8px;
+	      border-radius: 14px;
+	      font-size: 9px;
+	    }
+
+	    .ls-layout-compact .ls-aero-pill {
+	      padding: 2px 5px;
+	      font-size: 7px;
+	    }
+
+	    .ls-layout-compact .ls-weather {
+	      display: grid;
+	      grid-template-columns: repeat(3, minmax(0, 1fr));
+	      gap: 6px 8px;
+	      padding-top: 8px;
+	    }
+
+	    .ls-layout-compact .ls-weather-col {
+	      min-width: 0;
+	      align-items: flex-start;
+	      gap: 0;
+	    }
+
+	    .ls-layout-compact .ls-weather-label {
+	      font-size: 8px;
+	      line-height: 1.1;
+	    }
+
+	    .ls-layout-compact .ls-weather-value {
+	      font-size: 11px;
+	      line-height: 1.1;
+	      text-align: left;
+	      overflow-wrap: anywhere;
+	    }
+
+	    @container (max-width: 400px) {
+	      .ls-layout-full .ls-weather {
+	        gap: clamp(6px, 1vw, 10px);
+	      }
+	      .ls-layout-full .ls-weather-col {
+	        flex: 0 1 auto;
+	      }
+	      .ls-layout-full .ls-laps-group {
+	        display: none;
+	      }
+	    }
+
+	    @container (max-width: 760px) {
+	      .ls-layout-full .ls-laps-group,
+	      .ls-layout-full .ls-time-group {
+	        margin-left: 0;
+	        padding-left: 0;
+	        border-left: none;
+	        flex: 1 1 150px;
+	      }
+
+	      .ls-layout-full .ls-status-group {
+	        margin-left: 0;
+	        width: 100%;
+	        align-items: flex-start;
+	      }
+
+	      .ls-layout-full .ls-status-row {
+	        justify-content: flex-start;
+	      }
+	    }
+
+	    @container (max-width: 520px) {
+	      .ls-layout-full .ls-header {
+	        flex-direction: column;
+	      }
+
+	      .ls-layout-full .ls-session-info,
+	      .ls-layout-full .ls-laps-group,
+	      .ls-layout-full .ls-time-group,
+	      .ls-layout-full .ls-status-group {
+	        width: 100%;
+	      }
+
+	      .ls-layout-full .ls-weather {
+	        display: grid;
+	        grid-template-columns: repeat(2, minmax(0, 1fr));
+	      }
+
+	      .ls-layout-full .ls-weather-col {
+	        align-items: flex-start;
+	      }
+
+	      .ls-layout-full .ls-weather-value {
+	        text-align: left;
+	      }
+	    }
+
+	    @container (max-width: 360px) {
+	      .ls-layout-compact .ls-header {
+	        grid-template-columns: minmax(0, 1fr);
+	      }
+
+	      .ls-layout-compact .ls-laps-group,
+	      .ls-layout-compact .ls-time-group,
+	      .ls-layout-compact .ls-status-group {
+	        grid-column: 1 / -1;
+	        justify-self: start;
+	        align-items: flex-start;
+	      }
+
+	      .ls-layout-compact .ls-status-group {
+	        grid-row: auto;
+	      }
+
+	      .ls-layout-compact .ls-status-row {
+	        justify-content: flex-start;
+	      }
+
+	      .ls-layout-compact .ls-weather {
+	        grid-template-columns: repeat(2, minmax(0, 1fr));
+	      }
+	    }
+	  `];
 
   connectedCallback() {
     super.connectedCallback();
@@ -11272,12 +11403,13 @@ class F1LiveSessionCard extends LitElement {
     this._clearSessionClockTimer();
   }
 
-  setConfig(config) {
-    this.config = {
-      theme_mode: DEFAULT_F1_THEME_MODE,
-      show_flag: true,
-      show_lap_progress: true,
-      show_track_status: true,
+	  setConfig(config) {
+	    this.config = {
+	      theme_mode: DEFAULT_F1_THEME_MODE,
+	      layout_mode: 'auto',
+	      show_flag: true,
+	      show_lap_progress: true,
+	      show_track_status: true,
       show_weather: true,
       show_time_remaining: false,
       show_time_elapsed: false,
@@ -11301,11 +11433,12 @@ class F1LiveSessionCard extends LitElement {
       weather_entity: '',
       next_race_entity: '',
       session_time_remaining_entity: '',
-      session_time_elapsed_entity: '',
-      overtake_mode_entity: '',
-      straight_mode_entity: '',
-    };
-  }
+	      session_time_elapsed_entity: '',
+	      overtake_mode_entity: '',
+	      straight_mode_entity: '',
+	      layout_mode: 'auto',
+	    };
+	  }
 
   getCardSize() {
     return 2;
@@ -11855,17 +11988,30 @@ class F1LiveSessionCard extends LitElement {
     return '';
   }
 
-  _isCountdownImminent() {
-    const sessionStatus = this._getSessionStatusData();
-    const startValue = this._getSessionStartValue(sessionStatus);
-    const start = this._parseDateWithOffset(startValue, sessionStatus?.gmt_offset);
-    if (!start) return false;
-    const diffMs = start.getTime() - Date.now();
-    return diffMs > 0 && diffMs < 5 * 60 * 1000; // Less than 5 minutes
-  }
+	  _isCountdownImminent() {
+	    const sessionStatus = this._getSessionStatusData();
+	    const startValue = this._getSessionStartValue(sessionStatus);
+	    const start = this._parseDateWithOffset(startValue, sessionStatus?.gmt_offset);
+	    if (!start) return false;
+	    const diffMs = start.getTime() - Date.now();
+	    return diffMs > 0 && diffMs < 5 * 60 * 1000; // Less than 5 minutes
+	  }
 
-  render() {
-    if (!this.hass || !this.config) {
+	  _normalizeLayoutMode(value) {
+	    const mode = String(value || 'auto').trim().toLowerCase();
+	    if (mode === 'compact' || mode === 'full') return mode;
+	    return 'auto';
+	  }
+
+	  _getEffectiveLayoutMode() {
+	    const mode = this._normalizeLayoutMode(this.config?.layout_mode);
+	    if (mode !== 'auto') return mode;
+	    const width = this._responsiveCardWidth || measureRenderedCardWidth(this);
+	    return width > 0 && width <= 520 ? 'compact' : 'full';
+	  }
+
+	  render() {
+	    if (!this.hass || !this.config) {
       return html`<ha-card><div class="ls-card ls-unavailable">Loading...</div></ha-card>`;
     }
     const sessionEntityId = this._configuredEntityId(
@@ -11881,18 +12027,20 @@ class F1LiveSessionCard extends LitElement {
     const nextRace = (!session && !sessionStatus) ? this._getNextRaceData() : null;
     if (!session && !sessionStatus && !nextRace) {
       return html`<ha-card><div class="ls-card ls-unavailable">No session data</div></ha-card>`;
-    }
-    this._ensureCountdownTimer(sessionStatus, nextRace);
-    this._ensureSessionClockTimer();
+	    }
+	    this._ensureCountdownTimer(sessionStatus, nextRace);
+	    this._ensureSessionClockTimer();
+	    const layoutMode = this._getEffectiveLayoutMode();
+	    const compactLayout = layoutMode === 'compact';
 
-    if (nextRace) {
+	    if (nextRace) {
       const gpName = nextRace.race_name?.replace(' Grand Prix', ' GP') || nextRace.race_name || 'Next race';
       const countdown = this._getNextRaceCountdown(nextRace);
       const flagUrl = nextRace.country_flag_url;
-      return html`
-        <ha-card>
-          <div class="ls-card">
-            <div class="ls-header">
+	      return html`
+	        <ha-card>
+	          <div class="ls-card ls-layout-${layoutMode}">
+	            <div class="ls-header">
               ${this.config.show_flag !== false ? html`
                 <div class="ls-session-info">
                   ${flagUrl ? html`<img class="ls-flag" src="${flagUrl}" alt="${nextRace.circuit_country || ''}" />` : null}
@@ -11951,10 +12099,10 @@ class F1LiveSessionCard extends LitElement {
     const statusColor = trackStatusColors[trackStatus] || trackStatusColors.CLEAR;
     const statusLabel = TRACK_STATUS_LABELS[trackStatus] || 'Unknown';
 
-    return html`
-      <ha-card>
-        <div class="ls-card">
-          <div class="ls-header">
+	    return html`
+	      <ha-card>
+	        <div class="ls-card ls-layout-${layoutMode}">
+	          <div class="ls-header">
             ${this.config.show_flag !== false ? html`
               <div class="ls-session-info">
                 ${flagUrl ? html`<img class="ls-flag" src="${flagUrl}" alt="${data.meeting_country || ''}" />` : null}
@@ -12000,11 +12148,11 @@ class F1LiveSessionCard extends LitElement {
               const showElapsed = this.config.show_time_elapsed && clockData.elapsed;
               return (showRemaining || showElapsed) ? html`
                 <div class="ls-time-group">
-                  ${showRemaining ? html`
-                    <div class="ls-time-row">
-                      <span class="ls-time-label">Remaining</span>
-                      <span class="ls-time-value">${clockData.remaining}</span>
-                    </div>
+	                  ${showRemaining ? html`
+	                    <div class="ls-time-row">
+	                      <span class="ls-time-label">${compactLayout ? 'Left' : 'Remaining'}</span>
+	                      <span class="ls-time-value">${clockData.remaining}</span>
+	                    </div>
                   ` : null}
                   ${showElapsed ? html`
                     <div class="ls-time-row">
@@ -12192,10 +12340,11 @@ class F1LiveSessionCardEditor extends LitElement {
     this._activeTab = 'sources';
   }
 
-  setConfig(config) {
-    this._config = {
-      show_flag: true,
-      show_lap_progress: true,
+	  setConfig(config) {
+	    this._config = {
+	      layout_mode: 'auto',
+	      show_flag: true,
+	      show_lap_progress: true,
       show_track_status: true,
       show_weather: true,
       show_time_remaining: false,
@@ -12321,9 +12470,14 @@ class F1LiveSessionCardEditor extends LitElement {
 
   _renderDisplayTab() {
     return html`
-      <div class="display-section">
-        ${renderThemeModeSelect(this)}
-        ${this._renderSwitch('show_flag', 'Show country flag')}
+	      <div class="display-section">
+	        ${renderThemeModeSelect(this)}
+	        ${renderEditorSelect(this, 'layout_mode', 'Layout mode', [
+	          { value: 'auto', label: 'Auto compact on narrow cards' },
+	          { value: 'compact', label: 'Compact' },
+	          { value: 'full', label: 'Full' },
+	        ], 'Auto keeps the full desktop layout and condenses the card on narrow mobile or Sections layouts.')}
+	        ${this._renderSwitch('show_flag', 'Show country flag')}
         ${this._renderSwitch('show_lap_progress', 'Show lap progress')}
         ${this._renderSwitch('show_track_status', 'Show track status pill')}
         ${this._renderSwitch('show_weather', 'Show weather data')}

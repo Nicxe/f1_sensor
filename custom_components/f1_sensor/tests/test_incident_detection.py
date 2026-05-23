@@ -179,7 +179,37 @@ def test_normalize_race_control_extracts_driver_number_from_message() -> None:
     assert signals[0].kind == "race_control"
     assert signals[0].racing_number == "10"
     assert "race_control_yellow" in signals[0].signals
-    assert "race_control_incident" in signals[0].signals
+    assert "race_control_incident" not in signals[0].signals
+
+
+def test_normalize_race_control_sporting_incident_is_not_incident_context() -> None:
+    signals = _race_control(
+        BASE,
+        "TURN 14 INCIDENT INVOLVING CAR 10 (GAS) NOTED - IMPEDING (16:34:57)",
+        category="Other",
+        flag="",
+    )
+
+    assert len(signals) == 1
+    assert signals[0].racing_number == "10"
+    assert signals[0].signals == ()
+
+
+def test_sporting_race_control_message_does_not_create_candidate() -> None:
+    detector = IncidentDetector()
+    _bootstrap_clean(detector)
+
+    changes = detector.process_signals(
+        _race_control(
+            BASE + timedelta(seconds=10),
+            "TURN 14 INCIDENT INVOLVING CAR 10 (GAS) NOTED - IMPEDING (16:34:57)",
+            category="Other",
+            flag="",
+        )
+    )
+
+    assert changes == []
+    assert detector.active_incidents(SESSION.session_key) == ()
 
 
 def test_normalize_race_control_ignores_pit_lane_yellow_context() -> None:

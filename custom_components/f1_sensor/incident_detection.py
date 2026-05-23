@@ -106,15 +106,14 @@ _SESSION_TYPE_PATTERNS = (
 _INCIDENT_KEYWORDS = frozenset(
     {
         "ACCIDENT",
+        "BARRIER",
         "CRASH",
-        "DOUBLE YELLOW",
-        "INCIDENT",
+        "GRAVEL",
         "OFF TRACK",
-        "RED FLAG",
         "SPUN",
+        "STRANDED",
         "STOP",
         "STOPPED",
-        "YELLOW",
     }
 )
 _RACE_CONTROL_CLEAR_WORDS = frozenset({"CLEAR", "ALL CLEAR"})
@@ -1860,9 +1859,7 @@ def _race_control_signal_names(item: Mapping[str, Any]) -> tuple[str, ...]:
         names.append("race_control_safety_car")
     if "STOPPED" in text or re.search(r"\bSTOP\b", text):
         names.append("race_control_stopped")
-    if any(word in text for word in _INCIDENT_KEYWORDS) and (
-        "YELLOW" not in text or yellow_is_context
-    ):
+    if any(word in text for word in _INCIDENT_KEYWORDS):
         names.append("race_control_incident")
     return tuple(dict.fromkeys(names))
 
