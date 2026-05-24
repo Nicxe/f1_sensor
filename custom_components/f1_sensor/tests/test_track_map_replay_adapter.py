@@ -20,6 +20,7 @@ from custom_components.f1_sensor.track_map import (
     TRACK_MAP_FALLBACK_STATE_WAITING_FOR_REPLAY_POSITION_Z,
     TRACK_MAP_POSITION_STREAM,
     TRACK_MAP_REPLAY_GEOMETRY_SOURCE,
+    TRACK_MAP_SOURCE_LIVE,
     TRACK_MAP_STATIC_GEOMETRY_SOURCE,
     TRACK_MAP_STATUS_ACTIVE,
     TrackMapPosition,
@@ -177,6 +178,39 @@ def test_track_map_replay_adapter_feeds_store_and_geometry() -> None:
 
     adapter.reset_for_replay()
     assert store.snapshot(now=BASE_TIME + timedelta(seconds=1))["session"] is None
+
+
+def test_track_map_adapter_marks_auth_live_positions_as_live_source() -> None:
+    store = TrackMapStore("entry-1", stale_after=timedelta(days=30))
+    bus = FakeBus()
+    adapter = TrackMapReplayAdapter(
+        store,
+        bus,
+        position_source_resolver=lambda: TRACK_MAP_SOURCE_LIVE,
+    )
+    adapter.start()
+    positions = parse_position_z_line(
+        _json_stream_line(
+            _position_payload({"1": {"Status": "OnTrack", "X": 100, "Y": 200, "Z": 7}})
+        )
+    )
+
+    bus.emit("SessionInfo", _static_session_payload())
+    bus.emit(
+        "DriverList",
+        {"1": {"RacingNumber": "1", "Tla": "VER", "TeamColour": "#3671C6"}},
+    )
+    bus.emit(TRACK_MAP_POSITION_STREAM, track_map_positions_to_payload(positions))
+
+    snapshot = store.snapshot(now=BASE_TIME + timedelta(seconds=1))
+    diagnostics = store.diagnostics(now=BASE_TIME + timedelta(seconds=1))
+
+    assert snapshot["source"] == TRACK_MAP_SOURCE_LIVE
+    assert snapshot["status"] == TRACK_MAP_STATUS_ACTIVE
+    assert snapshot["track"]["source"] == TRACK_MAP_STATIC_GEOMETRY_SOURCE
+    assert snapshot["drivers"][0]["z"] == 7
+    assert diagnostics["source"] == TRACK_MAP_SOURCE_LIVE
+    assert diagnostics["fallback_state"] == TRACK_MAP_FALLBACK_STATE_STATIC_CATALOG
 
 
 def test_track_map_replay_adapter_builds_geometry_from_one_driver() -> None:

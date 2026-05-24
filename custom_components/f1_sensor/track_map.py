@@ -47,6 +47,7 @@ DEFAULT_TRACK_MAP_REPLAY_INTERPOLATION_MIN_SECONDS = 0.45
 DEFAULT_TRACK_MAP_REPLAY_INTERPOLATION_MAX_SECONDS = 2.0
 DEFAULT_TRACK_MAP_REPLAY_INTERPOLATION_FACTOR = 2.2
 MAX_TRACK_MAP_RACING_NUMBER = 99
+TRACK_MAP_SOURCE_LIVE = "live"
 TRACK_MAP_SOURCE_REPLAY = "replay"
 
 
@@ -204,6 +205,7 @@ class TrackMapReplayAdapter:
         geometry_rebuild_frames: int = DEFAULT_TRACK_MAP_GEOMETRY_REBUILD_FRAMES,
         geometry_min_driver_points: int = DEFAULT_TRACK_MAP_GEOMETRY_MIN_DRIVER_POINTS,
         interpolation_tick_seconds: float = DEFAULT_TRACK_MAP_REPLAY_INTERPOLATION_TICK_SECONDS,
+        position_source_resolver: Callable[[], str] | None = None,
     ) -> None:
         self._store = store
         self._bus = bus
@@ -221,6 +223,7 @@ class TrackMapReplayAdapter:
         self._driver_sample_interval_seconds = 0.0
         self._replay_state: str | None = None
         self._interpolation_tick_seconds = max(0.02, float(interpolation_tick_seconds))
+        self._position_source_resolver = position_source_resolver
         self._interpolation_handle: Any | None = None
         self._unsubs: list[Callable[[], None]] = []
         self._closed = False
@@ -318,7 +321,7 @@ class TrackMapReplayAdapter:
         else:
             self._cancel_interpolation_timer()
             self._position_segments.clear()
-            self._store.update_positions(positions, source=TRACK_MAP_SOURCE_REPLAY)
+            self._store.update_positions(positions, source=self._position_source())
         self._extend_geometry_positions(positions)
         self._maybe_rebuild_geometry()
 
@@ -493,6 +496,14 @@ class TrackMapReplayAdapter:
                 * DEFAULT_TRACK_MAP_REPLAY_INTERPOLATION_FACTOR,
             ),
         )
+
+    def _position_source(self) -> str:
+        if callable(self._position_source_resolver):
+            with suppress(Exception):
+                source = str(self._position_source_resolver() or "").strip()
+                if source:
+                    return source
+        return TRACK_MAP_SOURCE_REPLAY
 
     def _schedule_interpolation_tick(self) -> None:
         if self._closed or self._replay_state != "playing":

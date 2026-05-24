@@ -123,7 +123,13 @@ from .signalr import (
     build_live_subscribe_streams,
 )
 from .starting_grid import StartingGridCoordinator
-from .track_map import TrackMapReplayAdapter, TrackMapRuntimeData, TrackMapStore
+from .track_map import (
+    TRACK_MAP_SOURCE_LIVE,
+    TRACK_MAP_SOURCE_REPLAY,
+    TrackMapReplayAdapter,
+    TrackMapRuntimeData,
+    TrackMapStore,
+)
 from .track_map_websocket import TRACK_MAP_WS_MARKER, async_register_track_map_websocket
 
 _LOGGER = logging.getLogger(__name__)
@@ -1633,6 +1639,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         and auth_transport_enabled
         and live_timing_auth_status.status not in AUTH_REPAIR_STATUSES
     )
+    auth_reauth_required = bool(live_timing_auth_status.issue_required)
     if not auth_can_be_used:
         live_timing_auth_header = ""
     else:
@@ -1985,12 +1992,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         await championship_prediction_coordinator.async_config_entry_first_refresh()
 
+    def _track_map_position_source() -> str:
+        if operation_mode == OPERATION_MODE_DEVELOPMENT:
+            return TRACK_MAP_SOURCE_REPLAY
+        reason = getattr(live_state, "reason", None)
+        if _is_replay_delay_reason(reason) or _is_replay_only_active_reason(reason):
+            return TRACK_MAP_SOURCE_REPLAY
+        return TRACK_MAP_SOURCE_LIVE
+
     track_map_store = TrackMapStore(entry.entry_id)
     track_map_replay_adapter = TrackMapReplayAdapter(
         track_map_store,
         live_bus,
         hass=hass,
         replay_controller=replay_controller,
+        position_source_resolver=_track_map_position_source,
     )
     track_map_replay_adapter.start()
     entry.runtime_data = TrackMapRuntimeData(track_map_store=track_map_store)
@@ -2079,6 +2095,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if isinstance(hass_data, dict):
         async_update_f1tv_auth_repair_issue(hass, entry, live_timing_auth_status)
         async_schedule_f1tv_auth_status_refresh(hass, entry)
+        if auth_reauth_required:
+            entry.async_start_reauth(hass, data=entry.data)
 
         def _on_component_loaded(event):
             component = str((getattr(event, "data", {}) or {}).get("component") or "")

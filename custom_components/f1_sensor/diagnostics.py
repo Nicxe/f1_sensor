@@ -43,6 +43,7 @@ _TRACKED_STREAMS = (
     "ChampionshipPrediction",
     "DriverRaceInfo",
     "CarData.z",
+    "Position.z",
     "PitStopSeries",
 )
 

@@ -139,6 +139,8 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
         "last_seen_age_s": 1.0,
         "last_payload_keys": ["Drivers", "Teams"],
     }
+    diagnostic_streams = live_bus.stream_diagnostics.call_args.args[0]
+    assert "Position.z" in diagnostic_streams
     assert payload["runtime"]["incident_detection"] == {
         "active_count": 1,
         "highest_confidence": "high",

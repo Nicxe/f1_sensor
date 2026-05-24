@@ -142,6 +142,18 @@ def test_track_map_subscribe_sends_initial_and_update_events(hass) -> None:
     assert connection.events[-1][1]["snapshot"]["drivers"][0]["racing_number"] == "16"
 
 
+def test_track_map_websocket_exposes_live_position_source_and_z(hass) -> None:
+    store = _store(hass)
+    store.update_session_info(_session_payload())
+    store.update_positions([_position("16")], source="live")
+
+    payload = _track_map_payload(hass, "entry-1")
+
+    assert payload["snapshot"]["source"] == "live"
+    assert payload["snapshot"]["drivers"][0]["racing_number"] == "16"
+    assert payload["snapshot"]["drivers"][0]["z"] == 0
+
+
 def test_track_map_subscribe_returns_not_loaded_when_store_is_missing(hass) -> None:
     connection = FakeConnection()
 

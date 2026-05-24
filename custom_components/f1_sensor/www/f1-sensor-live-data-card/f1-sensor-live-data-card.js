@@ -25958,102 +25958,235 @@ class F1TrackMapCard extends LitElement {
     css`
       :host {
         display: block;
+        font-family: 'Formula1 Display', 'Titillium Web', Arial, sans-serif;
       }
 
       ha-card {
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
+        border: none;
         overflow: hidden;
-        border-radius: var(--ha-card-border-radius, 12px);
-        background: var(--f1-card-bg);
-        color: var(--f1-card-text);
       }
 
-      .tm-shell {
-        display: grid;
-        grid-template-rows: auto minmax(260px, 1fr) auto;
-        min-height: 360px;
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
-      }
-
-      .tm-header,
-      .tm-footer {
+      .tm-card {
+        --tm-status-color: var(--f1-status-success);
+        --tm-status-bg: var(--f1-status-success-bg);
+        --tm-status-border: var(--f1-status-success-border);
+        --tm-track-color: #34c759;
+        position: relative;
         display: flex;
-        align-items: center;
-        justify-content: space-between;
+        flex-direction: column;
         gap: 12px;
-        padding: 14px 16px;
+        min-height: 360px;
+        padding: clamp(12px, 2vw, 18px);
+        border-radius: var(--ha-card-border-radius, 12px);
+        background:
+          radial-gradient(circle at 12% 8%, var(--f1-card-panel), transparent 42%),
+          linear-gradient(160deg, var(--f1-card-bg) 0%, var(--f1-card-bg-soft) 62%, var(--f1-card-bg-end) 100%);
+        border: 1px solid var(--f1-card-border);
+        box-shadow: var(--f1-card-shadow);
+        color: var(--f1-card-text);
+        container-type: inline-size;
+        overflow: hidden;
+      }
+
+      .tm-card[data-track-status="YELLOW"] {
+        --tm-track-color: #ffd60a;
+      }
+
+      .tm-card[data-track-status="VSC"],
+      .tm-card[data-track-status="SC"] {
+        --tm-track-color: #ff9500;
+      }
+
+      .tm-card[data-track-status="RED"] {
+        --tm-track-color: #ff3b30;
+      }
+
+      .tm-card[data-state="stale"] {
+        --tm-status-color: var(--f1-status-warning);
+        --tm-status-bg: var(--f1-status-warning-bg);
+        --tm-status-border: var(--f1-status-warning-border);
+      }
+
+      .tm-card[data-state="seeking"],
+      .tm-card[data-state="no_position_data"] {
+        --tm-status-color: var(--f1-status-info);
+        --tm-status-bg: var(--f1-status-info-bg);
+        --tm-status-border: var(--f1-status-info-border);
+      }
+
+      .tm-card[data-state="paused"],
+      .tm-card[data-state="no_geometry"] {
+        --tm-status-color: var(--f1-status-warning);
+        --tm-status-bg: var(--f1-status-warning-bg);
+        --tm-status-border: var(--f1-status-warning-border);
+      }
+
+      .tm-card[data-state="not_loaded"],
+      .tm-card[data-state="no_session"],
+      .tm-card[data-state="closed"] {
+        --tm-status-color: var(--f1-status-neutral);
+        --tm-status-bg: var(--f1-status-neutral-bg);
+        --tm-status-border: var(--f1-status-neutral-border);
+      }
+
+      .tm-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .tm-title-block {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        min-width: 0;
+        flex: 1 1 auto;
       }
 
       .tm-title {
-        font-family: var(--f1-font-display, "Formula1 Display", sans-serif);
-        font-size: 16px;
+        font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+        font-size: clamp(16px, 2.4vw, 20px);
+        font-weight: 700;
         line-height: 1.1;
-        letter-spacing: 0;
-        white-space: nowrap;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        text-shadow: var(--f1-card-title-shadow);
+        overflow-wrap: anywhere;
+      }
+
+      .tm-subtitle {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 7px;
+        color: var(--f1-card-muted);
+        font-size: var(--f1-table-meta-font-size, 10px);
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        line-height: 1.35;
+      }
+
+      .tm-badges {
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 7px;
+        flex: 0 1 auto;
       }
 
       .tm-status {
         display: inline-flex;
         align-items: center;
-        min-height: 24px;
-        padding: 0 9px;
-        border: 1px solid var(--f1-card-border);
+        justify-content: center;
+        min-height: 25px;
+        padding: 4px 10px;
+        border: 1px solid var(--tm-status-border);
         border-radius: 999px;
-        color: var(--f1-card-muted);
-        font-size: 11px;
+        background: var(--tm-status-bg);
+        color: var(--tm-status-color);
+        font-size: var(--f1-table-meta-font-size, 10px);
         font-weight: 700;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
         white-space: nowrap;
       }
 
-      .tm-status[data-state="active"],
-      .tm-status[data-state="paused"],
-      .tm-status[data-state="playing"],
-      .tm-status[data-state="no_geometry"] {
-        border-color: rgba(0, 210, 106, 0.55);
-        color: #48e28a;
+      .tm-status.track {
+        --tm-status-color: var(--tm-track-color);
+        --tm-status-bg: color-mix(in srgb, var(--tm-track-color) 18%, transparent);
+        --tm-status-border: color-mix(in srgb, var(--tm-track-color) 48%, transparent);
       }
 
-      .tm-status[data-state="seeking"] {
-        border-color: rgba(56, 189, 248, 0.55);
-        color: #7dd3fc;
+      .tm-status.track.alert {
+        animation: tmPulse 1.6s ease-in-out infinite;
       }
 
-      .tm-status[data-state="stale"] {
-        border-color: rgba(255, 190, 73, 0.55);
-        color: #ffcb69;
+      .tm-lap-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 98px;
+      }
+
+      .tm-lap-progress {
+        height: 4px;
+        border-radius: 999px;
+        background: var(--f1-card-chip);
+        overflow: hidden;
+      }
+
+      .tm-lap-bar {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #e10600, #ff3b30);
+        transition: width 0.35s ease-out;
       }
 
       .tm-canvas-frame {
         position: relative;
-        min-height: 260px;
-        margin: 0 12px;
-        border: 1px solid var(--f1-card-border);
+        flex: 1 1 auto;
+        min-height: 280px;
+        aspect-ratio: 16 / 8;
+        border: 1px solid var(--f1-card-divider-strong);
+        border-radius: 10px;
         background: #07090c;
+        overflow: hidden;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
       }
 
       canvas {
         display: block;
         width: 100%;
         height: 100%;
-        min-height: 260px;
+        min-height: inherit;
       }
 
       .tm-empty {
         position: absolute;
         inset: 0;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 24px;
+        gap: 6px;
+        padding: 24px 28px;
+        background: linear-gradient(180deg, rgba(7, 9, 12, 0.24), rgba(7, 9, 12, 0.58));
         color: var(--f1-card-muted);
-        font-size: 13px;
         text-align: center;
         pointer-events: none;
       }
 
-      .tm-footer {
-        color: var(--f1-card-muted);
+      .tm-empty-title {
+        color: var(--f1-card-text);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .tm-empty-detail {
+        max-width: 360px;
         font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .tm-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        color: var(--f1-card-muted);
+        font-size: var(--f1-table-meta-font-size, 10px);
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
         min-width: 0;
       }
 
@@ -26064,7 +26197,42 @@ class F1TrackMapCard extends LitElement {
         white-space: nowrap;
       }
 
-      @media (max-width: 600px) {
+      .tm-card[data-layout='compact'] {
+        gap: 9px;
+        min-height: 320px;
+        padding: 12px;
+      }
+
+      .tm-card[data-layout='compact'] .tm-header,
+      .tm-card[data-layout='compact'] .tm-footer {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .tm-card[data-layout='compact'] .tm-badges {
+        justify-content: flex-start;
+      }
+
+      .tm-card[data-layout='compact'] .tm-canvas-frame {
+        min-height: 240px;
+        aspect-ratio: 4 / 3;
+      }
+
+      @keyframes tmPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.72; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+
+      @container (max-width: 560px) {
         .tm-header,
         .tm-footer {
           align-items: flex-start;
@@ -26072,10 +26240,25 @@ class F1TrackMapCard extends LitElement {
           gap: 8px;
         }
 
-        .tm-title,
-        .tm-status,
-        .tm-footer span {
-          white-space: normal;
+        .tm-badges {
+          justify-content: flex-start;
+        }
+
+        .tm-canvas-frame {
+          min-height: 240px;
+          aspect-ratio: 4 / 3;
+        }
+      }
+
+      @container (max-width: 380px) {
+        .tm-title {
+          font-size: 15px;
+        }
+
+        .tm-status {
+          min-height: 23px;
+          padding: 3px 8px;
+          font-size: 9px;
         }
       }
     `,
@@ -26102,15 +26285,22 @@ class F1TrackMapCard extends LitElement {
   }
 
   setConfig(config) {
-    this.config = {
+    this.config = this._normalizeConfig(config);
+    applyF1ThemeMode(this, this.config, this.hass);
+  }
+
+  static getStubConfig() {
+    return {
+      type: 'custom:f1-track-map-card',
       title: 'F1 Track Map',
       entry_id: 'auto',
-      throttle_ms: 100,
-      interpolation_ms: 'auto',
-      show_labels: true,
-      invert_y: true,
-      ...config,
+      lap_count_entity: 'auto',
+      track_status_entity: 'auto',
     };
+  }
+
+  static getConfigElement() {
+    return document.createElement('f1-track-map-card-editor');
   }
 
   connectedCallback() {
@@ -26157,9 +26347,80 @@ class F1TrackMapCard extends LitElement {
     return {
       columns: 12,
       min_columns: 4,
-      rows: 4,
       min_rows: 3,
     };
+  }
+
+  _normalizeConfig(config = {}) {
+    const merged = {
+      theme_mode: DEFAULT_F1_THEME_MODE,
+      title: 'F1 Track Map',
+      entry_id: 'auto',
+      throttle_ms: 100,
+      interpolation_ms: 'auto',
+      invert_y: true,
+      show_header: true,
+      show_footer: true,
+      show_session_info: true,
+      show_driver_count: true,
+      show_lap_progress: true,
+      show_track_status: true,
+      lap_count_entity: 'auto',
+      track_status_entity: 'auto',
+      track_status_line_mode: 'accent',
+      layout_mode: 'auto',
+      ...config,
+    };
+
+    merged.theme_mode = normalizeThemeMode(merged.theme_mode);
+    merged.title = String(merged.title || 'F1 Track Map').trim() || 'F1 Track Map';
+    merged.entry_id = String(merged.entry_id || 'auto').trim() || 'auto';
+    merged.throttle_ms = this._clampInteger(merged.throttle_ms, 100, 0, 5000);
+    merged.interpolation_ms = this._normalizeInterpolation(merged.interpolation_ms);
+    merged.invert_y = merged.invert_y !== false;
+    merged.show_header = merged.show_header !== false;
+    merged.show_footer = merged.show_footer !== false;
+    merged.show_session_info = merged.show_session_info !== false;
+    merged.show_driver_count = merged.show_driver_count !== false;
+    merged.show_lap_progress = merged.show_lap_progress !== false;
+    merged.show_track_status = merged.show_track_status !== false;
+    merged.lap_count_entity = this._normalizeOptionalSource(merged.lap_count_entity, 'auto');
+    merged.track_status_entity = this._normalizeOptionalSource(merged.track_status_entity, 'auto');
+
+    const lineMode = String(merged.track_status_line_mode || 'accent').trim().toLowerCase();
+    merged.track_status_line_mode = ['accent', 'full', 'off'].includes(lineMode)
+      ? lineMode
+      : 'accent';
+
+    const layoutMode = String(merged.layout_mode || 'auto').trim().toLowerCase();
+    merged.layout_mode = ['auto', 'compact', 'full'].includes(layoutMode)
+      ? layoutMode
+      : 'auto';
+
+    const legacyLabelsOff = merged.driver_label_mode == null && merged.show_labels === false;
+    const labelMode = legacyLabelsOff
+      ? 'off'
+      : String(merged.driver_label_mode || 'tla').trim().toLowerCase();
+    merged.driver_label_mode = ['tla', 'number', 'off'].includes(labelMode) ? labelMode : 'tla';
+    merged.show_labels = merged.driver_label_mode !== 'off';
+    return merged;
+  }
+
+  _clampInteger(value, fallback, min, max) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(max, Math.max(min, parsed));
+  }
+
+  _normalizeInterpolation(value) {
+    const text = String(value ?? 'auto').trim().toLowerCase();
+    if (!text || text === 'auto') return 'auto';
+    return this._clampInteger(text, 500, 0, 5000);
+  }
+
+  _normalizeOptionalSource(value, fallback = 'auto') {
+    if (value == null) return fallback;
+    return String(value).trim();
   }
 
   async _ensureSubscription() {
@@ -26167,7 +26428,7 @@ class F1TrackMapCard extends LitElement {
     const entryId = this.config?.entry_id && this.config.entry_id !== 'auto'
       ? String(this.config.entry_id)
       : null;
-    const throttleMs = Math.max(0, Number(this.config?.throttle_ms ?? 250) || 0);
+    const throttleMs = this._clampInteger(this.config?.throttle_ms, 100, 0, 5000);
     const key = `${entryId || 'auto'}:${throttleMs}`;
     if (this._subscriptionKey === key && this._unsubscribeTrackMap) return;
 
@@ -26263,9 +26524,10 @@ class F1TrackMapCard extends LitElement {
     if (replayState === 'paused') return 'Paused';
     if (replayState === 'seeking') return 'Seeking';
     if (replayState === 'playing') return 'Replay';
+    const sourceLabel = this._sourceLabel(this._snapshot);
     const labels = {
-      active: 'Replay',
-      no_geometry: 'Replay',
+      active: sourceLabel,
+      no_geometry: 'No geometry',
       stale: 'Stale',
       no_position_data: 'Waiting',
       no_session: 'No session',
@@ -26282,14 +26544,54 @@ class F1TrackMapCard extends LitElement {
   }
 
   _emptyText() {
-    if (this._error) return this._error;
-    if (!this._snapshot) return 'Waiting for track map data';
-    if (!this._snapshot.session) return 'No replay session loaded';
-    if (!Array.isArray(this._snapshot.drivers) || this._snapshot.drivers.length === 0) {
-      return 'Waiting for Position.z replay data';
+    return this._emptyState()?.title || '';
+  }
+
+  _emptyState() {
+    if (this._error) {
+      return {
+        title: 'Track map unavailable',
+        detail: this._error,
+      };
     }
-    if (!this._snapshot.track) return 'Building replay track geometry';
-    return '';
+    if (!this._snapshot) {
+      return {
+        title: 'Waiting for track map data',
+        detail: 'The card is connected and waiting for the first websocket snapshot.',
+      };
+    }
+    const isLive = this._snapshot.source === 'live';
+    if (!this._snapshot.session) {
+      return {
+        title: isLive ? 'No live timing session loaded' : 'No replay session loaded',
+        detail: isLive
+          ? 'Live timing has not published a session for the track map yet.'
+          : 'Load a replay session to show the circuit and cars.',
+      };
+    }
+    if (!Array.isArray(this._snapshot.drivers) || this._snapshot.drivers.length === 0) {
+      return {
+        title: isLive ? 'Waiting for live car positions' : 'Waiting for replay car positions',
+        detail: isLive
+          ? 'The session is loaded, but live Position.z data has not arrived yet.'
+          : 'Replay is loaded, but Position.z samples are not available at this point.',
+      };
+    }
+    if (!this._snapshot.track) {
+      return {
+        title: isLive ? 'Waiting for live track geometry' : 'Building replay track geometry',
+        detail: 'Cars can be tracked once the circuit geometry is available.',
+      };
+    }
+    return null;
+  }
+
+  _sourceLabel(snapshot = this._snapshot) {
+    const source = String(snapshot?.source || '').trim().toLowerCase();
+    if (source === 'live') return 'Live';
+    if (source === 'replay') return 'Replay';
+    if (!source) return 'Idle';
+    return source.replaceAll('_', ' ');
   }
 
   render() {
@@ -26297,29 +26599,189 @@ class F1TrackMapCard extends LitElement {
     const drivers = Array.isArray(snapshot?.drivers) ? snapshot.drivers : [];
     const session = snapshot?.session || {};
     const title = this.config?.title || 'F1 Track Map';
-    const sessionText = [session.meeting_name, session.session_name].filter(Boolean).join(' - ') || 'No session';
-    const source = snapshot?.source === 'replay' ? 'Replay' : (snapshot?.source || 'Idle');
-    const footer = `${source} / ${drivers.length} drivers`;
-    const empty = this._emptyText();
+    const sessionText = this._sessionText(session);
+    const footer = this._footerText(snapshot, drivers.length);
+    const empty = this._emptyState();
+    const layoutMode = this._effectiveLayoutMode();
+    const trackStatus = this._trackStatusInfo();
+    const lapData = this._lapData();
+    const visualStatus = this._visualStatusState();
+    const driverCountText = this.config.show_driver_count !== false
+      ? `${drivers.length} ${drivers.length === 1 ? 'car' : 'cars'}`
+      : null;
 
     return html`
       <ha-card>
-        <div class="tm-shell">
-          <div class="tm-header">
-            <div class="tm-title">${title}</div>
-            <div class="tm-status" data-state=${this._visualStatusState()}>${this._statusLabel()}</div>
-          </div>
+        <div
+          class="tm-card"
+          data-layout=${layoutMode}
+          data-state=${visualStatus}
+          data-track-status=${trackStatus?.status || 'NONE'}
+          style="--tm-track-color: ${trackStatus?.color || '#34c759'};"
+        >
+          ${this.config.show_header !== false ? html`
+            <div class="tm-header">
+              <div class="tm-title-block">
+                <div class="tm-title">${title}</div>
+                ${this.config.show_session_info !== false ? html`
+                  <div class="tm-subtitle">
+                    <span>${sessionText}</span>
+                    ${driverCountText ? html`<span>${driverCountText}</span>` : null}
+                  </div>
+                ` : null}
+              </div>
+              <div class="tm-badges">
+                <span class="tm-status">${this._statusLabel()}</span>
+                ${trackStatus && this.config.show_track_status !== false ? html`
+                  <span class="tm-status track ${trackStatus.alert ? 'alert' : ''}">${trackStatus.label}</span>
+                ` : null}
+                ${lapData && this.config.show_lap_progress !== false ? this._renderLapBadge(lapData) : null}
+              </div>
+            </div>
+          ` : null}
           <div class="tm-canvas-frame">
             <canvas></canvas>
-            ${empty ? html`<div class="tm-empty">${empty}</div>` : ''}
+            ${empty ? html`
+              <div class="tm-empty">
+                <div class="tm-empty-title">${empty.title}</div>
+                <div class="tm-empty-detail">${empty.detail}</div>
+              </div>
+            ` : null}
           </div>
-          <div class="tm-footer">
+          ${this.config.show_footer !== false ? html`<div class="tm-footer">
             <span>${sessionText}</span>
             <span>${footer}</span>
-          </div>
+          </div>` : null}
         </div>
       </ha-card>
     `;
+  }
+
+  _renderLapBadge(lapData) {
+    const text = this._lapLabel(lapData);
+    const pct = this._lapProgressPercent(lapData);
+    return html`
+      <span class="tm-status tm-lap-group">
+        <span>${text}</span>
+        ${pct !== null ? html`
+          <span class="tm-lap-progress" aria-hidden="true">
+            <span class="tm-lap-bar" style="width: ${pct}%"></span>
+          </span>
+        ` : null}
+      </span>
+    `;
+  }
+
+  _sessionText(session) {
+    const meeting = String(session?.meeting_name || '').trim();
+    const circuit = String(session?.circuit_short_name || '').trim();
+    const name = String(session?.session_name || '').trim();
+    return [meeting || circuit, name].filter(Boolean).join(' / ') || 'No session';
+  }
+
+  _footerText(snapshot, driverCount) {
+    const parts = [this._sourceLabel(snapshot)];
+    if (snapshot?.stale === true) parts.push('Stale');
+    if (snapshot?.stream_timestamp) parts.push(`Updated ${this._formatShortTime(snapshot.stream_timestamp)}`);
+    parts.push(`${driverCount} ${driverCount === 1 ? 'car' : 'cars'}`);
+    return parts.join(' / ');
+  }
+
+  _formatShortTime(value) {
+    const parsed = Date.parse(String(value || ''));
+    if (!Number.isFinite(parsed)) return '--:--:--';
+    const date = new Date(parsed);
+    return [date.getHours(), date.getMinutes(), date.getSeconds()]
+      .map((part) => String(part).padStart(2, '0'))
+      .join(':');
+  }
+
+  _effectiveLayoutMode() {
+    const mode = String(this.config?.layout_mode || 'auto').toLowerCase();
+    if (mode === 'compact' || mode === 'full') return mode;
+    const width = this._responsiveCardWidth || measureRenderedCardWidth(this);
+    return width > 0 && width <= 560 ? 'compact' : 'full';
+  }
+
+  _entityFromConfig(name, candidates) {
+    const hasExplicit = Object.prototype.hasOwnProperty.call(this.config || {}, name);
+    const configured = this.config?.[name];
+    const text = String(configured ?? 'auto').trim();
+    if (hasExplicit && text === '') return null;
+    if (text && text !== 'auto') {
+      return getEntityStateWithFallback(this.hass, text);
+    }
+    for (const entityId of candidates) {
+      const state = getEntityStateWithFallback(this.hass, entityId);
+      if (state && !isUnavailableLikeEntityState(state)) return state;
+    }
+    return null;
+  }
+
+  _lapData() {
+    if (this.config?.show_lap_progress === false) return null;
+    const entity = this._entityFromConfig('lap_count_entity', [
+      'sensor.f1_session_f1_race_lap_count',
+      'sensor.f1_race_lap_count',
+      'sensor.f1_session_race_lap_count',
+    ]);
+    if (!entity || isUnavailableLikeEntityState(entity)) return null;
+    const current = this._parsePositiveInteger(entity.state);
+    if (current === null) return null;
+    return {
+      current,
+      total: this._parsePositiveInteger(entity.attributes?.total_laps),
+    };
+  }
+
+  _lapLabel(lapData) {
+    if (!lapData) return '';
+    if (Number.isFinite(lapData.total) && lapData.total > 0) {
+      return `Lap ${lapData.current}/${lapData.total}`;
+    }
+    return `Lap ${lapData.current}`;
+  }
+
+  _lapProgressPercent(lapData) {
+    if (!lapData || !Number.isFinite(lapData.total) || lapData.total <= 0) return null;
+    return Math.max(0, Math.min(100, (lapData.current / lapData.total) * 100));
+  }
+
+  _trackStatusInfo() {
+    if (this.config?.show_track_status === false) return null;
+    const entity = this._entityFromConfig('track_status_entity', [
+      'sensor.f1_session_f1_track_status',
+      'sensor.f1_track_status',
+      'sensor.f1_session_track_status',
+    ]);
+    if (!entity || isUnavailableLikeEntityState(entity)) return null;
+    const status = this._normalizeTrackStatus(entity.state);
+    if (!status) return null;
+    const colorMap = isEffectiveLightTheme(this.hass, this.config)
+      ? TRACK_STATUS_LIGHT_COLORS
+      : TRACK_STATUS_COLORS;
+    return {
+      status,
+      label: TRACK_STATUS_LABELS[status] || status,
+      color: colorMap[status] || colorMap.CLEAR || '#34c759',
+      alert: status === 'YELLOW' || status === 'VSC' || status === 'SC' || status === 'RED',
+    };
+  }
+
+  _normalizeTrackStatus(value) {
+    const text = String(value || '').trim().toUpperCase();
+    if (!text) return null;
+    if (text === 'GREEN' || text === 'CLEAR' || text === 'TRACK CLEAR') return 'CLEAR';
+    if (text === 'YELLOW' || text === 'YELLOW FLAG' || text.includes('YELLOW')) return 'YELLOW';
+    if (text === 'RED' || text === 'RED FLAG' || text.includes('RED')) return 'RED';
+    if (text === 'SC' || text === 'SAFETY CAR' || text.includes('SAFETY')) return 'SC';
+    if (text === 'VSC' || text === 'VIRTUAL SC' || text.includes('VIRTUAL')) return 'VSC';
+    return null;
+  }
+
+  _parsePositiveInteger(value) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
 
   _scheduleDraw() {
@@ -26362,7 +26824,7 @@ class F1TrackMapCard extends LitElement {
     };
     const drivers = this._displayDrivers(snapshot.drivers);
     this._drawTrack(ctx, snapshot.track?.points, transform);
-    this._drawDrivers(ctx, drivers, transform);
+    this._drawDrivers(ctx, drivers, transform, rect.width);
     if (this._hasActiveDriverMotion()) this._scheduleDraw();
   }
 
@@ -26388,28 +26850,60 @@ class F1TrackMapCard extends LitElement {
 
   _drawTrack(ctx, points, transform) {
     if (!Array.isArray(points) || points.length === 0) return;
+    const trackStatus = this._trackStatusInfo();
+    const lineMode = this.config?.track_status_line_mode || 'accent';
+    const statusColor = trackStatus?.color || '#34c759';
+    const lightTheme = isEffectiveLightTheme(this.hass, this.config);
+    const baseColor = lightTheme ? 'rgba(20, 24, 31, 0.82)' : 'rgba(238, 242, 246, 0.9)';
+    const accentAlpha = lineMode === 'full' ? 0.30 : 0.22;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(238, 242, 246, 0.9)';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    points.forEach((point, index) => {
-      if (!Array.isArray(point) || point.length < 2) return;
-      const xy = transform(Number(point[0]), Number(point[1]));
-      if (index === 0) ctx.moveTo(xy.x, xy.y);
-      else ctx.lineTo(xy.x, xy.y);
-    });
+    const drawPath = () => {
+      ctx.beginPath();
+      points.forEach((point, index) => {
+        if (!Array.isArray(point) || point.length < 2) return;
+        const xy = transform(Number(point[0]), Number(point[1]));
+        if (index === 0) ctx.moveTo(xy.x, xy.y);
+        else ctx.lineTo(xy.x, xy.y);
+      });
+    };
+
+    if (lineMode !== 'off' && trackStatus) {
+      ctx.strokeStyle = this._rgba(statusColor, accentAlpha);
+      ctx.lineWidth = lineMode === 'full' ? 11 : 8;
+      drawPath();
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = lineMode === 'full' && trackStatus ? statusColor : baseColor;
+    ctx.lineWidth = lineMode === 'full' && trackStatus ? 4 : 3;
+    drawPath();
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(0, 210, 106, 0.22)';
-    ctx.lineWidth = 8;
-    ctx.stroke();
+
+    if (lineMode === 'accent' && trackStatus && trackStatus.status !== 'CLEAR') {
+      ctx.strokeStyle = this._rgba(statusColor, 0.34);
+      ctx.lineWidth = 2;
+      drawPath();
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
-  _drawDrivers(ctx, drivers, transform) {
+  _rgba(color, alpha) {
+    const text = String(color || '').trim();
+    const match = text.match(/^#?([0-9a-fA-F]{6})$/);
+    if (!match) return text;
+    const hex = match[1];
+    const r = Number.parseInt(hex.slice(0, 2), 16);
+    const g = Number.parseInt(hex.slice(2, 4), 16);
+    const b = Number.parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  _drawDrivers(ctx, drivers, transform, canvasWidth = 0) {
     if (!Array.isArray(drivers)) return;
-    const showLabels = this.config?.show_labels !== false;
+    const labelMode = this.config?.driver_label_mode || (this.config?.show_labels === false ? 'off' : 'tla');
     const ordered = [...drivers].sort((a, b) => Number(a.racing_number) - Number(b.racing_number));
     for (const driver of ordered) {
       const x = Number(driver?.x);
@@ -26427,18 +26921,27 @@ class F1TrackMapCard extends LitElement {
       ctx.arc(xy.x, xy.y, 6.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      if (showLabels) {
-        const label = String(driver?.tla || driver?.racing_number || '').slice(0, 3);
-        ctx.font = '700 11px sans-serif';
+      const label = this._driverLabel(driver, labelMode);
+      if (label) {
+        const alignRight = canvasWidth > 0 && xy.x > canvasWidth - 54;
+        const labelX = xy.x + (alignRight ? -9 : 9);
+        ctx.font = '700 11px "Formula1 Display", sans-serif';
+        ctx.textAlign = alignRight ? 'right' : 'left';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#f6f8fb';
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.72)';
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.74)';
         ctx.lineWidth = 3;
-        ctx.strokeText(label, xy.x + 9, xy.y);
-        ctx.fillText(label, xy.x + 9, xy.y);
+        ctx.strokeText(label, labelX, xy.y);
+        ctx.fillText(label, labelX, xy.y);
       }
       ctx.restore();
     }
+  }
+
+  _driverLabel(driver, mode) {
+    if (mode === 'off') return '';
+    if (mode === 'number') return String(driver?.racing_number || '').slice(0, 3);
+    return String(driver?.tla || driver?.racing_number || '').slice(0, 3);
   }
 
   _teamColor(value) {
@@ -26750,6 +27253,238 @@ class F1TrackMapCard extends LitElement {
   }
 }
 
+class F1TrackMapCardEditor extends LitElement {
+  static properties = {
+    hass: {},
+    _config: {},
+    _activeTab: { state: true },
+  };
+
+  static styles = css`
+    .card-config {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--divider-color);
+      margin-bottom: 16px;
+    }
+
+    .tabs button {
+      flex: 1;
+      padding: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--primary-text-color);
+      font-size: 14px;
+      font-family: inherit;
+      transition: color 0.2s;
+    }
+
+    .tabs button:hover {
+      color: var(--primary-color);
+    }
+
+    .tabs button.active {
+      color: var(--primary-color);
+      border-bottom: 2px solid var(--primary-color);
+      margin-bottom: -1px;
+    }
+
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .section-header {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--secondary-text-color);
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+
+    .helper {
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      padding-left: 16px;
+      line-height: 1.4;
+    }
+
+    ha-form {
+      width: 100%;
+    }
+  `;
+
+  constructor() {
+    super();
+    this._activeTab = 'sources';
+  }
+
+  setConfig(config) {
+    this._config = {
+      theme_mode: DEFAULT_F1_THEME_MODE,
+      title: 'F1 Track Map',
+      entry_id: 'auto',
+      throttle_ms: 100,
+      interpolation_ms: 'auto',
+      invert_y: true,
+      show_header: true,
+      show_footer: true,
+      show_session_info: true,
+      show_driver_count: true,
+      driver_label_mode: config?.show_labels === false ? 'off' : 'tla',
+      show_lap_progress: true,
+      lap_count_entity: 'auto',
+      show_track_status: true,
+      track_status_entity: 'auto',
+      track_status_line_mode: 'accent',
+      layout_mode: 'auto',
+      ...config,
+    };
+  }
+
+  render() {
+    if (!this.hass || !this._config) return html``;
+    return html`
+      <div class="card-config">
+        <div class="tabs">
+          <button
+            class=${this._activeTab === 'sources' ? 'active' : ''}
+            @click=${() => { this._activeTab = 'sources'; }}
+          >
+            Data Sources
+          </button>
+          <button
+            class=${this._activeTab === 'display' ? 'active' : ''}
+            @click=${() => { this._activeTab = 'display'; }}
+          >
+            Display
+          </button>
+        </div>
+        ${this._activeTab === 'sources' ? this._renderDataSourcesTab() : this._renderDisplayTab()}
+      </div>
+    `;
+  }
+
+  _renderDataSourcesTab() {
+    return html`
+      <div class="section">
+        <div class="section-header">TRACK MAP</div>
+        ${this._renderTextField(
+          'entry_id',
+          'Config entry id',
+          'Use auto for the first loaded F1 Sensor entry.',
+        )}
+      </div>
+      <div class="section">
+        <div class="section-header">OPTIONAL CONTEXT</div>
+        ${this._renderTextField(
+          'lap_count_entity',
+          'Lap count entity',
+          'Use auto, leave empty to disable, or enter a lap count sensor entity id.',
+        )}
+        ${this._renderTextField(
+          'track_status_entity',
+          'Track status entity',
+          'Use auto, leave empty to disable, or enter a track status sensor entity id.',
+        )}
+      </div>
+    `;
+  }
+
+  _renderDisplayTab() {
+    return html`
+      <div class="section">
+        ${renderThemeModeSelect(this)}
+        ${this._renderTextField('title', 'Title')}
+        ${renderEditorSelect(this, 'layout_mode', 'Layout mode', [
+          { value: 'auto', label: 'Auto compact on narrow cards' },
+          { value: 'compact', label: 'Compact' },
+          { value: 'full', label: 'Full' },
+        ])}
+        ${renderEditorSelect(this, 'driver_label_mode', 'Driver labels', [
+          { value: 'tla', label: 'Driver code' },
+          { value: 'number', label: 'Car number' },
+          { value: 'off', label: 'Off' },
+        ])}
+        ${renderEditorSelect(this, 'track_status_line_mode', 'Track status line', [
+          { value: 'accent', label: 'Accent glow' },
+          { value: 'full', label: 'Color full line' },
+          { value: 'off', label: 'Off' },
+        ])}
+        ${this._renderSwitch('show_header', 'Show header')}
+        ${this._renderSwitch('show_footer', 'Show footer')}
+        ${this._renderSwitch('show_session_info', 'Show session info')}
+        ${this._renderSwitch('show_driver_count', 'Show driver count')}
+        ${this._renderSwitch('show_lap_progress', 'Show lap progress')}
+        ${this._renderSwitch('show_track_status', 'Show track status')}
+        ${this._renderSwitch('invert_y', 'Invert Y axis')}
+        ${this._renderNumberField(
+          'throttle_ms',
+          'Websocket throttle (ms)',
+          'Limits how often live track map snapshots are redrawn. Use 0 to disable throttling.',
+        )}
+        ${this._renderTextField(
+          'interpolation_ms',
+          'Interpolation (ms)',
+          'Visual motion smoothing for car markers. Auto follows the incoming sample rate, 0 disables smoothing, and higher values add more visual delay.',
+        )}
+      </div>
+    `;
+  }
+
+  _renderTextField(name, label, helper = null) {
+    return this._renderFormField(name, label, { text: {} }, helper);
+  }
+
+  _renderNumberField(name, label, helper = null) {
+    return this._renderFormField(
+      name,
+      label,
+      { number: { min: 0, max: 5000, mode: 'box' } },
+      helper,
+    );
+  }
+
+  _renderSwitch(name, label, helper = null) {
+    return this._renderFormField(name, label, { boolean: {} }, helper);
+  }
+
+  _renderFormField(name, label, selector, helper = null) {
+    const schema = [{ name, label, selector }];
+    return html`
+      <ha-form
+        .hass=${this.hass}
+        .data=${this._config}
+        .schema=${schema}
+        .computeLabel=${() => label}
+        @value-changed=${this._formValueChanged}
+      ></ha-form>
+      ${helper ? html`<div class="helper">${helper}</div>` : ''}
+    `;
+  }
+
+  _formValueChanged(ev) {
+    if (!this._config) return;
+    const value = ev.detail?.value || {};
+    this._config = { ...this._config, ...value };
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
+  }
+
+  _valueChanged(name, value) {
+    if (!this._config) return;
+    this._config = { ...this._config, [name]: value };
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
+  }
+}
+
 installSectionsAutoHeight(F1TyreStatisticsCard, {
   columns: 12,
   min_columns: 4,
@@ -26944,6 +27679,10 @@ if (!customElements.get('f1-track-map-card')) {
   customElements.define('f1-track-map-card', F1TrackMapCard);
 }
 
+if (!customElements.get('f1-track-map-card-editor')) {
+  customElements.define('f1-track-map-card-editor', F1TrackMapCardEditor);
+}
+
 if (!customElements.get('f1-investigations-card')) {
   customElements.define('f1-investigations-card', F1InvestigationsCard);
 }
@@ -27092,8 +27831,8 @@ window.customCards.push({
 window.customCards.push({
   type: 'f1-track-map-card',
   name: 'F1 Track Map',
-  description: 'Replay track map canvas with live websocket snapshots',
-  configurable: false,
+  description: 'Live and replay track map with car positions, lap progress, and track status context',
+  configurable: true,
   preview: true,
 });
 
