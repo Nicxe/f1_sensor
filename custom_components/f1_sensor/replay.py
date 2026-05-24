@@ -11,6 +11,12 @@ from pathlib import Path
 
 from homeassistant.core import HomeAssistant
 
+from .track_map import (
+    TRACK_MAP_POSITION_STREAM,
+    parse_position_z_line,
+    track_map_positions_to_payload,
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 KNOWN_STREAMS = {
@@ -26,6 +32,7 @@ KNOWN_STREAMS = {
     "TimingAppData",
     "PitStopSeries",
     "ChampionshipPrediction",
+    TRACK_MAP_POSITION_STREAM,
 }
 
 
@@ -120,6 +127,22 @@ class ReplaySignalRClient:
                         url_stream = self._extract_stream_from_url(line)
                         stream_hint = url_stream or stream_hint
                         continue
+                    if stream_hint == TRACK_MAP_POSITION_STREAM and "{" not in line:
+                        ts_part, payload_line = self._split_position_z_line(line)
+                        positions = parse_position_z_line(payload_line)
+                        if not positions:
+                            continue
+                        current_ts = self._parse_timestamp(ts_part)
+                        delay = self._compute_delay(current_ts, prev_ts)
+                        prev_ts = current_ts
+                        frames.append(
+                            ReplayFrame(
+                                delay=delay,
+                                stream=TRACK_MAP_POSITION_STREAM,
+                                payload=track_map_positions_to_payload(positions),
+                            )
+                        )
+                        continue
                     ts_part, json_part = self._split_line(line)
                     if not json_part:
                         continue
@@ -177,6 +200,13 @@ class ReplaySignalRClient:
         idx = line.find("{")
         if idx == -1:
             return line, ""
+        return line[:idx].strip(), line[idx:]
+
+    @staticmethod
+    def _split_position_z_line(line: str) -> tuple[str, str]:
+        idx = line.find('"')
+        if idx == -1:
+            return "", line
         return line[:idx].strip(), line[idx:]
 
     @staticmethod

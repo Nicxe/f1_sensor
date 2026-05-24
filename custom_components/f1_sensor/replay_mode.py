@@ -33,10 +33,16 @@ from .const import (
 from .formation_start import FormationStartTracker
 from .helpers import parse_cardata_lines
 from .replay_start import ReplayStartReferenceController
+from .track_map import (
+    TRACK_MAP_POSITION_STREAM,
+    parse_position_z_line,
+    track_map_positions_to_payload,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-# Streams to download (matches SUBSCRIBE_MSG in signalr.py)
+# Streams to download for replay archives. This list is intentionally broader than
+# the public live SignalR contract; live subscriptions stay defined in signalr.py.
 REPLAY_STREAMS = [
     "RaceControlMessages",
     "TrackStatus",
@@ -54,6 +60,7 @@ REPLAY_STREAMS = [
     "PitStopSeries",
     "ChampionshipPrediction",
     "DriverRaceInfo",
+    TRACK_MAP_POSITION_STREAM,
 ]
 
 STATIC_BASE = "https://livetiming.formula1.com/static"
@@ -66,7 +73,7 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when replay index contents change in a way that
 # requires re-downloading cached sessions.
-CACHE_VERSION = 9
+CACHE_VERSION = 10
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 
@@ -717,6 +724,15 @@ class ReplaySessionManager:
             _LOGGER.debug("Error downloading %s: %s", stream_name, err)
             return frames
 
+        if stream_name == TRACK_MAP_POSITION_STREAM:
+            frames = await self._hass.async_add_executor_job(
+                self._parse_position_z_stream_text,
+                text,
+                stream_name,
+            )
+            _LOGGER.debug("Downloaded %d frames from %s", len(frames), stream_name)
+            return frames
+
         # Parse jsonStream format: each line is timestamp + JSON
         for line in text.splitlines():
             line = line.strip()
@@ -750,6 +766,41 @@ class ReplaySessionManager:
 
         _LOGGER.debug("Downloaded %d frames from %s", len(frames), stream_name)
         return frames
+
+    def _parse_position_z_stream_text(
+        self,
+        text: str,
+        stream_name: str,
+    ) -> list[ReplayFrame]:
+        """Parse Position.z jsonStream text using the track map decoder."""
+        frames: list[ReplayFrame] = []
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            timestamp_str, payload_line = self._split_position_z_line(line)
+            try:
+                timestamp_ms = self._parse_timestamp_to_ms(timestamp_str)
+                positions = parse_position_z_line(payload_line)
+            except Exception:  # noqa: BLE001
+                continue
+            if not positions:
+                continue
+            frames.append(
+                ReplayFrame(
+                    timestamp_ms=timestamp_ms,
+                    stream=stream_name,
+                    payload=track_map_positions_to_payload(positions),
+                )
+            )
+        return frames
+
+    @staticmethod
+    def _split_position_z_line(line: str) -> tuple[str, str]:
+        quote_idx = line.find('"')
+        if quote_idx == -1:
+            return "", line
+        return line[:quote_idx].strip(), line[quote_idx:]
 
     def _merge_topthree_state(self, state: dict[str, Any], payload: dict) -> None:
         """Merge a TopThree payload into accumulated state.
@@ -1834,6 +1885,30 @@ class ReplayController:
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Replay reset callback failed", exc_info=True)
 
+    def _reset_track_map_runtime(self) -> None:
+        registry = self._get_registry()
+        target = registry.get("track_map_replay_adapter") or registry.get(
+            "track_map_store"
+        )
+        reset_for_replay = getattr(target, "reset_for_replay", None)
+        if callable(reset_for_replay):
+            try:
+                reset_for_replay()
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Track map replay reset failed", exc_info=True)
+
+    async def _prepare_track_map_replay_index(self, index: ReplayIndex) -> None:
+        adapter = self._get_registry().get("track_map_replay_adapter")
+        prepare = getattr(adapter, "async_prepare_replay_index", None)
+        if not callable(prepare):
+            return
+        try:
+            result = prepare(index)
+            if isawaitable(result):
+                await result
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Track map replay geometry preload failed", exc_info=True)
+
     async def _stop_active_replay_transport(self) -> None:
         if self._transport is not None:
             await self._transport.close()
@@ -1962,6 +2037,7 @@ class ReplayController:
         if target_ms < current_ms:
             await self._run_replay_reset_callbacks()
             self._inject_initial_state(initial_state)
+            await self._prepare_track_map_replay_index(index)
             self._inject_formation_ready_if_applicable(index)
             await self._replay_frames_range(
                 index,
@@ -2006,6 +2082,7 @@ class ReplayController:
         # Lock replay state first so the supervisor cannot re-arm the bus
         # while we await async_close below
         self._pending_start_ms = None
+        self._reset_track_map_runtime()
         if self._live_state is not None:
             self._live_state.set_state(False, "replay-preparing")
 
@@ -2043,6 +2120,7 @@ class ReplayController:
         self._ensure_replay_active()
         await self._run_replay_reset_callbacks()
         self._inject_initial_state(initial_state)
+        await self._prepare_track_map_replay_index(index)
         self._inject_formation_ready_if_applicable(index)
         if start_from_ms > baseline_ms:
             await self._replay_frames_range(
@@ -2103,6 +2181,7 @@ class ReplayController:
             self._playback_task = None
 
         self._pending_start_ms = None
+        self._reset_track_map_runtime()
 
         # Restore live state to idle - let LiveSessionSupervisor control it
         if self._live_state is not None:
@@ -2158,6 +2237,7 @@ class ReplayController:
                     self._live_state.set_state(False, "replay-completed")
 
                 self._reset_formation_tracker()
+                self._reset_track_map_runtime()
 
                 # Wake the supervisor so it can reconnect if a live session is active
                 if self._on_replay_ended is not None:

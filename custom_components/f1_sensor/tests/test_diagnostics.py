@@ -17,6 +17,26 @@ from custom_components.f1_sensor.const import (
     DOMAIN,
     OPERATION_MODE_LIVE,
 )
+from custom_components.f1_sensor.track_map import (
+    TRACK_MAP_FALLBACK_STATE_STATIC_CATALOG,
+    TRACK_MAP_STATIC_GEOMETRY_SOURCE,
+    TrackMapStore,
+)
+from custom_components.f1_sensor.track_map_static_geometry import (
+    STATIC_TRACK_GEOMETRY_APPROVAL_VISUAL_APPROVED,
+)
+
+
+def _static_track_map_session_payload() -> dict:
+    return {
+        "Key": "101",
+        "Name": "Race",
+        "Type": "Race",
+        "Meeting": {
+            "Name": "Miami Grand Prix",
+            "Circuit": {"Key": "151", "ShortName": "Miami"},
+        },
+    }
 
 
 async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
@@ -60,10 +80,13 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
         "data_quality": "live",
         "active_incidents": [{"large": "detail"}],
     }
+    track_map_store = TrackMapStore(entry.entry_id)
+    track_map_store.update_session_info(_static_track_map_session_payload())
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "operation_mode": OPERATION_MODE_LIVE,
         "live_bus": live_bus,
         "incident_coordinator": incident_coordinator,
+        "track_map_store": track_map_store,
         "signalr_stream_capabilities": {
             "public_live_streams": frozenset({"SessionStatus", "TrackStatus"}),
             "auth_gated_live_streams": frozenset(
@@ -129,6 +152,19 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
         "data_quality": "live",
         "available": True,
     }
+    assert payload["runtime"]["track_map"]["geometry_source"] == (
+        TRACK_MAP_STATIC_GEOMETRY_SOURCE
+    )
+    assert payload["runtime"]["track_map"]["circuit_key"] == "151"
+    assert payload["runtime"]["track_map"]["circuit_id"] == "miami"
+    assert payload["runtime"]["track_map"]["point_count"] > 50
+    assert payload["runtime"]["track_map"]["rotation"] == 11.2
+    assert payload["runtime"]["track_map"]["approval_status"] == (
+        STATIC_TRACK_GEOMETRY_APPROVAL_VISUAL_APPROVED
+    )
+    assert payload["runtime"]["track_map"]["fallback_state"] == (
+        TRACK_MAP_FALLBACK_STATE_STATIC_CATALOG
+    )
     assert "active_incidents" not in str(payload["runtime"]["incident_detection"])
     assert "secret-token" not in str(payload)
 

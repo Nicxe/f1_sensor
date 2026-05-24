@@ -120,6 +120,19 @@ def _serialize_incident_runtime(coordinator: object) -> dict[str, Any]:
     }
 
 
+def _serialize_track_map_runtime(track_map_store: object) -> dict[str, Any]:
+    """Return a compact track map diagnostics summary."""
+    diagnostics = getattr(track_map_store, "diagnostics", None)
+    if not callable(diagnostics):
+        return {}
+    payload: object = {}
+    with suppress(Exception):
+        payload = diagnostics()
+    if not isinstance(payload, dict):
+        return {}
+    return payload
+
+
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -162,6 +175,10 @@ async def async_get_config_entry_diagnostics(
         runtime["incident_detection"] = _serialize_incident_runtime(
             incident_coordinator
         )
+
+    track_map_store = entry_runtime.get("track_map_store")
+    if track_map_store is not None:
+        runtime["track_map"] = _serialize_track_map_runtime(track_map_store)
 
     entry_data = dict(entry.data)
     if not include_auth_transport:

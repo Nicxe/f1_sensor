@@ -123,6 +123,8 @@ from .signalr import (
     build_live_subscribe_streams,
 )
 from .starting_grid import StartingGridCoordinator
+from .track_map import TrackMapReplayAdapter, TrackMapRuntimeData, TrackMapStore
+from .track_map_websocket import TRACK_MAP_WS_MARKER, async_register_track_map_websocket
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -165,6 +167,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         _JOLPICA_STATS_KEY,
         _RC_LOG_SERVICE_MARKER,
         _RC_LOG_WS_MARKER,
+        TRACK_MAP_WS_MARKER,
     }
 )
 _FINISHING_PLUS_LAPS_RE = re.compile(r"^\+\d+\s+Laps?$", re.IGNORECASE)
@@ -1982,6 +1985,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         await championship_prediction_coordinator.async_config_entry_first_refresh()
 
+    track_map_store = TrackMapStore(entry.entry_id)
+    track_map_replay_adapter = TrackMapReplayAdapter(
+        track_map_store,
+        live_bus,
+        hass=hass,
+        replay_controller=replay_controller,
+    )
+    track_map_replay_adapter.start()
+    entry.runtime_data = TrackMapRuntimeData(track_map_store=track_map_store)
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "http_session": http_session,
         "user_agent": ua_string,
@@ -2012,6 +2025,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "championship_prediction_coordinator": championship_prediction_coordinator,
         "drivers_coordinator": drivers_coordinator,
         "fia_documents_coordinator": fia_documents_coordinator,
+        "track_map_store": track_map_store,
+        "track_map_replay_adapter": track_map_replay_adapter,
         "live_bus": live_bus,
         "live_supervisor": live_supervisor,
         "live_schedule_fallback_source": event_tracker_source,
@@ -2049,6 +2064,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             pitstop_coordinator,
             championship_prediction_coordinator,
             drivers_coordinator,
+            track_map_replay_adapter,
         ),
         "activity_filter_unsub": None,
         "no_spoiler_unsub": None,
@@ -2056,6 +2072,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if race_control_log_store is not None:
         _async_register_race_control_log_interfaces(hass)
+    async_register_track_map_websocket(hass)
 
     _apply_activity_log_filter_excludes(hass)
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
@@ -5744,6 +5761,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     except Exception as err:  # noqa: BLE001
                         _LOGGER.debug("Error during %s async_close: %s", name, err)
         unregister_entry_name_settings(entry.entry_id)
+        entry.runtime_data = None
         # If this was the last entry, remove dev-only stats reporter.
         if isinstance(data_root, dict):
             with suppress(Exception):
@@ -5787,6 +5805,11 @@ def _build_replay_reset_callbacks(*coordinators: Any) -> list[Callable[[], None]
 def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
     """Reset accumulated coordinator state before replay rebuild/rewind."""
     if coordinator is None:
+        return
+
+    reset_for_replay = getattr(coordinator, "reset_for_replay", None)
+    if callable(reset_for_replay):
+        reset_for_replay()
         return
 
     if isinstance(coordinator, WeatherDataCoordinator):

@@ -40,6 +40,11 @@ from custom_components.f1_sensor.const import (
 )
 from custom_components.f1_sensor.live_delay import LiveDelayReferenceController
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
+from custom_components.f1_sensor.track_map import (
+    TrackMapReplayAdapter,
+    TrackMapRuntimeData,
+    TrackMapStore,
+)
 
 
 def test_config_schema_marks_integration_config_entry_only(caplog) -> None:
@@ -486,6 +491,12 @@ async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:
     assert entry_data["operation_mode"] == OPERATION_MODE_DEVELOPMENT
     assert entry_data["replay_file"] == mock_config_entry.data[CONF_REPLAY_FILE]
     assert entry_data["live_bus"].started is True
+    assert isinstance(mock_config_entry.runtime_data, TrackMapRuntimeData)
+    assert isinstance(entry_data["track_map_store"], TrackMapStore)
+    assert isinstance(entry_data["track_map_replay_adapter"], TrackMapReplayAdapter)
+    assert (
+        entry_data["track_map_store"] is mock_config_entry.runtime_data.track_map_store
+    )
 
 
 @pytest.mark.asyncio

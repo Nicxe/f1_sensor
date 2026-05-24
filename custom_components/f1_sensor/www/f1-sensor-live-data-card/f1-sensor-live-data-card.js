@@ -25944,6 +25944,812 @@ class F1StartingGridCardEditor extends LitElement {
   }
 }
 
+class F1TrackMapCard extends LitElement {
+  static properties = {
+    hass: { attribute: false },
+    config: { attribute: false },
+    _snapshot: { state: true },
+    _status: { state: true },
+    _error: { state: true },
+  };
+
+  static styles = [
+    F1_THEME_STYLES,
+    css`
+      :host {
+        display: block;
+      }
+
+      ha-card {
+        overflow: hidden;
+        border-radius: var(--ha-card-border-radius, 12px);
+        background: var(--f1-card-bg);
+        color: var(--f1-card-text);
+      }
+
+      .tm-shell {
+        display: grid;
+        grid-template-rows: auto minmax(260px, 1fr) auto;
+        min-height: 360px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
+      }
+
+      .tm-header,
+      .tm-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+      }
+
+      .tm-title {
+        font-family: var(--f1-font-display, "Formula1 Display", sans-serif);
+        font-size: 16px;
+        line-height: 1.1;
+        letter-spacing: 0;
+        white-space: nowrap;
+      }
+
+      .tm-status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        padding: 0 9px;
+        border: 1px solid var(--f1-card-border);
+        border-radius: 999px;
+        color: var(--f1-card-muted);
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .tm-status[data-state="active"],
+      .tm-status[data-state="paused"],
+      .tm-status[data-state="playing"],
+      .tm-status[data-state="no_geometry"] {
+        border-color: rgba(0, 210, 106, 0.55);
+        color: #48e28a;
+      }
+
+      .tm-status[data-state="seeking"] {
+        border-color: rgba(56, 189, 248, 0.55);
+        color: #7dd3fc;
+      }
+
+      .tm-status[data-state="stale"] {
+        border-color: rgba(255, 190, 73, 0.55);
+        color: #ffcb69;
+      }
+
+      .tm-canvas-frame {
+        position: relative;
+        min-height: 260px;
+        margin: 0 12px;
+        border: 1px solid var(--f1-card-border);
+        background: #07090c;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-height: 260px;
+      }
+
+      .tm-empty {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        color: var(--f1-card-muted);
+        font-size: 13px;
+        text-align: center;
+        pointer-events: none;
+      }
+
+      .tm-footer {
+        color: var(--f1-card-muted);
+        font-size: 12px;
+        min-width: 0;
+      }
+
+      .tm-footer span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      @media (max-width: 600px) {
+        .tm-header,
+        .tm-footer {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .tm-title,
+        .tm-status,
+        .tm-footer span {
+          white-space: normal;
+        }
+      }
+    `,
+  ];
+
+  constructor() {
+    super();
+    this.config = {};
+    this._snapshot = null;
+    this._status = 'not_loaded';
+    this._error = null;
+    this._unsubscribeTrackMap = null;
+    this._subscriptionKey = null;
+    this._subscriptionToken = 0;
+    this._drawRaf = 0;
+    this._resizeObserver = null;
+    this._driverSamples = new Map();
+    this._viewportBounds = null;
+    this._viewportSessionKey = null;
+    this._lastSnapshotAt = 0;
+    this._snapshotIntervalMs = 0;
+    this._driverSampleIntervalMs = 0;
+    this._renderClockAt = 0;
+  }
+
+  setConfig(config) {
+    this.config = {
+      title: 'F1 Track Map',
+      entry_id: 'auto',
+      throttle_ms: 100,
+      interpolation_ms: 'auto',
+      show_labels: true,
+      invert_y: true,
+      ...config,
+    };
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    ensureF1Fonts();
+    this._ensureSubscription();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._teardownSubscription();
+    if (this._drawRaf) {
+      cancelAnimationFrame(this._drawRaf);
+      this._drawRaf = 0;
+    }
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+  }
+
+  firstUpdated() {
+    const frame = this.renderRoot?.querySelector('.tm-canvas-frame');
+    if (frame && typeof ResizeObserver !== 'undefined') {
+      this._resizeObserver = new ResizeObserver(() => this._scheduleDraw());
+      this._resizeObserver.observe(frame);
+    }
+    this._scheduleDraw();
+  }
+
+  updated(changed) {
+    if (changed.has('config') || changed.has('hass')) {
+      applyF1ThemeMode(this, this.config, this.hass);
+      this._ensureSubscription();
+    }
+    this._scheduleDraw();
+  }
+
+  getCardSize() {
+    return 4;
+  }
+
+  getGridOptions() {
+    return {
+      columns: 12,
+      min_columns: 4,
+      rows: 4,
+      min_rows: 3,
+    };
+  }
+
+  async _ensureSubscription() {
+    if (!this.hass || !this.isConnected) return;
+    const entryId = this.config?.entry_id && this.config.entry_id !== 'auto'
+      ? String(this.config.entry_id)
+      : null;
+    const throttleMs = Math.max(0, Number(this.config?.throttle_ms ?? 250) || 0);
+    const key = `${entryId || 'auto'}:${throttleMs}`;
+    if (this._subscriptionKey === key && this._unsubscribeTrackMap) return;
+
+    this._teardownSubscription();
+    this._subscriptionKey = key;
+    this._error = null;
+    const token = ++this._subscriptionToken;
+    const message = {
+      type: 'f1_sensor/track_map/subscribe',
+      throttle_ms: throttleMs,
+    };
+    if (entryId) message.entry_id = entryId;
+
+    const connection = this.hass.connection;
+    if (!connection || typeof connection.subscribeMessage !== 'function') {
+      await this._loadSnapshotOnce(entryId, token);
+      return;
+    }
+
+    try {
+      const unsubscribe = await connection.subscribeMessage(
+        (event) => this._handleTrackMapMessage(event),
+        message
+      );
+      if (!this.isConnected || token !== this._subscriptionToken) {
+        this._callUnsubscribe(unsubscribe);
+        return;
+      }
+      this._unsubscribeTrackMap = unsubscribe;
+    } catch (err) {
+      if (token !== this._subscriptionToken) return;
+      this._error = err?.message || 'Track map websocket unavailable';
+      this._status = 'not_loaded';
+    }
+  }
+
+  async _loadSnapshotOnce(entryId, token) {
+    try {
+      const message = { type: 'f1_sensor/track_map/get' };
+      if (entryId) message.entry_id = entryId;
+      const response = typeof this.hass?.callWS === 'function'
+        ? await this.hass.callWS(message)
+        : await this.hass?.connection?.sendMessagePromise?.(message);
+      if (token !== this._subscriptionToken) return;
+      this._handleTrackMapMessage(response);
+    } catch (err) {
+      if (token !== this._subscriptionToken) return;
+      this._error = err?.message || 'Track map websocket unavailable';
+      this._status = 'not_loaded';
+    }
+  }
+
+  _teardownSubscription() {
+    this._subscriptionToken += 1;
+    this._subscriptionKey = null;
+    this._callUnsubscribe(this._unsubscribeTrackMap);
+    this._unsubscribeTrackMap = null;
+    this._driverSamples.clear();
+    this._viewportBounds = null;
+    this._viewportSessionKey = null;
+    this._lastSnapshotAt = 0;
+    this._snapshotIntervalMs = 0;
+    this._driverSampleIntervalMs = 0;
+    this._renderClockAt = 0;
+  }
+
+  _callUnsubscribe(unsubscribe) {
+    if (typeof unsubscribe !== 'function') return;
+    try {
+      const result = unsubscribe();
+      if (result && typeof result.catch === 'function') {
+        result.catch(() => {});
+      }
+    } catch (_err) {
+      // Dashboard teardown can race websocket cleanup.
+    }
+  }
+
+  _handleTrackMapMessage(message) {
+    const snapshot = message?.snapshot || null;
+    this._resetVisualStateIfSessionChanged(snapshot);
+    this._noteSnapshotArrival(snapshot);
+    this._snapshot = snapshot;
+    this._status = message?.status || this._snapshot?.status || 'not_loaded';
+    this._error = null;
+    this._ingestDriverSamples(snapshot);
+    this.requestUpdate();
+    this._scheduleDraw();
+  }
+
+  _statusLabel() {
+    const replayState = String(this._snapshot?.replay_state || '').toLowerCase();
+    if (replayState === 'paused') return 'Paused';
+    if (replayState === 'seeking') return 'Seeking';
+    if (replayState === 'playing') return 'Replay';
+    const labels = {
+      active: 'Replay',
+      no_geometry: 'Replay',
+      stale: 'Stale',
+      no_position_data: 'Waiting',
+      no_session: 'No session',
+      not_loaded: 'Not loaded',
+      closed: 'Closed',
+    };
+    return labels[this._status] || String(this._status || 'Unknown').replaceAll('_', ' ');
+  }
+
+  _visualStatusState() {
+    const replayState = String(this._snapshot?.replay_state || '').toLowerCase();
+    if (['playing', 'paused', 'seeking'].includes(replayState)) return replayState;
+    return this._status || 'not_loaded';
+  }
+
+  _emptyText() {
+    if (this._error) return this._error;
+    if (!this._snapshot) return 'Waiting for track map data';
+    if (!this._snapshot.session) return 'No replay session loaded';
+    if (!Array.isArray(this._snapshot.drivers) || this._snapshot.drivers.length === 0) {
+      return 'Waiting for Position.z replay data';
+    }
+    if (!this._snapshot.track) return 'Building replay track geometry';
+    return '';
+  }
+
+  render() {
+    const snapshot = this._snapshot;
+    const drivers = Array.isArray(snapshot?.drivers) ? snapshot.drivers : [];
+    const session = snapshot?.session || {};
+    const title = this.config?.title || 'F1 Track Map';
+    const sessionText = [session.meeting_name, session.session_name].filter(Boolean).join(' - ') || 'No session';
+    const source = snapshot?.source === 'replay' ? 'Replay' : (snapshot?.source || 'Idle');
+    const footer = `${source} / ${drivers.length} drivers`;
+    const empty = this._emptyText();
+
+    return html`
+      <ha-card>
+        <div class="tm-shell">
+          <div class="tm-header">
+            <div class="tm-title">${title}</div>
+            <div class="tm-status" data-state=${this._visualStatusState()}>${this._statusLabel()}</div>
+          </div>
+          <div class="tm-canvas-frame">
+            <canvas></canvas>
+            ${empty ? html`<div class="tm-empty">${empty}</div>` : ''}
+          </div>
+          <div class="tm-footer">
+            <span>${sessionText}</span>
+            <span>${footer}</span>
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+
+  _scheduleDraw() {
+    if (this._drawRaf) return;
+    this._drawRaf = requestAnimationFrame(() => {
+      this._drawRaf = 0;
+      this._drawCanvas();
+    });
+  }
+
+  _drawCanvas() {
+    const canvas = this.renderRoot?.querySelector('canvas');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const width = Math.max(1, Math.round(rect.width * dpr));
+    const height = Math.max(1, Math.round(rect.height * dpr));
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.fillStyle = '#07090c';
+    ctx.fillRect(0, 0, rect.width, rect.height);
+    this._drawGrid(ctx, rect.width, rect.height);
+
+    const snapshot = this._snapshot;
+    const presentation = this._presentationTransform(snapshot?.track);
+    const bounds = this._drawableBounds(snapshot, presentation);
+    if (!snapshot || !bounds) return;
+
+    const canvasTransform = this._buildTransform(bounds, rect.width, rect.height);
+    const transform = (x, y) => {
+      const point = this._applyPresentationTransform(x, y, presentation);
+      return canvasTransform(point.x, point.y);
+    };
+    const drivers = this._displayDrivers(snapshot.drivers);
+    this._drawTrack(ctx, snapshot.track?.points, transform);
+    this._drawDrivers(ctx, drivers, transform);
+    if (this._hasActiveDriverMotion()) this._scheduleDraw();
+  }
+
+  _drawGrid(ctx, width, height) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.055)';
+    ctx.lineWidth = 1;
+    const step = 40;
+    for (let x = step; x < width; x += step) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+    for (let y = step; y < height; y += step) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _drawTrack(ctx, points, transform) {
+    if (!Array.isArray(points) || points.length === 0) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(238, 242, 246, 0.9)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      if (!Array.isArray(point) || point.length < 2) return;
+      const xy = transform(Number(point[0]), Number(point[1]));
+      if (index === 0) ctx.moveTo(xy.x, xy.y);
+      else ctx.lineTo(xy.x, xy.y);
+    });
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0, 210, 106, 0.22)';
+    ctx.lineWidth = 8;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawDrivers(ctx, drivers, transform) {
+    if (!Array.isArray(drivers)) return;
+    const showLabels = this.config?.show_labels !== false;
+    const ordered = [...drivers].sort((a, b) => Number(a.racing_number) - Number(b.racing_number));
+    for (const driver of ordered) {
+      const x = Number(driver?.x);
+      const y = Number(driver?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const xy = transform(x, y);
+      const color = this._teamColor(driver?.team_color);
+      const stale = Boolean(driver?.stale);
+      ctx.save();
+      ctx.globalAlpha = stale ? 0.45 : 1;
+      ctx.fillStyle = color;
+      ctx.strokeStyle = '#05070a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(xy.x, xy.y, 6.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      if (showLabels) {
+        const label = String(driver?.tla || driver?.racing_number || '').slice(0, 3);
+        ctx.font = '700 11px sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#f6f8fb';
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.72)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(label, xy.x + 9, xy.y);
+        ctx.fillText(label, xy.x + 9, xy.y);
+      }
+      ctx.restore();
+    }
+  }
+
+  _teamColor(value) {
+    const text = String(value || '').trim().replace(/^#/, '');
+    return /^[0-9a-fA-F]{6}$/.test(text) ? `#${text}` : '#d8dee8';
+  }
+
+  _resetVisualStateIfSessionChanged(snapshot) {
+    const session = snapshot?.session || {};
+    const nextKey = session.session_key || session.path || null;
+    if (nextKey === this._viewportSessionKey) return;
+    this._driverSamples.clear();
+    this._viewportBounds = null;
+    this._viewportSessionKey = nextKey;
+    this._lastSnapshotAt = 0;
+    this._snapshotIntervalMs = 0;
+    this._driverSampleIntervalMs = 0;
+    this._renderClockAt = 0;
+  }
+
+  _noteSnapshotArrival(snapshot) {
+    const replayState = String(snapshot?.replay_state || '').toLowerCase();
+    const drivers = Array.isArray(snapshot?.drivers) ? snapshot.drivers : [];
+    if (!drivers.length || replayState === 'paused' || replayState === 'seeking') {
+      this._lastSnapshotAt = 0;
+      this._renderClockAt = 0;
+      return;
+    }
+    const now = this._nowMs();
+    if (this._lastSnapshotAt > 0) {
+      const interval = now - this._lastSnapshotAt;
+      if (interval >= 120 && interval <= 3000) {
+        this._snapshotIntervalMs = this._snapshotIntervalMs
+          ? (this._snapshotIntervalMs * 0.65) + (interval * 0.35)
+          : interval;
+      }
+    }
+    this._lastSnapshotAt = now;
+  }
+
+  _ingestDriverSamples(snapshot) {
+    const drivers = Array.isArray(snapshot?.drivers) ? snapshot.drivers : [];
+    if (!drivers.length) {
+      this._driverSamples.clear();
+      return;
+    }
+    const replayState = String(snapshot?.replay_state || '').toLowerCase();
+    const shouldSnap = replayState === 'paused' || replayState === 'seeking';
+    const now = this._nowMs();
+    if (shouldSnap) this._renderClockAt = 0;
+    const nextKeys = new Set();
+    for (const driver of drivers) {
+      const key = String(driver?.racing_number || '').trim();
+      const x = Number(driver?.x);
+      const y = Number(driver?.y);
+      if (!key || !Number.isFinite(x) || !Number.isFinite(y)) continue;
+      nextKeys.add(key);
+      const sample = { ...driver, x, y, arrivalAt: now };
+      const samples = this._driverSamples.get(key) || [];
+      const previous = samples[samples.length - 1];
+      const timestampKey = String(driver?.timestamp || '');
+      const unchanged = previous
+        && previous.timestampKey === timestampKey
+        && Number(previous.x) === x
+        && Number(previous.y) === y;
+      if (unchanged && !shouldSnap) continue;
+      sample.timestampKey = timestampKey;
+      if (shouldSnap || !previous || this._isLargeDriverJump(previous, sample)) {
+        this._driverSamples.set(key, [sample]);
+        continue;
+      }
+      this._noteDriverSampleInterval(now - previous.arrivalAt);
+      this._driverSamples.set(key, [...samples.slice(-5), sample]);
+    }
+    for (const key of [...this._driverSamples.keys()]) {
+      if (!nextKeys.has(key)) this._driverSamples.delete(key);
+    }
+  }
+
+  _displayDrivers(drivers) {
+    if (!Array.isArray(drivers) || this._driverSamples.size === 0) return drivers;
+    const renderAt = this._driverRenderTime();
+    return drivers.map((driver) => {
+      const key = String(driver?.racing_number || '').trim();
+      const current = this._sampledDriverPosition(key, renderAt);
+      return current ? { ...driver, x: current.x, y: current.y } : driver;
+    });
+  }
+
+  _sampledDriverPosition(key, renderAt) {
+    const samples = this._driverSamples.get(key);
+    if (!Array.isArray(samples) || samples.length === 0) return null;
+    if (samples.length === 1 || renderAt <= samples[0].arrivalAt) return samples[0];
+    for (let index = 0; index < samples.length - 1; index += 1) {
+      const from = samples[index];
+      const to = samples[index + 1];
+      if (renderAt < from.arrivalAt || renderAt > to.arrivalAt) continue;
+      const duration = Math.max(1, to.arrivalAt - from.arrivalAt);
+      const progress = Math.max(0, Math.min(1, (renderAt - from.arrivalAt) / duration));
+      const eased = progress * progress * (3 - (2 * progress));
+      return {
+        ...to,
+        x: Number(from.x) + ((Number(to.x) - Number(from.x)) * eased),
+        y: Number(from.y) + ((Number(to.y) - Number(from.y)) * eased),
+      };
+    }
+    return samples[samples.length - 1];
+  }
+
+  _noteDriverSampleInterval(interval) {
+    if (!Number.isFinite(interval) || interval < 120 || interval > 5000) return;
+    this._driverSampleIntervalMs = this._driverSampleIntervalMs
+      ? (this._driverSampleIntervalMs * 0.7) + (interval * 0.3)
+      : interval;
+  }
+
+  _driverRenderTime() {
+    const desired = Math.max(0, this._nowMs() - this._driverRenderLag());
+    if (!this._renderClockAt) {
+      this._renderClockAt = desired;
+      return this._renderClockAt;
+    }
+    this._renderClockAt = Math.max(this._renderClockAt, desired);
+    return this._renderClockAt;
+  }
+
+  _driverRenderLag() {
+    const configured = Number(this.config?.interpolation_ms);
+    if (Number.isFinite(configured)) {
+      return Math.max(0, Math.min(5000, configured));
+    }
+    if (this._driverSampleIntervalMs > 0) {
+      return Math.max(220, Math.min(900, this._driverSampleIntervalMs * 1.8));
+    }
+    if (this._snapshotIntervalMs > 0) {
+      return Math.max(260, Math.min(1000, this._snapshotIntervalMs * 2));
+    }
+    const throttle = Number(this.config?.throttle_ms);
+    return Number.isFinite(throttle) ? Math.max(300, Math.min(1000, throttle * 3)) : 500;
+  }
+
+  _isLargeDriverJump(previous, target) {
+    const fromX = Number(previous?.x);
+    const fromY = Number(previous?.y);
+    const toX = Number(target?.x);
+    const toY = Number(target?.y);
+    if (![fromX, fromY, toX, toY].every(Number.isFinite)) return true;
+    return Math.hypot(toX - fromX, toY - fromY) > 2500;
+  }
+
+  _hasActiveDriverMotion() {
+    const replayState = String(this._snapshot?.replay_state || '').toLowerCase();
+    if (replayState !== 'playing') return false;
+    const renderAt = this._driverRenderTime();
+    for (const samples of this._driverSamples.values()) {
+      const latest = samples?.[samples.length - 1];
+      if (samples?.length > 1 && latest && renderAt < latest.arrivalAt) return true;
+    }
+    return false;
+  }
+
+  _nowMs() {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+  }
+
+  _presentationTransform(track) {
+    const rotation = Number(track?.rotation);
+    if (!Number.isFinite(rotation) || Math.abs(rotation) < 0.001) return null;
+    const bounds = this._normalizeBounds(track?.bounds) || this._boundsFromTrackPoints(track?.points, null);
+    if (!bounds) return null;
+    const radians = (rotation * Math.PI) / 180;
+    return {
+      centerX: (bounds.minX + bounds.maxX) / 2,
+      centerY: (bounds.minY + bounds.maxY) / 2,
+      cos: Math.cos(radians),
+      sin: Math.sin(radians),
+    };
+  }
+
+  _applyPresentationTransform(x, y, presentation) {
+    if (!presentation) return { x, y };
+    const dx = x - presentation.centerX;
+    const dy = y - presentation.centerY;
+    return {
+      x: presentation.centerX + (dx * presentation.cos) - (dy * presentation.sin),
+      y: presentation.centerY + (dx * presentation.sin) + (dy * presentation.cos),
+    };
+  }
+
+  _drawableBounds(snapshot, presentation = null) {
+    const trackBounds = this._normalizeBounds(snapshot?.track?.bounds);
+    if (trackBounds) {
+      if (!presentation) return trackBounds;
+      return this._boundsFromTrackPoints(snapshot?.track?.points, presentation)
+        || this._boundsFromNormalizedBounds(trackBounds, presentation)
+        || trackBounds;
+    }
+
+    const drivers = Array.isArray(snapshot?.drivers) ? snapshot.drivers : [];
+    const driverBounds = this._boundsFromDrivers(drivers, presentation);
+    if (!driverBounds) return null;
+    return this._stableViewportBounds(driverBounds);
+  }
+
+  _boundsFromDrivers(drivers, presentation = null) {
+    const points = (Array.isArray(drivers) ? drivers : [])
+      .map((driver) => ({
+        x: Number(driver?.x),
+        y: Number(driver?.y),
+      }));
+    return this._boundsFromCoordinateList(points, presentation);
+  }
+
+  _boundsFromTrackPoints(points, presentation = null) {
+    const normalizedPoints = (Array.isArray(points) ? points : [])
+      .map((point) => ({
+        x: Number(point?.[0]),
+        y: Number(point?.[1]),
+      }));
+    return this._boundsFromCoordinateList(normalizedPoints, presentation);
+  }
+
+  _boundsFromNormalizedBounds(bounds, presentation = null) {
+    if (!bounds) return null;
+    return this._boundsFromCoordinateList([
+      { x: bounds.minX, y: bounds.minY },
+      { x: bounds.minX, y: bounds.maxY },
+      { x: bounds.maxX, y: bounds.minY },
+      { x: bounds.maxX, y: bounds.maxY },
+    ], presentation);
+  }
+
+  _boundsFromCoordinateList(points, presentation = null) {
+    const transformed = [];
+    for (const point of points) {
+      const x = Number(point?.x);
+      const y = Number(point?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      transformed.push(this._applyPresentationTransform(x, y, presentation));
+    }
+    const xs = transformed.map((point) => point.x);
+    const ys = transformed.map((point) => point.y);
+    if (!xs.length || !ys.length) return null;
+    return this._normalizeBounds({
+      min_x: Math.min(...xs),
+      max_x: Math.max(...xs),
+      min_y: Math.min(...ys),
+      max_y: Math.max(...ys),
+    });
+  }
+
+  _combineBounds(boundsList) {
+    const valid = boundsList.filter(Boolean);
+    if (!valid.length) return null;
+    return {
+      minX: Math.min(...valid.map((bounds) => bounds.minX)),
+      maxX: Math.max(...valid.map((bounds) => bounds.maxX)),
+      minY: Math.min(...valid.map((bounds) => bounds.minY)),
+      maxY: Math.max(...valid.map((bounds) => bounds.maxY)),
+    };
+  }
+
+  _stableViewportBounds(bounds) {
+    if (!this._viewportBounds) {
+      this._viewportBounds = bounds;
+      return bounds;
+    }
+    this._viewportBounds = {
+      minX: Math.min(this._viewportBounds.minX, bounds.minX),
+      maxX: Math.max(this._viewportBounds.maxX, bounds.maxX),
+      minY: Math.min(this._viewportBounds.minY, bounds.minY),
+      maxY: Math.max(this._viewportBounds.maxY, bounds.maxY),
+    };
+    return this._viewportBounds;
+  }
+
+  _normalizeBounds(bounds) {
+    const minX = Number(bounds?.min_x);
+    const maxX = Number(bounds?.max_x);
+    const minY = Number(bounds?.min_y);
+    const maxY = Number(bounds?.max_y);
+    if (![minX, maxX, minY, maxY].every(Number.isFinite)) return null;
+    const padX = minX === maxX ? 100 : 0;
+    const padY = minY === maxY ? 100 : 0;
+    return {
+      minX: minX - padX,
+      maxX: maxX + padX,
+      minY: minY - padY,
+      maxY: maxY + padY,
+    };
+  }
+
+  _buildTransform(bounds, width, height) {
+    const padding = 22;
+    const spanX = Math.max(1, bounds.maxX - bounds.minX);
+    const spanY = Math.max(1, bounds.maxY - bounds.minY);
+    const usableW = Math.max(1, width - padding * 2);
+    const usableH = Math.max(1, height - padding * 2);
+    const scale = Math.min(usableW / spanX, usableH / spanY);
+    const offsetX = padding + (usableW - spanX * scale) / 2;
+    const offsetY = padding + (usableH - spanY * scale) / 2;
+    const invertY = this.config?.invert_y !== false;
+    return (x, y) => ({
+      x: offsetX + (x - bounds.minX) * scale,
+      y: offsetY + (invertY ? (bounds.maxY - y) : (y - bounds.minY)) * scale,
+    });
+  }
+}
+
 installSectionsAutoHeight(F1TyreStatisticsCard, {
   columns: 12,
   min_columns: 4,
@@ -26070,6 +26876,13 @@ installSectionsAutoHeight(F1StartingGridCard, {
   min_rows: 8,
 });
 
+installSectionsAutoHeight(F1TrackMapCard, {
+  columns: 12,
+  min_columns: 4,
+  max_columns: 12,
+  min_rows: 3,
+});
+
 
 if (!customElements.get('f1-sensor-live-data-card')) {
   customElements.define('f1-sensor-live-data-card', F1TyreStatisticsCard);
@@ -26125,6 +26938,10 @@ if (!customElements.get('f1-replay-control-card')) {
 
 if (!customElements.get('f1-replay-control-card-editor')) {
   customElements.define('f1-replay-control-card-editor', F1ReplayControlCardEditor);
+}
+
+if (!customElements.get('f1-track-map-card')) {
+  customElements.define('f1-track-map-card', F1TrackMapCard);
 }
 
 if (!customElements.get('f1-investigations-card')) {
@@ -26269,6 +27086,14 @@ window.customCards.push({
   name: 'F1 Replay Control',
   description: 'Replay Mode control panel with session selectors, playback controls, and progress',
   configurable: true,
+  preview: true,
+});
+
+window.customCards.push({
+  type: 'f1-track-map-card',
+  name: 'F1 Track Map',
+  description: 'Replay track map canvas with live websocket snapshots',
+  configurable: false,
   preview: true,
 });
 
