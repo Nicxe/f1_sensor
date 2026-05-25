@@ -69,6 +69,30 @@ const isEffectiveLightTheme = (hass, config) => {
   return hass?.themes?.darkMode === false;
 };
 
+const formatHassDateTime = (hass, date, options = {}, fallback = '') => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return fallback;
+  const formatOptions = { ...options };
+  const hasTime = ['hour', 'minute', 'second'].some((field) => field in formatOptions);
+  if (hasTime) {
+    const timeFormat = hass?.locale?.time_format;
+    if (timeFormat === '12') {
+      formatOptions.hour12 = true;
+    } else if (timeFormat === '24') {
+      formatOptions.hour12 = false;
+    }
+  }
+  const locale = hass?.locale?.language || undefined;
+  try {
+    return new Intl.DateTimeFormat(locale, formatOptions).format(date);
+  } catch (err) {
+    try {
+      return date.toLocaleString(locale, formatOptions);
+    } catch (_err) {
+      return fallback;
+    }
+  }
+};
+
 const F1_THEME_STYLES = css`
   :host {
     --f1-card-bg: #0b0b0d;
@@ -11919,19 +11943,17 @@ class F1LiveSessionCard extends LitElement {
   _formatLocalTime(value, offset) {
     const dt = this._parseDateWithOffset(value, offset);
     if (!dt) return null;
-    const timeFormat = this.hass?.locale?.time_format;
-    const hour12 = timeFormat === '12';
     const timeZone = this._getTimeZone();
-    try {
-      return new Intl.DateTimeFormat(this.hass?.locale?.language || undefined, {
+    return formatHassDateTime(
+      this.hass,
+      dt,
+      {
         hour: '2-digit',
         minute: '2-digit',
-        hour12,
         timeZone,
-      }).format(dt);
-    } catch (err) {
-      return dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12, timeZone });
-    }
+      },
+      null,
+    );
   }
 
   _getTimeZone() {
@@ -15440,41 +15462,21 @@ class F1NextRaceCard extends LitElement {
 
   _formatDate(date, timeZone = this._getTimeZone()) {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
-    try {
-      return new Intl.DateTimeFormat(this.hass?.locale?.language || undefined, {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        timeZone,
-      }).format(date);
-    } catch (err) {
-      return date.toLocaleDateString([], {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        timeZone,
-      });
-    }
+    return formatHassDateTime(this.hass, date, {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      timeZone,
+    });
   }
 
   _formatTime(date, timeZone = this._getTimeZone()) {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
-    const hour12 = this.hass?.locale?.time_format === '12';
-    try {
-      return new Intl.DateTimeFormat(this.hass?.locale?.language || undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12,
-        timeZone,
-      }).format(date);
-    } catch (err) {
-      return date.toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12,
-        timeZone,
-      });
-    }
+    return formatHassDateTime(this.hass, date, {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone,
+    });
   }
 
   _formatDateTimeParts(date, timeZone = this._getTimeZone()) {
@@ -19788,32 +19790,16 @@ class F1FiaDocumentsCard extends LitElement {
     const parsed = this._parseDateTs(value);
     if (!Number.isFinite(parsed)) return 'Time unavailable';
     const date = new Date(parsed);
-    const locale = this.hass?.locale?.language || undefined;
     const timeZone = this.hass?.config?.time_zone || this.hass?.locale?.time_zone || undefined;
-    const timeFormat = this.hass?.locale?.time_format;
-    const hour12 = timeFormat === '12' ? true : timeFormat === '24' ? false : undefined;
     const currentYear = new Date().getFullYear();
-    try {
-      return new Intl.DateTimeFormat(locale, {
-        day: 'numeric',
-        month: 'short',
-        year: date.getFullYear() === currentYear ? undefined : 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12,
-        timeZone,
-      }).format(date);
-    } catch (_err) {
-      return date.toLocaleString(locale, {
-        day: 'numeric',
-        month: 'short',
-        year: date.getFullYear() === currentYear ? undefined : 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12,
-        timeZone,
-      });
-    }
+    return formatHassDateTime(this.hass, date, {
+      day: 'numeric',
+      month: 'short',
+      year: date.getFullYear() === currentYear ? undefined : 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone,
+    });
   }
 
   _documentTypeLabel(title) {
@@ -25784,11 +25770,13 @@ class F1StartingGridCard extends LitElement {
     if (!value) return null;
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return String(value);
-    return date.toLocaleString(undefined, {
+    const timeZone = this.hass?.config?.time_zone || this.hass?.locale?.time_zone || undefined;
+    return formatHassDateTime(this.hass, date, {
       month: 'short',
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone,
     });
   }
 

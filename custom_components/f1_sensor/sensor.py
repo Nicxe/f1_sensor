@@ -993,6 +993,8 @@ class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
 
         return {
             "timezone": tz_name,
+            "track_datetime_utc": now_utc.isoformat(timespec="seconds"),
+            "track_datetime_local": now_track.isoformat(timespec="seconds"),
             "utc_offset": now_track.strftime("%z"),
             "offset_from_home": offset_from_home,
             "circuit_name": circuit.get("circuitName"),
