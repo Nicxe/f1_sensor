@@ -36,6 +36,7 @@ from .entity import (
     F1BaseEntity,
     default_object_id,
     is_auth_gated_stream_active,
+    is_no_spoiler_live_state,
     is_replay_only_stream_active,
     set_suggested_object_id,
 )
@@ -469,7 +470,9 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
         }
         self._safe_write_ha_state()
 
-    def _handle_live_state(self, is_live: bool, _reason: str | None) -> None:
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if is_no_spoiler_live_state(reason):
+            return
         if not self._is_stream_active():
             self._clear_state()
         self._safe_write_ha_state()

@@ -19,6 +19,7 @@ from .helpers import fetch_text
 
 _LOGGER = logging.getLogger(__name__)
 
+_NO_SPOILER_MANAGER_KEY = "no_spoiler_manager"
 STATIC_BASE = "https://livetiming.formula1.com/static"
 
 CONTEXT_NONE = "none"
@@ -170,6 +171,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                 self._unsubs.append(bus.subscribe(stream, handler))
 
     async def _async_update_data(self) -> dict[str, Any]:
+        if self._is_no_spoiler_active():
+            return self._state
         if self._is_replay_active():
             return self._state
         self._sync_from_index_if_idle()
@@ -198,11 +201,22 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         return dt_util.utcnow().isoformat(timespec="seconds")
 
     def _publish(self) -> None:
+        if self._is_no_spoiler_active():
+            return
         self.async_set_updated_data(dict(self._state))
 
     def _is_replay_active(self) -> bool:
         reason = getattr(self._live_state, "reason", None)
         return str(reason or "") in REPLAY_REASONS
+
+    def _is_no_spoiler_active(self) -> bool:
+        if self._is_replay_active():
+            return False
+        try:
+            mgr = (self.hass.data.get(DOMAIN) or {}).get(_NO_SPOILER_MANAGER_KEY)
+            return mgr is not None and bool(mgr.is_active)
+        except Exception:  # noqa: BLE001
+            return False
 
     def _set_state_fields(self, **updates: Any) -> None:
         changed = False
@@ -311,6 +325,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
             self._maybe_schedule_archive_fetch(context)
 
     def _on_session_info(self, payload: dict[str, Any]) -> None:
+        if self._is_no_spoiler_active():
+            return
         if self._is_replay_active():
             return
         if not isinstance(payload, dict):
@@ -348,6 +364,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         self._apply_session_lifecycle()
 
     def _on_session_status(self, payload: dict[str, Any]) -> None:
+        if self._is_no_spoiler_active():
+            return
         if self._is_replay_active():
             return
         if not isinstance(payload, dict):
@@ -420,6 +438,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                 )
 
     def _on_driver_list(self, payload: dict[str, Any]) -> None:
+        if self._is_no_spoiler_active():
+            return
         if self._is_replay_active():
             return
         if not isinstance(payload, dict):
@@ -439,6 +459,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                 )
 
     def _on_timing_data(self, payload: dict[str, Any]) -> None:
+        if self._is_no_spoiler_active():
+            return
         if self._is_replay_active():
             return
         if not isinstance(payload, dict):
@@ -461,6 +483,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                 )
 
     def _on_timing_app_data(self, payload: dict[str, Any]) -> None:
+        if self._is_no_spoiler_active():
+            return
         if self._is_replay_active():
             return
         if not isinstance(payload, dict):
@@ -658,6 +682,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         }
 
     def _maybe_schedule_archive_fetch(self, context: str) -> None:
+        if self._is_no_spoiler_active():
+            return
         if self._is_replay_active():
             return
         if self._qualifying_entries.get(context):
@@ -678,9 +704,13 @@ class StartingGridCoordinator(DataUpdateCoordinator):
 
     async def _fetch_archive_context(self, context: str, path: str) -> None:
         try:
+            if self._is_no_spoiler_active():
+                return
             if self._is_replay_active():
                 return
             driver_list = await self._fetch_stream(path, "DriverList")
+            if self._is_no_spoiler_active():
+                return
             if self._is_replay_active():
                 return
             if driver_list:
@@ -688,6 +718,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                     self._merge_driver_list(payload)
 
             timing_data = await self._fetch_stream(path, "TimingData")
+            if self._is_no_spoiler_active():
+                return
             if self._is_replay_active():
                 return
             if timing_data:
