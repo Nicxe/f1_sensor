@@ -160,6 +160,10 @@ const F1_THEME_STYLES = css`
     --f1-status-orange-text: #fed7aa;
     --f1-status-orange-bg: rgba(249, 115, 22, 0.14);
     --f1-status-orange-border: rgba(249, 115, 22, 0.30);
+    --f1-table-row-gap: 6px;
+    --f1-table-row-min-height: 34px;
+    --f1-table-row-padding: 6px 8px;
+    --f1-table-row-padding-compact: 5px 6px;
     --f1-timing-overall-fastest-bg: rgba(139, 92, 246, 0.28);
     --f1-timing-overall-fastest-text: #d8b4fe;
     --f1-timing-personal-fastest-bg: rgba(34, 197, 94, 0.22);
@@ -227,6 +231,13 @@ const F1_THEME_STYLES = css`
     --f1-timing-personal-fastest-text: #166534;
     --f1-timing-timed-bg: rgba(255, 214, 10, 0.26);
     --f1-timing-timed-text: #7a5600;
+  }
+
+  :host([data-effective-theme='light']) .cpd-delta-pill,
+  :host([data-effective-theme='light']) .cpt-delta-pill,
+  :host([data-effective-theme='light']) .cpd-pos-arrow,
+  :host([data-effective-theme='light']) .cpt-pos-arrow {
+    color: var(--f1-card-text);
   }
 
   :host([data-theme-mode='auto']) {
@@ -1758,7 +1769,7 @@ class F1TyreStatisticsCard extends LitElement {
     .ts-times,
     .ts-stats {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       width: 100%;
     }
 
@@ -2401,7 +2412,7 @@ class F1PitStopOverviewCard extends LitElement {
 
     .ps-table {
       display: grid;
-      gap: var(--f1-live-table-stack-gap, 4px);
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -3896,7 +3907,7 @@ class F1DriverLapTimesCard extends LitElement {
 
     .dl-table {
       display: grid;
-      gap: var(--f1-live-table-stack-gap, 4px);
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -5241,7 +5252,7 @@ class F1ChampionshipPredictionDriversCard extends LitElement {
 
     .cpd-table {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -6399,7 +6410,7 @@ class F1ChampionshipPredictionTeamsCard extends LitElement {
 
     .cpt-table {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -8411,7 +8422,7 @@ class F1LastRaceResultsCard extends LitElement {
 
     .cpd-table {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -9447,7 +9458,7 @@ class F1InvestigationsCard extends LitElement {
 
     .inv-table {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -10328,7 +10339,7 @@ class F1TrackLimitsCard extends LitElement {
 
     .tl-table {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -20413,7 +20424,7 @@ class F1QualifyingTimingCard extends LitElement {
 
     .qt-table {
       display: grid;
-      gap: 4px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -22010,7 +22021,7 @@ class F1PracticeTimingCard extends LitElement {
 
     .pt-table {
       display: grid;
-      gap: 4px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -23344,7 +23355,7 @@ class F1RaceLapCard extends LitElement {
 
     .rl-table {
       display: grid;
-      gap: 4px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -25108,7 +25119,7 @@ class F1StartingGridCard extends LitElement {
 
     .sg-table {
       display: grid;
-      gap: 4px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
