@@ -1331,7 +1331,12 @@ class LiveSessionSupervisor:
         finally:
             self._bus.set_heartbeat_expectation(False)
             await self._bus.async_close()
-            self._availability.set_state(False, f"finished-{window.session_name}")
+            availability_reason = (
+                "no-spoiler"
+                if reason == "no-spoiler-activated"
+                else f"finished-{window.session_name}"
+            )
+            self._availability.set_state(False, availability_reason)
             _LOGGER.info(
                 "Live timing closed for %s (%s)",
                 label,

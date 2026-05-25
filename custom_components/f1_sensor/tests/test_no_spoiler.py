@@ -262,6 +262,7 @@ async def test_no_spoiler_switch_reflects_manager_state(hass) -> None:
 
     switch = F1NoSpoilerSwitch(mgr, "test_unique", "entry1", "F1")
     assert switch.is_on is False
+    assert switch.icon == "mdi:eye-off"
 
     with patch.object(mgr._store, "async_save", AsyncMock()):
         await mgr.async_set_active(True)
@@ -421,3 +422,37 @@ async def test_supervisor_no_spoiler_active_property(hass) -> None:
         await mgr.async_set_active(True)
 
     assert supervisor._is_no_spoiler_active is True
+
+
+@pytest.mark.asyncio
+async def test_weather_live_state_no_spoiler_preserves_frozen_data(hass) -> None:
+    """No Spoiler Mode freezes live weather data instead of clearing it."""
+    from custom_components.f1_sensor import WeatherDataCoordinator
+
+    coordinator = WeatherDataCoordinator(hass, SimpleNamespace(data={}), bus=None)
+    payload = {
+        "AirTemp": "21.1",
+        "TrackTemp": "34.2",
+        "Humidity": "52.0",
+        "Rainfall": "0",
+    }
+
+    coordinator._deliver(payload)
+    assert coordinator.available is True
+    assert coordinator.data == payload
+    assert coordinator._last_message == payload
+    assert coordinator.data_list == [payload]
+
+    coordinator._handle_live_state(False, "no-spoiler")
+
+    assert coordinator.available is True
+    assert coordinator.data == payload
+    assert coordinator._last_message == payload
+    assert coordinator.data_list == [payload]
+
+    coordinator._handle_live_state(False, "finished-race")
+
+    assert coordinator.available is False
+    assert coordinator.data is None
+    assert coordinator._last_message is None
+    assert coordinator.data_list == []

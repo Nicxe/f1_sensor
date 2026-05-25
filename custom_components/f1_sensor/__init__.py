@@ -1214,6 +1214,12 @@ def coordinator_logger(
 
 
 _NO_SPOILER_MANAGER_KEY = "no_spoiler_manager"
+_NO_SPOILER_LIVE_STATE_REASON = "no-spoiler"
+
+
+def _is_no_spoiler_live_state(reason: str | None) -> bool:
+    """Return True for live availability changes caused by No Spoiler Mode."""
+    return reason == _NO_SPOILER_LIVE_STATE_REASON
 
 
 def _is_no_spoiler_blocked(coordinator: DataUpdateCoordinator) -> bool:
@@ -2090,6 +2096,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
                 if coord is not None
             ]
+            _blocked_refresh = [
+                *_blocked_jolpica,
+                *(
+                    [starting_grid_coordinator]
+                    if starting_grid_coordinator is not None
+                    else []
+                ),
+            ]
 
             def _on_no_spoiler_changed(active: bool) -> None:
                 if active:
@@ -2098,8 +2112,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     if _sup is not None and callable(getattr(_sup, "wake", None)):
                         _sup.wake()
                     return
-                # Deactivated: trigger catch-up for all blocked Jolpica coordinators.
-                for coord in _blocked_jolpica:
+                # Deactivated: trigger catch-up for blocked spoiler-sensitive coordinators.
+                for coord in _blocked_refresh:
                     hass.async_create_task(coord.async_request_refresh())
                 # Wake supervisor so it re-evaluates session windows.
                 _sup = hass_data.get("live_supervisor") if hass_data else None
@@ -2254,6 +2268,9 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
+        if _is_no_spoiler_live_state(reason):
+            _clear_delayed_ingest_state(self)
+            return
         self.available = is_live
         if not is_live:
             _clear_delayed_ingest_state(self)
@@ -2476,6 +2493,12 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 with suppress(Exception):
                     handle.cancel()
             self._deliver_handles.clear()
+        if _is_no_spoiler_live_state(reason):
+            for handle in list(self._deliver_handles):
+                with suppress(Exception):
+                    handle.cancel()
+            self._deliver_handles.clear()
+            return
         self.available = is_live
         if not is_live:
             self._last_message = None
@@ -2932,6 +2955,8 @@ class LiveModeCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        if _is_no_spoiler_live_state(reason):
+            return
         self.available = is_live
         if not is_live:
             self._clear_mode_state()
@@ -3047,6 +3072,9 @@ class LapCountCoordinator(DataUpdateCoordinator):
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
+        if _is_no_spoiler_live_state(reason):
+            _clear_delayed_ingest_state(self)
+            return
         self.available = is_live
         if not is_live:
             _clear_delayed_ingest_state(self)
@@ -3141,6 +3169,9 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
+        if _is_no_spoiler_live_state(reason):
+            _clear_delayed_ingest_state(self)
+            return
         replay_available = bool(is_live and self._replay_mode)
         auth_live_available = bool(
             is_live
@@ -3701,6 +3732,9 @@ class ChampionshipPredictionCoordinator(
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
+        if _is_no_spoiler_live_state(reason):
+            _clear_delayed_ingest_state(self)
+            return
         replay_available = bool(is_live and self._replay_mode)
         auth_live_available = bool(
             is_live
@@ -4769,6 +4803,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
+        if _is_no_spoiler_live_state(reason):
+            _clear_delayed_ingest_state(self)
+            return
         self.available = is_live
         self._tyre_live_started_mono = (
             time.monotonic() if is_live and not self._replay_mode else None
@@ -7542,6 +7579,10 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
                     with suppress(Exception):
                         handle.cancel()
                 self._deliver_handles.clear()
+        if _is_no_spoiler_live_state(reason):
+            self._deliver_handle = _cancel_handle(self._deliver_handle)
+            _cancel_handles(self._deliver_handles)
+            return
         self.available = is_live
         if not is_live:
             self._last_message = None
@@ -7737,6 +7778,9 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
+        if _is_no_spoiler_live_state(reason):
+            _clear_delayed_ingest_state(self)
+            return
         self.available = is_live
         if not is_live:
             self.is_qualifying_like_session = False
@@ -7805,6 +7849,9 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
+        if _is_no_spoiler_live_state(reason):
+            _clear_delayed_ingest_state(self)
+            return
         self.available = is_live
         # Note: For replay mode, we don't schedule deliver here.
         # The inject_message call will handle delivery with the correct initial state.
@@ -8038,6 +8085,9 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
+        if _is_no_spoiler_live_state(reason):
+            _clear_delayed_ingest_state(self)
+            return
         self.available = is_live
         if not is_live:
             _clear_delayed_ingest_state(self)
@@ -8970,6 +9020,10 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
+        if _is_no_spoiler_live_state(reason):
+            _clear_delayed_ingest_state(self)
+            self._stop_tick()
+            return
         self.available = is_live
         if not is_live:
             _clear_delayed_ingest_state(self)
