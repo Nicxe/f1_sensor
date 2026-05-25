@@ -24,6 +24,7 @@ _TRANSLATIONS_DIR = Path(__file__).parent / "translations"
 _ENTRY_NAME_SETTINGS: dict[str, tuple[str, str]] = {}
 _TRANSLATION_NAME_CACHE: dict[str, dict[str, str]] = {}
 _REPLAY_ONLY_ACTIVE_REASONS = frozenset({"replay", "replay-mode"})
+_NO_SPOILER_LIVE_STATE_REASON = "no-spoiler"
 
 
 def _normalize_language(language: str | None) -> str:
@@ -256,6 +257,11 @@ def is_auth_gated_stream_active(
     return stream in auth_gated_streams
 
 
+def is_no_spoiler_live_state(reason: str | None) -> bool:
+    """Return True when live availability changed because No Spoiler Mode is active."""
+    return reason == _NO_SPOILER_LIVE_STATE_REASON
+
+
 class F1BaseEntity(CoordinatorEntity):
     """Common base entity for F1 sensors."""
 
@@ -330,9 +336,15 @@ class F1BaseEntity(CoordinatorEntity):
                         if live_state is not None
                         else None
                     )
+                    live_reason = (
+                        getattr(live_state, "reason", None)
+                        if live_state is not None
+                        else None
+                    )
                     if (
                         operation_mode != OPERATION_MODE_DEVELOPMENT
                         and is_live_window is False
+                        and not is_no_spoiler_live_state(live_reason)
                     ):
                         return False
 

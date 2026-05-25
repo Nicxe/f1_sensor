@@ -69,6 +69,30 @@ const isEffectiveLightTheme = (hass, config) => {
   return hass?.themes?.darkMode === false;
 };
 
+const formatHassDateTime = (hass, date, options = {}, fallback = '') => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return fallback;
+  const formatOptions = { ...options };
+  const hasTime = ['hour', 'minute', 'second'].some((field) => field in formatOptions);
+  if (hasTime) {
+    const timeFormat = hass?.locale?.time_format;
+    if (timeFormat === '12') {
+      formatOptions.hour12 = true;
+    } else if (timeFormat === '24') {
+      formatOptions.hour12 = false;
+    }
+  }
+  const locale = hass?.locale?.language || undefined;
+  try {
+    return new Intl.DateTimeFormat(locale, formatOptions).format(date);
+  } catch (err) {
+    try {
+      return date.toLocaleString(locale, formatOptions);
+    } catch (_err) {
+      return fallback;
+    }
+  }
+};
+
 const F1_THEME_STYLES = css`
   :host {
     --f1-card-bg: #0b0b0d;
@@ -136,6 +160,10 @@ const F1_THEME_STYLES = css`
     --f1-status-orange-text: #fed7aa;
     --f1-status-orange-bg: rgba(249, 115, 22, 0.14);
     --f1-status-orange-border: rgba(249, 115, 22, 0.30);
+    --f1-table-row-gap: 6px;
+    --f1-table-row-min-height: 34px;
+    --f1-table-row-padding: 6px 8px;
+    --f1-table-row-padding-compact: 5px 6px;
     --f1-timing-overall-fastest-bg: rgba(139, 92, 246, 0.28);
     --f1-timing-overall-fastest-text: #d8b4fe;
     --f1-timing-personal-fastest-bg: rgba(34, 197, 94, 0.22);
@@ -205,6 +233,13 @@ const F1_THEME_STYLES = css`
     --f1-timing-timed-text: #7a5600;
   }
 
+  :host([data-effective-theme='light']) .cpd-delta-pill,
+  :host([data-effective-theme='light']) .cpt-delta-pill,
+  :host([data-effective-theme='light']) .cpd-pos-arrow,
+  :host([data-effective-theme='light']) .cpt-pos-arrow {
+    color: var(--f1-card-text);
+  }
+
   :host([data-theme-mode='auto']) {
     --f1-card-bg: var(--card-background-color, #ffffff);
     --f1-card-bg-soft: var(--primary-background-color, #f7f8fb);
@@ -221,6 +256,93 @@ const F1_THEME_STYLES = css`
     --f1-card-shadow: var(--ha-card-box-shadow, 0 12px 30px rgba(15, 23, 42, 0.14));
     --f1-card-compact-shadow: var(--ha-card-box-shadow, 0 8px 22px rgba(15, 23, 42, 0.12));
     --f1-card-title-shadow: none;
+  }
+
+  .f1-no-spoiler-host {
+    position: relative;
+    display: block;
+    container-type: inline-size;
+    min-width: 0;
+  }
+
+  .f1-no-spoiler-host.active > :not(.f1-no-spoiler-overlay) {
+    opacity: 0.35;
+    filter: grayscale(1) brightness(0.58);
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .f1-no-spoiler-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-sizing: border-box;
+    min-height: 96px;
+    padding: 18px;
+    border: 1px solid var(--f1-status-warning-border);
+    border-radius: var(--ha-card-border-radius, 12px);
+    background:
+      linear-gradient(160deg, rgba(10, 10, 10, 0.78), rgba(10, 10, 10, 0.58)),
+      radial-gradient(circle at 50% 0%, rgba(251, 191, 36, 0.22), transparent 58%);
+    color: var(--f1-status-warning-text);
+    text-align: center;
+    text-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+  }
+
+  :host([data-effective-theme='light']) .f1-no-spoiler-overlay {
+    background:
+      linear-gradient(160deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.68)),
+      radial-gradient(circle at 50% 0%, rgba(180, 83, 9, 0.18), transparent 58%);
+    text-shadow: none;
+  }
+
+  .f1-no-spoiler-kicker {
+    color: var(--f1-status-warning);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.2;
+    text-transform: uppercase;
+  }
+
+  .f1-no-spoiler-title {
+    max-width: 300px;
+    color: var(--f1-card-text);
+    font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.18;
+  }
+
+  .f1-no-spoiler-copy {
+    max-width: 310px;
+    color: var(--f1-card-muted);
+    font-size: 12px;
+    letter-spacing: 0;
+    line-height: 1.35;
+  }
+
+  @container (max-width: 420px) {
+    .f1-no-spoiler-overlay {
+      min-height: 88px;
+      padding: 14px;
+    }
+
+    .f1-no-spoiler-title {
+      max-width: 240px;
+      font-size: 14px;
+    }
+
+    .f1-no-spoiler-copy {
+      max-width: 250px;
+      font-size: 11px;
+    }
   }
 
   img[class*='team-logo'] {
@@ -1194,6 +1316,73 @@ const isRaceSessionActive = (sessionState, sessionStatusState) => {
 
 const isNoSpoilerModeActive = (entityState) => String(entityState?.state || '').trim().toLowerCase() === 'on';
 
+const DEFAULT_NO_SPOILER_ENTITY = 'switch.f1_no_spoiler_mode';
+
+const getNoSpoilerStateForCard = (hass, config) => {
+  const configuredEntity = String(config?.no_spoiler_entity || DEFAULT_NO_SPOILER_ENTITY).trim();
+  const entityId = configuredEntity || DEFAULT_NO_SPOILER_ENTITY;
+  return getEntityStateWithFallback(hass, entityId);
+};
+
+const isNoSpoilerModeActiveForCard = (hass, config) => (
+  isNoSpoilerModeActive(getNoSpoilerStateForCard(hass, config))
+);
+
+const renderNoSpoilerOverlay = () => html`
+  <div class="f1-no-spoiler-overlay" role="status" aria-live="polite">
+    <div class="f1-no-spoiler-kicker">No Spoiler Mode</div>
+    <div class="f1-no-spoiler-title">No Spoiler Mode is active</div>
+    <div class="f1-no-spoiler-copy">Live and results data is frozen until the switch is turned off.</div>
+  </div>
+`;
+
+const renderWithNoSpoilerOverlay = (content, active) => (
+  active
+    ? html`
+      <div class="f1-no-spoiler-host active">
+        ${content}
+        ${renderNoSpoilerOverlay()}
+      </div>
+    `
+    : content
+);
+
+const installNoSpoilerOverlay = (CardClass) => {
+  if (!CardClass?.prototype || CardClass.prototype._f1NoSpoilerOverlayInstalled) {
+    return;
+  }
+
+  const proto = CardClass.prototype;
+  const originalSetConfig = proto.setConfig;
+  const originalRender = proto.render;
+
+  if (typeof originalRender !== 'function') {
+    return;
+  }
+
+  proto.setConfig = function setConfig(config = {}) {
+    if (typeof originalSetConfig === 'function') {
+      originalSetConfig.call(this, config);
+    } else {
+      this.config = { ...config };
+    }
+
+    if (this.config && !this.config.no_spoiler_entity) {
+      this.config.no_spoiler_entity = DEFAULT_NO_SPOILER_ENTITY;
+    }
+  };
+
+  proto.render = function render(...args) {
+    const content = originalRender.call(this, ...args);
+    return renderWithNoSpoilerOverlay(
+      content,
+      isNoSpoilerModeActiveForCard(this.hass, this.config),
+    );
+  };
+
+  proto._f1NoSpoilerOverlayInstalled = true;
+};
+
 const measureRenderedCardHeight = (host) => {
   const card = host?.renderRoot?.querySelector?.('ha-card');
   const content = card?.firstElementChild;
@@ -1580,7 +1769,7 @@ class F1TyreStatisticsCard extends LitElement {
     .ts-times,
     .ts-stats {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       width: 100%;
     }
 
@@ -2223,7 +2412,7 @@ class F1PitStopOverviewCard extends LitElement {
 
     .ps-table {
       display: grid;
-      gap: var(--f1-live-table-stack-gap, 4px);
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -3718,7 +3907,7 @@ class F1DriverLapTimesCard extends LitElement {
 
     .dl-table {
       display: grid;
-      gap: var(--f1-live-table-stack-gap, 4px);
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -5063,7 +5252,7 @@ class F1ChampionshipPredictionDriversCard extends LitElement {
 
     .cpd-table {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -6221,7 +6410,7 @@ class F1ChampionshipPredictionTeamsCard extends LitElement {
 
     .cpt-table {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -8233,7 +8422,7 @@ class F1LastRaceResultsCard extends LitElement {
 
     .cpd-table {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -9269,7 +9458,7 @@ class F1InvestigationsCard extends LitElement {
 
     .inv-table {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -10150,7 +10339,7 @@ class F1TrackLimitsCard extends LitElement {
 
     .tl-table {
       display: grid;
-      gap: 6px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -11765,19 +11954,17 @@ class F1LiveSessionCard extends LitElement {
   _formatLocalTime(value, offset) {
     const dt = this._parseDateWithOffset(value, offset);
     if (!dt) return null;
-    const timeFormat = this.hass?.locale?.time_format;
-    const hour12 = timeFormat === '12';
     const timeZone = this._getTimeZone();
-    try {
-      return new Intl.DateTimeFormat(this.hass?.locale?.language || undefined, {
+    return formatHassDateTime(
+      this.hass,
+      dt,
+      {
         hour: '2-digit',
         minute: '2-digit',
-        hour12,
         timeZone,
-      }).format(dt);
-    } catch (err) {
-      return dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12, timeZone });
-    }
+      },
+      null,
+    );
   }
 
   _getTimeZone() {
@@ -15286,41 +15473,21 @@ class F1NextRaceCard extends LitElement {
 
   _formatDate(date, timeZone = this._getTimeZone()) {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
-    try {
-      return new Intl.DateTimeFormat(this.hass?.locale?.language || undefined, {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        timeZone,
-      }).format(date);
-    } catch (err) {
-      return date.toLocaleDateString([], {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        timeZone,
-      });
-    }
+    return formatHassDateTime(this.hass, date, {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      timeZone,
+    });
   }
 
   _formatTime(date, timeZone = this._getTimeZone()) {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
-    const hour12 = this.hass?.locale?.time_format === '12';
-    try {
-      return new Intl.DateTimeFormat(this.hass?.locale?.language || undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12,
-        timeZone,
-      }).format(date);
-    } catch (err) {
-      return date.toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12,
-        timeZone,
-      });
-    }
+    return formatHassDateTime(this.hass, date, {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone,
+    });
   }
 
   _formatDateTimeParts(date, timeZone = this._getTimeZone()) {
@@ -19634,32 +19801,16 @@ class F1FiaDocumentsCard extends LitElement {
     const parsed = this._parseDateTs(value);
     if (!Number.isFinite(parsed)) return 'Time unavailable';
     const date = new Date(parsed);
-    const locale = this.hass?.locale?.language || undefined;
     const timeZone = this.hass?.config?.time_zone || this.hass?.locale?.time_zone || undefined;
-    const timeFormat = this.hass?.locale?.time_format;
-    const hour12 = timeFormat === '12' ? true : timeFormat === '24' ? false : undefined;
     const currentYear = new Date().getFullYear();
-    try {
-      return new Intl.DateTimeFormat(locale, {
-        day: 'numeric',
-        month: 'short',
-        year: date.getFullYear() === currentYear ? undefined : 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12,
-        timeZone,
-      }).format(date);
-    } catch (_err) {
-      return date.toLocaleString(locale, {
-        day: 'numeric',
-        month: 'short',
-        year: date.getFullYear() === currentYear ? undefined : 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12,
-        timeZone,
-      });
-    }
+    return formatHassDateTime(this.hass, date, {
+      day: 'numeric',
+      month: 'short',
+      year: date.getFullYear() === currentYear ? undefined : 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone,
+    });
   }
 
   _documentTypeLabel(title) {
@@ -20273,7 +20424,7 @@ class F1QualifyingTimingCard extends LitElement {
 
     .qt-table {
       display: grid;
-      gap: 4px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -21870,7 +22021,7 @@ class F1PracticeTimingCard extends LitElement {
 
     .pt-table {
       display: grid;
-      gap: 4px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -23204,7 +23355,7 @@ class F1RaceLapCard extends LitElement {
 
     .rl-table {
       display: grid;
-      gap: 4px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -24968,7 +25119,7 @@ class F1StartingGridCard extends LitElement {
 
     .sg-table {
       display: grid;
-      gap: 4px;
+      gap: var(--f1-table-row-gap);
       min-width: 0;
       width: 100%;
     }
@@ -25630,11 +25781,13 @@ class F1StartingGridCard extends LitElement {
     if (!value) return null;
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return String(value);
-    return date.toLocaleString(undefined, {
+    const timeZone = this.hass?.config?.time_zone || this.hass?.locale?.time_zone || undefined;
+    return formatHassDateTime(this.hass, date, {
       month: 'short',
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone,
     });
   }
 
@@ -27618,6 +27771,26 @@ installSectionsAutoHeight(F1TrackMapCard, {
   min_rows: 3,
 });
 
+const F1_NO_SPOILER_CARD_CLASSES = [
+  F1TyreStatisticsCard,
+  F1PitStopOverviewCard,
+  F1DriverLapTimesCard,
+  F1ChampionshipPredictionDriversCard,
+  F1ChampionshipPredictionTeamsCard,
+  F1LastRaceResultsCard,
+  F1InvestigationsCard,
+  F1TrackLimitsCard,
+  F1LiveSessionCard,
+  F1RaceControlCard,
+  F1FiaDocumentsCard,
+  F1QualifyingTimingCard,
+  F1PracticeTimingCard,
+  F1RaceLapCard,
+  F1StartingGridCard,
+  ...(typeof F1TrackMapCard === 'undefined' ? [] : [F1TrackMapCard]),
+];
+
+F1_NO_SPOILER_CARD_CLASSES.forEach(installNoSpoilerOverlay);
 
 if (!customElements.get('f1-sensor-live-data-card')) {
   customElements.define('f1-sensor-live-data-card', F1TyreStatisticsCard);

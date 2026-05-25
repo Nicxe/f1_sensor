@@ -49,6 +49,7 @@ from .entity import (
     F1BaseEntity,
     default_object_id,
     is_auth_gated_stream_active,
+    is_no_spoiler_live_state,
     is_replay_only_stream_active,
     set_suggested_object_id,
 )
@@ -993,6 +994,8 @@ class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
 
         return {
             "timezone": tz_name,
+            "track_datetime_utc": now_utc.isoformat(timespec="seconds"),
+            "track_datetime_local": now_track.isoformat(timespec="seconds"),
             "utc_offset": now_track.strftime("%z"),
             "offset_from_home": offset_from_home,
             "circuit_name": circuit.get("circuitName"),
@@ -4129,7 +4132,7 @@ class F1TrackLimitsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self._by_driver = by_driver
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
-        if reason == "init":
+        if reason == "init" or is_no_spoiler_live_state(reason):
             return
         if not is_live:
             self._clear_state()
@@ -4545,7 +4548,7 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     self._session_time = parsed
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
-        if reason == "init":
+        if reason == "init" or is_no_spoiler_live_state(reason):
             return
         if not is_live:
             self._clear_state()
