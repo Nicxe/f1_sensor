@@ -136,6 +136,7 @@ class F1NoSpoilerSwitch(F1AuxEntity, SwitchEntity):
 
     _device_category = "system"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:eye-off"
     _attr_translation_key = "no_spoiler_mode"
 
     def __init__(
