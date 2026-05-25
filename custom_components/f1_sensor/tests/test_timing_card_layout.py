@@ -184,7 +184,17 @@ const Harnesses = new Function(
   ${helperSources.join("\n\n")}
 
   class LiveSessionHarness {
+    constructor(config = {}, host = {}) {
+      Object.assign(this, buildHost(host));
+      this.config = {
+        layout_mode: 'auto',
+        ...config,
+      };
+    }
+
     ${extractMethod(liveSessionClass, "getGridOptions() {")}
+    ${extractMethod(liveSessionClass, "_normalizeLayoutMode(value) {")}
+    ${extractMethod(liveSessionClass, "_getEffectiveLayoutMode() {")}
   }
 
   class QualifyingHarness {
@@ -322,6 +332,11 @@ if (payload.action === "measure_width") {
     throw new Error(`Unknown className: ${className}`);
   }
   result = new Klass(payload.config || {}).getGridOptions();
+} else if (payload.action === "live_session_layout_mode") {
+  result = new Harnesses.LiveSessionHarness(
+    payload.config || {},
+    payload.host || {},
+  )._getEffectiveLayoutMode();
 } else if (payload.action === "install_options") {
   result = extractInstallOptions(payload.className);
 } else if (payload.action === "driver_lap_columns") {
@@ -495,6 +510,33 @@ def test_overflowing_content_still_uses_narrow_layout_breakpoints() -> None:
     )
 
     assert result == "narrow"
+
+
+@pytest.mark.parametrize(
+    ("config", "host", "expected"),
+    [
+        ({}, {"hostWidth": 700, "cardWidth": 700}, "full"),
+        ({}, {"hostWidth": 360, "cardWidth": 360}, "compact"),
+        ({"layout_mode": "compact"}, {"hostWidth": 700, "cardWidth": 700}, "compact"),
+        ({"layout_mode": "full"}, {"hostWidth": 360, "cardWidth": 360}, "full"),
+        ({"layout_mode": "invalid"}, {"hostWidth": 700, "cardWidth": 700}, "full"),
+    ],
+)
+def test_live_session_card_layout_mode_supports_auto_compact(
+    config: dict,
+    host: dict,
+    expected: str,
+) -> None:
+    """Live session status should auto-condense only on narrow cards by default."""
+    result = _run_probe(
+        {
+            "action": "live_session_layout_mode",
+            "config": config,
+            "host": host,
+        }
+    )
+
+    assert result == expected
 
 
 @pytest.mark.parametrize(

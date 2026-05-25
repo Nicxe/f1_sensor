@@ -56,6 +56,22 @@ function extractMethod(signature) {
   return classSource.slice(start, end + 1);
 }
 
+function extractConst(signature) {
+  const start = source.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`Const signature not found: ${signature}`);
+  }
+  const arrow = source.indexOf("=>", start);
+  const braceStart = source.indexOf("{", arrow);
+  const end = findMatchingBrace(source, braceStart);
+  const semicolon = source.indexOf(";", end);
+  return source.slice(start, semicolon + 1);
+}
+
+const helperSources = [
+  extractConst("const formatHassDateTime = (hass, date, options = {}, fallback = '') =>"),
+];
+
 const methodSources = [
   extractMethod("_responsiveLayoutBreakpoints() {"),
   extractMethod("_resolveVisibleSections() {"),
@@ -80,6 +96,8 @@ const methodSources = [
 
 const Harness = new Function(
   `
+  ${helperSources.join("\n\n")}
+
   function serializeValue(value) {
     if (Array.isArray(value)) {
       return value.map((item) => serializeValue(item)).join("");
@@ -151,6 +169,8 @@ if (payload.action === "breakpoints") {
   );
 } else if (payload.action === "history_ribbon") {
   result = harness._getHistoryRibbonItems(payload.nextRace || {});
+} else if (payload.action === "format_time") {
+  result = harness._formatTime(new Date(payload.value), payload.timeZone || "UTC");
 } else if (payload.action === "weekend_panel") {
   result = harness._renderWeekendPanel(
     payload.nextRace || {},
@@ -185,6 +205,10 @@ def _run_probe(payload: dict) -> dict:
         },
     )
     return json.loads(proc.stdout)
+
+
+def _normalize_space(value: str) -> str:
+    return value.replace("\u202f", " ").replace("\xa0", " ")
 
 
 def test_next_race_card_uses_compact_layout_breakpoints() -> None:
@@ -346,6 +370,111 @@ def test_next_race_card_history_ribbon_omits_empty_state() -> None:
     )
 
     assert result == []
+
+
+def test_next_race_card_time_format_follows_ha_12_hour_setting() -> None:
+    result = _run_probe(
+        {
+            "action": "format_time",
+            "value": "2099-05-21T18:30:00Z",
+            "timeZone": "UTC",
+            "hass": {
+                "locale": {
+                    "time_format": "12",
+                    "language": "en-US",
+                    "time_zone": "UTC",
+                },
+                "config": {"time_zone": "UTC"},
+            },
+        }
+    )
+
+    assert _normalize_space(result) == "06:30 PM"
+
+
+def test_next_race_card_time_format_follows_ha_24_hour_setting() -> None:
+    result = _run_probe(
+        {
+            "action": "format_time",
+            "value": "2099-05-21T18:30:00Z",
+            "timeZone": "UTC",
+            "hass": {
+                "locale": {
+                    "time_format": "24",
+                    "language": "en-US",
+                    "time_zone": "UTC",
+                },
+                "config": {"time_zone": "UTC"},
+            },
+        }
+    )
+
+    assert _normalize_space(result) == "18:30"
+
+
+def test_next_race_card_language_time_format_uses_locale_default() -> None:
+    us_result = _run_probe(
+        {
+            "action": "format_time",
+            "value": "2099-05-21T18:30:00Z",
+            "timeZone": "UTC",
+            "hass": {
+                "locale": {
+                    "time_format": "language",
+                    "language": "en-US",
+                    "time_zone": "UTC",
+                },
+                "config": {"time_zone": "UTC"},
+            },
+        }
+    )
+    sv_result = _run_probe(
+        {
+            "action": "format_time",
+            "value": "2099-05-21T18:30:00Z",
+            "timeZone": "UTC",
+            "hass": {
+                "locale": {
+                    "time_format": "language",
+                    "language": "sv-SE",
+                    "time_zone": "UTC",
+                },
+                "config": {"time_zone": "UTC"},
+            },
+        }
+    )
+
+    assert _normalize_space(us_result) == "06:30 PM"
+    assert _normalize_space(sv_result) == "18:30"
+
+
+def test_next_race_card_schedule_formats_user_and_track_times_from_ha_locale() -> None:
+    result = _run_probe(
+        {
+            "action": "weekend_panel",
+            "config": {"show_schedule": True, "show_track_time": True},
+            "layoutMode": "wide",
+            "hass": {
+                "locale": {
+                    "time_format": "12",
+                    "language": "en-US",
+                    "time_zone": "UTC",
+                },
+                "config": {"time_zone": "UTC"},
+            },
+            "nextRace": {
+                "circuit_timezone": "America/New_York",
+                "first_practice_start_utc": "2099-05-21T18:30:00Z",
+                "qualifying_start_utc": "2099-05-22T20:00:00Z",
+                "race_start_utc": "2099-05-24T22:00:00Z",
+            },
+            "sessionStatus": {"state": "pre"},
+        }
+    )
+
+    normalized = _normalize_space(result)
+    assert "06:30 PM" in normalized
+    assert "02:30 PM" in normalized
 
 
 def test_next_race_card_schedule_places_next_chip_in_right_status_column() -> None:

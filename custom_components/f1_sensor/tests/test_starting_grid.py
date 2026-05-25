@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 import pytest
 
+from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor.sensor import F1StartingGridSensor
 from custom_components.f1_sensor.starting_grid import (
     CONTEXT_RACE,
@@ -290,6 +292,70 @@ async def test_replay_gridpos_does_not_replace_current_grid(hass) -> None:
         "2",
         "3",
     ]
+
+
+@pytest.mark.asyncio
+async def test_no_spoiler_blocks_starting_grid_live_updates(hass) -> None:
+    hass.data.setdefault(DOMAIN, {})["no_spoiler_manager"] = SimpleNamespace(
+        is_active=False
+    )
+    coordinator = _make_coordinator(hass)
+
+    coordinator._on_session_info(_session_info("Qualifying", "Qualifying"))
+    coordinator._on_driver_list(_driver_list())
+    coordinator._on_timing_data(_timing_data())
+    coordinator._on_session_status({"Status": "Finalised"})
+    before = dict(coordinator.data)
+
+    hass.data[DOMAIN]["no_spoiler_manager"].is_active = True
+
+    coordinator._on_session_info(
+        _session_info(
+            "Practice 1",
+            "Practice",
+            meeting_key=99,
+            session_key=990,
+            status="Started",
+        )
+    )
+    coordinator._on_timing_data(
+        {
+            "Lines": {
+                "1": {
+                    "Position": "20",
+                    "BestLapTime": {"Value": "9:59.999", "Lap": 1},
+                }
+            }
+        }
+    )
+    coordinator._on_timing_app_data({"Lines": {"1": {"GridPos": 20}}})
+
+    assert coordinator.data == before
+    assert coordinator.data["weekend_key"] == "meeting:1"
+    assert coordinator.data["status"] == STATUS_PROVISIONAL
+    assert coordinator.data["grid_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_no_spoiler_does_not_block_starting_grid_replay_publish(hass) -> None:
+    hass.data.setdefault(DOMAIN, {})["no_spoiler_manager"] = SimpleNamespace(
+        is_active=True
+    )
+    live_state = _LiveState(reason="replay")
+    coordinator = _make_coordinator(hass, live_state=live_state)
+    coordinator._state.update(
+        {
+            "status": STATUS_PROVISIONAL,
+            "grid_context": CONTEXT_RACE,
+            "grid": [{"grid_position": 1, "racing_number": "1"}],
+            "grid_count": 1,
+        }
+    )
+
+    coordinator._publish()
+
+    assert coordinator.data["status"] == STATUS_PROVISIONAL
+    assert coordinator.data["grid_count"] == 1
 
 
 @pytest.mark.asyncio

@@ -54,6 +54,7 @@ from custom_components.f1_sensor.sensor import (
     F1SeasonResultsSensor,
     F1SprintResultsSensor,
     F1TopThreePositionSensor,
+    F1TrackTimeSensor,
     F1TvTokenExpiresAtSensor,
     F1TvTokenStatusSensor,
     F1WeatherSensor,
@@ -1295,6 +1296,49 @@ async def test_next_race_sensor_uses_2026_detailed_circuit_map(
         state.attributes["circuit_map_url"]
         == "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1/2026/track/2026trackmelbournedetailed.webp"
     )
+
+
+@pytest.mark.asyncio
+async def test_track_time_sensor_exposes_machine_readable_datetimes(
+    hass, monkeypatch
+) -> None:
+    fixed_utc = datetime(2026, 3, 8, 4, 15, 30, tzinfo=UTC)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_utc.replace(tzinfo=None)
+            return fixed_utc.astimezone(tz)
+
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.sensor.datetime.datetime",
+        FixedDateTime,
+    )
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.sensor._timezone_from_location",
+        lambda _lat, _lon: "Australia/Melbourne",
+    )
+    coordinator = _build_coordinator(
+        hass,
+        {"MRData": {"RaceTable": {"Races": [_build_race(date="2099-03-15")]}}},
+    )
+    entry_id = "test_entry_track_time"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1TrackTimeSensor(
+        coordinator,
+        f"{entry_id}_track_time",
+        entry_id,
+        "F1",
+    )
+    await _add_sensor_and_get_state(hass, sensor)
+    attrs = sensor.extra_state_attributes
+
+    assert sensor.state == "15:15"
+    assert attrs["timezone"] == "Australia/Melbourne"
+    assert attrs["track_datetime_utc"] == "2026-03-08T04:15:30+00:00"
+    assert attrs["track_datetime_local"] == "2026-03-08T15:15:30+11:00"
 
 
 @pytest.mark.asyncio
