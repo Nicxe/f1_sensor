@@ -239,11 +239,14 @@ action:
       message: >
         {{ trigger.event.data.driver.tla }} may have stopped on track
         during {{ trigger.event.data.session.session_name }}.
+        {% if trigger.event.data.location.description %}
+        Location: {{ trigger.event.data.location.description }}
+        {% endif %}
 mode: queued
 max: 5
 ```
 
-The wording is intentionally neutral. F1 Sensor detects likely stopped cars and on-track incidents, not guaranteed crashes.
+The wording is intentionally neutral. F1 Sensor detects likely stopped cars and on-track incidents, not guaranteed crashes. Location text only appears when fresh Track Map context is available.
 
 ---
 

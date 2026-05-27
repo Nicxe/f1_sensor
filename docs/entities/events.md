@@ -24,6 +24,8 @@ The event describes a likely stopped car or on-track incident. It does not guara
 
 When F1TV Auth is configured and the authenticated live timing stream is available, F1 Sensor can also publish earlier `candidate` events from `CarData.z` low-speed telemetry correlated with yellow flag, Virtual Safety Car, Safety Car, or red flag context. These candidates are useful for advanced automations, but they are not confirmed incidents until public timing or Race Control provides stronger evidence.
 
+When Track Map data is available from `Position.z`, the event can include optional `location` context such as position status, sector, and track geometry source. This context is used only when it is fresh enough to improve confidence or reduce false positives, and the binary sensors do not expose raw X/Y/Z position samples as state attributes.
+
 **Phases**
 
 | Phase | Meaning |
@@ -68,15 +70,32 @@ data:
     message: "DOUBLE YELLOW IN TURN 7"
     category: "Flag"
     flag: "DOUBLE YELLOW"
+  location:
+    status: "OnTrack"
+    source: "live"
+    stale: false
+    confidence: "high"
+    description: "on track, sector 2"
+    sector: 2
+    corner: null
+    pit_lane: false
+    track_segment: 42
+    distance_to_track: 4.2
+    geometry_source: "static_circuit_geometry"
+    fallback_state: "static_catalog"
+    updated_at: "2026-05-03T20:14:27Z"
   signals:
     - "timing_stopped"
     - "race_control_yellow"
+    - "track_map_location"
   started_at: "2026-05-03T20:14:22Z"
   updated_at: "2026-05-03T20:14:28Z"
   data_quality: "live"
 ```
 
 Use `phase`, `confidence`, `session.session_type`, and `driver.tla` as the main automation fields. `session.session_type` uses lowercase values such as `race`, `sprint`, `qualifying`, `practice`, `testing`, or `unknown`. The payload uses neutral names so it can represent stopped cars, spins, technical failures, and other likely on-track incidents without calling them crashes.
+
+The `location` object is optional context. Treat `location.stale: true`, `location.confidence: low`, or missing `geometry_source` as informational only. The payload intentionally does not include high-frequency raw position samples in entity state history.
 
 ### Event vs sensor
 

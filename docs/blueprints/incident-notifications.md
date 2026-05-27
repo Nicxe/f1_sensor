@@ -72,6 +72,8 @@ Practice sessions can include installation laps, garage work, slow running, and 
 
 If you enable Candidate events, some alerts can come from F1TV Auth `CarData.z` low-speed telemetry correlated with yellow flag, Virtual Safety Car, Safety Car, or red flag context. Keep these alerts conservative because they are earlier than confirmed public timing or Race Control evidence.
 
+When Track Map `Position.z` is available, the event can include an optional location summary such as `on track, sector 2` or `off track, sector 1`. The blueprint can include that summary in the notification text, but `Position.z` and F1TV Auth are not required for the basic incident alert flow.
+
 ---
 
 ## Notification wording
@@ -81,6 +83,7 @@ Blueprint messages use neutral wording such as:
 ```text
 Possible on-track incident: GAS stopped
 Session: Race
+Location: on track, sector 2
 ```
 
 Avoid wording such as "crash" unless Race Control explicitly uses that term in the message you send.

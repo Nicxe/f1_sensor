@@ -77,6 +77,7 @@ def _incident_event(
     confidence: str = "medium",
     session_type: str = "race",
     session_name: str = "Race",
+    location_description: str | None = None,
 ) -> dict[str, Any]:
     return {
         "entry_id": "incident-entry",
@@ -104,6 +105,23 @@ def _incident_event(
             "message": None,
             "category": None,
             "flag": None,
+        },
+        "location": {
+            "status": "OnTrack" if location_description else None,
+            "source": "live" if location_description else None,
+            "stale": False if location_description else None,
+            "confidence": "high" if location_description else None,
+            "description": location_description,
+            "sector": 2 if location_description else None,
+            "corner": None,
+            "pit_lane": False if location_description else None,
+            "track_segment": 42 if location_description else None,
+            "distance_to_track": 4.2 if location_description else None,
+            "geometry_source": (
+                "static_circuit_geometry" if location_description else None
+            ),
+            "fallback_state": "static_catalog" if location_description else None,
+            "updated_at": ("2026-05-03T17:00:01Z" if location_description else None),
         },
         "signals": ["timing_stopped"],
         "started_at": "2026-05-03T17:00:01Z",
@@ -203,6 +221,25 @@ async def test_practice_high_can_pass_when_practice_is_selected(
     assert len(calls) == 1
     assert calls[0]["message"] == (
         "Possible on-track incident: GAS stopped\nSession: Practice 1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_incident_notification_includes_optional_location_description(
+    hass: HomeAssistant,
+) -> None:
+    await _install_blueprint(hass)
+    calls = _register_notification_service(hass)
+
+    assert await _setup_blueprint_automation(hass)
+    calls.clear()
+
+    await _fire_incident(hass, location_description="on track, sector 2")
+
+    assert calls[0]["message"] == (
+        "Possible on-track incident: GAS stopped\n"
+        "Session: Race\n"
+        "Location: on track, sector 2"
     )
 
 

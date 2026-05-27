@@ -143,5 +143,6 @@ For each report, note:
 5. Track Status and Race Control context at the time.
 6. Whether the driver was in pit lane, leaving the pit lane, or stopped on track.
 7. Whether Live Delay, Replay Mode, No Spoiler Mode, or experimental F1TV Auth was active.
+8. Whether Track Map had live or replay `Position.z` data and whether the event payload included `location`.
 
 Use neutral language in reports. The feature is intended to detect likely stopped cars and on-track incidents, not guaranteed crashes.

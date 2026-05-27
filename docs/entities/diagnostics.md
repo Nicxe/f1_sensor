@@ -37,10 +37,11 @@ When incident detection is available, the downloaded diagnostics file includes a
 | session_type | string | Lowercase session type, such as `race`, `sprint`, `qualifying`, or `practice` |
 | session_name | string | Human-readable session name |
 | data_quality | string | Data source quality, such as `live`, `replay`, or `bootstrap` |
+| latest_location | object | Optional latest Track Map location summary, without raw X/Y/Z samples |
 | available | boolean | Whether the incident coordinator is currently available |
 
 :::info
-Diagnostics intentionally show counts and latest metadata only. Use the [`f1_sensor_incident` event](/entities/events#on-track-incident) when you need the full event payload for automations or troubleshooting.
+Diagnostics intentionally show counts and latest metadata only. Location diagnostics can include status, sector, source, stale state, geometry source, and fallback state, but not raw high-frequency position samples. Use the [`f1_sensor_incident` event](/entities/events#on-track-incident) when you need the full event payload for automations or troubleshooting.
 :::
 
 ---

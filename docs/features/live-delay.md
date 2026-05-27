@@ -42,7 +42,7 @@ During the broadcast, they always show the moment the race clock flips to the st
 
 ## Incident alerts and notifications
 
-Live Delay also applies to likely on-track incident updates. This means `f1_sensor_incident` events, the On-track Incident binary sensor, and notification blueprints can be delayed to match what you see on TV.
+Live Delay also applies to likely on-track incident updates. This means `f1_sensor_incident` events, the On-track Incident and Possible On-track Incident binary sensors, and notification blueprints can be delayed to match what you see on TV.
 
 Use this when you want a possible stopped-car notification to arrive with the broadcast pictures instead of ahead of them.
 

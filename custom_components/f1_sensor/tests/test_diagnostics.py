@@ -152,6 +152,7 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
         "session_type": "race",
         "session_name": "Race",
         "data_quality": "live",
+        "latest_location": None,
         "available": True,
     }
     assert payload["runtime"]["track_map"]["geometry_source"] == (

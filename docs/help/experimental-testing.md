@@ -51,6 +51,7 @@ The first authentication beta is intended to test these auth-gated live streams:
 
 ```text
 CarData.z
+Position.z
 DriverRaceInfo
 ChampionshipPrediction
 PitStopSeries
@@ -64,13 +65,15 @@ For example, Championship Prediction and Pit Stops can use the recorded session 
 
 If the token is missing, expired, or rejected, auth-gated live data should become unavailable or stop receiving F1TV-only updates while public live timing continues.
 
-`Position.z` has been observed as auth-gated, but it is intentionally excluded from the first test build because it is high frequency and the integration does not currently use it.
+`Position.z` is auth-gated and is used by the Track Map pipeline. It can also provide optional location context for incident events, but raw X/Y/Z samples are not exposed as normal Home Assistant state attributes.
 
 ## Incident detection and F1TV Auth
 
 Likely on-track incident detection works with public live timing and does not require F1TV Auth.
 
 Experimental F1TV Auth can also test early-warning `candidate` signals from `CarData.z`, such as very low speed before a car is officially marked as stopped. These signals are correlated with flag or Safety Car context and should be treated as candidates, not proof of a crash. Public live timing must continue to work if the token is missing, expired, or rejected.
+
+When `Position.z` and Track Map are active, incident events may include a compact `location` summary such as position status, sector, geometry source, and stale state. Location context can improve confidence or suppress obvious pit-lane false positives, but incident detection must still work without F1TV Auth.
 
 ## Prerequisites
 

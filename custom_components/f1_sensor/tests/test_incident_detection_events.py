@@ -16,6 +16,7 @@ from custom_components.f1_sensor import (
 )
 from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
+from custom_components.f1_sensor.track_map import TrackMapPosition, TrackMapStore
 
 
 class FakeIncidentLiveBus:
@@ -61,6 +62,7 @@ async def _coordinator(
     *,
     delay_seconds: int = 0,
     live_state: LiveAvailabilityTracker | None = None,
+    track_map_store: TrackMapStore | None = None,
 ) -> IncidentCoordinator:
     if live_state is None:
         live_state = LiveAvailabilityTracker()
@@ -72,6 +74,7 @@ async def _coordinator(
         bus=bus,
         config_entry=_entry(hass),
         live_state=live_state,
+        track_map_store=track_map_store,
     )
     await coordinator.async_refresh()
     for stream in _INCIDENT_STREAMS:
@@ -91,12 +94,35 @@ def _driver_list() -> dict[str, Any]:
 
 def _session_info() -> dict[str, Any]:
     return {
-        "Meeting": {"Name": "Miami Grand Prix"},
+        "Meeting": {
+            "Name": "Miami Grand Prix",
+            "Circuit": {"Key": 151, "ShortName": "Miami"},
+        },
         "Name": "Race",
         "Type": "Race",
         "Path": "2026-miami-race",
         "StartDate": "2026-05-03T20:00:00Z",
     }
+
+
+def _track_map_store() -> TrackMapStore:
+    store = TrackMapStore("incident-entry")
+    store.update_session_info(_session_info())
+    store.update_driver_list(_driver_list())
+    store.update_positions(
+        [
+            TrackMapPosition(
+                racing_number="10",
+                timestamp=datetime.now(UTC).replace(microsecond=0),
+                x=0,
+                y=0,
+                z=0,
+                status="OnTrack",
+            )
+        ],
+        source="live",
+    )
+    return store
 
 
 def _timing(stopped: bool) -> dict[str, Any]:
@@ -272,6 +298,37 @@ async def test_incident_cardata_candidate_event_is_deduped_and_not_confirmed(
 
 
 @pytest.mark.asyncio
+async def test_incident_event_includes_safe_track_map_location_context(hass) -> None:
+    bus = FakeIncidentLiveBus()
+    events = []
+    unsub = hass.bus.async_listen(
+        _INCIDENT_EVENT, lambda event: events.append(event.data)
+    )
+    coordinator = await _coordinator(hass, bus, track_map_store=_track_map_store())
+
+    try:
+        await _prime_context(hass, bus)
+
+        bus.emit("TimingData", _timing(True))
+        await hass.async_block_till_done()
+
+        assert [event["phase"] for event in events] == ["confirmed"]
+        location = events[-1]["location"]
+        assert location["status"] == "OnTrack"
+        assert location["source"] == "live"
+        assert location["stale"] is False
+        assert location["confidence"] in {"medium", "high"}
+        assert location["sector"] in {1, 2, 3}
+        assert "x" not in location
+        assert "y" not in location
+        assert "z" not in location
+        assert coordinator.data["latest_location"]["status"] == "OnTrack"
+    finally:
+        unsub()
+        await coordinator.async_close()
+
+
+@pytest.mark.asyncio
 async def test_incident_payload_is_stable_json_and_does_not_leak_tokens(
     hass, caplog
 ) -> None:
@@ -307,6 +364,7 @@ async def test_incident_payload_is_stable_json_and_does_not_leak_tokens(
             "session",
             "track_status",
             "race_control",
+            "location",
             "signals",
             "started_at",
             "updated_at",

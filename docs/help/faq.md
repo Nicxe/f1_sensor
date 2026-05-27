@@ -195,6 +195,14 @@ A yellow flag is helpful context, but it is not required in every case. A driver
 F1 Sensor uses confidence levels to handle this. A stopped car that is not in the pit lane can create a `medium` confidence alert, while matching yellow flag, Safety Car, red flag, or Race Control context can raise it to `high`.
 </details>
 
+<details>
+<summary>Does incident detection require F1TV Auth or Track Map?</summary>
+
+No. Public live timing can still detect confirmed stopped-car and on-track incident alerts without F1TV Auth.
+
+F1TV Auth can improve early candidate alerts through `CarData.z`, and Track Map `Position.z` can add optional location context when available. If those streams are missing, stale, or rejected by Formula 1, the basic no-auth incident detection flow continues to work.
+</details>
+
 
 
 

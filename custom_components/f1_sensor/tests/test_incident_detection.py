@@ -14,6 +14,7 @@ from custom_components.f1_sensor.incident_detection import (
     PHASE_UPDATED,
     DriverMetadata,
     IncidentDetector,
+    IncidentLocationContext,
     IncidentSignal,
     SessionMetadata,
     normalize_driver_list,
@@ -369,6 +370,40 @@ def test_stopped_non_pit_confirms_medium_incident() -> None:
     assert change.incident_id == "2026-miami-race-10-2026-05-03T17:00:01Z"
     assert "timing_stopped" in change.signals
     assert change.data_quality == DATA_QUALITY_LIVE
+
+
+def test_stopped_with_fresh_track_map_location_gets_optional_context() -> None:
+    detector = IncidentDetector(
+        location_resolver=lambda rn, at: IncidentLocationContext(
+            status="OnTrack",
+            source="live",
+            stale=False,
+            confidence="high",
+            description="on track, sector 2",
+            sector=2,
+            pit_lane=False,
+            track_segment=42,
+            distance_to_track=4.2,
+            geometry_source="static_circuit_geometry",
+            fallback_state="static_catalog",
+            updated_at=at,
+        )
+    )
+    _bootstrap_clean(detector)
+
+    changes = detector.process_signals(
+        _timing(BASE + timedelta(seconds=1), stopped=True)
+    )
+
+    assert len(changes) == 1
+    change = changes[0]
+    assert change.phase == PHASE_CONFIRMED
+    assert change.confidence == CONFIDENCE_HIGH
+    assert change.reason == "timing_stopped_with_track_map_location"
+    assert change.location.status == "OnTrack"
+    assert change.location.sector == 2
+    assert "track_map_location" in change.signals
+    assert "position_status_on_track" in change.signals
 
 
 def test_stopped_in_pit_is_suppressed() -> None:
@@ -794,6 +829,21 @@ def test_change_payload_is_json_serializable_and_stable() -> None:
             "message": None,
             "category": None,
             "flag": None,
+        },
+        "location": {
+            "status": None,
+            "source": None,
+            "stale": None,
+            "confidence": None,
+            "description": None,
+            "sector": None,
+            "corner": None,
+            "pit_lane": None,
+            "track_segment": None,
+            "distance_to_track": None,
+            "geometry_source": None,
+            "fallback_state": None,
+            "updated_at": None,
         },
         "signals": ["timing_stopped"],
         "started_at": "2026-05-03T17:00:01Z",

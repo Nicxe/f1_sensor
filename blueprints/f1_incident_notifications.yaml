@@ -132,6 +132,7 @@ variables:
   session: "{{ trigger.event.data.session | default({}, true) }}"
   race_control: "{{ trigger.event.data.race_control | default({}, true) }}"
   track_status: "{{ trigger.event.data.track_status | default({}, true) }}"
+  location: "{{ trigger.event.data.location | default({}, true) }}"
   driver_label: >-
     {% set tla = driver.tla | default('', true) | string | trim %}
     {% set number = driver.racing_number | default('', true) | string | trim %}
@@ -241,6 +242,10 @@ variables:
     {% set track_message = track_status.message | default('', true) | string | trim %}
     {% if track_message %}
       {% set ns.lines = ns.lines + ['Track status: ' ~ track_message] %}
+    {% endif %}
+    {% set location_description = location.description | default('', true) | string | trim %}
+    {% if location_description %}
+      {% set ns.lines = ns.lines + ['Location: ' ~ location_description] %}
     {% endif %}
     {{ ns.lines | join('\n') }}
 

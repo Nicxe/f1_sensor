@@ -6,7 +6,7 @@ title: Replay Mode
 Replay Mode lets you watch historical F1 sessions with full Home Assistant integration. When you play back a recorded race or qualifying from F1 TV or another service, your automations and dashboards can follow the session in a way that is much closer to a live broadcast.
 
 Your lights can react to a red flag. Your dashboard can show live timing. Race Control messages can still drive notifications while you watch the session later.
-Likely on-track incident detection can also follow replayed sessions, so incident notifications and the On-track Incident binary sensor can behave like they do during live timing.
+Likely on-track incident detection can also follow replayed sessions, so incident notifications and the On-track Incident binary sensors can behave like they do during live timing. If the replay includes Track Map `Position.z`, incident events can include the same optional location summary used during live sessions.
 :::warning[Experimental replay catch-up]
 Replay Mode now includes experimental 30-second catch-up controls in Version 1. The feature is being tested in real setups, and additional refinement may still be needed in later updates.
 :::
@@ -272,4 +272,5 @@ For full details on each entity, see the [Live Data reference](/entities/live-da
 - The experimental catch-up controls currently support fixed 30-second jumps only.
 - Rewinding can replay historical events again, so replay-driven automations and notifications may run again.
 - Rewinding can also replay historical incident events again, including possible on-track incident notifications.
+- Replayed Track Map location context is best-effort and may be missing for sessions without usable `Position.z`.
 - Replay Mode does not protect you from spoilers on its own. Use [No Spoiler Mode](/features/no-spoiler-mode) to keep your dashboard frozen until you are ready to watch.

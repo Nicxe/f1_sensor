@@ -126,6 +126,7 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_track_status](#track-status)               | Current track status |
 | [binary_sensor.f1_safety_car](#safety-car)            | Safety Car (SC) or Virtual Safety Car (VSC) is active|  
 | [binary_sensor.f1_on_track_incident](#on-track-incident) | Likely stopped car or on-track incident is active |
+| [binary_sensor.f1_possible_on_track_incident](#possible-on-track-incident) | Possible stopped car or on-track incident candidate is active |
 | [sensor.f1_race_lap_count](#race-lap)                 | Current race lap number|
 | [sensor.f1_track_weather](#track-weather)             | Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)|
 | [sensor.f1_driver_list](#driver-list)                 | Show list and details on all drivers, including team color, headshot URL etc| 
@@ -426,6 +427,45 @@ The entity intentionally keeps attributes small and stable. Use the [`f1_sensor_
 :::info[Session support]
 Incident detection is designed for race, sprint, qualifying, and practice sessions. Practice alerts are more conservative because practice sessions naturally contain more slow running, pit activity, and testing-style behavior.
 :::
+
+---
+
+## Possible On-track Incident
+
+`binary_sensor.f1_possible_on_track_incident` - On while F1 Sensor has a possible or confirmed likely stopped car or on-track incident for the active session.
+
+This entity includes early `candidate` incidents. Candidates can come from public timing and Race Control context, and can also come from optional F1TV Auth `CarData.z` low-speed telemetry when it is correlated with yellow flag, Virtual Safety Car, Safety Car, or red flag context. Track Map `Position.z` data can add optional location context when available, but it is not required for this entity to work.
+
+:::warning[Use candidates carefully]
+Candidate incidents are earlier and less certain than confirmed incidents. Use this entity for advanced automations, dashboard indicators, or opt-in alerts. For conservative notifications, use `binary_sensor.f1_on_track_incident` or the incident notification blueprint defaults.
+:::
+
+**State (on/off)**
+- `on` when at least one `candidate`, `confirmed`, or `updated` incident is active.
+- `off` when no possible or confirmed incident is active.
+- `unavailable` when live or replay data is not available enough to report a reliable state.
+
+**Example**
+```text
+on
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| active_count | number | Number of possible or confirmed active incidents |
+| highest_confidence | string | Highest active confidence: `low`, `medium`, or `high` |
+| latest_incident_id | string | Stable identifier for the most recent incident update |
+| latest_driver_number | string | Car number for the latest incident update |
+| latest_driver_tla | string | Driver abbreviation for the latest incident update |
+| latest_reason | string | Neutral reason code for the latest update |
+| latest_phase | string | Latest phase: `candidate`, `confirmed`, `updated`, or `cleared` |
+| session_type | string | Lowercase session type, such as `race`, `sprint`, `qualifying`, or `practice` |
+| session_name | string | Human-readable session name |
+| data_quality | string | Data source quality, such as `live`, `replay`, `stale`, or `bootstrap` |
+
+Raw car telemetry and raw Track Map X/Y/Z samples are not exposed as state attributes.
 
 ---
 
