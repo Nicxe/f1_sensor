@@ -21,6 +21,7 @@ from custom_components.f1_sensor.track_map import (
     TRACK_MAP_POSITION_STREAM,
     TRACK_MAP_REPLAY_GEOMETRY_SOURCE,
     TRACK_MAP_SOURCE_LIVE,
+    TRACK_MAP_SOURCE_REPLAY,
     TRACK_MAP_STATIC_GEOMETRY_SOURCE,
     TRACK_MAP_STATUS_ACTIVE,
     TrackMapPosition,
@@ -53,6 +54,28 @@ class FakeBus:
 
     async def async_close(self) -> None:
         return None
+
+
+class FakeTimerHandle:
+    def __init__(self) -> None:
+        self.cancelled = False
+
+    def cancel(self) -> None:
+        self.cancelled = True
+
+
+class FakeLoop:
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.handles: list[FakeTimerHandle] = []
+
+    def time(self) -> float:
+        return self.now
+
+    def call_later(self, _delay: float, _callback) -> FakeTimerHandle:
+        handle = FakeTimerHandle()
+        self.handles.append(handle)
+        return handle
 
 
 class _Response:
@@ -273,6 +296,76 @@ def test_track_map_replay_adapter_interpolates_positions_while_playing() -> None
 
     assert driver["x"] == 150
     assert driver["y"] == 100
+
+
+def test_track_map_adapter_interpolates_live_positions() -> None:
+    store = TrackMapStore("entry-1", stale_after=timedelta(days=30))
+    store.update_session_info(_session_payload())
+    loop = FakeLoop()
+    bus = FakeBus()
+    adapter = TrackMapReplayAdapter(
+        store,
+        bus,
+        hass=SimpleNamespace(loop=loop),
+        position_source_resolver=lambda: TRACK_MAP_SOURCE_LIVE,
+    )
+    adapter.start()
+    first = TrackMapPosition("1", BASE_TIME, 100, 50, 0, "OnTrack")
+    second = TrackMapPosition(
+        "1",
+        BASE_TIME + timedelta(seconds=1),
+        200,
+        150,
+        0,
+        "OnTrack",
+    )
+
+    bus.emit(TRACK_MAP_POSITION_STREAM, track_map_positions_to_payload([first]))
+    loop.now = 0.5
+    bus.emit(TRACK_MAP_POSITION_STREAM, track_map_positions_to_payload([second]))
+    adapter._publish_interpolated_positions(1.05, source=TRACK_MAP_SOURCE_LIVE)
+
+    snapshot = store.snapshot(now=BASE_TIME + timedelta(seconds=2))
+    driver = snapshot["drivers"][0]
+
+    assert snapshot["source"] == TRACK_MAP_SOURCE_LIVE
+    assert driver["x"] == 150
+    assert driver["y"] == 100
+
+
+def test_track_map_replay_adapter_resets_interpolation_on_source_switch() -> None:
+    store = TrackMapStore("entry-1", stale_after=timedelta(days=30))
+    store.update_session_info(_session_payload())
+    source = TRACK_MAP_SOURCE_LIVE
+    adapter = TrackMapReplayAdapter(
+        store,
+        FakeBus(),
+        position_source_resolver=lambda: source,
+    )
+    first = TrackMapPosition("1", BASE_TIME, 100, 50, 0, "OnTrack")
+    replay_position = TrackMapPosition(
+        "1",
+        BASE_TIME + timedelta(seconds=1),
+        200,
+        150,
+        0,
+        "OnTrack",
+    )
+
+    adapter._set_interpolation_targets([first], 0.0, source=TRACK_MAP_SOURCE_LIVE)
+    adapter._publish_interpolated_positions(0.0, source=TRACK_MAP_SOURCE_LIVE)
+    source = TRACK_MAP_SOURCE_REPLAY
+    adapter._replay_state = "playing"
+    adapter._reset_interpolation_if_source_changed(source)
+    adapter._set_interpolation_targets([replay_position], 0.5, source=source)
+    adapter._publish_interpolated_positions(0.5, source=source)
+
+    snapshot = store.snapshot(now=BASE_TIME + timedelta(seconds=2))
+    driver = snapshot["drivers"][0]
+
+    assert snapshot["source"] == TRACK_MAP_SOURCE_REPLAY
+    assert driver["x"] == 200
+    assert driver["y"] == 150
 
 
 @pytest.mark.asyncio

@@ -133,6 +133,18 @@ const result = {
   layoutMode: card._effectiveLayoutMode(),
 };
 
+if (payload.motion) {
+  const motion = payload.motion;
+  card._snapshot = motion.snapshot || null;
+  card._status = motion.status || motion.snapshot?.status || "not_loaded";
+  card._driverSamples = new Map(
+    (motion.samples || []).map(([key, samples]) => [key, samples]),
+  );
+  card._renderClockAt = motion.renderClockAt || 0;
+  card._nowMs = () => motion.nowMs;
+  result.hasActiveDriverMotion = card._hasActiveDriverMotion();
+}
+
 process.stdout.write(JSON.stringify(result));
 """
 
@@ -293,6 +305,65 @@ def test_track_map_card_reports_specific_empty_states() -> None:
 
     assert no_session["emptyState"]["title"] == "No live timing session loaded"
     assert waiting_positions["emptyState"]["title"] == "Waiting for live car positions"
+
+
+def test_track_map_card_keeps_live_driver_motion_active_until_latest_sample() -> None:
+    """Live snapshots should keep redrawing while visual smoothing is in flight."""
+    samples = [
+        [
+            "1",
+            [
+                {"x": 100, "y": 50, "arrivalAt": 1000},
+                {"x": 200, "y": 150, "arrivalAt": 2000},
+            ],
+        ]
+    ]
+    active_live = _run_probe(
+        {
+            "motion": {
+                "nowMs": 2200,
+                "samples": samples,
+                "snapshot": {
+                    "source": "live",
+                    "status": "active",
+                    "stale": False,
+                    "replay_state": None,
+                },
+            },
+        }
+    )
+    stale_live = _run_probe(
+        {
+            "motion": {
+                "nowMs": 2200,
+                "samples": samples,
+                "snapshot": {
+                    "source": "live",
+                    "status": "stale",
+                    "stale": True,
+                    "replay_state": None,
+                },
+            },
+        }
+    )
+    paused_replay = _run_probe(
+        {
+            "motion": {
+                "nowMs": 2200,
+                "samples": samples,
+                "snapshot": {
+                    "source": "replay",
+                    "status": "active",
+                    "stale": False,
+                    "replay_state": "paused",
+                },
+            },
+        }
+    )
+
+    assert active_live["hasActiveDriverMotion"] is True
+    assert stale_live["hasActiveDriverMotion"] is False
+    assert paused_replay["hasActiveDriverMotion"] is False
 
 
 def test_track_map_card_is_registered_as_configurable() -> None:

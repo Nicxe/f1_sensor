@@ -221,6 +221,7 @@ class TrackMapReplayAdapter:
         self._position_segments: dict[str, _ReplayInterpolationSegment] = {}
         self._last_driver_sample_at: dict[str, float] = {}
         self._driver_sample_interval_seconds = 0.0
+        self._interpolation_source: str | None = None
         self._replay_state: str | None = None
         self._interpolation_tick_seconds = max(0.02, float(interpolation_tick_seconds))
         self._position_source_resolver = position_source_resolver
@@ -263,9 +264,7 @@ class TrackMapReplayAdapter:
         self._geometry_positions_by_driver.clear()
         self._geometry_sample_count = 0
         self._geometry_preloaded = False
-        self._cancel_interpolation_timer()
-        self._position_segments.clear()
-        self._last_driver_sample_at.clear()
+        self._reset_interpolation_state()
 
     def reset_for_replay(self) -> None:
         """Clear track map data before replay rebuild, rewind or stop."""
@@ -273,10 +272,7 @@ class TrackMapReplayAdapter:
         self._geometry_sample_count = 0
         self._geometry_preloaded = False
         self._position_frame_count = 0
-        self._cancel_interpolation_timer()
-        self._position_segments.clear()
-        self._last_driver_sample_at.clear()
-        self._driver_sample_interval_seconds = 0.0
+        self._reset_interpolation_state()
         self._store.reset_for_replay()
 
     async def async_prepare_replay_index(self, replay_index: Any) -> None:
@@ -299,7 +295,16 @@ class TrackMapReplayAdapter:
     def _on_session_info(self, payload: Any) -> None:
         if self._closed or not isinstance(payload, Mapping):
             return
+        old_session_key = (
+            self._store.session.session_key if self._store.session else None
+        )
         self._store.update_session_info(payload)
+        new_session_key = (
+            self._store.session.session_key if self._store.session else None
+        )
+        if old_session_key and new_session_key and old_session_key != new_session_key:
+            self._reset_interpolation_state()
+            self._reset_geometry_samples()
 
     def _on_driver_list(self, payload: Any) -> None:
         if self._closed or not isinstance(payload, Mapping):
@@ -312,16 +317,17 @@ class TrackMapReplayAdapter:
         positions = track_map_positions_from_payload(payload)
         if not positions:
             return
+        position_source = self._position_source()
+        self._reset_interpolation_if_source_changed(position_source)
         self._position_frame_count += 1
-        if self._replay_state == "playing":
+        if self._should_interpolate_positions(position_source):
             now = self._loop_time()
-            self._set_interpolation_targets(positions, now)
-            self._publish_interpolated_positions(now)
+            self._set_interpolation_targets(positions, now, source=position_source)
+            self._publish_interpolated_positions(now, source=position_source)
             self._schedule_interpolation_tick()
         else:
-            self._cancel_interpolation_timer()
-            self._position_segments.clear()
-            self._store.update_positions(positions, source=self._position_source())
+            self._reset_interpolation_state(source=position_source)
+            self._store.update_positions(positions, source=position_source)
         self._extend_geometry_positions(positions)
         self._maybe_rebuild_geometry()
 
@@ -331,11 +337,16 @@ class TrackMapReplayAdapter:
         state = str(snapshot.get("state") or "").strip() or None
         self._replay_state = state
         self._store.update_replay_state(state)
-        if state == "playing":
+        if self._should_interpolate_positions(self._interpolation_source):
             self._schedule_interpolation_tick()
         else:
-            self._cancel_interpolation_timer()
-            self._position_segments.clear()
+            self._reset_interpolation_state(source=self._interpolation_source)
+
+    def _reset_geometry_samples(self) -> None:
+        self._geometry_positions_by_driver.clear()
+        self._geometry_sample_count = 0
+        self._geometry_preloaded = False
+        self._position_frame_count = 0
 
     def _extend_geometry_positions(
         self,
@@ -430,7 +441,10 @@ class TrackMapReplayAdapter:
         self,
         positions: Iterable[TrackMapPosition],
         now: float,
+        *,
+        source: str | None = None,
     ) -> None:
+        self._interpolation_source = source or self._position_source()
         for position in positions:
             current = self._current_interpolated_position(position.racing_number, now)
             last_sample_at = self._last_driver_sample_at.get(position.racing_number)
@@ -451,9 +465,17 @@ class TrackMapReplayAdapter:
                 )
             )
 
-    def _publish_interpolated_positions(self, now: float) -> bool:
+    def _publish_interpolated_positions(
+        self,
+        now: float,
+        *,
+        source: str | None = None,
+    ) -> bool:
         if not self._position_segments:
             return False
+        position_source = (
+            source or self._interpolation_source or self._position_source()
+        )
         positions: list[TrackMapPosition] = []
         active = False
         for segment in self._position_segments.values():
@@ -462,7 +484,7 @@ class TrackMapReplayAdapter:
             if segment.duration > 0 and now < segment.started_at + segment.duration:
                 active = True
         if positions:
-            self._store.update_positions(positions, source=TRACK_MAP_SOURCE_REPLAY)
+            self._store.update_positions(positions, source=position_source)
         return active
 
     def _current_interpolated_position(
@@ -505,8 +527,27 @@ class TrackMapReplayAdapter:
                     return source
         return TRACK_MAP_SOURCE_REPLAY
 
+    def _should_interpolate_positions(self, source: str | None) -> bool:
+        if source == TRACK_MAP_SOURCE_LIVE:
+            return True
+        return source == TRACK_MAP_SOURCE_REPLAY and self._replay_state == "playing"
+
+    def _reset_interpolation_if_source_changed(self, source: str) -> None:
+        if self._interpolation_source in (None, source):
+            return
+        self._reset_interpolation_state(source=source)
+
+    def _reset_interpolation_state(self, *, source: str | None = None) -> None:
+        self._cancel_interpolation_timer()
+        self._position_segments.clear()
+        self._last_driver_sample_at.clear()
+        self._driver_sample_interval_seconds = 0.0
+        self._interpolation_source = source
+
     def _schedule_interpolation_tick(self) -> None:
-        if self._closed or self._replay_state != "playing":
+        if self._closed or not self._should_interpolate_positions(
+            self._interpolation_source
+        ):
             return
         if self._interpolation_handle is not None:
             return
@@ -521,9 +562,14 @@ class TrackMapReplayAdapter:
 
     def _run_interpolation_tick(self) -> None:
         self._interpolation_handle = None
-        if self._closed or self._replay_state != "playing":
+        if self._closed or not self._should_interpolate_positions(
+            self._interpolation_source
+        ):
             return
-        active = self._publish_interpolated_positions(self._loop_time())
+        active = self._publish_interpolated_positions(
+            self._loop_time(),
+            source=self._interpolation_source,
+        )
         if active:
             self._schedule_interpolation_tick()
 
