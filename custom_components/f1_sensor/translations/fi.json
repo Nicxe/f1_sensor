@@ -5,6 +5,10 @@
       "race_week_ended": "Kilpailuviikko on päättynyt",
       "safety_car_deployed": "Turva-auto radalla",
       "safety_car_cleared": "Turva-auto poistunut",
+      "possible_on_track_incident_detected": "Mahdollinen ratatapahtuma havaittu",
+      "possible_on_track_incident_cleared": "Mahdollinen ratatapahtuma poistunut",
+      "on_track_incident_detected": "Ratatapahtuma havaittu",
+      "on_track_incident_cleared": "Ratatapahtuma poistunut",
       "formation_start_ready": "Lämmittelykierroksen aloitus valmis",
       "overtake_mode_enabled": "Ohitustila käytössä",
       "overtake_mode_disabled": "Ohitustila pois käytöstä",
@@ -301,6 +305,12 @@
       },
       "safety_car": {
         "name": "Turva-auto"
+      },
+      "on_track_incident": {
+        "name": "Ratatapahtuma"
+      },
+      "possible_on_track_incident": {
+        "name": "Mahdollinen ratatapahtuma"
       },
       "formation_start": {
         "name": "Lämmittelykierroksen alku"

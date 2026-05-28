@@ -40,6 +40,12 @@ This method is simple and reliable. The guided calibration below is optional.
 During the broadcast, they always show the moment the race clock flips to the start time, for example 15:00:00. If you look up an [atomic clock online](https://time.is/), you'll have an exact reference. Watch the time when the broadcast clock hits the start. So when the broadcast clock shows 15:00:00 and the race actually starts, the atomic clock reads 15:00:30. Then set a 30-second delay in the configuration.
 :::
 
+## Incident alerts and notifications
+
+Live Delay also applies to likely on-track incident updates. This means `f1_sensor_incident` events, the On-track Incident binary sensor, and notification blueprints can be delayed to match what you see on TV.
+
+Use this when you want a possible stopped-car notification to arrive with the broadcast pictures instead of ahead of them.
+
 
 ---
 

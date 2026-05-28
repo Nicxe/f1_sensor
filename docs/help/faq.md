@@ -171,6 +171,30 @@ Yes. The F1 Sensor integration has live sensors for track flags and safety car s
 Additionally, `binary_sensor.f1_safety_car` turns on whenever a Safety Car or Virtual Safety Car is active on track. These live sensors let you react to yellow/red flags or safety car deployments in your Home Assistant automations (for example, changing lights to red on a red flag).
 </details>
 
+<details>
+<summary>Is on-track incident detection the same as crash detection?</summary>
+
+No. F1 Sensor detects likely stopped cars and on-track incidents from live timing, track status, and Race Control context. It does not prove that a crash happened.
+
+Use neutral wording in automations, such as "Possible on-track incident" or "Driver may have stopped on track." The same alert can represent a spin, technical failure, stopped car, red flag stop, or another situation.
+</details>
+
+<details>
+<summary>Does on-track incident detection work in qualifying and practice?</summary>
+
+Yes. It is designed for race, sprint, qualifying, and practice sessions.
+
+The default notification behavior is more conservative for practice because practice sessions include more slow running, pit activity, installation laps, and testing. If you enable practice notifications, consider requiring `high` confidence.
+</details>
+
+<details>
+<summary>Why did I receive a possible incident alert without a yellow flag?</summary>
+
+A yellow flag is helpful context, but it is not required in every case. A driver can be marked as stopped before Track Status or Race Control updates arrive.
+
+F1 Sensor uses confidence levels to handle this. A stopped car that is not in the pit lane can create a `medium` confidence alert, while matching yellow flag, Safety Car, red flag, or Race Control context can raise it to `high`.
+</details>
+
 
 
 

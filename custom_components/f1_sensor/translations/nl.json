@@ -158,6 +158,12 @@
       "safety_car": {
         "name": "Safety car"
       },
+      "on_track_incident": {
+        "name": "Incident op de baan"
+      },
+      "possible_on_track_incident": {
+        "name": "Mogelijk incident op de baan"
+      },
       "formation_start": {
         "name": "Formation start"
       }

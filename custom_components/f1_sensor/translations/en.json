@@ -5,6 +5,10 @@
       "race_week_ended": "Race week has ended",
       "safety_car_deployed": "Safety car deployed",
       "safety_car_cleared": "Safety car cleared",
+      "possible_on_track_incident_detected": "Possible on-track incident detected",
+      "possible_on_track_incident_cleared": "Possible on-track incident cleared",
+      "on_track_incident_detected": "On-track incident detected",
+      "on_track_incident_cleared": "On-track incident cleared",
       "formation_start_ready": "Formation start ready",
       "overtake_mode_enabled": "Overtake mode enabled",
       "overtake_mode_disabled": "Overtake mode disabled",
@@ -338,6 +342,12 @@
       },
       "safety_car": {
         "name": "Safety car"
+      },
+      "on_track_incident": {
+        "name": "On-track incident"
+      },
+      "possible_on_track_incident": {
+        "name": "Possible on-track incident"
       },
       "formation_start": {
         "name": "Formation start"

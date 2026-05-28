@@ -11,6 +11,9 @@ This blueprint listens to the [Race Control sensor](/entities/live-data#race-con
 :::tip[Sync with your TV]
 For notifications to arrive at the right moment, configure the [Live Delay](/features/live-delay) to match your broadcast offset.
 :::
+:::info[Race Control vs incident alerts]
+Race Control Notifications forward official messages. For neutral likely stopped-car alerts with confidence and incident phases, use the [Incident Notifications](/blueprints/incident-notifications) blueprint.
+:::
 
 ---
 
@@ -220,5 +223,6 @@ Enable **Filter Out Blue Flags** if you want to keep Race Control notifications 
 
 - [Race Control sensor](/entities/live-data#race-control)
 - [Session Status sensor](/entities/live-data#session-status)
+- [Incident Notifications blueprint](/blueprints/incident-notifications)
 - [Live Delay](/features/live-delay)
 - [Track Status Light blueprint](/blueprints/track-status-light)

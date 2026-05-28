@@ -5,6 +5,10 @@
       "race_week_ended": "Tävlingsveckan har avslutats",
       "safety_car_deployed": "Safety car utsänd",
       "safety_car_cleared": "Safety car indragen",
+      "possible_on_track_incident_detected": "Möjlig incident på banan upptäckt",
+      "possible_on_track_incident_cleared": "Möjlig incident på banan rensad",
+      "on_track_incident_detected": "Incident på banan upptäckt",
+      "on_track_incident_cleared": "Incident på banan rensad",
       "formation_start_ready": "Formationsstart redo",
       "overtake_mode_enabled": "Omkörningstillstånd aktiverat",
       "overtake_mode_disabled": "Omkörningstillstånd inaktiverat",
@@ -334,6 +338,12 @@
       },
       "safety_car": {
         "name": "Säkerhetsbil"
+      },
+      "on_track_incident": {
+        "name": "Incident på banan"
+      },
+      "possible_on_track_incident": {
+        "name": "Möjlig incident på banan"
       },
       "formation_start": {
         "name": "Formationsstart"

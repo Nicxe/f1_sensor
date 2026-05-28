@@ -27247,7 +27247,11 @@ class F1TrackMapCard extends LitElement {
 
   _hasActiveDriverMotion() {
     const replayState = String(this._snapshot?.replay_state || '').toLowerCase();
-    if (replayState !== 'playing') return false;
+    const source = String(this._snapshot?.source || '').toLowerCase();
+    const status = String(this._snapshot?.status || this._status || '').toLowerCase();
+    const activeReplay = replayState === 'playing';
+    const activeLive = source === 'live' && status === 'active' && this._snapshot?.stale !== true;
+    if (!activeReplay && !activeLive) return false;
     const renderAt = this._driverRenderTime();
     for (const samples of this._driverSamples.values()) {
       const latest = samples?.[samples.length - 1];

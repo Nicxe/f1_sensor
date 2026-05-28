@@ -5,7 +5,7 @@ from __future__ import annotations
 from homeassistant.components.device_automation import DEVICE_TRIGGER_BASE_SCHEMA
 from homeassistant.components.homeassistant.triggers import state as state_trigger
 from homeassistant.const import CONF_ENTITY_ID, CONF_FOR, CONF_TYPE
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, Event, HassJob, HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.trigger import TriggerActionType, TriggerInfo
 from homeassistant.helpers.typing import ConfigType
@@ -13,8 +13,15 @@ import voluptuous as vol
 
 from .const import DOMAIN
 
-# Maps trigger_type → (unique_id_suffix, entity_domain, to_state or None)
-# to_state=None means "any state change" (fires on every update)
+_INCIDENT_EVENT = f"{DOMAIN}_incident"
+_INCIDENT_EVENT_TRIGGER_PHASES: dict[str, frozenset[str]] = {
+    "possible_on_track_incident_detected": frozenset({"candidate", "confirmed"}),
+    "on_track_incident_detected": frozenset({"confirmed"}),
+}
+
+# Maps trigger_type → (unique_id_suffix, entity_domain, to_state or None).
+# Detected incident triggers are event-based but still use the backing entity for
+# device trigger discovery and config entry scoping.
 _TRIGGER_MAP: dict[str, tuple[str, str, str | None]] = {
     # Race device
     "race_week_started": ("race_week", "binary_sensor", "on"),
@@ -22,6 +29,18 @@ _TRIGGER_MAP: dict[str, tuple[str, str, str | None]] = {
     # Session device
     "safety_car_deployed": ("safety_car", "binary_sensor", "on"),
     "safety_car_cleared": ("safety_car", "binary_sensor", "off"),
+    "possible_on_track_incident_detected": (
+        "possible_on_track_incident",
+        "binary_sensor",
+        "on",
+    ),
+    "possible_on_track_incident_cleared": (
+        "possible_on_track_incident",
+        "binary_sensor",
+        "off",
+    ),
+    "on_track_incident_detected": ("on_track_incident", "binary_sensor", "on"),
+    "on_track_incident_cleared": ("on_track_incident", "binary_sensor", "off"),
     "formation_start_ready": ("formation_start", "binary_sensor", "on"),
     "overtake_mode_enabled": ("overtake_mode", "binary_sensor", "on"),
     "overtake_mode_disabled": ("overtake_mode", "binary_sensor", "off"),
@@ -90,7 +109,9 @@ async def async_get_triggers(
 async def async_get_trigger_capabilities(
     hass: HomeAssistant, config: ConfigType
 ) -> dict[str, vol.Schema]:
-    """All triggers support the optional 'for' clause."""
+    """Return extra trigger fields supported by the selected trigger type."""
+    if config.get(CONF_TYPE) in _INCIDENT_EVENT_TRIGGER_PHASES:
+        return {"extra_fields": vol.Schema({})}
     return {
         "extra_fields": vol.Schema(
             {vol.Optional(CONF_FOR): cv.positive_time_period_dict}
@@ -106,6 +127,15 @@ async def async_attach_trigger(
 ) -> CALLBACK_TYPE:
     """Attach a device trigger by delegating to the HA state trigger."""
     trigger_type = config[CONF_TYPE]
+    if trigger_type in _INCIDENT_EVENT_TRIGGER_PHASES:
+        return _attach_incident_event_trigger(
+            hass,
+            config,
+            action,
+            trigger_info,
+            _INCIDENT_EVENT_TRIGGER_PHASES[trigger_type],
+        )
+
     _suffix, _domain, to_state = _TRIGGER_MAP[trigger_type]
 
     state_config: dict = {
@@ -121,3 +151,45 @@ async def async_attach_trigger(
     return await state_trigger.async_attach_trigger(
         hass, state_config, action, trigger_info, platform_type="device"
     )
+
+
+def _attach_incident_event_trigger(
+    hass: HomeAssistant,
+    config: ConfigType,
+    action: TriggerActionType,
+    trigger_info: TriggerInfo,
+    phases: frozenset[str],
+) -> CALLBACK_TYPE:
+    """Attach an incident event trigger scoped to the backing F1 config entry."""
+    entity_registry = er.async_get(hass)
+    entity_id = er.async_resolve_entity_id(entity_registry, config[CONF_ENTITY_ID])
+    registry_entry = entity_registry.async_get(entity_id) if entity_id else None
+    config_entry_id = registry_entry.config_entry_id if registry_entry else None
+    job = HassJob(action, f"device trigger {trigger_info}")
+    trigger_data = trigger_info["trigger_data"]
+
+    @callback
+    def _handle_incident_event(event: Event) -> None:
+        event_data = event.data
+        if (
+            config_entry_id is not None
+            and event_data.get("entry_id") != config_entry_id
+        ):
+            return
+        if event_data.get("phase") not in phases:
+            return
+        hass.loop.call_soon(
+            hass.async_run_hass_job,
+            job,
+            {
+                "trigger": {
+                    **trigger_data,
+                    "platform": "device",
+                    "event": event,
+                    "description": f"event '{event.event_type}'",
+                }
+            },
+            event.context,
+        )
+
+    return hass.bus.async_listen(_INCIDENT_EVENT, _handle_incident_event)

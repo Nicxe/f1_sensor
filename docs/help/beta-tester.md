@@ -129,3 +129,19 @@ Screenshots, screen recordings, or dashboard examples are helpful when they show
 
 As a beta tester, you may be asked to test a proposed fix, verify a new release, or provide more details.
 Following up on your own issues helps close them faster.
+
+## Test incident detection
+
+When testing likely on-track incident detection, focus on whether the wording, confidence, and timing make sense from a user perspective.
+
+For each report, note:
+
+1. Session type: Race, Sprint, Qualifying, Practice, or Testing.
+2. Driver or car number.
+3. Whether the alert was `candidate`, `confirmed`, `updated`, or `cleared`.
+4. Confidence value: `low`, `medium`, or `high`.
+5. Track Status and Race Control context at the time.
+6. Whether the driver was in pit lane, leaving the pit lane, or stopped on track.
+7. Whether Live Delay, Replay Mode, No Spoiler Mode, or experimental F1TV Auth was active.
+
+Use neutral language in reports. The feature is intended to detect likely stopped cars and on-track incidents, not guaranteed crashes.

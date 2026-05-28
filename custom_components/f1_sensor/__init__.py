@@ -95,6 +95,16 @@ from .helpers import (
     get_next_race,
     parse_fia_documents,
 )
+from .incident_detection import (
+    CONFIDENCE_ORDER,
+    DATA_QUALITY_BOOTSTRAP,
+    DATA_QUALITY_LIVE,
+    DATA_QUALITY_REPLAY,
+    IncidentChange,
+    IncidentDetector,
+    SessionMetadata,
+    normalize_stream,
+)
 from .live_delay import LiveDelayController, LiveDelayReferenceController
 from .live_window import (
     EventTrackerScheduleSource,
@@ -113,6 +123,14 @@ from .signalr import (
     build_live_subscribe_streams,
 )
 from .starting_grid import StartingGridCoordinator
+from .track_map import (
+    TRACK_MAP_SOURCE_LIVE,
+    TRACK_MAP_SOURCE_REPLAY,
+    TrackMapReplayAdapter,
+    TrackMapRuntimeData,
+    TrackMapStore,
+)
+from .track_map_websocket import TRACK_MAP_WS_MARKER, async_register_track_map_websocket
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -138,11 +156,24 @@ _RC_LOG_STORE_KEY = "race_control_log_store"
 _RC_LOG_EVENT = f"{DOMAIN}_race_control_event"
 _RC_LOG_RESET_EVENT = f"{DOMAIN}_race_control_log_reset_event"
 _RC_LOG_WS_TYPE = f"{DOMAIN}/race_control_log/get"
+_INCIDENT_EVENT = f"{DOMAIN}_incident"
+_INCIDENT_STREAMS: tuple[str, ...] = (
+    "DriverList",
+    "SessionInfo",
+    "SessionData",
+    "SessionStatus",
+    "TrackStatus",
+    "RaceControlMessages",
+    "TimingData",
+    "CarData.z",
+)
+_INCIDENT_BOOTSTRAP_SKIP_STREAMS = frozenset({"RaceControlMessages", "TrackStatus"})
 _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
     {
         _JOLPICA_STATS_KEY,
         _RC_LOG_SERVICE_MARKER,
         _RC_LOG_WS_MARKER,
+        TRACK_MAP_WS_MARKER,
     }
 )
 _FINISHING_PLUS_LAPS_RE = re.compile(r"^\+\d+\s+Laps?$", re.IGNORECASE)
@@ -1595,6 +1626,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
+    incident_coordinator = None
     race_control_log_store = None
     live_mode_coordinator = None
     top_three_coordinator = None
@@ -1613,6 +1645,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         and auth_transport_enabled
         and live_timing_auth_status.status not in AUTH_REPAIR_STATUSES
     )
+    auth_reauth_required = bool(live_timing_auth_status.issue_required)
     if not auth_can_be_used:
         live_timing_auth_header = ""
     else:
@@ -1819,6 +1852,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        incident_coordinator = IncidentCoordinator(
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
         live_mode_coordinator = LiveModeCoordinator(
             hass,
             race_control_coordinator,
@@ -1869,6 +1911,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await weather_data_coordinator.async_config_entry_first_refresh()
     if lap_count_coordinator:
         await lap_count_coordinator.async_config_entry_first_refresh()
+    if incident_coordinator:
+        await incident_coordinator.async_config_entry_first_refresh()
 
     # Conditionally create live-stream coordinators (require enable_rc + sensor enabled).
     # Replay/auth-gated coordinators stay registered in live mode and expose
@@ -1954,6 +1998,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         await championship_prediction_coordinator.async_config_entry_first_refresh()
 
+    def _track_map_position_source() -> str:
+        if operation_mode == OPERATION_MODE_DEVELOPMENT:
+            return TRACK_MAP_SOURCE_REPLAY
+        reason = getattr(live_state, "reason", None)
+        if _is_replay_delay_reason(reason) or _is_replay_only_active_reason(reason):
+            return TRACK_MAP_SOURCE_REPLAY
+        return TRACK_MAP_SOURCE_LIVE
+
+    track_map_store = TrackMapStore(entry.entry_id)
+    track_map_replay_adapter = TrackMapReplayAdapter(
+        track_map_store,
+        live_bus,
+        hass=hass,
+        replay_controller=replay_controller,
+        position_source_resolver=_track_map_position_source,
+    )
+    track_map_replay_adapter.start()
+    entry.runtime_data = TrackMapRuntimeData(track_map_store=track_map_store)
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "http_session": http_session,
         "user_agent": ua_string,
@@ -1973,6 +2036,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "session_info_coordinator": session_info_coordinator,
         "session_clock_coordinator": session_clock_coordinator,
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
+        "incident_coordinator": incident_coordinator if enable_rc else None,
         _RC_LOG_STORE_KEY: race_control_log_store if enable_rc else None,
         "live_mode_coordinator": live_mode_coordinator if enable_rc else None,
         "starting_grid_coordinator": starting_grid_coordinator,
@@ -1983,6 +2047,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "championship_prediction_coordinator": championship_prediction_coordinator,
         "drivers_coordinator": drivers_coordinator,
         "fia_documents_coordinator": fia_documents_coordinator,
+        "track_map_store": track_map_store,
+        "track_map_replay_adapter": track_map_replay_adapter,
         "live_bus": live_bus,
         "live_supervisor": live_supervisor,
         "live_schedule_fallback_source": event_tracker_source,
@@ -2015,10 +2081,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             live_mode_coordinator if enable_rc else None,
             weather_data_coordinator if enable_rc else None,
             lap_count_coordinator if enable_rc else None,
+            incident_coordinator if enable_rc else None,
             top_three_coordinator,
             pitstop_coordinator,
             championship_prediction_coordinator,
             drivers_coordinator,
+            track_map_replay_adapter,
         ),
         "activity_filter_unsub": None,
         "no_spoiler_unsub": None,
@@ -2026,12 +2094,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if race_control_log_store is not None:
         _async_register_race_control_log_interfaces(hass)
+    async_register_track_map_websocket(hass)
 
     _apply_activity_log_filter_excludes(hass)
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
     if isinstance(hass_data, dict):
         async_update_f1tv_auth_repair_issue(hass, entry, live_timing_auth_status)
         async_schedule_f1tv_auth_status_refresh(hass, entry)
+        if auth_reauth_required:
+            entry.async_start_reauth(hass, data=entry.data)
 
         def _on_component_loaded(event):
             component = str((getattr(event, "data", {}) or {}).get("component") or "")
@@ -2552,6 +2623,252 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             ).subscribe("RaceControlMessages", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
+
+
+class IncidentCoordinator(DataUpdateCoordinator):
+    """Coordinator that bridges live timing streams to incident events."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: LiveSessionCoordinator,
+        delay_seconds: int = 0,
+        bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator_logger("incident", suppress_manual=True),
+            name="F1 Incident Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._session_coord = session_coord
+        self._bus = bus
+        self._detector = IncidentDetector()
+        self._session_metadata = SessionMetadata()
+        self._drivers: dict[str, Any] = {}
+        self._state = self._empty_state()
+        self._latest_change: IncidentChange | None = None
+        self._published_event_keys: set[tuple[str, str, str, str, str]] = set()
+        self._published_event_order: deque[tuple[str, str, str, str, str]] = deque(
+            maxlen=512
+        )
+        self._unsubs: list[Callable[[], None]] = []
+        self._delay_listener: Callable[[], None] | None = None
+        self._live_state_unsub: Callable[[], None] | None = None
+        self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
+        self._closed = False
+        self.available = True
+        _init_delayed_ingest_state(self)
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
+        if live_state is not None:
+            self._replay_mode = _is_replay_delay_reason(live_state.reason)
+            self.available = bool(live_state.is_live)
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+
+    @staticmethod
+    def _empty_state() -> dict[str, Any]:
+        return {
+            "active_count": 0,
+            "highest_confidence": None,
+            "latest_incident_id": None,
+            "latest_driver_number": None,
+            "latest_driver_tla": None,
+            "latest_reason": None,
+            "latest_phase": None,
+            "session_type": None,
+            "session_name": None,
+            "data_quality": None,
+            "active_incidents": [],
+        }
+
+    async def async_close(self, *_) -> None:
+        self._closed = True
+        for unsub in self._unsubs:
+            with suppress(Exception):
+                unsub()
+        self._unsubs.clear()
+        self._delay_listener = _call_unsub(self._delay_listener)
+        self._live_state_unsub = _call_unsub(self._live_state_unsub)
+        _close_delayed_ingest_state(self)
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        return self._state
+
+    async def async_config_entry_first_refresh(self) -> None:
+        await super().async_config_entry_first_refresh()
+        bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        if bus is None:
+            return
+        for stream in _INCIDENT_STREAMS:
+            self._subscribe_stream(bus, stream)
+
+    def _subscribe_stream(self, bus: LiveBus, stream: str) -> None:
+        replaying_cached_payload = True
+
+        def _callback(payload: Any) -> None:
+            nonlocal replaying_cached_payload
+            is_bootstrap = replaying_cached_payload and not self._replay_mode
+            self._queue_stream_payload(
+                stream,
+                payload,
+                is_bootstrap=is_bootstrap,
+            )
+
+        try:
+            self._unsubs.append(bus.subscribe(stream, _callback))
+        except Exception:
+            _LOGGER.debug("Incident: failed to subscribe to %s", stream, exc_info=True)
+        finally:
+            replaying_cached_payload = False
+
+    def _queue_stream_payload(
+        self, stream: str, payload: Any, *, is_bootstrap: bool
+    ) -> None:
+        if self._closed:
+            return
+        observed_at = datetime.now(UTC)
+        if self._replay_mode:
+            data_quality = DATA_QUALITY_REPLAY
+        elif is_bootstrap:
+            data_quality = DATA_QUALITY_BOOTSTRAP
+        else:
+            data_quality = DATA_QUALITY_LIVE
+        _queue_delayed_ingest(
+            self,
+            lambda stream=stream, payload=payload, observed_at=observed_at, data_quality=data_quality: (
+                self._handle_stream_payload(
+                    stream,
+                    payload,
+                    observed_at=observed_at,
+                    data_quality=data_quality,
+                )
+            ),
+        )
+
+    def _handle_stream_payload(
+        self,
+        stream: str,
+        payload: Any,
+        *,
+        observed_at: datetime,
+        data_quality: str,
+    ) -> None:
+        if self._closed or _is_no_spoiler_blocked(self):
+            return
+        if (
+            data_quality == DATA_QUALITY_BOOTSTRAP
+            and stream in _INCIDENT_BOOTSTRAP_SKIP_STREAMS
+        ):
+            return
+        signals = normalize_stream(
+            stream,
+            payload,
+            observed_at,
+            session=self._session_metadata,
+            drivers=self._drivers,
+            data_quality=data_quality,
+        )
+        if not signals:
+            return
+        for signal in signals:
+            if signal.kind == "session_context" and signal.session is not None:
+                self._session_metadata = signal.session
+            if signal.kind == "driver_metadata" and signal.driver is not None:
+                self._drivers[signal.driver.racing_number] = signal.driver
+        changes = self._detector.process_signals(signals)
+        if not changes:
+            return
+        self._refresh_state(changes[-1])
+        if data_quality == DATA_QUALITY_BOOTSTRAP:
+            return
+        for change in changes:
+            self._publish_change(change)
+
+    def _publish_change(self, change: IncidentChange) -> None:
+        event_key = (
+            change.incident_id,
+            change.phase,
+            change.confidence,
+            change.reason,
+            change.updated_at.isoformat(),
+        )
+        if event_key in self._published_event_keys:
+            return
+        if len(self._published_event_order) == self._published_event_order.maxlen:
+            old = self._published_event_order.popleft()
+            self._published_event_keys.discard(old)
+        self._published_event_order.append(event_key)
+        self._published_event_keys.add(event_key)
+
+        payload = {
+            "entry_id": self.config_entry.entry_id if self.config_entry else None,
+            **change.to_event_payload(),
+        }
+        self.hass.bus.async_fire(_INCIDENT_EVENT, payload)
+        _LOGGER.debug(
+            "Incident event phase=%s confidence=%s reason=%s driver=%s",
+            change.phase,
+            change.confidence,
+            change.reason,
+            change.driver.racing_number,
+        )
+
+    def _refresh_state(self, latest_change: IncidentChange | None = None) -> None:
+        if latest_change is not None:
+            self._latest_change = latest_change
+        active = list(self._detector.active_incidents())
+        highest = None
+        if active:
+            highest = max(
+                (change.confidence for change in active),
+                key=lambda value: CONFIDENCE_ORDER.get(value, -1),
+            )
+        latest = self._latest_change
+        self._state = {
+            "active_count": len(active),
+            "highest_confidence": highest,
+            "latest_incident_id": latest.incident_id if latest else None,
+            "latest_driver_number": latest.driver.racing_number if latest else None,
+            "latest_driver_tla": latest.driver.tla if latest else None,
+            "latest_reason": latest.reason if latest else None,
+            "latest_phase": latest.phase if latest else None,
+            "session_type": latest.session.session_type if latest else None,
+            "session_name": latest.session.session_name if latest else None,
+            "data_quality": latest.data_quality if latest else None,
+            "active_incidents": [change.to_event_payload() for change in active],
+        }
+        self.async_set_updated_data(self._state)
+
+    def reset_for_replay(self) -> None:
+        self._detector = IncidentDetector()
+        self._session_metadata = SessionMetadata()
+        self._drivers.clear()
+        self._latest_change = None
+        self._published_event_keys.clear()
+        self._published_event_order.clear()
+        self._state = self._empty_state()
+        _clear_delayed_ingest_state(self)
+        self.async_set_updated_data(self._state)
+
+    def set_delay(self, seconds: int) -> None:
+        _apply_delay_with_queue(self, seconds)
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
+        replay_mode = _is_replay_delay_reason(reason)
+        if replay_mode and not self._replay_mode:
+            self.reset_for_replay()
+        self._replay_mode = replay_mode
+        self.available = is_live
+        if not is_live:
+            self.reset_for_replay()
 
 
 class LiveModeCoordinator(DataUpdateCoordinator):
@@ -5499,6 +5816,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     except Exception as err:  # noqa: BLE001
                         _LOGGER.debug("Error during %s async_close: %s", name, err)
         unregister_entry_name_settings(entry.entry_id)
+        entry.runtime_data = None
         # If this was the last entry, remove dev-only stats reporter.
         if isinstance(data_root, dict):
             with suppress(Exception):
@@ -5544,6 +5862,11 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
     if coordinator is None:
         return
 
+    reset_for_replay = getattr(coordinator, "reset_for_replay", None)
+    if callable(reset_for_replay):
+        reset_for_replay()
+        return
+
     if isinstance(coordinator, WeatherDataCoordinator):
         _clear_delayed_ingest_state(coordinator)
         coordinator._last_message = None
@@ -5562,6 +5885,10 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
         coordinator._seen_ids_order.clear()
         coordinator._startup_cutoff = None
         coordinator.async_set_updated_data(None)
+        return
+
+    if isinstance(coordinator, IncidentCoordinator):
+        coordinator.reset_for_replay()
         return
 
     if isinstance(coordinator, LiveModeCoordinator):

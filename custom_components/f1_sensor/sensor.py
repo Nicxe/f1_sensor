@@ -466,6 +466,7 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
         "ChampionshipPrediction",
         "DriverRaceInfo",
         "CarData.z",
+        "Position.z",
     )
 
     def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
