@@ -6,11 +6,6 @@ title: F1TV Token Helper
 F1TV Token Helper connects your own Formula 1 browser session to F1 Sensor through a short-lived Home Assistant pairing link.
 Use this page when Home Assistant opens an external website while you are connecting F1TV access.
 
-:::warning[Experimental feature]
-F1TV Auth is currently an experimental feature.
-Public live timing continues to work without F1TV access.
-:::
-
 ## What this does
 
 The helper reads the F1TV live timing token from your local browser session and sends it to your own Home Assistant instance.
@@ -61,7 +56,7 @@ After pairing, `sensor.f1_f1tv_token_status` and `sensor.f1_f1tv_token_expires_a
 The token normally needs to be renewed about every four days.
 You can start a new pairing later with `button.f1_refresh_f1tv_access` or remove the saved token with `button.f1_clear_f1tv_access`.
 
-For the full live timing availability model, see [F1TV Auth](/features/f1tv-auth). For the beta test workflow, see [F1TV Auth Testing](/help/experimental-testing).
+For the full live timing availability model, see [F1TV Auth](/features/f1tv-auth). For setup steps, see [F1TV Auth Setup](/help/f1tv-auth-setup).
 
 ## Troubleshooting
 

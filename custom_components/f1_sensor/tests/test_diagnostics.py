@@ -42,9 +42,7 @@ def _static_track_map_session_payload() -> dict:
 async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", True)
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="F1",
@@ -172,12 +170,10 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
     assert "secret-token" not in str(payload)
 
 
-async def test_diagnostics_hides_auth_state_when_experimental_auth_disabled(
+async def test_diagnostics_hides_auth_state_when_f1tv_auth_disabled(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", False
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", False)
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="F1",

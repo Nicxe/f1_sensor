@@ -72,9 +72,7 @@ async def test_jolpica_ua_button_timeout_reports_failure(hass, monkeypatch) -> N
 async def test_clear_f1tv_access_button_clears_saved_token_and_reloads(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", True)
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -105,9 +103,7 @@ async def test_clear_f1tv_access_button_clears_saved_token_and_reloads(
 async def test_clear_f1tv_access_button_is_inert_when_gate_closed(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", False
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", False)
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -135,9 +131,7 @@ async def test_clear_f1tv_access_button_is_inert_when_gate_closed(
 async def test_refresh_f1tv_access_button_creates_pairing_notification(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", True)
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -182,9 +176,7 @@ async def test_refresh_f1tv_access_button_creates_pairing_notification(
 async def test_refresh_f1tv_access_button_is_inert_when_gate_closed(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", False
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", False)
     entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
     entry.add_to_hass(hass)
     notifications = AsyncMock()
@@ -213,9 +205,7 @@ async def test_jolpica_ua_button_is_not_added_when_only_f1tv_auth_is_public(
     monkeypatch.setattr(
         "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", False
     )
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", True)
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -240,9 +230,7 @@ async def test_jolpica_ua_button_is_not_added_when_only_f1tv_auth_is_public(
 async def test_refresh_f1tv_access_button_is_added_without_saved_token(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", True)
     entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
     entry.add_to_hass(hass)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {"loaded": True}

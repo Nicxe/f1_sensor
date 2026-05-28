@@ -22,7 +22,7 @@ Live data uses three separate availability modes:
 | Mode | What it means |
 | --- | --- |
 | Public live timing | Standard live mode without F1TV Auth. This powers session status, track status, Safety Car, Race Control, weather, driver timing, tyres, top three, and confirmed incident detection |
-| F1TV Auth live timing | Optional experimental live mode. It can add extra live data for features such as Track Map, Pit Stops, Championship Prediction, formation start refinement, and earlier incident candidates |
+| F1TV Auth live timing | Optional live mode. It can add extra live data for features such as Track Map, Pit Stops, Championship Prediction, formation start refinement, and earlier incident candidates |
 | Replay Mode | Historical playback from Formula 1's session archive. Some data that requires F1TV Auth live can work later when the replay archive contains it |
 
 [Track Map](/features/track-map) is not a normal Home Assistant entity. It is a dashboard card feature that uses live or replay car position data when available.
@@ -167,7 +167,7 @@ Use this section to understand the possible values for enum-type states and attr
 All of these entities update **only in relation to an active session**, typically starting less than an hour before and continuing for a few minutes after the session ends. Outside these windows, the entities will be set to **Unavailable** (not updating and not providing new data).
 :::
 :::info[Replay and F1TV Auth live timing entities]
-Some entities stay registered in Home Assistant even when the needed source data is not available. Pit Stops and Championship Prediction can update in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/features/f1tv-auth) is paired with a valid token.
+Some entities stay registered in Home Assistant even when the needed source data is not available. Pit Stops and Championship Prediction can update in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token.
 
 Formation Start can also improve during live sessions when the needed extra live timing data is available.
 :::
@@ -685,7 +685,7 @@ The headshot URLs are provided by F1 and may change between sessions. This senso
 
 ## Pit Stops
 :::info[Replay Mode or F1TV Auth live timing]
-This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live pit stop data is available.
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live pit stop data is available.
 :::
 
 `sensor.f1_pitstops` - Pit stop information from the F1 Live Timing feed, aggregated per car.
@@ -1874,7 +1874,7 @@ Noted: {{ noted }}, Under Investigation: {{ investigating }}
 
 ## Championship Prediction (Drivers)
 :::info[Replay Mode or F1TV Auth live timing]
-This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live prediction data is available.
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live prediction data is available.
 :::
 
 Predicted Drivers Championship winner and points table.
@@ -2005,7 +2005,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 ## Championship Prediction (Teams)
 :::info[Replay Mode or F1TV Auth live timing]
-This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live prediction data is available.
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live prediction data is available.
 :::
 
 Predicted Constructors Championship winner and points table.
@@ -2139,10 +2139,10 @@ Each entry in `teams` (keyed by team key) contains:
 
 ## Formation Start
 :::info[Replay Mode or F1TV Auth live timing]
-This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/features/f1tv-auth) is paired with a valid token and the required extra live data is available.
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token and the required extra live data is available.
 :::
 
-Indicates when the formation start procedure is ready. Useful for triggering automations at race start during replay or authenticated live testing.
+Indicates when the formation start procedure is ready. Useful for triggering automations at race start during replay or authenticated live sessions.
 
 **State (on/off)**
 - `on` when formation start procedure is ready; otherwise `off`.

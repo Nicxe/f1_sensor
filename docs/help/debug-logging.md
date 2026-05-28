@@ -72,7 +72,7 @@ For false positive or missing on-track incident reports, include the same basic 
 4. Current `sensor.f1_track_status` state.
 5. Latest Race Control message around the incident.
 6. The `f1_sensor_incident` event payload for the relevant `incident_id`, if one fired.
-7. Whether Live Delay, Replay Mode, No Spoiler Mode, or experimental F1TV Auth was active.
+7. Whether Live Delay, Replay Mode, No Spoiler Mode, or F1TV Auth was active.
 8. Whether Track Map showed live or replay car positions.
 9. The Track Map card status, source, and stale indicator if visible.
 10. Whether the incident event included `location`, and whether `location.stale` was `true` or `false`.

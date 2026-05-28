@@ -143,8 +143,8 @@ Diagnostics intentionally show counts and latest metadata only. Use the [`f1_sen
 
 `sensor.f1_f1tv_token_status` - Redacted status for the optional F1TV live timing token.
 
-:::warning[Experimental feature]
-F1TV Auth is optional and experimental. Public live timing continues to work without a token. Only extra live-auth features depend on this status.
+:::info
+F1TV Auth is optional. Public live timing continues to work without a token. Only extra live-auth features depend on this status.
 :::
 
 **State (enum)**

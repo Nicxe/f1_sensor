@@ -145,7 +145,7 @@ For each report, note:
 4. Confidence value: `low`, `medium`, or `high`.
 5. Track Status and Race Control context at the time.
 6. Whether the driver was in pit lane, leaving the pit lane, or stopped on track.
-7. Whether Live Delay, Replay Mode, No Spoiler Mode, or experimental F1TV Auth was active.
+7. Whether Live Delay, Replay Mode, No Spoiler Mode, or F1TV Auth was active.
 8. Whether Track Map had live or replay car positions.
 9. The Track Map status, source, and stale state if visible.
 10. The `f1_sensor_incident` event payload for the relevant `incident_id`, including `location` when present.

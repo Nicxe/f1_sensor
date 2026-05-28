@@ -1046,8 +1046,8 @@ const buildF1DataAvailabilityNotice = (hass, config, feature) => {
     return {
       tone: 'info',
       message: isPitStop
-        ? 'Pit stop data is hidden because F1TV access is not configured. It is still available in Replay Mode.'
-        : 'Predicted points are hidden because F1TV access is not configured. They are still available in Replay Mode.',
+        ? 'Connect F1TV access to show live pit stop data. Replay data remains available.'
+        : 'Connect F1TV access to show live predicted points. Replay data remains available.',
     };
   }
 

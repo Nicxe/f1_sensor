@@ -62,8 +62,8 @@ async def async_setup_entry(
         set_suggested_object_id(entity, default_object_id("delay_calibration_match"))
         entities.append(entity)
 
-    # Public experimental auth can be enabled without exposing developer-only
-    # Jolpica diagnostics.
+    # Public F1TV auth can be enabled without exposing developer-only Jolpica
+    # diagnostics.
     if is_auth_feature_enabled() and entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER):
         entity = F1ClearF1TvAccessButton(
             hass=hass,
@@ -188,7 +188,7 @@ class F1RefreshF1TvAccessButton(F1AuxEntity, ButtonEntity):
             return
 
         message = (
-            "Open the F1TV Token Helper to refresh experimental F1TV access.\n\n"
+            "Open the F1TV Token Helper to refresh F1TV access.\n\n"
             f"[Open F1TV Token Helper]({session.helper_url})\n\n"
             f"This pairing expires at {session.expires_at_iso}."
         )

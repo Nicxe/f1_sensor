@@ -3,7 +3,7 @@ id: f1tv-auth
 title: F1TV Auth
 ---
 
-F1 Sensor works without F1TV Auth. Optional F1TV Auth is an experimental enhancement that can unlock extra live timing features during an active Formula 1 session while public live timing continues to work without a token.
+F1 Sensor works without F1TV Auth. Optional F1TV Auth can unlock extra live timing features during an active Formula 1 session while public live timing continues to work without a token.
 
 ## How F1TV Auth changes live timing
 
@@ -33,8 +33,9 @@ Public live timing covers the normal live features most dashboards and automatio
 
 F1TV Auth can support live features such as Track Map, Pit Stops, Championship Prediction, formation start refinement, and earlier incident candidate signals. These features still depend on what Formula 1 publishes for each session, so a valid token does not guarantee that every extra feature is available every time.
 
-:::warning[Experimental feature]
-F1TV Auth is experimental. Expect short-lived tokens, occasional upstream changes, and session-by-session differences in what data Formula 1 publishes.
+:::info
+F1TV tokens are short-lived, and Formula 1 can vary which extra live data is published from session to session.
+Public live timing continues to work if F1TV access is missing, expired, invalid, or rejected.
 :::
 
 ## Availability matrix
@@ -57,7 +58,7 @@ The recommended way to connect F1TV Auth is the [F1TV Token Helper](/help/f1tv-t
 
 Home Assistant does not ask for your Formula 1 password. Tokens are short-lived, so expect to renew access when `sensor.f1_f1tv_token_status` reports `expiring_soon`, `expired`, `invalid`, or `rejected`.
 
-For the practical testing workflow, see [F1TV Auth Testing](/help/experimental-testing).
+For the practical setup workflow, see [F1TV Auth Setup](/help/f1tv-auth-setup).
 
 ## Privacy and safety
 
@@ -67,10 +68,10 @@ Downloaded diagnostics can include redacted token health and live timing activit
 
 ## Limitations
 
-- F1TV Auth is optional and experimental.
+- F1TV Auth is optional.
 - Tokens are short-lived and renewal is not automatic.
 - Extra live features are available only during suitable live sessions when Formula 1 publishes the needed data.
-- Live Track Map cannot be fully tested without an active session and a working token.
+- Live Track Map cannot be fully verified without an active session and a working token.
 - Replay Mode is separate from live auth and can show archived data later when the replay archive contains it.
 
 ## Related pages
@@ -79,5 +80,5 @@ Downloaded diagnostics can include redacted token health and live timing activit
 - [Incident Detection](/features/incident-detection)
 - [Replay Mode](/features/replay-mode)
 - [F1TV Token Helper](/help/f1tv-token-helper)
-- [F1TV Auth Testing](/help/experimental-testing)
+- [F1TV Auth Setup](/help/f1tv-auth-setup)
 - [Diagnostics](/entities/diagnostics)

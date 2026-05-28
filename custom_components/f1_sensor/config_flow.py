@@ -83,8 +83,8 @@ SENSOR_OPTIONS = {
     "formation_start": "Formation start (replay or live with F1TV access)",
     "race_control": "Race control (live)",
     "top_three": "Top three (leader, live)",
-    "pitstops": "Pit stops (experimental F1TV live/replay)",
-    "championship_prediction": "Championship prediction (experimental F1TV live/replay)",
+    "pitstops": "Pit stops (F1TV live/replay)",
+    "championship_prediction": "Championship prediction (F1TV live/replay)",
     "driver_positions": "Driver positions (live)",
     "starting_grid": "Starting grid (live)",
     "track_limits": "Track limits (live)",
@@ -144,7 +144,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
 
             # Resolve and validate operation mode. Development/replay controls stay
-            # tied to developer UI even when experimental F1TV auth is public.
+            # tied to developer UI even when F1TV auth is public.
             mode = user_input.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
             if not const.ENABLE_DEVELOPMENT_MODE_UI or mode not in (
                 OPERATION_MODE_LIVE,
@@ -337,7 +337,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
         # Reconfigure keeps replay/development controls behind the developer UI
-        # gate, independently of the public experimental F1TV auth surface.
+        # gate, independently of the public F1TV auth surface.
         show_dev_controls = const.ENABLE_DEVELOPMENT_MODE_UI
 
         if show_dev_controls:

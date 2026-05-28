@@ -85,7 +85,7 @@ The same cleanup clears the Home Assistant Repairs warning for stale standalone 
 <details>
 <summary>Why are some entities like Pit Stops and Championship Prediction unavailable without F1TV Auth?</summary>
 
-These entities depend on data that is not part of public live timing. They can update in [Replay Mode](/features/replay-mode), and they can update during real live sessions when experimental [F1TV Auth](/features/f1tv-auth) is paired with a valid token. Without that token, they remain unavailable while public live timing continues.
+These entities depend on data that is not part of public live timing. They can update in [Replay Mode](/features/replay-mode), and they can update during real live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token. Without that token, they remain unavailable while public live timing continues.
 
 The affected entities are:
 - `sensor.f1_pitstops`

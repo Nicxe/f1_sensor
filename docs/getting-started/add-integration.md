@@ -64,11 +64,11 @@ For detailed instructions on syncing with your TV, including guided calibration,
 
 Public live timing works without F1TV Auth. This covers the normal live features most users need, including session status, track status, Safety Car, Race Control, weather, driver timing, tyres, and confirmed incident alerts.
 
-Optional experimental [F1TV Auth](/features/f1tv-auth) can be paired with the [F1TV Token Helper](/help/f1tv-token-helper) when you want to test extra live timing features during a real live session. It can enable or improve features such as [Track Map](/features/track-map), Pit Stops, Championship Prediction, formation start data, and earlier incident candidates.
+Optional [F1TV Auth](/features/f1tv-auth) can be paired with the [F1TV Token Helper](/help/f1tv-token-helper) when you want extra live timing features during a real live session. It can enable or improve features such as [Track Map](/features/track-map), Pit Stops, Championship Prediction, formation start data, and earlier incident candidates.
 
 Replay Mode is a separate mode. It can show some data that requires F1TV Auth during live sessions because replay uses Formula 1's public session archive after the session has completed.
 
-For the practical auth test flow, see [F1TV Auth Testing](/help/experimental-testing). For incident behavior, see [Incident Detection](/features/incident-detection).
+For the practical F1TV Auth setup, see [F1TV Auth Setup](/help/f1tv-auth-setup). For incident behavior, see [Incident Detection](/features/incident-detection).
 :::tip[Quick start]
 A typical streaming delay is 30–45 seconds. You can always fine-tune this later using the [Live Delay](/features/live-delay) feature.
 :::
