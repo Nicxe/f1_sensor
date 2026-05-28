@@ -129,6 +129,13 @@ When you see the reference point on your TV, press `button.f1_delay_calibration_
 **With session live reference:** Press when you see lights out (race) or pit exit open (practice/qualifying).
 
 **With lap sync reference:** Press when you see the recorded lap complete on your TV. The status message tells you exactly which lap to look for.
+
+:::info[TV lap graphics and recorded laps]
+Lap sync records the lap that has just completed. For example, when live timing moves to lap 53, the calibration status records `Lap 52 completed`, because lap 53 has just started.
+
+On most TV graphics, that same moment appears as the lap counter changing to lap 53. Treat `Lap 52 completed` and `lap 53 started` as the same reference point, then press `button.f1_delay_calibration_match` when your broadcast reaches that change. If your broadcast has already passed that moment, cancel and re-arm lap sync or wait for the next lap.
+:::
+
 :::info[When does the session go live?]
 
 **Practice & Qualifying**
