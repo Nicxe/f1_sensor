@@ -9,9 +9,11 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _BLUEPRINT_FILENAME = "f1_incident_notifications.yaml"
-BLUEPRINT_SOURCE = (
+_REPO_PATH = _REPO_ROOT / "blueprints" / _BLUEPRINT_FILENAME
+_HA_PATH = (
     _REPO_ROOT / "blueprints" / "automation" / "homeassistant" / _BLUEPRINT_FILENAME
 )
+BLUEPRINT_SOURCE = _REPO_PATH if _REPO_PATH.exists() else _HA_PATH
 BLUEPRINT_DEST = Path(
     "blueprints/automation/homeassistant/f1_incident_notifications.yaml"
 )
