@@ -181,7 +181,7 @@ The following variables are available inside your notification actions:
 | --- | --- |
 | `{{ notification_title }}` | Ready-to-use title combining prefix and flag |
 | `{{ notification_message }}` | Ready-to-use message with selected fields |
-| `{{ race_control_message }}` | The raw race control message text |
+| `{{ race_control_message }}` | The full race control message text |
 | `{{ race_control_category }}` | Event category |
 | `{{ race_control_flag }}` | Flag type |
 | `{{ race_control_scope }}` | Scope (track, sector, car) |

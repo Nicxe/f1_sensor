@@ -29,7 +29,7 @@ If you upgraded from an older release and already have different registry IDs, k
 
 At its core, Live Delay is a single value, stored in `number.f1_live_delay`.
 
-Changing this value **directly updates** the Live Delay Controller and delays all live messages. This value represents how many seconds the live data stream should be delayed before it is exposed to sensors.
+Changing this value **directly updates** the Live Delay Controller and delays all live messages. This value represents how many seconds live updates should be delayed before they are exposed to sensors.
 
 Everything else in the integration builds on top of this number.
 

@@ -19,7 +19,7 @@ Feel like I've helped you out? You can buy me a coffee or become a sponsor!
 Help improve the project by:
 
 - [Submit pull requests](https://github.com/Nicxe/f1_sensor/pulls)
-- [Report bugs](hhttps://github.com/Nicxe/f1_sensor/issues)
+- [Report bugs](https://github.com/Nicxe/f1_sensor/issues)
 - [Suggest features](https://github.com/Nicxe/f1_sensor/discussions/categories/ideas)
 - Improve documentation
 - [Share examples](https://github.com/Nicxe/f1_sensor/discussions/categories/show-and-tell)

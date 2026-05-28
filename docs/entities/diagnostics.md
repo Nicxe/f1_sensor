@@ -3,19 +3,84 @@ id: diagnostics
 title: Diagnostics
 ---
 
-Diagnostic entities are intended for troubleshooting and advanced automations. Some entities are only created when the corresponding feature is enabled during configuration.
+Diagnostic entities are intended for troubleshooting and advanced automations. Some entities are created only when the corresponding feature is enabled during configuration.
 
-Downloaded diagnostics from **Settings > Devices & Services > F1 Sensor > Diagnostics** include a small runtime summary for live timing and incident detection. The diagnostics output is intended for support and does not include raw high-frequency telemetry, authorization headers, cookies, or tokens.
+Downloaded diagnostics from **Settings > Devices & Services > F1 Sensor > Diagnostics** include a compact runtime summary for live timing, F1TV Auth, incident detection, and Track Map. Diagnostics are intended for support and should not include authorization headers, cookies, callback URLs, nonce values, tokens, or detailed car movement data.
 
 ## Entities Summary
 
 | Entity | Info |
 | --- | --- |
-| [sensor.f1_live_timing_mode](#live-timing-mode) | Current live timing mode (`idle`, `live`, `replay`) |
+| [sensor.f1_live_timing_mode](#live-timing-mode) | Current live timing mode (`idle`, `live`, `replay`) and live data activity |
 | [binary_sensor.f1_live_timing_online](#live-timing-online) | Live timing connectivity indicator |
 | [sensor.f1_replay_status](#replay-status) | Replay state and progress |
 | [sensor.f1_f1tv_token_status](#f1tv-token-status) | Redacted F1TV token health status |
 | [sensor.f1_f1tv_token_expires_at](#f1tv-token-expires-at) | Expiry time for the saved F1TV live timing token |
+
+---
+
+## Live Timing Mode
+
+`sensor.f1_live_timing_mode` - Diagnostic sensor showing which timing mode the integration is currently using.
+
+**State (enum)**
+- One of: `idle`, `live`, `replay`.
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| reason | string | Why the current live timing state is active (best effort) |
+| window | string | Current live timing window label (best effort) |
+| schedule_source | string | How the live schedule was resolved (best effort) |
+| index_http_status | number | HTTP status code of the last schedule index fetch (best effort) |
+| fallback_active | boolean | True if the schedule is using a fallback source (best effort) |
+| last_schedule_error | string | Error details from the last schedule fetch attempt (best effort) |
+| heartbeat_age_s | number | Seconds since last heartbeat frame (best effort) |
+| activity_age_s | number | Seconds since last live data activity (best effort) |
+Normal users usually only need the sensor state, token status, and whether public live timing still works. Maintainers may ask for additional advanced attributes when troubleshooting a specific issue.
+
+---
+
+## Live Timing Online
+
+`binary_sensor.f1_live_timing_online` - Diagnostic connectivity indicator for the live timing transport.
+
+**State (on/off)**
+- `on` when replay is active, or when a live timing window is active and recent live data activity is detected.
+- `off` when outside the live timing window or when live data appears idle.
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| mode | string | One of `idle`, `live`, `replay` |
+| reason | string | Why the current live timing state is active (best effort) |
+| online_threshold_s | number | Maximum age in seconds before live timing is considered offline |
+| heartbeat_age_s | number | Seconds since last heartbeat frame (best effort) |
+| activity_age_s | number | Seconds since last live data activity (best effort) |
+| effective_age_s | number | Age value used for the online check (best effort) |
+
+---
+
+## Track Map Diagnostics
+
+Downloaded diagnostics include `runtime.track_map` when Track Map runtime data exists.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| source | string | Current source, such as `live` or `replay` |
+| status | string | Runtime status, such as `active`, `no_session`, `no_position_data`, `stale`, or `closed` |
+| replay_state | string | Replay state, when Replay Mode is active |
+| circuit_short_name | string | Human-readable circuit short name, when known |
+| circuit_id | string | Circuit identifier used by F1 Sensor, when matched |
+| point_count | number | Number of map points available |
+| rotation | number | Map rotation in degrees, when available |
+| approval_status | string | Map approval status, when known |
+| driver_count | number | Number of drivers currently present in the Track Map snapshot |
+| stale | boolean | True when live position data is older than the Track Map freshness window |
+
+These fields help explain why the [Track Map](/features/track-map) card shows `Live`, `Replay`, `Waiting`, `Stale`, `No geometry`, `No session`, or `Not loaded`.
 
 ---
 
@@ -37,55 +102,12 @@ When incident detection is available, the downloaded diagnostics file includes a
 | session_type | string | Lowercase session type, such as `race`, `sprint`, `qualifying`, or `practice` |
 | session_name | string | Human-readable session name |
 | data_quality | string | Data source quality, such as `live`, `replay`, or `bootstrap` |
-| latest_location | object | Optional latest Track Map location summary, without raw X/Y/Z samples |
+| latest_location | object | Optional latest Track Map location summary |
 | available | boolean | Whether the incident coordinator is currently available |
 
 :::info
-Diagnostics intentionally show counts and latest metadata only. Location diagnostics can include status, sector, source, stale state, geometry source, and fallback state, but not raw high-frequency position samples. Use the [`f1_sensor_incident` event](/entities/events#on-track-incident) when you need the full event payload for automations or troubleshooting.
+Diagnostics intentionally show counts and latest metadata only. Use the [`f1_sensor_incident` event](/entities/events#on-track-incident) when you need the full event data for automations or troubleshooting.
 :::
-
----
-
-## Live Timing Mode
-
-`sensor.f1_live_timing_mode` - Diagnostic sensor showing which mode the integration is currently using.
-
-**State (enum)**
-- One of: `idle`, `live`, `replay`.
-
-**Attributes**
-
-| Attribute | Type | Description |
-| --- | --- | --- |
-| reason | string | Why the current live timing state is active (best effort) |
-| window | string | Current live timing window label (best effort) |
-| schedule_source | string | How the live schedule was resolved (best effort) |
-| index_http_status | number | HTTP status code of the last schedule index fetch (best effort) |
-| fallback_active | boolean | True if the schedule is using a fallback source (best effort) |
-| last_schedule_error | string | Error details from the last schedule fetch attempt (best effort) |
-| heartbeat_age_s | number | Seconds since last heartbeat frame (best effort) |
-| activity_age_s | number | Seconds since last stream activity (best effort) |
-
----
-
-## Live Timing Online
-
-`binary_sensor.f1_live_timing_online` - Diagnostic connectivity indicator for the live timing transport.
-
-**State (on/off)**
-- `on` when replay is active, or when a live timing window is active and recent stream activity is detected.
-- `off` when outside the live timing window or when the stream appears idle.
-
-**Attributes**
-
-| Attribute | Type | Description |
-| --- | --- | --- |
-| mode | string | One of `idle`, `live`, `replay` |
-| reason | string | Why the current live timing state is active (best effort) |
-| online_threshold_s | number | Maximum age in seconds before the stream is considered offline |
-| heartbeat_age_s | number | Seconds since last heartbeat frame (best effort) |
-| activity_age_s | number | Seconds since last stream activity (best effort) |
-| effective_age_s | number | Age value used for the online check (best effort) |
 
 ---
 
@@ -107,7 +129,7 @@ Diagnostics intentionally show counts and latest metadata only. Location diagnos
 | playback_position_formatted | string | Current position as `HH:MM:SS` |
 | playback_total_s | number | Total playback duration in seconds, relative to the chosen start reference |
 | playback_total_formatted | string | Total duration as `HH:MM:SS` |
-| session_start_offset_s | number | Start offset in seconds from the underlying session archive (best effort) |
+| session_start_offset_s | number | Start offset in seconds from the session archive (best effort) |
 | paused | boolean | True when playback is paused |
 | sessions_available | number | Number of sessions available for the selected year |
 | selected_year | number | Currently selected year |
@@ -122,7 +144,7 @@ Diagnostics intentionally show counts and latest metadata only. Location diagnos
 `sensor.f1_f1tv_token_status` - Redacted status for the optional F1TV live timing token.
 
 :::warning[Experimental feature]
-F1TV access is optional and experimental. Public live timing continues to work without a token. Only auth-gated live timing streams depend on this status.
+F1TV Auth is optional and experimental. Public live timing continues to work without a token. Only extra live-auth features depend on this status.
 :::
 
 **State (enum)**
@@ -131,7 +153,7 @@ F1TV access is optional and experimental. Public live timing continues to work w
 | Value | Description |
 | --- | --- |
 | `not_configured` | No F1TV live timing token has been paired |
-| `valid` | A token is saved and can be used for auth-gated live timing |
+| `valid` | A token is saved and can be used for extra live-auth features |
 | `expiring_soon` | The saved token is still usable but should be replaced soon |
 | `expired` | The saved token has expired |
 | `invalid` | The saved token could not be parsed or validated |
@@ -142,7 +164,7 @@ F1TV access is optional and experimental. Public live timing continues to work w
 | Attribute | Type | Description |
 | --- | --- | --- |
 | auth_configured | boolean | True when a token is saved |
-| used_for_live_timing | boolean | True when the token is currently being used for auth-gated live timing |
+| used_for_live_timing | boolean | True when the token is currently being used for extra live-auth features |
 | expires_at | string | ISO-8601 expiry timestamp, or `null` |
 | reason | string | Redacted reason when the token is invalid, expired, or rejected |
 

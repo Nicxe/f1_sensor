@@ -14,9 +14,9 @@ You can now move replay backward or forward in fixed 30-second steps with **Back
 
 ---
 
-## How it works
+## What to expect
 
-Replay Mode downloads session data from Formula 1's public archive and plays it back through the same data pipeline used during live sessions. By starting playback at the same moment the session begins on your TV, your live entities can follow the broadcast closely.
+Replay Mode downloads completed session data from Formula 1's public archive and plays it back through your Home Assistant entities. By starting playback at the same moment the session begins on your TV, your dashboard and automations can follow the broadcast closely.
 :::info[Standard entity IDs]
 This page uses the standard Replay Mode entity IDs for new installations, such as `select.f1_replay_year` and `media_player.f1_replay_player`.
 
@@ -82,7 +82,7 @@ Use `select.f1_replay_start_reference` to choose where playback begins:
 The formation start option only applies to race and sprint sessions. For practice and qualifying, playback always starts from when the session went live.
 :::
 :::tip[Formation lap timing]
-The formation lap start point is estimated with approximately one second accuracy. The live data stream does not provide an exact marker for when the formation lap begins, so there may be a small offset compared to your broadcast.
+The formation lap start point is estimated with approximately one second accuracy. Formula 1 does not provide an exact replay marker for when the formation lap begins, so there may be a small offset compared to your broadcast.
 :::
 
 ### Step 3 - Load the session

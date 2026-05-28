@@ -15,6 +15,22 @@ The data for these entities comes from the F1 Live Timing API, which is unoffici
 
 ---
 
+## Availability model
+
+Live data uses three separate availability modes:
+
+| Mode | What it means |
+| --- | --- |
+| Public live timing | Standard live mode without F1TV Auth. This powers session status, track status, Safety Car, Race Control, weather, driver timing, tyres, top three, and confirmed incident detection |
+| F1TV Auth live timing | Optional experimental live mode. It can add extra live data for features such as Track Map, Pit Stops, Championship Prediction, formation start refinement, and earlier incident candidates |
+| Replay Mode | Historical playback from Formula 1's session archive. Some data that requires F1TV Auth live can work later when the replay archive contains it |
+
+[Track Map](/features/track-map) is not a normal Home Assistant entity. It is a dashboard card feature that uses live or replay car position data when available.
+
+For a user-facing overview, see [F1TV Auth](/features/f1tv-auth), [Track Map](/features/track-map), and [Incident Detection](/features/incident-detection).
+
+---
+
 ## Reference: Enum Values
 
 Use this section to understand the possible values for enum-type states and attributes across all live data sensors.
@@ -125,12 +141,12 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_race_three_hour_limit](#race-three-hour-limit) | Time remaining until the FIA 3-hour race duration cap `(beta)` |
 | [sensor.f1_track_status](#track-status)               | Current track status |
 | [binary_sensor.f1_safety_car](#safety-car)            | Safety Car (SC) or Virtual Safety Car (VSC) is active|  
-| [binary_sensor.f1_on_track_incident](#on-track-incident) | Likely stopped car or on-track incident is active |
+| [binary_sensor.f1_on_track_incident](#on-track-incident) | Confirmed likely stopped car or on-track incident is active |
 | [binary_sensor.f1_possible_on_track_incident](#possible-on-track-incident) | Possible stopped car or on-track incident candidate is active |
 | [sensor.f1_race_lap_count](#race-lap)                 | Current race lap number|
 | [sensor.f1_track_weather](#track-weather)             | Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)|
 | [sensor.f1_driver_list](#driver-list)                 | Show list and details on all drivers, including team color, headshot URL etc| 
-| [sensor.f1_pitstops](#pit-stops)                      | Live pit stop events and aggregated pit stop series per car `(Replay Mode or F1TV Auth testing)` |
+| [sensor.f1_pitstops](#pit-stops)                      | Pit stop events and aggregated pit stop series per car `(Replay Mode or F1TV Auth live timing)` |
 | [sensor.f1_current_tyres](#current-tyres)             | Current tyre compound per driver |
 | [sensor.f1_tyre_statistics](#tyre-statistics)         | Aggregated tyre statistics per compound |
 | [sensor.f1_driver_positions](#driver-positions)       | Driver positions and lap times |
@@ -139,9 +155,9 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_race_control](#race-control)               | Race Control messages feed (flags, incidents, key updates) |
 | [sensor.f1_track_limits](#track-limits)               | Track limits violations per driver (deletions, warnings, penalties) |
 | [sensor.f1_investigations](#investigations)           | Active steward investigations and pending penalties |
-| [binary_sensor.f1_formation_start](#formation-start)  | Indicates when formation start procedure is ready `(Replay Mode or F1TV Auth testing)` |
-| [sensor.f1_championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) `(Replay Mode or F1TV Auth testing)` |
-| [sensor.f1_championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) `(Replay Mode or F1TV Auth testing)` |
+| [binary_sensor.f1_formation_start](#formation-start)  | Indicates when formation start procedure is ready `(Replay Mode or F1TV Auth live timing)` |
+| [sensor.f1_championship_prediction_drivers](#championship-prediction-drivers) | Drivers championship prediction (P1 and list) `(Replay Mode or F1TV Auth live timing)` |
+| [sensor.f1_championship_prediction_teams](#championship-prediction-teams)| Constructors championship prediction (P1 and list) `(Replay Mode or F1TV Auth live timing)` |
 | [binary_sensor.f1_overtake_mode](#overtake-mode)      | ON when track-wide overtake mode is enabled (2026 regulation, experimental) |
 | [sensor.f1_straight_mode](#straight-mode)             | Active aerodynamic straight mode state (2026 regulation, experimental) |
 
@@ -150,10 +166,10 @@ Use this section to understand the possible values for enum-type states and attr
 :::info[Entities]
 All of these entities update **only in relation to an active session**, typically starting less than an hour before and continuing for a few minutes after the session ends. Outside these windows, the entities will be set to **Unavailable** (not updating and not providing new data).
 :::
-:::info[Replay and F1TV Auth testing entities]
-Some entities stay registered in Home Assistant even when their upstream streams are not available. Pit Stops and Championship Prediction can update in [Replay Mode](/features/replay-mode) and can be tested during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
+:::info[Replay and F1TV Auth live timing entities]
+Some entities stay registered in Home Assistant even when the needed source data is not available. Pit Stops and Championship Prediction can update in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/features/f1tv-auth) is paired with a valid token.
 
-Formation Start can also be tested live when the required authenticated stream is available.
+Formation Start can also improve during live sessions when the needed extra live timing data is available.
 :::
 
 
@@ -424,6 +440,8 @@ on
 
 The entity intentionally keeps attributes small and stable. Use the [`f1_sensor_incident` event](/entities/events#on-track-incident) for detailed automation triggers and notification text.
 
+For the full behavior, confidence, and notification model, see [Incident Detection](/features/incident-detection).
+
 :::info[Session support]
 Incident detection is designed for race, sprint, qualifying, and practice sessions. Practice alerts are more conservative because practice sessions naturally contain more slow running, pit activity, and testing-style behavior.
 :::
@@ -434,7 +452,7 @@ Incident detection is designed for race, sprint, qualifying, and practice sessio
 
 `binary_sensor.f1_possible_on_track_incident` - On while F1 Sensor has a possible or confirmed likely stopped car or on-track incident for the active session.
 
-This entity includes early `candidate` incidents. Candidates can come from public timing and Race Control context, and can also come from optional F1TV Auth `CarData.z` low-speed telemetry when it is correlated with yellow flag, Virtual Safety Car, Safety Car, or red flag context. Track Map `Position.z` data can add optional location context when available, but it is not required for this entity to work.
+This entity includes early `candidate` incidents. Candidates can come from public timing and Race Control context, and can also come from optional F1TV Auth car movement data when it is correlated with yellow flag, Virtual Safety Car, Safety Car, or red flag context. Track Map can add optional location context when available, but it is not required for this entity to work.
 
 :::warning[Use candidates carefully]
 Candidate incidents are earlier and less certain than confirmed incidents. Use this entity for advanced automations, dashboard indicators, or opt-in alerts. For conservative notifications, use `binary_sensor.f1_on_track_incident` or the incident notification blueprint defaults.
@@ -465,7 +483,9 @@ on
 | session_name | string | Human-readable session name |
 | data_quality | string | Data source quality, such as `live`, `replay`, `stale`, or `bootstrap` |
 
-Raw car telemetry and raw Track Map X/Y/Z samples are not exposed as state attributes.
+Detailed car movement samples are not exposed as state attributes.
+
+For conservative notifications, use [Incident Detection](/features/incident-detection) and the [Incident Notifications blueprint](/blueprints/incident-notifications).
 
 ---
 
@@ -664,8 +684,8 @@ The headshot URLs are provided by F1 and may change between sessions. This senso
 ---
 
 ## Pit Stops
-:::info[Replay Mode or F1TV Auth testing]
-This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
+:::info[Replay Mode or F1TV Auth live timing]
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live pit stop data is available.
 :::
 
 `sensor.f1_pitstops` - Pit stop information from the F1 Live Timing feed, aggregated per car.
@@ -705,7 +725,7 @@ Each entry in `stops` contains:
 | pit_lane_time | number | Total pit lane time (seconds), when available |
 | pit_delta | number | Estimated loss vs a normal lap (seconds), when available |
 :::info[INFO]
-Available during race and sprint sessions in Replay Mode, and during live F1TV Auth testing when the authenticated stream is available.
+Available during race and sprint sessions in Replay Mode, and during live F1TV Auth timing when the required extra live data is available.
 :::
 
 ## Current Tyres
@@ -1453,7 +1473,7 @@ Each entry in `grid` contains:
 | grid_context | string | `sprint` or `race` |
 
 :::info
-The grid is provisional when it is built from qualifying timing and confirmed when the live timing `GridPos` stream supplies final positions. The `grid` attribute is marked as unrecorded to avoid storing large race-weekend payloads in the Home Assistant recorder.
+The grid is provisional when it is built from qualifying timing and confirmed when final starting grid data becomes available. The `grid` attribute is marked as unrecorded to avoid storing large race-weekend data in the Home Assistant recorder.
 :::
 
 ---
@@ -1522,7 +1542,7 @@ YELLOW FLAG IN TURN 4
 | event_id | string | Composite ID for deduplication |
 | sequence | number | Message counter |
 | history | list | Rolling list of recent messages (up to 5), each with `event_id`, `utc`, `category`, `flag`, and `message` |
-| raw_message | object | Original payload from the live feed |
+| raw_message | object | Full source message details |
 
 ---
 
@@ -1853,11 +1873,11 @@ Noted: {{ noted }}, Under Investigation: {{ investigating }}
 ---
 
 ## Championship Prediction (Drivers)
-:::info[Replay Mode or F1TV Auth testing]
-This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
+:::info[Replay Mode or F1TV Auth live timing]
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live prediction data is available.
 :::
 
-Predicted Drivers Championship winner and points table, sourced from the ChampionshipPrediction stream.
+Predicted Drivers Championship winner and points table.
 
 **State**
 - Predicted P1 driver TLA, or `unknown` when not available.
@@ -1984,11 +2004,11 @@ Each entry in `drivers` (keyed by racing number) contains:
 ---
 
 ## Championship Prediction (Teams)
-:::info[Replay Mode or F1TV Auth testing]
-This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
+:::info[Replay Mode or F1TV Auth live timing]
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live prediction data is available.
 :::
 
-Predicted Constructors Championship winner and points table, sourced from the ChampionshipPrediction stream.
+Predicted Constructors Championship winner and points table.
 
 **State**
 - Predicted P1 team name, or `unknown` when not available.
@@ -2118,8 +2138,8 @@ Each entry in `teams` (keyed by team key) contains:
 ---
 
 ## Formation Start
-:::info[Replay Mode or F1TV Auth testing]
-This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/help/experimental-testing) is paired with a valid token.
+:::info[Replay Mode or F1TV Auth live timing]
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when experimental [F1TV Auth](/features/f1tv-auth) is paired with a valid token and the required extra live data is available.
 :::
 
 Indicates when the formation start procedure is ready. Useful for triggering automations at race start during replay or authenticated live testing.
@@ -2145,7 +2165,7 @@ on
 | session_name | string | Name of the session |
 | error | string | Error message if any issue occurred |
 :::info[INFO]
-Available during race and sprint sessions in Replay Mode.
+Available during race and sprint sessions in Replay Mode, and during live F1TV Auth timing when the required extra live data is available.
 :::
 
 ---

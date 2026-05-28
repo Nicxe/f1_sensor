@@ -118,12 +118,15 @@ When creating an issue, include:
 
 1. The exact F1 Sensor version.
 2. Your Home Assistant version.
-3. Whether you are running Live mode or Development replay mode.
-4. Whether you are using a beta release or F1TV Auth.
+3. Whether you are running public live timing, F1TV Auth live timing, Replay Mode, or development replay mode.
+4. Whether you are using a beta release.
 5. A clear description of the problem.
 6. What you expected to happen.
 7. What actually happened.
-8. Relevant debug logs from [Debug Logging and Logs](/help/debug-logging).
+8. The state of `sensor.f1_f1tv_token_status` if live auth is involved.
+9. The `sensor.f1_live_timing_mode` attributes if live timing is involved.
+10. Track Map status, source, and stale state if the issue involves Track Map or incident location.
+11. Relevant debug logs from [Debug Logging and Logs](/help/debug-logging).
 
 Screenshots, screen recordings, or dashboard examples are helpful when they show sensor states, timing behavior, or visual problems.
 
@@ -143,6 +146,8 @@ For each report, note:
 5. Track Status and Race Control context at the time.
 6. Whether the driver was in pit lane, leaving the pit lane, or stopped on track.
 7. Whether Live Delay, Replay Mode, No Spoiler Mode, or experimental F1TV Auth was active.
-8. Whether Track Map had live or replay `Position.z` data and whether the event payload included `location`.
+8. Whether Track Map had live or replay car positions.
+9. The Track Map status, source, and stale state if visible.
+10. The `f1_sensor_incident` event payload for the relevant `incident_id`, including `location` when present.
 
 Use neutral language in reports. The feature is intended to detect likely stopped cars and on-track incidents, not guaranteed crashes.

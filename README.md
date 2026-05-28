@@ -5,56 +5,46 @@
 <br>
 <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/f1_sensor">
 
-
 ## Your home, in sync with Formula 1
 
-**Meet **`F1 Sensor`**. A custom [Home Assistant](https://www.home-assistant.io/) integration that brings the full world of Formula 1 into your smart home.**
+`F1 Sensor` is a custom [Home Assistant](https://www.home-assistant.io/) integration for Formula 1 schedules, standings, live timing, dashboards, automations, and replayed sessions.
 
-F1 Sensor combines live race data with static season information, giving you everything from real-time track status, weather, and race control updates to schedules, standings, and historical results.
+It works without F1TV Auth. Public live timing powers core live entities such as track status, race control, weather, driver timing, tyres, and conservative incident alerts. Optional experimental F1TV Auth can unlock extra live features such as live Track Map, Pit Stops, Championship Prediction, and earlier incident candidates when Formula 1 provides the data.
 
-
-
-Whether you want your lights to react to a safety car or build dashboards that visualize driver progress through the season, `F1 Sensor` keeps your home perfectly in sync with Formula 1.
-
+Whether you want lights to react to a Safety Car, a dashboard with live timing cards, a Track Map during sessions, or notifications for likely stopped cars, F1 Sensor keeps Home Assistant aligned with the race weekend.
 
 ![F1SensorFlag-ezgif com-video-to-gif-converter (5)](https://github.com/user-attachments/assets/18a74679-76e2-4d10-8a0d-d3f111c42593)
 
-<br/>
+## Live Data Cards
 
----
-
-### 🃏 Live Data Cards
-
-F1 Sensor includes custom Lovelace cards for displaying live session data directly on your dashboards — tyre strategy, pit stops, lap times, investigations, race control, and more.
+F1 Sensor includes custom Lovelace cards for live and replay dashboards, including timing, race control, tyre strategy, pit stops, investigations, championship prediction, replay controls, and Track Map.
 
 <img alt="F1 Sensor Live Data Cards" src="https://github.com/user-attachments/assets/9ec7b6c0-9584-4647-baac-03407d73ef99" />
 
 The card assets are bundled with the integration and registered automatically in Home Assistant. Existing dashboard card types stay the same, so you can keep your current dashboard configuration after updating.
 
----
+## Key Features
 
-<br/>
+- Public live timing without F1TV Auth
+- Optional [F1TV Auth](https://nicxe.github.io/f1_sensor/features/f1tv-auth) for extra live timing features
+- [Track Map](https://nicxe.github.io/f1_sensor/features/track-map) for live and replay car positions
+- [Incident Detection](https://nicxe.github.io/f1_sensor/features/incident-detection) for likely stopped cars and on-track incidents
+- [Replay Mode](https://nicxe.github.io/f1_sensor/features/replay-mode) for watching completed sessions later with Home Assistant entities
+- Bundled [Live Data Cards](https://nicxe.github.io/f1_sensor/cards/cards-overview)
 
-### 🚀 Quick Start
+## Quick Start
 
-Curious about live F1 data in Home Assistant? Start by following the [**installation guide**](https://nicxe.github.io/f1_sensor/getting-started/installation), then head over to the [**integration setup**](https://nicxe.github.io/f1_sensor/getting-started/add-integration) to get your F1 Sensor up and running in minutes.
+Start with the [installation guide](https://nicxe.github.io/f1_sensor/getting-started/installation), then use [integration setup](https://nicxe.github.io/f1_sensor/getting-started/add-integration) to add F1 Sensor to Home Assistant.
 
+## Documentation
 
-### 📊 Entities & Options
+All entities, features, cards, automations, and support pages are documented at [nicxe.github.io/f1_sensor](https://nicxe.github.io/f1_sensor/).
 
-All configuration options are detailed in the [**wiki**](https://nicxe.github.io/f1_sensor/).
+For examples, see the [automation page](https://nicxe.github.io/f1_sensor/automation) and the documentation showcase.
 
-### 📚 Examples & Inspiration
+## Support the Project
 
-Explore what’s possible with F1 Sensor. From dashboards to automations, check out the [**example showcase**](https://nicxe.github.io/f1_sensor/) and [**automation page**](https://nicxe.github.io/f1_sensor/automation).
-
-### 🍻 Support the Project
-
-If you enjoy using `F1 Sensor`, you can find ways to [**Support the project here**](https://nicxe.github.io/f1_sensor/support) and help keep the data flowing.
-<br>
-<br>
-<br>
-<br>
+If you enjoy using `F1 Sensor`, you can [support the project](https://nicxe.github.io/f1_sensor/support) and help keep the data flowing.
 
 > [!NOTE]
 > F1 Sensor is an unofficial project and is not associated in any way with the Formula 1 companies. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD CHAMPIONSHIP, GRAND PRIX and related marks are trade marks of Formula One Licensing B.V.
