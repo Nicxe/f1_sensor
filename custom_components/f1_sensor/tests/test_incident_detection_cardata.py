@@ -15,6 +15,7 @@ from custom_components.f1_sensor.incident_detection import (
     PHASE_CONFIRMED,
     DriverMetadata,
     IncidentDetector,
+    IncidentLocationContext,
     SessionMetadata,
     normalize_car_data,
     normalize_race_control_messages,
@@ -304,6 +305,57 @@ def test_low_speed_in_pit_is_suppressed() -> None:
 
     assert changes == []
     assert detector.active_incidents(SESSION.session_key) == ()
+
+
+def test_low_speed_candidate_is_suppressed_by_fresh_pit_lane_location() -> None:
+    detector = IncidentDetector(
+        location_resolver=lambda rn, at: IncidentLocationContext(
+            status="PitLane",
+            source="live",
+            stale=False,
+            confidence="high",
+            description="pit lane",
+            pit_lane=True,
+            fallback_state="static_catalog",
+            updated_at=at,
+        )
+    )
+    detector.process_signals(_car_speed(BASE, 0))
+    detector.process_signals(_car_speed(BASE + timedelta(seconds=2), 0))
+
+    changes = detector.process_signals(_track(BASE + timedelta(seconds=5)))
+
+    assert changes == []
+    assert detector.active_incidents(SESSION.session_key) == ()
+
+
+def test_low_speed_candidate_keeps_track_map_location_without_confirming() -> None:
+    detector = IncidentDetector(
+        location_resolver=lambda rn, at: IncidentLocationContext(
+            status="OffTrack",
+            source="live",
+            stale=False,
+            confidence="high",
+            description="off track, sector 1",
+            sector=1,
+            pit_lane=False,
+            track_segment=8,
+            geometry_source="static_circuit_geometry",
+            fallback_state="static_catalog",
+            updated_at=at,
+        )
+    )
+    detector.process_signals(_car_speed(BASE, 0))
+    detector.process_signals(_car_speed(BASE + timedelta(seconds=2), 0))
+
+    changes = detector.process_signals(_track(BASE + timedelta(seconds=5)))
+
+    assert len(changes) == 1
+    assert changes[0].phase == PHASE_CANDIDATE
+    assert changes[0].confidence == CONFIDENCE_HIGH
+    assert changes[0].reason == "car_low_speed_with_track_map_location"
+    assert changes[0].location.status == "OffTrack"
+    assert "position_status_off_track" in changes[0].signals
 
 
 def test_low_speed_after_yellow_in_pit_is_suppressed() -> None:

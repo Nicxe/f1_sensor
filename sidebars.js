@@ -15,7 +15,15 @@ const sidebars = {
     {
       type: 'category',
       label: 'Features',
-      items: ['features/live-delay', 'features/replay-mode', 'features/no-spoiler-mode', 'features/context7'],
+      items: [
+        'features/live-delay',
+        'features/replay-mode',
+        'features/no-spoiler-mode',
+        'features/f1tv-auth',
+        'features/track-map',
+        'features/incident-detection',
+        'features/context7',
+      ],
     },
     {
       type: 'category',
@@ -44,7 +52,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Testing',
-      items: ['help/beta-tester', 'help/experimental-testing', 'help/debug-logging'],
+      items: ['help/beta-tester', 'help/debug-logging'],
     },
 
     {
@@ -66,8 +74,9 @@ const sidebars = {
       label: 'Need Help?',
       items: [
         'help/faq',
-        'help/Issues',
+        'help/issues',
         'help/contact',
+        'help/f1tv-auth-setup',
         'help/f1tv-token-helper',
         'help/f1tv-token-helper-privacy',
       ],

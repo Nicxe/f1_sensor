@@ -559,9 +559,7 @@ async def test_async_setup_entry_live_mode_wires_event_tracker_fallback(hass) ->
 async def test_async_setup_entry_live_mode_exposes_auth_capability(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", True)
     token = _jwt(datetime.now(UTC) + timedelta(days=2))
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -711,9 +709,7 @@ async def test_async_setup_entry_uses_auth_when_development_ui_disabled(
 async def test_async_setup_entry_starts_reauth_for_expired_auth_and_keeps_public_live(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", True)
     token = _jwt(datetime.now(UTC) - timedelta(hours=1))
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -785,9 +781,7 @@ async def test_async_setup_entry_starts_reauth_for_expired_auth_and_keeps_public
 async def test_async_setup_entry_suppresses_expired_auth_when_gate_disabled(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", False
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", False)
     token = _jwt(datetime.now(UTC) - timedelta(hours=1))
     entry = MockConfigEntry(
         domain=DOMAIN,

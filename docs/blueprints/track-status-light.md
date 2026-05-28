@@ -290,7 +290,7 @@ Valid session phase values: `pre`, `live`, `suspended`, `break`, `finished`, `fi
 
 ---
 
-## How it works
+## Behavior
 
 The automation has two triggers: one for track status changes and one for session status changes. When a track update arrives and all conditions pass (active session phase, presence, media player, DND window), the light switches to the matching color.
 

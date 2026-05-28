@@ -6,7 +6,7 @@ title: Replay Mode
 Replay Mode lets you watch historical F1 sessions with full Home Assistant integration. When you play back a recorded race or qualifying from F1 TV or another service, your automations and dashboards can follow the session in a way that is much closer to a live broadcast.
 
 Your lights can react to a red flag. Your dashboard can show live timing. Race Control messages can still drive notifications while you watch the session later.
-Likely on-track incident detection can also follow replayed sessions, so incident notifications and the On-track Incident binary sensor can behave like they do during live timing.
+Likely on-track incident detection can also follow replayed sessions, so incident notifications and the On-track Incident binary sensors can behave like they do during live timing. If the replay includes Track Map data, incident events can include the same optional location summary used during live sessions.
 :::warning[Experimental replay catch-up]
 Replay Mode now includes experimental 30-second catch-up controls in Version 1. The feature is being tested in real setups, and additional refinement may still be needed in later updates.
 :::
@@ -16,14 +16,35 @@ If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoil
 
 ---
 
-## How it works
+## What to expect
 
-Replay Mode downloads session data from Formula 1's public archive and plays it back through the same data pipeline used during live sessions. By starting playback at the same moment the session begins on your TV, your live entities can follow the broadcast closely.
+Replay Mode downloads completed session data from Formula 1's public archive and plays it back through your Home Assistant entities. By starting playback at the same moment the session begins on your TV, your dashboard and automations can follow the broadcast closely.
 :::info[Standard entity IDs]
 This page uses the standard Replay Mode entity IDs for new installations, such as `select.f1_replay_year` and `media_player.f1_replay_player`.
 
 If you upgraded from an older release and already have different registry IDs, keep using those existing entities. The integration does not rename installed entities automatically.
 :::
+
+---
+
+## Replay Mode vs live F1TV Auth
+
+Replay Mode is separate from live F1TV Auth. Public live timing works without a token, optional [F1TV Auth](/features/f1tv-auth) can unlock extra live features during a real live session, and Replay Mode can use archived data after the session has completed.
+
+This means Replay Mode can sometimes show data that public live timing did not show during the live session. For example, Pit Stops, Championship Prediction, Track Map, and incident location context can work in replay when the archive contains the needed data.
+
+## What Replay Mode can replay
+
+| Data | Replay behavior |
+| --- | --- |
+| Public live timing | Session status, track status, Race Control, weather, driver timing, tyres, and top three can replay when available in the archive |
+| Pit Stops | Works when the replay archive contains pit stop data |
+| Championship Prediction | Works when the replay archive contains prediction data |
+| Formation Start | Works for race and sprint sessions when the replay data supports it |
+| Track Map | Best effort when the replay archive contains car position data |
+| Incident Detection | Works from replayed public timing and can use replay Track Map location context when available |
+
+Replay Track Map is best effort. If the loaded session does not contain usable car position data, the [Track Map](/features/track-map) card waits instead of showing misleading car positions.
 
 ---
 
@@ -88,7 +109,7 @@ Use `select.f1_replay_start_reference` to choose where playback begins:
 The formation start option only applies to race and sprint sessions. For practice and qualifying, playback always starts from when the session went live.
 :::
 :::tip[Formation lap timing]
-The formation lap start point is estimated with approximately one second accuracy. The live data stream does not provide an exact marker for when the formation lap begins, so there may be a small offset compared to your broadcast.
+The formation lap start point is estimated with approximately one second accuracy. Formula 1 does not provide an exact replay marker for when the formation lap begins, so there may be a small offset compared to your broadcast.
 :::
 
 ### Step 3 - Load the session
@@ -250,7 +271,7 @@ Replace `media_player.apple_tv` with your actual media player entity. This works
 
 ## Additional entities in Replay Mode
 
-Replay Mode provides access to all the same entities as a live session, plus several replay-only entities. These entities stay registered in Home Assistant at all times, but they are unavailable outside Replay Mode because the underlying data streams require authentication that is not currently supported during live sessions. When you start a replay, they begin updating normally.
+Replay Mode provides access to all the same entities as a live session, plus entities that depend on data that is not part of public live timing. These entities stay registered in Home Assistant at all times. They can update in Replay Mode when the session archive contains the data, and some can also update during live sessions with optional [F1TV Auth](/features/f1tv-auth).
 
 | Entity | Description |
 | --- | --- |
@@ -260,6 +281,8 @@ Replay Mode provides access to all the same entities as a live session, plus sev
 | `binary_sensor.f1_formation_start` | Formation start detection for race and sprint sessions |
 
 These entities remain present even before you start a replay. Outside Replay Mode they are unavailable, and when you start a replay they work like any other entity.
+
+The [F1 Track Map card](/features/track-map) is not a normal entity. It can show replay car positions when the replay archive contains the needed position data.
 
 For full details on each entity, see the [Live Data reference](/entities/live-data).
 
@@ -272,4 +295,5 @@ For full details on each entity, see the [Live Data reference](/entities/live-da
 - The experimental catch-up controls currently support fixed 30-second jumps only.
 - Rewinding can replay historical events again, so replay-driven automations and notifications may run again.
 - Rewinding can also replay historical incident events again, including possible on-track incident notifications.
+- Replayed Track Map location context is best-effort and may be missing for sessions without usable car position data.
 - Replay Mode does not protect you from spoilers on its own. Use [No Spoiler Mode](/features/no-spoiler-mode) to keep your dashboard frozen until you are ready to watch.

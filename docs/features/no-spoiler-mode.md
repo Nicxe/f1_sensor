@@ -20,9 +20,9 @@ You never miss any data. FIA documents, race control messages, and results all a
 
 ---
 
-## How it works
+## What to expect
 
-When No Spoiler Mode is turned on, the integration stops delivering new data to all spoiler-sensitive entities. Internally it continues to fetch and cache data in the background, so when you turn the mode off, everything updates immediately.
+When No Spoiler Mode is turned on, the integration stops showing new data for spoiler-sensitive entities. When you turn the mode off, everything updates immediately.
 
 Live sessions are handled cleanly too. If a session is in progress when you activate the mode, the live connection is dropped straight away. When you deactivate, blocked data is refreshed at once and the live connection re-establishes if a session is still running.
 

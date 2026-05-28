@@ -45,7 +45,7 @@ The integration organizes all entities across **six dedicated sub-devices**, whi
 | **Officials** | Race control messages, FIA documents, track limits, investigations |
 | **System** | Live delay, calibration controls, replay controls, live timing connectivity, F1TV token status and controls |
 
-*Entities marked with an asterisk depend on Replay Mode or experimental F1TV Auth testing, depending on the selected feature.
+*Entities marked with an asterisk depend on either [Replay Mode](/features/replay-mode) or optional [F1TV Auth](/features/f1tv-auth), depending on whether you are using historical replay data or extra live timing data.
 
 Each device exposes its own set of [device automation triggers](/automation#device-automation-triggers), making it straightforward to build automations directly from the UI without writing YAML.
 :::warning[Upgrading from v3 to v4]
@@ -62,7 +62,13 @@ When enabling live data, you can set an initial delay to better align live updat
 
 For detailed instructions on syncing with your TV, including guided calibration, see [Live Delay](/features/live-delay).
 
-Public live timing works without F1TV access. Experimental [F1TV Auth testing](/help/experimental-testing) is optional and only needed when you want to test auth-gated live timing streams such as Pit Stops, Championship Prediction, or formation start data during a real live session.
+Public live timing works without F1TV Auth. This covers the normal live features most users need, including session status, track status, Safety Car, Race Control, weather, driver timing, tyres, and confirmed incident alerts.
+
+Optional [F1TV Auth](/features/f1tv-auth) can be paired with the [F1TV Token Helper](/help/f1tv-token-helper) when you want extra live timing features during a real live session. It can enable or improve features such as [Track Map](/features/track-map), Pit Stops, Championship Prediction, formation start data, and earlier incident candidates.
+
+Replay Mode is a separate mode. It can show some data that requires F1TV Auth during live sessions because replay uses Formula 1's public session archive after the session has completed.
+
+For the practical F1TV Auth setup, see [F1TV Auth Setup](/help/f1tv-auth-setup). For incident behavior, see [Incident Detection](/features/incident-detection).
 :::tip[Quick start]
 A typical streaming delay is 30–45 seconds. You can always fine-tune this later using the [Live Delay](/features/live-delay) feature.
 :::

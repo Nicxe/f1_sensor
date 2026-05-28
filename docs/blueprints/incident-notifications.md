@@ -7,6 +7,8 @@ title: Incident Notifications
 
 Get notifications for likely stopped cars and on-track incidents without writing YAML. The blueprint listens to `f1_sensor_incident` events and uses conservative defaults so normal practice running and early candidate signals do not create noisy alerts.
 
+For the full feature behavior, see [Incident Detection](/features/incident-detection).
+
 :::warning[Not crash detection]
 These notifications mean F1 Sensor detected a likely stopped car or on-track incident. They do not guarantee that a crash happened.
 :::
@@ -33,7 +35,7 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_incident_no
 
 - F1 Sensor integration installed with live data enabled
 - At least one notification service available in Home Assistant
-- The `f1_sensor_incident` event stream available during live or replay sessions
+- The `f1_sensor_incident` event available during live or replay sessions
 
 ---
 
@@ -70,7 +72,11 @@ The default filters are intentionally conservative.
 
 Practice sessions can include installation laps, garage work, slow running, and testing procedures. Enable Practice only if you are comfortable with more alerts, or require `high` confidence for Practice.
 
-If you enable Candidate events, some alerts can come from F1TV Auth `CarData.z` low-speed telemetry correlated with yellow flag, Virtual Safety Car, Safety Car, or red flag context. Keep these alerts conservative because they are earlier than confirmed public timing or Race Control evidence.
+If you enable Candidate events, some alerts can come from F1TV Auth car movement data correlated with yellow flag, Virtual Safety Car, Safety Car, or red flag context. Keep these alerts conservative because they are earlier than confirmed public timing or Race Control evidence.
+
+When Track Map location data is available, the event can include an optional location summary such as `on track, sector 2` or `off track, sector 1`. The blueprint can include that summary in the notification text, but Track Map and F1TV Auth are not required for the basic incident alert flow.
+
+Public confirmed incident alerts work without F1TV Auth. F1TV Auth can improve candidate signals, and Track Map can improve location context when fresh position data exists.
 
 ---
 
@@ -81,6 +87,7 @@ Blueprint messages use neutral wording such as:
 ```text
 Possible on-track incident: GAS stopped
 Session: Race
+Location: on track, sector 2
 ```
 
 Avoid wording such as "crash" unless Race Control explicitly uses that term in the message you send.
@@ -90,6 +97,7 @@ Avoid wording such as "crash" unless Race Control explicitly uses that term in t
 ## Related
 
 - [On-track Incident binary sensor](/entities/live-data#on-track-incident)
-- [Incident event stream](/entities/events#on-track-incident)
+- [Incident Detection](/features/incident-detection)
+- [Incident events](/entities/events#on-track-incident)
 - [Race Control Notifications](/blueprints/race-control-notifications)
 - [Live Delay](/features/live-delay)

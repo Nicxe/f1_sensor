@@ -29,10 +29,10 @@ from custom_components.f1_sensor.const import (
 )
 
 
-def test_experimental_f1tv_auth_is_public_by_default() -> None:
-    from custom_components.f1_sensor.const import ENABLE_EXPERIMENTAL_F1TV_AUTH
+def test_f1tv_auth_is_enabled_by_default() -> None:
+    from custom_components.f1_sensor.const import ENABLE_F1TV_AUTH
 
-    assert ENABLE_EXPERIMENTAL_F1TV_AUTH is True
+    assert ENABLE_F1TV_AUTH is True
 
 
 def _schema_key_names(result: dict) -> set[str]:
@@ -498,12 +498,8 @@ async def test_reauth_is_available_when_development_ui_disabled(
     )
 
 
-async def test_reauth_is_hidden_when_experimental_auth_disabled(
-    hass, monkeypatch
-) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", False
-    )
+async def test_reauth_is_hidden_when_f1tv_auth_disabled(hass, monkeypatch) -> None:
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", False)
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={

@@ -117,6 +117,7 @@ def _serialize_incident_runtime(coordinator: object) -> dict[str, Any]:
         "session_type": data.get("session_type"),
         "session_name": data.get("session_name"),
         "data_quality": data.get("data_quality"),
+        "latest_location": data.get("latest_location"),
         "available": bool(getattr(coordinator, "available", False)),
     }
 

@@ -143,6 +143,15 @@ class TrackMapLocationContext:
     stale: bool
     source: str
     session_key: str | None
+    confidence: str
+    description: str | None = None
+    sector: int | None = None
+    corner: str | None = None
+    pit_lane: bool | None = None
+    track_segment: int | None = None
+    distance_to_track: float | None = None
+    geometry_source: str | None = None
+    fallback_state: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable context payload."""
@@ -156,6 +165,15 @@ class TrackMapLocationContext:
             "stale": self.stale,
             "source": self.source,
             "session_key": self.session_key,
+            "confidence": self.confidence,
+            "description": self.description,
+            "sector": self.sector,
+            "corner": self.corner,
+            "pit_lane": self.pit_lane,
+            "track_segment": self.track_segment,
+            "distance_to_track": self.distance_to_track,
+            "geometry_source": self.geometry_source,
+            "fallback_state": self.fallback_state,
         }
 
 
@@ -752,6 +770,16 @@ class TrackMapStore:
         if position is None:
             return None
         now_utc = _snapshot_now(now)
+        stale = self._position_is_stale(position, now_utc)
+        geometry_context = _position_geometry_context(position, self._geometry)
+        fallback_state = _track_map_fallback_state(self._session, self._geometry)
+        status_context = _position_status_context(position.status)
+        confidence = _location_context_confidence(
+            stale=stale,
+            status_context=status_context,
+            geometry_context=geometry_context,
+            fallback_state=fallback_state,
+        )
         return TrackMapLocationContext(
             racing_number=normalized,
             timestamp=position.timestamp,
@@ -759,9 +787,18 @@ class TrackMapStore:
             y=position.y,
             z=position.z,
             status=position.status,
-            stale=self._position_is_stale(position, now_utc),
+            stale=stale,
             source=self._source,
             session_key=self._session.session_key if self._session else None,
+            confidence=confidence,
+            description=_location_description(status_context, geometry_context),
+            sector=geometry_context.get("sector"),
+            corner=None,
+            pit_lane=status_context.get("pit_lane"),
+            track_segment=geometry_context.get("track_segment"),
+            distance_to_track=geometry_context.get("distance_to_track"),
+            geometry_source=self._geometry.source if self._geometry else None,
+            fallback_state=fallback_state,
         )
 
     def snapshot(self, *, now: datetime | None = None) -> dict[str, Any]:
@@ -1612,6 +1649,114 @@ def _bounds_diagonal(bounds: TrackMapBounds) -> float:
     return (
         (bounds.max_x - bounds.min_x) ** 2 + (bounds.max_y - bounds.min_y) ** 2
     ) ** 0.5
+
+
+def _position_status_context(status: str) -> dict[str, bool | str | None]:
+    normalized = status.strip().lower()
+    return {
+        "normalized": normalized or None,
+        "on_track": normalized == "ontrack",
+        "off_track": normalized == "offtrack",
+        "pit_lane": "pit" in normalized if normalized else None,
+    }
+
+
+def _position_geometry_context(
+    position: TrackMapPosition,
+    geometry: TrackGeometry | None,
+) -> dict[str, int | float | None]:
+    if geometry is None or len(geometry.points) < 2:
+        return {}
+
+    target = _position_point(position)
+    cumulative = _cumulative_path_lengths(geometry.points)
+    total_length = cumulative[-1]
+    if total_length <= 0:
+        return {}
+
+    nearest: tuple[int, float, float] | None = None
+    for index, (start, end) in enumerate(
+        zip(geometry.points, geometry.points[1:], strict=False)
+    ):
+        segment_dx = end[0] - start[0]
+        segment_dy = end[1] - start[1]
+        segment_len_sq = (segment_dx * segment_dx) + (segment_dy * segment_dy)
+        if segment_len_sq <= 0:
+            continue
+        target_dx = target[0] - start[0]
+        target_dy = target[1] - start[1]
+        fraction = max(
+            0.0,
+            min(
+                1.0,
+                ((target_dx * segment_dx) + (target_dy * segment_dy)) / segment_len_sq,
+            ),
+        )
+        projected = (
+            round(start[0] + (segment_dx * fraction)),
+            round(start[1] + (segment_dy * fraction)),
+        )
+        distance = _point_distance(target, projected)
+        if nearest is None or distance < nearest[1]:
+            segment_len = segment_len_sq**0.5
+            path_progress = cumulative[index] + (segment_len * fraction)
+            nearest = (index + 1, distance, path_progress / total_length)
+
+    if nearest is None:
+        return {}
+
+    segment_index, distance, progress = nearest
+    sector = max(1, min(3, int(progress * 3) + 1))
+    return {
+        "track_segment": segment_index,
+        "distance_to_track": round(distance, 1),
+        "sector": sector,
+    }
+
+
+def _location_context_confidence(
+    *,
+    stale: bool,
+    status_context: Mapping[str, Any],
+    geometry_context: Mapping[str, Any],
+    fallback_state: str,
+) -> str:
+    if stale:
+        return "low"
+    if status_context.get("pit_lane") is True:
+        return "high"
+    if (
+        status_context.get("on_track") is True
+        or status_context.get("off_track") is True
+    ):
+        if geometry_context and fallback_state in {
+            TRACK_MAP_FALLBACK_STATE_STATIC_CATALOG,
+            TRACK_MAP_FALLBACK_STATE_REPLAY_V2,
+            TRACK_MAP_FALLBACK_STATE_CUSTOM_GEOMETRY,
+        }:
+            return "high"
+        return "medium"
+    return "low"
+
+
+def _location_description(
+    status_context: Mapping[str, Any],
+    geometry_context: Mapping[str, Any],
+) -> str | None:
+    if status_context.get("pit_lane") is True:
+        label = "pit lane"
+    elif status_context.get("off_track") is True:
+        label = "off track"
+    elif status_context.get("on_track") is True:
+        label = "on track"
+    else:
+        label = status_context.get("normalized")
+    if not isinstance(label, str) or not label:
+        return None
+    sector = geometry_context.get("sector")
+    if sector is not None:
+        return f"{label}, sector {sector}"
+    return label
 
 
 def _geometry_cell(point: tuple[int, int], cell_size: float) -> tuple[int, int]:

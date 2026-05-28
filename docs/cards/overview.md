@@ -10,8 +10,10 @@ A collection of custom Lovelace cards built specifically for the F1 Sensor integ
 :::info[Bundled with F1 Sensor]
 The live data cards are included with F1 Sensor. Home Assistant registers the bundled dashboard resource automatically when the integration starts.
 
-They require the F1 Sensor integration. Cards that use live-only or auth-gated entities need those entities enabled in the integration.
+They require the F1 Sensor integration. Cards that use live-only or F1TV Auth enhanced entities need those entities enabled in the integration.
 :::
+
+Public live timing works without F1TV Auth. Cards that show live Track Map, Pit Stops, or Championship Prediction can need optional [F1TV Auth](/features/f1tv-auth) during live sessions, while [Replay Mode](/features/replay-mode) can show archived data later when the replay contains it.
 
 ![Placeholder - F1 Sensor dashboard with multiple cards](/img/placeholder_cards_overview.png)
 
@@ -39,6 +41,7 @@ They require the F1 Sensor integration. Cards that use live-only or auth-gated e
 | [F1 Championship Prediction Drivers](#f1-championship-prediction-drivers-card) | `custom:f1-championship-prediction-drivers-card` | Driver standings with predicted points |
 | [F1 Championship Prediction Teams](#f1-championship-prediction-teams-card) | `custom:f1-championship-prediction-teams-card` | Constructor standings with predicted points |
 | [F1 Replay Control](#f1-replay-control-card) | `custom:f1-replay-control-card` | Replay Mode selectors, playback controls, and progress |
+| [F1 Track Map](#f1-track-map-card) | `custom:f1-track-map-card` | Live and replay circuit map with car positions |
 
 ---
 
@@ -126,8 +129,8 @@ Many cards expose the same display options.
 | `show_full_name` | `true`, `false` | Show full driver names instead of TLA codes where supported. |
 | `show_team_logo` | `true`, `false` | Show team logos where supported. |
 | `team_logo_style` | `color`, `white` | Use colored team logos or white logos. |
-| `auth_status_entity` | entity ID | Optional F1TV token status entity used by cards that display auth-gated data. |
-| `show_availability_notice` | `true`, `false` | Show a notice when a card depends on data that is unavailable, replay-only, or F1TV-auth-gated. |
+| `auth_status_entity` | entity ID | Optional F1TV token status entity used by cards that display F1TV Auth enhanced data. |
+| `show_availability_notice` | `true`, `false` | Show a notice when a card depends on data that is unavailable, replay-only, or requires F1TV Auth live. |
 
 ---
 
@@ -364,7 +367,7 @@ This card is designed for Race and Sprint sessions. Some columns depend on data 
 | `show_fastest_lap` | `true` | Show personal fastest lap |
 | `show_timing_indicators` | `false` | Highlight timing states |
 | `team_logo_style` | `color` | Logo appearance |
-| `show_availability_notice` | `true` | Show notices for unavailable auth-gated data |
+| `show_availability_notice` | `true` | Show notices for unavailable F1TV Auth enhanced data |
 
 ---
 
@@ -488,7 +491,7 @@ Shows pit stop history for all drivers: stop count, tyre fitted, tyre age, pit t
 | `show_pit_time` | `true` | Show pit stop duration |
 | `show_pit_lane_time` | `true` | Show total pit lane time |
 | `show_pit_delta` | `true` | Show delta to fastest stop |
-| `show_availability_notice` | `true` | Show notices for unavailable auth-gated data |
+| `show_availability_notice` | `true` | Show notices for unavailable F1TV Auth enhanced data |
 
 ---
 
@@ -599,7 +602,7 @@ Displays current driver standings beside predicted final standings, predicted po
 | `show_predicted_points` | `true` | Show predicted final points |
 | `show_current_points` | `true` | Show current points |
 | `show_delta` | `true` | Show predicted points delta |
-| `show_availability_notice` | `true` | Show notices for unavailable auth-gated data |
+| `show_availability_notice` | `true` | Show notices for unavailable F1TV Auth enhanced data |
 | `top_limit` | `0` | Limit rows to top N. `0` shows all. |
 
 ---
@@ -630,7 +633,7 @@ Displays current constructor standings beside predicted final standings, predict
 | `show_predicted_points` | `true` | Show predicted final points |
 | `show_current_points` | `true` | Show current points |
 | `show_delta` | `true` | Show predicted points delta |
-| `show_availability_notice` | `true` | Show notices for unavailable auth-gated data |
+| `show_availability_notice` | `true` | Show notices for unavailable F1TV Auth enhanced data |
 | `top_limit` | `0` | Limit rows to top N. `0` shows all. |
 
 ---
@@ -663,10 +666,57 @@ Provides a purpose-built Replay Mode dashboard control. It combines season and s
 
 ---
 
+### F1 Track Map Card
+
+`custom:f1-track-map-card`
+
+Shows a circuit map with driver markers, optional lap progress, and track status context. Live Track Map requires optional [F1TV Auth](/features/f1tv-auth) because public live timing does not include the needed car position data. Replay Track Map is best effort and works when the replay archive contains that data.
+
+:::info[Availability]
+The card needs the F1 Sensor integration, an active live or replay session, and usable Track Map data. During live sessions, car positions require F1TV Auth. During Replay Mode, car positions require archived position data for the loaded session.
+:::
+
+**Required setup:** F1 Sensor integration with live data or Replay Mode enabled
+
+**Optional context entities:** `sensor.f1_race_lap_count`, `sensor.f1_track_status`
+
+```yaml
+type: custom:f1-track-map-card
+title: F1 Track Map
+entry_id: auto
+lap_count_entity: auto
+track_status_entity: auto
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `theme_mode` | `dark` | Card theme. Use `dark`, `light`, or `auto` |
+| `title` | `F1 Track Map` | Card title |
+| `entry_id` | `auto` | F1 Sensor config entry to use. `auto` works for most installations |
+| `throttle_ms` | `100` | Minimum time between snapshot updates in milliseconds |
+| `interpolation_ms` | `auto` | Driver marker interpolation timing |
+| `invert_y` | `true` | Invert the Y axis for the map projection |
+| `show_header` | `true` | Show the card header |
+| `show_footer` | `true` | Show source and status details at the bottom |
+| `show_session_info` | `true` | Show meeting and session text |
+| `show_driver_count` | `true` | Show the number of drivers currently displayed |
+| `driver_label_mode` | `tla` | Use `tla`, `number`, or `off` for driver labels |
+| `show_lap_progress` | `true` | Show lap progress when a lap count entity is available |
+| `lap_count_entity` | `auto` | Lap count entity. Empty disables lap progress context |
+| `show_track_status` | `true` | Show track status context when available |
+| `track_status_entity` | `auto` | Track status entity. Empty disables track status context |
+| `track_status_line_mode` | `accent` | Use `accent`, `full`, or `off` for track status line coloring |
+| `layout_mode` | `auto` | Use `auto`, `compact`, or `full` layout |
+
+For status messages and troubleshooting, see [Track Map](/features/track-map).
+
+---
+
 ## Related
 
 - [Live Data entities](/entities/live-data)
 - [Static Data entities](/entities/static-data)
 - [Replay Mode](/features/replay-mode)
-- [F1TV Auth Testing](/help/experimental-testing)
+- [F1TV Auth](/features/f1tv-auth)
+- [Track Map](/features/track-map)
 - [Live Delay](/features/live-delay)

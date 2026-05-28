@@ -53,7 +53,7 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_replay_sync
 
 ---
 
-## How it works
+## Behavior
 
 The blueprint watches your main TV for state changes. When the TV pauses and the F1 replay is currently playing, the replay is paused. When the TV resumes and the replay is currently paused, the replay resumes.
 

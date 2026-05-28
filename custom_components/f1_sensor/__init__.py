@@ -102,6 +102,7 @@ from .incident_detection import (
     DATA_QUALITY_REPLAY,
     IncidentChange,
     IncidentDetector,
+    IncidentLocationContext,
     SessionMetadata,
     normalize_stream,
 )
@@ -1631,6 +1632,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     live_mode_coordinator = None
     top_three_coordinator = None
     starting_grid_coordinator = None
+    track_map_store = TrackMapStore(entry.entry_id)
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
@@ -1860,6 +1862,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             config_entry=entry,
             delay_controller=delay_controller,
             live_state=live_state,
+            track_map_store=track_map_store,
         )
         live_mode_coordinator = LiveModeCoordinator(
             hass,
@@ -2006,7 +2009,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return TRACK_MAP_SOURCE_REPLAY
         return TRACK_MAP_SOURCE_LIVE
 
-    track_map_store = TrackMapStore(entry.entry_id)
     track_map_replay_adapter = TrackMapReplayAdapter(
         track_map_store,
         live_bus,
@@ -2637,6 +2639,7 @@ class IncidentCoordinator(DataUpdateCoordinator):
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
         live_state: LiveAvailabilityTracker | None = None,
+        track_map_store: TrackMapStore | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -2647,7 +2650,10 @@ class IncidentCoordinator(DataUpdateCoordinator):
         )
         self._session_coord = session_coord
         self._bus = bus
-        self._detector = IncidentDetector()
+        self._track_map_store = track_map_store
+        self._detector = IncidentDetector(
+            location_resolver=self._resolve_location_context
+        )
         self._session_metadata = SessionMetadata()
         self._drivers: dict[str, Any] = {}
         self._state = self._empty_state()
@@ -2684,6 +2690,7 @@ class IncidentCoordinator(DataUpdateCoordinator):
             "session_type": None,
             "session_name": None,
             "data_quality": None,
+            "latest_location": None,
             "active_incidents": [],
         }
 
@@ -2841,12 +2848,19 @@ class IncidentCoordinator(DataUpdateCoordinator):
             "session_type": latest.session.session_type if latest else None,
             "session_name": latest.session.session_name if latest else None,
             "data_quality": latest.data_quality if latest else None,
+            "latest_location": (
+                latest.location.to_event_payload()
+                if latest and latest.location.status is not None
+                else None
+            ),
             "active_incidents": [change.to_event_payload() for change in active],
         }
         self.async_set_updated_data(self._state)
 
     def reset_for_replay(self) -> None:
-        self._detector = IncidentDetector()
+        self._detector = IncidentDetector(
+            location_resolver=self._resolve_location_context
+        )
         self._session_metadata = SessionMetadata()
         self._drivers.clear()
         self._latest_change = None
@@ -2869,6 +2883,39 @@ class IncidentCoordinator(DataUpdateCoordinator):
         self.available = is_live
         if not is_live:
             self.reset_for_replay()
+
+    def _resolve_location_context(
+        self, racing_number: str, observed_at: datetime
+    ) -> IncidentLocationContext | None:
+        store = self._track_map_store
+        if store is None:
+            return None
+        context = None
+        with suppress(Exception):
+            context = store.location_context(racing_number, now=observed_at)
+        if context is None:
+            return None
+        payload = context.as_dict()
+        distance = payload.get("distance_to_track")
+        if isinstance(distance, (int, float)):
+            distance = round(float(distance), 1)
+        else:
+            distance = None
+        return IncidentLocationContext(
+            status=payload.get("status"),
+            source=payload.get("source"),
+            stale=payload.get("stale"),
+            confidence=payload.get("confidence"),
+            description=payload.get("description"),
+            sector=payload.get("sector"),
+            corner=payload.get("corner"),
+            pit_lane=payload.get("pit_lane"),
+            track_segment=payload.get("track_segment"),
+            distance_to_track=distance,
+            geometry_source=payload.get("geometry_source"),
+            fallback_state=payload.get("fallback_state"),
+            updated_at=getattr(context, "timestamp", None),
+        )
 
 
 class LiveModeCoordinator(DataUpdateCoordinator):

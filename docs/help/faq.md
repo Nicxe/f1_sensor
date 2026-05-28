@@ -45,6 +45,22 @@ You can use those attributes in templates or in the calendar to know when FP1, F
 ### Live Data Questions
 
 <details>
+<summary>Do I need F1TV Auth to use F1 Sensor?</summary>
+
+No. F1 Sensor works without F1TV Auth. Public live timing covers the normal live features such as session status, track status, Safety Car, Race Control, weather, driver timing, tyres, top three, and confirmed incident alerts.
+
+Optional [F1TV Auth](/features/f1tv-auth) is only needed for extra live timing features during a real live session.
+</details>
+
+<details>
+<summary>What does F1TV Auth unlock?</summary>
+
+F1TV Auth can unlock extra live data when Formula 1 provides it during an active session.
+
+This can enable live [Track Map](/features/track-map), Pit Stops, Championship Prediction, formation start improvements, and earlier incident candidates. Replay Mode is separate and can show some of this data later when the replay archive contains it.
+</details>
+
+<details>
 <summary>Do I still need to install the separate F1 Sensor Live Data Card repository?</summary>
 
 No. The Live Data Cards are bundled with F1 Sensor. Install or update the integration, restart Home Assistant, and F1 Sensor registers the dashboard card resource automatically.
@@ -67,9 +83,9 @@ The same cleanup clears the Home Assistant Repairs warning for stale standalone 
 
 
 <details>
-<summary>Why are some entities like Pit Stops and Championship Prediction unavailable without F1TV Auth testing?</summary>
+<summary>Why are some entities like Pit Stops and Championship Prediction unavailable without F1TV Auth?</summary>
 
-These entities depend on data streams that are not part of public live timing. They can update in [**Replay Mode**](/features/replay-mode), and they can be tested during real live sessions when experimental [F1TV Auth testing](/help/experimental-testing) is paired with a valid token. Without that token, they remain unavailable while public live timing continues.
+These entities depend on data that is not part of public live timing. They can update in [Replay Mode](/features/replay-mode), and they can update during real live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token. Without that token, they remain unavailable while public live timing continues.
 
 The affected entities are:
 - `sensor.f1_pitstops`
@@ -78,6 +94,22 @@ The affected entities are:
 - `binary_sensor.f1_formation_start`
 
 All other live entities, such as track status, session status, driver positions, race control messages, and weather, continue to work during live sessions as before.
+</details>
+
+<details>
+<summary>Why does Track Map not show cars during live sessions?</summary>
+
+Live [Track Map](/features/track-map) requires optional F1TV Auth during a real live session. If the token is missing, expired, rejected, or Formula 1 is not publishing usable car position data, the card can show `Waiting`, `Stale`, `No geometry`, or `No session`.
+
+Check `sensor.f1_f1tv_token_status`, `sensor.f1_live_timing_mode`, and the Track Map card status.
+</details>
+
+<details>
+<summary>Why does Replay Mode show data that live no-auth does not?</summary>
+
+Replay Mode uses Formula 1's session archive after the session has completed. Some data that requires F1TV Auth during a live session can be available later in the replay archive.
+
+That is why Track Map, Pit Stops, Championship Prediction, or incident location context can appear in Replay Mode even when they were not available from public live timing during the live session.
 </details>
 
 
@@ -195,6 +227,22 @@ A yellow flag is helpful context, but it is not required in every case. A driver
 F1 Sensor uses confidence levels to handle this. A stopped car that is not in the pit lane can create a `medium` confidence alert, while matching yellow flag, Safety Car, red flag, or Race Control context can raise it to `high`.
 </details>
 
+<details>
+<summary>Does incident detection require F1TV Auth or Track Map?</summary>
+
+No. Public live timing can still detect confirmed stopped-car and on-track incident alerts without F1TV Auth.
+
+F1TV Auth can improve early candidate alerts through extra live car data, and Track Map can add optional location context when available. If those features are missing, stale, or rejected by Formula 1, the basic no-auth incident detection flow continues to work.
+</details>
+
+<details>
+<summary>Does F1TV Auth make incident detection faster?</summary>
+
+It can, but only when extra live car data is available and the low-speed signal matches flag, Safety Car, red flag, or Race Control context. Those early signals are published as `candidate` incidents and should be treated as less certain than confirmed alerts.
+
+The default incident notification blueprint stays conservative and does not notify for candidates unless you opt in.
+</details>
+
 
 
 
@@ -235,4 +283,4 @@ This step is required because live data is off by default until you opt-in.*
 
 ## Can't find the answer you're looking for?
 
-If you're still having issues, head over to the [Contact](./contact) page.
+If you're still having issues, head over to the [Contact](/help/contact) page.

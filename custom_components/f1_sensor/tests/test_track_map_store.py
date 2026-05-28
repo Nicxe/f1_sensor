@@ -236,6 +236,11 @@ def test_track_map_store_reports_stale_snapshot_and_location_context() -> None:
     assert location is not None
     assert location.stale is True
     assert location.as_dict()["source"] == "live"
+    assert location.confidence == "low"
+    assert location.fallback_state == (
+        TRACK_MAP_FALLBACK_STATE_WAITING_FOR_REPLAY_POSITION_Z
+    )
+    assert "x" in location.as_dict()
 
 
 def test_track_map_store_does_not_stale_replay_positions() -> None:
@@ -253,6 +258,27 @@ def test_track_map_store_does_not_stale_replay_positions() -> None:
     assert snapshot["drivers"][0]["stale"] is False
     assert location is not None
     assert location.stale is False
+    assert location.confidence == "medium"
+    assert location.sector is None
+    assert location.track_segment is None
+    assert location.geometry_source is None
+
+
+def test_track_map_location_context_includes_static_geometry_summary() -> None:
+    store = TrackMapStore("entry-1")
+    store.update_session_info(_static_session_payload())
+    store.update_positions([_position("16")], source="replay")
+
+    location = store.location_context("16", now=BASE_TIME)
+
+    assert location is not None
+    assert location.confidence == "high"
+    assert location.sector in {1, 2, 3}
+    assert location.track_segment is not None
+    assert location.distance_to_track is not None
+    assert location.geometry_source == TRACK_MAP_STATIC_GEOMETRY_SOURCE
+    assert location.fallback_state == TRACK_MAP_FALLBACK_STATE_STATIC_CATALOG
+    assert location.description is not None
 
 
 def test_track_map_store_resets_session_bound_data_on_session_switch() -> None:

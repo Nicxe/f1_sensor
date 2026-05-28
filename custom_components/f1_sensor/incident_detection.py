@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 from collections import deque
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
@@ -199,6 +199,42 @@ class RaceControlContext:
 
 
 @dataclass(frozen=True, slots=True)
+class IncidentLocationContext:
+    """Optional low-frequency track map context for one incident."""
+
+    status: str | None = None
+    source: str | None = None
+    stale: bool | None = None
+    confidence: str | None = None
+    description: str | None = None
+    sector: int | None = None
+    corner: str | None = None
+    pit_lane: bool | None = None
+    track_segment: int | None = None
+    distance_to_track: float | None = None
+    geometry_source: str | None = None
+    fallback_state: str | None = None
+    updated_at: datetime | None = None
+
+    def to_event_payload(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "source": self.source,
+            "stale": self.stale,
+            "confidence": self.confidence,
+            "description": self.description,
+            "sector": self.sector,
+            "corner": self.corner,
+            "pit_lane": self.pit_lane,
+            "track_segment": self.track_segment,
+            "distance_to_track": self.distance_to_track,
+            "geometry_source": self.geometry_source,
+            "fallback_state": self.fallback_state,
+            "updated_at": _format_utc(self.updated_at) if self.updated_at else None,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class IncidentSignal:
     kind: str
     observed_at: datetime
@@ -228,6 +264,7 @@ class IncidentChange:
     session: SessionMetadata
     track_status: TrackStatusContext
     race_control: RaceControlContext
+    location: IncidentLocationContext
     signals: tuple[str, ...]
     started_at: datetime
     updated_at: datetime
@@ -243,6 +280,7 @@ class IncidentChange:
             "session": self.session.to_event_payload(),
             "track_status": self.track_status.to_event_payload(),
             "race_control": self.race_control.to_event_payload(),
+            "location": self.location.to_event_payload(),
             "signals": list(self.signals),
             "started_at": _format_utc(self.started_at),
             "updated_at": _format_utc(self.updated_at),
@@ -260,6 +298,7 @@ class _ActiveIncident:
     session: SessionMetadata
     track_status: TrackStatusContext
     race_control: RaceControlContext
+    location: IncidentLocationContext
     signals: list[str]
     started_at: datetime
     updated_at: datetime
@@ -322,6 +361,8 @@ class IncidentDetector:
         car_context_window: timedelta = timedelta(seconds=20),
         car_data_stale_after: timedelta = timedelta(seconds=10),
         car_candidate_limit: int = 3,
+        location_resolver: Callable[[str, datetime], IncidentLocationContext | None]
+        | None = None,
     ) -> None:
         self._correlation_window = correlation_window
         self._pit_out_hold = pit_out_hold
@@ -337,6 +378,7 @@ class IncidentDetector:
         self._car_context_window = car_context_window
         self._car_data_stale_after = car_data_stale_after
         self._car_candidate_limit = max(1, car_candidate_limit)
+        self._location_resolver = location_resolver
 
     def process_signals(
         self, signals: Iterable[IncidentSignal]
@@ -493,6 +535,10 @@ class IncidentDetector:
                 continue
             context = TrackStatusContext(signal.track_status, signal.message)
             active.track_status = context
+            active.location = _merge_location_context(
+                active.location,
+                self._location_context(rn, signal.observed_at),
+            )
             active.confidence = CONFIDENCE_HIGH
             active.reason = _reason_for_context(track_context=context)
             active.updated_at = signal.observed_at
@@ -527,6 +573,10 @@ class IncidentDetector:
                 signal.message, signal.category, signal.flag
             )
             active.race_control = rc_context
+            active.location = _merge_location_context(
+                active.location,
+                self._location_context(signal.racing_number, signal.observed_at),
+            )
             _extend_unique(active.signals, signal.signals or ("race_control_incident",))
             active.updated_at = signal.observed_at
             if (
@@ -674,7 +724,10 @@ class IncidentDetector:
             signal.observed_at,
             window=self._car_context_window,
         )
+        location = self._location_context(signal.racing_number, signal.observed_at)
         if not context_signals:
+            return []
+        if _location_suppresses_incident(location):
             return []
         if not self._car_candidate_allowed(driver_state, signal.observed_at):
             return []
@@ -685,6 +738,7 @@ class IncidentDetector:
             track_context=track_context,
             race_context=race_context,
             context_signals=context_signals,
+            location=location,
         )
 
     def _start_car_candidates_from_context(
@@ -748,6 +802,7 @@ class IncidentDetector:
         track_context: TrackStatusContext,
         race_context: RaceControlContext,
         context_signals: list[str],
+        location: IncidentLocationContext | None = None,
     ) -> list[IncidentChange]:
         driver_state = self._driver_state(state, racing_number)
         active = driver_state.active_incident
@@ -761,9 +816,15 @@ class IncidentDetector:
         low_speed_started_at, stationary = low_speed
         if self._is_in_cooldown(driver_state, signal.observed_at):
             return []
+        location_context = location or self._location_context(
+            racing_number, signal.observed_at
+        )
+        if _location_suppresses_incident(location_context):
+            return []
 
         driver = self._driver_metadata(state, racing_number, signal.driver)
         signals = [_CAR_LOW_SPEED_SIGNAL, *context_signals]
+        _extend_unique(signals, _location_signal_names(location_context))
         if stationary:
             signals.insert(0, "car_stationary")
         reason = _reason_for_car_context(
@@ -771,6 +832,9 @@ class IncidentDetector:
             race_context=race_context,
         )
         confidence = CONFIDENCE_MEDIUM
+        if _location_supports_high_confidence(location_context) and stationary:
+            confidence = CONFIDENCE_HIGH
+            reason = "car_low_speed_with_track_map_location"
 
         if active is None:
             active = _ActiveIncident(
@@ -784,6 +848,7 @@ class IncidentDetector:
                 session=state.metadata,
                 track_status=track_context,
                 race_control=race_context,
+                location=location_context,
                 signals=signals,
                 started_at=low_speed_started_at,
                 updated_at=signal.observed_at,
@@ -803,6 +868,7 @@ class IncidentDetector:
         active.session = state.metadata
         active.track_status = _merge_track_context(active.track_status, track_context)
         active.race_control = _merge_race_context(active.race_control, race_context)
+        active.location = _merge_location_context(active.location, location_context)
         _extend_unique(active.signals, signals)
         if _confidence_gt(confidence, active.confidence):
             active.confidence = confidence
@@ -845,6 +911,9 @@ class IncidentDetector:
         driver_state = self._driver_state(state, racing_number)
         if self._is_in_cooldown(driver_state, signal.observed_at):
             return []
+        location = self._location_context(racing_number, signal.observed_at)
+        if _location_suppresses_incident(location):
+            return []
         driver = self._driver_metadata(state, racing_number, signal.driver)
         incident = _ActiveIncident(
             incident_id=_build_incident_id(
@@ -859,7 +928,11 @@ class IncidentDetector:
             race_control=RaceControlContext(
                 signal.message, signal.category, signal.flag
             ),
-            signals=list(signal.signals or ("race_control_incident",)),
+            location=location,
+            signals=[
+                *(signal.signals or ("race_control_incident",)),
+                *_location_signal_names(location),
+            ],
             started_at=signal.observed_at,
             updated_at=signal.observed_at,
             data_quality=signal.data_quality,
@@ -884,11 +957,23 @@ class IncidentDetector:
         track_context, race_context, context_signals = self._find_context(
             state, racing_number, signal.observed_at
         )
+        location = self._location_context(racing_number, signal.observed_at)
+        if _location_suppresses_incident(location):
+            return []
+        location_signals = _location_signal_names(location)
+        _extend_unique(context_signals, location_signals)
         confidence = CONFIDENCE_HIGH if context_signals else CONFIDENCE_MEDIUM
         reason = _reason_for_context(
             track_context=track_context,
             race_context=race_context,
         )
+        if (
+            _location_supports_high_confidence(location)
+            and not track_context.status
+            and not race_context.message
+        ):
+            confidence = CONFIDENCE_HIGH
+            reason = "timing_stopped_with_track_map_location"
         driver = self._driver_metadata(state, racing_number, signal.driver)
         active = driver_state.active_incident
         if (
@@ -913,6 +998,7 @@ class IncidentDetector:
                 session=state.metadata,
                 track_status=track_context,
                 race_control=race_context,
+                location=location,
                 signals=["timing_stopped", *context_signals],
                 started_at=signal.observed_at,
                 updated_at=signal.observed_at,
@@ -927,6 +1013,7 @@ class IncidentDetector:
         active.updated_at = signal.observed_at
         active.track_status = track_context
         active.race_control = race_context
+        active.location = _merge_location_context(active.location, location)
         _append_unique(active.signals, "timing_stopped")
         _extend_unique(active.signals, context_signals)
 
@@ -1158,6 +1245,38 @@ class IncidentDetector:
         if incident_id not in state.incident_history:
             state.incident_history.append(incident_id)
 
+    def _location_context(
+        self, racing_number: str, observed_at: datetime
+    ) -> IncidentLocationContext:
+        if self._location_resolver is None:
+            return IncidentLocationContext()
+        try:
+            location = self._location_resolver(racing_number, observed_at)
+        except Exception:  # noqa: BLE001
+            return IncidentLocationContext()
+        if location is None:
+            return IncidentLocationContext()
+        if location.updated_at is None:
+            return location
+        updated_at = _parse_utc(location.updated_at)
+        if updated_at == location.updated_at:
+            return location
+        return IncidentLocationContext(
+            status=location.status,
+            source=location.source,
+            stale=location.stale,
+            confidence=location.confidence,
+            description=location.description,
+            sector=location.sector,
+            corner=location.corner,
+            pit_lane=location.pit_lane,
+            track_segment=location.track_segment,
+            distance_to_track=location.distance_to_track,
+            geometry_source=location.geometry_source,
+            fallback_state=location.fallback_state,
+            updated_at=updated_at,
+        )
+
     @staticmethod
     def _make_change(active: _ActiveIncident, phase: str) -> IncidentChange:
         return IncidentChange(
@@ -1169,6 +1288,7 @@ class IncidentDetector:
             session=active.session,
             track_status=active.track_status,
             race_control=active.race_control,
+            location=active.location,
             signals=tuple(active.signals),
             started_at=active.started_at,
             updated_at=active.updated_at,
@@ -2070,6 +2190,48 @@ def _merge_race_context(
     if new.message is not None or new.category is not None or new.flag is not None:
         return new
     return current
+
+
+def _merge_location_context(
+    current: IncidentLocationContext, new: IncidentLocationContext
+) -> IncidentLocationContext:
+    if (
+        new.status is not None
+        or new.source is not None
+        or new.confidence is not None
+        or new.description is not None
+        or new.fallback_state is not None
+    ):
+        return new
+    return current
+
+
+def _location_suppresses_incident(location: IncidentLocationContext) -> bool:
+    return location.pit_lane is True and location.stale is False
+
+
+def _location_supports_high_confidence(location: IncidentLocationContext) -> bool:
+    return (
+        location.confidence == CONFIDENCE_HIGH
+        and location.stale is False
+        and location.pit_lane is not True
+    )
+
+
+def _location_signal_names(location: IncidentLocationContext) -> tuple[str, ...]:
+    names: list[str] = []
+    if location.status is not None and location.stale is False:
+        names.append("track_map_location")
+        status = location.status.strip().lower()
+        if status == "ontrack":
+            names.append("position_status_on_track")
+        elif status == "offtrack":
+            names.append("position_status_off_track")
+        elif "pit" in status:
+            names.append("position_status_pit_lane")
+    if location.sector is not None and location.stale is False:
+        names.append(f"track_map_sector_{location.sector}")
+    return tuple(dict.fromkeys(names))
 
 
 def _append_unique(values: list[str], value: str) -> None:
