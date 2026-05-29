@@ -137,6 +137,9 @@
       "sprint_results": {
         "name": "Sprinttitulokset"
       },
+      "lap_position_progression": {
+        "name": "Kierrosten sijoituskehitys"
+      },
       "race_control": {
         "name": "Kisavalvonta"
       },

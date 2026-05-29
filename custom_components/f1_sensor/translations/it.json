@@ -160,6 +160,9 @@
       "sprint_results": {
         "name": "Risultati della sprint"
       },
+      "lap_position_progression": {
+        "name": "Progressione posizioni giro"
+      },
       "race_control": {
         "name": "Direzione gara"
       },

@@ -96,6 +96,9 @@
       "sprint_results": {
         "name": "Sprintresultater"
       },
+      "lap_position_progression": {
+        "name": "Omgangspositionsudvikling"
+      },
       "race_control": {
         "name": "Racekontrol"
       },

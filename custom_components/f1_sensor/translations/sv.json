@@ -164,6 +164,9 @@
       "sprint_results": {
         "name": "Sprintresultat"
       },
+      "lap_position_progression": {
+        "name": "Varvpositionsutveckling"
+      },
       "race_control": {
         "name": "Tävlingskontroll"
       },

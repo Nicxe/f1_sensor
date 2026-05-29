@@ -61,6 +61,7 @@ SENSOR_OPTIONS = {
     "last_race_results": "Last race results",
     "season_results": "Season results",
     "sprint_results": "Sprint results",
+    "lap_position_progression": "Lap position progression",
     "driver_points_progression": "Driver points progression",
     "constructor_points_progression": "Constructor points progression",
     "fia_documents": "FIA decisions",

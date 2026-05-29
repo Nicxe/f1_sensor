@@ -88,6 +88,7 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "last_race_results",
         "season_results",
         "sprint_results",
+        "lap_position_progression",
         "driver_points_progression",
         "constructor_points_progression",
         "race_week",

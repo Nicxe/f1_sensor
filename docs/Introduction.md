@@ -8,7 +8,7 @@ slug: /
 
 ## Your home, in sync with Formula 1
 
-F1 Sensor is a custom [Home Assistant](https://www.home-assistant.io/) integration for Formula 1 schedules, standings, live timing, dashboards, automations, and replayed sessions.
+F1 Sensor is a custom [Home Assistant](https://www.home-assistant.io/) integration for Formula 1 schedules, standings, live timing, post-race analysis, dashboards, automations, and replayed sessions.
 
 It works without F1TV Auth. Public live timing powers core live entities such as track status, race control, weather, driver timing, tyres, and conservative incident alerts. Optional [F1TV Auth](/features/f1tv-auth) can unlock extra live timing features when Formula 1 provides the data.
 

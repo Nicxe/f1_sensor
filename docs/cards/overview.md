@@ -33,6 +33,7 @@ Public live timing works without F1TV Auth. Cards that show live Track Map, Pit 
 | [F1 Race Lap](#f1-race-lap-card) | `custom:f1-race-lap-card` | Race or sprint order with gaps, tyres, pit stops, and lap times |
 | [F1 Starting Grid](#f1-starting-grid-card) | `custom:f1-starting-grid-card` | Provisional or confirmed Sprint and Race starting grid |
 | [F1 Last Race Results](#f1-last-race-results-card) | `custom:f1-last-race-results-card` | Race and sprint classifications with grid, delta, points, and status |
+| [F1 Lap Position Progression](#f1-lap-position-progression-card) | `custom:f1-lap-position-progression-card` | Post-race lap-by-lap position chart for completed main races |
 | [F1 Tyre Statistics](#f1-tyre-statistics-card) | `custom:f1-sensor-live-data-card` | Tyre compounds, stint history, and best lap times per driver |
 | [F1 Pit Stop Overview](#f1-pit-stop-overview-card) | `custom:f1-pitstop-overview-card` | Pit stop timeline with tyre changes and pit times |
 | [F1 Driver Lap Times](#f1-driver-lap-times-card) | `custom:f1-driver-lap-times-card` | Live lap times, gaps, positions, and optional lap history |
@@ -433,6 +434,56 @@ Shows the latest race result, season race results, or sprint results with a sess
 | `show_points` | `true` | Show awarded points |
 | `show_status` | `true` | Show finish status |
 | `top_limit` | `0` | Limit rows to top N. `0` shows all |
+
+---
+
+### F1 Lap Position Progression Card
+
+`custom:f1-lap-position-progression-card`
+
+Displays a native SVG post-race lap position chart for completed main races. The card reads lightweight session metadata from `sensor.f1_lap_position_progression`, then asks the F1 Sensor backend for the selected race through Home Assistant's WebSocket API. This keeps full lap-by-lap position arrays out of entity state attributes.
+
+![Placeholder - F1 Lap Position Progression card screenshot](/img/placeholder_card_race_lap.png)
+
+**Required entity:** `sensor.f1_lap_position_progression`
+
+**Optional entities:** `sensor.f1_driver_list`, `switch.f1_no_spoiler_mode`
+
+**Example:**
+
+```yaml
+type: custom:f1-lap-position-progression-card
+entity: sensor.f1_lap_position_progression
+drivers_entity: sensor.f1_driver_list
+no_spoiler_entity: switch.f1_no_spoiler_mode
+title: Lap Position Progression
+theme_mode: auto
+top_limit: 10
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `entity` | `sensor.f1_lap_position_progression` | Sensor that provides race and sprint session metadata |
+| `drivers_entity` | `sensor.f1_driver_list` | Driver list sensor used for team metadata and logos |
+| `no_spoiler_entity` | `switch.f1_no_spoiler_mode` | No Spoiler Mode switch used by the overlay behavior |
+| `theme_mode` | `auto` | Card theme. Use `dark`, `light`, or `auto` |
+| `title` | `Lap Position Progression` | Card title |
+| `show_header` | `true` | Show the card header |
+| `show_session_selector` | `true` | Allow switching between race and sprint entries |
+| `show_full_name` | `false` | Show full driver names instead of compact labels |
+| `team_logo_style` | `color` | Logo appearance |
+| `show_points` | `true` | Show point markers on the chart |
+| `show_round_labels` | `true` | Show lap labels on the x-axis |
+| `top_limit` | `0` | Limit visible entries by final position. `0` shows all drivers |
+| `chart_height` | `420` | Chart height in pixels |
+
+The chart places P1 at the top and lap number on the x-axis. Driver labels on the left show the starting order, while the right side shows the current final order for completed races. Select a driver label on either side to hide or show that driver's progression line. Drivers that have classification metadata but no lap timing rows are still listed in the side labels, but they do not draw a progression line. Hover or focus a chart point to see driver, lap, position, race name, and grid-to-finish context when available. Jolpica data is loaded for one selected race at a time and reused from the integration cache where possible.
+
+:::info[Sprint limitation]
+Sprint sessions can appear in the selector so the season context is complete, but Jolpica currently exposes sprint classification results rather than sprint lap-by-lap positions. Those sprint entries render an unsupported state instead of a chart.
+:::
+
+When No Spoiler Mode is enabled, the card uses the same overlay behavior as other bundled spoiler-sensitive cards and does not reveal newly fetched post-race position data until spoilers are allowed.
 
 ---
 

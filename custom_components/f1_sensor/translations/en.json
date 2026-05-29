@@ -168,6 +168,9 @@
       "sprint_results": {
         "name": "Sprint results"
       },
+      "lap_position_progression": {
+        "name": "Lap position progression"
+      },
       "race_control": {
         "name": "Race control"
       },

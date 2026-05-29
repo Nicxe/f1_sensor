@@ -1053,8 +1053,8 @@ const buildF1DataAvailabilityNotice = (hass, config, feature) => {
     return {
       tone: 'info',
       message: isPitStop
-        ? 'Pit stop data is hidden because F1TV access is not configured. It is still available in Replay Mode.'
-        : 'Predicted points are hidden because F1TV access is not configured. They are still available in Replay Mode.',
+        ? 'Connect F1TV access to show live pit stop data. Replay data remains available.'
+        : 'Connect F1TV access to show live predicted points. Replay data remains available.',
     };
   }
 
@@ -7352,6 +7352,22 @@ const F1_SEASON_PROGRESSION_LEGEND_POSITION_OPTIONS = [
   { value: 'right', label: 'Right of chart' },
 ];
 
+const DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG = {
+  entity: 'sensor.f1_lap_position_progression',
+  drivers_entity: 'sensor.f1_driver_list',
+  no_spoiler_entity: 'switch.f1_no_spoiler_mode',
+  title: 'Lap Position Progression',
+  theme_mode: 'auto',
+  show_header: true,
+  show_session_selector: true,
+  show_points: true,
+  show_round_labels: true,
+  show_full_name: false,
+  team_logo_style: 'color',
+  chart_height: 420,
+  top_limit: 0,
+};
+
 // ============================================================================
 // F1 Season Progression Card
 // ============================================================================
@@ -7396,7 +7412,7 @@ class F1SeasonProgressionCard extends LitElement {
       .sp-card {
         position: relative;
         overflow: hidden;
-        padding: 16px;
+        padding: 18px;
         border: 1px solid var(--sp-border);
         border-radius: var(--ha-card-border-radius, 12px);
         background: linear-gradient(180deg, var(--sp-bg) 0%, var(--sp-bg-soft) 100%);
@@ -7425,7 +7441,7 @@ class F1SeasonProgressionCard extends LitElement {
         align-items: flex-start;
         justify-content: space-between;
         gap: 12px;
-        margin: 2px 0 14px;
+        margin: 2px 0 10px;
       }
 
       .sp-title-block {
@@ -8992,6 +9008,1596 @@ class F1SeasonProgressionCardEditor extends LitElement {
   _normalizeLegendPosition(position) {
     const normalized = String(position || DEFAULT_F1_SEASON_PROGRESSION_CONFIG.legend_position).trim().toLowerCase();
     return ['bottom', 'left', 'right'].includes(normalized) ? normalized : DEFAULT_F1_SEASON_PROGRESSION_CONFIG.legend_position;
+  }
+
+  _clampNumber(value, min, max, fallback) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.max(min, Math.min(max, num));
+  }
+}
+
+// ============================================================================
+// F1 Lap Position Progression Card
+// ============================================================================
+
+class F1LapPositionProgressionCard extends LitElement {
+  static properties = {
+    hass: {},
+    config: {},
+    _selectedSessionKey: { state: true },
+    _sessionData: { state: true },
+    _sessionLoadingKey: { state: true },
+    _sessionError: { state: true },
+    _hoverPoint: { state: true },
+    _hiddenSeriesKeys: { state: true },
+  };
+
+  static styles = [
+    F1_THEME_STYLES,
+    css`
+      :host {
+        display: block;
+        --lp-accent: #e10600;
+        --lp-bg: var(--f1-card-bg, var(--ha-card-background, var(--card-background-color, #ffffff)));
+        --lp-bg-soft: var(--f1-card-bg-soft, var(--primary-background-color, #f7f8fb));
+        --lp-bg-end: var(--f1-card-bg-end, var(--secondary-background-color, #eef1f6));
+        --lp-border: var(--f1-card-border, var(--ha-card-border-color, var(--divider-color, rgba(17, 24, 39, 0.14))));
+        --lp-text: var(--f1-card-text, var(--primary-text-color, #111827));
+        --lp-muted: var(--f1-card-muted, var(--secondary-text-color, #6b7280));
+        --lp-grid: var(--f1-card-divider, var(--divider-color, rgba(17, 24, 39, 0.1)));
+        --lp-axis: var(--f1-card-soft, color-mix(in srgb, var(--primary-text-color, #111827) 50%, transparent));
+        --lp-chip: var(--f1-card-chip, color-mix(in srgb, var(--primary-text-color, #111827) 7%, transparent));
+        --lp-panel: var(--f1-card-panel, color-mix(in srgb, var(--primary-text-color, #111827) 5%, transparent));
+        --lp-panel-soft: var(--f1-card-panel-soft, color-mix(in srgb, var(--primary-text-color, #111827) 3%, transparent));
+        --lp-shadow: var(--f1-card-shadow, var(--ha-card-box-shadow, 0 12px 30px rgba(15, 23, 42, 0.14)));
+        --lp-chart-height: 320px;
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+      }
+
+      ha-card {
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+        overflow: visible;
+      }
+
+      .lp-card {
+        position: relative;
+        overflow: hidden;
+        padding: 16px;
+        border: 1px solid var(--lp-border);
+        border-radius: var(--ha-card-border-radius, 12px);
+        background: linear-gradient(180deg, var(--lp-bg) 0%, var(--lp-bg-soft) 100%);
+        color: var(--lp-text);
+        box-shadow: var(--lp-shadow);
+        container-type: inline-size;
+      }
+
+      :host([data-effective-theme="dark"]) .lp-card,
+      .lp-card[data-theme="dark"] {
+        background:
+          linear-gradient(180deg, var(--lp-bg-soft) 0%, var(--lp-bg) 62%, var(--lp-bg-end) 100%);
+      }
+
+      .lp-card::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--lp-accent), #ff2800 42%, transparent 100%);
+      }
+
+      .lp-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: start;
+        margin: 2px 0 14px;
+      }
+
+      .lp-title {
+        margin: 0;
+        color: var(--lp-text);
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 0;
+        line-height: 1.25;
+        text-transform: uppercase;
+      }
+
+      .lp-subtitle {
+        margin-top: 4px;
+        color: var(--lp-muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        line-height: 1.25;
+        text-transform: uppercase;
+      }
+
+      .lp-badges {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+
+      .lp-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 3px 8px;
+        border: 1px solid color-mix(in srgb, var(--lp-accent) 28%, var(--lp-border));
+        border-radius: 999px;
+        background: var(--lp-chip);
+        color: var(--lp-text);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        line-height: 1;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .lp-badge.unsupported,
+      .lp-badge.pending,
+      .lp-badge.error {
+        border-color: rgba(251, 191, 36, 0.28);
+        background: rgba(251, 191, 36, 0.12);
+        color: #fcd34d;
+      }
+
+      .lp-selector-row {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: center;
+      }
+
+      .lp-session-select {
+        width: min(100%, 480px);
+        min-height: 36px;
+        border-radius: 9px;
+        border: 1px solid var(--f1-card-divider-strong);
+        background: var(--f1-card-chip);
+        color: var(--lp-text);
+        padding: 6px 34px 6px 10px;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        outline: none;
+      }
+
+      .lp-session-select:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 28%, transparent);
+      }
+
+      .lp-main {
+        display: grid;
+        align-items: start;
+        gap: 0;
+        grid-template-areas: "chart";
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .lp-chart-shell {
+        grid-area: chart;
+        position: relative;
+        min-width: 0;
+        padding: 2px 0 0;
+      }
+
+      .lp-chart {
+        display: block;
+        width: 100%;
+        height: var(--lp-chart-height);
+        overflow: visible;
+      }
+
+      .lp-grid-line {
+        stroke: var(--lp-grid);
+        stroke-width: 1;
+        vector-effect: non-scaling-stroke;
+      }
+
+      .lp-axis-line {
+        stroke: var(--lp-axis);
+        stroke-width: 1;
+        vector-effect: non-scaling-stroke;
+      }
+
+      .lp-axis-label {
+        fill: var(--lp-muted);
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .lp-side-heading {
+        fill: var(--lp-muted);
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .lp-side-label {
+        fill: var(--lp-text);
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .lp-side-position {
+        fill: var(--lp-muted);
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .lp-side-marker {
+        fill: var(--series-color);
+        stroke: var(--lp-bg);
+        stroke-width: 1.4;
+        vector-effect: non-scaling-stroke;
+      }
+
+      .lp-side-entry {
+        cursor: pointer;
+        transition: opacity 0.15s ease;
+      }
+
+      .lp-side-entry:hover .lp-side-label,
+      .lp-side-entry:focus-visible .lp-side-label {
+        fill: var(--series-color);
+      }
+
+      .lp-side-entry:focus-visible {
+        outline: none;
+      }
+
+      .lp-side-entry:focus-visible .lp-side-marker {
+        stroke: var(--primary-color);
+        stroke-width: 2.2;
+      }
+
+      .lp-side-entry[data-hidden="true"] {
+        opacity: 0.32;
+      }
+
+      .lp-side-entry[data-hidden="true"] .lp-side-label {
+        text-decoration: line-through;
+        text-decoration-thickness: 1px;
+      }
+
+      .lp-series-line {
+        fill: none;
+        stroke: var(--series-color);
+        stroke-width: 2.4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+        vector-effect: non-scaling-stroke;
+      }
+
+      .lp-point {
+        fill: var(--lp-bg);
+        stroke: var(--series-color);
+        stroke-width: 2.2;
+        vector-effect: non-scaling-stroke;
+        cursor: pointer;
+      }
+
+      .lp-point:hover,
+      .lp-point:focus {
+        fill: var(--series-color);
+        outline: none;
+      }
+
+      .lp-tooltip {
+        position: absolute;
+        z-index: 2;
+        left: var(--tooltip-left, 50%);
+        top: var(--tooltip-top, 50%);
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        max-width: min(260px, calc(100% - 24px));
+        padding: 9px 10px;
+        border: 1px solid color-mix(in srgb, var(--tooltip-color, var(--lp-accent)) 34%, var(--lp-border));
+        border-left: 3px solid var(--tooltip-color, var(--lp-accent));
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--lp-bg) 94%, var(--lp-bg-soft) 6%);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+        color: var(--lp-text);
+        pointer-events: none;
+        transform: translate(var(--tooltip-translate-x, -50%), calc(-100% - 10px));
+      }
+
+      .lp-tooltip-media {
+        width: 42px;
+        height: 42px;
+        border: 1px solid color-mix(in srgb, var(--tooltip-color, var(--lp-accent)) 30%, var(--lp-border));
+        border-radius: 8px;
+        background: var(--lp-panel-soft);
+        object-fit: contain;
+        padding: 6px;
+        box-sizing: border-box;
+        filter: var(--f1-team-logo-filter, none);
+      }
+
+      .lp-tooltip-title {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+        color: var(--lp-text);
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1.25;
+      }
+
+      .lp-tooltip-swatch {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--tooltip-color, var(--lp-accent));
+        flex: 0 0 auto;
+      }
+
+      .lp-tooltip-meta {
+        margin-top: 4px;
+        color: var(--lp-muted);
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.35;
+      }
+
+      .lp-tooltip-position {
+        margin-top: 6px;
+        color: var(--lp-text);
+        font-size: 15px;
+        font-weight: 900;
+        line-height: 1.1;
+      }
+
+      .lp-empty {
+        display: grid;
+        place-items: center;
+        min-height: 180px;
+        padding: 18px;
+        border: 1px dashed color-mix(in srgb, var(--lp-muted) 36%, transparent);
+        border-radius: 8px;
+        background: var(--lp-panel-soft);
+        color: var(--lp-muted);
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.4;
+        text-align: center;
+      }
+
+      @container (max-width: 540px) {
+        .lp-card {
+          padding: 14px 10px;
+        }
+
+        .lp-header {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 8px;
+        }
+
+        .lp-badges {
+          justify-content: flex-start;
+        }
+
+        .lp-title {
+          font-size: 14px;
+        }
+
+        .lp-axis-label {
+          font-size: 9px;
+        }
+
+        .lp-side-heading,
+        .lp-side-label {
+          font-size: 9px;
+        }
+
+        .lp-side-position {
+          font-size: 8px;
+        }
+      }
+    `,
+  ];
+
+  constructor() {
+    super();
+    this.config = { ...DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG };
+    this._selectedSessionKey = null;
+    this._sessionData = null;
+    this._sessionLoadingKey = null;
+    this._sessionError = null;
+    this._sessionDataCache = new Map();
+    this._sessionLoadToken = 0;
+    this._hoverPoint = null;
+    this._hiddenSeriesKeys = new Set();
+  }
+
+  static getStubConfig() {
+    return {
+      type: 'custom:f1-lap-position-progression-card',
+      ...DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG,
+    };
+  }
+
+  static getConfigElement() {
+    return document.createElement('f1-lap-position-progression-card-editor');
+  }
+
+  setConfig(config) {
+    this.config = {
+      ...DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG,
+      ...config,
+      entity: config?.entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.entity,
+      drivers_entity: config?.drivers_entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.drivers_entity,
+      no_spoiler_entity: config?.no_spoiler_entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.no_spoiler_entity,
+      title: config?.title || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.title,
+      theme_mode: config?.theme_mode || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.theme_mode,
+      show_full_name: config?.show_full_name === true,
+      team_logo_style: config?.team_logo_style || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.team_logo_style,
+      chart_height: this._clampNumber(config?.chart_height, 300, 720, DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.chart_height),
+      top_limit: Math.max(0, Math.floor(Number(config?.top_limit) || 0)),
+    };
+    applyF1ThemeMode(this, this.config, this.hass);
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    ensureF1Fonts();
+    applyF1ThemeMode(this, this.config, this.hass);
+  }
+
+  updated(changedProps) {
+    if (changedProps.has('hass') || changedProps.has('config')) {
+      applyF1ThemeMode(this, this.config, this.hass);
+    }
+  }
+
+  getCardSize() {
+    return 8;
+  }
+
+  getGridOptions() {
+    return {
+      columns: 12,
+      max_columns: 12,
+      min_columns: 6,
+      rows: 8,
+      min_rows: 6,
+    };
+  }
+
+  render() {
+    if (!this.hass || !this.config) return html``;
+    const entityState = getEntityStateWithFallback(this.hass, this.config.entity);
+    if (!entityState || isUnavailableLikeEntityState(entityState)) {
+      return this._renderCard(this._renderEmpty('Lap position entity not found'));
+    }
+
+    const sessions = this._buildSessions(entityState);
+    const selectedSession = this._resolveSelectedSession(sessions);
+    this._actionEntityId = resolveEntityIdWithFallback(this.hass, this.config.entity);
+    if (!selectedSession) {
+      return this._renderCard(this._renderEmpty('No lap position data', null, sessions));
+    }
+
+    const header = this.config.show_header !== false
+      ? this._renderHeader(selectedSession, sessions)
+      : null;
+
+    if (selectedSession.status !== 'available') {
+      return this._renderCard(html`
+        ${header}
+        ${this._renderStatusState(selectedSession)}
+      `);
+    }
+
+    const loadedSession = this._sessionForRender(selectedSession);
+    if (!loadedSession) {
+      this._ensureSessionData(selectedSession);
+      return this._renderCard(html`
+        ${header}
+        ${this._renderStatusState({ ...selectedSession, status: 'loading', reason: this._sessionError })}
+      `);
+    }
+
+    const renderSession = { ...selectedSession, ...loadedSession };
+    if (renderSession.status !== 'available') {
+      return this._renderCard(html`
+        ${this.config.show_header !== false ? this._renderHeader(renderSession, sessions) : null}
+        ${this._renderStatusState(renderSession)}
+      `);
+    }
+
+    const model = this._buildChartModel(renderSession);
+    if (!model.series.length || !model.labels.length) {
+      return this._renderCard(html`
+        ${this.config.show_header !== false ? this._renderHeader(renderSession, sessions) : null}
+        ${this._renderStatusState({ ...renderSession, status: 'pending' })}
+      `);
+    }
+
+    return this._renderCard(html`
+      ${header}
+      <div class="lp-main">
+        <div class="lp-chart-shell">
+          ${this._renderSvg(model)}
+          ${this._renderTooltip()}
+        </div>
+      </div>
+    `);
+  }
+
+  _renderCard(content) {
+    const chartHeight = this._clampNumber(this.config?.chart_height, 300, 720, DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.chart_height);
+    const theme = isEffectiveLightTheme(this.hass, this.config) ? 'light' : 'dark';
+    return html`
+      <ha-card @click=${() => this._handleCardAction()}>
+        <div
+          class="lp-card"
+          data-theme=${theme}
+          data-layout=${getResponsiveLayoutMode(this)}
+          style=${`--lp-chart-height: ${chartHeight}px;`}
+        >
+          ${content}
+        </div>
+      </ha-card>
+    `;
+  }
+
+  _renderHeader(session, sessions) {
+    const driverCount = Number(session?.driver_count);
+    const lapCount = Number(session?.total_laps);
+    return html`
+      <div class="lp-header">
+        <div>
+          <h3 class="lp-title">${this.config.title || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.title}</h3>
+          <div class="lp-subtitle">${this._sessionDisplayTitle(session)}</div>
+        </div>
+        <div class="lp-badges">
+          <span class="lp-badge ${session?.type === 'sprint' ? 'unsupported' : ''}">${this._sessionTypeLabel(session)}</span>
+          ${Number.isFinite(lapCount) && lapCount > 0 ? html`<span class="lp-badge">${lapCount} laps</span>` : null}
+          ${Number.isFinite(driverCount) && driverCount > 0 ? html`<span class="lp-badge">${driverCount} drivers</span>` : null}
+          ${session?.status && session.status !== 'available' ? html`<span class="lp-badge ${session.status}">${session.status}</span>` : null}
+        </div>
+        ${this._renderSessionSelector(sessions, session)}
+      </div>
+    `;
+  }
+
+  _renderSessionSelector(sessions, selectedSession) {
+    const list = Array.isArray(sessions) ? sessions : [];
+    if (this.config.show_session_selector === false || list.length <= 1) return null;
+    return html`
+      <div class="lp-selector-row" @click=${(ev) => ev.stopPropagation()}>
+        <select
+          class="lp-session-select"
+          .value=${selectedSession?.key || ''}
+          @change=${this._sessionSelectionChanged}
+        >
+          ${list.map((session) => html`
+            <option value=${session.key}>${this._sessionOptionLabel(session)}</option>
+          `)}
+        </select>
+      </div>
+    `;
+  }
+
+  _renderStatusState(session) {
+    const reason = String(session?.reason || '').trim();
+    const message = session?.status === 'unsupported'
+      ? 'Sprint lap position data is not available'
+      : session?.status === 'loading'
+        ? 'Loading lap position data'
+        : session?.status === 'blocked'
+          ? 'No Spoiler Mode is active'
+          : session?.status === 'not_found'
+            ? 'Lap position session was not found'
+            : session?.status === 'error'
+              ? this._statusErrorMessage(reason)
+              : 'Lap position data is pending';
+    return html`<div class="lp-empty">${message}</div>`;
+  }
+
+  _renderEmpty(message, selectedSession = null, sessions = []) {
+    return html`
+      ${this.config?.show_header !== false && selectedSession ? this._renderHeader(selectedSession, sessions) : null}
+      <div class="lp-empty">${message}</div>
+    `;
+  }
+
+  _renderSvg(model) {
+    const width = 900;
+    const height = this._clampNumber(this.config.chart_height, 300, 720, DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.chart_height);
+    const showLapLabels = this.config.show_round_labels !== false;
+    const startOrderLabels = this._startOrderLabels(model.series);
+    const currentOrderLabels = this._currentOrderLabels(model.series);
+    const startPositionBySeries = new Map(startOrderLabels.map((item) => [item.series, item.position]));
+    const margin = {
+      top: 30,
+      right: this._sideLabelWidth(currentOrderLabels, 'current'),
+      bottom: showLapLabels ? 52 : 28,
+      left: this._sideLabelWidth(startOrderLabels, 'start'),
+    };
+    const chartRight = width - margin.right;
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    const maxPosition = Math.max(1, model.maxPosition || 1);
+    const xStep = model.labels.length ? innerWidth / model.labels.length : 0;
+    const yForPosition = (position) => {
+      if (!Number.isFinite(position)) return null;
+      if (maxPosition <= 1) return margin.top;
+      return margin.top + ((position - 1) / (maxPosition - 1)) * innerHeight;
+    };
+    const pointFor = (value, index) => {
+      const y = yForPosition(value);
+      if (!Number.isFinite(y)) return null;
+      const x = margin.left + ((index + 1) * xStep);
+      return { x, y, value, index, label: model.labels[index] || `L${index + 1}` };
+    };
+    const startPointFor = (series) => {
+      const position = startPositionBySeries.get(series);
+      const y = yForPosition(position);
+      if (!Number.isFinite(y)) return null;
+      return { x: margin.left, y, value: position, index: -1, label: 'Start' };
+    };
+    const ticks = this._positionTicks(maxPosition).map((position) => ({
+      position,
+      y: yForPosition(position),
+    })).filter((tick) => Number.isFinite(tick.y));
+    const visibleLapLabels = this._visibleLapLabels(model.labels);
+    const ariaLabel = `${this.config.title || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.title} for ${model.session?.race_name || 'selected race'}`;
+
+    return svg`
+      <svg
+        class="lp-chart"
+        viewBox=${`0 0 ${width} ${height}`}
+        role="img"
+        aria-label=${ariaLabel}
+        @pointerleave=${() => this._clearHoverPoint()}
+      >
+        <text class="lp-side-heading" x=${margin.left - 14} y=${margin.top - 13} text-anchor="end">START</text>
+        <text class="lp-side-heading" x=${chartRight + 10} y=${margin.top - 13}>CURRENT</text>
+        ${ticks.map((tick) => svg`
+          <line class="lp-grid-line" x1=${margin.left} x2=${chartRight} y1=${tick.y} y2=${tick.y}></line>
+        `)}
+        <line class="lp-axis-line" x1=${margin.left} x2=${margin.left} y1=${margin.top} y2=${height - margin.bottom}></line>
+        <line class="lp-axis-line" x1=${margin.left} x2=${chartRight} y1=${height - margin.bottom} y2=${height - margin.bottom}></line>
+        ${startOrderLabels.map((item) => {
+          const y = yForPosition(item.position);
+          if (!Number.isFinite(y)) return null;
+          const hidden = this._isSeriesHidden(item.series);
+          return svg`
+            <g
+              class="lp-side-entry"
+              data-hidden=${hidden ? 'true' : 'false'}
+              style=${`--series-color: ${item.series.color};`}
+              role="button"
+              tabindex="0"
+              aria-pressed=${hidden ? 'false' : 'true'}
+              aria-label=${`${item.series.name}: ${hidden ? 'show' : 'hide'} lap position line`}
+              @click=${(ev) => this._toggleSeriesVisibility(item.series, ev)}
+              @keydown=${(ev) => this._toggleSeriesVisibilityFromKey(item.series, ev)}
+            >
+              <text class="lp-side-label left" x=${margin.left - 14} y=${y} text-anchor="end" dominant-baseline="middle">${item.label}</text>
+              <circle class="lp-side-marker" cx=${margin.left - 5} cy=${y} r="3"></circle>
+            </g>
+          `;
+        })}
+        ${currentOrderLabels.map((item) => {
+          const y = yForPosition(item.position);
+          if (!Number.isFinite(y)) return null;
+          const hidden = this._isSeriesHidden(item.series);
+          return svg`
+            <g
+              class="lp-side-entry"
+              data-hidden=${hidden ? 'true' : 'false'}
+              style=${`--series-color: ${item.series.color};`}
+              role="button"
+              tabindex="0"
+              aria-pressed=${hidden ? 'false' : 'true'}
+              aria-label=${`${item.series.name}: ${hidden ? 'show' : 'hide'} lap position line`}
+              @click=${(ev) => this._toggleSeriesVisibility(item.series, ev)}
+              @keydown=${(ev) => this._toggleSeriesVisibilityFromKey(item.series, ev)}
+            >
+              <circle class="lp-side-marker" cx=${chartRight + 7} cy=${y} r="3"></circle>
+              <text class="lp-side-position" x=${chartRight + 15} y=${y} dominant-baseline="middle">P${this._formatPosition(item.position)}</text>
+              <text class="lp-side-label right" x=${chartRight + 36} y=${y} dominant-baseline="middle">${item.label}</text>
+            </g>
+          `;
+        })}
+        ${showLapLabels ? visibleLapLabels.map(({ label, index }) => {
+          const x = margin.left + ((index + 1) * xStep);
+          return svg`
+            <text
+              class="lp-axis-label"
+              x=${x}
+              y=${height - 20}
+              text-anchor="end"
+              transform=${`rotate(-32 ${x} ${height - 20})`}
+            >
+              ${label}
+            </text>
+          `;
+        }) : null}
+        ${model.series.map((series) => {
+          if (this._isSeriesHidden(series)) return null;
+          const points = series.positions.map((value, index) => pointFor(value, index));
+          const startPoint = startPointFor(series);
+          const pathPoints = [startPoint, ...points];
+          const path = pathPoints.filter(Boolean).length > 1 ? this._buildPath(pathPoints) : '';
+          return svg`
+            <g style=${`--series-color: ${series.color};`}>
+              ${path ? svg`<path class="lp-series-line" d=${path}></path>` : null}
+              ${this.config.show_points !== false ? points.filter(Boolean).map((point) => svg`
+                <circle
+                  class="lp-point"
+                  cx=${point.x}
+                  cy=${point.y}
+                  r="4"
+                  tabindex="0"
+                  role="graphics-symbol"
+                  aria-label=${`${series.name}, ${point.label}, position ${point.value}`}
+                  @pointerenter=${() => this._setHoverPoint(series, point, model.session, width, height)}
+                  @pointermove=${() => this._setHoverPoint(series, point, model.session, width, height)}
+                  @focus=${() => this._setHoverPoint(series, point, model.session, width, height)}
+                  @click=${(ev) => {
+                    ev.stopPropagation();
+                    this._setHoverPoint(series, point, model.session, width, height);
+                  }}
+                  @blur=${() => this._clearHoverPoint()}
+                >
+                  <title>${series.name} - ${point.label} - P${point.value}</title>
+                </circle>
+              `) : null}
+            </g>
+          `;
+        })}
+      </svg>
+    `;
+  }
+
+  _renderTooltip() {
+    const point = this._hoverPoint;
+    if (!point) return null;
+    const media = point.media?.src ? html`
+      <img
+        class="lp-tooltip-media"
+        src=${point.media.src}
+        data-fallback=${point.media.fallback || ''}
+        alt=""
+        loading="eager"
+        decoding="async"
+        @error=${handleTeamLogoError}
+      >
+    ` : null;
+    return html`
+      <div
+        class="lp-tooltip"
+        style=${`--tooltip-left: ${point.left}%; --tooltip-top: ${point.top}%; --tooltip-color: ${point.color}; --tooltip-translate-x: ${point.translateX};`}
+      >
+        ${media}
+        <div>
+          <div class="lp-tooltip-title">
+            <span class="lp-tooltip-swatch"></span>
+            <span>${point.name}</span>
+          </div>
+          <div class="lp-tooltip-meta">
+            <div>${point.lap}</div>
+            <div>${point.raceName}</div>
+            ${point.movement ? html`<div>${point.movement}</div>` : null}
+          </div>
+          <div class="lp-tooltip-position">P${point.position}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  _buildSessions(entityState) {
+    const sessions = asEntityList(entityState?.attributes?.sessions)
+      .map((session, index) => this._normalizeSession(session, index))
+      .filter((session) => session.key);
+    return sessions.sort((a, b) => {
+      if (Number.isFinite(a.roundNumber) && Number.isFinite(b.roundNumber)) {
+        const roundDiff = b.roundNumber - a.roundNumber;
+        if (roundDiff !== 0) return roundDiff;
+      }
+      if (Number.isFinite(a.roundNumber) && !Number.isFinite(b.roundNumber)) return -1;
+      if (!Number.isFinite(a.roundNumber) && Number.isFinite(b.roundNumber)) return 1;
+      if (a.type !== b.type) return a.type === 'race' ? -1 : 1;
+      return String(a.label || '').localeCompare(String(b.label || ''));
+    });
+  }
+
+  _sessionForRender(selectedSession) {
+    const key = selectedSession?.key;
+    if (!key) return null;
+    if (this._sessionData?.key === key) return this._sessionData;
+    const cached = this._sessionDataCache?.get(key);
+    if (cached?.key === key) {
+      this._sessionData = cached;
+      return cached;
+    }
+    if (Array.isArray(selectedSession?.drivers) && selectedSession.drivers.length) {
+      return selectedSession;
+    }
+    return null;
+  }
+
+  async _ensureSessionData(selectedSession) {
+    const key = selectedSession?.key;
+    if (!this.hass || !key || selectedSession?.type !== 'race' || selectedSession?.status !== 'available') {
+      return;
+    }
+    if (this._sessionData?.key === key || this._sessionDataCache?.has(key) || this._sessionLoadingKey === key) {
+      return;
+    }
+
+    const entityId = resolveEntityIdWithFallback(this.hass, this.config.entity) || this.config.entity;
+    const token = ++this._sessionLoadToken;
+    this._sessionLoadingKey = key;
+    this._sessionError = null;
+
+    try {
+      const response = await this._callWS({
+        type: 'f1_sensor/lap_position/session',
+        entity_id: entityId,
+        session_key: key,
+      });
+      if (token !== this._sessionLoadToken) return;
+      const responseSession = response?.session || {};
+      const session = this._normalizeSession({
+        ...selectedSession,
+        ...responseSession,
+        status: responseSession.status || response?.status || selectedSession.status,
+        reason: responseSession.reason || response?.reason || null,
+      }, 0);
+      this._sessionData = session;
+      if (session.status === 'available') {
+        this._sessionDataCache.set(key, session);
+      }
+      this._sessionLoadingKey = null;
+      this._sessionError = null;
+    } catch (err) {
+      if (token !== this._sessionLoadToken) return;
+      this._sessionData = {
+        ...selectedSession,
+        status: 'error',
+        reason: err?.message || 'Home Assistant WebSocket API is unavailable',
+      };
+      this._sessionLoadingKey = null;
+      this._sessionError = this._sessionData.reason;
+    }
+  }
+
+  async _callWS(message) {
+    if (typeof this.hass?.callWS === 'function') {
+      return this.hass.callWS(message);
+    }
+    if (this.hass?.connection?.sendMessagePromise) {
+      return this.hass.connection.sendMessagePromise(message);
+    }
+    throw new Error('Home Assistant WebSocket API is unavailable');
+  }
+
+  _normalizeSession(session, index) {
+    const type = session?.type === 'sprint' ? 'sprint' : 'race';
+    const roundNumber = this._parsePosition(session?.round);
+    const key = String(session?.key || `${type}:${session?.season || ''}:${session?.round || index}`).trim();
+    return {
+      ...session,
+      key,
+      type,
+      status: String(session?.status || 'pending').trim().toLowerCase(),
+      roundNumber,
+      label: session?.label || this._sessionDisplayTitle(session),
+      drivers: asEntityList(session?.drivers),
+    };
+  }
+
+  _resolveSelectedSession(sessions) {
+    const list = Array.isArray(sessions) ? sessions : [];
+    if (!list.length) return null;
+    const selected = this._selectedSessionKey
+      ? list.find((session) => session.key === this._selectedSessionKey)
+      : null;
+    if (selected) return selected;
+    return list.find((session) => session.type === 'race' && session.status === 'available')
+      || list.find((session) => session.status === 'available')
+      || list[0];
+  }
+
+  _buildChartModel(session) {
+    const labels = this._normalizeLabels(session);
+    const driverList = this._getDriverList();
+    const normalized = asEntityList(session?.drivers)
+      .map((driver, index) => this._normalizeDriverSeries(driver, labels.length, driverList, index))
+      .filter((driver) => this._hasLapPositionSeries(driver));
+    const fallbackSeries = normalized.length ? [] : asEntityList(session?.series?.series)
+      .map((series, index) => this._normalizeFallbackSeries(series, labels.length, index))
+      .filter((series) => this._hasLapPositionSeries(series));
+    const ranked = (normalized.length ? normalized : fallbackSeries).sort((a, b) => {
+      const positionDiff = this._comparePositionAscending(a.finishPosition, b.finishPosition);
+      if (positionDiff !== 0) return positionDiff;
+      return String(a.name).localeCompare(String(b.name));
+    });
+    const limit = Math.max(0, Math.floor(Number(this.config?.top_limit) || 0));
+    const visible = limit > 0 ? ranked.slice(0, limit) : ranked;
+    const maxPosition = Math.max(
+      1,
+      visible.length,
+      ...visible.flatMap((series) => [
+        ...series.positions,
+        this._seriesCurrentPosition(series),
+      ].filter((position) => Number.isFinite(position) && position > 0)),
+    );
+    return {
+      session,
+      labels,
+      series: visible,
+      totalSeriesCount: ranked.length,
+      maxPosition,
+    };
+  }
+
+  _normalizeLabels(session) {
+    const labels = Array.isArray(session?.labels) && session.labels.length
+      ? session.labels
+      : Array.isArray(session?.series?.labels)
+        ? session.series.labels
+        : [];
+    if (labels.length) return labels.map((label, index) => String(label || `L${index + 1}`));
+    const maxLength = Math.max(
+      0,
+      ...asEntityList(session?.drivers).map((driver) => Array.isArray(driver?.positions) ? driver.positions.length : 0),
+      ...asEntityList(session?.series?.series).map((series) => Array.isArray(series?.data) ? series.data.length : 0),
+    );
+    return Array.from({ length: maxLength }, (_value, index) => `L${index + 1}`);
+  }
+
+  _normalizeDriverSeries(driver, expectedLength, driverList, index) {
+    const positions = this._normalizePositions(driver?.positions, expectedLength);
+    const code = String(driver?.code || '').trim().toUpperCase();
+    const name = String(driver?.name || code || driver?.driver_id || `Driver ${index + 1}`).trim();
+    const meta = this._findDriverMeta(driver, driverList);
+    const teamName = driver?.constructor_name || meta?.team || meta?.team_name || '';
+    const color = this._usableColor(driver?.color || meta?.team_color) || F1_SEASON_PROGRESSION_FALLBACK_COLORS[index % F1_SEASON_PROGRESSION_FALLBACK_COLORS.length];
+    return {
+      key: String(driver?.driver_id || code || index),
+      code,
+      name,
+      shortName: code || name,
+      color,
+      positions,
+      grid: this._toNumber(driver?.grid),
+      finishPosition: this._toNumber(driver?.finish_position) ?? this._latestFinite(positions),
+      status: driver?.status || '',
+      media: this._resolveDriverMedia(teamName),
+    };
+  }
+
+  _normalizeFallbackSeries(series, expectedLength, index) {
+    const positions = this._normalizePositions(series?.data || series?.values || [], expectedLength);
+    const name = String(series?.name || series?.key || `Driver ${index + 1}`).trim();
+    return {
+      key: String(series?.key || name || index),
+      code: String(series?.key || '').trim().toUpperCase(),
+      name,
+      shortName: String(series?.key || name).trim(),
+      color: this._usableColor(series?.color) || F1_SEASON_PROGRESSION_FALLBACK_COLORS[index % F1_SEASON_PROGRESSION_FALLBACK_COLORS.length],
+      positions,
+      grid: null,
+      finishPosition: this._latestFinite(positions),
+      status: '',
+      media: null,
+    };
+  }
+
+  _hasLapPositionSeries(series) {
+    return series.positions.some((position) => Number.isFinite(position))
+      || Number.isFinite(this._seriesStartPosition(series))
+      || Number.isFinite(this._seriesCurrentPosition(series));
+  }
+
+  _normalizePositions(values, expectedLength) {
+    const array = Array.isArray(values) ? values : Object.values(values || {});
+    const positions = array.map((value) => {
+      if (value === null || value === undefined || String(value).trim() === '') {
+        return null;
+      }
+      const num = Number(value);
+      return Number.isFinite(num) ? num : null;
+    });
+    if (expectedLength > positions.length) {
+      positions.push(...Array.from({ length: expectedLength - positions.length }, () => null));
+    }
+    return positions;
+  }
+
+  _positionTicks(maxPosition) {
+    const max = Math.max(1, Math.floor(Number(maxPosition) || 1));
+    if (max <= 10) {
+      return Array.from({ length: max }, (_value, index) => index + 1);
+    }
+    const ticks = new Set([1, max]);
+    const step = Math.max(1, Math.ceil(max / 5));
+    for (let position = step; position < max; position += step) {
+      ticks.add(position);
+    }
+    return Array.from(ticks).sort((a, b) => a - b);
+  }
+
+  _visibleLapLabels(labels) {
+    const list = Array.isArray(labels) ? labels : [];
+    if (list.length <= 12) {
+      return list.map((label, index) => ({ label, index }));
+    }
+    const stride = Math.ceil(list.length / 10);
+    return list
+      .map((label, index) => ({ label, index }))
+      .filter(({ index }) => index === 0 || index === list.length - 1 || index % stride === 0);
+  }
+
+  _startOrderLabels(seriesList) {
+    return this._orderedSideLabels(seriesList, 'start');
+  }
+
+  _currentOrderLabels(seriesList) {
+    return this._orderedSideLabels(seriesList, 'current');
+  }
+
+  _orderedSideLabels(seriesList, side) {
+    const ordered = asEntityList(seriesList)
+      .map((series) => ({
+        series,
+        position: side === 'start' ? this._seriesStartPosition(series) : this._seriesCurrentPosition(series),
+        label: this._sideDriverLabel(series, side),
+      }))
+      .filter((item) => Number.isFinite(item.position) && item.position > 0 && item.label)
+      .sort((a, b) => {
+        const positionDiff = this._comparePositionAscending(a.position, b.position);
+        if (positionDiff !== 0) return positionDiff;
+        return String(a.label).localeCompare(String(b.label));
+      });
+    if (side !== 'start') {
+      return ordered;
+    }
+    return ordered.map((item, index) => ({
+      ...item,
+      sourcePosition: item.position,
+      position: index + 1,
+    }));
+  }
+
+  _sideLabelWidth(labels, side) {
+    const longest = asEntityList(labels).reduce((max, item) => Math.max(max, String(item?.label || '').length), 0);
+    const fullName = this.config?.show_full_name === true;
+    const baseWidth = side === 'start' ? 58 : 92;
+    const maxWidth = side === 'start'
+      ? (fullName ? 176 : 86)
+      : (fullName ? 188 : 148);
+    const labelOffset = side === 'start' ? 24 : 46;
+    return Math.max(baseWidth, Math.min(maxWidth, Math.ceil((longest * 6.4) + labelOffset)));
+  }
+
+  _sideDriverLabel(series, side) {
+    const fullName = String(series?.name || series?.shortName || series?.code || '').trim();
+    if (this.config?.show_full_name === true) {
+      return this._truncateSvgLabel(fullName, 22);
+    }
+    if (side === 'start') {
+      return this._truncateSvgLabel(String(series?.shortName || series?.code || this._familyName(fullName) || fullName).trim().toUpperCase(), 6);
+    }
+    return this._truncateSvgLabel(String(this._familyName(fullName) || series?.shortName || series?.code || fullName).trim().toUpperCase(), 13);
+  }
+
+  _seriesStartPosition(series) {
+    const grid = Number(series?.grid);
+    return Number.isFinite(grid) && grid > 0
+      ? grid
+      : this._firstFinite(series?.positions) ?? this._seriesCurrentPosition(series);
+  }
+
+  _seriesCurrentPosition(series) {
+    const finish = Number(series?.finishPosition);
+    return Number.isFinite(finish) && finish > 0
+      ? finish
+      : this._latestFinite(series?.positions || []);
+  }
+
+  _familyName(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : '';
+  }
+
+  _truncateSvgLabel(label, maxLength) {
+    const normalized = String(label || '').trim();
+    if (!normalized || normalized.length <= maxLength) return normalized;
+    return `${normalized.slice(0, Math.max(1, maxLength - 3))}...`;
+  }
+
+  _buildPath(points) {
+    let path = '';
+    let drawing = false;
+    points.forEach((point) => {
+      if (!point) {
+        drawing = false;
+        return;
+      }
+      path += `${drawing ? 'L' : 'M'} ${point.x.toFixed(2)} ${point.y.toFixed(2)} `;
+      drawing = true;
+    });
+    return path.trim();
+  }
+
+  _setHoverPoint(series, point, session, width, height) {
+    const left = Math.max(4, Math.min(96, (point.x / width) * 100));
+    const grid = Number(series.grid);
+    const finish = Number(series.finishPosition);
+    const movement = Number.isFinite(grid) && grid > 0 && Number.isFinite(finish)
+      ? `Grid P${grid}, finish P${finish}`
+      : '';
+    this._hoverPoint = {
+      name: series.name,
+      color: series.color,
+      media: series.media || null,
+      lap: point.label,
+      position: point.value,
+      raceName: this._sessionDisplayTitle(session),
+      movement,
+      left,
+      top: Math.max(8, Math.min(92, (point.y / height) * 100)),
+      translateX: left < 18 ? '0' : left > 82 ? '-100%' : '-50%',
+    };
+  }
+
+  _clearHoverPoint() {
+    this._hoverPoint = null;
+  }
+
+  _sessionSelectionChanged(ev) {
+    ev.stopPropagation();
+    this._selectedSessionKey = ev.target.value;
+    this._sessionData = this._sessionDataCache.get(this._selectedSessionKey) || null;
+    this._sessionError = null;
+    this._clearHoverPoint();
+  }
+
+  _sessionDisplayTitle(session) {
+    const raceName = String(session?.race_name || '').trim();
+    if (!raceName) return 'Lap Position Progression';
+    return raceName.replace(' Grand Prix', ' GP');
+  }
+
+  _sessionOptionLabel(session) {
+    const round = session?.round ? `R${session.round}` : null;
+    const status = session?.status && session.status !== 'available'
+      ? session.status.toUpperCase()
+      : null;
+    return [round, this._sessionTypeLabel(session), this._sessionDisplayTitle(session), status]
+      .filter(Boolean)
+      .join(' - ');
+  }
+
+  _sessionTypeLabel(session) {
+    return session?.type === 'sprint' ? 'SPRINT' : 'RACE';
+  }
+
+  _getDriverList() {
+    const state = getEntityStateWithFallback(this.hass, this.config?.drivers_entity);
+    const drivers = state?.attributes?.drivers;
+    return Array.isArray(drivers) ? drivers : [];
+  }
+
+  _findDriverMeta(driver, driverList) {
+    const code = String(driver?.code || '').trim().toUpperCase();
+    const number = String(driver?.number || '').trim();
+    const driverId = this._searchKey(driver?.driver_id);
+    return (driverList || []).find((entry) => {
+      const entryCode = String(entry?.tla || entry?.code || '').trim().toUpperCase();
+      if (code && entryCode === code) return true;
+      const entryNumber = String(entry?.racing_number || entry?.number || '').trim();
+      if (number && entryNumber === number) return true;
+      const reference = this._searchKey(entry?.reference || entry?.driverId || entry?.driver_id);
+      return Boolean(driverId && reference.includes(driverId));
+    }) || null;
+  }
+
+  _resolveDriverMedia(teamName) {
+    const logo = getTeamLogoMeta(
+      teamName,
+      52,
+      this.config.team_logo_style,
+      isEffectiveLightTheme(this.hass, this.config),
+    );
+    return logo ? { ...logo, kind: 'team-logo' } : null;
+  }
+
+  _isSeriesHidden(series) {
+    return this._hiddenSeriesKeys?.has(this._seriesFilterKey(series));
+  }
+
+  _toggleSeriesVisibility(series, ev) {
+    ev?.stopPropagation?.();
+    ev?.preventDefault?.();
+    const key = this._seriesFilterKey(series);
+    const hiddenKeys = new Set(this._hiddenSeriesKeys || []);
+    if (hiddenKeys.has(key)) {
+      hiddenKeys.delete(key);
+    } else {
+      hiddenKeys.add(key);
+    }
+    this._hiddenSeriesKeys = hiddenKeys;
+    this._clearHoverPoint();
+  }
+
+  _toggleSeriesVisibilityFromKey(series, ev) {
+    if (!['Enter', ' ', 'Spacebar'].includes(ev?.key)) return;
+    this._toggleSeriesVisibility(series, ev);
+  }
+
+  _seriesFilterKey(series) {
+    return String(series?.key || series?.code || series?.name || '');
+  }
+
+  _handleCardAction() {
+    const action = this.config?.tap_action || { action: 'more-info' };
+    if (action.action === 'none') return;
+    if (action.action === 'more-info') {
+      this.dispatchEvent(new CustomEvent('hass-more-info', {
+        bubbles: true,
+        composed: true,
+        detail: { entityId: this._actionEntityId || resolveEntityIdWithFallback(this.hass, this.config?.entity) },
+      }));
+    }
+  }
+
+  _comparePositionAscending(a, b) {
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      const diff = a - b;
+      return diff === 0 ? 0 : diff;
+    }
+    if (Number.isFinite(a)) return -1;
+    if (Number.isFinite(b)) return 1;
+    return 0;
+  }
+
+  _parsePosition(value) {
+    if (value === null || value === undefined) return null;
+    const match = String(value).match(/\d+/);
+    if (!match) return null;
+    const num = Number(match[0]);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  _toNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  _latestFinite(values) {
+    for (let index = values.length - 1; index >= 0; index -= 1) {
+      if (Number.isFinite(values[index])) return values[index];
+    }
+    return null;
+  }
+
+  _firstFinite(values) {
+    const list = Array.isArray(values) ? values : [];
+    for (let index = 0; index < list.length; index += 1) {
+      if (Number.isFinite(list[index])) return list[index];
+    }
+    return null;
+  }
+
+  _formatPosition(value) {
+    return Number.isFinite(value) ? String(Math.round(value)) : '--';
+  }
+
+  _statusErrorMessage(reason) {
+    const normalized = String(reason || '').toLowerCase();
+    if (normalized.includes('429') || normalized.includes('too many requests')) {
+      return 'Jolpica rate limit reached. Try again later.';
+    }
+    return 'Lap position data could not be loaded';
+  }
+
+  _searchKey(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  _usableColor(value) {
+    const color = String(value || '').trim();
+    if (/^#[0-9a-f]{3,8}$/i.test(color)) return color;
+    if (/^rgba?\([\d\s,.%]+\)$/i.test(color)) return color;
+    if (/^hsla?\([\d\s,.%]+\)$/i.test(color)) return color;
+    return null;
+  }
+
+  _clampNumber(value, min, max, fallback) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.max(min, Math.min(max, num));
+  }
+}
+
+// ============================================================================
+// F1 Lap Position Progression Card Editor
+// ============================================================================
+
+class F1LapPositionProgressionCardEditor extends LitElement {
+  static properties = {
+    hass: {},
+    _config: {},
+    _activeTab: { state: true },
+  };
+
+  static styles = css`
+    .card-config {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--divider-color);
+      margin-bottom: 16px;
+    }
+
+    .tabs button {
+      flex: 1;
+      padding: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--primary-text-color);
+      font-size: 14px;
+      font-family: inherit;
+      transition: color 0.2s;
+    }
+
+    .tabs button:hover {
+      color: var(--primary-color);
+    }
+
+    .tabs button.active {
+      color: var(--primary-color);
+      border-bottom: 2px solid var(--primary-color);
+    }
+
+    .section,
+    .display-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .section-header {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--secondary-text-color);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .helper {
+      font-size: 12px;
+      line-height: 1.35;
+      color: var(--secondary-text-color);
+      margin-top: -8px;
+    }
+
+    ha-textfield {
+      width: 100%;
+    }
+  `;
+
+  constructor() {
+    super();
+    this._activeTab = 'sources';
+  }
+
+  setConfig(config) {
+    this._config = {
+      ...DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG,
+      ...config,
+      entity: config?.entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.entity,
+      drivers_entity: config?.drivers_entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.drivers_entity,
+      no_spoiler_entity: config?.no_spoiler_entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.no_spoiler_entity,
+      title: config?.title || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.title,
+      theme_mode: config?.theme_mode || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.theme_mode,
+      show_full_name: config?.show_full_name === true,
+      team_logo_style: config?.team_logo_style || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.team_logo_style,
+      chart_height: this._clampNumber(config?.chart_height, 300, 720, DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.chart_height),
+      top_limit: Math.max(0, Math.floor(Number(config?.top_limit) || 0)),
+    };
+  }
+
+  render() {
+    if (!this.hass || !this._config) return html``;
+    return html`
+      <div class="card-config">
+        <div class="tabs">
+          <button
+            class=${this._activeTab === 'sources' ? 'active' : ''}
+            @click=${() => this._activeTab = 'sources'}
+          >
+            Data Sources
+          </button>
+          <button
+            class=${this._activeTab === 'display' ? 'active' : ''}
+            @click=${() => this._activeTab = 'display'}
+          >
+            Display
+          </button>
+        </div>
+
+        ${this._activeTab === 'sources' ? this._renderDataSourcesTab() : this._renderDisplayTab()}
+      </div>
+    `;
+  }
+
+  _renderDataSourcesTab() {
+    return html`
+      <div class="section">
+        <div class="section-header">LAP POSITION SENSOR</div>
+        ${this._renderEntityPicker(
+          'entity',
+          'Lap position entity',
+          'Provides completed race sessions and sprint metadata.',
+          true,
+          'sensor',
+        )}
+        ${this._renderEntityPicker(
+          'drivers_entity',
+          'Driver list entity',
+          'Optional. Provides driver team metadata for colors and logos.',
+          false,
+          'sensor',
+        )}
+        ${this._renderEntityPicker(
+          'no_spoiler_entity',
+          'No Spoiler switch',
+          'Masks the chart while No Spoiler Mode is active.',
+          false,
+          'switch',
+        )}
+      </div>
+    `;
+  }
+
+  _renderDisplayTab() {
+    return html`
+      <div class="display-section">
+        ${renderThemeModeSelect(this)}
+        <ha-textfield
+          .label=${'Title'}
+          .value=${this._config.title || ''}
+          @input=${(e) => this._valueChanged('title', e.target.value)}
+        ></ha-textfield>
+
+        <div class="section-header">LAYOUT</div>
+        ${this._renderSwitch('show_header', 'Show header')}
+        ${this._renderSwitch('show_session_selector', 'Show race selector')}
+        ${this._renderSwitch('show_full_name', 'Use full names')}
+        ${renderEditorSelect(this, 'team_logo_style', 'Team logo style', [
+          { value: 'color', label: 'Color (fallback to white)' },
+          { value: 'white', label: 'White' },
+        ])}
+
+        <div class="section-header">CHART</div>
+        ${this._renderSwitch('show_points', 'Show chart points')}
+        ${this._renderSwitch('show_round_labels', 'Show lap labels')}
+        ${this._renderNumberField('top_limit', 'Top limit', 'Use 0 to show all drivers.', 0, 30, 1)}
+        ${this._renderNumberField('chart_height', 'Chart height', null, 300, 720, 10)}
+      </div>
+    `;
+  }
+
+  _renderEntityPicker(name, label, helper, required, domain) {
+    const schema = [{ name, label, required, selector: { entity: { domain } } }];
+    return html`
+      <div class="field">
+        <ha-form
+          .hass=${this.hass}
+          .data=${this._config}
+          .schema=${schema}
+          .computeLabel=${() => label}
+          @value-changed=${this._formValueChanged}
+        ></ha-form>
+        <div class="helper">${helper}</div>
+      </div>
+    `;
+  }
+
+  _renderSwitch(name, label) {
+    const schema = [{ name, label, selector: { boolean: {} } }];
+    return html`
+      <ha-form
+        .hass=${this.hass}
+        .data=${this._config}
+        .schema=${schema}
+        .computeLabel=${() => label}
+        @value-changed=${this._formValueChanged}
+      ></ha-form>
+    `;
+  }
+
+  _renderNumberField(name, label, helper, min, max, step) {
+    const schema = [{
+      name,
+      label,
+      selector: {
+        number: {
+          mode: 'box',
+          min,
+          max,
+          step,
+        },
+      },
+    }];
+    return html`
+      <div class="field">
+        <ha-form
+          .hass=${this.hass}
+          .data=${this._config}
+          .schema=${schema}
+          .computeLabel=${() => label}
+          @value-changed=${this._formValueChanged}
+        ></ha-form>
+        ${helper ? html`<div class="helper">${helper}</div>` : null}
+      </div>
+    `;
+  }
+
+  _formValueChanged(ev) {
+    if (!this._config) return;
+    const value = ev.detail?.value || {};
+    let newConfig = { ...this._config, ...value };
+    if (Object.prototype.hasOwnProperty.call(value, 'top_limit')) {
+      newConfig.top_limit = Math.max(0, Math.floor(Number(value.top_limit) || 0));
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'chart_height')) {
+      newConfig.chart_height = this._clampNumber(value.chart_height, 300, 720, DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.chart_height);
+    }
+    this._config = newConfig;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: newConfig } }));
+  }
+
+  _valueChanged(name, value) {
+    if (!this._config) return;
+    const newConfig = { ...this._config, [name]: value };
+    this._config = newConfig;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: newConfig } }));
   }
 
   _clampNumber(value, min, max, fallback) {
@@ -29476,6 +31082,13 @@ installSectionsAutoHeight(F1SeasonCalendarCard, {
   min_rows: 5,
 });
 
+installSectionsAutoHeight(F1LapPositionProgressionCard, {
+  columns: 12,
+  min_columns: 4,
+  max_columns: 12,
+  min_rows: 5,
+});
+
 installSectionsAutoHeight(F1LiveSessionCard, {
   columns: 12,
   min_columns: 4,
@@ -29539,6 +31152,7 @@ const F1_NO_SPOILER_CARD_CLASSES = [
   F1ChampionshipPredictionDriversCard,
   F1ChampionshipPredictionTeamsCard,
   F1LastRaceResultsCard,
+  F1LapPositionProgressionCard,
   F1InvestigationsCard,
   F1TrackLimitsCard,
   F1LiveSessionCard,
@@ -29607,6 +31221,14 @@ if (!customElements.get('f1-last-race-results-card')) {
 
 if (!customElements.get('f1-last-race-results-card-editor')) {
   customElements.define('f1-last-race-results-card-editor', F1LastRaceResultsCardEditor);
+}
+
+if (!customElements.get('f1-lap-position-progression-card')) {
+  customElements.define('f1-lap-position-progression-card', F1LapPositionProgressionCard);
+}
+
+if (!customElements.get('f1-lap-position-progression-card-editor')) {
+  customElements.define('f1-lap-position-progression-card-editor', F1LapPositionProgressionCardEditor);
 }
 
 if (!customElements.get('f1-replay-control-card')) {
@@ -29766,6 +31388,14 @@ window.customCards.push({
   type: 'f1-last-race-results-card',
   name: 'F1 Last Race Results',
   description: 'Last race results table with finishing position, grid, position delta, points, and status',
+  configurable: true,
+  preview: true,
+});
+
+window.customCards.push({
+  type: 'f1-lap-position-progression-card',
+  name: 'F1 Lap Position Progression',
+  description: 'Native post-race lap position chart for completed races with sprint sessions marked unavailable when lap data is not exposed',
   configurable: true,
   preview: true,
 });

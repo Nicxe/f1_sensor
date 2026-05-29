@@ -37,6 +37,7 @@ from custom_components.f1_sensor.const import (
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
     PLATFORMS,
+    SUPPORTED_SENSOR_KEYS,
 )
 from custom_components.f1_sensor.live_delay import LiveDelayReferenceController
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
@@ -174,6 +175,10 @@ def _coordinator_patches(
         ),
         patch(
             "custom_components.f1_sensor.F1SprintResultsCoordinator",
+            DummyCoordinator,
+        ),
+        patch(
+            "custom_components.f1_sensor.F1LapPositionProgressionCoordinator",
             DummyCoordinator,
         ),
         patch(
@@ -497,6 +502,105 @@ async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:
     assert (
         entry_data["track_map_store"] is mock_config_entry.runtime_data.track_map_store
     )
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_creates_lap_position_dependencies_when_enabled(
+    hass, replay_file
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            "enable_race_control": False,
+            CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+            CONF_REPLAY_FILE: replay_file,
+            "disabled_sensors": sorted(
+                SUPPORTED_SENSOR_KEYS - {"lap_position_progression"}
+            ),
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        for cm in _coordinator_patches():
+            stack.enter_context(cm)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+
+        result = await async_setup_entry(hass, entry)
+
+    assert result is True
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    assert entry_data["race_coordinator"] is not None
+    assert entry_data["season_results_coordinator"] is not None
+    assert entry_data["sprint_results_coordinator"] is not None
+    assert entry_data["lap_position_progression_coordinator"] is not None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_skips_lap_position_coordinator_when_disabled(
+    hass, replay_file
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            "enable_race_control": False,
+            CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+            CONF_REPLAY_FILE: replay_file,
+            "disabled_sensors": sorted(SUPPORTED_SENSOR_KEYS),
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        for cm in _coordinator_patches():
+            stack.enter_context(cm)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+
+        result = await async_setup_entry(hass, entry)
+
+    assert result is True
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    assert entry_data["lap_position_progression_coordinator"] is None
 
 
 @pytest.mark.asyncio
