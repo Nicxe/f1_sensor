@@ -60,7 +60,6 @@ const sidebars = {
       label: 'Showcase',
       items: [
         'example/e-ink',
-        'example/season-progression-charts',
         {
           type: 'category',
           label: 'Community Builds',

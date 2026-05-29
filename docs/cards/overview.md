@@ -40,6 +40,7 @@ Public live timing works without F1TV Auth. Cards that show live Track Map, Pit 
 | [F1 Track Limits](#f1-track-limits-card) | `custom:f1-track-limits-card` | Track limit deletions, warnings, and penalties per driver |
 | [F1 Championship Prediction Drivers](#f1-championship-prediction-drivers-card) | `custom:f1-championship-prediction-drivers-card` | Driver standings with predicted points |
 | [F1 Championship Prediction Teams](#f1-championship-prediction-teams-card) | `custom:f1-championship-prediction-teams-card` | Constructor standings with predicted points |
+| [F1 Season Progression](#f1-season-progression-card) | `custom:f1-season-progression-card` | Driver and constructor championship point progression across race rounds |
 | [F1 Replay Control](#f1-replay-control-card) | `custom:f1-replay-control-card` | Replay Mode selectors, playback controls, and progress |
 | [F1 Track Map](#f1-track-map-card) | `custom:f1-track-map-card` | Live and replay circuit map with car positions |
 
@@ -635,6 +636,66 @@ Displays current constructor standings beside predicted final standings, predict
 | `show_delta` | `true` | Show predicted points delta |
 | `show_availability_notice` | `true` | Show notices for unavailable F1TV Auth enhanced data |
 | `top_limit` | `0` | Limit rows to top N. `0` shows all. |
+
+---
+
+### F1 Season Progression Card
+
+`custom:f1-season-progression-card`
+
+Displays driver or constructor championship point progression as a native bundled chart. Add one card with `mode: drivers` for the Drivers' Championship and another card with `mode: constructors` for the Constructors' Championship.
+
+**Required entity:** `sensor.f1_driver_points_progression` or `sensor.f1_constructor_points_progression`
+
+**Optional entities:** `sensor.f1_current_season`, `sensor.f1_driver_list`
+
+**Driver progression example:**
+
+```yaml
+type: custom:f1-season-progression-card
+mode: drivers
+entity: sensor.f1_driver_points_progression
+calendar_entity: sensor.f1_current_season
+driver_list_entity: sensor.f1_driver_list
+title: Season progression - drivers points
+theme_mode: auto
+legend_position: bottom
+show_future_rounds: true
+```
+
+**Constructor progression example:**
+
+```yaml
+type: custom:f1-season-progression-card
+mode: constructors
+entity: sensor.f1_constructor_points_progression
+calendar_entity: sensor.f1_current_season
+title: Season progression - constructors points
+theme_mode: auto
+legend_position: bottom
+show_future_rounds: true
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `mode` | `drivers` | Use `drivers` or `constructors` |
+| `entity` | Mode-specific | Progression sensor used by the chart |
+| `calendar_entity` | `sensor.f1_current_season` | Season calendar sensor used to show future rounds on the x-axis |
+| `driver_list_entity` | `sensor.f1_driver_list` | Driver list sensor used for tooltip headshots in driver mode |
+| `theme_mode` | `auto` | Card theme. Use `dark`, `light`, or `auto` |
+| `title` | Mode-specific | Card title |
+| `show_header` | `true` | Show the card header |
+| `show_legend` | `true` | Show the legend |
+| `legend_position` | `bottom` | Place the legend at `bottom`, `left`, or `right` |
+| `show_legend_points` | `true` | Show latest points in the legend |
+| `show_full_name` | `false` | Show full names instead of compact labels |
+| `show_points` | `true` | Show point markers on the chart |
+| `show_round_labels` | `true` | Show round labels on the x-axis |
+| `show_future_rounds` | `true` | Keep future calendar rounds visible before points are available |
+| `top_limit` | `0` | Limit visible entries to the top N. `0` shows all |
+| `chart_height` | `320` | Chart height in pixels |
+
+The legend is interactive. Select a driver or team in the legend to hide or show that line. Hover or focus a chart point to see the round, race name, points, and available driver or team image.
 
 ---
 

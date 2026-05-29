@@ -495,7 +495,7 @@ recorder:
 | season | string | Season year |
 | rounds | list | List of rounds with metadata |
 | drivers | object | Map of driver codes to their progression data |
-| series | object | Pre-formatted data for charting libraries |
+| series | object | Progression series data for charts |
 
 Each entry in `rounds` contains:
 
@@ -640,8 +640,8 @@ Each entry in `series.series` contains:
 ```
 
 </details>
-:::tip[Chart Integration]
-The `series` attribute is pre-formatted for use with charting libraries like ApexCharts. See the [Season Progression Charts](/example/season-progression-charts) example for a complete implementation.
+:::tip[Season progression card]
+Use this entity with the bundled [F1 Season Progression Card](/cards/cards-overview#f1-season-progression-card) to show driver championship point progression without installing another chart card.
 :::
 
 ---
@@ -665,7 +665,7 @@ The `series` attribute is pre-formatted for use with charting libraries like Ape
 | season | string | Season year |
 | rounds | list | List of rounds with metadata |
 | constructors | object | Map of constructor IDs to their progression data |
-| series | object | Pre-formatted data for charting libraries |
+| series | object | Progression series data for charts |
 
 Each entry in `rounds` contains:
 
@@ -818,8 +818,8 @@ Each entry in `series.series` contains:
 ```
 
 </details>
-:::tip[Chart Integration]
-The `series` attribute is pre-formatted for use with charting libraries like ApexCharts. See the [Season Progression Charts](/example/season-progression-charts) example for a complete implementation.
+:::tip[Season progression card]
+Use this entity with the bundled [F1 Season Progression Card](/cards/cards-overview#f1-season-progression-card) to show constructor championship point progression without installing another chart card.
 :::
 
 ## Race Week 
