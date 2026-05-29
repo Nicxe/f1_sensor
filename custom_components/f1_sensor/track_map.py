@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -13,8 +12,12 @@ import re
 from statistics import median
 import time
 from typing import Any
-import zlib
 
+from .helpers import (
+    POSITION_Z_MAX_DECOMPRESSED_BYTES,
+    POSITION_Z_MAX_LINE_BYTES,
+    decode_raw_deflate_json_payload,
+)
 from .track_map_static_geometry import (
     STATIC_TRACK_GEOMETRIES,
     STATIC_TRACK_GEOMETRY_ALIAS_TO_KEY,
@@ -1265,25 +1268,11 @@ def _decode_text_payload(payload: Any) -> str | None:
 
 
 def _decode_position_z_line(line: str) -> Mapping[str, Any] | None:
-    if not line or line.startswith("URL:"):
-        return None
-    encoded = line
-    if '"' in line:
-        try:
-            _, rest = line.split('"', 1)
-            encoded = rest.split('"', 1)[0]
-        except ValueError:
-            return None
-    encoded = encoded.strip()
-    if not encoded:
-        return None
-    try:
-        raw = base64.b64decode(encoded, validate=True)
-        payload = zlib.decompress(raw, wbits=-zlib.MAX_WBITS)
-        decoded = json.loads(payload)
-    except Exception:  # noqa: BLE001
-        return None
-    return decoded if isinstance(decoded, Mapping) else None
+    return decode_raw_deflate_json_payload(
+        line,
+        max_line_bytes=POSITION_Z_MAX_LINE_BYTES,
+        max_decompressed_bytes=POSITION_Z_MAX_DECOMPRESSED_BYTES,
+    )
 
 
 def _normalize_position_entries(

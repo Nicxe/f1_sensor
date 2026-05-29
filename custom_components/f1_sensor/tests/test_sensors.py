@@ -116,6 +116,7 @@ const methodSources = [
   extractMethod(classSource, "_resolveListMaxHeight() {"),
   extractMethod(classSource, "_extractDocumentNumber(name, explicitNumber = null) {"),
   extractMethod(classSource, "_cleanDocumentTitle(name) {"),
+  extractMethod(classSource, "_safeDocumentUrl(url) {"),
   extractMethod(classSource, "_normalizeDocument(item, fallbackIndex = 0) {"),
   extractMethod(classSource, "_buildDocuments(entity) {"),
   extractMethod(classSource, "_sortDocuments(documents) {"),

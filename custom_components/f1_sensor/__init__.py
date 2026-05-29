@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterator
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from functools import partial
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -148,6 +149,13 @@ _ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES = (
     "_race_time_to_three_hour_limit",
 )
 _ACTIVITY_FILTER_MARKER = "__f1_sensor_activity_filter__"
+RACE_CONTROL_LOG_MAX_ITEMS = 500
+RACE_CONTROL_LOG_MAX_FIELD_CHARS = 512
+RACE_CONTROL_LOG_EVENT_ID_CHARS = 40
+MAX_DELAY_QUEUE_ITEMS = 2048
+DELAY_QUEUE_DROP_LOG_INTERVAL = 60.0
+MAX_TYRE_STINTS_PER_DRIVER = 32
+MAX_TYRE_STINT_INDEX = MAX_TYRE_STINTS_PER_DRIVER - 1
 _ACTIVITY_FILTER_REBIND_MARKER = "__f1_sensor_activity_filter_rebound__"
 _ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER = "__f1_sensor_activity_logbook_subscribe__"
 _ACTIVITY_FILTER_COMPONENTS = frozenset({"recorder", "logbook"})
@@ -327,10 +335,14 @@ def _apply_activity_log_filter_excludes(hass: HomeAssistant) -> None:
             logbook_websocket_api.async_subscribe_events = wrapped_subscribe
 
 
-def _rc_cleanup_string(value: Any) -> str | None:
+def _rc_cleanup_string(
+    value: Any, *, max_chars: int = RACE_CONTROL_LOG_MAX_FIELD_CHARS
+) -> str | None:
     if value is None:
         return None
     text = str(value).strip()
+    if len(text) > max_chars:
+        text = text[:max_chars]
     return text or None
 
 
@@ -361,6 +373,25 @@ def _format_race_control_state(payload: dict[str, Any]) -> str:
     return " - ".join(parts) if parts else "Race control update"
 
 
+def _race_control_message_id(item: dict[str, Any]) -> str:
+    try:
+        ts = _rc_cleanup_string(
+            item.get("Utc")
+            or item.get("utc")
+            or item.get("processedAt")
+            or item.get("timestamp")
+            or ""
+        )
+        text = _rc_cleanup_string(
+            item.get("Message") or item.get("Text") or item.get("Flag") or ""
+        )
+        cat = _rc_cleanup_string(item.get("Category") or item.get("CategoryType") or "")
+        material = f"{ts or ''}|{cat or ''}|{text or ''}"
+    except Exception:
+        material = json.dumps(item, sort_keys=True, default=str)
+    return hashlib.sha1(material.encode("utf-8", errors="ignore")).hexdigest()
+
+
 def _normalize_race_control_log_item(
     payload: dict[str, Any],
     *,
@@ -386,7 +417,7 @@ def _normalize_race_control_log_item(
         or payload.get("Driver")
     )
     message = _rc_cleanup_string(payload.get("Message") or payload.get("Text"))
-    event_id = RaceControlCoordinator._message_id(payload)
+    event_id = _race_control_message_id(payload)
     item = {
         "event_id": event_id,
         "utc": utc,
@@ -400,6 +431,38 @@ def _normalize_race_control_log_item(
         "sequence": sequence,
     }
     return item
+
+
+def _normalize_stored_race_control_log_item(
+    item: dict[str, Any],
+) -> dict[str, Any] | None:
+    event_id_raw = str(item.get("event_id") or "").strip()
+    event_id = (
+        hashlib.sha1(event_id_raw.encode("utf-8", errors="ignore")).hexdigest()
+        if len(event_id_raw) > RACE_CONTROL_LOG_EVENT_ID_CHARS
+        else event_id_raw
+    )
+    if not event_id:
+        event_id = _race_control_message_id(item)
+    try:
+        sequence = int(item.get("sequence") or 0) or None
+    except (TypeError, ValueError):
+        sequence = None
+    message = _rc_cleanup_string(item.get("message") or item.get("Message"))
+    return {
+        "event_id": event_id,
+        "utc": _normalize_race_control_timestamp(item.get("utc") or item.get("Utc")),
+        "received_at": _rc_cleanup_string(item.get("received_at")),
+        "category": _rc_cleanup_string(item.get("category") or item.get("Category")),
+        "flag": _rc_cleanup_string(item.get("flag") or item.get("Flag")),
+        "scope": _rc_cleanup_string(item.get("scope") or item.get("Scope")),
+        "sector": _rc_cleanup_string(item.get("sector") or item.get("Sector")),
+        "car_number": _rc_cleanup_string(
+            item.get("car_number") or item.get("CarNumber")
+        ),
+        "message": message or _format_race_control_state(item),
+        "sequence": sequence,
+    }
 
 
 def _resolve_race_control_session_label(info: dict[str, Any]) -> str | None:
@@ -483,9 +546,13 @@ class RaceControlLogStore:
             self._session_key = _rc_cleanup_string(stored.get("session_key"))
             raw_items = stored.get("items")
             if isinstance(raw_items, list):
-                self._items = [
-                    dict(item) for item in raw_items if isinstance(item, dict)
-                ]
+                self._items = []
+                for item in raw_items[-RACE_CONTROL_LOG_MAX_ITEMS:]:
+                    if not isinstance(item, dict):
+                        continue
+                    normalized = _normalize_stored_race_control_log_item(item)
+                    if normalized is not None:
+                        self._items.append(normalized)
             self._event_ids = {
                 str(item.get("event_id"))
                 for item in self._items
@@ -530,8 +597,13 @@ class RaceControlLogStore:
     def session_key(self) -> str | None:
         return self._session_key
 
-    def get_items(self) -> list[dict[str, Any]]:
-        return [dict(item) for item in reversed(self._items)]
+    def get_items(
+        self, limit: int = RACE_CONTROL_LOG_MAX_ITEMS
+    ) -> list[dict[str, Any]]:
+        max_items = min(RACE_CONTROL_LOG_MAX_ITEMS, max(0, int(limit or 0)))
+        if max_items <= 0:
+            return []
+        return [dict(item) for item in reversed(self._items[-max_items:])]
 
     def append(
         self, payload: dict[str, Any], *, received_at: str | None = None
@@ -550,6 +622,11 @@ class RaceControlLogStore:
         self._items.append(item)
         if event_id:
             self._event_ids.add(str(event_id))
+        while len(self._items) > RACE_CONTROL_LOG_MAX_ITEMS:
+            old = self._items.pop(0)
+            old_event_id = old.get("event_id")
+            if old_event_id:
+                self._event_ids.discard(str(old_event_id))
         self._next_sequence += 1
         self._schedule_save()
         return dict(item)
@@ -840,6 +917,8 @@ def _init_delayed_ingest_state(instance: Any) -> None:
     instance._delay_queue: deque[tuple[float, Callable[[], None]]] = deque()
     instance._delay_queue_handle = None
     instance._delay_queue_generation = 0
+    instance._delay_queue_dropped = 0
+    instance._delay_queue_last_drop_log = 0.0
 
 
 def _clear_delayed_ingest_state(instance: Any) -> None:
@@ -851,6 +930,8 @@ def _clear_delayed_ingest_state(instance: Any) -> None:
     queue = getattr(instance, "_delay_queue", None)
     if isinstance(queue, deque):
         queue.clear()
+    instance._delay_queue_dropped = 0
+    instance._delay_queue_last_drop_log = 0.0
 
 
 def _close_delayed_ingest_state(instance: Any) -> None:
@@ -926,6 +1007,20 @@ def _queue_delayed_ingest(instance: Any, callback: Callable[[], None]) -> None:
         if not isinstance(queue, deque):
             _init_delayed_ingest_state(instance)
             queue = instance._delay_queue
+        if len(queue) >= MAX_DELAY_QUEUE_ITEMS:
+            queue.popleft()
+            instance._delay_queue_dropped = (
+                int(getattr(instance, "_delay_queue_dropped", 0) or 0) + 1
+            )
+            now_mono = time.monotonic()
+            last_log = float(getattr(instance, "_delay_queue_last_drop_log", 0.0) or 0)
+            if now_mono - last_log >= DELAY_QUEUE_DROP_LOG_INTERVAL:
+                instance._delay_queue_last_drop_log = now_mono
+                _LOGGER.warning(
+                    "Delayed ingest queue reached %d items; dropped oldest payloads=%d",
+                    MAX_DELAY_QUEUE_ITEMS,
+                    instance._delay_queue_dropped,
+                )
         queue.append((received_at, callback))
         _arm_delayed_ingest_queue(instance)
 
@@ -2483,22 +2578,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
 
     @staticmethod
     def _message_id(item: dict) -> str:
-        # Compose a stable id from typical fields
-        try:
-            ts = str(
-                item.get("Utc")
-                or item.get("utc")
-                or item.get("processedAt")
-                or item.get("timestamp")
-                or ""
-            )
-            text = str(
-                item.get("Message") or item.get("Text") or item.get("Flag") or ""
-            )
-            cat = str(item.get("Category") or item.get("CategoryType") or "")
-            return f"{ts}|{cat}|{text}"
-        except Exception:
-            return json.dumps(item, sort_keys=True, default=str)
+        return _race_control_message_id(item)
 
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, (dict, list)):
@@ -4958,14 +5038,24 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         items: list[tuple[int, dict[str, Any]]] = []
         if isinstance(stints, list):
             for idx, stint in enumerate(stints):
+                if idx > MAX_TYRE_STINT_INDEX:
+                    break
                 if isinstance(stint, dict):
                     items.append((idx, stint))
         elif isinstance(stints, dict):
             for key, stint in stints.items():
-                if not isinstance(stint, dict) or not str(key).isdigit():
+                key_text = str(key).strip()
+                key_digits = key_text.lstrip("0") or "0"
+                if (
+                    not isinstance(stint, dict)
+                    or not key_text.isdecimal()
+                    or len(key_digits) > len(str(MAX_TYRE_STINT_INDEX))
+                ):
                     continue
                 with suppress(ValueError):
-                    items.append((int(key), stint))
+                    idx = int(key_text)
+                    if 0 <= idx <= MAX_TYRE_STINT_INDEX:
+                        items.append((idx, stint))
         items.sort(key=lambda item: item[0])
         return items
 
@@ -5167,6 +5257,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         Handles incremental updates where only TotalLaps may be present.
         """
+        if stint_idx < 0 or stint_idx > MAX_TYRE_STINT_INDEX:
+            return False
         stints_list = tyre_history["stints"]
         changed = False
 

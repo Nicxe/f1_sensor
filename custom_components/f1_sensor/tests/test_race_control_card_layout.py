@@ -26,6 +26,12 @@ def _race_control_source() -> str:
     return source[start:end]
 
 
+def _card_source() -> str:
+    if not CARD_PATH.exists():
+        pytest.skip(f"card JS not found at {CARD_PATH}")
+    return CARD_PATH.read_text()
+
+
 def test_race_control_list_rows_keep_message_off_bottom_edge() -> None:
     source = _race_control_source()
 
@@ -35,3 +41,13 @@ def test_race_control_list_rows_keep_message_off_bottom_edge() -> None:
     assert "padding: 11px 14px 12px 16px;" in source
     assert "min-height: 68px;" in source
     assert "line-height: 1.38;" in source
+
+
+def test_card_avoids_cdn_fallback_inner_html_and_unsafe_document_href() -> None:
+    source = _card_source()
+    race_control_source = _race_control_source()
+
+    assert "unpkg.com/lit" not in source
+    assert ".innerHTML" not in race_control_source
+    assert "_safeDocumentUrl(url)" in source
+    assert "href=${safeUrl}" in source

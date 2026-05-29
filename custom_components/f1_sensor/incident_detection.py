@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
@@ -8,7 +7,13 @@ from datetime import UTC, datetime, timedelta
 import json
 import re
 from typing import Any
-import zlib
+
+from .helpers import (
+    CARDATA_MAX_DECOMPRESSED_BYTES,
+    CARDATA_MAX_ENTRIES,
+    CARDATA_MAX_LINE_BYTES,
+    decode_raw_deflate_json_payload,
+)
 
 DEFAULT_SESSION_KEY = "unknown-session"
 
@@ -1734,11 +1739,15 @@ def _extract_car_data_entries(payload: Any) -> list[Mapping[str, Any]]:
     if isinstance(payload, Mapping):
         entries = payload.get("Entries")
         if isinstance(entries, list):
+            if len(entries) > CARDATA_MAX_ENTRIES:
+                return []
             return [entry for entry in entries if isinstance(entry, Mapping)]
         if isinstance(payload.get("Cars"), Mapping):
             return [payload]
         return []
     if isinstance(payload, list):
+        if len(payload) > CARDATA_MAX_ENTRIES:
+            return []
         return [entry for entry in payload if isinstance(entry, Mapping)]
 
     text = _decode_text_payload(payload)
@@ -1754,11 +1763,15 @@ def _extract_car_data_entries(payload: Any) -> list[Mapping[str, Any]]:
         if isinstance(decoded, Mapping):
             raw_entries = decoded.get("Entries")
             if isinstance(raw_entries, list):
+                if len(raw_entries) > CARDATA_MAX_ENTRIES:
+                    return []
                 entries.extend(
                     entry for entry in raw_entries if isinstance(entry, Mapping)
                 )
             elif isinstance(decoded.get("Cars"), Mapping):
                 entries.append(decoded)
+            if len(entries) > CARDATA_MAX_ENTRIES:
+                return []
     return entries
 
 
@@ -1771,25 +1784,11 @@ def _decode_text_payload(payload: Any) -> str | None:
 
 
 def _decode_car_data_line(line: str) -> Mapping[str, Any] | None:
-    if not line or line.startswith("URL:"):
-        return None
-    encoded = line
-    if '"' in line:
-        try:
-            _, rest = line.split('"', 1)
-            encoded = rest.split('"', 1)[0]
-        except ValueError:
-            return None
-    encoded = encoded.strip()
-    if not encoded:
-        return None
-    try:
-        raw = base64.b64decode(encoded)
-        payload = zlib.decompress(raw, wbits=-15)
-        decoded = json.loads(payload)
-    except Exception:  # noqa: BLE001
-        return None
-    return decoded if isinstance(decoded, Mapping) else None
+    return decode_raw_deflate_json_payload(
+        line,
+        max_line_bytes=CARDATA_MAX_LINE_BYTES,
+        max_decompressed_bytes=CARDATA_MAX_DECOMPRESSED_BYTES,
+    )
 
 
 def _car_speed_from_payload(car: Mapping[str, Any]) -> float | None:

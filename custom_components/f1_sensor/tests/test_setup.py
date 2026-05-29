@@ -19,6 +19,8 @@ from custom_components.f1_sensor import (
     _RC_LOG_SERVICE,
     _RC_LOG_SERVICE_MARKER,
     CONFIG_SCHEMA,
+    RACE_CONTROL_LOG_MAX_FIELD_CHARS,
+    RACE_CONTROL_LOG_MAX_ITEMS,
     RaceControlCoordinator,
     RaceControlLogStore,
     _is_activity_log_excluded_entity,
@@ -456,6 +458,35 @@ async def test_race_control_log_clears_when_source_stops(hass) -> None:
     finally:
         unsub()
         await coordinator.async_close()
+        await store.async_close()
+
+
+@pytest.mark.asyncio
+async def test_race_control_log_store_bounds_history_and_fields(hass) -> None:
+    store = RaceControlLogStore(hass, "entry-1")
+
+    try:
+        await store.async_initialize()
+
+        for idx in range(RACE_CONTROL_LOG_MAX_ITEMS + 5):
+            store.append(
+                {
+                    "Utc": f"2026-03-12T14:{idx % 60:02d}:00Z",
+                    "Category": "Other",
+                    "Message": f"{idx}-"
+                    + ("x" * (RACE_CONTROL_LOG_MAX_FIELD_CHARS + 10)),
+                }
+            )
+        await hass.async_block_till_done()
+
+        items = store.get_items()
+        assert len(items) == RACE_CONTROL_LOG_MAX_ITEMS
+        assert items[0]["message"].startswith(f"{RACE_CONTROL_LOG_MAX_ITEMS + 4}-")
+        assert len(items[0]["message"]) == RACE_CONTROL_LOG_MAX_FIELD_CHARS
+        assert all(len(item["event_id"]) == 40 for item in items)
+        assert len(store.get_items(limit=1)) == 1
+        assert store.get_items(limit=0) == []
+    finally:
         await store.async_close()
 
 

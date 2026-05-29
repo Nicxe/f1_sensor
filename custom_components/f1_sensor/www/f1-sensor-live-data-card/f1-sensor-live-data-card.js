@@ -8,7 +8,7 @@ const getLit = async () => {
       svg: window.litHtml.svg,
     };
   }
-  return import('https://unpkg.com/lit@3.1.0?module');
+  throw new Error('Home Assistant Lit globals are unavailable');
 };
 
 const { LitElement, html, css, svg } = await getLit();
@@ -22180,7 +22180,7 @@ class F1RaceControlCard extends LitElement {
           ` : null}
 
           <div class="rc-content">
-            <div class="rc-message ${messageClass}" .innerHTML=${formattedMessage}></div>
+            <div class="rc-message ${messageClass}">${formattedMessage}</div>
             ${queueCount > 0 ? html`
               <span class="rc-queue-indicator">+${queueCount}</span>
             ` : null}
@@ -23088,11 +23088,33 @@ class F1FiaDocumentsCard extends LitElement {
     return cleaned || text;
   }
 
+  _safeDocumentUrl(url) {
+    const value = String(url || '').trim();
+    if (!value) return '';
+    try {
+      const base = globalThis.window?.location?.origin || 'https://www.fia.com';
+      const parsed = new URL(value, base);
+      const host = parsed.hostname.toLowerCase();
+      if (
+        parsed.protocol === 'https:'
+        && (host === 'www.fia.com' || host === 'fia.com')
+        && parsed.pathname.toLowerCase().includes('.pdf')
+      ) {
+        return parsed.href;
+      }
+    } catch (_err) {
+      return '';
+    }
+    return '';
+  }
+
   _normalizeDocument(item, fallbackIndex = 0) {
     if (!item || typeof item !== 'object') return null;
     const name = item.name || item.title || item.document_name || '';
-    const url = String(item.url || item.href || '').trim();
+    const rawUrl = String(item.url || item.href || '').trim();
+    const url = rawUrl ? this._safeDocumentUrl(rawUrl) : '';
     const published = item.published || item.published_at || item.date || null;
+    if (rawUrl && !url) return null;
     if (!url && !name) return null;
     const documentNumber = this._extractDocumentNumber(name, item.document_number);
     const title = this._cleanDocumentTitle(name);
@@ -23323,7 +23345,8 @@ class F1FiaDocumentsCard extends LitElement {
       </div>
     `;
 
-    if (!doc.url) {
+    const safeUrl = this._safeDocumentUrl(doc.url);
+    if (!safeUrl) {
       return html`<div class=${rowClass} style="animation-delay: ${index * 30}ms;">${rowContent}</div>`;
     }
 
@@ -23331,7 +23354,7 @@ class F1FiaDocumentsCard extends LitElement {
       <a
         class=${rowClass}
         style="animation-delay: ${index * 30}ms;"
-        href=${doc.url}
+        href=${safeUrl}
         target=${newTab ? '_blank' : '_self'}
         rel=${newTab ? 'noopener noreferrer' : ''}
         aria-label=${`Open FIA document: ${doc.title}`}

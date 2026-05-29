@@ -31,7 +31,7 @@ from .const import (
     REPLAY_START_REFERENCE_FORMATION,
 )
 from .formation_start import FormationStartTracker
-from .helpers import parse_cardata_lines
+from .helpers import CARDATA_MAX_LINE_BYTES, parse_cardata_lines
 from .replay_start import ReplayStartReferenceController
 from .track_map import (
     TRACK_MAP_POSITION_STREAM,
@@ -78,6 +78,19 @@ FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 
 
+def _parse_replay_int(value: Any) -> int | None:
+    """Return a non-negative replay identifier integer."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and value.strip().isdecimal():
+        parsed = int(value.strip())
+    else:
+        return None
+    return parsed if parsed >= 0 else None
+
+
 class ReplayState(Enum):
     """State machine for replay mode."""
 
@@ -104,6 +117,16 @@ class ReplaySession:
     start_utc: datetime
     end_utc: datetime
     available: bool = False  # Set after HEAD check
+
+    def __post_init__(self) -> None:
+        year = _parse_replay_int(self.year)
+        meeting_key = _parse_replay_int(self.meeting_key)
+        session_key = _parse_replay_int(self.session_key)
+        if year is None or year <= 0 or meeting_key is None or session_key is None:
+            raise ValueError("Replay session identifiers must be non-negative integers")
+        self.year = year
+        self.meeting_key = meeting_key
+        self.session_key = session_key
 
     @property
     def label(self) -> str:
@@ -343,6 +366,8 @@ class ReplaySessionManager:
             meetings = list(meetings.values())
 
         for meeting in meetings:
+            if not isinstance(meeting, dict):
+                continue
             meeting_key = meeting.get("Key")
             meeting_name = meeting.get("Name") or meeting.get("OfficialName", "Unknown")
 
@@ -351,6 +376,8 @@ class ReplaySessionManager:
                 meeting_sessions = list(meeting_sessions.values())
 
             for sess in meeting_sessions:
+                if not isinstance(sess, dict):
+                    continue
                 session_key = sess.get("Key")
                 session_name = sess.get("Name", "Session")
                 session_type = sess.get("Type", "Unknown")
@@ -364,8 +391,8 @@ class ReplaySessionManager:
                 end_utc = self._parse_datetime(end_str, gmt_offset)
 
                 if start_utc and path:
-                    sessions.append(
-                        ReplaySession(
+                    try:
+                        session = ReplaySession(
                             year=year,
                             meeting_key=meeting_key,
                             meeting_name=meeting_name,
@@ -376,7 +403,12 @@ class ReplaySessionManager:
                             start_utc=start_utc,
                             end_utc=end_utc or start_utc,
                         )
-                    )
+                    except ValueError:
+                        _LOGGER.debug(
+                            "Skipping replay session with invalid identifiers"
+                        )
+                        continue
+                    sessions.append(session)
 
         # Filter to only past sessions (skip availability validation at fetch time
         # to avoid slow HEAD requests blocking the list - validate on demand when loading)
@@ -476,7 +508,10 @@ class ReplaySessionManager:
 
     async def _delete_session_cache(self, session_id: str) -> None:
         """Delete cached data for a specific session."""
-        session_dir = self._cache_dir / session_id
+        session_dir = self._safe_session_cache_dir(session_id)
+        if session_dir is None:
+            _LOGGER.warning("Refusing to delete replay cache outside cache directory")
+            return
         if session_dir.exists():
             try:
                 await self._hass.async_add_executor_job(shutil.rmtree, session_dir)
@@ -531,7 +566,9 @@ class ReplaySessionManager:
 
     async def _download_and_index_session(self, session: ReplaySession) -> ReplayIndex:
         """Download all stream files and create a merged, indexed cache file."""
-        session_dir = self._cache_dir / session.unique_id
+        session_dir = self._safe_session_cache_dir(session.unique_id)
+        if session_dir is None:
+            raise RuntimeError("Invalid replay session cache identifier")
         session_dir.mkdir(parents=True, exist_ok=True)
 
         frames_file = session_dir / "frames.jsonl"
@@ -1322,6 +1359,9 @@ class ReplaySessionManager:
                         raw = await resp.content.readline()
                         if not raw:
                             break
+                        if len(raw) > CARDATA_MAX_LINE_BYTES:
+                            _LOGGER.debug("Skipping oversized replay CarData line")
+                            continue
                         line = raw.decode("utf-8", errors="ignore").strip()
                         if not line:
                             continue
@@ -1410,9 +1450,15 @@ class ReplaySessionManager:
 
         cutoff = time.time() - (REPLAY_CACHE_RETENTION_DAYS * 24 * 3600)
         cleaned = 0
+        cache_root = self._cache_dir.resolve()
 
         for session_dir in self._cache_dir.iterdir():
             if not session_dir.is_dir():
+                continue
+            try:
+                session_dir.resolve().relative_to(cache_root)
+            except ValueError:
+                _LOGGER.warning("Skipping replay cache entry outside cache directory")
                 continue
 
             index_file = session_dir / "index.json"
@@ -1426,6 +1472,19 @@ class ReplaySessionManager:
                     cleaned += 1
                     _LOGGER.debug("Cleaned old replay cache: %s", session_dir.name)
         return cleaned
+
+    def _safe_session_cache_dir(self, session_id: str) -> Path | None:
+        """Return a cache directory path only when it stays inside replay cache."""
+        session_name = str(session_id or "").strip()
+        if not session_name or Path(session_name).name != session_name:
+            return None
+        cache_root = self._cache_dir.resolve()
+        candidate = (self._cache_dir / session_name).resolve()
+        try:
+            candidate.relative_to(cache_root)
+        except ValueError:
+            return None
+        return candidate
 
     @staticmethod
     def _read_json_file(file_path: Path) -> dict:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta, timezone
 from html.parser import HTMLParser
@@ -12,7 +12,7 @@ import logging
 import re
 import time
 from typing import Any
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode, urljoin, urlparse
 import zlib
 
 from homeassistant.const import __version__ as HA_VERSION
@@ -45,6 +45,12 @@ _LOGGER = logging.getLogger(__name__)
 _JOLPICA_UA_HIT_LOGGED: set[str] = set()
 _JOLPICA_UA_TEXT_HIT_LOGGED: set[str] = set()
 _ENTITY_NAME_ACRONYMS = {"f1": "F1", "fia": "FIA"}
+CARDATA_MAX_LINE_BYTES = 256 * 1024
+CARDATA_MAX_DECOMPRESSED_BYTES = 2 * 1024 * 1024
+CARDATA_MAX_ENTRIES = 2048
+POSITION_Z_MAX_LINE_BYTES = 512 * 1024
+POSITION_Z_MAX_DECOMPRESSED_BYTES = 4 * 1024 * 1024
+FIA_ALLOWED_DOCUMENT_HOSTS = frozenset({"fia.com", "www.fia.com"})
 
 
 def normalize_live_timing_auth_header(value: object) -> str:
@@ -699,25 +705,17 @@ def parse_cardata_line(
     line: str, parse_utc: Callable[[Any], datetime | None]
 ) -> list[datetime]:
     """Decode a CarData.z.jsonStream line into UTC datetimes."""
-    if not line or line.startswith("URL:"):
+    data = decode_raw_deflate_json_payload(
+        line,
+        max_line_bytes=CARDATA_MAX_LINE_BYTES,
+        max_decompressed_bytes=CARDATA_MAX_DECOMPRESSED_BYTES,
+    )
+    if data is None:
         return []
-    if '"' not in line:
-        return []
-    try:
-        _, rest = line.split('"', 1)
-        encoded = rest.split('"', 1)[0]
-    except ValueError:
-        return []
-    if not encoded:
-        return []
-    try:
-        raw = base64.b64decode(encoded)
-        payload = zlib.decompress(raw, wbits=-15)
-        data = json.loads(payload)
-    except Exception:  # noqa: BLE001
-        return []
-    entries = data.get("Entries") if isinstance(data, dict) else None
+    entries = data.get("Entries") if isinstance(data, Mapping) else None
     if not isinstance(entries, list):
+        return []
+    if len(entries) > CARDATA_MAX_ENTRIES:
         return []
     utcs: list[datetime] = []
     for entry in entries:
@@ -737,6 +735,48 @@ def parse_cardata_lines(
     for line in lines:
         utcs.extend(parse_cardata_line(line, parse_utc))
     return utcs
+
+
+def _extract_jsonstream_encoded_payload(line: str) -> str | None:
+    if not line or line.startswith("URL:"):
+        return None
+    encoded = line
+    if '"' in line:
+        try:
+            _, rest = line.split('"', 1)
+            encoded = rest.split('"', 1)[0]
+        except ValueError:
+            return None
+    encoded = encoded.strip()
+    return encoded or None
+
+
+def decode_raw_deflate_json_payload(
+    line: str,
+    *,
+    max_line_bytes: int,
+    max_decompressed_bytes: int,
+    wbits: int = -15,
+) -> Mapping[str, Any] | None:
+    """Decode a base64 raw-deflate jsonStream payload with strict size limits."""
+    if len(line.encode("utf-8", errors="ignore")) > max_line_bytes:
+        return None
+    encoded = _extract_jsonstream_encoded_payload(line)
+    if not encoded:
+        return None
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+        decompressor = zlib.decompressobj(wbits=wbits)
+        payload = decompressor.decompress(raw, max_decompressed_bytes + 1)
+        if decompressor.unconsumed_tail or len(payload) > max_decompressed_bytes:
+            return None
+        tail = decompressor.flush()
+        if len(payload) + len(tail) > max_decompressed_bytes:
+            return None
+        decoded = json.loads(payload + tail)
+    except Exception:  # noqa: BLE001
+        return None
+    return decoded if isinstance(decoded, Mapping) else None
 
 
 def _strip_html(text: str) -> str:
@@ -870,14 +910,28 @@ class _FiaDocumentHTMLParser(HTMLParser):
         return list(self._documents)
 
 
+def _safe_fia_document_url(href: str) -> str | None:
+    href = str(href or "").strip()
+    if ".pdf" not in href.lower():
+        return None
+    absolute = urljoin("https://www.fia.com", href)
+    parsed = urlparse(absolute)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or host not in FIA_ALLOWED_DOCUMENT_HOSTS:
+        return None
+    if ".pdf" not in parsed.path.lower():
+        return None
+    return absolute
+
+
 def _build_fia_documents(entries: list[tuple[str, str]]) -> list[dict[str, Any]]:
     docs: list[dict[str, Any]] = []
     for href, text in entries:
-        if not href:
+        absolute = _safe_fia_document_url(href)
+        if absolute is None:
             continue
         normalized = _normalize_text(text)
         published, clean_text = _extract_published(normalized)
-        absolute = urljoin("https://www.fia.com", href)
         doc = {
             "name": clean_text or absolute,
             "url": absolute,

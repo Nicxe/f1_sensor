@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import json
 import zlib
 
+from custom_components.f1_sensor.helpers import POSITION_Z_MAX_DECOMPRESSED_BYTES
 from custom_components.f1_sensor.track_map import (
     TrackMapPosition,
     decode_position_z_payload,
@@ -95,6 +96,15 @@ def test_parse_position_z_line_handles_bad_and_empty_payloads() -> None:
     assert parse_position_z_line('00:00:01.000"not-base64"') == []
     assert parse_position_z_line(_json_stream_line({"Position": []})) == []
     assert parse_position_z_line(_json_stream_line({"Other": []})) == []
+
+
+def test_parse_position_z_line_rejects_oversized_decompressed_payload() -> None:
+    payload = _position_payload(
+        {"1": {"Status": "OnTrack", "X": -68, "Y": 331, "Z": 0}}
+    )
+    payload["Pad"] = "x" * (POSITION_Z_MAX_DECOMPRESSED_BYTES + 1)
+
+    assert parse_position_z_line(_json_stream_line(payload)) == []
 
 
 def test_parse_position_z_line_skips_invalid_entries_without_failing() -> None:

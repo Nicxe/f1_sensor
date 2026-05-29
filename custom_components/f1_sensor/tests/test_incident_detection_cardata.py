@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import json
 import zlib
 
+from custom_components.f1_sensor.helpers import CARDATA_MAX_DECOMPRESSED_BYTES
 from custom_components.f1_sensor.incident_detection import (
     CONFIDENCE_HIGH,
     CONFIDENCE_MEDIUM,
@@ -56,6 +57,13 @@ def _encoded_cardata_payload(at: datetime, speed: float, rn: str = "10") -> str:
             }
         ]
     }
+    raw = json.dumps(data).encode()
+    compressor = zlib.compressobj(wbits=-15)
+    compressed = compressor.compress(raw) + compressor.flush()
+    return '"' + base64.b64encode(compressed).decode() + '"'
+
+
+def _encoded_cardata_data(data: dict) -> str:
     raw = json.dumps(data).encode()
     compressor = zlib.compressobj(wbits=-15)
     compressed = compressor.compress(raw) + compressor.flush()
@@ -175,6 +183,27 @@ def test_normalize_cardata_decodes_compressed_live_payload() -> None:
     assert len(signals) == 1
     assert signals[0].racing_number == "6"
     assert signals[0].value == 4.0
+
+
+def test_normalize_cardata_rejects_oversized_compressed_payload() -> None:
+    signals = normalize_car_data(
+        _encoded_cardata_data(
+            {
+                "Entries": [
+                    {
+                        "Utc": _iso(BASE),
+                        "Cars": {"6": {"Channels": {"2": 4}}},
+                    }
+                ],
+                "Pad": "x" * (CARDATA_MAX_DECOMPRESSED_BYTES + 1),
+            }
+        ),
+        BASE,
+        session=SESSION,
+        drivers=DRIVERS,
+    )
+
+    assert signals == []
 
 
 def test_normalize_cardata_ignores_malformed_or_invalid_speed() -> None:

@@ -1,14 +1,26 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+from datetime import UTC, datetime
 import gc
+import json
 from types import TracebackType
 from unittest.mock import AsyncMock, MagicMock
+import zlib
 
 import pytest
 
 from custom_components.f1_sensor.__init__ import FiaDocumentsCoordinator
-from custom_components.f1_sensor.helpers import fetch_json, fetch_text
+from custom_components.f1_sensor.helpers import (
+    CARDATA_MAX_DECOMPRESSED_BYTES,
+    CARDATA_MAX_ENTRIES,
+    CARDATA_MAX_LINE_BYTES,
+    fetch_json,
+    fetch_text,
+    parse_cardata_line,
+    parse_fia_documents,
+)
 
 
 class _TimeoutResponse:
@@ -49,6 +61,61 @@ def _future_race_payload() -> dict:
             }
         }
     }
+
+
+def _parse_utc(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+
+
+def _cardata_line(data: dict) -> str:
+    raw = json.dumps(data, separators=(",", ":")).encode()
+    compressor = zlib.compressobj(wbits=-15)
+    compressed = compressor.compress(raw) + compressor.flush()
+    return f'00:00:01.000"{base64.b64encode(compressed).decode()}"'
+
+
+def test_parse_cardata_line_applies_size_limits() -> None:
+    assert parse_cardata_line(
+        _cardata_line({"Entries": [{"Utc": "2026-05-03T17:00:00Z"}]}),
+        _parse_utc,
+    ) == [datetime(2026, 5, 3, 17, 0, tzinfo=UTC)]
+
+    oversized_line = f'00:00:01.000"{"A" * CARDATA_MAX_LINE_BYTES}"'
+    assert parse_cardata_line(oversized_line, _parse_utc) == []
+
+    oversized_payload = {
+        "Entries": [{"Utc": "2026-05-03T17:00:00Z"}],
+        "Pad": "x" * (CARDATA_MAX_DECOMPRESSED_BYTES + 1),
+    }
+    assert parse_cardata_line(_cardata_line(oversized_payload), _parse_utc) == []
+
+    too_many_entries = {
+        "Entries": [
+            {"Utc": "2026-05-03T17:00:00Z"} for _idx in range(CARDATA_MAX_ENTRIES + 1)
+        ]
+    }
+    assert parse_cardata_line(_cardata_line(too_many_entries), _parse_utc) == []
+
+
+def test_parse_fia_documents_rejects_unsafe_document_urls() -> None:
+    docs = parse_fia_documents(
+        """
+        <a href="/sites/default/files/decision.pdf">Decision</a>
+        <a href="javascript:alert(1).pdf">Bad script</a>
+        <a href="//evil.example/file.pdf">Bad host</a>
+        <a href="http://www.fia.com/insecure.pdf">Bad scheme</a>
+        """
+    )
+
+    assert docs == [
+        {
+            "name": "Decision",
+            "url": "https://www.fia.com/sites/default/files/decision.pdf",
+            "published": None,
+        }
+    ]
 
 
 @pytest.mark.asyncio
