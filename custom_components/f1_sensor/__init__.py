@@ -156,6 +156,12 @@ MAX_DELAY_QUEUE_ITEMS = 2048
 DELAY_QUEUE_DROP_LOG_INTERVAL = 60.0
 MAX_TYRE_STINTS_PER_DRIVER = 32
 MAX_TYRE_STINT_INDEX = MAX_TYRE_STINTS_PER_DRIVER - 1
+PITSTOP_MAX_HISTORY_PER_CAR = 10
+PITSTOP_MAX_CARS = 30
+PITSTOP_MAX_CARS_PER_PAYLOAD = 60
+PITSTOP_MAX_ENTRIES_PER_PAYLOAD = 200
+PITSTOP_MAX_RACING_NUMBER_CHARS = 3
+PITSTOP_MAX_TEXT_CHARS = 80
 _ACTIVITY_FILTER_REBIND_MARKER = "__f1_sensor_activity_filter_rebound__"
 _ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER = "__f1_sensor_activity_logbook_subscribe__"
 _ACTIVITY_FILTER_COMPONENTS = frozenset({"recorder", "logbook"})
@@ -1198,8 +1204,13 @@ def _seed_driver_map_from_ergast(
             if not isinstance(driver, dict):
                 continue
             rn = str(driver.get("permanentNumber") or "").strip()
-            if not rn:
+            if (
+                not rn
+                or not rn.isdecimal()
+                or len(rn) > PITSTOP_MAX_RACING_NUMBER_CHARS
+            ):
                 continue
+            rn = str(int(rn))
             existing = driver_map.get(rn)
             if isinstance(existing, dict) and (
                 existing.get("tla") or existing.get("name") or existing.get("team")
@@ -1220,7 +1231,13 @@ def _seed_driver_map_from_ergast(
                 c0 = constructors[0]
                 if isinstance(c0, dict):
                     team = c0.get("name")
-            driver_map[rn] = {"tla": code, "name": name, "team": team}
+            driver_map[rn] = {
+                "tla": str(code).strip()[:PITSTOP_MAX_TEXT_CHARS] if code else None,
+                "name": str(name).strip()[:PITSTOP_MAX_TEXT_CHARS] if name else None,
+                "team": str(team).strip()[:PITSTOP_MAX_TEXT_CHARS] if team else None,
+            }
+            if len(driver_map) >= PITSTOP_MAX_CARS:
+                break
     except Exception:
         return
 
@@ -3336,7 +3353,10 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
 
-        self._history_limit = max(1, int(history_limit or 10))
+        self._history_limit = min(
+            PITSTOP_MAX_HISTORY_PER_CAR,
+            max(1, int(history_limit or PITSTOP_MAX_HISTORY_PER_CAR)),
+        )
         self._by_car: dict[str, list[dict]] = {}
         self._dedup: set[tuple] = set()
         self._driver_map: dict[str, dict[str, Any]] = {}
@@ -3424,30 +3444,81 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         except Exception:
             return None
 
+    @staticmethod
+    def _normalize_racing_number(value: Any) -> str | None:
+        text = str(value or "").strip()
+        if (
+            not text
+            or not text.isdecimal()
+            or len(text) > PITSTOP_MAX_RACING_NUMBER_CHARS
+        ):
+            return None
+        parsed = int(text)
+        return str(parsed) if parsed > 0 else None
+
+    @staticmethod
+    def _bounded_text(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        return text[:PITSTOP_MAX_TEXT_CHARS]
+
+    @staticmethod
+    def _dedup_key(
+        rn: str,
+        lap: int | None,
+        timestamp: str | None,
+        pit_lane_time: float | None,
+        pit_stop_time: float | None,
+    ) -> tuple[Any, ...]:
+        if timestamp:
+            return (rn, "ts", timestamp, pit_lane_time, pit_stop_time)
+        return (rn, "no_ts", lap, pit_lane_time, pit_stop_time)
+
+    def _rebuild_pitstop_dedup(self) -> None:
+        keys: set[tuple[Any, ...]] = set()
+        for rn, stops in (self._by_car or {}).items():
+            if not isinstance(stops, list):
+                continue
+            for stop in stops:
+                if not isinstance(stop, dict):
+                    continue
+                keys.add(
+                    self._dedup_key(
+                        str(rn),
+                        self._parse_int(stop.get("lap")),
+                        self._bounded_text(stop.get("timestamp")),
+                        self._parse_float(stop.get("pit_lane_time")),
+                        self._parse_float(stop.get("pit_stop_time")),
+                    )
+                )
+        self._dedup = keys
+
     def _schedule_deliver(self) -> None:
         self._deliver()
 
     def _add_stop(self, racing_number: str, stop: dict) -> None:
-        rn = str(racing_number or "").strip()
-        if not rn:
+        rn = self._normalize_racing_number(racing_number)
+        if rn is None:
+            return
+        if rn not in self._by_car and len(self._by_car) >= PITSTOP_MAX_CARS:
             return
         lap = self._parse_int(stop.get("lap"))
-        ts = stop.get("timestamp")
+        ts = self._bounded_text(stop.get("timestamp"))
         pit_stop_time = self._parse_float(stop.get("pit_stop_time"))
         pit_lane_time = self._parse_float(stop.get("pit_lane_time"))
 
         # Dedup: prefer timestamp when present, else fall back to lap/times.
-        if ts:
-            key = (rn, "ts", str(ts), pit_lane_time, pit_stop_time)
-        else:
-            key = (rn, "no_ts", lap, pit_lane_time, pit_stop_time)
+        key = self._dedup_key(rn, lap, ts, pit_lane_time, pit_stop_time)
         if key in self._dedup:
             return
         self._dedup.add(key)
 
         entry = {
             "lap": lap,
-            "timestamp": str(ts) if ts else None,
+            "timestamp": ts,
             "pit_stop_time": pit_stop_time,
             "pit_lane_time": pit_lane_time,
             "pit_delta": None,
@@ -3457,30 +3528,38 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         lst.append(entry)
         if len(lst) > self._history_limit:
             self._by_car[rn] = lst[-self._history_limit :]
+            self._rebuild_pitstop_dedup()
 
     def _ingest_pitstopseries(self, msg: dict) -> None:
         pit_times = (msg or {}).get("PitTimes")
         if not isinstance(pit_times, dict):
             return
-        for rn, entries in pit_times.items():
+        processed_entries = 0
+        for car_index, (rn, entries) in enumerate(pit_times.items()):
+            if car_index >= PITSTOP_MAX_CARS_PER_PAYLOAD:
+                break
+            if processed_entries >= PITSTOP_MAX_ENTRIES_PER_PAYLOAD:
+                break
             if isinstance(entries, list):
                 iterable = entries
             elif isinstance(entries, dict):
-                iterable = list(entries.values())
+                iterable = entries.values()
             else:
                 continue
             for item in iterable:
+                if processed_entries >= PITSTOP_MAX_ENTRIES_PER_PAYLOAD:
+                    break
+                processed_entries += 1
                 if not isinstance(item, dict):
                     continue
                 pitstop = item.get("PitStop")
                 if not isinstance(pitstop, dict):
                     continue
-                timestamp = item.get("Timestamp")
                 self._add_stop(
-                    str(pitstop.get("RacingNumber") or rn),
+                    pitstop.get("RacingNumber") or rn,
                     {
                         "lap": pitstop.get("Lap"),
-                        "timestamp": timestamp,
+                        "timestamp": item.get("Timestamp"),
                         "pit_stop_time": pitstop.get("PitStopTime"),
                         "pit_lane_time": pitstop.get("PitLaneTime"),
                     },
@@ -3493,13 +3572,17 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         for rn, info in (payload or {}).items():
             if not isinstance(info, dict):
                 continue
-            racing_number = str(info.get("RacingNumber") or rn).strip()
-            if not racing_number:
+            racing_number = self._normalize_racing_number(
+                info.get("RacingNumber") or rn
+            )
+            if racing_number is None:
                 continue
             self._driver_map[racing_number] = {
-                "tla": info.get("Tla"),
-                "name": info.get("FullName") or info.get("BroadcastName"),
-                "team": info.get("TeamName"),
+                "tla": self._bounded_text(info.get("Tla")),
+                "name": self._bounded_text(
+                    info.get("FullName") or info.get("BroadcastName")
+                ),
+                "team": self._bounded_text(info.get("TeamName")),
             }
 
     def _seed_driver_map_from_ergast(self) -> None:
@@ -3527,16 +3610,19 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         cars: dict[str, Any] = {}
         total = 0
         try:
-            car_numbers = {
-                str(rn) for rn in (self._by_car or {}) if str(rn).strip()
-            } | {
-                str(rn)
-                for rn, count in (self._driver_pit_counts or {}).items()
-                if str(rn).strip() and int(count or 0) > 0
-            }
+            car_numbers: set[str] = set()
+            for rn in self._by_car or {}:
+                normalized = self._normalize_racing_number(rn)
+                if normalized is not None:
+                    car_numbers.add(normalized)
+            for rn, count in (self._driver_pit_counts or {}).items():
+                normalized = self._normalize_racing_number(rn)
+                if normalized is not None and int(count or 0) > 0:
+                    car_numbers.add(normalized)
+            sorted_car_numbers = sorted(car_numbers, key=int)[:PITSTOP_MAX_CARS]
             for rn, stops in sorted(
-                ((rn, self._by_car.get(rn, [])) for rn in car_numbers),
-                key=lambda kv: int(str(kv[0])) if str(kv[0]).isdigit() else str(kv[0]),
+                ((rn, self._by_car.get(rn, [])) for rn in sorted_car_numbers),
+                key=lambda kv: int(str(kv[0])),
             ):
                 lst = list(stops or [])
                 fallback_count = int(self._driver_pit_counts.get(str(rn), 0))
@@ -3551,27 +3637,25 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                 }
                 total += stop_count
         except Exception:
-            cars = {
-                str(rn): {
+            cars = {}
+            combined: dict[str, list[dict[str, Any]]] = {}
+            for rn, stops in (self._by_car or {}).items():
+                normalized = self._normalize_racing_number(rn)
+                if normalized is not None:
+                    combined[normalized] = stops
+            for rn, count in (self._driver_pit_counts or {}).items():
+                normalized = self._normalize_racing_number(rn)
+                if normalized is not None and int(count or 0) > 0:
+                    combined.setdefault(normalized, self._by_car.get(normalized, []))
+            for rn in sorted(combined, key=int)[:PITSTOP_MAX_CARS]:
+                stops = combined.get(rn, [])
+                cars[rn] = {
                     "count": max(
                         len(stops or []),
-                        int(self._driver_pit_counts.get(str(rn), 0)),
+                        int(self._driver_pit_counts.get(rn, 0)),
                     ),
                     "stops": list(stops or []),
                 }
-                for rn, stops in {
-                    **{
-                        str(rn): stops
-                        for rn, stops in (self._by_car or {}).items()
-                        if str(rn).strip()
-                    },
-                    **{
-                        str(rn): self._by_car.get(str(rn), [])
-                        for rn, count in (self._driver_pit_counts or {}).items()
-                        if str(rn).strip() and int(count or 0) > 0
-                    },
-                }.items()
-            }
             try:
                 total = sum(
                     v.get("count", 0) for v in cars.values() if isinstance(v, dict)
@@ -3650,7 +3734,12 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             return False
         next_counts: dict[str, int] = {}
         for rn, info in drivers.items():
+            if len(next_counts) >= PITSTOP_MAX_CARS:
+                break
             if not isinstance(info, dict):
+                continue
+            normalized = self._normalize_racing_number(rn)
+            if normalized is None:
                 continue
             timing = info.get("timing")
             if not isinstance(timing, dict):
@@ -3658,7 +3747,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             pit_stops = self._parse_int(timing.get("pit_stops"))
             if pit_stops is None:
                 continue
-            next_counts[str(rn)] = max(0, pit_stops)
+            next_counts[normalized] = max(0, pit_stops)
         if next_counts == self._driver_pit_counts:
             return False
         self._driver_pit_counts = next_counts
@@ -3677,14 +3766,16 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         for rn, info in drivers.items():
             if not isinstance(info, dict):
                 continue
+            key = self._normalize_racing_number(rn)
+            if key is None:
+                continue
             identity = info.get("identity")
             if not isinstance(identity, dict):
                 continue
-            key = str(rn)
             entry = self._driver_map.setdefault(key, {})
-            new_tla = identity.get("tla")
-            new_name = identity.get("name")
-            new_team = identity.get("team")
+            new_tla = self._bounded_text(identity.get("tla"))
+            new_name = self._bounded_text(identity.get("name"))
+            new_team = self._bounded_text(identity.get("team"))
             if new_tla and entry.get("tla") != new_tla:
                 entry["tla"] = new_tla
                 updated = True
@@ -3719,9 +3810,9 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         if not isinstance(identity, dict):
             return ident
         return {
-            "tla": identity.get("tla"),
-            "name": identity.get("name"),
-            "team": identity.get("team"),
+            "tla": self._bounded_text(identity.get("tla")),
+            "name": self._bounded_text(identity.get("name")),
+            "team": self._bounded_text(identity.get("team")),
         }
 
     def _refresh_pit_deltas(self) -> bool:
