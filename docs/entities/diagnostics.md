@@ -3,7 +3,7 @@ id: diagnostics
 title: Diagnostics
 ---
 
-Diagnostic entities are intended for troubleshooting and advanced automations. Some entities are created only when the corresponding feature is enabled during configuration.
+Diagnostic entities are intended for troubleshooting and advanced automations. Some entities are created only when the corresponding feature is enabled during configuration, and some development diagnostics may be hidden in normal releases.
 
 Downloaded diagnostics from **Settings > Devices & Services > F1 Sensor > Diagnostics** include a compact runtime summary for live timing, F1TV Auth, incident detection, and Track Map. Diagnostics are intended for support and should not include authorization headers, cookies, callback URLs, nonce values, tokens, or detailed car movement data.
 
@@ -11,8 +11,8 @@ Downloaded diagnostics from **Settings > Devices & Services > F1 Sensor > Diagno
 
 | Entity | Info |
 | --- | --- |
-| [sensor.f1_live_timing_mode](#live-timing-mode) | Current live timing mode (`idle`, `live`, `replay`) and live data activity |
-| [binary_sensor.f1_live_timing_online](#live-timing-online) | Live timing connectivity indicator |
+| [sensor.f1_live_timing_mode](#live-timing-mode) | Current live timing mode (`idle`, `live`, `replay`) and live data activity, if present |
+| [binary_sensor.f1_live_timing_online](#live-timing-online) | Live timing connectivity indicator, if present |
 | [sensor.f1_replay_status](#replay-status) | Replay state and progress |
 | [sensor.f1_f1tv_token_status](#f1tv-token-status) | Redacted F1TV token health status |
 | [sensor.f1_f1tv_token_expires_at](#f1tv-token-expires-at) | Expiry time for the saved F1TV live timing token |
@@ -21,7 +21,7 @@ Downloaded diagnostics from **Settings > Devices & Services > F1 Sensor > Diagno
 
 ## Live Timing Mode
 
-`sensor.f1_live_timing_mode` - Diagnostic sensor showing which timing mode the integration is currently using.
+`sensor.f1_live_timing_mode` - Diagnostic sensor showing which timing mode the integration is currently using. This entity may be hidden in normal releases.
 
 **State (enum)**
 - One of: `idle`, `live`, `replay`.
@@ -44,7 +44,7 @@ Normal users usually only need the sensor state, token status, and whether publi
 
 ## Live Timing Online
 
-`binary_sensor.f1_live_timing_online` - Diagnostic connectivity indicator for the live timing transport.
+`binary_sensor.f1_live_timing_online` - Diagnostic connectivity indicator for the live timing transport. This entity may be hidden in normal releases.
 
 **State (on/off)**
 - `on` when replay is active, or when a live timing window is active and recent live data activity is detected.

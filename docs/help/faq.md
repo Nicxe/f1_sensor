@@ -9,6 +9,14 @@ title: FAQ
 
 ### General Questions
 
+<details>
+<summary>Which release channel should I use?</summary>
+
+Use the stable release for your normal Home Assistant setup. Use beta only when you want to help test the next release on a separate test instance. Use `dev` only for local development or when the maintainer asks you to test a specific unreleased change.
+
+See [Release Channels](/getting-started/release-channels) for the full stable, beta, and dev workflow.
+</details>
+
 
 
 
@@ -101,7 +109,7 @@ All other live entities, such as track status, session status, driver positions,
 
 Live [Track Map](/features/track-map) requires optional F1TV Auth during a real live session. If the token is missing, expired, rejected, or Formula 1 is not publishing usable car position data, the card can show `Waiting`, `Stale`, `No geometry`, or `No session`.
 
-Check `sensor.f1_f1tv_token_status`, `sensor.f1_live_timing_mode`, and the Track Map card status.
+Check `sensor.f1_f1tv_token_status`, the Track Map card status, and `sensor.f1_live_timing_mode` if that diagnostic entity is present.
 </details>
 
 <details>
@@ -152,8 +160,8 @@ See the [No Spoiler Mode documentation](/features/no-spoiler-mode) for full deta
 
 The integration provides multiple ways to adjust the live delay:
 
-1. **Direct adjustment**: Change `number.f1_live_delay` to set the delay in seconds
-2. **Guided calibration**: Use the built-in calibration workflow with `switch.f1_delay_calibration`
+1. **Direct adjustment**: Change `number.f1_live_delay` to set the delay in seconds.
+2. **Guided calibration**: Use the built-in calibration workflow with `switch.f1_delay_calibration`.
 
 For detailed instructions including automatic calibration during a live session, see [**Live Delay**](/features/live-delay).
 </details>
@@ -186,7 +194,7 @@ For example automations, check the [Automation](/automation) page.
 <details>
 <summary>How can I tell which session is currently live (Practice, Qualifying, Race, etc.)?</summary>
 
-As of version 2.2.0, there is a sensor for this. The integration provides `sensor.f1_current_session` which indicates the name of the session that is currently running. 
+The integration provides `sensor.f1_current_session`, which indicates the name of the session that is currently running.
 
 For example, it will show values like “Practice 1”, “Qualifying”, “Sprint Shootout”, or “Race” when those sessions are in progress. This complements the `sensor.f1_session_status` sensor (which shows the state like pre/live/finished) by telling you exactly which session is active. 
 
@@ -271,11 +279,11 @@ For example, if the sensor state is `12` and the `total_laps` attribute is `56`,
 <details>
 <summary>I updated F1 Sensor but I don’t see the new sensors (like track status or weather) – where are they?</summary>
 
-You likely need to enable the new live data sensors in the integration’s config.
+You likely need to enable the live data sensors in the integration configuration.
 
-After updating to a version that introduces new sensors, open the F1 Sensor integration’s options (Reconfigure) and make sure “Enable live F1 API” or the relevant option is turned on. Once enabled and saved, the new sensors (e.g. session status, track status, etc.) will be created. 
+Open the F1 Sensor integration options with **Reconfigure** and make sure **Enable live F1 API** is turned on. Once enabled and saved, live sensors such as session status, track status, Race Control, weather, and timing entities are created.
 :::info
-This step is required because live data is off by default until you opt-in.*
+Live data is opt-in. If **Enable live F1 API** is off, live session entities are not created.
 :::
 </details>
 

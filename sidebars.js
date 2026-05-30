@@ -10,7 +10,12 @@ const sidebars = {
     {
       type: 'category',
       label: 'Getting Started',
-      items: ['getting-started/installation', 'getting-started/add-integration'],
+      items: ['getting-started/installation', 'getting-started/add-integration', 'getting-started/release-channels'],
+    },
+    {
+      type: 'category',
+      label: 'Testing and Issues',
+      items: ['help/beta-tester', 'help/debug-logging', 'help/issues'],
     },
     {
       type: 'category',
@@ -22,7 +27,6 @@ const sidebars = {
         'features/f1tv-auth',
         'features/track-map',
         'features/incident-detection',
-        'features/context7',
       ],
     },
     {
@@ -51,12 +55,6 @@ const sidebars = {
 
     {
       type: 'category',
-      label: 'Testing',
-      items: ['help/beta-tester', 'help/debug-logging'],
-    },
-
-    {
-      type: 'category',
       label: 'Showcase',
       items: [
         'example/e-ink',
@@ -73,11 +71,11 @@ const sidebars = {
       label: 'Need Help?',
       items: [
         'help/faq',
-        'help/issues',
         'help/contact',
         'help/f1tv-auth-setup',
         'help/f1tv-token-helper',
         'help/f1tv-token-helper-privacy',
+        'features/context7',
       ],
     },
 

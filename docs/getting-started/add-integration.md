@@ -8,6 +8,7 @@ title: Configuration
 To add the integration to your Home Assistant instance, use the button below:
 
 [![Open your Home Assistant instance and start configuration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start?domain=f1_sensor)
+
 :::info
 During installation, you can choose exactly which sensors you want to include in your setup.
 This gives you control over which data points to load, for example, only the next race and weather, without standings or calendar.
@@ -20,6 +21,21 @@ This documentation always refers to the standard `entity_id`, for example `senso
 Display names in Home Assistant can be localized, and older installations may already have different registry IDs. When you search in Home Assistant, search for the `f1_` suffix or check the entity’s `entity_id` in the entity settings instead of relying on the display name alone.
 :::
 
+## Configuration choices
+
+The setup form lets you choose how much F1 data Home Assistant should create and update.
+
+| Setting | What to choose |
+| --- | --- |
+| **Device name** | Keep the default unless you run multiple F1 Sensor entries |
+| **Enabled sensors** | Select the static, live, and helper entities you want Home Assistant to create |
+| **Enable live F1 API** | Turn this on for live session status, track status, Safety Car, Race Control, weather, timing, tyres, and incident alerts |
+| **First day of race week** | Choose when `binary_sensor.f1_race_week` should turn on for your dashboards and automations |
+| **Connect F1TV access with Token Helper** | Optional. Use this only when you want extra live-auth features such as live Track Map, Pit Stops, Championship Prediction, or earlier incident candidates |
+
+:::info[F1TV Auth is optional]
+Public live timing works without F1TV Auth. Leave F1TV pairing off if you only need schedules, standings, public live timing, Race Control, weather, driver timing, tyres, and confirmed incident alerts.
+:::
 
 ### Manual Configuration
 
@@ -58,7 +74,7 @@ All entity IDs remain unchanged, so automations and dashboard cards that referen
 
 ## Live data setup
 
-When enabling live data, you can set an initial delay to better align live updates with your TV broadcast.
+Enable **Enable live F1 API** when you want Home Assistant to create and update live session entities. When live data is enabled, you can set an initial delay to better align live updates with your TV broadcast.
 
 For detailed instructions on syncing with your TV, including guided calibration, see [Live Delay](/features/live-delay).
 

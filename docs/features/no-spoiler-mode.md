@@ -60,7 +60,7 @@ No Spoiler Mode is controlled by a single global switch:
 
 | Entity | Purpose |
 | --- | --- |
-| `switch.f1_sensor_no_spoiler_mode` | Turn No Spoiler Mode on or off |
+| `switch.f1_no_spoiler_mode` | Turn No Spoiler Mode on or off |
 
 The switch is available under the F1 system device, alongside the live delay calibration switch. It controls the mode for all your F1 Sensor entries at once.
 :::info[One switch for everything]
@@ -93,7 +93,7 @@ automation:
     action:
       - action: switch.turn_on
         target:
-          entity_id: switch.f1_sensor_no_spoiler_mode
+          entity_id: switch.f1_no_spoiler_mode
 ```
 
 Turn it off manually when you are done watching the replay.

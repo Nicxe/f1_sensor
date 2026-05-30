@@ -138,7 +138,7 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_current_session](#current-session)         | Current ongoing session, like Practice 1, Qualification, Race|
 | [sensor.f1_session_time_elapsed](#session-time-elapsed) | Time elapsed in the current session `(beta)` |
 | [sensor.f1_session_time_remaining](#session-time-remaining) | Time remaining in the current session `(beta)` |
-| [sensor.f1_race_three_hour_limit](#race-three-hour-limit) | Time remaining until the FIA 3-hour race duration cap `(beta)` |
+| [sensor.f1_race_time_to_three_hour_limit](#race-three-hour-limit) | Time remaining until the FIA 3-hour race duration cap `(beta)` |
 | [sensor.f1_track_status](#track-status)               | Current track status |
 | [binary_sensor.f1_safety_car](#safety-car)            | Safety Car (SC) or Virtual Safety Car (VSC) is active|  
 | [binary_sensor.f1_on_track_incident](#on-track-incident) | Confirmed likely stopped car or on-track incident is active |
@@ -330,7 +330,7 @@ The session clock counts down the scheduled duration of the session. It does not
 This sensor is currently in beta. The behavior has not been verified across all edge cases and timing scenarios. Treat the values as indicative rather than definitive until further testing is complete.
 :::
 
-`sensor.f1_race_three_hour_limit` - Time remaining until the FIA three-hour race duration cap is reached. This sensor is only available during the main race session (not sprint races).
+`sensor.f1_race_time_to_three_hour_limit` - Time remaining until the FIA three-hour race duration cap is reached. This sensor is only available during the main race session (not sprint races).
 
 Under FIA regulations, a race must finish within three hours of the original start time. This sensor counts down to that absolute limit, independently of the session clock which may be paused during red flags.
 

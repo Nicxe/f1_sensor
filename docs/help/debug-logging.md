@@ -58,7 +58,7 @@ After Home Assistant restarts:
 3. Note the installed F1 Sensor version.
 4. Note whether the integration is using public live timing, F1TV Auth live timing, Replay Mode, or development replay mode.
 5. Note the state of `sensor.f1_f1tv_token_status` if the issue involves live auth.
-6. Note the state and attributes of `sensor.f1_live_timing_mode` if live timing is involved.
+6. If present, note the state and attributes of `sensor.f1_live_timing_mode` when live timing is involved.
 
 These details make it easier to match log entries to the behavior you saw.
 
@@ -102,7 +102,7 @@ When you create a GitHub issue, include:
 4. Whether you are using public live timing, F1TV Auth live timing, Replay Mode, or development replay mode.
 5. What you expected to happen.
 6. What actually happened.
-7. The state and attributes of `sensor.f1_live_timing_mode` when relevant.
+7. The state and attributes of `sensor.f1_live_timing_mode` when relevant and present.
 8. The state of `sensor.f1_f1tv_token_status` when relevant.
 9. Track Map status, source, and stale state when relevant.
 10. Relevant debug log output with secrets removed.

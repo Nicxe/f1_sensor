@@ -83,7 +83,7 @@ Track Map is not required for incident detection. Public confirmed incident aler
 
 ### Cars do not show during a live session
 
-Live Track Map requires [F1TV Auth](/features/f1tv-auth) and live car position data. Check `sensor.f1_f1tv_token_status`, then check the Track Map card status and `sensor.f1_live_timing_mode` to confirm that live timing is active.
+Live Track Map requires [F1TV Auth](/features/f1tv-auth) and live car position data. Check `sensor.f1_f1tv_token_status`, then check the Track Map card status. If the diagnostic entity is present, `sensor.f1_live_timing_mode` can also help confirm that live timing is active.
 
 ### Replay shows a map but live does not
 

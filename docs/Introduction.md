@@ -18,6 +18,8 @@ It works without F1TV Auth. Public live timing powers core live entities such as
 
 Start with the [installation guide](/getting-started/installation), then use [configuration](/getting-started/add-integration) to add F1 Sensor to Home Assistant.
 
+If you are preparing for beta testing, read [Release Channels](/getting-started/release-channels) first. Stable is for normal use, beta is for validating the next release, and `dev` contains all active unreleased work.
+
 ## Features
 
 Take your setup further with focused feature pages:
@@ -28,6 +30,12 @@ Take your setup further with focused feature pages:
 - [F1TV Auth](/features/f1tv-auth) - Add optional live timing enhancements while public live timing continues to work
 - [Track Map](/features/track-map) - Show car markers on a circuit map during live or replay sessions
 - [Incident Detection](/features/incident-detection) - Detect likely stopped cars or on-track incidents with neutral alerts
+
+## Beta testing
+
+The first beta release is the point where changes promoted from `dev` become a testable pre-release. Use the beta channel when you want to validate new behavior before it reaches stable, and use the dev branch only for maintainer-led development testing.
+
+For the recommended testing workflow, see [Beta Testing](/help/beta-tester).
 
 ## Timing modes
 
