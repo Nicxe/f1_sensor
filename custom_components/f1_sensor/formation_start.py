@@ -13,7 +13,7 @@ from aiohttp import ClientSession
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .helpers import parse_cardata_lines
+from .helpers import CARDATA_MAX_LINE_BYTES, parse_cardata_lines
 from .signalr import LiveBus
 
 _LOGGER = logging.getLogger(__name__)
@@ -585,6 +585,9 @@ class FormationStartTracker:
                         raw = await resp.content.readline()
                         if not raw:
                             break
+                        if len(raw) > CARDATA_MAX_LINE_BYTES:
+                            _LOGGER.debug("Skipping oversized CarData line")
+                            continue
                         line = raw.decode("utf-8", errors="ignore").strip()
                         if not line:
                             continue

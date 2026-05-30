@@ -890,7 +890,7 @@ def test_prediction_notice_explains_missing_auth_by_default() -> None:
 
     assert result == {
         "tone": "info",
-        "message": "Predicted points are hidden because F1TV access is not configured. They are still available in Replay Mode.",
+        "message": "Connect F1TV access to show live predicted points. Replay data remains available.",
     }
 
 
@@ -909,7 +909,7 @@ def test_pit_stop_notice_explains_missing_auth_by_default() -> None:
 
     assert result == {
         "tone": "info",
-        "message": "Pit stop data is hidden because F1TV access is not configured. It is still available in Replay Mode.",
+        "message": "Connect F1TV access to show live pit stop data. Replay data remains available.",
     }
 
 

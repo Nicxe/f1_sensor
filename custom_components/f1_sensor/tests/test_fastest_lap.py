@@ -107,6 +107,30 @@ async def test_extract_stint_items_normalizes_list_and_dict_inputs(hass) -> None
 
 
 @pytest.mark.asyncio
+async def test_timingapp_ignores_sparse_or_out_of_range_stint_indexes(hass) -> None:
+    coord = _make_coord(hass)
+
+    assert coord._extract_stint_items(
+        {
+            "0": {"Compound": "MEDIUM"},
+            "31": {"Compound": "HARD"},
+            "32": {"Compound": "SOFT"},
+            "100000000": {"Compound": "SOFT"},
+        }
+    ) == [
+        (0, {"Compound": "MEDIUM"}),
+        (31, {"Compound": "HARD"}),
+    ]
+
+    tyre_history = {"stints": [], "current_stint_index": None}
+    assert (
+        coord._update_stint_history(tyre_history, 100000000, {"Compound": "SOFT"})
+        is False
+    )
+    assert tyre_history["stints"] == []
+
+
+@pytest.mark.asyncio
 async def test_timingapp_only_compound_data_populates_tyres_and_statistics(
     hass,
 ) -> None:

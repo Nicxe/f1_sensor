@@ -8,6 +8,10 @@ title: Installation & Configuration
 Get up and running with F1 Sensor in just a few minutes.  
 This guide walks you through installation and configuration in Home Assistant, step by step.
 
+:::info[Choose the right release channel]
+Most users should install the latest stable release. If you want to test the first beta release or follow active development builds, read [Release Channels](/getting-started/release-channels) before installing.
+:::
+
 
 
 ## Overview, how it works
@@ -39,6 +43,12 @@ Click the button below to automatically add the repository to HACS.
 3. Click **Download**
 :::tip
 When installed through HACS, you will automatically receive update notifications when new releases are available.
+:::
+
+:::info[Beta releases]
+HACS installs the stable release by default. To test a beta version, open **F1 Sensor** in HACS, use **Redownload**, enable **Show beta versions** if needed, and select the latest beta release.
+
+For the difference between stable, beta, and dev builds, see [Release Channels](/getting-started/release-channels).
 :::
 
 
@@ -93,6 +103,8 @@ You can always change this later via
 Once configuration is complete, the sensors are created automatically and are ready to be used in dashboards, automations, and templates.
 
 The Live Data Cards are bundled with F1 Sensor. After Home Assistant restarts, the integration registers the dashboard card resource automatically, so you do not need to install a separate HACS dashboard repository for the cards.
+
+If you are testing a beta release, continue with [Beta Testing](/help/beta-tester) so your feedback includes the version, release channel, logs, and affected feature area.
 
 ---
 

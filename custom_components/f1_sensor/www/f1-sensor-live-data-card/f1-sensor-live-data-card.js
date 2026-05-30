@@ -1,16 +1,17 @@
 // Custom F1 Tyres Statistics card for Home Assistant
 const getLit = async () => {
-  if (window.LitElement && window.litHtml) {
+  if (window.LitElement && window.litHtml?.html && window.litHtml?.css && window.litHtml?.svg) {
     return {
       LitElement: window.LitElement,
       html: window.litHtml.html,
       css: window.litHtml.css,
+      svg: window.litHtml.svg,
     };
   }
-  return import('https://unpkg.com/lit@3.1.0?module');
+  throw new Error('Home Assistant Lit globals are unavailable');
 };
 
-const { LitElement, html, css } = await getLit();
+const { LitElement, html, css, svg } = await getLit();
 
 let f1FontsInjected = false;
 const ensureF1Fonts = () => {
@@ -918,6 +919,12 @@ const LEGACY_ENTITY_ID_FALLBACKS = {
   'sensor.f1_drivers_driver_positions': 'sensor.f1_driver_positions',
   'sensor.f1_championship_championship_prediction_drivers': 'sensor.f1_championship_prediction_drivers',
   'sensor.f1_championship_championship_prediction_teams': 'sensor.f1_championship_prediction_teams',
+  'sensor.f1_driver_points_progression': 'sensor.f1_championship_f1_driver_points_progression',
+  'sensor.f1_constructor_points_progression': 'sensor.f1_championship_f1_constructor_points_progression',
+  'sensor.f1_championship_driver_points_progression': 'sensor.f1_championship_f1_driver_points_progression',
+  'sensor.f1_championship_constructor_points_progression': 'sensor.f1_championship_f1_constructor_points_progression',
+  'sensor.f1_current_season': 'sensor.f1_race_f1_current_season',
+  'sensor.f1_race_current_season': 'sensor.f1_race_f1_current_season',
   'sensor.f1_officials_investigations': 'sensor.f1_investigations',
   'sensor.f1_officials_track_limits': 'sensor.f1_track_limits',
   'sensor.f1_officials_race_control': 'sensor.f1_race_control',
@@ -1046,8 +1053,8 @@ const buildF1DataAvailabilityNotice = (hass, config, feature) => {
     return {
       tone: 'info',
       message: isPitStop
-        ? 'Pit stop data is hidden because F1TV access is not configured. It is still available in Replay Mode.'
-        : 'Predicted points are hidden because F1TV access is not configured. They are still available in Replay Mode.',
+        ? 'Connect F1TV access to show live pit stop data. Replay data remains available.'
+        : 'Connect F1TV access to show live predicted points. Replay data remains available.',
     };
   }
 
@@ -7241,6 +7248,3362 @@ class F1ChampionshipPredictionTeamsCard extends LitElement {
         detail: { entityId: this._actionEntityId || this.config.current_entity || this.config.entity },
       }));
     }
+  }
+}
+
+const F1_SEASON_PROGRESSION_DRIVER_COLORS = {
+  VER: '#4781d7',
+  PER: '#6c98ff',
+  NOR: '#f47600',
+  PIA: '#ff8700',
+  LEC: '#ed1131',
+  HAM: '#dc0000',
+  RUS: '#00d7b6',
+  ANT: '#27f4d2',
+  ALO: '#229971',
+  STR: '#358c75',
+  ALB: '#1868db',
+  SAI: '#37bedd',
+  HUL: '#01c00e',
+  BOR: '#52e252',
+  LAW: '#6c98ff',
+  HAD: '#5e8faa',
+  TSU: '#356cac',
+  OCO: '#b6babd',
+  BEA: '#9c9fa2',
+  GAS: '#00a1e8',
+  DOO: '#0090cc',
+  COL: '#0072ff',
+  BOT: '#52e252',
+  ZHO: '#01c00e',
+  MAG: '#b6babd',
+  RIC: '#6c98ff',
+  SAR: '#1868db',
+};
+
+const F1_SEASON_PROGRESSION_CONSTRUCTOR_COLORS = {
+  red_bull: '#4781d7',
+  redbull: '#4781d7',
+  oracle_red_bull_racing: '#4781d7',
+  mclaren: '#f47600',
+  ferrari: '#ed1131',
+  mercedes: '#00d7b6',
+  aston_martin: '#229971',
+  astonmartin: '#229971',
+  williams: '#1868db',
+  sauber: '#01c00e',
+  kick_sauber: '#01c00e',
+  stake_sauber: '#01c00e',
+  rb: '#6c98ff',
+  racing_bulls: '#6c98ff',
+  visa_cash_app_rb: '#6c98ff',
+  alpha_tauri: '#5e8faa',
+  alphatauri: '#5e8faa',
+  alpine: '#00a1e8',
+  haas: '#b6babd',
+  audi: '#c8c8c8',
+  cadillac: '#c7a467',
+};
+
+const F1_SEASON_PROGRESSION_FALLBACK_COLORS = [
+  '#e10600',
+  '#00d7b6',
+  '#f47600',
+  '#4781d7',
+  '#ed1131',
+  '#229971',
+  '#1868db',
+  '#ffb000',
+  '#9c27b0',
+  '#00a1e8',
+  '#b6babd',
+  '#8bc34a',
+  '#ff5f5f',
+  '#40c4ff',
+];
+
+const DEFAULT_F1_SEASON_PROGRESSION_CONFIG = {
+  mode: 'drivers',
+  entity: 'sensor.f1_driver_points_progression',
+  calendar_entity: 'sensor.f1_current_season',
+  driver_list_entity: 'sensor.f1_driver_list',
+  title: 'Season progression - drivers points',
+  theme_mode: 'auto',
+  show_header: true,
+  show_legend: true,
+  legend_position: 'bottom',
+  show_legend_points: true,
+  show_full_name: false,
+  show_points: true,
+  show_round_labels: true,
+  show_future_rounds: true,
+  top_limit: 0,
+  chart_height: 320,
+};
+
+const F1_SEASON_PROGRESSION_MODE_OPTIONS = [
+  { value: 'drivers', label: 'Drivers' },
+  { value: 'constructors', label: 'Constructors' },
+];
+
+const F1_SEASON_PROGRESSION_LEGEND_POSITION_OPTIONS = [
+  { value: 'bottom', label: 'Below chart' },
+  { value: 'left', label: 'Left of chart' },
+  { value: 'right', label: 'Right of chart' },
+];
+
+const DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG = {
+  entity: 'sensor.f1_lap_position_progression',
+  drivers_entity: 'sensor.f1_driver_list',
+  no_spoiler_entity: 'switch.f1_no_spoiler_mode',
+  title: 'Lap Position Progression',
+  theme_mode: 'auto',
+  show_header: true,
+  show_session_selector: true,
+  show_points: true,
+  show_round_labels: true,
+  show_full_name: false,
+  team_logo_style: 'color',
+  chart_height: 420,
+  top_limit: 0,
+};
+
+// ============================================================================
+// F1 Season Progression Card
+// ============================================================================
+
+class F1SeasonProgressionCard extends LitElement {
+  static properties = {
+    hass: {},
+    config: {},
+    _hoverPoint: { state: true },
+    _hiddenSeriesKeys: { state: true },
+  };
+
+  static styles = [
+    F1_THEME_STYLES,
+    css`
+      :host {
+        display: block;
+        --sp-accent: #e10600;
+        --sp-bg: var(--f1-card-bg, var(--ha-card-background, var(--card-background-color, #ffffff)));
+        --sp-bg-soft: var(--f1-card-bg-soft, var(--primary-background-color, #f7f8fb));
+        --sp-bg-end: var(--f1-card-bg-end, var(--secondary-background-color, #eef1f6));
+        --sp-border: var(--f1-card-border, var(--ha-card-border-color, var(--divider-color, rgba(17, 24, 39, 0.14))));
+        --sp-text: var(--f1-card-text, var(--primary-text-color, #111827));
+        --sp-muted: var(--f1-card-muted, var(--secondary-text-color, #6b7280));
+        --sp-grid: var(--f1-card-divider, var(--divider-color, rgba(17, 24, 39, 0.1)));
+        --sp-axis: var(--f1-card-soft, color-mix(in srgb, var(--primary-text-color, #111827) 50%, transparent));
+        --sp-chip: var(--f1-card-chip, color-mix(in srgb, var(--primary-text-color, #111827) 7%, transparent));
+        --sp-panel: var(--f1-card-panel, color-mix(in srgb, var(--primary-text-color, #111827) 5%, transparent));
+        --sp-panel-soft: var(--f1-card-panel-soft, color-mix(in srgb, var(--primary-text-color, #111827) 3%, transparent));
+        --sp-shadow: var(--f1-card-shadow, var(--ha-card-box-shadow, 0 12px 30px rgba(15, 23, 42, 0.14)));
+        --sp-chart-height: 320px;
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+      }
+
+      ha-card {
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+        overflow: visible;
+      }
+
+      .sp-card {
+        position: relative;
+        overflow: hidden;
+        padding: 18px;
+        border: 1px solid var(--sp-border);
+        border-radius: var(--ha-card-border-radius, 12px);
+        background: linear-gradient(180deg, var(--sp-bg) 0%, var(--sp-bg-soft) 100%);
+        color: var(--sp-text);
+        box-shadow: var(--sp-shadow);
+        container-type: inline-size;
+      }
+
+      :host([data-effective-theme="dark"]) .sp-card,
+      .sp-card[data-theme="dark"] {
+        background:
+          linear-gradient(180deg, var(--sp-bg-soft) 0%, var(--sp-bg) 62%, var(--sp-bg-end) 100%);
+      }
+
+      .sp-card::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--sp-accent), #ff2800 42%, transparent 100%);
+        opacity: 0.95;
+      }
+
+      .sp-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 2px 0 10px;
+      }
+
+      .sp-title-block {
+        min-width: 0;
+      }
+
+      .sp-title {
+        margin: 0;
+        color: var(--sp-text);
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 0;
+        line-height: 1.25;
+        text-transform: uppercase;
+      }
+
+      .sp-subtitle {
+        margin-top: 4px;
+        color: var(--sp-muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        line-height: 1.25;
+        text-transform: uppercase;
+      }
+
+      .sp-badges {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
+
+      .sp-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 3px 8px;
+        border: 1px solid color-mix(in srgb, var(--sp-accent) 28%, var(--sp-border));
+        border-radius: 999px;
+        background: var(--sp-chip);
+        color: var(--sp-text);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        line-height: 1;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .sp-chart-shell {
+        grid-area: chart;
+        position: relative;
+        min-width: 0;
+        padding: 8px 0 2px;
+      }
+
+      .sp-chart {
+        display: block;
+        width: 100%;
+        height: var(--sp-chart-height);
+        overflow: visible;
+      }
+
+      .sp-axis-label {
+        fill: var(--sp-muted);
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .sp-grid-line {
+        stroke: var(--sp-grid);
+        stroke-width: 1;
+        vector-effect: non-scaling-stroke;
+      }
+
+      .sp-axis-line {
+        stroke: var(--sp-axis);
+        stroke-width: 1;
+        vector-effect: non-scaling-stroke;
+      }
+
+      .sp-series-line {
+        fill: none;
+        stroke: var(--series-color);
+        stroke-width: 2.4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+        vector-effect: non-scaling-stroke;
+      }
+
+      .sp-point {
+        fill: var(--sp-bg);
+        stroke: var(--series-color);
+        stroke-width: 2.2;
+        vector-effect: non-scaling-stroke;
+        cursor: pointer;
+      }
+
+      .sp-point:hover,
+      .sp-point:focus {
+        fill: var(--series-color);
+        outline: none;
+      }
+
+      .sp-tooltip {
+        position: absolute;
+        z-index: 2;
+        left: var(--tooltip-left, 50%);
+        top: var(--tooltip-top, 50%);
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        max-width: min(240px, calc(100% - 24px));
+        padding: 9px 10px;
+        border: 1px solid color-mix(in srgb, var(--tooltip-color, var(--sp-accent)) 34%, var(--sp-border));
+        border-left: 3px solid var(--tooltip-color, var(--sp-accent));
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--sp-bg) 94%, var(--sp-bg-soft) 6%);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+        color: var(--sp-text);
+        pointer-events: none;
+        transform: translate(var(--tooltip-translate-x, -50%), calc(-100% - 10px));
+      }
+
+      .sp-tooltip-content {
+        min-width: 0;
+      }
+
+      .sp-tooltip-media {
+        width: 46px;
+        height: 46px;
+        border: 1px solid color-mix(in srgb, var(--tooltip-color, var(--sp-accent)) 30%, var(--sp-border));
+        border-radius: 50%;
+        background: var(--sp-panel-soft);
+        object-fit: cover;
+        object-position: center top;
+      }
+
+      .sp-tooltip-media.team-logo,
+      .sp-tooltip-media.constructor-logo {
+        border-radius: 8px;
+        padding: 6px;
+        box-sizing: border-box;
+        object-fit: contain;
+        object-position: center;
+        filter: var(--f1-team-logo-filter, none);
+      }
+
+      .sp-tooltip-title {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+        color: var(--sp-text);
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1.25;
+      }
+
+      .sp-tooltip-swatch {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--tooltip-color, var(--sp-accent));
+        flex: 0 0 auto;
+      }
+
+      .sp-tooltip-meta {
+        margin-top: 4px;
+        color: var(--sp-muted);
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.3;
+      }
+
+      .sp-tooltip-points {
+        margin-top: 6px;
+        color: var(--sp-text);
+        font-size: 15px;
+        font-weight: 900;
+        line-height: 1.1;
+      }
+
+      .sp-main {
+        display: grid;
+        align-items: start;
+        gap: 12px;
+      }
+
+      .sp-main[data-legend-position="bottom"] {
+        grid-template-areas:
+          "chart"
+          "legend";
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .sp-main[data-legend-position="left"] {
+        grid-template-areas: "legend chart";
+        grid-template-columns: minmax(160px, 230px) minmax(0, 1fr);
+      }
+
+      .sp-main[data-legend-position="right"] {
+        grid-template-areas: "chart legend";
+        grid-template-columns: minmax(0, 1fr) minmax(160px, 230px);
+      }
+
+      .sp-legend {
+        grid-area: legend;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px 10px;
+        margin-top: 0;
+      }
+
+      .sp-main[data-legend-position="left"] .sp-legend,
+      .sp-main[data-legend-position="right"] .sp-legend {
+        align-content: flex-start;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        max-height: var(--sp-chart-height);
+        overflow-y: auto;
+        padding-right: 2px;
+      }
+
+      .sp-legend-item {
+        display: inline-grid;
+        box-sizing: border-box;
+        grid-template-columns: 10px minmax(0, auto) auto;
+        align-items: center;
+        gap: 6px;
+        max-width: 100%;
+        min-height: 22px;
+        padding: 3px 7px;
+        border: 1px solid color-mix(in srgb, var(--series-color) 18%, var(--sp-border));
+        border-radius: 8px;
+        background: var(--sp-panel);
+        color: var(--sp-text);
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 750;
+        font-family: inherit;
+        line-height: 1.2;
+        text-align: left;
+        transition: opacity 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+
+      .sp-legend-item[data-show-points="false"] {
+        grid-template-columns: 10px minmax(0, 1fr);
+      }
+
+      .sp-legend-item:hover,
+      .sp-legend-item:focus-visible {
+        border-color: color-mix(in srgb, var(--series-color) 42%, var(--sp-border));
+        background: color-mix(in srgb, var(--series-color) 8%, var(--sp-panel));
+        outline: none;
+      }
+
+      .sp-legend-item[data-hidden="true"] {
+        opacity: 0.42;
+        border-color: color-mix(in srgb, var(--sp-muted) 24%, var(--sp-border));
+        background: var(--sp-panel-soft);
+      }
+
+      .sp-legend-item[data-hidden="true"] .sp-legend-swatch {
+        background: transparent;
+        border: 1px solid var(--series-color);
+      }
+
+      .sp-legend-item[data-hidden="true"] .sp-legend-name {
+        text-decoration: line-through;
+        text-decoration-thickness: 1px;
+      }
+
+      .sp-main[data-legend-position="left"] .sp-legend-item,
+      .sp-main[data-legend-position="right"] .sp-legend-item {
+        grid-template-columns: 10px minmax(0, 1fr) auto;
+        width: 100%;
+      }
+
+      .sp-main[data-legend-position="left"] .sp-legend-item[data-show-points="false"],
+      .sp-main[data-legend-position="right"] .sp-legend-item[data-show-points="false"] {
+        grid-template-columns: 10px minmax(0, 1fr);
+      }
+
+      .sp-legend-swatch {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--series-color);
+      }
+
+      .sp-legend-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .sp-legend-points {
+        color: var(--sp-muted);
+        font-size: 10px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .sp-empty {
+        display: grid;
+        place-items: center;
+        min-height: 180px;
+        padding: 18px;
+        border: 1px dashed color-mix(in srgb, var(--sp-muted) 36%, transparent);
+        border-radius: 8px;
+        background: var(--sp-panel-soft);
+        color: var(--sp-muted);
+        font-size: 13px;
+        font-weight: 700;
+        text-align: center;
+      }
+
+      @container (max-width: 520px) {
+        .sp-card {
+          padding: 14px 12px;
+        }
+
+        .sp-header {
+          display: grid;
+          gap: 8px;
+        }
+
+        .sp-badges {
+          justify-content: flex-start;
+        }
+
+        .sp-title {
+          font-size: 14px;
+        }
+
+        .sp-legend {
+          gap: 6px;
+        }
+
+        .sp-main[data-legend-position="left"],
+        .sp-main[data-legend-position="right"] {
+          grid-template-areas:
+            "chart"
+            "legend";
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .sp-main[data-legend-position="left"] .sp-legend,
+        .sp-main[data-legend-position="right"] .sp-legend {
+          flex-direction: row;
+          flex-wrap: wrap;
+          max-height: none;
+          overflow: visible;
+          padding-right: 0;
+        }
+
+        .sp-legend-item {
+          grid-template-columns: 9px minmax(44px, 1fr) auto;
+          flex: 1 1 calc(50% - 6px);
+          padding-inline: 6px;
+        }
+
+        .sp-legend-item[data-show-points="false"],
+        .sp-main[data-legend-position="left"] .sp-legend-item[data-show-points="false"],
+        .sp-main[data-legend-position="right"] .sp-legend-item[data-show-points="false"] {
+          grid-template-columns: 9px minmax(44px, 1fr);
+        }
+
+        .sp-axis-label {
+          font-size: 9px;
+        }
+      }
+    `,
+  ];
+
+  constructor() {
+    super();
+    this.config = { ...DEFAULT_F1_SEASON_PROGRESSION_CONFIG };
+    this._hoverPoint = null;
+    this._hiddenSeriesKeys = new Set();
+  }
+
+  static getStubConfig() {
+    return {
+      type: 'custom:f1-season-progression-card',
+      ...DEFAULT_F1_SEASON_PROGRESSION_CONFIG,
+    };
+  }
+
+  static getConfigElement() {
+    return document.createElement('f1-season-progression-card-editor');
+  }
+
+  setConfig(config) {
+    const mode = this._normalizeMode(config?.mode);
+    const previousEntity = config?.entity;
+    const defaultEntity = this._defaultEntity(mode);
+    this.config = {
+      ...DEFAULT_F1_SEASON_PROGRESSION_CONFIG,
+      ...config,
+      mode,
+      entity: previousEntity || defaultEntity,
+      calendar_entity: config?.calendar_entity || DEFAULT_F1_SEASON_PROGRESSION_CONFIG.calendar_entity,
+      title: config?.title || this._defaultTitle(mode),
+      theme_mode: config?.theme_mode || DEFAULT_F1_SEASON_PROGRESSION_CONFIG.theme_mode,
+      show_future_rounds: config?.show_future_rounds !== false,
+      legend_position: this._normalizeLegendPosition(config?.legend_position),
+      show_legend_points: config?.show_legend_points !== false,
+      show_full_name: config?.show_full_name === true,
+      chart_height: this._clampNumber(config?.chart_height, 240, 520, DEFAULT_F1_SEASON_PROGRESSION_CONFIG.chart_height),
+      top_limit: Math.max(0, Math.floor(Number(config?.top_limit) || 0)),
+    };
+    applyF1ThemeMode(this, this.config, this.hass);
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    ensureF1Fonts();
+    applyF1ThemeMode(this, this.config, this.hass);
+  }
+
+  updated(changedProps) {
+    if (changedProps.has('hass') || changedProps.has('config')) {
+      applyF1ThemeMode(this, this.config, this.hass);
+    }
+  }
+
+  getCardSize() {
+    return 6;
+  }
+
+  getGridOptions() {
+    return {
+      columns: 12,
+      min_columns: 4,
+      rows: 6,
+      min_rows: 4,
+    };
+  }
+
+  render() {
+    if (!this.hass || !this.config) return html``;
+
+    const entityState = getEntityStateWithFallback(this.hass, this.config.entity);
+    if (!entityState || isUnavailableLikeEntityState(entityState)) {
+      return this._renderCard(this._renderEmpty('Progression entity not found'));
+    }
+
+    const model = this._buildChartModel(entityState);
+    if (!model.series.length || !model.rounds.length) {
+      return this._renderCard(this._renderEmpty('No progression data'), entityState);
+    }
+
+    const legendPosition = this.config.show_legend !== false
+      ? this._normalizeLegendPosition(this.config.legend_position)
+      : 'bottom';
+    const activeSeries = this._activeSeries(model.series);
+    return this._renderCard(html`
+      ${this.config.show_header !== false ? this._renderHeader(model, entityState) : ''}
+      <div class="sp-main" data-legend-position=${legendPosition}>
+        <div class="sp-chart-shell">
+          ${this._renderSvg({ ...model, series: activeSeries })}
+          ${this._renderTooltip()}
+        </div>
+        ${this.config.show_legend !== false ? this._renderLegend(model.series) : ''}
+      </div>
+    `, entityState);
+  }
+
+  _renderCard(content, entityState = null) {
+    const chartHeight = this._clampNumber(this.config?.chart_height, 240, 520, DEFAULT_F1_SEASON_PROGRESSION_CONFIG.chart_height);
+    const theme = isEffectiveLightTheme(this.hass, this.config) ? 'light' : 'dark';
+    return html`
+      <ha-card @click=${() => this._handleCardAction()}>
+        <div
+          class="sp-card"
+          data-theme=${theme}
+          data-layout=${getResponsiveLayoutMode(this)}
+          style=${`--sp-chart-height: ${chartHeight}px;`}
+        >
+          ${content}
+        </div>
+      </ha-card>
+    `;
+  }
+
+  _renderHeader(model, entityState) {
+    const roundCount = model.rounds.length;
+    const visibleCount = model.series.length;
+    const allCount = model.totalSeriesCount || visibleCount;
+    const entityName = entityState?.attributes?.friendly_name || entityState?.entity_id || '';
+    const limitLabel = this.config.top_limit > 0 && allCount > visibleCount
+      ? `Top ${visibleCount} of ${allCount}`
+      : `${visibleCount} ${this.config.mode === 'constructors' ? 'teams' : 'drivers'}`;
+
+    return html`
+      <div class="sp-header">
+        <div class="sp-title-block">
+          <h3 class="sp-title">${this.config.title || this._defaultTitle(this.config.mode)}</h3>
+          <div class="sp-subtitle">${entityName}</div>
+        </div>
+        <div class="sp-badges">
+          <span class="sp-badge">${this.config.mode}</span>
+          <span class="sp-badge">${roundCount} rounds</span>
+          <span class="sp-badge">${limitLabel}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderSvg(model) {
+    const width = 720;
+    const height = this._clampNumber(this.config.chart_height, 240, 520, DEFAULT_F1_SEASON_PROGRESSION_CONFIG.chart_height);
+    const showRoundLabels = this.config.show_round_labels !== false;
+    const margin = {
+      top: 18,
+      right: 22,
+      bottom: showRoundLabels ? 54 : 28,
+      left: 46,
+    };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    const maxY = model.maxY || 1;
+    const tickCount = 4;
+    const xStep = model.rounds.length > 1 ? innerWidth / (model.rounds.length - 1) : 0;
+
+    const pointFor = (value, index) => {
+      if (!Number.isFinite(value)) return null;
+      const x = margin.left + (model.rounds.length > 1 ? index * xStep : innerWidth / 2);
+      const y = margin.top + innerHeight - ((value / maxY) * innerHeight);
+      return { x, y };
+    };
+
+    const yTicks = Array.from({ length: tickCount + 1 }, (_, index) => {
+      const value = (maxY / tickCount) * index;
+      const y = margin.top + innerHeight - ((value / maxY) * innerHeight);
+      return { value, y };
+    });
+
+    const visibleRoundLabels = this._visibleRoundLabels(model.rounds);
+    const ariaLabel = `${this.config.title || this._defaultTitle(this.config.mode)} with ${model.series.length} visible series across ${model.rounds.length} rounds`;
+
+    return svg`
+      <svg
+        class="sp-chart"
+        viewBox=${`0 0 ${width} ${height}`}
+        role="img"
+        aria-label=${ariaLabel}
+        @pointerleave=${() => this._clearHoverPoint()}
+      >
+        ${yTicks.map((tick) => svg`
+          <line class="sp-grid-line" x1=${margin.left} x2=${width - margin.right} y1=${tick.y} y2=${tick.y}></line>
+          <text class="sp-axis-label" x=${margin.left - 10} y=${tick.y + 3} text-anchor="end">
+            ${this._formatPoints(tick.value)}
+          </text>
+        `)}
+        <line class="sp-axis-line" x1=${margin.left} x2=${margin.left} y1=${margin.top} y2=${height - margin.bottom}></line>
+        <line class="sp-axis-line" x1=${margin.left} x2=${width - margin.right} y1=${height - margin.bottom} y2=${height - margin.bottom}></line>
+        ${showRoundLabels ? visibleRoundLabels.map(({ round, index }) => {
+          const x = margin.left + (model.rounds.length > 1 ? index * xStep : innerWidth / 2);
+          return svg`
+            <text
+              class="sp-axis-label"
+              x=${x}
+              y=${height - 20}
+              text-anchor="end"
+              transform=${`rotate(-32 ${x} ${height - 20})`}
+            >
+              <title>${round.longLabel || round.label}</title>
+              ${round.label}
+            </text>
+          `;
+        }) : ''}
+        ${model.series.map((series) => {
+          const points = series.values.map((value, index) => {
+            const base = pointFor(value, index);
+            return base ? { ...base, value, round: model.rounds[index], index } : null;
+          });
+          const path = this._buildPath(points);
+          return svg`
+            <g style=${`--series-color: ${series.color};`}>
+              ${path ? svg`<path class="sp-series-line" d=${path}></path>` : ''}
+              ${this.config.show_points !== false ? points.filter(Boolean).map((point) => svg`
+                <circle
+                  class="sp-point"
+                  cx=${point.x}
+                  cy=${point.y}
+                  r="4"
+                  tabindex="0"
+                  role="graphics-symbol"
+                  aria-label=${`${series.name}, ${point.round?.longLabel || `R${point.index + 1}`}, ${this._formatPoints(point.value)} points`}
+                  @pointerenter=${() => this._setHoverPoint(series, point, width, height)}
+                  @pointermove=${() => this._setHoverPoint(series, point, width, height)}
+                  @focus=${() => this._setHoverPoint(series, point, width, height)}
+                  @click=${(ev) => {
+                    ev.stopPropagation();
+                    this._setHoverPoint(series, point, width, height);
+                  }}
+                  @blur=${() => this._clearHoverPoint()}
+                >
+                  <title>${series.name} - ${point.round?.longLabel || `R${point.index + 1}`} - ${this._formatPoints(point.value)} points</title>
+                </circle>
+              `) : ''}
+            </g>
+          `;
+        })}
+      </svg>
+    `;
+  }
+
+  _renderTooltip() {
+    const point = this._hoverPoint;
+    if (!point) return '';
+    const raceName = point.raceName ? html`<div>${point.raceName}</div>` : '';
+    const media = point.media?.src ? html`
+      <img
+        class=${`sp-tooltip-media ${point.media.kind || 'media'}`}
+        src=${point.media.src}
+        data-fallback=${point.media.fallback || ''}
+        alt=${point.media.kind === 'headshot' ? point.name : `${point.name} logo`}
+        loading="eager"
+        decoding="async"
+        @error=${(ev) => this._handleTooltipMediaError(ev)}
+      >
+    ` : '';
+    return html`
+      <div
+        class="sp-tooltip"
+        style=${`--tooltip-left: ${point.left}%; --tooltip-top: ${point.top}%; --tooltip-color: ${point.color}; --tooltip-translate-x: ${point.translateX};`}
+      >
+        ${media}
+        <div class="sp-tooltip-content">
+          <div class="sp-tooltip-title">
+            <span class="sp-tooltip-swatch"></span>
+            <span>${point.name}</span>
+          </div>
+          <div class="sp-tooltip-meta">
+            <div>${point.roundLabel}</div>
+            ${raceName}
+          </div>
+          <div class="sp-tooltip-points">${point.points} points</div>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderLegend(seriesList) {
+    return html`
+      <div class="sp-legend" aria-label="Season progression legend">
+        ${seriesList.map((series) => {
+          const hidden = this._isSeriesHidden(series);
+          const name = this._legendName(series);
+          return html`
+          <button
+            type="button"
+            class="sp-legend-item"
+            data-hidden=${hidden ? 'true' : 'false'}
+            data-show-points=${this.config.show_legend_points !== false ? 'true' : 'false'}
+            aria-pressed=${hidden ? 'false' : 'true'}
+            aria-label=${`${name}: ${hidden ? 'hidden' : 'visible'}. Toggle series visibility.`}
+            title=${`${name}: ${hidden ? 'show in chart' : 'hide from chart'}`}
+            style=${`--series-color: ${series.color};`}
+            @click=${(ev) => this._toggleSeriesVisibility(series, ev)}
+          >
+            <span class="sp-legend-swatch"></span>
+            <span class="sp-legend-name" title=${series.name}>${name}</span>
+            ${this.config.show_legend_points !== false ? html`
+              <span class="sp-legend-points">${this._formatPoints(series.latest)} pts</span>
+            ` : ''}
+          </button>
+        `;
+        })}
+      </div>
+    `;
+  }
+
+  _renderEmpty(message) {
+    return html`
+      ${this.config?.show_header !== false ? html`
+        <div class="sp-header">
+          <div class="sp-title-block">
+            <h3 class="sp-title">${this.config?.title || this._defaultTitle(this.config?.mode)}</h3>
+            <div class="sp-subtitle">${this.config?.entity || this._defaultEntity(this.config?.mode)}</div>
+          </div>
+        </div>
+      ` : ''}
+      <div class="sp-empty">${message}</div>
+    `;
+  }
+
+  _buildChartModel(entityState) {
+    const attrs = entityState?.attributes || {};
+    const mode = this._normalizeMode(this.config?.mode);
+    const progressionRounds = this._normalizeRounds(attrs.rounds, attrs.labels);
+    const calendarRounds = this.config?.show_future_rounds !== false
+      ? this._getCalendarRounds()
+      : [];
+    const rounds = this._mergeRounds(progressionRounds, calendarRounds);
+    const source = mode === 'constructors' ? attrs.constructors : attrs.drivers;
+    const series = this._normalizeSeriesCollection(source, mode, rounds.length);
+    const fallbackSeries = !series.length ? this._normalizeSeriesCollection(attrs.series, mode, rounds.length) : [];
+    const allSeries = series.length ? series : fallbackSeries;
+    const maxLength = Math.max(
+      rounds.length,
+      ...allSeries.map((entry) => entry.values.length),
+      0
+    );
+    const normalizedRounds = rounds.length
+      ? [...rounds]
+      : this._normalizeRounds(Array.from({ length: maxLength }, (_, index) => ({ round: index + 1 })));
+    while (normalizedRounds.length < maxLength) {
+      const index = normalizedRounds.length;
+      normalizedRounds.push({
+        index,
+        roundNumber: index + 1,
+        label: `R${index + 1}`,
+        raceName: '',
+        date: '',
+        longLabel: `R${index + 1}`,
+      });
+    }
+
+    const ranked = allSeries
+      .map((entry, index) => ({
+        ...entry,
+        color: entry.color || this._resolveSeriesColor(mode, entry, index),
+        latest: this._latestFinite(entry.values),
+      }))
+      .filter((entry) => Number.isFinite(entry.latest))
+      .sort((a, b) => {
+        const pointsDiff = b.latest - a.latest;
+        if (Math.abs(pointsDiff) > 0.0001) return pointsDiff;
+        return String(a.name).localeCompare(String(b.name));
+      });
+
+    const limit = Math.max(0, Math.floor(Number(this.config?.top_limit) || 0));
+    const visible = limit > 0 ? ranked.slice(0, limit) : ranked;
+    const maxValue = Math.max(
+      0,
+      ...visible.flatMap((entry) => entry.values.filter((value) => Number.isFinite(value)))
+    );
+
+    return {
+      rounds: normalizedRounds.slice(0, maxLength || normalizedRounds.length),
+      series: visible,
+      totalSeriesCount: ranked.length,
+      maxY: this._niceMax(maxValue),
+    };
+  }
+
+  _normalizeRounds(rounds, labels = null) {
+    if (Array.isArray(rounds) && rounds.length) {
+      return rounds.map((round, index) => {
+        const roundNumber = this._firstDefined(round?.round, round?.round_number, round?.number, index + 1);
+        const parsedRoundNumber = Number(roundNumber);
+        const displayRoundNumber = Number.isFinite(parsedRoundNumber) ? parsedRoundNumber : index + 1;
+        const raceName = this._firstDefined(round?.race_name, round?.raceName, round?.race, round?.grand_prix, round?.name, '');
+        const label = this._firstDefined(round?.label, round?.short_name, `R${roundNumber}`);
+        const date = this._firstDefined(round?.date, round?.race_start, round?.race_start_utc, round?.time, '');
+        return {
+          index,
+          roundNumber: displayRoundNumber,
+          label: String(label || `R${index + 1}`),
+          raceName: String(raceName || ''),
+          date: String(date || ''),
+          longLabel: raceName ? `${label} - ${raceName}` : String(label || `R${index + 1}`),
+        };
+      });
+    }
+
+    if (Array.isArray(labels) && labels.length) {
+      return labels.map((label, index) => ({
+        index,
+        roundNumber: index + 1,
+        label: String(label || `R${index + 1}`),
+        raceName: '',
+        date: '',
+        longLabel: String(label || `R${index + 1}`),
+      }));
+    }
+
+    return [];
+  }
+
+  _getCalendarRounds() {
+    if (!this.hass || !this.config?.calendar_entity) return [];
+    const calendarState = getEntityStateWithFallback(this.hass, this.config.calendar_entity);
+    if (!calendarState || isUnavailableLikeEntityState(calendarState)) return [];
+    return this._normalizeCalendarRounds(calendarState.attributes || {});
+  }
+
+  _normalizeCalendarRounds(attrs) {
+    const races = Array.isArray(attrs.races)
+      ? attrs.races
+      : Array.isArray(attrs.rounds)
+        ? attrs.rounds
+        : Array.isArray(attrs.calendar)
+          ? attrs.calendar
+          : [];
+    return races
+      .map((race, index) => {
+        const roundNumber = this._firstDefined(race?.round, race?.round_number, race?.number, index + 1);
+        const parsedRoundNumber = Number(roundNumber);
+        const displayRoundNumber = Number.isFinite(parsedRoundNumber) ? parsedRoundNumber : index + 1;
+        const raceName = this._firstDefined(race?.race_name, race?.raceName, race?.grand_prix, race?.name, '');
+        const label = this._firstDefined(race?.label, race?.short_name, `R${displayRoundNumber}`);
+        const date = this._firstDefined(race?.date, race?.race_start, race?.race_start_utc, race?.time, '');
+        return {
+          index,
+          roundNumber: displayRoundNumber,
+          label: String(label || `R${displayRoundNumber}`),
+          raceName: String(raceName || ''),
+          date: String(date || ''),
+          longLabel: raceName ? `${label} - ${raceName}` : String(label || `R${displayRoundNumber}`),
+        };
+      })
+      .sort((a, b) => a.roundNumber - b.roundNumber)
+      .map((round, index) => ({ ...round, index }));
+  }
+
+  _mergeRounds(progressionRounds, calendarRounds) {
+    if (!calendarRounds.length) {
+      return progressionRounds;
+    }
+
+    const byRoundNumber = new Map(
+      progressionRounds.map((round, index) => [
+        String(round.roundNumber || index + 1),
+        round,
+      ])
+    );
+
+    const usedRoundNumbers = new Set();
+    const merged = calendarRounds.map((calendarRound, index) => {
+      const roundNumber = calendarRound.roundNumber || index + 1;
+      const progressionRound = byRoundNumber.get(String(roundNumber));
+      usedRoundNumbers.add(String(roundNumber));
+      const label = calendarRound.label || progressionRound?.label || `R${roundNumber}`;
+      const raceName = progressionRound?.raceName || calendarRound.raceName || '';
+      const date = progressionRound?.date || calendarRound.date || '';
+      return {
+        ...calendarRound,
+        ...progressionRound,
+        index,
+        roundNumber,
+        label,
+        raceName,
+        date,
+        longLabel: raceName ? `${label} - ${raceName}` : String(label),
+      };
+    });
+
+    progressionRounds.forEach((round) => {
+      const roundNumber = round.roundNumber || merged.length + 1;
+      if (usedRoundNumbers.has(String(roundNumber))) return;
+      merged.push({
+        ...round,
+        index: merged.length,
+        roundNumber,
+      });
+    });
+
+    return merged.map((round, index) => ({ ...round, index }));
+  }
+
+  _normalizeSeriesCollection(source, mode, expectedLength = 0) {
+    const entries = [];
+    if (Array.isArray(source?.series)) {
+      source.series.forEach((entry, index) => entries.push(this._normalizeSeriesEntry(entry, entry?.key || entry?.id || index, mode, index, expectedLength)));
+    } else if (Array.isArray(source)) {
+      source.forEach((entry, index) => entries.push(this._normalizeSeriesEntry(entry, entry?.key || entry?.id || index, mode, index, expectedLength)));
+    } else if (source && typeof source === 'object') {
+      Object.entries(source).forEach(([key, entry], index) => entries.push(this._normalizeSeriesEntry(entry, key, mode, index, expectedLength)));
+    }
+
+    return entries.filter((entry) => entry && entry.values.some((value) => Number.isFinite(value)));
+  }
+
+  _normalizeSeriesEntry(entry, key, mode, index, expectedLength) {
+    const dataSource = entry && typeof entry === 'object' ? entry : { values: entry };
+    const identity = dataSource.identity || dataSource.driver || dataSource.constructor || dataSource.team || {};
+    const values = this._normalizePointValues(
+      dataSource.cumulative_points
+        || dataSource.points_progression
+        || dataSource.progression
+        || dataSource.values
+        || dataSource.data
+        || dataSource.points
+        || []
+    );
+
+    if (expectedLength > values.length) {
+      values.push(...Array.from({ length: expectedLength - values.length }, () => null));
+    }
+
+    const code = String(this._firstDefined(dataSource.tla, dataSource.code, identity.tla, identity.code, key, '') || '').trim();
+    const name = String(this._firstDefined(
+      dataSource.display_name,
+      dataSource.name,
+      identity.full_name,
+      identity.display_name,
+      identity.name,
+      code,
+      key
+    ) || '').trim();
+    const shortName = String(this._firstDefined(dataSource.short_name, dataSource.abbreviation, identity.tla, identity.code, code, name) || '').trim();
+    const rawColor = this._firstDefined(dataSource.color, dataSource.team_color, identity.color, identity.team_color, dataSource.constructor_color, '');
+    const teamName = this._firstDefined(dataSource.team_name, dataSource.team, identity.team_name, identity.team, identity.constructor_name, identity.name, '');
+
+    return {
+      key: String(key),
+      code,
+      mode,
+      name: name || String(key),
+      shortName: shortName || name || String(key),
+      teamName,
+      rawColor,
+      color: this._usableColor(rawColor),
+      media: this._resolveSeriesMedia(mode, dataSource, identity, {
+        key,
+        code,
+        name,
+        shortName,
+        teamName,
+      }),
+      values,
+      sourceIndex: index,
+    };
+  }
+
+  _normalizePointValues(values) {
+    const array = Array.isArray(values) ? values : Object.values(values || {});
+    return array.map((value) => {
+      const rawValue = value && typeof value === 'object'
+        ? this._firstDefined(value.cumulative_points, value.points, value.value, value.y, value.total)
+        : value;
+      const num = Number(rawValue);
+      return Number.isFinite(num) ? num : null;
+    });
+  }
+
+  _visibleRoundLabels(rounds) {
+    return rounds.map((round, index) => ({ round, index }));
+  }
+
+  _buildPath(points) {
+    let path = '';
+    let drawing = false;
+    points.forEach((point) => {
+      if (!point) {
+        drawing = false;
+        return;
+      }
+      path += `${drawing ? 'L' : 'M'} ${point.x.toFixed(2)} ${point.y.toFixed(2)} `;
+      drawing = true;
+    });
+    return path.trim();
+  }
+
+  _resolveSeriesColor(mode, entry, index) {
+    if (mode === 'drivers') {
+      const code = String(entry.code || entry.shortName || entry.key || '').toUpperCase();
+      if (F1_SEASON_PROGRESSION_DRIVER_COLORS[code]) {
+        return F1_SEASON_PROGRESSION_DRIVER_COLORS[code];
+      }
+      const teamColor = this._usableColor(entry.rawColor);
+      if (teamColor) return teamColor;
+      const teamKey = this._colorKey(entry.teamName);
+      if (F1_SEASON_PROGRESSION_CONSTRUCTOR_COLORS[teamKey]) {
+        return F1_SEASON_PROGRESSION_CONSTRUCTOR_COLORS[teamKey];
+      }
+    }
+
+    const constructorKeys = [
+      entry.key,
+      entry.code,
+      entry.shortName,
+      entry.name,
+      entry.teamName,
+      normalizeTeamName(entry.name),
+      normalizeTeamName(entry.teamName),
+    ].map((value) => this._colorKey(value)).filter(Boolean);
+
+    const constructorColor = constructorKeys
+      .map((key) => F1_SEASON_PROGRESSION_CONSTRUCTOR_COLORS[key])
+      .find(Boolean);
+    if (constructorColor) return constructorColor;
+
+    const suppliedColor = this._usableColor(entry.rawColor);
+    if (suppliedColor) return suppliedColor;
+
+    return F1_SEASON_PROGRESSION_FALLBACK_COLORS[index % F1_SEASON_PROGRESSION_FALLBACK_COLORS.length];
+  }
+
+  _resolveSeriesMedia(mode, dataSource, identity, seriesMeta) {
+    if (mode === 'constructors') {
+      const teamName = this._firstDefined(
+        dataSource.logo_team,
+        dataSource.team_name,
+        dataSource.team,
+        identity.team_name,
+        identity.constructor_name,
+        identity.name,
+        seriesMeta.name,
+        seriesMeta.key,
+      );
+      const directLogo = this._normalizeMediaUrl(
+        dataSource.logo_url,
+        dataSource.logo,
+        dataSource.image_url,
+        dataSource.image,
+        identity.logo_url,
+        identity.logo,
+        identity.image_url,
+        identity.image,
+      );
+      if (directLogo) {
+        return { src: directLogo, fallback: '', kind: 'constructor-logo' };
+      }
+      const logo = getTeamLogoMeta(
+        teamName,
+        52,
+        'color',
+        isEffectiveLightTheme(this.hass, this.config),
+      );
+      return logo ? { ...logo, kind: 'constructor-logo' } : null;
+    }
+
+    const driverMeta = this._findProgressionDriverMeta(seriesMeta, identity);
+    const directHeadshot = this._normalizeMediaUrl(
+      dataSource.headshot_large,
+      dataSource.headshot_small,
+      dataSource.headshot,
+      dataSource.portrait_url,
+      dataSource.portrait,
+      dataSource.image_url,
+      dataSource.image,
+      identity.headshot_large,
+      identity.headshot_small,
+      identity.headshot,
+      identity.portrait_url,
+      identity.portrait,
+      identity.image_url,
+      identity.image,
+      driverMeta?.headshot_large,
+      driverMeta?.headshot_small,
+    );
+    const teamName = this._firstDefined(seriesMeta.teamName, driverMeta?.team, identity.team, dataSource.team);
+    const teamLogo = getTeamLogoMeta(
+      teamName,
+      52,
+      'color',
+      isEffectiveLightTheme(this.hass, this.config),
+    );
+
+    if (directHeadshot) {
+      return {
+        src: directHeadshot,
+        fallback: teamLogo?.src || teamLogo?.fallback || '',
+        kind: 'headshot',
+      };
+    }
+
+    return teamLogo ? { ...teamLogo, kind: 'team-logo' } : null;
+  }
+
+  _findProgressionDriverMeta(seriesMeta, identity) {
+    const drivers = this._getProgressionDriverList();
+    if (!drivers.length) return null;
+    const code = String(seriesMeta.code || seriesMeta.shortName || seriesMeta.key || identity?.code || '').trim().toUpperCase();
+    const driverId = this._searchKey(identity?.driverId || identity?.driver_id || seriesMeta.key);
+    const nameKey = this._searchKey(seriesMeta.name || identity?.name);
+
+    return drivers.find((driver) => {
+      const tla = String(driver?.tla || driver?.code || '').trim().toUpperCase();
+      if (code && tla === code) return true;
+      const reference = this._searchKey(driver?.reference || driver?.driverId || driver?.driver_id);
+      if (driverId && reference.includes(driverId)) return true;
+      const driverName = this._searchKey(driver?.full_name || driver?.name || `${driver?.first_name || ''} ${driver?.last_name || ''}`);
+      return Boolean(nameKey && driverName === nameKey);
+    }) || null;
+  }
+
+  _getProgressionDriverList() {
+    const entityId = this.config?.driver_list_entity || DEFAULT_F1_SEASON_PROGRESSION_CONFIG.driver_list_entity;
+    const state = getEntityStateWithFallback(this.hass, entityId);
+    const drivers = state?.attributes?.drivers;
+    return Array.isArray(drivers) ? drivers : [];
+  }
+
+  _normalizeMediaUrl(...values) {
+    const value = values.find((item) => typeof item === 'string' && item.trim());
+    return value ? value.trim() : '';
+  }
+
+  _handleTooltipMediaError(ev) {
+    const img = ev.target;
+    const fallback = img?.dataset?.fallback;
+    if (fallback && img.src !== fallback) {
+      img.src = fallback;
+      img.dataset.fallback = '';
+      return;
+    }
+    img.style.display = 'none';
+  }
+
+  _setHoverPoint(series, point, width, height) {
+    const left = Math.max(4, Math.min(96, (point.x / width) * 100));
+    this._hoverPoint = {
+      name: series.name,
+      color: series.color,
+      media: series.media || null,
+      roundLabel: point.round?.label || `R${point.index + 1}`,
+      raceName: point.round?.raceName || '',
+      points: this._formatPoints(point.value),
+      left,
+      top: Math.max(8, Math.min(92, (point.y / height) * 100)),
+      translateX: left < 18 ? '0' : left > 82 ? '-100%' : '-50%',
+    };
+  }
+
+  _clearHoverPoint() {
+    this._hoverPoint = null;
+  }
+
+  _handleCardAction() {
+    const action = this.config?.tap_action || { action: 'more-info' };
+    if (action.action === 'none') return;
+    if (action.action === 'more-info') {
+      this.dispatchEvent(new CustomEvent('hass-more-info', {
+        bubbles: true,
+        composed: true,
+        detail: { entityId: resolveEntityIdWithFallback(this.hass, this.config?.entity) },
+      }));
+    }
+  }
+
+  _defaultEntity(mode) {
+    return this._normalizeMode(mode) === 'constructors'
+      ? 'sensor.f1_constructor_points_progression'
+      : 'sensor.f1_driver_points_progression';
+  }
+
+  _defaultTitle(mode) {
+    return this._normalizeMode(mode) === 'constructors'
+      ? 'Season progression - constructors points'
+      : 'Season progression - drivers points';
+  }
+
+  _normalizeMode(mode) {
+    return mode === 'constructors' ? 'constructors' : 'drivers';
+  }
+
+  _normalizeLegendPosition(position) {
+    const normalized = String(position || DEFAULT_F1_SEASON_PROGRESSION_CONFIG.legend_position).trim().toLowerCase();
+    return ['bottom', 'left', 'right'].includes(normalized) ? normalized : DEFAULT_F1_SEASON_PROGRESSION_CONFIG.legend_position;
+  }
+
+  _activeSeries(seriesList) {
+    return seriesList.filter((series) => !this._isSeriesHidden(series));
+  }
+
+  _isSeriesHidden(series) {
+    return this._hiddenSeriesKeys?.has(this._seriesFilterKey(series));
+  }
+
+  _toggleSeriesVisibility(series, ev) {
+    ev?.stopPropagation();
+    const key = this._seriesFilterKey(series);
+    const hiddenKeys = new Set(this._hiddenSeriesKeys || []);
+    if (hiddenKeys.has(key)) {
+      hiddenKeys.delete(key);
+    } else {
+      hiddenKeys.add(key);
+    }
+    this._hiddenSeriesKeys = hiddenKeys;
+    this._clearHoverPoint();
+  }
+
+  _seriesFilterKey(series) {
+    return [
+      this._normalizeMode(series?.mode || this.config?.mode),
+      series?.key || series?.code || series?.shortName || series?.name || '',
+    ].join(':');
+  }
+
+  _legendName(series) {
+    return this.config?.show_full_name === true
+      ? series.name
+      : series.shortName || series.name;
+  }
+
+  _searchKey(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  _firstDefined(...values) {
+    return values.find((value) => value !== undefined && value !== null && value !== '');
+  }
+
+  _latestFinite(values) {
+    for (let index = values.length - 1; index >= 0; index -= 1) {
+      if (Number.isFinite(values[index])) return values[index];
+    }
+    return null;
+  }
+
+  _niceMax(value) {
+    if (!Number.isFinite(value) || value <= 0) return 1;
+    const magnitude = 10 ** Math.floor(Math.log10(value));
+    const normalized = value / magnitude;
+    const niceNormalized = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+    return niceNormalized * magnitude;
+  }
+
+  _formatPoints(value) {
+    if (!Number.isFinite(value)) return '--';
+    if (Math.abs(value - Math.round(value)) < 0.0001) return String(Math.round(value));
+    return Number(value).toFixed(1);
+  }
+
+  _clampNumber(value, min, max, fallback) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.max(min, Math.min(max, num));
+  }
+
+  _colorKey(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, 'and')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  _usableColor(value) {
+    const color = String(value || '').trim();
+    if (/^#[0-9a-f]{3,8}$/i.test(color)) return color;
+    if (/^rgba?\([\d\s,.%]+\)$/i.test(color)) return color;
+    if (/^hsla?\([\d\s,.%]+\)$/i.test(color)) return color;
+    return null;
+  }
+}
+
+// ============================================================================
+// F1 Season Progression Card Editor
+// ============================================================================
+
+class F1SeasonProgressionCardEditor extends LitElement {
+  static properties = {
+    hass: {},
+    _config: {},
+    _activeTab: { state: true },
+  };
+
+  static styles = css`
+    .card-config {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--divider-color);
+      margin-bottom: 16px;
+    }
+
+    .tabs button {
+      flex: 1;
+      padding: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--primary-text-color);
+      font-size: 14px;
+      font-family: inherit;
+      transition: color 0.2s;
+    }
+
+    .tabs button:hover {
+      color: var(--primary-color);
+    }
+
+    .tabs button.active {
+      color: var(--primary-color);
+      border-bottom: 2px solid var(--primary-color);
+    }
+
+    .section,
+    .display-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .section-header {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--secondary-text-color);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .helper {
+      font-size: 12px;
+      line-height: 1.35;
+      color: var(--secondary-text-color);
+      margin-top: -8px;
+    }
+
+    ha-textfield {
+      width: 100%;
+    }
+  `;
+
+  constructor() {
+    super();
+    this._activeTab = 'sources';
+  }
+
+  setConfig(config) {
+    const mode = this._normalizeMode(config?.mode);
+    this._config = {
+      ...DEFAULT_F1_SEASON_PROGRESSION_CONFIG,
+      ...config,
+      mode,
+      entity: config?.entity || this._defaultEntity(mode),
+      calendar_entity: config?.calendar_entity || DEFAULT_F1_SEASON_PROGRESSION_CONFIG.calendar_entity,
+      title: config?.title || this._defaultTitle(mode),
+      theme_mode: config?.theme_mode || DEFAULT_F1_SEASON_PROGRESSION_CONFIG.theme_mode,
+      show_future_rounds: config?.show_future_rounds !== false,
+      legend_position: this._normalizeLegendPosition(config?.legend_position),
+      show_legend_points: config?.show_legend_points !== false,
+      show_full_name: config?.show_full_name === true,
+      chart_height: this._clampNumber(config?.chart_height, 240, 520, DEFAULT_F1_SEASON_PROGRESSION_CONFIG.chart_height),
+      top_limit: Math.max(0, Math.floor(Number(config?.top_limit) || 0)),
+    };
+  }
+
+  render() {
+    if (!this.hass || !this._config) return html``;
+    return html`
+      <div class="card-config">
+        <div class="tabs">
+          <button
+            class=${this._activeTab === 'sources' ? 'active' : ''}
+            @click=${() => this._activeTab = 'sources'}
+          >
+            Data Sources
+          </button>
+          <button
+            class=${this._activeTab === 'display' ? 'active' : ''}
+            @click=${() => this._activeTab = 'display'}
+          >
+            Display
+          </button>
+        </div>
+
+        ${this._activeTab === 'sources' ? this._renderDataSourcesTab() : this._renderDisplayTab()}
+      </div>
+    `;
+  }
+
+  _renderDataSourcesTab() {
+    return html`
+      <div class="section">
+        <div class="section-header">PROGRESSION SENSOR</div>
+        ${renderEditorSelect(this, 'mode', 'Progression type', F1_SEASON_PROGRESSION_MODE_OPTIONS)}
+        ${this._renderEntityPicker(
+          'entity',
+          'Progression entity',
+          'Uses the existing rounds plus drivers or constructors progression attributes.',
+          true,
+          'sensor'
+        )}
+        <div class="section-header">SEASON CALENDAR</div>
+        ${this._renderEntityPicker(
+          'calendar_entity',
+          'Season calendar entity',
+          'Optional. Keeps future races visible on the x-axis while the line stops at the latest progression data.',
+          false,
+          'sensor'
+        )}
+        ${this._config.mode === 'drivers' ? html`
+          <div class="section-header">DRIVER MEDIA</div>
+          ${this._renderEntityPicker(
+            'driver_list_entity',
+            'Driver list entity',
+            'Optional. Provides driver headshots for progression tooltips.',
+            false,
+            'sensor'
+          )}
+        ` : ''}
+      </div>
+    `;
+  }
+
+  _renderDisplayTab() {
+    return html`
+      <div class="display-section">
+        ${renderThemeModeSelect(this)}
+        <ha-textfield
+          .label=${'Title'}
+          .value=${this._config.title || ''}
+          @input=${(e) => this._valueChanged('title', e.target.value)}
+        ></ha-textfield>
+
+        <div class="section-header">LAYOUT</div>
+        ${this._renderSwitch('show_header', 'Show header')}
+        ${this._renderSwitch('show_legend', 'Show legend')}
+        ${renderEditorSelect(this, 'legend_position', 'Legend position', F1_SEASON_PROGRESSION_LEGEND_POSITION_OPTIONS)}
+        ${this._renderSwitch('show_legend_points', 'Show legend points')}
+        ${this._renderSwitch('show_full_name', 'Use full names')}
+
+        <div class="section-header">CHART</div>
+        ${this._renderSwitch('show_points', 'Show chart points')}
+        ${this._renderSwitch('show_round_labels', 'Show round labels')}
+        ${this._renderSwitch('show_future_rounds', 'Show future rounds')}
+
+        ${this._renderNumberField('top_limit', 'Top limit', 'Use 0 to show all entries.', 0, 30, 1)}
+        ${this._renderNumberField('chart_height', 'Chart height', null, 240, 520, 10)}
+      </div>
+    `;
+  }
+
+  _renderEntityPicker(name, label, helper, required, domain) {
+    const schema = [{ name, label, required, selector: { entity: { domain } } }];
+    return html`
+      <div class="field">
+        <ha-form
+          .hass=${this.hass}
+          .data=${this._config}
+          .schema=${schema}
+          .computeLabel=${() => label}
+          @value-changed=${this._formValueChanged}
+        ></ha-form>
+        <div class="helper">${helper}</div>
+      </div>
+    `;
+  }
+
+  _renderSwitch(name, label) {
+    const schema = [{ name, label, selector: { boolean: {} } }];
+    return html`
+      <ha-form
+        .hass=${this.hass}
+        .data=${this._config}
+        .schema=${schema}
+        .computeLabel=${() => label}
+        @value-changed=${this._formValueChanged}
+      ></ha-form>
+    `;
+  }
+
+  _renderNumberField(name, label, helper, min, max, step) {
+    const schema = [{
+      name,
+      label,
+      selector: {
+        number: {
+          mode: 'box',
+          min,
+          max,
+          step,
+        },
+      },
+    }];
+    return html`
+      <div class="field">
+        <ha-form
+          .hass=${this.hass}
+          .data=${this._config}
+          .schema=${schema}
+          .computeLabel=${() => label}
+          @value-changed=${this._formValueChanged}
+        ></ha-form>
+        ${helper ? html`<div class="helper">${helper}</div>` : ''}
+      </div>
+    `;
+  }
+
+  _formValueChanged(ev) {
+    if (!this._config) return;
+    const value = ev.detail?.value || {};
+    let newConfig = { ...this._config, ...value };
+
+    if (value.mode && value.mode !== this._config.mode) {
+      const previousDefaultEntity = this._defaultEntity(this._config.mode);
+      const previousDefaultTitle = this._defaultTitle(this._config.mode);
+      const nextMode = this._normalizeMode(value.mode);
+      const shouldSwapEntity = !this._config.entity || this._config.entity === previousDefaultEntity;
+      const shouldSwapTitle = !this._config.title || this._config.title === previousDefaultTitle;
+      newConfig = {
+        ...newConfig,
+        mode: nextMode,
+        entity: shouldSwapEntity ? this._defaultEntity(nextMode) : newConfig.entity,
+        title: shouldSwapTitle ? this._defaultTitle(nextMode) : newConfig.title,
+      };
+    }
+
+    if (Object.prototype.hasOwnProperty.call(value, 'legend_position')) {
+      newConfig.legend_position = this._normalizeLegendPosition(value.legend_position);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(value, 'top_limit')) {
+      newConfig.top_limit = Math.max(0, Math.floor(Number(value.top_limit) || 0));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(value, 'chart_height')) {
+      newConfig.chart_height = this._clampNumber(value.chart_height, 240, 520, DEFAULT_F1_SEASON_PROGRESSION_CONFIG.chart_height);
+    }
+
+    this._config = newConfig;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: newConfig } }));
+  }
+
+  _valueChanged(name, value) {
+    if (!this._config) return;
+    const newConfig = { ...this._config, [name]: value };
+    this._config = newConfig;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: newConfig } }));
+  }
+
+  _defaultEntity(mode) {
+    return this._normalizeMode(mode) === 'constructors'
+      ? 'sensor.f1_constructor_points_progression'
+      : 'sensor.f1_driver_points_progression';
+  }
+
+  _defaultTitle(mode) {
+    return this._normalizeMode(mode) === 'constructors'
+      ? 'Season progression - constructors points'
+      : 'Season progression - drivers points';
+  }
+
+  _normalizeMode(mode) {
+    return mode === 'constructors' ? 'constructors' : 'drivers';
+  }
+
+  _normalizeLegendPosition(position) {
+    const normalized = String(position || DEFAULT_F1_SEASON_PROGRESSION_CONFIG.legend_position).trim().toLowerCase();
+    return ['bottom', 'left', 'right'].includes(normalized) ? normalized : DEFAULT_F1_SEASON_PROGRESSION_CONFIG.legend_position;
+  }
+
+  _clampNumber(value, min, max, fallback) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.max(min, Math.min(max, num));
+  }
+}
+
+// ============================================================================
+// F1 Lap Position Progression Card
+// ============================================================================
+
+class F1LapPositionProgressionCard extends LitElement {
+  static properties = {
+    hass: {},
+    config: {},
+    _selectedSessionKey: { state: true },
+    _sessionData: { state: true },
+    _sessionLoadingKey: { state: true },
+    _sessionError: { state: true },
+    _hoverPoint: { state: true },
+    _hiddenSeriesKeys: { state: true },
+  };
+
+  static styles = [
+    F1_THEME_STYLES,
+    css`
+      :host {
+        display: block;
+        --lp-accent: #e10600;
+        --lp-bg: var(--f1-card-bg, var(--ha-card-background, var(--card-background-color, #ffffff)));
+        --lp-bg-soft: var(--f1-card-bg-soft, var(--primary-background-color, #f7f8fb));
+        --lp-bg-end: var(--f1-card-bg-end, var(--secondary-background-color, #eef1f6));
+        --lp-border: var(--f1-card-border, var(--ha-card-border-color, var(--divider-color, rgba(17, 24, 39, 0.14))));
+        --lp-text: var(--f1-card-text, var(--primary-text-color, #111827));
+        --lp-muted: var(--f1-card-muted, var(--secondary-text-color, #6b7280));
+        --lp-grid: var(--f1-card-divider, var(--divider-color, rgba(17, 24, 39, 0.1)));
+        --lp-axis: var(--f1-card-soft, color-mix(in srgb, var(--primary-text-color, #111827) 50%, transparent));
+        --lp-chip: var(--f1-card-chip, color-mix(in srgb, var(--primary-text-color, #111827) 7%, transparent));
+        --lp-panel: var(--f1-card-panel, color-mix(in srgb, var(--primary-text-color, #111827) 5%, transparent));
+        --lp-panel-soft: var(--f1-card-panel-soft, color-mix(in srgb, var(--primary-text-color, #111827) 3%, transparent));
+        --lp-shadow: var(--f1-card-shadow, var(--ha-card-box-shadow, 0 12px 30px rgba(15, 23, 42, 0.14)));
+        --lp-chart-height: 320px;
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+      }
+
+      ha-card {
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+        overflow: visible;
+      }
+
+      .lp-card {
+        position: relative;
+        overflow: hidden;
+        padding: 16px;
+        border: 1px solid var(--lp-border);
+        border-radius: var(--ha-card-border-radius, 12px);
+        background: linear-gradient(180deg, var(--lp-bg) 0%, var(--lp-bg-soft) 100%);
+        color: var(--lp-text);
+        box-shadow: var(--lp-shadow);
+        container-type: inline-size;
+      }
+
+      :host([data-effective-theme="dark"]) .lp-card,
+      .lp-card[data-theme="dark"] {
+        background:
+          linear-gradient(180deg, var(--lp-bg-soft) 0%, var(--lp-bg) 62%, var(--lp-bg-end) 100%);
+      }
+
+      .lp-card::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--lp-accent), #ff2800 42%, transparent 100%);
+      }
+
+      .lp-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: start;
+        margin: 2px 0 14px;
+      }
+
+      .lp-title {
+        margin: 0;
+        color: var(--lp-text);
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 0;
+        line-height: 1.25;
+        text-transform: uppercase;
+      }
+
+      .lp-subtitle {
+        margin-top: 4px;
+        color: var(--lp-muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        line-height: 1.25;
+        text-transform: uppercase;
+      }
+
+      .lp-badges {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+
+      .lp-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 3px 8px;
+        border: 1px solid color-mix(in srgb, var(--lp-accent) 28%, var(--lp-border));
+        border-radius: 999px;
+        background: var(--lp-chip);
+        color: var(--lp-text);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        line-height: 1;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .lp-badge.unsupported,
+      .lp-badge.pending,
+      .lp-badge.error {
+        border-color: rgba(251, 191, 36, 0.28);
+        background: rgba(251, 191, 36, 0.12);
+        color: #fcd34d;
+      }
+
+      .lp-selector-row {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: center;
+      }
+
+      .lp-session-select {
+        width: min(100%, 480px);
+        min-height: 36px;
+        border-radius: 9px;
+        border: 1px solid var(--f1-card-divider-strong);
+        background: var(--f1-card-chip);
+        color: var(--lp-text);
+        padding: 6px 34px 6px 10px;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        outline: none;
+      }
+
+      .lp-session-select:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 28%, transparent);
+      }
+
+      .lp-main {
+        display: grid;
+        align-items: start;
+        gap: 0;
+        grid-template-areas: "chart";
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .lp-chart-shell {
+        grid-area: chart;
+        position: relative;
+        min-width: 0;
+        padding: 2px 0 0;
+      }
+
+      .lp-chart {
+        display: block;
+        width: 100%;
+        height: var(--lp-chart-height);
+        overflow: visible;
+      }
+
+      .lp-grid-line {
+        stroke: var(--lp-grid);
+        stroke-width: 1;
+        vector-effect: non-scaling-stroke;
+      }
+
+      .lp-axis-line {
+        stroke: var(--lp-axis);
+        stroke-width: 1;
+        vector-effect: non-scaling-stroke;
+      }
+
+      .lp-axis-label {
+        fill: var(--lp-muted);
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .lp-side-heading {
+        fill: var(--lp-muted);
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .lp-side-label {
+        fill: var(--lp-text);
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .lp-side-position {
+        fill: var(--lp-muted);
+        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .lp-side-marker {
+        fill: var(--series-color);
+        stroke: var(--lp-bg);
+        stroke-width: 1.4;
+        vector-effect: non-scaling-stroke;
+      }
+
+      .lp-side-entry {
+        cursor: pointer;
+        transition: opacity 0.15s ease;
+      }
+
+      .lp-side-entry:hover .lp-side-label,
+      .lp-side-entry:focus-visible .lp-side-label {
+        fill: var(--series-color);
+      }
+
+      .lp-side-entry:focus-visible {
+        outline: none;
+      }
+
+      .lp-side-entry:focus-visible .lp-side-marker {
+        stroke: var(--primary-color);
+        stroke-width: 2.2;
+      }
+
+      .lp-side-entry[data-hidden="true"] {
+        opacity: 0.32;
+      }
+
+      .lp-side-entry[data-hidden="true"] .lp-side-label {
+        text-decoration: line-through;
+        text-decoration-thickness: 1px;
+      }
+
+      .lp-series-line {
+        fill: none;
+        stroke: var(--series-color);
+        stroke-width: 2.4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+        vector-effect: non-scaling-stroke;
+      }
+
+      .lp-point {
+        fill: var(--lp-bg);
+        stroke: var(--series-color);
+        stroke-width: 2.2;
+        vector-effect: non-scaling-stroke;
+        cursor: pointer;
+      }
+
+      .lp-point:hover,
+      .lp-point:focus {
+        fill: var(--series-color);
+        outline: none;
+      }
+
+      .lp-tooltip {
+        position: absolute;
+        z-index: 2;
+        left: var(--tooltip-left, 50%);
+        top: var(--tooltip-top, 50%);
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        max-width: min(260px, calc(100% - 24px));
+        padding: 9px 10px;
+        border: 1px solid color-mix(in srgb, var(--tooltip-color, var(--lp-accent)) 34%, var(--lp-border));
+        border-left: 3px solid var(--tooltip-color, var(--lp-accent));
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--lp-bg) 94%, var(--lp-bg-soft) 6%);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+        color: var(--lp-text);
+        pointer-events: none;
+        transform: translate(var(--tooltip-translate-x, -50%), calc(-100% - 10px));
+      }
+
+      .lp-tooltip-media {
+        width: 42px;
+        height: 42px;
+        border: 1px solid color-mix(in srgb, var(--tooltip-color, var(--lp-accent)) 30%, var(--lp-border));
+        border-radius: 8px;
+        background: var(--lp-panel-soft);
+        object-fit: contain;
+        padding: 6px;
+        box-sizing: border-box;
+        filter: var(--f1-team-logo-filter, none);
+      }
+
+      .lp-tooltip-title {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+        color: var(--lp-text);
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1.25;
+      }
+
+      .lp-tooltip-swatch {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--tooltip-color, var(--lp-accent));
+        flex: 0 0 auto;
+      }
+
+      .lp-tooltip-meta {
+        margin-top: 4px;
+        color: var(--lp-muted);
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.35;
+      }
+
+      .lp-tooltip-position {
+        margin-top: 6px;
+        color: var(--lp-text);
+        font-size: 15px;
+        font-weight: 900;
+        line-height: 1.1;
+      }
+
+      .lp-empty {
+        display: grid;
+        place-items: center;
+        min-height: 180px;
+        padding: 18px;
+        border: 1px dashed color-mix(in srgb, var(--lp-muted) 36%, transparent);
+        border-radius: 8px;
+        background: var(--lp-panel-soft);
+        color: var(--lp-muted);
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.4;
+        text-align: center;
+      }
+
+      @container (max-width: 540px) {
+        .lp-card {
+          padding: 14px 10px;
+        }
+
+        .lp-header {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 8px;
+        }
+
+        .lp-badges {
+          justify-content: flex-start;
+        }
+
+        .lp-title {
+          font-size: 14px;
+        }
+
+        .lp-axis-label {
+          font-size: 9px;
+        }
+
+        .lp-side-heading,
+        .lp-side-label {
+          font-size: 9px;
+        }
+
+        .lp-side-position {
+          font-size: 8px;
+        }
+      }
+    `,
+  ];
+
+  constructor() {
+    super();
+    this.config = { ...DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG };
+    this._selectedSessionKey = null;
+    this._sessionData = null;
+    this._sessionLoadingKey = null;
+    this._sessionError = null;
+    this._sessionDataCache = new Map();
+    this._sessionLoadToken = 0;
+    this._hoverPoint = null;
+    this._hiddenSeriesKeys = new Set();
+  }
+
+  static getStubConfig() {
+    return {
+      type: 'custom:f1-lap-position-progression-card',
+      ...DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG,
+    };
+  }
+
+  static getConfigElement() {
+    return document.createElement('f1-lap-position-progression-card-editor');
+  }
+
+  setConfig(config) {
+    this.config = {
+      ...DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG,
+      ...config,
+      entity: config?.entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.entity,
+      drivers_entity: config?.drivers_entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.drivers_entity,
+      no_spoiler_entity: config?.no_spoiler_entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.no_spoiler_entity,
+      title: config?.title || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.title,
+      theme_mode: config?.theme_mode || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.theme_mode,
+      show_full_name: config?.show_full_name === true,
+      team_logo_style: config?.team_logo_style || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.team_logo_style,
+      chart_height: this._clampNumber(config?.chart_height, 300, 720, DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.chart_height),
+      top_limit: Math.max(0, Math.floor(Number(config?.top_limit) || 0)),
+    };
+    applyF1ThemeMode(this, this.config, this.hass);
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    ensureF1Fonts();
+    applyF1ThemeMode(this, this.config, this.hass);
+  }
+
+  updated(changedProps) {
+    if (changedProps.has('hass') || changedProps.has('config')) {
+      applyF1ThemeMode(this, this.config, this.hass);
+    }
+  }
+
+  getCardSize() {
+    return 8;
+  }
+
+  getGridOptions() {
+    return {
+      columns: 12,
+      max_columns: 12,
+      min_columns: 6,
+      rows: 8,
+      min_rows: 6,
+    };
+  }
+
+  render() {
+    if (!this.hass || !this.config) return html``;
+    const entityState = getEntityStateWithFallback(this.hass, this.config.entity);
+    if (!entityState || isUnavailableLikeEntityState(entityState)) {
+      return this._renderCard(this._renderEmpty('Lap position entity not found'));
+    }
+
+    const sessions = this._buildSessions(entityState);
+    const selectedSession = this._resolveSelectedSession(sessions);
+    this._actionEntityId = resolveEntityIdWithFallback(this.hass, this.config.entity);
+    if (!selectedSession) {
+      return this._renderCard(this._renderEmpty('No lap position data', null, sessions));
+    }
+
+    const header = this.config.show_header !== false
+      ? this._renderHeader(selectedSession, sessions)
+      : null;
+
+    if (selectedSession.status !== 'available') {
+      return this._renderCard(html`
+        ${header}
+        ${this._renderStatusState(selectedSession)}
+      `);
+    }
+
+    const loadedSession = this._sessionForRender(selectedSession);
+    if (!loadedSession) {
+      this._ensureSessionData(selectedSession);
+      return this._renderCard(html`
+        ${header}
+        ${this._renderStatusState({ ...selectedSession, status: 'loading', reason: this._sessionError })}
+      `);
+    }
+
+    const renderSession = { ...selectedSession, ...loadedSession };
+    if (renderSession.status !== 'available') {
+      return this._renderCard(html`
+        ${this.config.show_header !== false ? this._renderHeader(renderSession, sessions) : null}
+        ${this._renderStatusState(renderSession)}
+      `);
+    }
+
+    const model = this._buildChartModel(renderSession);
+    if (!model.series.length || !model.labels.length) {
+      return this._renderCard(html`
+        ${this.config.show_header !== false ? this._renderHeader(renderSession, sessions) : null}
+        ${this._renderStatusState({ ...renderSession, status: 'pending' })}
+      `);
+    }
+
+    return this._renderCard(html`
+      ${header}
+      <div class="lp-main">
+        <div class="lp-chart-shell">
+          ${this._renderSvg(model)}
+          ${this._renderTooltip()}
+        </div>
+      </div>
+    `);
+  }
+
+  _renderCard(content) {
+    const chartHeight = this._clampNumber(this.config?.chart_height, 300, 720, DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.chart_height);
+    const theme = isEffectiveLightTheme(this.hass, this.config) ? 'light' : 'dark';
+    return html`
+      <ha-card @click=${() => this._handleCardAction()}>
+        <div
+          class="lp-card"
+          data-theme=${theme}
+          data-layout=${getResponsiveLayoutMode(this)}
+          style=${`--lp-chart-height: ${chartHeight}px;`}
+        >
+          ${content}
+        </div>
+      </ha-card>
+    `;
+  }
+
+  _renderHeader(session, sessions) {
+    const driverCount = Number(session?.driver_count);
+    const lapCount = Number(session?.total_laps);
+    return html`
+      <div class="lp-header">
+        <div>
+          <h3 class="lp-title">${this.config.title || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.title}</h3>
+          <div class="lp-subtitle">${this._sessionDisplayTitle(session)}</div>
+        </div>
+        <div class="lp-badges">
+          <span class="lp-badge ${session?.type === 'sprint' ? 'unsupported' : ''}">${this._sessionTypeLabel(session)}</span>
+          ${Number.isFinite(lapCount) && lapCount > 0 ? html`<span class="lp-badge">${lapCount} laps</span>` : null}
+          ${Number.isFinite(driverCount) && driverCount > 0 ? html`<span class="lp-badge">${driverCount} drivers</span>` : null}
+          ${session?.status && session.status !== 'available' ? html`<span class="lp-badge ${session.status}">${session.status}</span>` : null}
+        </div>
+        ${this._renderSessionSelector(sessions, session)}
+      </div>
+    `;
+  }
+
+  _renderSessionSelector(sessions, selectedSession) {
+    const list = Array.isArray(sessions) ? sessions : [];
+    if (this.config.show_session_selector === false || list.length <= 1) return null;
+    return html`
+      <div class="lp-selector-row" @click=${(ev) => ev.stopPropagation()}>
+        <select
+          class="lp-session-select"
+          .value=${selectedSession?.key || ''}
+          @change=${this._sessionSelectionChanged}
+        >
+          ${list.map((session) => html`
+            <option value=${session.key}>${this._sessionOptionLabel(session)}</option>
+          `)}
+        </select>
+      </div>
+    `;
+  }
+
+  _renderStatusState(session) {
+    const reason = String(session?.reason || '').trim();
+    const message = session?.status === 'unsupported'
+      ? 'Sprint lap position data is not available'
+      : session?.status === 'loading'
+        ? 'Loading lap position data'
+        : session?.status === 'blocked'
+          ? 'No Spoiler Mode is active'
+          : session?.status === 'not_found'
+            ? 'Lap position session was not found'
+            : session?.status === 'error'
+              ? this._statusErrorMessage(reason)
+              : 'Lap position data is pending';
+    return html`<div class="lp-empty">${message}</div>`;
+  }
+
+  _renderEmpty(message, selectedSession = null, sessions = []) {
+    return html`
+      ${this.config?.show_header !== false && selectedSession ? this._renderHeader(selectedSession, sessions) : null}
+      <div class="lp-empty">${message}</div>
+    `;
+  }
+
+  _renderSvg(model) {
+    const width = 900;
+    const height = this._clampNumber(this.config.chart_height, 300, 720, DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.chart_height);
+    const showLapLabels = this.config.show_round_labels !== false;
+    const startOrderLabels = this._startOrderLabels(model.series);
+    const currentOrderLabels = this._currentOrderLabels(model.series);
+    const startPositionBySeries = new Map(startOrderLabels.map((item) => [item.series, item.position]));
+    const margin = {
+      top: 30,
+      right: this._sideLabelWidth(currentOrderLabels, 'current'),
+      bottom: showLapLabels ? 52 : 28,
+      left: this._sideLabelWidth(startOrderLabels, 'start'),
+    };
+    const chartRight = width - margin.right;
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    const maxPosition = Math.max(1, model.maxPosition || 1);
+    const xStep = model.labels.length ? innerWidth / model.labels.length : 0;
+    const yForPosition = (position) => {
+      if (!Number.isFinite(position)) return null;
+      if (maxPosition <= 1) return margin.top;
+      return margin.top + ((position - 1) / (maxPosition - 1)) * innerHeight;
+    };
+    const pointFor = (value, index) => {
+      const y = yForPosition(value);
+      if (!Number.isFinite(y)) return null;
+      const x = margin.left + ((index + 1) * xStep);
+      return { x, y, value, index, label: model.labels[index] || `L${index + 1}` };
+    };
+    const startPointFor = (series) => {
+      const position = startPositionBySeries.get(series);
+      const y = yForPosition(position);
+      if (!Number.isFinite(y)) return null;
+      return { x: margin.left, y, value: position, index: -1, label: 'Start' };
+    };
+    const ticks = this._positionTicks(maxPosition).map((position) => ({
+      position,
+      y: yForPosition(position),
+    })).filter((tick) => Number.isFinite(tick.y));
+    const visibleLapLabels = this._visibleLapLabels(model.labels);
+    const ariaLabel = `${this.config.title || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.title} for ${model.session?.race_name || 'selected race'}`;
+
+    return svg`
+      <svg
+        class="lp-chart"
+        viewBox=${`0 0 ${width} ${height}`}
+        role="img"
+        aria-label=${ariaLabel}
+        @pointerleave=${() => this._clearHoverPoint()}
+      >
+        <text class="lp-side-heading" x=${margin.left - 14} y=${margin.top - 13} text-anchor="end">START</text>
+        <text class="lp-side-heading" x=${chartRight + 10} y=${margin.top - 13}>CURRENT</text>
+        ${ticks.map((tick) => svg`
+          <line class="lp-grid-line" x1=${margin.left} x2=${chartRight} y1=${tick.y} y2=${tick.y}></line>
+        `)}
+        <line class="lp-axis-line" x1=${margin.left} x2=${margin.left} y1=${margin.top} y2=${height - margin.bottom}></line>
+        <line class="lp-axis-line" x1=${margin.left} x2=${chartRight} y1=${height - margin.bottom} y2=${height - margin.bottom}></line>
+        ${startOrderLabels.map((item) => {
+          const y = yForPosition(item.position);
+          if (!Number.isFinite(y)) return null;
+          const hidden = this._isSeriesHidden(item.series);
+          return svg`
+            <g
+              class="lp-side-entry"
+              data-hidden=${hidden ? 'true' : 'false'}
+              style=${`--series-color: ${item.series.color};`}
+              role="button"
+              tabindex="0"
+              aria-pressed=${hidden ? 'false' : 'true'}
+              aria-label=${`${item.series.name}: ${hidden ? 'show' : 'hide'} lap position line`}
+              @click=${(ev) => this._toggleSeriesVisibility(item.series, ev)}
+              @keydown=${(ev) => this._toggleSeriesVisibilityFromKey(item.series, ev)}
+            >
+              <text class="lp-side-label left" x=${margin.left - 14} y=${y} text-anchor="end" dominant-baseline="middle">${item.label}</text>
+              <circle class="lp-side-marker" cx=${margin.left - 5} cy=${y} r="3"></circle>
+            </g>
+          `;
+        })}
+        ${currentOrderLabels.map((item) => {
+          const y = yForPosition(item.position);
+          if (!Number.isFinite(y)) return null;
+          const hidden = this._isSeriesHidden(item.series);
+          return svg`
+            <g
+              class="lp-side-entry"
+              data-hidden=${hidden ? 'true' : 'false'}
+              style=${`--series-color: ${item.series.color};`}
+              role="button"
+              tabindex="0"
+              aria-pressed=${hidden ? 'false' : 'true'}
+              aria-label=${`${item.series.name}: ${hidden ? 'show' : 'hide'} lap position line`}
+              @click=${(ev) => this._toggleSeriesVisibility(item.series, ev)}
+              @keydown=${(ev) => this._toggleSeriesVisibilityFromKey(item.series, ev)}
+            >
+              <circle class="lp-side-marker" cx=${chartRight + 7} cy=${y} r="3"></circle>
+              <text class="lp-side-position" x=${chartRight + 15} y=${y} dominant-baseline="middle">P${this._formatPosition(item.position)}</text>
+              <text class="lp-side-label right" x=${chartRight + 36} y=${y} dominant-baseline="middle">${item.label}</text>
+            </g>
+          `;
+        })}
+        ${showLapLabels ? visibleLapLabels.map(({ label, index }) => {
+          const x = margin.left + ((index + 1) * xStep);
+          return svg`
+            <text
+              class="lp-axis-label"
+              x=${x}
+              y=${height - 20}
+              text-anchor="end"
+              transform=${`rotate(-32 ${x} ${height - 20})`}
+            >
+              ${label}
+            </text>
+          `;
+        }) : null}
+        ${model.series.map((series) => {
+          if (this._isSeriesHidden(series)) return null;
+          const points = series.positions.map((value, index) => pointFor(value, index));
+          const startPoint = startPointFor(series);
+          const pathPoints = [startPoint, ...points];
+          const path = pathPoints.filter(Boolean).length > 1 ? this._buildPath(pathPoints) : '';
+          return svg`
+            <g style=${`--series-color: ${series.color};`}>
+              ${path ? svg`<path class="lp-series-line" d=${path}></path>` : null}
+              ${this.config.show_points !== false ? points.filter(Boolean).map((point) => svg`
+                <circle
+                  class="lp-point"
+                  cx=${point.x}
+                  cy=${point.y}
+                  r="4"
+                  tabindex="0"
+                  role="graphics-symbol"
+                  aria-label=${`${series.name}, ${point.label}, position ${point.value}`}
+                  @pointerenter=${() => this._setHoverPoint(series, point, model.session, width, height)}
+                  @pointermove=${() => this._setHoverPoint(series, point, model.session, width, height)}
+                  @focus=${() => this._setHoverPoint(series, point, model.session, width, height)}
+                  @click=${(ev) => {
+                    ev.stopPropagation();
+                    this._setHoverPoint(series, point, model.session, width, height);
+                  }}
+                  @blur=${() => this._clearHoverPoint()}
+                >
+                  <title>${series.name} - ${point.label} - P${point.value}</title>
+                </circle>
+              `) : null}
+            </g>
+          `;
+        })}
+      </svg>
+    `;
+  }
+
+  _renderTooltip() {
+    const point = this._hoverPoint;
+    if (!point) return null;
+    const media = point.media?.src ? html`
+      <img
+        class="lp-tooltip-media"
+        src=${point.media.src}
+        data-fallback=${point.media.fallback || ''}
+        alt=""
+        loading="eager"
+        decoding="async"
+        @error=${handleTeamLogoError}
+      >
+    ` : null;
+    return html`
+      <div
+        class="lp-tooltip"
+        style=${`--tooltip-left: ${point.left}%; --tooltip-top: ${point.top}%; --tooltip-color: ${point.color}; --tooltip-translate-x: ${point.translateX};`}
+      >
+        ${media}
+        <div>
+          <div class="lp-tooltip-title">
+            <span class="lp-tooltip-swatch"></span>
+            <span>${point.name}</span>
+          </div>
+          <div class="lp-tooltip-meta">
+            <div>${point.lap}</div>
+            <div>${point.raceName}</div>
+            ${point.movement ? html`<div>${point.movement}</div>` : null}
+          </div>
+          <div class="lp-tooltip-position">P${point.position}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  _buildSessions(entityState) {
+    const sessions = asEntityList(entityState?.attributes?.sessions)
+      .map((session, index) => this._normalizeSession(session, index))
+      .filter((session) => session.key);
+    return sessions.sort((a, b) => {
+      if (Number.isFinite(a.roundNumber) && Number.isFinite(b.roundNumber)) {
+        const roundDiff = b.roundNumber - a.roundNumber;
+        if (roundDiff !== 0) return roundDiff;
+      }
+      if (Number.isFinite(a.roundNumber) && !Number.isFinite(b.roundNumber)) return -1;
+      if (!Number.isFinite(a.roundNumber) && Number.isFinite(b.roundNumber)) return 1;
+      if (a.type !== b.type) return a.type === 'race' ? -1 : 1;
+      return String(a.label || '').localeCompare(String(b.label || ''));
+    });
+  }
+
+  _sessionForRender(selectedSession) {
+    const key = selectedSession?.key;
+    if (!key) return null;
+    if (this._sessionData?.key === key) return this._sessionData;
+    const cached = this._sessionDataCache?.get(key);
+    if (cached?.key === key) {
+      this._sessionData = cached;
+      return cached;
+    }
+    if (Array.isArray(selectedSession?.drivers) && selectedSession.drivers.length) {
+      return selectedSession;
+    }
+    return null;
+  }
+
+  async _ensureSessionData(selectedSession) {
+    const key = selectedSession?.key;
+    if (!this.hass || !key || selectedSession?.type !== 'race' || selectedSession?.status !== 'available') {
+      return;
+    }
+    if (this._sessionData?.key === key || this._sessionDataCache?.has(key) || this._sessionLoadingKey === key) {
+      return;
+    }
+
+    const entityId = resolveEntityIdWithFallback(this.hass, this.config.entity) || this.config.entity;
+    const token = ++this._sessionLoadToken;
+    this._sessionLoadingKey = key;
+    this._sessionError = null;
+
+    try {
+      const response = await this._callWS({
+        type: 'f1_sensor/lap_position/session',
+        entity_id: entityId,
+        session_key: key,
+      });
+      if (token !== this._sessionLoadToken) return;
+      const responseSession = response?.session || {};
+      const session = this._normalizeSession({
+        ...selectedSession,
+        ...responseSession,
+        status: responseSession.status || response?.status || selectedSession.status,
+        reason: responseSession.reason || response?.reason || null,
+      }, 0);
+      this._sessionData = session;
+      if (session.status === 'available') {
+        this._sessionDataCache.set(key, session);
+      }
+      this._sessionLoadingKey = null;
+      this._sessionError = null;
+    } catch (err) {
+      if (token !== this._sessionLoadToken) return;
+      this._sessionData = {
+        ...selectedSession,
+        status: 'error',
+        reason: err?.message || 'Home Assistant WebSocket API is unavailable',
+      };
+      this._sessionLoadingKey = null;
+      this._sessionError = this._sessionData.reason;
+    }
+  }
+
+  async _callWS(message) {
+    if (typeof this.hass?.callWS === 'function') {
+      return this.hass.callWS(message);
+    }
+    if (this.hass?.connection?.sendMessagePromise) {
+      return this.hass.connection.sendMessagePromise(message);
+    }
+    throw new Error('Home Assistant WebSocket API is unavailable');
+  }
+
+  _normalizeSession(session, index) {
+    const type = session?.type === 'sprint' ? 'sprint' : 'race';
+    const roundNumber = this._parsePosition(session?.round);
+    const key = String(session?.key || `${type}:${session?.season || ''}:${session?.round || index}`).trim();
+    return {
+      ...session,
+      key,
+      type,
+      status: String(session?.status || 'pending').trim().toLowerCase(),
+      roundNumber,
+      label: session?.label || this._sessionDisplayTitle(session),
+      drivers: asEntityList(session?.drivers),
+    };
+  }
+
+  _resolveSelectedSession(sessions) {
+    const list = Array.isArray(sessions) ? sessions : [];
+    if (!list.length) return null;
+    const selected = this._selectedSessionKey
+      ? list.find((session) => session.key === this._selectedSessionKey)
+      : null;
+    if (selected) return selected;
+    return list.find((session) => session.type === 'race' && session.status === 'available')
+      || list.find((session) => session.status === 'available')
+      || list[0];
+  }
+
+  _buildChartModel(session) {
+    const labels = this._normalizeLabels(session);
+    const driverList = this._getDriverList();
+    const normalized = asEntityList(session?.drivers)
+      .map((driver, index) => this._normalizeDriverSeries(driver, labels.length, driverList, index))
+      .filter((driver) => this._hasLapPositionSeries(driver));
+    const fallbackSeries = normalized.length ? [] : asEntityList(session?.series?.series)
+      .map((series, index) => this._normalizeFallbackSeries(series, labels.length, index))
+      .filter((series) => this._hasLapPositionSeries(series));
+    const ranked = (normalized.length ? normalized : fallbackSeries).sort((a, b) => {
+      const positionDiff = this._comparePositionAscending(a.finishPosition, b.finishPosition);
+      if (positionDiff !== 0) return positionDiff;
+      return String(a.name).localeCompare(String(b.name));
+    });
+    const limit = Math.max(0, Math.floor(Number(this.config?.top_limit) || 0));
+    const visible = limit > 0 ? ranked.slice(0, limit) : ranked;
+    const maxPosition = Math.max(
+      1,
+      visible.length,
+      ...visible.flatMap((series) => [
+        ...series.positions,
+        this._seriesCurrentPosition(series),
+      ].filter((position) => Number.isFinite(position) && position > 0)),
+    );
+    return {
+      session,
+      labels,
+      series: visible,
+      totalSeriesCount: ranked.length,
+      maxPosition,
+    };
+  }
+
+  _normalizeLabels(session) {
+    const labels = Array.isArray(session?.labels) && session.labels.length
+      ? session.labels
+      : Array.isArray(session?.series?.labels)
+        ? session.series.labels
+        : [];
+    if (labels.length) return labels.map((label, index) => String(label || `L${index + 1}`));
+    const maxLength = Math.max(
+      0,
+      ...asEntityList(session?.drivers).map((driver) => Array.isArray(driver?.positions) ? driver.positions.length : 0),
+      ...asEntityList(session?.series?.series).map((series) => Array.isArray(series?.data) ? series.data.length : 0),
+    );
+    return Array.from({ length: maxLength }, (_value, index) => `L${index + 1}`);
+  }
+
+  _normalizeDriverSeries(driver, expectedLength, driverList, index) {
+    const positions = this._normalizePositions(driver?.positions, expectedLength);
+    const code = String(driver?.code || '').trim().toUpperCase();
+    const name = String(driver?.name || code || driver?.driver_id || `Driver ${index + 1}`).trim();
+    const meta = this._findDriverMeta(driver, driverList);
+    const teamName = driver?.constructor_name || meta?.team || meta?.team_name || '';
+    const color = this._usableColor(driver?.color || meta?.team_color) || F1_SEASON_PROGRESSION_FALLBACK_COLORS[index % F1_SEASON_PROGRESSION_FALLBACK_COLORS.length];
+    return {
+      key: String(driver?.driver_id || code || index),
+      code,
+      name,
+      shortName: code || name,
+      color,
+      positions,
+      grid: this._toNumber(driver?.grid),
+      finishPosition: this._toNumber(driver?.finish_position) ?? this._latestFinite(positions),
+      status: driver?.status || '',
+      media: this._resolveDriverMedia(teamName),
+    };
+  }
+
+  _normalizeFallbackSeries(series, expectedLength, index) {
+    const positions = this._normalizePositions(series?.data || series?.values || [], expectedLength);
+    const name = String(series?.name || series?.key || `Driver ${index + 1}`).trim();
+    return {
+      key: String(series?.key || name || index),
+      code: String(series?.key || '').trim().toUpperCase(),
+      name,
+      shortName: String(series?.key || name).trim(),
+      color: this._usableColor(series?.color) || F1_SEASON_PROGRESSION_FALLBACK_COLORS[index % F1_SEASON_PROGRESSION_FALLBACK_COLORS.length],
+      positions,
+      grid: null,
+      finishPosition: this._latestFinite(positions),
+      status: '',
+      media: null,
+    };
+  }
+
+  _hasLapPositionSeries(series) {
+    return series.positions.some((position) => Number.isFinite(position))
+      || Number.isFinite(this._seriesStartPosition(series))
+      || Number.isFinite(this._seriesCurrentPosition(series));
+  }
+
+  _normalizePositions(values, expectedLength) {
+    const array = Array.isArray(values) ? values : Object.values(values || {});
+    const positions = array.map((value) => {
+      if (value === null || value === undefined || String(value).trim() === '') {
+        return null;
+      }
+      const num = Number(value);
+      return Number.isFinite(num) ? num : null;
+    });
+    if (expectedLength > positions.length) {
+      positions.push(...Array.from({ length: expectedLength - positions.length }, () => null));
+    }
+    return positions;
+  }
+
+  _positionTicks(maxPosition) {
+    const max = Math.max(1, Math.floor(Number(maxPosition) || 1));
+    if (max <= 10) {
+      return Array.from({ length: max }, (_value, index) => index + 1);
+    }
+    const ticks = new Set([1, max]);
+    const step = Math.max(1, Math.ceil(max / 5));
+    for (let position = step; position < max; position += step) {
+      ticks.add(position);
+    }
+    return Array.from(ticks).sort((a, b) => a - b);
+  }
+
+  _visibleLapLabels(labels) {
+    const list = Array.isArray(labels) ? labels : [];
+    if (list.length <= 12) {
+      return list.map((label, index) => ({ label, index }));
+    }
+    const stride = Math.ceil(list.length / 10);
+    return list
+      .map((label, index) => ({ label, index }))
+      .filter(({ index }) => index === 0 || index === list.length - 1 || index % stride === 0);
+  }
+
+  _startOrderLabels(seriesList) {
+    return this._orderedSideLabels(seriesList, 'start');
+  }
+
+  _currentOrderLabels(seriesList) {
+    return this._orderedSideLabels(seriesList, 'current');
+  }
+
+  _orderedSideLabels(seriesList, side) {
+    const ordered = asEntityList(seriesList)
+      .map((series) => ({
+        series,
+        position: side === 'start' ? this._seriesStartPosition(series) : this._seriesCurrentPosition(series),
+        label: this._sideDriverLabel(series, side),
+      }))
+      .filter((item) => Number.isFinite(item.position) && item.position > 0 && item.label)
+      .sort((a, b) => {
+        const positionDiff = this._comparePositionAscending(a.position, b.position);
+        if (positionDiff !== 0) return positionDiff;
+        return String(a.label).localeCompare(String(b.label));
+      });
+    if (side !== 'start') {
+      return ordered;
+    }
+    return ordered.map((item, index) => ({
+      ...item,
+      sourcePosition: item.position,
+      position: index + 1,
+    }));
+  }
+
+  _sideLabelWidth(labels, side) {
+    const longest = asEntityList(labels).reduce((max, item) => Math.max(max, String(item?.label || '').length), 0);
+    const fullName = this.config?.show_full_name === true;
+    const baseWidth = side === 'start' ? 58 : 92;
+    const maxWidth = side === 'start'
+      ? (fullName ? 176 : 86)
+      : (fullName ? 188 : 148);
+    const labelOffset = side === 'start' ? 24 : 46;
+    return Math.max(baseWidth, Math.min(maxWidth, Math.ceil((longest * 6.4) + labelOffset)));
+  }
+
+  _sideDriverLabel(series, side) {
+    const fullName = String(series?.name || series?.shortName || series?.code || '').trim();
+    if (this.config?.show_full_name === true) {
+      return this._truncateSvgLabel(fullName, 22);
+    }
+    if (side === 'start') {
+      return this._truncateSvgLabel(String(series?.shortName || series?.code || this._familyName(fullName) || fullName).trim().toUpperCase(), 6);
+    }
+    return this._truncateSvgLabel(String(this._familyName(fullName) || series?.shortName || series?.code || fullName).trim().toUpperCase(), 13);
+  }
+
+  _seriesStartPosition(series) {
+    const grid = Number(series?.grid);
+    return Number.isFinite(grid) && grid > 0
+      ? grid
+      : this._firstFinite(series?.positions) ?? this._seriesCurrentPosition(series);
+  }
+
+  _seriesCurrentPosition(series) {
+    const finish = Number(series?.finishPosition);
+    return Number.isFinite(finish) && finish > 0
+      ? finish
+      : this._latestFinite(series?.positions || []);
+  }
+
+  _familyName(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : '';
+  }
+
+  _truncateSvgLabel(label, maxLength) {
+    const normalized = String(label || '').trim();
+    if (!normalized || normalized.length <= maxLength) return normalized;
+    return `${normalized.slice(0, Math.max(1, maxLength - 3))}...`;
+  }
+
+  _buildPath(points) {
+    let path = '';
+    let drawing = false;
+    points.forEach((point) => {
+      if (!point) {
+        drawing = false;
+        return;
+      }
+      path += `${drawing ? 'L' : 'M'} ${point.x.toFixed(2)} ${point.y.toFixed(2)} `;
+      drawing = true;
+    });
+    return path.trim();
+  }
+
+  _setHoverPoint(series, point, session, width, height) {
+    const left = Math.max(4, Math.min(96, (point.x / width) * 100));
+    const grid = Number(series.grid);
+    const finish = Number(series.finishPosition);
+    const movement = Number.isFinite(grid) && grid > 0 && Number.isFinite(finish)
+      ? `Grid P${grid}, finish P${finish}`
+      : '';
+    this._hoverPoint = {
+      name: series.name,
+      color: series.color,
+      media: series.media || null,
+      lap: point.label,
+      position: point.value,
+      raceName: this._sessionDisplayTitle(session),
+      movement,
+      left,
+      top: Math.max(8, Math.min(92, (point.y / height) * 100)),
+      translateX: left < 18 ? '0' : left > 82 ? '-100%' : '-50%',
+    };
+  }
+
+  _clearHoverPoint() {
+    this._hoverPoint = null;
+  }
+
+  _sessionSelectionChanged(ev) {
+    ev.stopPropagation();
+    this._selectedSessionKey = ev.target.value;
+    this._sessionData = this._sessionDataCache.get(this._selectedSessionKey) || null;
+    this._sessionError = null;
+    this._clearHoverPoint();
+  }
+
+  _sessionDisplayTitle(session) {
+    const raceName = String(session?.race_name || '').trim();
+    if (!raceName) return 'Lap Position Progression';
+    return raceName.replace(' Grand Prix', ' GP');
+  }
+
+  _sessionOptionLabel(session) {
+    const round = session?.round ? `R${session.round}` : null;
+    const status = session?.status && session.status !== 'available'
+      ? session.status.toUpperCase()
+      : null;
+    return [round, this._sessionTypeLabel(session), this._sessionDisplayTitle(session), status]
+      .filter(Boolean)
+      .join(' - ');
+  }
+
+  _sessionTypeLabel(session) {
+    return session?.type === 'sprint' ? 'SPRINT' : 'RACE';
+  }
+
+  _getDriverList() {
+    const state = getEntityStateWithFallback(this.hass, this.config?.drivers_entity);
+    const drivers = state?.attributes?.drivers;
+    return Array.isArray(drivers) ? drivers : [];
+  }
+
+  _findDriverMeta(driver, driverList) {
+    const code = String(driver?.code || '').trim().toUpperCase();
+    const number = String(driver?.number || '').trim();
+    const driverId = this._searchKey(driver?.driver_id);
+    return (driverList || []).find((entry) => {
+      const entryCode = String(entry?.tla || entry?.code || '').trim().toUpperCase();
+      if (code && entryCode === code) return true;
+      const entryNumber = String(entry?.racing_number || entry?.number || '').trim();
+      if (number && entryNumber === number) return true;
+      const reference = this._searchKey(entry?.reference || entry?.driverId || entry?.driver_id);
+      return Boolean(driverId && reference.includes(driverId));
+    }) || null;
+  }
+
+  _resolveDriverMedia(teamName) {
+    const logo = getTeamLogoMeta(
+      teamName,
+      52,
+      this.config.team_logo_style,
+      isEffectiveLightTheme(this.hass, this.config),
+    );
+    return logo ? { ...logo, kind: 'team-logo' } : null;
+  }
+
+  _isSeriesHidden(series) {
+    return this._hiddenSeriesKeys?.has(this._seriesFilterKey(series));
+  }
+
+  _toggleSeriesVisibility(series, ev) {
+    ev?.stopPropagation?.();
+    ev?.preventDefault?.();
+    const key = this._seriesFilterKey(series);
+    const hiddenKeys = new Set(this._hiddenSeriesKeys || []);
+    if (hiddenKeys.has(key)) {
+      hiddenKeys.delete(key);
+    } else {
+      hiddenKeys.add(key);
+    }
+    this._hiddenSeriesKeys = hiddenKeys;
+    this._clearHoverPoint();
+  }
+
+  _toggleSeriesVisibilityFromKey(series, ev) {
+    if (!['Enter', ' ', 'Spacebar'].includes(ev?.key)) return;
+    this._toggleSeriesVisibility(series, ev);
+  }
+
+  _seriesFilterKey(series) {
+    return String(series?.key || series?.code || series?.name || '');
+  }
+
+  _handleCardAction() {
+    const action = this.config?.tap_action || { action: 'more-info' };
+    if (action.action === 'none') return;
+    if (action.action === 'more-info') {
+      this.dispatchEvent(new CustomEvent('hass-more-info', {
+        bubbles: true,
+        composed: true,
+        detail: { entityId: this._actionEntityId || resolveEntityIdWithFallback(this.hass, this.config?.entity) },
+      }));
+    }
+  }
+
+  _comparePositionAscending(a, b) {
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      const diff = a - b;
+      return diff === 0 ? 0 : diff;
+    }
+    if (Number.isFinite(a)) return -1;
+    if (Number.isFinite(b)) return 1;
+    return 0;
+  }
+
+  _parsePosition(value) {
+    if (value === null || value === undefined) return null;
+    const match = String(value).match(/\d+/);
+    if (!match) return null;
+    const num = Number(match[0]);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  _toNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  _latestFinite(values) {
+    for (let index = values.length - 1; index >= 0; index -= 1) {
+      if (Number.isFinite(values[index])) return values[index];
+    }
+    return null;
+  }
+
+  _firstFinite(values) {
+    const list = Array.isArray(values) ? values : [];
+    for (let index = 0; index < list.length; index += 1) {
+      if (Number.isFinite(list[index])) return list[index];
+    }
+    return null;
+  }
+
+  _formatPosition(value) {
+    return Number.isFinite(value) ? String(Math.round(value)) : '--';
+  }
+
+  _statusErrorMessage(reason) {
+    const normalized = String(reason || '').toLowerCase();
+    if (normalized.includes('429') || normalized.includes('too many requests')) {
+      return 'Jolpica rate limit reached. Try again later.';
+    }
+    return 'Lap position data could not be loaded';
+  }
+
+  _searchKey(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  _usableColor(value) {
+    const color = String(value || '').trim();
+    if (/^#[0-9a-f]{3,8}$/i.test(color)) return color;
+    if (/^rgba?\([\d\s,.%]+\)$/i.test(color)) return color;
+    if (/^hsla?\([\d\s,.%]+\)$/i.test(color)) return color;
+    return null;
+  }
+
+  _clampNumber(value, min, max, fallback) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.max(min, Math.min(max, num));
+  }
+}
+
+// ============================================================================
+// F1 Lap Position Progression Card Editor
+// ============================================================================
+
+class F1LapPositionProgressionCardEditor extends LitElement {
+  static properties = {
+    hass: {},
+    _config: {},
+    _activeTab: { state: true },
+  };
+
+  static styles = css`
+    .card-config {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--divider-color);
+      margin-bottom: 16px;
+    }
+
+    .tabs button {
+      flex: 1;
+      padding: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--primary-text-color);
+      font-size: 14px;
+      font-family: inherit;
+      transition: color 0.2s;
+    }
+
+    .tabs button:hover {
+      color: var(--primary-color);
+    }
+
+    .tabs button.active {
+      color: var(--primary-color);
+      border-bottom: 2px solid var(--primary-color);
+    }
+
+    .section,
+    .display-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .section-header {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--secondary-text-color);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .helper {
+      font-size: 12px;
+      line-height: 1.35;
+      color: var(--secondary-text-color);
+      margin-top: -8px;
+    }
+
+    ha-textfield {
+      width: 100%;
+    }
+  `;
+
+  constructor() {
+    super();
+    this._activeTab = 'sources';
+  }
+
+  setConfig(config) {
+    this._config = {
+      ...DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG,
+      ...config,
+      entity: config?.entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.entity,
+      drivers_entity: config?.drivers_entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.drivers_entity,
+      no_spoiler_entity: config?.no_spoiler_entity || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.no_spoiler_entity,
+      title: config?.title || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.title,
+      theme_mode: config?.theme_mode || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.theme_mode,
+      show_full_name: config?.show_full_name === true,
+      team_logo_style: config?.team_logo_style || DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.team_logo_style,
+      chart_height: this._clampNumber(config?.chart_height, 300, 720, DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.chart_height),
+      top_limit: Math.max(0, Math.floor(Number(config?.top_limit) || 0)),
+    };
+  }
+
+  render() {
+    if (!this.hass || !this._config) return html``;
+    return html`
+      <div class="card-config">
+        <div class="tabs">
+          <button
+            class=${this._activeTab === 'sources' ? 'active' : ''}
+            @click=${() => this._activeTab = 'sources'}
+          >
+            Data Sources
+          </button>
+          <button
+            class=${this._activeTab === 'display' ? 'active' : ''}
+            @click=${() => this._activeTab = 'display'}
+          >
+            Display
+          </button>
+        </div>
+
+        ${this._activeTab === 'sources' ? this._renderDataSourcesTab() : this._renderDisplayTab()}
+      </div>
+    `;
+  }
+
+  _renderDataSourcesTab() {
+    return html`
+      <div class="section">
+        <div class="section-header">LAP POSITION SENSOR</div>
+        ${this._renderEntityPicker(
+          'entity',
+          'Lap position entity',
+          'Provides completed race sessions and sprint metadata.',
+          true,
+          'sensor',
+        )}
+        ${this._renderEntityPicker(
+          'drivers_entity',
+          'Driver list entity',
+          'Optional. Provides driver team metadata for colors and logos.',
+          false,
+          'sensor',
+        )}
+        ${this._renderEntityPicker(
+          'no_spoiler_entity',
+          'No Spoiler switch',
+          'Masks the chart while No Spoiler Mode is active.',
+          false,
+          'switch',
+        )}
+      </div>
+    `;
+  }
+
+  _renderDisplayTab() {
+    return html`
+      <div class="display-section">
+        ${renderThemeModeSelect(this)}
+        <ha-textfield
+          .label=${'Title'}
+          .value=${this._config.title || ''}
+          @input=${(e) => this._valueChanged('title', e.target.value)}
+        ></ha-textfield>
+
+        <div class="section-header">LAYOUT</div>
+        ${this._renderSwitch('show_header', 'Show header')}
+        ${this._renderSwitch('show_session_selector', 'Show race selector')}
+        ${this._renderSwitch('show_full_name', 'Use full names')}
+        ${renderEditorSelect(this, 'team_logo_style', 'Team logo style', [
+          { value: 'color', label: 'Color (fallback to white)' },
+          { value: 'white', label: 'White' },
+        ])}
+
+        <div class="section-header">CHART</div>
+        ${this._renderSwitch('show_points', 'Show chart points')}
+        ${this._renderSwitch('show_round_labels', 'Show lap labels')}
+        ${this._renderNumberField('top_limit', 'Top limit', 'Use 0 to show all drivers.', 0, 30, 1)}
+        ${this._renderNumberField('chart_height', 'Chart height', null, 300, 720, 10)}
+      </div>
+    `;
+  }
+
+  _renderEntityPicker(name, label, helper, required, domain) {
+    const schema = [{ name, label, required, selector: { entity: { domain } } }];
+    return html`
+      <div class="field">
+        <ha-form
+          .hass=${this.hass}
+          .data=${this._config}
+          .schema=${schema}
+          .computeLabel=${() => label}
+          @value-changed=${this._formValueChanged}
+        ></ha-form>
+        <div class="helper">${helper}</div>
+      </div>
+    `;
+  }
+
+  _renderSwitch(name, label) {
+    const schema = [{ name, label, selector: { boolean: {} } }];
+    return html`
+      <ha-form
+        .hass=${this.hass}
+        .data=${this._config}
+        .schema=${schema}
+        .computeLabel=${() => label}
+        @value-changed=${this._formValueChanged}
+      ></ha-form>
+    `;
+  }
+
+  _renderNumberField(name, label, helper, min, max, step) {
+    const schema = [{
+      name,
+      label,
+      selector: {
+        number: {
+          mode: 'box',
+          min,
+          max,
+          step,
+        },
+      },
+    }];
+    return html`
+      <div class="field">
+        <ha-form
+          .hass=${this.hass}
+          .data=${this._config}
+          .schema=${schema}
+          .computeLabel=${() => label}
+          @value-changed=${this._formValueChanged}
+        ></ha-form>
+        ${helper ? html`<div class="helper">${helper}</div>` : null}
+      </div>
+    `;
+  }
+
+  _formValueChanged(ev) {
+    if (!this._config) return;
+    const value = ev.detail?.value || {};
+    let newConfig = { ...this._config, ...value };
+    if (Object.prototype.hasOwnProperty.call(value, 'top_limit')) {
+      newConfig.top_limit = Math.max(0, Math.floor(Number(value.top_limit) || 0));
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'chart_height')) {
+      newConfig.chart_height = this._clampNumber(value.chart_height, 300, 720, DEFAULT_F1_LAP_POSITION_PROGRESSION_CONFIG.chart_height);
+    }
+    this._config = newConfig;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: newConfig } }));
+  }
+
+  _valueChanged(name, value) {
+    if (!this._config) return;
+    const newConfig = { ...this._config, [name]: value };
+    this._config = newConfig;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: newConfig } }));
+  }
+
+  _clampNumber(value, min, max, fallback) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.max(min, Math.min(max, num));
   }
 }
 
@@ -18817,7 +22180,7 @@ class F1RaceControlCard extends LitElement {
           ` : null}
 
           <div class="rc-content">
-            <div class="rc-message ${messageClass}" .innerHTML=${formattedMessage}></div>
+            <div class="rc-message ${messageClass}">${formattedMessage}</div>
             ${queueCount > 0 ? html`
               <span class="rc-queue-indicator">+${queueCount}</span>
             ` : null}
@@ -19725,11 +23088,33 @@ class F1FiaDocumentsCard extends LitElement {
     return cleaned || text;
   }
 
+  _safeDocumentUrl(url) {
+    const value = String(url || '').trim();
+    if (!value) return '';
+    try {
+      const base = globalThis.window?.location?.origin || 'https://www.fia.com';
+      const parsed = new URL(value, base);
+      const host = parsed.hostname.toLowerCase();
+      if (
+        parsed.protocol === 'https:'
+        && (host === 'www.fia.com' || host === 'fia.com')
+        && parsed.pathname.toLowerCase().includes('.pdf')
+      ) {
+        return parsed.href;
+      }
+    } catch (_err) {
+      return '';
+    }
+    return '';
+  }
+
   _normalizeDocument(item, fallbackIndex = 0) {
     if (!item || typeof item !== 'object') return null;
     const name = item.name || item.title || item.document_name || '';
-    const url = String(item.url || item.href || '').trim();
+    const rawUrl = String(item.url || item.href || '').trim();
+    const url = rawUrl ? this._safeDocumentUrl(rawUrl) : '';
     const published = item.published || item.published_at || item.date || null;
+    if (rawUrl && !url) return null;
     if (!url && !name) return null;
     const documentNumber = this._extractDocumentNumber(name, item.document_number);
     const title = this._cleanDocumentTitle(name);
@@ -19960,7 +23345,8 @@ class F1FiaDocumentsCard extends LitElement {
       </div>
     `;
 
-    if (!doc.url) {
+    const safeUrl = this._safeDocumentUrl(doc.url);
+    if (!safeUrl) {
       return html`<div class=${rowClass} style="animation-delay: ${index * 30}ms;">${rowContent}</div>`;
     }
 
@@ -19968,7 +23354,7 @@ class F1FiaDocumentsCard extends LitElement {
       <a
         class=${rowClass}
         style="animation-delay: ${index * 30}ms;"
-        href=${doc.url}
+        href=${safeUrl}
         target=${newTab ? '_blank' : '_self'}
         rel=${newTab ? 'noopener noreferrer' : ''}
         aria-label=${`Open FIA document: ${doc.title}`}
@@ -27247,7 +30633,11 @@ class F1TrackMapCard extends LitElement {
 
   _hasActiveDriverMotion() {
     const replayState = String(this._snapshot?.replay_state || '').toLowerCase();
-    if (replayState !== 'playing') return false;
+    const source = String(this._snapshot?.source || '').toLowerCase();
+    const status = String(this._snapshot?.status || this._status || '').toLowerCase();
+    const activeReplay = replayState === 'playing';
+    const activeLive = source === 'live' && status === 'active' && this._snapshot?.stale !== true;
+    if (!activeReplay && !activeLive) return false;
     const renderAt = this._driverRenderTime();
     for (const samples of this._driverSamples.values()) {
       const latest = samples?.[samples.length - 1];
@@ -27715,6 +31105,13 @@ installSectionsAutoHeight(F1SeasonCalendarCard, {
   min_rows: 5,
 });
 
+installSectionsAutoHeight(F1LapPositionProgressionCard, {
+  columns: 12,
+  min_columns: 4,
+  max_columns: 12,
+  min_rows: 5,
+});
+
 installSectionsAutoHeight(F1LiveSessionCard, {
   columns: 12,
   min_columns: 4,
@@ -27778,6 +31175,7 @@ const F1_NO_SPOILER_CARD_CLASSES = [
   F1ChampionshipPredictionDriversCard,
   F1ChampionshipPredictionTeamsCard,
   F1LastRaceResultsCard,
+  F1LapPositionProgressionCard,
   F1InvestigationsCard,
   F1TrackLimitsCard,
   F1LiveSessionCard,
@@ -27832,12 +31230,28 @@ if (!customElements.get('f1-championship-prediction-teams-card-editor')) {
   customElements.define('f1-championship-prediction-teams-card-editor', F1ChampionshipPredictionTeamsCardEditor);
 }
 
+if (!customElements.get('f1-season-progression-card')) {
+  customElements.define('f1-season-progression-card', F1SeasonProgressionCard);
+}
+
+if (!customElements.get('f1-season-progression-card-editor')) {
+  customElements.define('f1-season-progression-card-editor', F1SeasonProgressionCardEditor);
+}
+
 if (!customElements.get('f1-last-race-results-card')) {
   customElements.define('f1-last-race-results-card', F1LastRaceResultsCard);
 }
 
 if (!customElements.get('f1-last-race-results-card-editor')) {
   customElements.define('f1-last-race-results-card-editor', F1LastRaceResultsCardEditor);
+}
+
+if (!customElements.get('f1-lap-position-progression-card')) {
+  customElements.define('f1-lap-position-progression-card', F1LapPositionProgressionCard);
+}
+
+if (!customElements.get('f1-lap-position-progression-card-editor')) {
+  customElements.define('f1-lap-position-progression-card-editor', F1LapPositionProgressionCardEditor);
 }
 
 if (!customElements.get('f1-replay-control-card')) {
@@ -27986,9 +31400,25 @@ window.customCards.push({
 });
 
 window.customCards.push({
+  type: 'f1-season-progression-card',
+  name: 'F1 Season Progression',
+  description: 'Native season progression chart for driver or constructor championship points',
+  configurable: true,
+  preview: true,
+});
+
+window.customCards.push({
   type: 'f1-last-race-results-card',
   name: 'F1 Last Race Results',
   description: 'Last race results table with finishing position, grid, position delta, points, and status',
+  configurable: true,
+  preview: true,
+});
+
+window.customCards.push({
+  type: 'f1-lap-position-progression-card',
+  name: 'F1 Lap Position Progression',
+  description: 'Native post-race lap position chart for completed races with sprint sessions marked unavailable when lap data is not exposed',
   configurable: true,
   preview: true,
 });

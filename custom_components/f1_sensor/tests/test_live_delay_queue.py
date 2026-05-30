@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from custom_components.f1_sensor.__init__ import (
+    MAX_DELAY_QUEUE_ITEMS,
     LiveDriversCoordinator,
     PitStopCoordinator,
     TopThreeCoordinator,
@@ -61,6 +62,29 @@ async def test_delayed_ingest_queue_flushes_when_delay_becomes_zero(hass) -> Non
 
         assert probe.delivered == ["queued"]
         assert probe._delay == 0
+    finally:
+        _close_delayed_ingest_state(probe)
+
+
+@pytest.mark.asyncio
+async def test_delayed_ingest_queue_drops_oldest_when_full(hass) -> None:
+    probe = _QueueProbe(hass, delay=60)
+    wrapped = _wrap_delayed_handler(probe, probe.delivered.append)
+
+    try:
+        for idx in range(MAX_DELAY_QUEUE_ITEMS + 3):
+            wrapped(str(idx))
+        await hass.async_block_till_done()
+
+        assert len(probe._delay_queue) == MAX_DELAY_QUEUE_ITEMS
+        assert probe._delay_queue_dropped == 3
+
+        _apply_delay_with_queue(probe, 0)
+        await hass.async_block_till_done()
+
+        assert len(probe.delivered) == MAX_DELAY_QUEUE_ITEMS
+        assert probe.delivered[0] == "3"
+        assert probe.delivered[-1] == str(MAX_DELAY_QUEUE_ITEMS + 2)
     finally:
         _close_delayed_ingest_state(probe)
 

@@ -79,7 +79,7 @@ The helper does not:
 ## Removing access
 
 You can remove the extension at any time from **chrome://extensions**.
-You can also remove or replace F1TV access in Home Assistant by reconfiguring the F1 Sensor integration when the experimental F1TV access controls are enabled.
+You can also remove or replace F1TV access in Home Assistant by reconfiguring the F1 Sensor integration when the F1TV access controls are enabled.
 
 ## Contact
 

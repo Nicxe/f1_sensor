@@ -5,6 +5,10 @@
       "race_week_ended": "Weekend di gara terminato",
       "safety_car_deployed": "Safety car in pista",
       "safety_car_cleared": "Safety car uscita dalla pista",
+      "possible_on_track_incident_detected": "Possibile incidente in pista rilevato",
+      "possible_on_track_incident_cleared": "Possibile incidente in pista risolto",
+      "on_track_incident_detected": "Incidente in pista rilevato",
+      "on_track_incident_cleared": "Incidente in pista risolto",
       "formation_start_ready": "Giro di formazione pronto",
       "overtake_mode_enabled": "Modalità Overtake attivata",
       "overtake_mode_disabled": "Modalità Overtake disattivata",
@@ -32,8 +36,8 @@
           "replay_file": "Percorso file replay",
           "enable_race_control": "Attiva API F1 (Direzione gara/Pista/Sessione)",
           "race_week_start_day": "Primo giorno della settimana di gara",
-          "live_timing_auth_header": "Backup manuale: valore di autorizzazione F1TV sperimentale",
-          "start_f1tv_pairing": "Consigliato: collega accesso F1TV sperimentale con Token Helper"
+          "live_timing_auth_header": "Backup manuale: valore di autorizzazione F1TV",
+          "start_f1tv_pairing": "Consigliato: collega accesso F1TV con Token Helper"
         },
         "data_description": {
           "operation_mode": "Scegli Live per connetterti a F1 SignalR, o Sviluppo per avviare il replay di un file locale.",
@@ -41,7 +45,7 @@
           "enable_race_control": "Si connette a F1 Live Timing con SignalR per ricevere aggiornamenti in diretta. Se disattivato, alcuni sensori non verranno creati.",
           "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì.",
           "live_timing_auth_header": "Backup manuale se il pairing con Token Helper non funziona. Incolla il token Bearer completo da F1TV Token Helper solo come fallback avanzato. Lascia vuoto per usare solo la telemetria pubblica.",
-          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV sperimentale è facoltativo; la telemetria pubblica continua a funzionare senza token."
+          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV è facoltativo; la telemetria pubblica continua a funzionare senza token."
         }
       },
       "reconfigure": {
@@ -53,9 +57,9 @@
           "replay_file": "Percorso file replay",
           "enable_race_control": "Attiva API F1 (Direzione gara/Pista/Sessione)",
           "race_week_start_day": "Primo giorno della settimana di gara",
-          "live_timing_auth_header": "Backup manuale: valore di autorizzazione F1TV sperimentale",
-          "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV sperimentale",
-          "start_f1tv_pairing": "Consigliato: collega accesso F1TV sperimentale con Token Helper"
+          "live_timing_auth_header": "Backup manuale: valore di autorizzazione F1TV",
+          "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV",
+          "start_f1tv_pairing": "Consigliato: collega accesso F1TV con Token Helper"
         },
         "data_description": {
           "operation_mode": "Scegli Live per connetterti a F1 SignalR, o Sviluppo per avviare il replay di un file locale.",
@@ -63,37 +67,37 @@
           "enable_race_control": "Si connette a F1 Live Timing con SignalR per ricevere aggiornamenti in diretta. Se disattivato, alcuni sensori non verranno creati.",
           "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì.",
           "live_timing_auth_header": "Backup manuale se il pairing con Token Helper non funziona. Incolla un nuovo token Bearer completo solo come fallback avanzato. Lascia vuoto per mantenere il valore attuale.",
-          "clear_live_timing_auth_header": "Rimuovi il valore di autorizzazione F1TV sperimentale salvato e continua solo con la telemetria pubblica.",
-          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV sperimentale è facoltativo; la telemetria pubblica continua a funzionare senza token."
+          "clear_live_timing_auth_header": "Rimuovi il valore di autorizzazione F1TV salvato e continua solo con la telemetria pubblica.",
+          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV è facoltativo; la telemetria pubblica continua a funzionare senza token."
         }
       },
       "reauth_confirm": {
-        "title": "Aggiorna autorizzazione F1TV sperimentale",
+        "title": "Aggiorna autorizzazione F1TV",
         "data": {
-          "live_timing_auth_header": "Backup manuale: valore di autorizzazione F1TV sperimentale",
-          "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV sperimentale",
-          "start_f1tv_pairing": "Consigliato: collega accesso F1TV sperimentale con Token Helper"
+          "live_timing_auth_header": "Backup manuale: valore di autorizzazione F1TV",
+          "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV",
+          "start_f1tv_pairing": "Consigliato: collega accesso F1TV con Token Helper"
         },
         "data_description": {
           "live_timing_auth_header": "Backup manuale se il pairing con Token Helper non funziona. Incolla un nuovo token Bearer completo solo come fallback avanzato.",
-          "clear_live_timing_auth_header": "Rimuovi il valore di autorizzazione F1TV sperimentale salvato e continua solo con la telemetria pubblica.",
-          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV sperimentale è facoltativo; la telemetria pubblica continua a funzionare senza token."
+          "clear_live_timing_auth_header": "Rimuovi il valore di autorizzazione F1TV salvato e continua solo con la telemetria pubblica.",
+          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV è facoltativo; la telemetria pubblica continua a funzionare senza token."
         }
       },
       "f1tv_pairing": {
-        "title": "Connetti accesso F1TV sperimentale",
-        "description": "Usa F1TV Token Helper per inviare il token a Home Assistant. L’accesso F1TV sperimentale è facoltativo e questo pairing scade alle {expires_at}."
+        "title": "Connetti accesso F1TV",
+        "description": "Usa F1TV Token Helper per inviare il token a Home Assistant. L’accesso F1TV è facoltativo e questo pairing scade alle {expires_at}."
       }
     },
     "abort": {
       "reconfigure_successful": "F1 Sensor è stato riconfigurato con successo",
-      "f1tv_pairing_unavailable": "Il pairing F1TV sperimentale non è disponibile in questa build.",
-      "f1tv_pairing_failed": "Il pairing F1TV sperimentale non è stato completato. Avvia una nuova sessione e riprova."
+      "f1tv_pairing_unavailable": "Il pairing F1TV non è disponibile in questa build.",
+      "f1tv_pairing_failed": "Il pairing F1TV non è stato completato. Avvia una nuova sessione e riprova."
     },
     "error": {
       "replay_required": "Scegli un file di replay quando la modalità Sviluppo è attivata.",
       "replay_missing": "Il file di replay non è stato trovato o è illeggibile.",
-      "auth_header_required": "Inserisci il valore di autorizzazione F1TV sperimentale o seleziona la rimozione.",
+      "auth_header_required": "Inserisci il valore di autorizzazione F1TV o seleziona la rimozione.",
       "invalid_auth_header": "Inserisci un token Bearer valido.",
       "auth_token_missing_exp": "Questo token non ha una data di scadenza.",
       "auth_token_expired": "Questo token è scaduto.",
@@ -106,19 +110,19 @@
         "step": {
           "confirm": {
             "data": {
-              "live_timing_auth_header": "Valore di autorizzazione F1TV sperimentale",
-              "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV sperimentale"
+              "live_timing_auth_header": "Valore di autorizzazione F1TV",
+              "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV"
             },
             "data_description": {
-              "live_timing_auth_header": "Incolla un nuovo token Bearer da F1TV Token Helper per l’accesso F1TV sperimentale.",
-              "clear_live_timing_auth_header": "Rimuovi il token F1TV sperimentale salvato e continua solo con la telemetria pubblica."
+              "live_timing_auth_header": "Incolla un nuovo token Bearer da F1TV Token Helper per l’accesso F1TV.",
+              "clear_live_timing_auth_header": "Rimuovi il token F1TV salvato e continua solo con la telemetria pubblica."
             },
-            "description": "Il token F1TV sperimentale salvato per {name} ha bisogno di attenzione. La telemetria pubblica continua a funzionare, ma i dati live F1TV sperimentali non saranno usati finché il token non verrà sostituito.",
-            "title": "Aggiorna il token F1TV sperimentale"
+            "description": "Il token F1TV salvato per {name} ha bisogno di attenzione. La telemetria pubblica continua a funzionare, ma i dati live F1TV non saranno usati finché il token non verrà sostituito.",
+            "title": "Aggiorna il token F1TV"
           }
         }
       },
-      "title": "Il token F1TV sperimentale ha bisogno di attenzione"
+      "title": "Il token F1TV ha bisogno di attenzione"
     }
   },
   "entity": {
@@ -156,6 +160,9 @@
       "sprint_results": {
         "name": "Risultati della sprint"
       },
+      "lap_position_progression": {
+        "name": "Progressione posizioni giro"
+      },
       "race_control": {
         "name": "Direzione gara"
       },
@@ -184,7 +191,7 @@
         "name": "Modalità telemetria"
       },
       "f1tv_token_status": {
-        "name": "Stato token F1TV sperimentale",
+        "name": "Stato token F1TV",
         "state": {
           "not_configured": "Non configurato",
           "valid": "Valido",
@@ -195,7 +202,7 @@
         }
       },
       "f1tv_token_expires_at": {
-        "name": "Il token F1TV sperimentale scade il"
+        "name": "Il token F1TV scade il"
       },
       "driver_positions": {
         "name": "Posizione piloti"
@@ -280,7 +287,7 @@
         "name": "Jolpica user-agent test"
       },
       "clear_f1tv_access": {
-        "name": "Rimuovi accesso F1TV sperimentale"
+        "name": "Rimuovi accesso F1TV"
       }
     },
     "switch": {
@@ -324,6 +331,12 @@
       },
       "safety_car": {
         "name": "Safety car"
+      },
+      "on_track_incident": {
+        "name": "Incidente in pista"
+      },
+      "possible_on_track_incident": {
+        "name": "Possibile incidente in pista"
       },
       "formation_start": {
         "name": "Giro di formazione"

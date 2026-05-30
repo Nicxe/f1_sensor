@@ -1,0 +1,292 @@
+blueprint:
+  homeassistant:
+    min_version: 2024.6.0
+  name: F1 Sensor - Incident Notifications
+  description: >
+    Send neutral notifications for F1 Sensor incident alerts.
+
+    The automation listens for f1_sensor_incident events and can filter by confidence,
+    session type, and event phase. Notifications use a stable tag based on incident_id
+    so supported notify targets update an existing incident notification instead of
+    creating duplicates for the same incident.
+  domain: automation
+  source_url: https://github.com/Nicxe/f1_sensor
+  author: Nicxe
+  input:
+    notification_targets:
+      name: Notification Targets
+      icon: mdi:bell-ring
+      collapsed: false
+      description: Choose where incident notifications should be sent.
+      input:
+        notify_services:
+          name: Notify Services
+          description: >
+            Comma- or semicolon-separated services, for example notify.mobile_app_phone
+            or notify.notify. Leave empty when using notify entity targets only.
+          default: ""
+          selector:
+            text: {}
+        notify_targets:
+          name: Notify Entity Targets
+          description: Optional notify entities to call through notify.send_message.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: notify
+              multiple: true
+
+    filters:
+      name: Filters
+      icon: mdi:filter-variant
+      collapsed: false
+      description: Control which incident events create notifications.
+      input:
+        min_confidence:
+          name: Minimum Confidence
+          description: Only notify when the incident confidence is at least this level.
+          default: medium
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Low
+                  value: low
+                - label: Medium
+                  value: medium
+                - label: High
+                  value: high
+        allowed_session_types:
+          name: Session Types
+          description: >
+            Practice and testing are excluded by default. Add practice if you want
+            high-confidence practice incidents to notify.
+          default:
+            - race
+            - sprint
+            - qualifying
+          selector:
+            select:
+              mode: dropdown
+              multiple: true
+              options:
+                - label: Race
+                  value: race
+                - label: Sprint
+                  value: sprint
+                - label: Qualifying
+                  value: qualifying
+                - label: Practice
+                  value: practice
+                - label: Testing
+                  value: testing
+                - label: Unknown
+                  value: unknown
+        include_candidate_events:
+          name: Notify Candidate Events
+          description: Candidate incidents are early signals and are disabled by default.
+          default: false
+          selector:
+            boolean: {}
+        include_cleared_notifications:
+          name: Notify When Cleared
+          description: Send an additional notification when an active incident is cleared.
+          default: false
+          selector:
+            boolean: {}
+
+    notification_content:
+      name: Notification Content
+      icon: mdi:message-badge
+      collapsed: true
+      description: Customize the generated title.
+      input:
+        title_prefix:
+          name: Title Prefix
+          default: F1 Incident Alert
+          selector:
+            text: {}
+
+mode: queued
+max: 10
+
+trigger:
+  - platform: event
+    event_type: f1_sensor_incident
+
+variables:
+  notify_services_raw: !input notify_services
+  notify_targets_input: !input notify_targets
+  min_confidence_input: !input min_confidence
+  allowed_session_types_input: !input allowed_session_types
+  include_candidate_events_input: !input include_candidate_events
+  include_cleared_notifications_input: !input include_cleared_notifications
+  title_prefix_input: !input title_prefix
+
+  incident_id: "{{ trigger.event.data.incident_id | default('', true) | string }}"
+  incident_phase: "{{ trigger.event.data.phase | default('', true) | string | lower }}"
+  incident_confidence: "{{ trigger.event.data.confidence | default('', true) | string | lower }}"
+  incident_reason: "{{ trigger.event.data.reason | default('', true) | string | lower }}"
+  driver: "{{ trigger.event.data.driver | default({}, true) }}"
+  session: "{{ trigger.event.data.session | default({}, true) }}"
+  race_control: "{{ trigger.event.data.race_control | default({}, true) }}"
+  track_status: "{{ trigger.event.data.track_status | default({}, true) }}"
+  location: "{{ trigger.event.data.location | default({}, true) }}"
+  driver_label: >-
+    {% set tla = driver.tla | default('', true) | string | trim %}
+    {% set number = driver.racing_number | default('', true) | string | trim %}
+    {% set name = driver.name | default('', true) | string | trim %}
+    {% if tla %}
+      {{ tla }}
+    {% elif number %}
+      Car {{ number }}
+    {% elif name %}
+      {{ name }}
+    {% else %}
+      a car
+    {% endif %}
+  incident_session_type: >-
+    {{ session.session_type | default('unknown', true) | string | lower }}
+  incident_session_name: >-
+    {{ session.session_name | default('', true) | string | trim }}
+  reason_label: >-
+    {% if incident_phase == 'cleared' %}
+      cleared
+    {% elif incident_reason == 'race_control_stopped_with_car_low_speed' %}
+      stopped
+    {% elif incident_reason.startswith('car_low_speed') %}
+      may have stopped
+    {% elif incident_reason == 'timing_stopped' %}
+      stopped
+    {% elif incident_reason == 'race_control' %}
+      race control report
+    {% elif incident_reason == 'track_status' %}
+      track status alert
+    {% elif incident_reason %}
+      {{ incident_reason | replace('_', ' ') }}
+    {% else %}
+      reported
+    {% endif %}
+  incident_confidence_score: >-
+    {% if incident_confidence == 'high' %}
+      2
+    {% elif incident_confidence == 'medium' %}
+      1
+    {% elif incident_confidence == 'low' %}
+      0
+    {% else %}
+      -1
+    {% endif %}
+  min_confidence_score: >-
+    {% if min_confidence_input == 'high' %}
+      2
+    {% elif min_confidence_input == 'medium' %}
+      1
+    {% else %}
+      0
+    {% endif %}
+  phase_ok: >-
+    {{
+      incident_phase in ['confirmed', 'updated']
+      or (include_candidate_events_input and incident_phase == 'candidate')
+      or (include_cleared_notifications_input and incident_phase == 'cleared')
+    }}
+  session_ok: >-
+    {% set allowed = allowed_session_types_input | default([]) %}
+    {% if allowed is string %}{% set allowed = [allowed] %}{% endif %}
+    {{ incident_session_type in allowed }}
+  confidence_ok: >-
+    {{ incident_confidence_score | int(-1) >= min_confidence_score | int(0) }}
+  notify_service_targets: >-
+    {% set ns = namespace(services=[]) %}
+    {% set raw = (notify_services_raw | default('', true) | string).replace(';', ',') %}
+    {% for item in raw.split(',') %}
+      {% set target = item | trim %}
+      {% if target and '.' in target %}
+        {% set ns.services = ns.services + [target] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.services }}
+  notify_entity_targets: >-
+    {% set targets = notify_targets_input | default([]) %}
+    {% if targets is string %}
+      {{ [targets] if targets else [] }}
+    {% else %}
+      {{ targets }}
+    {% endif %}
+  notify_target_count: >-
+    {{ (notify_service_targets | default([], true) | count) + (notify_entity_targets | default([], true) | count) }}
+  notification_tag: >-
+    {{ 'f1_incident_' ~ (incident_id | slugify) if incident_id else 'f1_incident' }}
+  notification_title: >-
+    {% set prefix = title_prefix_input | default('F1 Incident Alert', true) | string | trim %}
+    {% set confidence = incident_confidence | upper %}
+    {% if confidence %}
+      {{ prefix ~ ' (' ~ confidence ~ ')' }}
+    {% else %}
+      {{ prefix }}
+    {% endif %}
+  notification_message: >-
+    {% set base = 'Possible on-track incident: ' ~ driver_label ~ ' ' ~ reason_label %}
+    {% set ns = namespace(lines=[base | trim]) %}
+    {% if incident_session_name %}
+      {% set ns.lines = ns.lines + ['Session: ' ~ incident_session_name] %}
+    {% elif incident_session_type %}
+      {% set ns.lines = ns.lines + ['Session: ' ~ (incident_session_type | title)] %}
+    {% endif %}
+    {% set rc_message = race_control.message | default('', true) | string | trim %}
+    {% if rc_message %}
+      {% set ns.lines = ns.lines + ['Race control: ' ~ rc_message] %}
+    {% endif %}
+    {% set track_message = track_status.message | default('', true) | string | trim %}
+    {% if track_message %}
+      {% set ns.lines = ns.lines + ['Track status: ' ~ track_message] %}
+    {% endif %}
+    {% set location_description = location.description | default('', true) | string | trim %}
+    {% if location_description %}
+      {% set ns.lines = ns.lines + ['Location: ' ~ location_description] %}
+    {% endif %}
+    {{ ns.lines | join('\n') }}
+
+condition:
+  - condition: template
+    value_template: "{{ incident_id | length > 0 }}"
+  - condition: template
+    value_template: "{{ notify_target_count | int(0) > 0 }}"
+  - condition: template
+    value_template: "{{ phase_ok | bool }}"
+  - condition: template
+    value_template: "{{ session_ok | bool }}"
+  - condition: template
+    value_template: "{{ confidence_ok | bool }}"
+
+action:
+  - repeat:
+      for_each: "{{ notify_service_targets }}"
+      sequence:
+        - service: "{{ repeat.item }}"
+          data:
+            title: "{{ notification_title }}"
+            message: "{{ notification_message }}"
+            data:
+              tag: "{{ notification_tag }}"
+              group: f1_incidents
+              incident_id: "{{ incident_id }}"
+              phase: "{{ incident_phase }}"
+              confidence: "{{ incident_confidence }}"
+  - repeat:
+      for_each: "{{ notify_entity_targets }}"
+      sequence:
+        - service: notify.send_message
+          target:
+            entity_id: "{{ repeat.item }}"
+          data:
+            title: "{{ notification_title }}"
+            message: "{{ notification_message }}"
+            data:
+              tag: "{{ notification_tag }}"
+              group: f1_incidents
+              incident_id: "{{ incident_id }}"
+              phase: "{{ incident_phase }}"
+              confidence: "{{ incident_confidence }}"

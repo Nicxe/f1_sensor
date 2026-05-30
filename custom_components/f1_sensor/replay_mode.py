@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncGenerator, Callable
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import suppress
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -30,12 +31,18 @@ from .const import (
     REPLAY_START_REFERENCE_FORMATION,
 )
 from .formation_start import FormationStartTracker
-from .helpers import parse_cardata_lines
+from .helpers import CARDATA_MAX_LINE_BYTES, parse_cardata_lines
 from .replay_start import ReplayStartReferenceController
+from .track_map import (
+    TRACK_MAP_POSITION_STREAM,
+    parse_position_z_line,
+    track_map_positions_to_payload,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-# Streams to download (matches SUBSCRIBE_MSG in signalr.py)
+# Streams to download for replay archives. This list is intentionally broader than
+# the public live SignalR contract; live subscriptions stay defined in signalr.py.
 REPLAY_STREAMS = [
     "RaceControlMessages",
     "TrackStatus",
@@ -53,6 +60,7 @@ REPLAY_STREAMS = [
     "PitStopSeries",
     "ChampionshipPrediction",
     "DriverRaceInfo",
+    TRACK_MAP_POSITION_STREAM,
 ]
 
 STATIC_BASE = "https://livetiming.formula1.com/static"
@@ -65,9 +73,22 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when replay index contents change in a way that
 # requires re-downloading cached sessions.
-CACHE_VERSION = 8
+CACHE_VERSION = 10
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
+
+
+def _parse_replay_int(value: Any) -> int | None:
+    """Return a non-negative replay identifier integer."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and value.strip().isdecimal():
+        parsed = int(value.strip())
+    else:
+        return None
+    return parsed if parsed >= 0 else None
 
 
 class ReplayState(Enum):
@@ -96,6 +117,16 @@ class ReplaySession:
     start_utc: datetime
     end_utc: datetime
     available: bool = False  # Set after HEAD check
+
+    def __post_init__(self) -> None:
+        year = _parse_replay_int(self.year)
+        meeting_key = _parse_replay_int(self.meeting_key)
+        session_key = _parse_replay_int(self.session_key)
+        if year is None or year <= 0 or meeting_key is None or session_key is None:
+            raise ValueError("Replay session identifiers must be non-negative integers")
+        self.year = year
+        self.meeting_key = meeting_key
+        self.session_key = session_key
 
     @property
     def label(self) -> str:
@@ -335,6 +366,8 @@ class ReplaySessionManager:
             meetings = list(meetings.values())
 
         for meeting in meetings:
+            if not isinstance(meeting, dict):
+                continue
             meeting_key = meeting.get("Key")
             meeting_name = meeting.get("Name") or meeting.get("OfficialName", "Unknown")
 
@@ -343,6 +376,8 @@ class ReplaySessionManager:
                 meeting_sessions = list(meeting_sessions.values())
 
             for sess in meeting_sessions:
+                if not isinstance(sess, dict):
+                    continue
                 session_key = sess.get("Key")
                 session_name = sess.get("Name", "Session")
                 session_type = sess.get("Type", "Unknown")
@@ -356,8 +391,8 @@ class ReplaySessionManager:
                 end_utc = self._parse_datetime(end_str, gmt_offset)
 
                 if start_utc and path:
-                    sessions.append(
-                        ReplaySession(
+                    try:
+                        session = ReplaySession(
                             year=year,
                             meeting_key=meeting_key,
                             meeting_name=meeting_name,
@@ -368,7 +403,12 @@ class ReplaySessionManager:
                             start_utc=start_utc,
                             end_utc=end_utc or start_utc,
                         )
-                    )
+                    except ValueError:
+                        _LOGGER.debug(
+                            "Skipping replay session with invalid identifiers"
+                        )
+                        continue
+                    sessions.append(session)
 
         # Filter to only past sessions (skip availability validation at fetch time
         # to avoid slow HEAD requests blocking the list - validate on demand when loading)
@@ -468,7 +508,10 @@ class ReplaySessionManager:
 
     async def _delete_session_cache(self, session_id: str) -> None:
         """Delete cached data for a specific session."""
-        session_dir = self._cache_dir / session_id
+        session_dir = self._safe_session_cache_dir(session_id)
+        if session_dir is None:
+            _LOGGER.warning("Refusing to delete replay cache outside cache directory")
+            return
         if session_dir.exists():
             try:
                 await self._hass.async_add_executor_job(shutil.rmtree, session_dir)
@@ -523,7 +566,9 @@ class ReplaySessionManager:
 
     async def _download_and_index_session(self, session: ReplaySession) -> ReplayIndex:
         """Download all stream files and create a merged, indexed cache file."""
-        session_dir = self._cache_dir / session.unique_id
+        session_dir = self._safe_session_cache_dir(session.unique_id)
+        if session_dir is None:
+            raise RuntimeError("Invalid replay session cache identifier")
         session_dir.mkdir(parents=True, exist_ok=True)
 
         frames_file = session_dir / "frames.jsonl"
@@ -716,6 +761,15 @@ class ReplaySessionManager:
             _LOGGER.debug("Error downloading %s: %s", stream_name, err)
             return frames
 
+        if stream_name == TRACK_MAP_POSITION_STREAM:
+            frames = await self._hass.async_add_executor_job(
+                self._parse_position_z_stream_text,
+                text,
+                stream_name,
+            )
+            _LOGGER.debug("Downloaded %d frames from %s", len(frames), stream_name)
+            return frames
+
         # Parse jsonStream format: each line is timestamp + JSON
         for line in text.splitlines():
             line = line.strip()
@@ -749,6 +803,41 @@ class ReplaySessionManager:
 
         _LOGGER.debug("Downloaded %d frames from %s", len(frames), stream_name)
         return frames
+
+    def _parse_position_z_stream_text(
+        self,
+        text: str,
+        stream_name: str,
+    ) -> list[ReplayFrame]:
+        """Parse Position.z jsonStream text using the track map decoder."""
+        frames: list[ReplayFrame] = []
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            timestamp_str, payload_line = self._split_position_z_line(line)
+            try:
+                timestamp_ms = self._parse_timestamp_to_ms(timestamp_str)
+                positions = parse_position_z_line(payload_line)
+            except Exception:  # noqa: BLE001
+                continue
+            if not positions:
+                continue
+            frames.append(
+                ReplayFrame(
+                    timestamp_ms=timestamp_ms,
+                    stream=stream_name,
+                    payload=track_map_positions_to_payload(positions),
+                )
+            )
+        return frames
+
+    @staticmethod
+    def _split_position_z_line(line: str) -> tuple[str, str]:
+        quote_idx = line.find('"')
+        if quote_idx == -1:
+            return "", line
+        return line[:quote_idx].strip(), line[quote_idx:]
 
     def _merge_topthree_state(self, state: dict[str, Any], payload: dict) -> None:
         """Merge a TopThree payload into accumulated state.
@@ -845,6 +934,65 @@ class ReplaySessionManager:
     @staticmethod
     def _has_timingapp_state(state: dict[str, Any]) -> bool:
         return isinstance(state, dict) and bool(state)
+
+    def _merge_timingdata_state(self, state: dict[str, Any], payload: dict) -> None:
+        """Accumulate TimingData frames into a replay bootstrap snapshot."""
+        if not isinstance(payload, dict):
+            return
+
+        for key, value in payload.items():
+            if key != "Lines":
+                state[key] = deepcopy(value)
+
+        lines = payload.get("Lines")
+        if not isinstance(lines, dict):
+            return
+
+        cur_lines = state.setdefault("Lines", {})
+        for rn, line_data in lines.items():
+            if not isinstance(line_data, dict):
+                continue
+            rn_key = str(rn)
+            entry = cur_lines.setdefault(rn_key, {})
+            self._deep_merge_replay_state(entry, line_data)
+
+    def _deep_merge_replay_state(self, target: Any, delta: Any) -> Any:
+        if isinstance(target, dict) and isinstance(delta, dict):
+            for key, value in delta.items():
+                current = target.get(key)
+                if isinstance(current, dict) and isinstance(value, dict):
+                    self._deep_merge_replay_state(current, value)
+                elif isinstance(current, list) and isinstance(value, dict):
+                    self._merge_replay_list_state(current, value)
+                else:
+                    target[key] = deepcopy(value)
+            return target
+        if isinstance(target, list) and isinstance(delta, dict):
+            return self._merge_replay_list_state(target, delta)
+        return deepcopy(delta)
+
+    def _merge_replay_list_state(
+        self, target: list[Any], delta: dict[str, Any]
+    ) -> list[Any]:
+        for key, value in delta.items():
+            try:
+                idx = int(key)
+            except (TypeError, ValueError):
+                continue
+            if idx < 0:
+                continue
+            while len(target) <= idx:
+                target.append(None)
+            current = target[idx]
+            if isinstance(current, dict) and isinstance(value, dict):
+                self._deep_merge_replay_state(current, value)
+            else:
+                target[idx] = deepcopy(value)
+        return target
+
+    @staticmethod
+    def _has_timingdata_state(state: dict[str, Any]) -> bool:
+        return isinstance(state, dict) and bool(state.get("Lines"))
 
     def _merge_lap_history_state(
         self,
@@ -1030,6 +1178,7 @@ class ReplaySessionManager:
             "withheld": False,
         }
         timingapp_state: dict[str, Any] = {}
+        timingdata_state: dict[str, Any] = {}
         lap_history_state: dict[str, Any] = {}
         last_lap_times: dict[str, str] = {}
 
@@ -1046,7 +1195,7 @@ class ReplaySessionManager:
                 self._merge_lap_history_state(
                     lap_history_state, last_lap_times, frame.payload
                 )
-                initial_state[frame.stream] = frame.payload
+                self._merge_timingdata_state(timingdata_state, frame.payload)
             elif frame.stream == "DriverRaceInfo" and isinstance(frame.payload, dict):
                 self._extract_grid_from_driver_race_info(
                     lap_history_state, frame.payload
@@ -1065,6 +1214,8 @@ class ReplaySessionManager:
             }
         if self._has_timingapp_state(timingapp_state):
             initial_state["TimingAppData"] = timingapp_state
+        if self._has_timingdata_state(timingdata_state):
+            initial_state["TimingData"] = timingdata_state
         if self._has_lap_history_state(lap_history_state):
             initial_state["LapHistory"] = lap_history_state
 
@@ -1208,6 +1359,9 @@ class ReplaySessionManager:
                         raw = await resp.content.readline()
                         if not raw:
                             break
+                        if len(raw) > CARDATA_MAX_LINE_BYTES:
+                            _LOGGER.debug("Skipping oversized replay CarData line")
+                            continue
                         line = raw.decode("utf-8", errors="ignore").strip()
                         if not line:
                             continue
@@ -1296,9 +1450,15 @@ class ReplaySessionManager:
 
         cutoff = time.time() - (REPLAY_CACHE_RETENTION_DAYS * 24 * 3600)
         cleaned = 0
+        cache_root = self._cache_dir.resolve()
 
         for session_dir in self._cache_dir.iterdir():
             if not session_dir.is_dir():
+                continue
+            try:
+                session_dir.resolve().relative_to(cache_root)
+            except ValueError:
+                _LOGGER.warning("Skipping replay cache entry outside cache directory")
                 continue
 
             index_file = session_dir / "index.json"
@@ -1312,6 +1472,19 @@ class ReplaySessionManager:
                     cleaned += 1
                     _LOGGER.debug("Cleaned old replay cache: %s", session_dir.name)
         return cleaned
+
+    def _safe_session_cache_dir(self, session_id: str) -> Path | None:
+        """Return a cache directory path only when it stays inside replay cache."""
+        session_name = str(session_id or "").strip()
+        if not session_name or Path(session_name).name != session_name:
+            return None
+        cache_root = self._cache_dir.resolve()
+        candidate = (self._cache_dir / session_name).resolve()
+        try:
+            candidate.relative_to(cache_root)
+        except ValueError:
+            return None
+        return candidate
 
     @staticmethod
     def _read_json_file(file_path: Path) -> dict:
@@ -1771,6 +1944,30 @@ class ReplayController:
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Replay reset callback failed", exc_info=True)
 
+    def _reset_track_map_runtime(self) -> None:
+        registry = self._get_registry()
+        target = registry.get("track_map_replay_adapter") or registry.get(
+            "track_map_store"
+        )
+        reset_for_replay = getattr(target, "reset_for_replay", None)
+        if callable(reset_for_replay):
+            try:
+                reset_for_replay()
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Track map replay reset failed", exc_info=True)
+
+    async def _prepare_track_map_replay_index(self, index: ReplayIndex) -> None:
+        adapter = self._get_registry().get("track_map_replay_adapter")
+        prepare = getattr(adapter, "async_prepare_replay_index", None)
+        if not callable(prepare):
+            return
+        try:
+            result = prepare(index)
+            if isawaitable(result):
+                await result
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Track map replay geometry preload failed", exc_info=True)
+
     async def _stop_active_replay_transport(self) -> None:
         if self._transport is not None:
             await self._transport.close()
@@ -1899,6 +2096,7 @@ class ReplayController:
         if target_ms < current_ms:
             await self._run_replay_reset_callbacks()
             self._inject_initial_state(initial_state)
+            await self._prepare_track_map_replay_index(index)
             self._inject_formation_ready_if_applicable(index)
             await self._replay_frames_range(
                 index,
@@ -1943,6 +2141,7 @@ class ReplayController:
         # Lock replay state first so the supervisor cannot re-arm the bus
         # while we await async_close below
         self._pending_start_ms = None
+        self._reset_track_map_runtime()
         if self._live_state is not None:
             self._live_state.set_state(False, "replay-preparing")
 
@@ -1980,6 +2179,7 @@ class ReplayController:
         self._ensure_replay_active()
         await self._run_replay_reset_callbacks()
         self._inject_initial_state(initial_state)
+        await self._prepare_track_map_replay_index(index)
         self._inject_formation_ready_if_applicable(index)
         if start_from_ms > baseline_ms:
             await self._replay_frames_range(
@@ -2040,6 +2240,7 @@ class ReplayController:
             self._playback_task = None
 
         self._pending_start_ms = None
+        self._reset_track_map_runtime()
 
         # Restore live state to idle - let LiveSessionSupervisor control it
         if self._live_state is not None:
@@ -2095,6 +2296,7 @@ class ReplayController:
                     self._live_state.set_state(False, "replay-completed")
 
                 self._reset_formation_tracker()
+                self._reset_track_map_runtime()
 
                 # Wake the supervisor so it can reconnect if a live session is active
                 if self._on_replay_ended is not None:

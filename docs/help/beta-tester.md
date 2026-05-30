@@ -12,6 +12,8 @@ Do not install beta versions in your production Home Assistant instance.
 Use a separate test environment, development instance, or secondary Home Assistant setup where restarts and temporary issues are acceptable.
 :::
 
+For the difference between stable, beta, and dev builds, see [Release Channels](/getting-started/release-channels).
+
 ## What it means to be a beta tester
 
 As a beta tester, you help by:
@@ -34,9 +36,10 @@ To test the latest beta version, install it through HACS by redownloading the in
 4. Open **F1 Sensor**.
 5. Select the three-dot menu in the top right corner.
 6. Select **Redownload**.
-7. Choose the latest beta version from the version list.
-8. Confirm and complete the installation.
-9. Restart Home Assistant.
+7. Enable **Show beta versions** if the beta release is not visible.
+8. Choose the latest beta version from the version list.
+9. Confirm and complete the installation.
+10. Restart Home Assistant.
 
 After installation, verify the installed version under the integration details.
 Enable debug logging if you plan to report issues.
@@ -46,17 +49,42 @@ Always read the release notes before updating to a beta release.
 Beta releases may include unfinished behavior, temporary limitations, or changes that need extra validation.
 :::
 
+## Beta vs dev
+
+The beta channel contains changes that have been promoted from `dev` for pre-release testing.
+This is the preferred channel for normal beta testers.
+
+The `dev` branch contains all active unreleased work. It can include changes that have not yet been prepared for beta and may require maintainer-specific instructions. Use dev only when you are developing F1 Sensor locally or when the maintainer asks you to test a specific unreleased change.
+
+If you need a reliable fallback, switch back to the latest stable release through HACS by using **Redownload** and selecting the latest non-beta version.
+
+## What to focus on in this beta
+
+When validating the first beta release, focus on behavior that affects real dashboards, automations, and update flows:
+
+1. Installing and switching between stable and beta through HACS.
+2. Public live timing without F1TV Auth.
+3. Optional F1TV Auth setup and renewal through the Token Helper.
+4. Track Map behavior in live sessions and Replay Mode.
+5. Incident Detection wording, confidence, and notification timing.
+6. Replay Mode controls, including the 30-second catch-up buttons.
+7. Bundled Live Data Cards after restart and browser reload.
+
 ## Enable debug logging
 
 Debug logs are often required when you report beta issues.
 Follow [Debug Logging and Logs](/help/debug-logging) before reproducing the problem.
 
-## Test Development replay mode
+## Development replay testing
 
-Development replay mode lets you run the integration with recorded live timing data.
+Development replay testing lets maintainers run the integration with recorded live timing data.
 This is useful for testing dashboards, automations, and entity behavior without waiting for an active Formula 1 session.
 
-### About replay dumps
+:::warning[Development builds only]
+The development replay controls are not part of the normal beta testing path. In released builds, these controls can be hidden. Use the normal [Replay Mode](/features/replay-mode) page unless the maintainer explicitly asks you to test a development dump.
+:::
+
+### About development replay dumps
 
 A replay dump is a real-time recording of a live session.
 Timing between events is preserved, so a full replay can take up to three hours to complete.
@@ -64,9 +92,7 @@ Timing between events is preserved, so a full replay can take up to three hours 
 The replay usually starts with a `pre` session phase where weather and session metadata update continuously.
 When the session goes `live`, cars begin running and other sensors such as tyres, laps, and timing become active.
 
-:::tip[Replay dumps]
-You can find replay dumps in the [F1 Sensor repository](https://github.com/Nicxe/f1_sensor/tree/develop/replay_dumps).
-:::
+Use only replay dump files provided by the maintainer or created during local development.
 
 ### Step 1 - Enable replay mode
 
@@ -118,14 +144,36 @@ When creating an issue, include:
 
 1. The exact F1 Sensor version.
 2. Your Home Assistant version.
-3. Whether you are running Live mode or Development replay mode.
-4. Whether you are using a beta release or F1TV Auth.
+3. Whether you are running public live timing, F1TV Auth live timing, Replay Mode, or development replay mode.
+4. Whether you are using a beta release.
 5. A clear description of the problem.
 6. What you expected to happen.
 7. What actually happened.
-8. Relevant debug logs from [Debug Logging and Logs](/help/debug-logging).
+8. The state of `sensor.f1_f1tv_token_status` if live auth is involved.
+9. The `sensor.f1_live_timing_mode` attributes if live timing is involved and the diagnostic entity is present.
+10. Track Map status, source, and stale state if the issue involves Track Map or incident location.
+11. Relevant debug logs from [Debug Logging and Logs](/help/debug-logging).
 
 Screenshots, screen recordings, or dashboard examples are helpful when they show sensor states, timing behavior, or visual problems.
 
 As a beta tester, you may be asked to test a proposed fix, verify a new release, or provide more details.
 Following up on your own issues helps close them faster.
+
+## Test incident detection
+
+When testing likely on-track incident detection, focus on whether the wording, confidence, and timing make sense from a user perspective.
+
+For each report, note:
+
+1. Session type: Race, Sprint, Qualifying, Practice, or Testing.
+2. Driver or car number.
+3. Whether the alert was `candidate`, `confirmed`, `updated`, or `cleared`.
+4. Confidence value: `low`, `medium`, or `high`.
+5. Track Status and Race Control context at the time.
+6. Whether the driver was in pit lane, leaving the pit lane, or stopped on track.
+7. Whether Live Delay, Replay Mode, No Spoiler Mode, or F1TV Auth was active.
+8. Whether Track Map had live or replay car positions.
+9. The Track Map status, source, and stale state if visible.
+10. The `f1_sensor_incident` event payload for the relevant `incident_id`, including `location` when present.
+
+Use neutral language in reports. The feature is intended to detect likely stopped cars and on-track incidents, not guaranteed crashes.

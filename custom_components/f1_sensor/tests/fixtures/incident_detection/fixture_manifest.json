@@ -1,0 +1,697 @@
+{
+  "version": 1,
+  "phase": "Fas 0",
+  "phase_status": "complete",
+  "created_at": "2026-05-13",
+  "completed_at": "2026-05-13",
+  "purpose": "Baseline fixture catalogue for stopped/on-track incident detection",
+  "write_scope": {
+    "component_root": "/Volumes/config/custom_components/f1_sensor",
+    "external_docs_path_from_report": "/Users/niklas/GitHub/f1_sensor/docs",
+    "external_docs_status": "not_changed_no_user_facing_docs_needed_for_fixture_baseline"
+  },
+  "scope": {
+    "mvp_name": "stopped/on-track incident detection",
+    "not_in_scope": [
+      "crash detection",
+      "automatic cause classification",
+      "Position.z location inference",
+      "auth-gated CarData.z early warnings"
+    ],
+    "raw_dump_policy": "Do not commit large raw stream dumps"
+  },
+  "allowed_streams": [
+    "TimingData",
+    "TrackStatus",
+    "RaceControlMessages",
+    "SessionInfo",
+    "DriverList",
+    "CarData.z"
+  ],
+  "extracted_cases": [
+    {
+      "id": "2026_australian_gp_qualifying_ver_red_flag",
+      "status": "phase_0_extracted_case",
+      "source_directory": "/Users/niklas/Desktop/import_requests/Streams/2026-03-06_Australian_Grand_Prix/2026-03-07_Qualifying",
+      "time_window": {
+        "start_offset": "00:22:45.000",
+        "end_offset": "00:24:55.000"
+      },
+      "session": {
+        "meeting": "Australian Grand Prix",
+        "session_type": "Qualifying",
+        "session_name": "Qualifying",
+        "start_date": "2026-03-07T16:00:00",
+        "end_date": "2026-03-07T17:00:00",
+        "gmt_offset": "11:00:00",
+        "live_timing_path": "2026/2026-03-08_Australian_Grand_Prix/2026-03-07_Qualifying/"
+      },
+      "included_streams": [
+        "TimingData",
+        "TrackStatus",
+        "RaceControlMessages",
+        "SessionInfo",
+        "DriverList"
+      ],
+      "optional_streams_excluded": [
+        "CarData.z"
+      ],
+      "drivers": {
+        "3": {
+          "racing_number": "3",
+          "tla": "VER",
+          "full_name": "Max VERSTAPPEN",
+          "team_name": "Red Bull Racing"
+        }
+      },
+      "state_before_window": {
+        "TimingData": {
+          "Lines": {
+            "3": {
+              "Stopped": false,
+              "InPit": false,
+              "PitOut": false,
+              "Retired": false
+            }
+          }
+        }
+      },
+      "frames": [
+        {
+          "offset": "00:22:58.333",
+          "stream": "TrackStatus",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "offset": "00:22:58.395",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "Flag",
+                "Flag": "DOUBLE YELLOW",
+                "Scope": "Sector",
+                "Sector": 2,
+                "Message": "DOUBLE YELLOW IN TRACK SECTOR 2"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "00:23:13.078",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "Flag",
+                "Flag": "RED",
+                "Scope": "Track",
+                "Message": "RED FLAG"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "00:23:13.193",
+          "stream": "TrackStatus",
+          "payload": {
+            "Status": "5",
+            "Message": "Red"
+          }
+        },
+        {
+          "offset": "00:23:13.221",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "Flag",
+                "Flag": "CLEAR",
+                "Scope": "Sector",
+                "Sector": 2,
+                "Message": "CLEAR IN TRACK SECTOR 2"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "00:23:14.989",
+          "stream": "TimingData",
+          "payload": {
+            "Lines": {
+              "3": {
+                "Stopped": true,
+                "Status": 260
+              }
+            }
+          }
+        }
+      ],
+      "expected_behavior": {
+        "event_expected": true,
+        "expected_phase": "confirmed",
+        "expected_confidence": "high",
+        "expected_reason": "timing_stopped_with_track_status_or_race_control",
+        "should_default_notify": true,
+        "expected_message_contains": [
+          "stopped",
+          "VER"
+        ],
+        "expected_message_excludes": [
+          "crash",
+          "accident",
+          "mechanical failure",
+          "off track"
+        ],
+        "dedupe_behavior": "one incident for car 3 in this window",
+        "cooldown_behavior": "do not emit repeated confirmed notifications for the same stopped state"
+      }
+    },
+    {
+      "id": "2026_miami_gp_race_had_gas_safety_car",
+      "status": "phase_0_extracted_case",
+      "source_directory": "/Users/niklas/Desktop/import_requests/Streams/2026-05-01_Miami_Grand_Prix/2026-05-03_Race",
+      "time_window": {
+        "start_offset": "01:04:45.000",
+        "end_offset": "01:11:00.000"
+      },
+      "session": {
+        "meeting": "Miami Grand Prix",
+        "session_type": "Race",
+        "session_name": "Race",
+        "start_date": "2026-05-03T13:00:00",
+        "end_date": "2026-05-03T15:00:00",
+        "gmt_offset": "-04:00:00",
+        "live_timing_path": "2026/2026-05-03_Miami_Grand_Prix/2026-05-03_Race/"
+      },
+      "included_streams": [
+        "TimingData",
+        "TrackStatus",
+        "RaceControlMessages",
+        "SessionInfo",
+        "DriverList"
+      ],
+      "optional_streams_excluded": [
+        "CarData.z"
+      ],
+      "drivers": {
+        "6": {
+          "racing_number": "6",
+          "tla": "HAD",
+          "full_name": "Isack HADJAR",
+          "team_name": "Red Bull Racing"
+        },
+        "10": {
+          "racing_number": "10",
+          "tla": "GAS",
+          "full_name": "Pierre GASLY",
+          "team_name": "Alpine"
+        }
+      },
+      "state_before_window": {
+        "TimingData": {
+          "Lines": {
+            "6": {
+              "Stopped": false,
+              "InPit": false,
+              "PitOut": false,
+              "Retired": false
+            },
+            "10": {
+              "Stopped": false,
+              "InPit": false,
+              "PitOut": false,
+              "Retired": false
+            }
+          }
+        }
+      },
+      "frames": [
+        {
+          "offset": "01:05:05.815",
+          "stream": "TrackStatus",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "offset": "01:05:05.866",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "Flag",
+                "Flag": "DOUBLE YELLOW",
+                "Scope": "Sector",
+                "Sector": 15,
+                "Lap": 5,
+                "Message": "DOUBLE YELLOW IN TRACK SECTOR 15"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "01:05:33.955",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "SafetyCar",
+                "Status": "DEPLOYED",
+                "Mode": "SAFETY CAR",
+                "Lap": 6,
+                "Message": "SAFETY CAR DEPLOYED"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "01:05:34.079",
+          "stream": "TrackStatus",
+          "payload": {
+            "Status": "4",
+            "Message": "SCDeployed"
+          }
+        },
+        {
+          "offset": "01:06:06.544",
+          "stream": "TimingData",
+          "payload": {
+            "Lines": {
+              "6": {
+                "Stopped": true,
+                "Status": 68
+              }
+            }
+          }
+        },
+        {
+          "offset": "01:06:31.697",
+          "stream": "TimingData",
+          "payload": {
+            "Lines": {
+              "10": {
+                "Stopped": true,
+                "Status": 68
+              }
+            }
+          }
+        },
+        {
+          "offset": "01:08:19.307",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "Other",
+                "Lap": 7,
+                "Message": "MARSHALS ON TRACK AT TURN 14"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "01:09:25.294",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "Other",
+                "Lap": 7,
+                "Message": "RECOVERY VEHICLE ON TRACK AT TURN 17"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "01:10:19.490",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "Other",
+                "Lap": 8,
+                "Message": "TURN 17 INCIDENT INVOLVING CAR 10 (GAS) NOTED - CAUSING A COLLISION"
+              }
+            ]
+          }
+        }
+      ],
+      "expected_behavior": {
+        "event_expected": true,
+        "expected_phase": "confirmed",
+        "expected_confidence": "high",
+        "expected_reason": "timing_stopped_with_safety_car_context",
+        "should_default_notify": true,
+        "expected_incidents": [
+          {
+            "driver_number": "6",
+            "expected_message_contains": [
+              "stopped",
+              "HAD"
+            ]
+          },
+          {
+            "driver_number": "10",
+            "expected_message_contains": [
+              "stopped",
+              "GAS"
+            ]
+          }
+        ],
+        "expected_message_excludes": [
+          "crash",
+          "mechanical failure",
+          "off track"
+        ],
+        "dedupe_behavior": "one incident per stopped driver in this window",
+        "cooldown_behavior": "do not repeat confirmed notifications while the same stopped state remains active"
+      }
+    },
+    {
+      "id": "2026_chinese_gp_sprint_hulkenberg_safety_car",
+      "status": "phase_0_extracted_case",
+      "source_directory": "/Users/niklas/Desktop/import_requests/Streams/2026-03-13_Chinese_Grand_Prix/2026-03-14_Sprint",
+      "time_window": {
+        "start_offset": "01:07:00.000",
+        "end_offset": "01:10:00.000"
+      },
+      "session": {
+        "meeting": "Chinese Grand Prix",
+        "session_type": "Sprint",
+        "session_name": "Sprint",
+        "start_date": "2026-03-14T11:00:00",
+        "end_date": "2026-03-14T12:00:00",
+        "gmt_offset": "08:00:00",
+        "live_timing_path": "2026/2026-03-15_Chinese_Grand_Prix/2026-03-14_Sprint/"
+      },
+      "included_streams": [
+        "TimingData",
+        "TrackStatus",
+        "RaceControlMessages",
+        "SessionInfo",
+        "DriverList"
+      ],
+      "optional_streams_excluded": [
+        "CarData.z"
+      ],
+      "drivers": {
+        "27": {
+          "racing_number": "27",
+          "tla": "HUL",
+          "full_name": "Nico HULKENBERG",
+          "team_name": "Audi"
+        }
+      },
+      "state_before_window": {
+        "TimingData": {
+          "Lines": {
+            "27": {
+              "Stopped": false,
+              "InPit": false,
+              "PitOut": false,
+              "Retired": false
+            }
+          }
+        }
+      },
+      "frames": [
+        {
+          "offset": "01:07:07.837",
+          "stream": "TrackStatus",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "offset": "01:07:07.966",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "Flag",
+                "Flag": "YELLOW",
+                "Scope": "Sector",
+                "Sector": 1,
+                "Lap": 13,
+                "Message": "YELLOW IN TRACK SECTOR 1"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "01:07:39.396",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "SafetyCar",
+                "Status": "DEPLOYED",
+                "Mode": "SAFETY CAR",
+                "Lap": 13,
+                "Message": "SAFETY CAR DEPLOYED"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "01:07:39.474",
+          "stream": "TrackStatus",
+          "payload": {
+            "Status": "4",
+            "Message": "SCDeployed"
+          }
+        },
+        {
+          "offset": "01:08:08.936",
+          "stream": "TimingData",
+          "payload": {
+            "Lines": {
+              "27": {
+                "Stopped": true,
+                "Status": 68
+              }
+            }
+          }
+        },
+        {
+          "offset": "01:08:58.683",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "Other",
+                "Lap": 14,
+                "Message": "RECOVERY VEHICLE ON TRACK AT TURN 1"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "01:09:14.094",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "Flag",
+                "Flag": "DOUBLE YELLOW",
+                "Scope": "Sector",
+                "Sector": 1,
+                "Lap": 14,
+                "Message": "DOUBLE YELLOW IN TRACK SECTOR 1"
+              }
+            ]
+          }
+        }
+      ],
+      "expected_behavior": {
+        "event_expected": true,
+        "expected_phase": "confirmed",
+        "expected_confidence": "high",
+        "expected_reason": "timing_stopped_with_safety_car_context",
+        "should_default_notify": true,
+        "expected_message_contains": [
+          "stopped",
+          "HUL"
+        ],
+        "expected_message_excludes": [
+          "crash",
+          "accident",
+          "mechanical failure",
+          "off track"
+        ],
+        "dedupe_behavior": "one incident for car 27 in this window",
+        "cooldown_behavior": "do not emit repeated confirmed notifications for the same stopped state"
+      }
+    },
+    {
+      "id": "2026_chinese_gp_practice_lindblad_vsc",
+      "status": "phase_0_extracted_case",
+      "source_directory": "/Users/niklas/Desktop/import_requests/Streams/2026-03-13_Chinese_Grand_Prix/2026-03-13_Practice_1",
+      "time_window": {
+        "start_offset": "00:27:00.000",
+        "end_offset": "00:28:30.000"
+      },
+      "session": {
+        "meeting": "Chinese Grand Prix",
+        "session_type": "Practice",
+        "session_name": "Practice 1",
+        "start_date": "2026-03-13T11:30:00",
+        "end_date": "2026-03-13T12:30:00",
+        "gmt_offset": "08:00:00",
+        "live_timing_path": "2026/2026-03-15_Chinese_Grand_Prix/2026-03-13_Practice_1/"
+      },
+      "included_streams": [
+        "TimingData",
+        "TrackStatus",
+        "RaceControlMessages",
+        "SessionInfo",
+        "DriverList"
+      ],
+      "optional_streams_excluded": [
+        "CarData.z"
+      ],
+      "drivers": {
+        "41": {
+          "racing_number": "41",
+          "tla": "LIN",
+          "full_name": "Arvid LINDBLAD",
+          "team_name": "Racing Bulls"
+        }
+      },
+      "state_before_window": {
+        "TimingData": {
+          "Lines": {
+            "41": {
+              "Stopped": false,
+              "InPit": false,
+              "PitOut": false,
+              "Retired": false
+            }
+          }
+        }
+      },
+      "frames": [
+        {
+          "offset": "00:27:08.022",
+          "stream": "TrackStatus",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "offset": "00:27:08.069",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "Flag",
+                "Flag": "DOUBLE YELLOW",
+                "Scope": "Sector",
+                "Sector": 17,
+                "Message": "DOUBLE YELLOW IN TRACK SECTOR 17"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "00:27:57.459",
+          "stream": "TrackStatus",
+          "payload": {
+            "Status": "6",
+            "Message": "VSCDeployed"
+          }
+        },
+        {
+          "offset": "00:27:57.475",
+          "stream": "RaceControlMessages",
+          "payload": {
+            "Messages": [
+              {
+                "Category": "SafetyCar",
+                "Status": "DEPLOYED",
+                "Mode": "VSC",
+                "Message": "VSC DEPLOYED"
+              }
+            ]
+          }
+        },
+        {
+          "offset": "00:28:00.553",
+          "stream": "TimingData",
+          "payload": {
+            "Lines": {
+              "41": {
+                "Stopped": true,
+                "Status": 68
+              }
+            }
+          }
+        }
+      ],
+      "expected_behavior": {
+        "event_expected": true,
+        "expected_phase": "confirmed",
+        "expected_confidence": "high",
+        "expected_reason": "timing_stopped_with_vsc_context",
+        "should_default_notify": true,
+        "practice_default_policy": "notify only high-confidence incidents by default",
+        "expected_message_contains": [
+          "stopped",
+          "LIN"
+        ],
+        "expected_message_excludes": [
+          "crash",
+          "accident",
+          "mechanical failure",
+          "off track"
+        ],
+        "dedupe_behavior": "one incident for car 41 in this window",
+        "cooldown_behavior": "do not emit repeated confirmed notifications for the same stopped state"
+      }
+    }
+  ],
+  "future_optional_candidates": [
+    {
+      "id": "2026_japanese_gp_race_compact_sc",
+      "session_type": "Race",
+      "source_directory": "/Users/niklas/Desktop/import_requests/Streams/2026-03-27_Japanese_Grand_Prix/2026-03-29_Race",
+      "time_window": "01:37:20-01:39:10",
+      "expected_use": "additional compact race case with yellow, safety car, and car 87 stopped"
+    },
+    {
+      "id": "2026_miami_gp_sprint_stopped_without_nearby_rc",
+      "session_type": "Sprint",
+      "source_directory": "/Users/niklas/Desktop/import_requests/Streams/2026-05-01_Miami_Grand_Prix/2026-05-02_Sprint",
+      "time_window": "00:45:00-00:46:30",
+      "expected_use": "medium-confidence or suppression edge case without nearby TrackStatus/RaceControl confirmation"
+    },
+    {
+      "id": "2026_miami_gp_qualifying_bortoleto_incident_text",
+      "session_type": "Qualifying",
+      "source_directory": "/Users/niklas/Desktop/import_requests/Streams/2026-05-01_Miami_Grand_Prix/2026-05-02_Qualifying",
+      "time_window": "00:33:15-00:35:45",
+      "expected_use": "additional qualifying case with double yellow and RaceControl incident text"
+    },
+    {
+      "id": "2026_australian_gp_practice_per_vsc",
+      "session_type": "Practice",
+      "source_directory": "/Users/niklas/Desktop/import_requests/Streams/2026-03-06_Australian_Grand_Prix/2026-03-06_Practice_2",
+      "time_window": "01:06:45-01:09:00",
+      "expected_use": "additional practice case with stopped car, yellow, VSC, and clear sequence"
+    }
+  ],
+  "open_questions_for_fas_1": [
+    "Should candidate events ever notify by default, or only confirmed incidents?",
+    "Should practice sessions notify only for high-confidence incidents?",
+    "Should retired without stopped be a separate event type?",
+    "Should closed yellow windows upgrade confidence after TrackStatus has already returned to clear?",
+    "How broad should RaceControl keyword matching be before it becomes too language-sensitive?"
+  ]
+}

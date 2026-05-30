@@ -27,6 +27,12 @@ from custom_components.f1_sensor.const import (
     RCM_OVERTAKE_ENABLED,
     REPLAY_START_REFERENCE_SESSION,
 )
+from custom_components.f1_sensor.incident_detection import (
+    DATA_QUALITY_BOOTSTRAP,
+    DATA_QUALITY_REPLAY,
+    PHASE_CONFIRMED,
+    IncidentDetector,
+)
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.replay_mode import (
     ReplayController,
@@ -374,6 +380,74 @@ def test_build_initial_state_merges_timingapp_stints_without_tyre_stints(hass) -
     assert timingapp["Lines"]["16"]["Stints"]["0"]["LapTime"] == "1:23.000"
     assert timingapp["Lines"]["16"]["Stints"]["1"]["Compound"] == "SOFT"
     assert timingapp["Lines"]["81"]["Stints"]["0"]["Compound"] == "HARD"
+
+
+def test_build_initial_state_merges_timingdata_for_incident_baseline(hass) -> None:
+    manager = ReplaySessionManager(hass, ENTRY_ID, AsyncMock())  # type: ignore[arg-type]
+    frames = [
+        ReplayFrame(
+            timestamp_ms=0,
+            stream="TimingData",
+            payload={
+                "Lines": {
+                    "6": {
+                        "Stopped": False,
+                        "InPit": False,
+                        "Status": 64,
+                        "Sectors": [
+                            {"Stopped": False},
+                            {"Stopped": False},
+                            {"Stopped": False},
+                        ],
+                    },
+                    "10": {"Stopped": False, "InPit": False, "Status": 64},
+                }
+            },
+        ),
+        ReplayFrame(
+            timestamp_ms=500,
+            stream="TimingData",
+            payload={
+                "Lines": {
+                    "5": {"Sectors": {"2": {"Segments": {"6": {"Status": 2048}}}}}
+                }
+            },
+        ),
+        ReplayFrame(
+            timestamp_ms=1_000,
+            stream="TrackStatus",
+            payload={"Status": "4", "Message": "SCDeployed"},
+        ),
+    ]
+
+    initial_state = manager._build_initial_state(frames, 1_000)
+
+    timing_data = initial_state["TimingData"]
+    assert timing_data["Lines"]["6"]["Stopped"] is False
+    assert timing_data["Lines"]["6"]["InPit"] is False
+    assert timing_data["Lines"]["10"]["Stopped"] is False
+    assert timing_data["Lines"]["5"]["Sectors"]["2"]["Segments"]["6"]["Status"] == 2048
+
+    detector = IncidentDetector()
+    detector.process_stream(
+        "TimingData",
+        timing_data,
+        data_quality=DATA_QUALITY_BOOTSTRAP,
+    )
+    detector.process_stream(
+        "TrackStatus",
+        {"Status": "4", "Message": "SCDeployed"},
+        data_quality=DATA_QUALITY_REPLAY,
+    )
+
+    changes = detector.process_stream(
+        "TimingData",
+        {"Lines": {"6": {"Stopped": True, "Status": 68}}},
+        data_quality=DATA_QUALITY_REPLAY,
+    )
+
+    assert [change.phase for change in changes] == [PHASE_CONFIRMED]
+    assert changes[0].driver.racing_number == "6"
 
 
 @pytest.mark.asyncio
