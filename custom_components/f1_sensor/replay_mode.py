@@ -73,9 +73,10 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when replay index contents change in a way that
 # requires re-downloading cached sessions.
-CACHE_VERSION = 10
+CACHE_VERSION = 11
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
+SEEK_INDEX_INTERVAL_MS = 5_000
 
 
 def _parse_replay_int(value: Any) -> int | None:
@@ -175,6 +176,28 @@ class ReplayIndex:
     # Snapshot of all streams at session_started_at_ms for initial state
     initial_state: dict[str, Any] | None = None
     formation_initial_state: dict[str, Any] | None = None
+    seek_index: list[dict[str, int]] | None = None
+
+
+def _seek_offset_for_ms(
+    seek_index: list[dict[str, int]] | None,
+    target_ms: int,
+) -> int:
+    """Return the nearest cached byte offset at or before target_ms."""
+    if not seek_index:
+        return 0
+
+    selected_offset = 0
+    for checkpoint in seek_index:
+        try:
+            checkpoint_ms = int(checkpoint.get("t", 0))
+            checkpoint_offset = int(checkpoint.get("offset", 0))
+        except (TypeError, ValueError):
+            continue
+        if checkpoint_ms > target_ms:
+            break
+        selected_offset = max(0, checkpoint_offset)
+    return selected_offset
 
 
 class ReplaySessionManager:
@@ -604,6 +627,7 @@ class ReplaySessionManager:
                         formation_initial_state=index_data.get(
                             "formation_initial_state"
                         ),
+                        seek_index=index_data.get("seek_index"),
                     )
                 else:
                     _LOGGER.info(
@@ -699,6 +723,8 @@ class ReplaySessionManager:
             )
             frames_lines.append(line)
 
+        seek_index = self._build_seek_index(frames_lines)
+
         await self._hass.async_add_executor_job(
             self._write_lines_file, frames_file, frames_lines
         )
@@ -717,6 +743,7 @@ class ReplaySessionManager:
             else None,
             "initial_state": initial_state,
             "formation_initial_state": formation_initial_state,
+            "seek_index": seek_index,
             "created_at": dt_util.utcnow().isoformat(),
         }
 
@@ -738,6 +765,7 @@ class ReplaySessionManager:
             index_file=index_file,
             initial_state=initial_state,
             formation_initial_state=formation_initial_state,
+            seek_index=seek_index,
         )
 
     async def _download_stream(self, url: str, stream_name: str) -> list[ReplayFrame]:
@@ -1505,6 +1533,29 @@ class ReplaySessionManager:
             for line in lines:
                 f.write(line + "\n")
 
+    @staticmethod
+    def _build_seek_index(lines: list[str]) -> list[dict[str, int]]:
+        """Build compact byte-offset checkpoints for replay frame files."""
+        seek_index: list[dict[str, int]] = [{"t": 0, "offset": 0}]
+        next_checkpoint_ms = SEEK_INDEX_INTERVAL_MS
+        offset = 0
+
+        for line in lines:
+            try:
+                frame = json.loads(line)
+                frame_ms = int(frame["t"])
+            except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+                frame_ms = None
+
+            if frame_ms is not None and frame_ms >= next_checkpoint_ms:
+                seek_index.append({"t": frame_ms, "offset": offset})
+                while next_checkpoint_ms <= frame_ms:
+                    next_checkpoint_ms += SEEK_INDEX_INTERVAL_MS
+
+            offset += len((line + "\n").encode("utf-8"))
+
+        return seek_index
+
     def _parse_datetime(
         self, date_str: str | None, gmt_offset: str | None
     ) -> datetime | None:
@@ -1603,13 +1654,23 @@ class ReplayTransport:
 
             def _read_frames_stream() -> None:
                 try:
-                    with open(self._index.frames_file, encoding="utf-8") as f:
+                    start_offset = _seek_offset_for_ms(
+                        self._index.seek_index,
+                        start_ms,
+                    )
+                    with open(self._index.frames_file, "rb") as f:
+                        if start_offset > 0:
+                            f.seek(start_offset)
                         for line in f:
                             if self._closed:
                                 break
                             try:
+                                decoded_line = line.decode("utf-8")
+                            except UnicodeDecodeError:
+                                continue
+                            try:
                                 fut = asyncio.run_coroutine_threadsafe(
-                                    queue.put(line), loop
+                                    queue.put(decoded_line), loop
                                 )
                                 while not self._closed:
                                     try:
@@ -1888,11 +1949,18 @@ class ReplayController:
         *,
         start_exclusive_ms: int,
         end_inclusive_ms: int,
+        seek_index: list[dict[str, int]] | None = None,
     ) -> list[ReplayFrame]:
         frames: list[ReplayFrame] = []
-        with open(frames_file, encoding="utf-8") as handle:
+        start_offset = _seek_offset_for_ms(seek_index, start_exclusive_ms)
+        with open(frames_file, "rb") as handle:
+            if start_offset > 0:
+                handle.seek(start_offset)
             for raw_line in handle:
-                line = raw_line.strip()
+                try:
+                    line = raw_line.decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    continue
                 if not line:
                     continue
                 try:
@@ -1913,12 +1981,30 @@ class ReplayController:
                     continue
         return frames
 
+    @staticmethod
+    def _coalesce_seek_frames(frames: list[ReplayFrame]) -> list[ReplayFrame]:
+        """Return seek frames with high-frequency position updates collapsed."""
+        coalesced: list[ReplayFrame] = []
+        latest_position_frame: ReplayFrame | None = None
+
+        for frame in frames:
+            if frame.stream == TRACK_MAP_POSITION_STREAM:
+                latest_position_frame = frame
+                continue
+            coalesced.append(frame)
+
+        if latest_position_frame is not None:
+            coalesced.append(latest_position_frame)
+
+        return coalesced
+
     async def _replay_frames_range(
         self,
         index: ReplayIndex,
         *,
         start_exclusive_ms: int,
         end_inclusive_ms: int,
+        coalesce_position_z: bool = False,
     ) -> None:
         if end_inclusive_ms <= start_exclusive_ms:
             return
@@ -1928,8 +2014,11 @@ class ReplayController:
                 index.frames_file,
                 start_exclusive_ms=start_exclusive_ms,
                 end_inclusive_ms=end_inclusive_ms,
+                seek_index=index.seek_index,
             )
         )
+        if coalesce_position_z:
+            frames = self._coalesce_seek_frames(frames)
         for frame in frames:
             if isinstance(frame.payload, dict):
                 self._live_bus.inject_message(frame.stream, frame.payload)
@@ -2102,12 +2191,14 @@ class ReplayController:
                 index,
                 start_exclusive_ms=baseline_ms,
                 end_inclusive_ms=target_ms,
+                coalesce_position_z=True,
             )
         else:
             await self._replay_frames_range(
                 index,
                 start_exclusive_ms=current_ms,
                 end_inclusive_ms=target_ms,
+                coalesce_position_z=True,
             )
 
         await self._start_transport(
@@ -2186,6 +2277,7 @@ class ReplayController:
                 index,
                 start_exclusive_ms=baseline_ms,
                 end_inclusive_ms=start_from_ms,
+                coalesce_position_z=True,
             )
             include_start_frame = False
 

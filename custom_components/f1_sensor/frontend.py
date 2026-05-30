@@ -29,6 +29,7 @@ BUNDLED_LIVE_DATA_CARD_DIR = (
 )
 LIVE_DATA_CARD_ASSET_FILENAMES = (
     "f1-sensor-live-data-card.js",
+    "f1-lit-3.3.2.js",
     "hard_tyre.png",
     "intermediate_tyre.png",
     "medium_tyre.png",
