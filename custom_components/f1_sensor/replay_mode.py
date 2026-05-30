@@ -73,10 +73,12 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when replay index contents change in a way that
 # requires re-downloading cached sessions.
-CACHE_VERSION = 11
+CACHE_VERSION = 12
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 SEEK_INDEX_INTERVAL_MS = 5_000
+SEEK_STATE_CHECKPOINT_INTERVAL_MS = 30_000
+SEEK_CHECKPOINT_MIN_FORWARD_DELTA_MS = 60_000
 
 
 def _parse_replay_int(value: Any) -> int | None:
@@ -177,6 +179,7 @@ class ReplayIndex:
     initial_state: dict[str, Any] | None = None
     formation_initial_state: dict[str, Any] | None = None
     seek_index: list[dict[str, int]] | None = None
+    seek_checkpoints: list[dict[str, Any]] | None = None
 
 
 def _seek_offset_for_ms(
@@ -198,6 +201,31 @@ def _seek_offset_for_ms(
             break
         selected_offset = max(0, checkpoint_offset)
     return selected_offset
+
+
+def _seek_state_checkpoint_for_ms(
+    seek_checkpoints: list[dict[str, Any]] | None,
+    *,
+    after_ms: int,
+    target_ms: int,
+) -> dict[str, Any] | None:
+    """Return the nearest state checkpoint after after_ms and at/before target_ms."""
+    if not seek_checkpoints:
+        return None
+
+    selected: dict[str, Any] | None = None
+    for checkpoint in seek_checkpoints:
+        try:
+            checkpoint_ms = int(checkpoint.get("t", 0))
+        except (TypeError, ValueError):
+            continue
+        if checkpoint_ms <= after_ms:
+            continue
+        if checkpoint_ms > target_ms:
+            break
+        if isinstance(checkpoint.get("state"), dict):
+            selected = checkpoint
+    return selected
 
 
 class ReplaySessionManager:
@@ -628,6 +656,47 @@ class ReplaySessionManager:
                             "formation_initial_state"
                         ),
                         seek_index=index_data.get("seek_index"),
+                        seek_checkpoints=index_data.get("seek_checkpoints"),
+                    )
+                if cached_version >= 11 and not index_data.get("seek_checkpoints"):
+                    _LOGGER.info(
+                        "Upgrading cached replay index for %s with seek checkpoints",
+                        session.unique_id,
+                    )
+                    frames = await self._hass.async_add_executor_job(
+                        self._read_frames_file_sync,
+                        frames_file,
+                    )
+                    seek_checkpoints = await self._hass.async_add_executor_job(
+                        self._build_seek_state_checkpoints,
+                        frames,
+                    )
+                    index_data["cache_version"] = CACHE_VERSION
+                    index_data["seek_checkpoints"] = seek_checkpoints
+                    await self._hass.async_add_executor_job(
+                        self._write_json_file,
+                        index_file,
+                        index_data,
+                    )
+                    return ReplayIndex(
+                        session_id=session.unique_id,
+                        total_frames=index_data["total_frames"],
+                        duration_ms=index_data["duration_ms"],
+                        session_started_at_ms=index_data["session_started_at_ms"],
+                        formation_started_at_ms=index_data.get(
+                            "formation_started_at_ms"
+                        ),
+                        formation_start_utc=_parse_optional_utc(
+                            index_data.get("formation_start_utc")
+                        ),
+                        frames_file=frames_file,
+                        index_file=index_file,
+                        initial_state=index_data.get("initial_state"),
+                        formation_initial_state=index_data.get(
+                            "formation_initial_state"
+                        ),
+                        seek_index=index_data.get("seek_index"),
+                        seek_checkpoints=seek_checkpoints,
                     )
                 else:
                     _LOGGER.info(
@@ -724,6 +793,10 @@ class ReplaySessionManager:
             frames_lines.append(line)
 
         seek_index = self._build_seek_index(frames_lines)
+        seek_checkpoints = await self._hass.async_add_executor_job(
+            self._build_seek_state_checkpoints,
+            all_frames,
+        )
 
         await self._hass.async_add_executor_job(
             self._write_lines_file, frames_file, frames_lines
@@ -744,6 +817,7 @@ class ReplaySessionManager:
             "initial_state": initial_state,
             "formation_initial_state": formation_initial_state,
             "seek_index": seek_index,
+            "seek_checkpoints": seek_checkpoints,
             "created_at": dt_util.utcnow().isoformat(),
         }
 
@@ -766,6 +840,7 @@ class ReplaySessionManager:
             initial_state=initial_state,
             formation_initial_state=formation_initial_state,
             seek_index=seek_index,
+            seek_checkpoints=seek_checkpoints,
         )
 
     async def _download_stream(self, url: str, stream_name: str) -> list[ReplayFrame]:
@@ -1291,6 +1366,214 @@ class ReplaySessionManager:
 
         return initial_state
 
+    def _new_seek_checkpoint_accumulator(self) -> dict[str, Any]:
+        """Return mutable replay state used while building seek checkpoints."""
+        return {
+            "state": {},
+            "topthree_state": {
+                "lines": [None, None, None],
+                "withheld": False,
+            },
+            "timingapp_state": {},
+            "timingdata_state": {},
+            "lap_history_state": {},
+            "last_lap_times": {},
+        }
+
+    @staticmethod
+    def _checkpoint_message_key(item: dict[str, Any], fallback: int) -> str:
+        for key in ("id", "Id", "Utc", "utc", "processedAt", "timestamp"):
+            value = item.get(key)
+            if value is not None:
+                text = str(value).strip()
+                if text:
+                    return text
+        return str(fallback)
+
+    def _merge_race_control_checkpoint_state(
+        self,
+        state: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> None:
+        target = state.setdefault("RaceControlMessages", {"Messages": {}})
+        messages_target = target.setdefault("Messages", {})
+        if not isinstance(messages_target, dict):
+            messages_target = {}
+            target["Messages"] = messages_target
+
+        messages = payload.get("Messages")
+        items: list[tuple[str | None, dict[str, Any]]] = []
+        if isinstance(messages, dict):
+            items.extend(
+                (str(key), value)
+                for key, value in messages.items()
+                if isinstance(value, dict)
+            )
+        elif isinstance(messages, list):
+            items.extend((None, value) for value in messages if isinstance(value, dict))
+        elif payload:
+            items.append((None, payload))
+
+        for key, item in items:
+            message_key = key or self._checkpoint_message_key(
+                item,
+                len(messages_target) + 1,
+            )
+            stored = deepcopy(item)
+            if str(message_key).isdecimal():
+                stored.setdefault("id", int(message_key))
+            messages_target[str(message_key)] = stored
+
+    @staticmethod
+    def _pitstop_checkpoint_key(item: dict[str, Any], fallback: int) -> str:
+        timestamp = item.get("Timestamp")
+        if timestamp is not None:
+            text = str(timestamp).strip()
+            if text:
+                return text
+        pitstop = item.get("PitStop")
+        if isinstance(pitstop, dict):
+            lap = pitstop.get("Lap")
+            if lap is not None:
+                text = str(lap).strip()
+                if text:
+                    return text
+        return str(fallback)
+
+    def _merge_pitstop_checkpoint_state(
+        self,
+        state: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> None:
+        pit_times = payload.get("PitTimes")
+        if not isinstance(pit_times, dict):
+            return
+
+        target = state.setdefault("PitStopSeries", {"PitTimes": {}})
+        target_pit_times = target.setdefault("PitTimes", {})
+        if not isinstance(target_pit_times, dict):
+            target_pit_times = {}
+            target["PitTimes"] = target_pit_times
+
+        for rn, entries in pit_times.items():
+            rn_key = str(rn)
+            current_entries = target_pit_times.setdefault(rn_key, {})
+            if not isinstance(current_entries, dict):
+                current_entries = {}
+                target_pit_times[rn_key] = current_entries
+
+            if isinstance(entries, dict):
+                for key, item in entries.items():
+                    if isinstance(item, dict):
+                        current_entries[str(key)] = deepcopy(item)
+            elif isinstance(entries, list):
+                for item in entries:
+                    if not isinstance(item, dict):
+                        continue
+                    item_key = self._pitstop_checkpoint_key(
+                        item,
+                        len(current_entries) + 1,
+                    )
+                    current_entries[str(item_key)] = deepcopy(item)
+
+    def _accumulate_seek_checkpoint_frame(
+        self,
+        accumulator: dict[str, Any],
+        frame: ReplayFrame,
+    ) -> None:
+        if not isinstance(frame.payload, dict):
+            return
+
+        state: dict[str, Any] = accumulator["state"]
+        if frame.stream == "TopThree":
+            self._merge_topthree_state(accumulator["topthree_state"], frame.payload)
+        elif frame.stream == "TimingAppData":
+            self._merge_timingapp_state(accumulator["timingapp_state"], frame.payload)
+        elif frame.stream == "TimingData":
+            self._merge_lap_history_state(
+                accumulator["lap_history_state"],
+                accumulator["last_lap_times"],
+                frame.payload,
+            )
+            self._merge_timingdata_state(accumulator["timingdata_state"], frame.payload)
+        elif frame.stream == "RaceControlMessages":
+            self._merge_race_control_checkpoint_state(state, frame.payload)
+        elif frame.stream == "PitStopSeries":
+            self._merge_pitstop_checkpoint_state(state, frame.payload)
+        elif frame.stream in {"DriverList", "DriverRaceInfo"}:
+            if frame.stream == "DriverList":
+                self._extract_grid_from_driverlist(
+                    accumulator["lap_history_state"], frame.payload
+                )
+            else:
+                self._extract_grid_from_driver_race_info(
+                    accumulator["lap_history_state"], frame.payload
+                )
+            current = state.setdefault(frame.stream, {})
+            if isinstance(current, dict):
+                self._deep_merge_replay_state(current, frame.payload)
+            else:
+                state[frame.stream] = deepcopy(frame.payload)
+        else:
+            state[frame.stream] = deepcopy(frame.payload)
+
+    def _seek_checkpoint_state(
+        self,
+        accumulator: dict[str, Any],
+    ) -> dict[str, Any]:
+        state = deepcopy(accumulator["state"])
+        topthree_state = accumulator["topthree_state"]
+        if topthree_state["lines"] != [None, None, None]:
+            state["TopThree"] = {
+                "Withheld": topthree_state.get("withheld", False),
+                "Lines": deepcopy(topthree_state["lines"]),
+            }
+
+        timingapp_state = accumulator["timingapp_state"]
+        if self._has_timingapp_state(timingapp_state):
+            state["TimingAppData"] = deepcopy(timingapp_state)
+
+        timingdata_state = accumulator["timingdata_state"]
+        if self._has_timingdata_state(timingdata_state):
+            state["TimingData"] = deepcopy(timingdata_state)
+
+        lap_history_state = accumulator["lap_history_state"]
+        if self._has_lap_history_state(lap_history_state):
+            state["LapHistory"] = deepcopy(lap_history_state)
+
+        return state
+
+    def _build_seek_state_checkpoints(
+        self,
+        frames: list[ReplayFrame],
+    ) -> list[dict[str, Any]]:
+        """Build state snapshots that make large absolute seeks fast."""
+        checkpoints: list[dict[str, Any]] = []
+        accumulator = self._new_seek_checkpoint_accumulator()
+        next_checkpoint_ms = SEEK_STATE_CHECKPOINT_INTERVAL_MS
+
+        for idx, frame in enumerate(frames):
+            self._accumulate_seek_checkpoint_frame(accumulator, frame)
+            next_frame_ms = (
+                frames[idx + 1].timestamp_ms if idx + 1 < len(frames) else None
+            )
+            if (
+                frame.timestamp_ms < next_checkpoint_ms
+                or next_frame_ms == frame.timestamp_ms
+            ):
+                continue
+
+            checkpoints.append(
+                {
+                    "t": frame.timestamp_ms,
+                    "state": self._seek_checkpoint_state(accumulator),
+                }
+            )
+            while next_checkpoint_ms <= frame.timestamp_ms:
+                next_checkpoint_ms += SEEK_STATE_CHECKPOINT_INTERVAL_MS
+
+        return checkpoints
+
     @staticmethod
     def _is_race_or_sprint_session(session: ReplaySession) -> bool:
         joined = f"{session.session_type} {session.session_name}".lower()
@@ -1532,6 +1815,28 @@ class ReplaySessionManager:
         with open(file_path, "w", encoding="utf-8") as f:
             for line in lines:
                 f.write(line + "\n")
+
+    @staticmethod
+    def _read_frames_file_sync(file_path: Path) -> list[ReplayFrame]:
+        """Read a cached frames file into replay frames (called via executor)."""
+        frames: list[ReplayFrame] = []
+        with open(file_path, "rb") as handle:
+            for raw_line in handle:
+                try:
+                    line = raw_line.decode("utf-8").strip()
+                    if not line:
+                        continue
+                    frame = json.loads(line)
+                    frames.append(
+                        ReplayFrame(
+                            timestamp_ms=int(frame["t"]),
+                            stream=str(frame["s"]),
+                            payload=frame["p"],
+                        )
+                    )
+                except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+                    continue
+        return frames
 
     @staticmethod
     def _build_seek_index(lines: list[str]) -> list[dict[str, int]]:
@@ -2182,7 +2487,36 @@ class ReplayController:
 
         await self._stop_active_replay_transport()
 
-        if target_ms < current_ms:
+        checkpoint: dict[str, Any] | None = None
+        if (
+            target_ms > current_ms
+            and target_ms - current_ms >= SEEK_CHECKPOINT_MIN_FORWARD_DELTA_MS
+        ):
+            checkpoint = _seek_state_checkpoint_for_ms(
+                index.seek_checkpoints,
+                after_ms=current_ms,
+                target_ms=target_ms,
+            )
+        elif target_ms < current_ms:
+            checkpoint = _seek_state_checkpoint_for_ms(
+                index.seek_checkpoints,
+                after_ms=baseline_ms,
+                target_ms=target_ms,
+            )
+
+        if checkpoint is not None:
+            checkpoint_ms = int(checkpoint["t"])
+            await self._run_replay_reset_callbacks()
+            self._inject_initial_state(checkpoint["state"])
+            await self._prepare_track_map_replay_index(index)
+            self._inject_formation_ready_if_applicable(index)
+            await self._replay_frames_range(
+                index,
+                start_exclusive_ms=checkpoint_ms,
+                end_inclusive_ms=target_ms,
+                coalesce_position_z=True,
+            )
+        elif target_ms < current_ms:
             await self._run_replay_reset_callbacks()
             self._inject_initial_state(initial_state)
             await self._prepare_track_map_replay_index(index)

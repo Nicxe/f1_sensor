@@ -39,6 +39,7 @@ from custom_components.f1_sensor.replay_mode import (
     ReplayController,
     ReplayFrame,
     ReplayIndex,
+    ReplaySession,
     ReplaySessionManager,
     ReplayState,
 )
@@ -473,6 +474,50 @@ def test_build_initial_state_merges_timingdata_for_incident_baseline(hass) -> No
     assert changes[0].driver.racing_number == "6"
 
 
+def test_build_seek_state_checkpoints_merge_stateful_streams(hass) -> None:
+    manager = ReplaySessionManager(hass, ENTRY_ID, AsyncMock())
+    frames = [
+        ReplayFrame(0, "SessionInfo", {"Type": "Race", "Name": "Race"}),
+        ReplayFrame(
+            5_000,
+            "RaceControlMessages",
+            {"Messages": {"1": {"Message": "First", "Category": "Flag"}}},
+        ),
+        ReplayFrame(
+            10_000,
+            "PitStopSeries",
+            {
+                "PitTimes": {
+                    "1": {
+                        "1": {
+                            "Timestamp": "2025-12-07T13:00:10Z",
+                            "PitStop": {"RacingNumber": "1", "Lap": 1},
+                        }
+                    }
+                }
+            },
+        ),
+        ReplayFrame(15_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 1)),
+        ReplayFrame(
+            30_000,
+            "RaceControlMessages",
+            {"Messages": {"2": {"Message": "Second", "Category": "Drs"}}},
+        ),
+        ReplayFrame(30_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 2)),
+    ]
+
+    checkpoints = manager._build_seek_state_checkpoints(frames)
+
+    assert len(checkpoints) == 1
+    state = checkpoints[0]["state"]
+    assert state["RaceControlMessages"]["Messages"] == {
+        "1": {"Message": "First", "Category": "Flag", "id": 1},
+        "2": {"Message": "Second", "Category": "Drs", "id": 2},
+    }
+    assert state["PitStopSeries"]["PitTimes"]["1"]["1"]["PitStop"]["Lap"] == 1
+    assert state[TRACK_MAP_POSITION_STREAM] == _position_payload("1", 2)
+
+
 @pytest.mark.asyncio
 async def test_replay_seek_ready_updates_planned_position(hass, tmp_path: Path) -> None:
     controller, index, _bus, _live_state = await _setup_controller(
@@ -521,6 +566,91 @@ async def test_replay_seek_forward_replays_intermediate_state_changes(
     assert live_mode.data["overtake_enabled"] is True
 
     await controller.async_stop()
+
+
+@pytest.mark.asyncio
+async def test_replay_absolute_forward_seek_uses_state_checkpoint(
+    hass, tmp_path: Path
+) -> None:
+    controller, index, bus, _live_state = await _setup_controller(
+        hass,
+        tmp_path,
+        initial_state={"SessionInfo": {"Type": "Race", "Name": "Race"}},
+        frames=[
+            (0, "SessionInfo", {"Type": "Race", "Name": "Race"}),
+            (10_000, "TrackStatus", {"Status": "2"}),
+            (60_000, "TrackStatus", {"Status": "3"}),
+            (90_000, "TrackStatus", {"Status": "4"}),
+            (120_000, "TrackStatus", {"Status": "5"}),
+        ],
+        coordinators=(),
+    )
+    index.seek_checkpoints = [{"t": 90_000, "state": {"TrackStatus": {"Status": "4"}}}]
+
+    await controller.async_play()
+    await asyncio.sleep(0)
+    bus.injected.clear()
+
+    await controller.async_seek_to_position(120)
+    await asyncio.sleep(0)
+
+    assert ("TrackStatus", {"Status": "4"}) in bus.injected
+    assert ("TrackStatus", {"Status": "5"}) in bus.injected
+    assert ("TrackStatus", {"Status": "2"}) not in bus.injected
+    assert ("TrackStatus", {"Status": "3"}) not in bus.injected
+
+    await controller.async_stop()
+
+
+@pytest.mark.asyncio
+async def test_replay_cached_index_upgrades_seek_checkpoints(
+    hass, tmp_path: Path
+) -> None:
+    manager = ReplaySessionManager(hass, ENTRY_ID, AsyncMock())
+    manager._cache_dir = tmp_path
+    session = ReplaySession(
+        year=2025,
+        meeting_key=1,
+        meeting_name="Test GP",
+        session_key=2,
+        session_name="Race",
+        session_type="Race",
+        path="2025/Test/Race",
+        start_utc=datetime(2025, 12, 7, 13, 0, tzinfo=UTC),
+        end_utc=datetime(2025, 12, 7, 15, 0, tzinfo=UTC),
+    )
+    session_dir = manager._safe_session_cache_dir(session.unique_id)
+    assert session_dir is not None
+    session_dir.mkdir(parents=True)
+    _write_frames(
+        session_dir,
+        [
+            (0, "SessionInfo", {"Type": "Race", "Name": "Race"}),
+            (30_000, "TrackStatus", {"Status": "1"}),
+        ],
+    )
+    index_file = session_dir / "index.json"
+    index_file.write_text(
+        json.dumps(
+            {
+                "cache_version": 11,
+                "session_id": session.unique_id,
+                "total_frames": 2,
+                "duration_ms": 30_000,
+                "session_started_at_ms": 0,
+                "initial_state": {"SessionInfo": {"Type": "Race", "Name": "Race"}},
+                "seek_index": [{"t": 0, "offset": 0}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    index = await manager._download_and_index_session(session)
+    upgraded = json.loads(index_file.read_text(encoding="utf-8"))
+
+    assert index.seek_checkpoints
+    assert upgraded["cache_version"] == 12
+    assert upgraded["seek_checkpoints"][0]["state"]["TrackStatus"] == {"Status": "1"}
 
 
 @pytest.mark.asyncio
