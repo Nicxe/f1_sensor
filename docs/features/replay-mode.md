@@ -7,8 +7,8 @@ Replay Mode lets you watch historical F1 sessions with full Home Assistant integ
 
 Your lights can react to a red flag. Your dashboard can show live timing. Race Control messages can still drive notifications while you watch the session later.
 Likely on-track incident detection can also follow replayed sessions, so incident notifications and the On-track Incident binary sensors can behave like they do during live timing. If the replay includes Track Map data, incident events can include the same optional location summary used during live sessions.
-:::warning[Experimental replay catch-up]
-Replay Mode now includes experimental 30-second catch-up controls in Version 1. The feature is being tested in real setups, and additional refinement may still be needed in later updates.
+:::warning[Replay seek behavior]
+Replay Mode includes seek controls for catching up with your broadcast. Rewinding can replay historical events again, so replay-driven automations and notifications may run again by design.
 :::
 :::tip[Watching it later? Keep your dashboard spoiler-free]
 If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode, press play when your broadcast begins, and experience everything as if it were live — without any spoilers.
@@ -63,17 +63,17 @@ Replay Mode adds several control entities to Home Assistant.
 | `button.f1_replay_play` | Start or resume playback |
 | `button.f1_replay_pause` | Pause playback |
 | `button.f1_replay_stop` | Stop playback and return to idle |
-| `button.f1_replay_back_30` | Experimental: move replay back 30 seconds |
-| `button.f1_replay_forward_30` | Experimental: move replay forward 30 seconds |
+| `button.f1_replay_back_30` | Move replay back 30 seconds |
+| `button.f1_replay_forward_30` | Move replay forward 30 seconds |
 | `button.f1_replay_refresh` | Refresh the session list |
 
 ### Media player
 
 | Entity | Purpose |
 | --- | --- |
-| `media_player.f1_replay_player` | Standard media player with play, pause, stop and position tracking |
+| `media_player.f1_replay_player` | Standard media player with play, pause, stop, seek, and position tracking |
 
-The media player entity lets you control replay using any media player integration or remote control. It reports current position, duration, and playback state, making it easy to integrate with other media players in your setup.
+The media player entity lets you control replay using any media player integration or remote control. It supports normal media seek actions, reports current position, duration, and playback state, and makes it easy to integrate replay with other media players in your setup.
 
 ### Status sensor
 
@@ -83,7 +83,7 @@ The media player entity lets you control replay using any media player integrati
 
 ### Dashboard card
 
-The [F1 Replay Control card](/cards/cards-overview#f1-replay-control-card) combines the Replay Mode selectors, load/play/pause/stop controls, 30-second seek buttons, refresh button, and progress display in one Lovelace card.
+The [F1 Replay Control card](/cards/cards-overview#f1-replay-control-card) combines the Replay Mode selectors, load/play/pause/stop controls, drag-to-seek playbar, 30-second seek buttons, refresh button, and progress display in one Lovelace card.
 
 ---
 
@@ -134,41 +134,51 @@ If you pause your TV, pause the replay to stay in sync. When you resume, resume 
 
 - **Pause** - Press `button.f1_replay_pause` or pause `media_player.f1_replay_player`
 - **Resume** - Press `button.f1_replay_play` or play `media_player.f1_replay_player`
+- **Seek with the playbar** - Drag the playbar in the F1 Replay Control card and release it at the target position
 - **Back 30 seconds** - Press `button.f1_replay_back_30` to move replay back 30 seconds
 - **Forward 30 seconds** - Press `button.f1_replay_forward_30` to move replay forward 30 seconds
 - **Stop** - Press `button.f1_replay_stop` to end playback and return to idle
 
 ---
 
-## Replay Catch-Up
-:::warning[Experimental feature]
-The replay catch-up controls in Replay Mode are experimental.
-
-You can now move replay backward or forward in fixed 30-second steps with **Back 30 seconds** and **Forward 30 seconds**. This is an early version that is being tested in real setups, so more refinement may still be needed in future updates.
+## Replay Seek Controls
+:::warning[Replay events can run again]
+Seeking backward can replay historical state changes again. Automations, notifications, and incident alerts that react to replayed events may run again when those events are replayed.
 :::
 
-The Version 1 replay catch-up controls are designed to help you manually line up Replay Mode with your broadcaster when the video is ahead or behind.
+The replay seek controls help you line up Home Assistant with the F1 broadcast you are watching. You can use the draggable playbar for larger adjustments, or the 30-second buttons for small catch-up steps.
+
+### Dragging the playbar
+
+The F1 Replay Control card shows a draggable playbar when `media_player.f1_replay_player` supports seek. Drag the handle to preview the target position, then release it to seek.
+
+The card sends the seek command only when you release the handle. It does not send a service call for every drag movement, so the dashboard stays responsive while you choose the target point.
+
+During a seek, the replay status may briefly show `seeking`. Longer jumps, especially with Track Map data available, can take a little longer while Replay Mode restores the correct session state.
 
 ### How the 30-second buttons work
 
-When you press **Forward 30 seconds**, the integration does not simply skip to a new position and ignore what happened in between. It quickly replays the events inside that 30-second window first, then continues from the new position.
+The **Back 30 seconds** and **Forward 30 seconds** buttons are still useful for small adjustments when your TV or streaming replay is slightly ahead or behind Home Assistant.
+
+When you press **Forward 30 seconds**, Replay Mode does not simply skip to a new position and ignore what happened in between. It applies the events inside that 30-second window first, then continues from the new position.
 
 That means important state changes still land correctly. If a red flag, Race Control update, session clock change, or other tracked event happens inside those 30 seconds, the related entities still end up in the right state after the jump.
 
-When you press **Back 30 seconds**, Replay Mode rebuilds the replay state from the selected replay start point and then replays forward to the new position.
+When you press **Back 30 seconds**, Replay Mode restores replay state for the new position and then continues from there.
 
-### What to expect in Version 1
+### What to expect
 
-- Catch-up uses fixed 30-second steps only
-- There is no free drag-to-seek slider yet
+- The playbar is available in the F1 Replay Control card when the replay media player supports seek
+- The playbar sends `media_player.media_seek` only after you release the slider
+- The 30-second buttons remain available for quick manual adjustments
 - The feature is intended to make manual catch-up simpler, not to guarantee perfect sync with every broadcaster
 - Rewinding can replay the same historical event again, which means automations and notifications may trigger again by design
 
 ### Best way to use it
 
-If your TV or streaming replay is slightly out of sync, pause Replay Mode and use the 30-second buttons until the on-screen action matches your Home Assistant entities again. A practical reference point is the session clock, track status, or the latest Race Control message.
+If your TV or streaming replay is slightly out of sync, pause Replay Mode and use the playbar or 30-second buttons until the on-screen action matches your Home Assistant entities again. A practical reference point is the session clock, track status, or the latest Race Control message.
 :::info
-This feature is experimental. Real-world feedback will be used to improve the behavior, controls, and timing in later updates.
+Seek controls are designed to preserve the visible replay state after the jump. If a session has a large amount of Track Map data, you may still see a short `seeking` period before playback resumes.
 :::
 
 ---
@@ -182,6 +192,7 @@ The `media_player.f1_replay_player` entity provides standard media player contro
 
 **Features**
 - Play, pause, and stop controls
+- Seek to a specific playback position
 - Position and duration tracking
 - Works with any media player card or remote integration
 
@@ -292,7 +303,7 @@ For full details on each entity, see the [Live Data reference](/entities/live-da
 
 - While replay is active, the integration does not receive live data. Stop the replay to return to live mode.
 - The live delay calibration feature is disabled during replay.
-- The experimental catch-up controls currently support fixed 30-second jumps only.
+- Long seeks can briefly show the replay state as `seeking` while the integration restores the correct session state.
 - Rewinding can replay historical events again, so replay-driven automations and notifications may run again.
 - Rewinding can also replay historical incident events again, including possible on-track incident notifications.
 - Replayed Track Map location context is best-effort and may be missing for sessions without usable car position data.

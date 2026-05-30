@@ -42,7 +42,7 @@ Public live timing works without F1TV Auth. Cards that show live Track Map, Pit 
 | [F1 Championship Prediction Drivers](#f1-championship-prediction-drivers-card) | `custom:f1-championship-prediction-drivers-card` | Driver standings with predicted points |
 | [F1 Championship Prediction Teams](#f1-championship-prediction-teams-card) | `custom:f1-championship-prediction-teams-card` | Constructor standings with predicted points |
 | [F1 Season Progression](#f1-season-progression-card) | `custom:f1-season-progression-card` | Driver and constructor championship point progression across race rounds |
-| [F1 Replay Control](#f1-replay-control-card) | `custom:f1-replay-control-card` | Replay Mode selectors, playback controls, and progress |
+| [F1 Replay Control](#f1-replay-control-card) | `custom:f1-replay-control-card` | Replay Mode selectors, playback controls, drag-to-seek playbar, and progress |
 | [F1 Track Map](#f1-track-map-card) | `custom:f1-track-map-card` | Live and replay circuit map with car positions |
 
 ---
@@ -754,7 +754,9 @@ The legend is interactive. Select a driver or team in the legend to hide or show
 
 `custom:f1-replay-control-card`
 
-Provides a purpose-built Replay Mode dashboard control. It combines season and session selectors, start reference selection, load/play/pause/stop controls, 30-second seek buttons, refresh, status details, and progress.
+Provides a purpose-built Replay Mode dashboard control. It combines season and session selectors, start reference selection, load/play/pause/stop controls, a drag-to-seek playbar, 30-second seek buttons, refresh, status details, and progress.
+
+The playbar appears when the replay media player supports seek. Drag the handle to preview a new position, then release it to send one `media_player.media_seek` command. The card does not send seek commands continuously while you drag.
 
 ![Placeholder - F1 Replay Control card screenshot](/img/placeholder_card_replay_control.png)
 
@@ -773,7 +775,7 @@ Provides a purpose-built Replay Mode dashboard control. It combines season and s
 | `show_start_reference` | `true` | Show start reference selector |
 | `show_seek_controls` | `true` | Show back/forward 30-second controls |
 | `show_refresh` | `true` | Show refresh control |
-| `show_progress` | `true` | Show playback progress |
+| `show_progress` | `true` | Show playback progress and the seek playbar when supported |
 | `show_button_labels` | `true` | Show text labels on playback buttons |
 
 ---
