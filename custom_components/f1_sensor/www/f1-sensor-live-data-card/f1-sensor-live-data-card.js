@@ -1,17 +1,5 @@
 // Custom F1 Tyres Statistics card for Home Assistant
-const getLit = async () => {
-  if (window.LitElement && window.litHtml?.html && window.litHtml?.css && window.litHtml?.svg) {
-    return {
-      LitElement: window.LitElement,
-      html: window.litHtml.html,
-      css: window.litHtml.css,
-      svg: window.litHtml.svg,
-    };
-  }
-  throw new Error('Home Assistant Lit globals are unavailable');
-};
-
-const { LitElement, html, css, svg } = await getLit();
+import { LitElement, html, css, svg } from './f1-lit-3.3.2.js';
 
 let f1FontsInjected = false;
 const ensureF1Fonts = () => {
@@ -16119,6 +16107,8 @@ const F1_REPLAY_STATUS_META = {
   paused: { label: 'PAUSED', tone: 'paused', icon: 'mdi:pause' },
 };
 
+const F1_MEDIA_PLAYER_SEEK_FEATURE = 2;
+
 const F1_REPLAY_ACTIONS = [
   {
     key: 'load_button_entity',
@@ -16181,11 +16171,15 @@ class F1ReplayControlCard extends LitElement {
     hass: {},
     config: {},
     _actionBusy: { state: true },
+    _seekBusy: { state: true },
+    _seekPreviewPosition: { state: true },
   };
 
   constructor() {
     super();
     this._actionBusy = null;
+    this._seekBusy = false;
+    this._seekPreviewPosition = null;
   }
 
   static styles = [F1_THEME_STYLES, css`
@@ -16554,6 +16548,81 @@ class F1ReplayControlCard extends LitElement {
       overflow: hidden;
     }
 
+    .rc-seek-wrap {
+      position: relative;
+      min-width: 0;
+      height: 24px;
+      display: grid;
+      align-items: center;
+    }
+
+    .rc-seek-input {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 24px;
+      margin: 0;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+      accent-color: #e10600;
+    }
+
+    .rc-seek-input::-webkit-slider-runnable-track {
+      height: 4px;
+      border-radius: 999px;
+      background: linear-gradient(
+        90deg,
+        #e10600 0%,
+        #ff3b30 var(--rc-progress, 0%),
+        var(--rc-chip) var(--rc-progress, 0%),
+        var(--rc-chip) 100%
+      );
+    }
+
+    .rc-seek-input::-moz-range-track {
+      height: 4px;
+      border-radius: 999px;
+      background: linear-gradient(
+        90deg,
+        #e10600 0%,
+        #ff3b30 var(--rc-progress, 0%),
+        var(--rc-chip) var(--rc-progress, 0%),
+        var(--rc-chip) 100%
+      );
+    }
+
+    .rc-seek-input::-webkit-slider-thumb {
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      margin-top: -5px;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      background: #e10600;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+    }
+
+    .rc-seek-input::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      background: #e10600;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+    }
+
+    .rc-seek-input:focus-visible {
+      outline: 2px solid color-mix(in srgb, #e10600 64%, transparent);
+      outline-offset: 3px;
+      border-radius: 999px;
+    }
+
+    .rc-seek-input:disabled {
+      cursor: not-allowed;
+      opacity: 0.58;
+    }
+
     .rc-progress-bar {
       height: 100%;
       width: var(--rc-progress, 0%);
@@ -16625,6 +16694,11 @@ class F1ReplayControlCard extends LitElement {
 
     .rc-card.compact .rc-progress-track {
       height: 3px;
+    }
+
+    .rc-card.compact .rc-seek-wrap,
+    .rc-card.compact .rc-seek-input {
+      height: 22px;
     }
 
     .rc-card.compact .rc-button-label {
@@ -16874,16 +16948,99 @@ class F1ReplayControlCard extends LitElement {
     const attrs = statusEntity?.attributes || {};
     const playerAttrs = playerEntity?.attributes || {};
     const position = Number(
-      attrs.playback_position_s ?? playerAttrs.playback_position_s ?? playerEntity?.attributes?.media_position ?? 0,
+      playerAttrs.playback_position_s ?? playerAttrs.media_position ?? attrs.playback_position_s ?? attrs.media_position ?? 0,
     );
     const total = Number(
-      attrs.playback_total_s ?? playerAttrs.playback_total_s ?? playerEntity?.attributes?.media_duration ?? 0,
+      playerAttrs.playback_total_s ?? playerAttrs.media_duration ?? attrs.playback_total_s ?? attrs.media_duration ?? 0,
     );
     const downloadProgress = Number(attrs.download_progress ?? 0);
     const progress = total > 0
       ? Math.max(0, Math.min(100, (position / total) * 100))
       : Math.max(0, Math.min(100, downloadProgress));
     return { position, total, progress };
+  }
+
+  _clampPlaybackPosition(value, total) {
+    const numericValue = Number(value);
+    const numericTotal = Number(total);
+    if (!Number.isFinite(numericValue)) return 0;
+    const max = Number.isFinite(numericTotal) && numericTotal > 0 ? numericTotal : 0;
+    return Math.max(0, Math.min(max, numericValue));
+  }
+
+  _supportsMediaSeek(playerEntity) {
+    if (!this._isUsableEntity(playerEntity)) return false;
+    const features = Number(playerEntity?.attributes?.supported_features || 0);
+    return Boolean(features & F1_MEDIA_PLAYER_SEEK_FEATURE);
+  }
+
+  _playbackPreview(playback) {
+    if (this._seekPreviewPosition === null || this._seekPreviewPosition === undefined) {
+      return playback;
+    }
+    const position = this._clampPlaybackPosition(this._seekPreviewPosition, playback.total);
+    const progress = playback.total > 0
+      ? Math.max(0, Math.min(100, (position / playback.total) * 100))
+      : playback.progress;
+    return { ...playback, position, progress };
+  }
+
+  _handleSeekInput(ev, playback) {
+    this._seekPreviewPosition = this._clampPlaybackPosition(ev?.target?.value, playback.total);
+  }
+
+  async _handleSeekChange(ev, playback, state) {
+    if (this._seekBusy || this._isBusyState(state) || typeof this.hass?.callService !== 'function') return;
+    const playerId = this._configuredEntityId('player_entity');
+    if (!playerId) return;
+
+    const seekPosition = this._clampPlaybackPosition(ev?.target?.value, playback.total);
+    this._seekPreviewPosition = seekPosition;
+    this._seekBusy = true;
+    try {
+      await this.hass.callService('media_player', 'media_seek', {
+        entity_id: playerId,
+        seek_position: seekPosition,
+      });
+    } finally {
+      this._seekBusy = false;
+      this._seekPreviewPosition = null;
+    }
+  }
+
+  _renderProgress(playback, playerEntity, state) {
+    const canSeek = this._supportsMediaSeek(playerEntity) && playback.total > 0;
+    const preview = this._playbackPreview(playback);
+    const progressStyle = `--rc-progress: ${preview.progress.toFixed(1)}%;`;
+    const disabled = this._seekBusy || this._isBusyState(state);
+
+    return html`
+      <div class="rc-progress">
+        <span class="rc-progress-time">${this._formatTime(preview.position)}</span>
+        ${canSeek ? html`
+          <span class="rc-seek-wrap">
+            <input
+              class="rc-seek-input"
+              type="range"
+              min="0"
+              max=${Math.max(0, Math.floor(playback.total))}
+              step="1"
+              .value=${String(Math.floor(preview.position))}
+              style=${progressStyle}
+              aria-label="Replay position"
+              ?disabled=${disabled}
+              @input=${(ev) => this._handleSeekInput(ev, playback)}
+              @change=${(ev) => this._handleSeekChange(ev, playback, state)}
+            />
+          </span>
+        ` : html`
+          <div class="rc-progress-track">
+            <div class="rc-progress-bar" style=${progressStyle}></div>
+          </div>
+        `}
+        <span class="rc-progress-time">${this._formatTime(playback.total)}</span>
+      </div>
+    `;
   }
 
   _downloadError(statusEntity) {
@@ -17070,7 +17227,6 @@ class F1ReplayControlCard extends LitElement {
       || statusEntity?.attributes?.selected_year
       || '--';
     const playback = this._playback(statusEntity, playerEntity);
-    const progressStyle = `--rc-progress: ${playback.progress.toFixed(1)}%;`;
     const downloadError = this._downloadError(statusEntity);
     const showSecondarySelects = this.config.show_secondary_selects !== false && !compact;
     const showStatusDetails = this.config.show_status_details !== false && !compact;
@@ -17118,15 +17274,7 @@ class F1ReplayControlCard extends LitElement {
               : compact ? null : this._renderSetupActionsGroup(state)}
           </div>
 
-          ${this.config.show_progress !== false ? html`
-            <div class="rc-progress">
-              <span class="rc-progress-time">${this._formatTime(playback.position)}</span>
-              <div class="rc-progress-track">
-                <div class="rc-progress-bar" style=${progressStyle}></div>
-              </div>
-              <span class="rc-progress-time">${this._formatTime(playback.total)}</span>
-            </div>
-          ` : null}
+          ${this.config.show_progress !== false ? this._renderProgress(playback, playerEntity, state) : null}
 
           <div class="rc-controls">
             ${this._visibleActions().map((action) => this._renderAction(action, state))}
