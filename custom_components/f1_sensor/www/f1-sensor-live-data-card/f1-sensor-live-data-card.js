@@ -1,5 +1,17 @@
 // Custom F1 Tyres Statistics card for Home Assistant
-import { LitElement, html, css, svg } from './f1-lit-3.3.2.js';
+const getLit = async () => {
+  if (window.LitElement && window.litHtml?.html && window.litHtml?.css && window.litHtml?.svg) {
+    return {
+      LitElement: window.LitElement,
+      html: window.litHtml.html,
+      css: window.litHtml.css,
+      svg: window.litHtml.svg,
+    };
+  }
+  throw new Error('Home Assistant Lit globals are unavailable');
+};
+
+const { LitElement, html, css, svg } = await getLit();
 
 let f1FontsInjected = false;
 const ensureF1Fonts = () => {
@@ -904,7 +916,8 @@ const LEGACY_ENTITY_ID_FALLBACKS = {
   'sensor.f1_drivers_tyre_statistics': 'sensor.f1_tyre_statistics',
   'sensor.f1_drivers_current_tyres': 'sensor.f1_current_tyres',
   'sensor.f1_drivers_pitstops': 'sensor.f1_pitstops',
-  'sensor.f1_drivers_driver_positions': 'sensor.f1_driver_positions',
+  'sensor.f1_driver_positions': 'sensor.f1_drivers_f1_driver_positions',
+  'sensor.f1_drivers_driver_positions': 'sensor.f1_drivers_f1_driver_positions',
   'sensor.f1_championship_championship_prediction_drivers': 'sensor.f1_championship_prediction_drivers',
   'sensor.f1_championship_championship_prediction_teams': 'sensor.f1_championship_prediction_teams',
   'sensor.f1_driver_points_progression': 'sensor.f1_championship_f1_driver_points_progression',
@@ -16106,8 +16119,6 @@ const F1_REPLAY_STATUS_META = {
   paused: { label: 'PAUSED', tone: 'paused', icon: 'mdi:pause' },
 };
 
-const F1_MEDIA_PLAYER_SEEK_FEATURE = 2;
-
 const F1_REPLAY_ACTIONS = [
   {
     key: 'load_button_entity',
@@ -16170,15 +16181,11 @@ class F1ReplayControlCard extends LitElement {
     hass: {},
     config: {},
     _actionBusy: { state: true },
-    _seekBusy: { state: true },
-    _seekPreviewPosition: { state: true },
   };
 
   constructor() {
     super();
     this._actionBusy = null;
-    this._seekBusy = false;
-    this._seekPreviewPosition = null;
   }
 
   static styles = [F1_THEME_STYLES, css`
@@ -16547,81 +16554,6 @@ class F1ReplayControlCard extends LitElement {
       overflow: hidden;
     }
 
-    .rc-seek-wrap {
-      position: relative;
-      min-width: 0;
-      height: 24px;
-      display: grid;
-      align-items: center;
-    }
-
-    .rc-seek-input {
-      position: relative;
-      z-index: 1;
-      width: 100%;
-      height: 24px;
-      margin: 0;
-      appearance: none;
-      background: transparent;
-      cursor: pointer;
-      accent-color: #e10600;
-    }
-
-    .rc-seek-input::-webkit-slider-runnable-track {
-      height: 4px;
-      border-radius: 999px;
-      background: linear-gradient(
-        90deg,
-        #e10600 0%,
-        #ff3b30 var(--rc-progress, 0%),
-        var(--rc-chip) var(--rc-progress, 0%),
-        var(--rc-chip) 100%
-      );
-    }
-
-    .rc-seek-input::-moz-range-track {
-      height: 4px;
-      border-radius: 999px;
-      background: linear-gradient(
-        90deg,
-        #e10600 0%,
-        #ff3b30 var(--rc-progress, 0%),
-        var(--rc-chip) var(--rc-progress, 0%),
-        var(--rc-chip) 100%
-      );
-    }
-
-    .rc-seek-input::-webkit-slider-thumb {
-      appearance: none;
-      width: 14px;
-      height: 14px;
-      margin-top: -5px;
-      border-radius: 50%;
-      border: 2px solid #ffffff;
-      background: #e10600;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
-    }
-
-    .rc-seek-input::-moz-range-thumb {
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      border: 2px solid #ffffff;
-      background: #e10600;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
-    }
-
-    .rc-seek-input:focus-visible {
-      outline: 2px solid color-mix(in srgb, #e10600 64%, transparent);
-      outline-offset: 3px;
-      border-radius: 999px;
-    }
-
-    .rc-seek-input:disabled {
-      cursor: not-allowed;
-      opacity: 0.58;
-    }
-
     .rc-progress-bar {
       height: 100%;
       width: var(--rc-progress, 0%);
@@ -16693,11 +16625,6 @@ class F1ReplayControlCard extends LitElement {
 
     .rc-card.compact .rc-progress-track {
       height: 3px;
-    }
-
-    .rc-card.compact .rc-seek-wrap,
-    .rc-card.compact .rc-seek-input {
-      height: 22px;
     }
 
     .rc-card.compact .rc-button-label {
@@ -16947,99 +16874,16 @@ class F1ReplayControlCard extends LitElement {
     const attrs = statusEntity?.attributes || {};
     const playerAttrs = playerEntity?.attributes || {};
     const position = Number(
-      playerAttrs.playback_position_s ?? playerAttrs.media_position ?? attrs.playback_position_s ?? attrs.media_position ?? 0,
+      attrs.playback_position_s ?? playerAttrs.playback_position_s ?? playerEntity?.attributes?.media_position ?? 0,
     );
     const total = Number(
-      playerAttrs.playback_total_s ?? playerAttrs.media_duration ?? attrs.playback_total_s ?? attrs.media_duration ?? 0,
+      attrs.playback_total_s ?? playerAttrs.playback_total_s ?? playerEntity?.attributes?.media_duration ?? 0,
     );
     const downloadProgress = Number(attrs.download_progress ?? 0);
     const progress = total > 0
       ? Math.max(0, Math.min(100, (position / total) * 100))
       : Math.max(0, Math.min(100, downloadProgress));
     return { position, total, progress };
-  }
-
-  _clampPlaybackPosition(value, total) {
-    const numericValue = Number(value);
-    const numericTotal = Number(total);
-    if (!Number.isFinite(numericValue)) return 0;
-    const max = Number.isFinite(numericTotal) && numericTotal > 0 ? numericTotal : 0;
-    return Math.max(0, Math.min(max, numericValue));
-  }
-
-  _supportsMediaSeek(playerEntity) {
-    if (!this._isUsableEntity(playerEntity)) return false;
-    const features = Number(playerEntity?.attributes?.supported_features || 0);
-    return Boolean(features & F1_MEDIA_PLAYER_SEEK_FEATURE);
-  }
-
-  _playbackPreview(playback) {
-    if (this._seekPreviewPosition === null || this._seekPreviewPosition === undefined) {
-      return playback;
-    }
-    const position = this._clampPlaybackPosition(this._seekPreviewPosition, playback.total);
-    const progress = playback.total > 0
-      ? Math.max(0, Math.min(100, (position / playback.total) * 100))
-      : playback.progress;
-    return { ...playback, position, progress };
-  }
-
-  _handleSeekInput(ev, playback) {
-    this._seekPreviewPosition = this._clampPlaybackPosition(ev?.target?.value, playback.total);
-  }
-
-  async _handleSeekChange(ev, playback, state) {
-    if (this._seekBusy || this._isBusyState(state) || typeof this.hass?.callService !== 'function') return;
-    const playerId = this._configuredEntityId('player_entity');
-    if (!playerId) return;
-
-    const seekPosition = this._clampPlaybackPosition(ev?.target?.value, playback.total);
-    this._seekPreviewPosition = seekPosition;
-    this._seekBusy = true;
-    try {
-      await this.hass.callService('media_player', 'media_seek', {
-        entity_id: playerId,
-        seek_position: seekPosition,
-      });
-    } finally {
-      this._seekBusy = false;
-      this._seekPreviewPosition = null;
-    }
-  }
-
-  _renderProgress(playback, playerEntity, state) {
-    const canSeek = this._supportsMediaSeek(playerEntity) && playback.total > 0;
-    const preview = this._playbackPreview(playback);
-    const progressStyle = `--rc-progress: ${preview.progress.toFixed(1)}%;`;
-    const disabled = this._seekBusy || this._isBusyState(state);
-
-    return html`
-      <div class="rc-progress">
-        <span class="rc-progress-time">${this._formatTime(preview.position)}</span>
-        ${canSeek ? html`
-          <span class="rc-seek-wrap">
-            <input
-              class="rc-seek-input"
-              type="range"
-              min="0"
-              max=${Math.max(0, Math.floor(playback.total))}
-              step="1"
-              .value=${String(Math.floor(preview.position))}
-              style=${progressStyle}
-              aria-label="Replay position"
-              ?disabled=${disabled}
-              @input=${(ev) => this._handleSeekInput(ev, playback)}
-              @change=${(ev) => this._handleSeekChange(ev, playback, state)}
-            />
-          </span>
-        ` : html`
-          <div class="rc-progress-track">
-            <div class="rc-progress-bar" style=${progressStyle}></div>
-          </div>
-        `}
-        <span class="rc-progress-time">${this._formatTime(playback.total)}</span>
-      </div>
-    `;
   }
 
   _downloadError(statusEntity) {
@@ -17226,6 +17070,7 @@ class F1ReplayControlCard extends LitElement {
       || statusEntity?.attributes?.selected_year
       || '--';
     const playback = this._playback(statusEntity, playerEntity);
+    const progressStyle = `--rc-progress: ${playback.progress.toFixed(1)}%;`;
     const downloadError = this._downloadError(statusEntity);
     const showSecondarySelects = this.config.show_secondary_selects !== false && !compact;
     const showStatusDetails = this.config.show_status_details !== false && !compact;
@@ -17273,7 +17118,15 @@ class F1ReplayControlCard extends LitElement {
               : compact ? null : this._renderSetupActionsGroup(state)}
           </div>
 
-          ${this.config.show_progress !== false ? this._renderProgress(playback, playerEntity, state) : null}
+          ${this.config.show_progress !== false ? html`
+            <div class="rc-progress">
+              <span class="rc-progress-time">${this._formatTime(playback.position)}</span>
+              <div class="rc-progress-track">
+                <div class="rc-progress-bar" style=${progressStyle}></div>
+              </div>
+              <span class="rc-progress-time">${this._formatTime(playback.total)}</span>
+            </div>
+          ` : null}
 
           <div class="rc-controls">
             ${this._visibleActions().map((action) => this._renderAction(action, state))}
@@ -29982,6 +29835,7 @@ class F1TrackMapCard extends LitElement {
       title: 'F1 Track Map',
       entry_id: 'auto',
       lap_count_entity: 'auto',
+      driver_positions_entity: 'auto',
       track_status_entity: 'auto',
     };
   }
@@ -30053,6 +29907,7 @@ class F1TrackMapCard extends LitElement {
       show_lap_progress: true,
       show_track_status: true,
       lap_count_entity: 'auto',
+      driver_positions_entity: 'auto',
       track_status_entity: 'auto',
       track_status_line_mode: 'accent',
       layout_mode: 'auto',
@@ -30072,6 +29927,7 @@ class F1TrackMapCard extends LitElement {
     merged.show_lap_progress = merged.show_lap_progress !== false;
     merged.show_track_status = merged.show_track_status !== false;
     merged.lap_count_entity = this._normalizeOptionalSource(merged.lap_count_entity, 'auto');
+    merged.driver_positions_entity = this._normalizeOptionalSource(merged.driver_positions_entity, 'auto');
     merged.track_status_entity = this._normalizeOptionalSource(merged.track_status_entity, 'auto');
 
     const lineMode = String(merged.track_status_line_mode || 'accent').trim().toLowerCase();
@@ -30283,7 +30139,7 @@ class F1TrackMapCard extends LitElement {
 
   render() {
     const snapshot = this._snapshot;
-    const drivers = Array.isArray(snapshot?.drivers) ? snapshot.drivers : [];
+    const drivers = this._visibleDrivers(snapshot?.drivers);
     const session = snapshot?.session || {};
     const title = this.config?.title || 'F1 Track Map';
     const sessionText = this._sessionText(session);
@@ -30591,7 +30447,8 @@ class F1TrackMapCard extends LitElement {
   _drawDrivers(ctx, drivers, transform, canvasWidth = 0) {
     if (!Array.isArray(drivers)) return;
     const labelMode = this.config?.driver_label_mode || (this.config?.show_labels === false ? 'off' : 'tla');
-    const ordered = [...drivers].sort((a, b) => Number(a.racing_number) - Number(b.racing_number));
+    const ordered = this._visibleDrivers(drivers)
+      .sort((a, b) => Number(a.racing_number) - Number(b.racing_number));
     for (const driver of ordered) {
       const x = Number(driver?.x);
       const y = Number(driver?.y);
@@ -30631,6 +30488,52 @@ class F1TrackMapCard extends LitElement {
     return String(driver?.tla || driver?.racing_number || '').slice(0, 3);
   }
 
+  _visibleDrivers(drivers) {
+    if (!Array.isArray(drivers)) return [];
+    const retiredKeys = this._retiredDriverKeys();
+    return drivers.filter((driver) => !this._isRetiredDriver(driver, retiredKeys));
+  }
+
+  _isRetiredDriver(driver, retiredKeys = null) {
+    if (!driver || typeof driver !== 'object') return false;
+    if (this._statusMarksRetired(driver)) return true;
+    const keys = retiredKeys || this._retiredDriverKeys();
+    const racingNumber = String(driver.racing_number ?? '').trim();
+    const tla = String(driver.tla ?? '').trim().toUpperCase();
+    return (racingNumber && keys.has(`rn:${racingNumber}`)) || (tla && keys.has(`tla:${tla}`));
+  }
+
+  _statusMarksRetired(info) {
+    if (!info || typeof info !== 'object') return false;
+    const status = String(info.status || '').trim().toLowerCase();
+    return info.retired === true || status === 'retired' || status === 'out';
+  }
+
+  _retiredDriverKeys() {
+    const entity = this._entityFromConfig('driver_positions_entity', [
+      'sensor.f1_drivers_f1_driver_positions',
+      'sensor.f1_driver_positions',
+      'sensor.f1_session_f1_driver_positions',
+      'sensor.f1_session_driver_positions',
+    ]);
+    if (!entity || isUnavailableLikeEntityState(entity)) return new Set();
+    const drivers = entity.attributes?.drivers;
+    const keys = new Set();
+    const addDriver = (driver, fallbackKey = '') => {
+      if (!this._statusMarksRetired(driver)) return;
+      const racingNumber = String(driver?.racing_number ?? fallbackKey).match(/\d+/)?.[0] || '';
+      const tla = String(driver?.tla ?? '').trim().toUpperCase();
+      if (racingNumber) keys.add(`rn:${racingNumber}`);
+      if (tla) keys.add(`tla:${tla}`);
+    };
+    if (Array.isArray(drivers)) {
+      drivers.forEach((driver) => addDriver(driver));
+    } else if (drivers && typeof drivers === 'object') {
+      Object.entries(drivers).forEach(([key, driver]) => addDriver(driver, key));
+    }
+    return keys;
+  }
+
   _teamColor(value) {
     const text = String(value || '').trim().replace(/^#/, '');
     return /^[0-9a-fA-F]{6}$/.test(text) ? `#${text}` : '#d8dee8';
@@ -30651,7 +30554,7 @@ class F1TrackMapCard extends LitElement {
 
   _noteSnapshotArrival(snapshot) {
     const replayState = String(snapshot?.replay_state || '').toLowerCase();
-    const drivers = Array.isArray(snapshot?.drivers) ? snapshot.drivers : [];
+    const drivers = this._visibleDrivers(snapshot?.drivers);
     if (!drivers.length || replayState === 'paused' || replayState === 'seeking') {
       this._lastSnapshotAt = 0;
       this._renderClockAt = 0;
@@ -30670,7 +30573,7 @@ class F1TrackMapCard extends LitElement {
   }
 
   _ingestDriverSamples(snapshot) {
-    const drivers = Array.isArray(snapshot?.drivers) ? snapshot.drivers : [];
+    const drivers = this._visibleDrivers(snapshot?.drivers);
     if (!drivers.length) {
       this._driverSamples.clear();
       return;
@@ -30709,9 +30612,10 @@ class F1TrackMapCard extends LitElement {
   }
 
   _displayDrivers(drivers) {
-    if (!Array.isArray(drivers) || this._driverSamples.size === 0) return drivers;
+    const visibleDrivers = this._visibleDrivers(drivers);
+    if (!visibleDrivers.length || this._driverSamples.size === 0) return visibleDrivers;
     const renderAt = this._driverRenderTime();
-    return drivers.map((driver) => {
+    return visibleDrivers.map((driver) => {
       const key = String(driver?.racing_number || '').trim();
       const current = this._sampledDriverPosition(key, renderAt);
       return current ? { ...driver, x: current.x, y: current.y } : driver;
@@ -30833,7 +30737,7 @@ class F1TrackMapCard extends LitElement {
         || trackBounds;
     }
 
-    const drivers = Array.isArray(snapshot?.drivers) ? snapshot.drivers : [];
+    const drivers = this._visibleDrivers(snapshot?.drivers);
     const driverBounds = this._boundsFromDrivers(drivers, presentation);
     if (!driverBounds) return null;
     return this._stableViewportBounds(driverBounds);
@@ -31033,6 +30937,7 @@ class F1TrackMapCardEditor extends LitElement {
       driver_label_mode: config?.show_labels === false ? 'off' : 'tla',
       show_lap_progress: true,
       lap_count_entity: 'auto',
+      driver_positions_entity: 'auto',
       show_track_status: true,
       track_status_entity: 'auto',
       track_status_line_mode: 'accent',
@@ -31085,6 +30990,11 @@ class F1TrackMapCardEditor extends LitElement {
           'track_status_entity',
           'Track status entity',
           'Use auto, leave empty to disable, or enter a track status sensor entity id.',
+        )}
+        ${this._renderTextField(
+          'driver_positions_entity',
+          'Driver positions entity',
+          'Use auto, leave empty to disable OUT filtering, or enter a driver positions sensor entity id.',
         )}
       </div>
     `;
