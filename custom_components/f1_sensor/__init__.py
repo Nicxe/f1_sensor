@@ -1790,7 +1790,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         and auth_transport_enabled
         and live_timing_auth_status.status not in AUTH_REPAIR_STATUSES
     )
-    auth_reauth_required = bool(live_timing_auth_status.issue_required)
     if not auth_can_be_used:
         live_timing_auth_header = ""
     else:
@@ -1833,7 +1832,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                                 bool(getattr(live_state, "is_live", False)),
                                 getattr(live_state, "reason", None),
                             )
-        entry.async_start_reauth(hass, data=entry.data)
 
     live_bus = LiveBus(
         hass,
@@ -2251,8 +2249,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if isinstance(hass_data, dict):
         async_update_f1tv_auth_repair_issue(hass, entry, live_timing_auth_status)
         async_schedule_f1tv_auth_status_refresh(hass, entry)
-        if auth_reauth_required:
-            entry.async_start_reauth(hass, data=entry.data)
 
         def _on_component_loaded(event):
             component = str((getattr(event, "data", {}) or {}).get("component") or "")
