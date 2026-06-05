@@ -770,7 +770,13 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
 
     assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is False
     assert entry_data["f1tv_auth_status"].status == "rejected"
-    entry.async_start_reauth.assert_called_once_with(hass, data=entry.data)
+    entry.async_start_reauth.assert_not_called()
+    assert (
+        ir.async_get(hass).async_get_issue(
+            DOMAIN, f1tv_auth_repair_issue_id(entry.entry_id)
+        )
+        is not None
+    )
 
 
 @pytest.mark.asyncio
@@ -841,7 +847,7 @@ async def test_async_setup_entry_uses_auth_when_development_ui_disabled(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_starts_reauth_for_expired_auth_and_keeps_public_live(
+async def test_async_setup_entry_creates_repair_for_expired_auth_and_keeps_public_live(
     hass, monkeypatch
 ) -> None:
     monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", True)
@@ -903,7 +909,7 @@ async def test_async_setup_entry_starts_reauth_for_expired_auth_and_keeps_public
     entry_data = hass.data[DOMAIN][entry.entry_id]
     assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is False
     assert entry_data["f1tv_auth_status"].status == "expired"
-    entry.async_start_reauth.assert_called_once_with(hass, data=entry.data)
+    entry.async_start_reauth.assert_not_called()
     assert (
         ir.async_get(hass).async_get_issue(
             DOMAIN, f1tv_auth_repair_issue_id(entry.entry_id)

@@ -61,6 +61,14 @@ Optional [F1TV Auth](/features/f1tv-auth) is only needed for extra live timing f
 </details>
 
 <details>
+<summary>Do I need F1 TV Pro for F1TV Auth?</summary>
+
+No. F1TV Auth needs a Formula 1 account with an active F1 TV subscription that includes Essential Live Timing. F1 TV Access is enough in regions where Formula 1 offers it; F1 TV Pro and F1 TV Premium are not required just to pair auth.
+
+F1 controls subscription names, availability, and prices. As a rough guide, F1 TV Access has been shown around EUR 3.49 per month and F1 TV Pro around EUR 17.99 per month, but check the F1 TV subscription page for your country before subscribing.
+</details>
+
+<details>
 <summary>What does F1TV Auth unlock?</summary>
 
 F1TV Auth can unlock extra live data when Formula 1 provides it during an active session.

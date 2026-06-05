@@ -131,6 +131,8 @@ const result = {
   labelOff: card._driverLabel({ tla: "VER", racing_number: "1" }, "off"),
   emptyState: card._emptyState(),
   layoutMode: card._effectiveLayoutMode(),
+  visibleDrivers: card._visibleDrivers(payload.drivers || []).map((driver) => driver.racing_number),
+  displayDrivers: card._displayDrivers(payload.drivers || []).map((driver) => driver.racing_number),
 };
 
 if (payload.motion) {
@@ -183,10 +185,12 @@ def test_track_map_card_defaults_are_backward_compatible() -> None:
     assert result["config"]["driver_label_mode"] == "tla"
     assert result["config"]["show_labels"] is True
     assert result["config"]["lap_count_entity"] == "auto"
+    assert result["config"]["driver_positions_entity"] == "auto"
     assert result["config"]["track_status_entity"] == "auto"
     assert result["config"]["track_status_line_mode"] == "accent"
     assert result["config"]["layout_mode"] == "auto"
     assert result["stub"]["type"] == "custom:f1-track-map-card"
+    assert result["stub"]["driver_positions_entity"] == "auto"
     assert result["editorTag"] == "f1-track-map-card-editor"
     assert result["labelTla"] == "VER"
     assert result["labelNumber"] == "1"
@@ -364,6 +368,57 @@ def test_track_map_card_keeps_live_driver_motion_active_until_latest_sample() ->
     assert active_live["hasActiveDriverMotion"] is True
     assert stale_live["hasActiveDriverMotion"] is False
     assert paused_replay["hasActiveDriverMotion"] is False
+
+
+def test_track_map_card_hides_retired_drivers() -> None:
+    """Drivers marked OUT should not remain visible on the track map."""
+    result = _run_probe(
+        {
+            "drivers": [
+                {"racing_number": "1", "status": "OnTrack"},
+                {"racing_number": "2", "status": "OUT"},
+                {"racing_number": "3", "status": "retired"},
+                {"racing_number": "4", "retired": True},
+                {"racing_number": "5", "status": "Stopped"},
+            ],
+        }
+    )
+
+    assert result["visibleDrivers"] == ["1", "5"]
+    assert result["displayDrivers"] == ["1", "5"]
+
+
+def test_track_map_card_uses_driver_positions_status_for_out_filter() -> None:
+    """Driver positions OUT status should remove the matching car from the map."""
+    result = _run_probe(
+        {
+            "drivers": [
+                {"racing_number": "1", "status": "OnTrack"},
+                {"racing_number": "2", "status": "OnTrack"},
+                {"racing_number": "3", "tla": "SAI", "status": "OnTrack"},
+            ],
+            "hass": {
+                "states": {
+                    "sensor.f1_drivers_f1_driver_positions": {
+                        "state": "25",
+                        "attributes": {
+                            "drivers": [
+                                {
+                                    "racing_number": "2",
+                                    "status": "out",
+                                    "retired": True,
+                                },
+                                {"tla": "SAI", "status": "out"},
+                            ]
+                        },
+                    },
+                }
+            },
+        }
+    )
+
+    assert result["visibleDrivers"] == ["1"]
+    assert result["displayDrivers"] == ["1"]
 
 
 def test_track_map_card_is_registered_as_configurable() -> None:

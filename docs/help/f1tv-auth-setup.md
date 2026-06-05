@@ -73,9 +73,13 @@ Before you start, make sure you have:
 
 1. F1 Sensor installed in Home Assistant.
 2. Access to Home Assistant logs if you need to troubleshoot.
-3. A Formula 1 account with the required F1TV access for live timing.
+3. A Formula 1 account with an active F1 TV subscription that includes Essential Live Timing.
 4. Chrome or another Chromium-based browser.
 5. The [F1TV Token Helper](https://chromewebstore.google.com/detail/f1tv-token-helper-beta/bbpgdcjohdjcechlffloekhpgdbjoafh) extension installed.
+
+:::info
+F1 TV Access is enough for F1TV Auth in regions where Formula 1 offers it. You do not need F1 TV Pro or F1 TV Premium just to pair F1TV Auth, although those plans also work when they include the same live timing access.
+:::
 
 Enable debug logging before reporting issues.
 See [Debug Logging and Logs](/help/debug-logging) for the recommended logging setup and log collection steps.

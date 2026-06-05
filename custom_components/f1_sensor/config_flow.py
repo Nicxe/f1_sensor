@@ -413,7 +413,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema(
             {
                 vol.Optional(CONF_START_F1TV_PAIRING, default=False): cv.boolean,
-                vol.Required(CONF_LIVE_TIMING_AUTH_HEADER): _AUTH_HEADER_SELECTOR,
+                vol.Optional(CONF_LIVE_TIMING_AUTH_HEADER): _AUTH_HEADER_SELECTOR,
                 vol.Optional(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, default=False): (
                     cv.boolean
                 ),

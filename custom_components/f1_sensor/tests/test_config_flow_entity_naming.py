@@ -45,6 +45,15 @@ def _schema_key_order(result: dict) -> list[str]:
     return [str(key.schema) for key in result["data_schema"].schema]
 
 
+def _schema_required_key_names(result: dict) -> set[str]:
+    """Return the required string field names from a config flow form schema."""
+    return {
+        str(key.schema)
+        for key in result["data_schema"].schema
+        if key.__class__.__name__ == "Required"
+    }
+
+
 def _part(value: dict) -> str:
     raw = json.dumps(value, separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
@@ -105,6 +114,7 @@ async def test_user_flow_shows_auth_but_hides_development_fields_when_developmen
     assert order.index(CONF_START_F1TV_PAIRING) < order.index(
         CONF_LIVE_TIMING_AUTH_HEADER
     )
+    assert CONF_LIVE_TIMING_AUTH_HEADER not in _schema_required_key_names(result)
 
 
 async def test_user_flow_shows_f1tv_pairing_when_development_ui_enabled(
@@ -496,6 +506,7 @@ async def test_reauth_is_available_when_development_ui_disabled(
     assert order.index(CONF_START_F1TV_PAIRING) < order.index(
         CONF_LIVE_TIMING_AUTH_HEADER
     )
+    assert CONF_LIVE_TIMING_AUTH_HEADER not in _schema_required_key_names(result)
 
 
 async def test_reauth_is_hidden_when_f1tv_auth_disabled(hass, monkeypatch) -> None:

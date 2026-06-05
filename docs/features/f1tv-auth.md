@@ -33,6 +33,12 @@ Public live timing covers the normal live features most dashboards and automatio
 
 F1TV Auth can support live features such as Track Map, Pit Stops, Championship Prediction, formation start refinement, and earlier incident candidate signals. These features still depend on what Formula 1 publishes for each session, so a valid token does not guarantee that every extra feature is available every time.
 
+## Subscription requirement
+
+F1TV Auth requires a signed-in Formula 1 account with an active F1 TV subscription that includes Essential Live Timing. You do not need F1 TV Pro or F1 TV Premium just to pair F1TV Auth; F1 TV Access is enough in regions where Formula 1 offers it.
+
+F1 controls subscription names, availability, and prices. As a rough guide, F1 TV Access has been shown around EUR 3.49 per month and F1 TV Pro around EUR 17.99 per month, but check the F1 TV subscription page for your country before subscribing.
+
 :::info
 F1TV tokens are short-lived, and Formula 1 can vary which extra live data is published from session to session.
 Public live timing continues to work if F1TV access is missing, expired, invalid, or rejected.
