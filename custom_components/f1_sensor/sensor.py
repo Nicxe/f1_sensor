@@ -813,6 +813,8 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
         self._history_coordinator = None
 
     async def async_added_to_hass(self):
@@ -824,29 +826,23 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
                 self._handle_history_update
             )
             self.async_on_remove(removal)
+        self._refresh_cached_state()
 
     @callback
     def _handle_history_update(self) -> None:
+        self._refresh_cached_state()
         self._safe_write_ha_state()
 
     def _history_attributes(self) -> dict:
         data = getattr(self._history_coordinator, "data", None)
         return data if isinstance(data, dict) else {}
 
-    @property
-    def state(self):
-        next_race = self._get_next_race()
-        if not next_race:
-            return None
-        return _combine_date_time(
-            next_race.get("date"), next_race.get("time"), force_utc=True
-        )
-
-    @property
-    def extra_state_attributes(self):
+    def _refresh_cached_state(self) -> None:
         race = self._get_next_race()
         if not race:
-            return {}
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {}
+            return
 
         circuit = race.get("Circuit", {})
         loc = circuit.get("Location", {})
@@ -918,7 +914,21 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         _populate("sprint_start", sprint_start)
         attrs.update(self._history_attributes())
 
-        return attrs
+        self._attr_native_value = race_start
+        self._attr_extra_state_attributes = attrs
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._refresh_cached_state()
+        self._safe_write_ha_state()
+
+    @property
+    def state(self):
+        return self._attr_native_value
+
+    @property
+    def extra_state_attributes(self):
+        return self._attr_extra_state_attributes
 
 
 class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):

@@ -1301,6 +1301,63 @@ async def test_next_race_sensor_uses_2026_detailed_circuit_map(
 
 
 @pytest.mark.asyncio
+async def test_next_race_sensor_caches_state_attributes(hass, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.helpers.dt_util.utcnow",
+        lambda: datetime(2026, 3, 10, tzinfo=UTC),
+    )
+    timezone_calls = 0
+
+    def _fake_timezone(_lat, _lon):
+        nonlocal timezone_calls
+        timezone_calls += 1
+        return "Australia/Melbourne"
+
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.sensor._timezone_from_location",
+        _fake_timezone,
+    )
+    coordinator = _build_coordinator(
+        hass,
+        {"MRData": {"RaceTable": {"Races": [_build_race(date="2026-03-15")]}}},
+    )
+    entry_id = "test_entry_next_race_cache"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1NextRaceSensor(
+        coordinator,
+        f"{entry_id}_next_race",
+        entry_id,
+        "F1",
+    )
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert timezone_calls == 1
+    assert state.attributes["circuit_timezone"] == "Australia/Melbourne"
+
+    assert sensor.state == "2026-03-15T04:00:00+00:00"
+    assert sensor.extra_state_attributes["circuit_timezone"] == "Australia/Melbourne"
+    sensor.async_write_ha_state()
+    await hass.async_block_till_done()
+
+    assert timezone_calls == 1
+
+    coordinator.async_set_updated_data(
+        {
+            "MRData": {
+                "RaceTable": {"Races": [_build_race(round_="2", date="2026-03-22")]}
+            }
+        }
+    )
+    await hass.async_block_till_done()
+
+    assert timezone_calls == 2
+    updated_state = hass.states.get(sensor.entity_id)
+    assert updated_state is not None
+    assert updated_state.state == "2026-03-22T04:00:00+00:00"
+
+
+@pytest.mark.asyncio
 async def test_track_time_sensor_exposes_machine_readable_datetimes(
     hass, monkeypatch
 ) -> None:
