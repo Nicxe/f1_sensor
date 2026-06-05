@@ -137,6 +137,15 @@ from .track_map_websocket import TRACK_MAP_WS_MARKER, async_register_track_map_w
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _format_update_error(err: Exception) -> str:
+    """Return a useful message for exceptions with empty string output."""
+    if isinstance(err, TimeoutError):
+        return "request timed out"
+    message = str(err).strip()
+    return message or err.__class__.__name__
+
+
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
@@ -6398,7 +6407,9 @@ class F1DataCoordinator(DataUpdateCoordinator):
                     return self.data
                 return data
         except Exception as err:
-            raise UpdateFailed(f"Error fetching data: {err}") from err
+            raise UpdateFailed(
+                f"Error fetching data: {_format_update_error(err)}"
+            ) from err
 
 
 class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
@@ -7023,7 +7034,9 @@ class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
             }
             return history
         except Exception as err:
-            raise UpdateFailed(f"Error fetching next race history: {err}") from err
+            raise UpdateFailed(
+                f"Error fetching next race history: {_format_update_error(err)}"
+            ) from err
 
 
 class F1SeasonResultsCoordinator(DataUpdateCoordinator):
@@ -7313,7 +7326,9 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
                 return self._empty_result()
             return result
         except Exception as err:
-            raise UpdateFailed(f"Error fetching season results: {err}") from err
+            raise UpdateFailed(
+                f"Error fetching season results: {_format_update_error(err)}"
+            ) from err
 
 
 class F1SprintResultsCoordinator(DataUpdateCoordinator):
@@ -7371,7 +7386,9 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
                     return self.data
                 return data
         except Exception as err:
-            raise UpdateFailed(f"Error fetching sprint results: {err}") from err
+            raise UpdateFailed(
+                f"Error fetching sprint results: {_format_update_error(err)}"
+            ) from err
 
 
 class F1LapPositionProgressionCoordinator(DataUpdateCoordinator):
@@ -8096,7 +8113,9 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
                     persist_save=self._persist_save,
                 )
         except Exception as err:  # noqa: BLE001
-            raise UpdateFailed(f"Error fetching FIA documents: {err}") from err
+            raise UpdateFailed(
+                f"Error fetching FIA documents: {_format_update_error(err)}"
+            ) from err
 
         try:
             docs = parse_fia_documents(html)

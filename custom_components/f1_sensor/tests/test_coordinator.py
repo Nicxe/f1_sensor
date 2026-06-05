@@ -193,7 +193,7 @@ async def test_f1_data_coordinator_timeout_maps_to_update_failed(hass) -> None:
             "custom_components.f1_sensor.__init__.fetch_json",
             mock_fetch,
         )
-        with pytest.raises(UpdateFailed, match="Error fetching data"):
+        with pytest.raises(UpdateFailed, match="Error fetching data: request timed out"):
             await coordinator._async_update_data()
 
 

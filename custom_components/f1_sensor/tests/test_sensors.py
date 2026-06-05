@@ -1965,6 +1965,7 @@ async def test_pitstops_sensor_excludes_cars_from_recorder(hass) -> None:
 
     assert "cars" in state.attributes
     assert "last_update" in state.attributes
+    assert "state_class" not in state.attributes
     assert state.state_info is not None
     assert "cars" in state.state_info["unrecorded_attributes"]
 

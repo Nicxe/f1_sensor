@@ -10,7 +10,6 @@ from zoneinfo import ZoneInfo
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
-    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
@@ -5012,7 +5011,6 @@ class F1PitStopsSensor(
         self._attr_icon = "mdi:car-wrench"
         self._attr_native_value = 0
         self._attr_extra_state_attributes = {"cars": {}, "last_update": None}
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
