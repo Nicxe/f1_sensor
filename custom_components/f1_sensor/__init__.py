@@ -3373,6 +3373,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             "total_stops": 0,
             "cars": {},
             "last_update": None,
+            "last_reset": dt_util.utcnow().isoformat(timespec="seconds"),
         }
 
     async def async_close(self, *_):
@@ -3415,7 +3416,12 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._by_car = {}
         self._dedup = set()
         self._driver_pit_counts = {}
-        self._state = {"total_stops": 0, "cars": {}, "last_update": None}
+        self._state = {
+            "total_stops": 0,
+            "cars": {},
+            "last_update": None,
+            "last_reset": dt_util.utcnow().isoformat(timespec="seconds"),
+        }
         with suppress(Exception):
             self.async_set_updated_data(self._state)
 
@@ -3672,6 +3678,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             "total_stops": int(total),
             "cars": cars,
             "last_update": dt_util.utcnow().isoformat(timespec="seconds"),
+            "last_reset": self._state.get("last_reset"),
         }
         self.async_set_updated_data(self._state)
 
@@ -5102,9 +5109,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             _clear_delayed_ingest_state(self)
             return
         self.available = is_live
-        self._tyre_live_started_mono = (
-            time.monotonic() if is_live and not self._replay_mode else None
-        )
+        self._tyre_live_started_mono = None
         self._tyre_first_compound_logged = False
         self._tyre_missing_warning_logged = False
         if not is_live:
@@ -5821,7 +5826,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             }
 
     def _merge_sessionstatus(self, payload: dict) -> None:
+        previous = self._state.get("session_status")
+        was_running = self._session_status_is_running(previous)
         self._state["session_status"] = payload
+        is_running = self._session_status_is_running(payload)
+        if is_running and not was_running and not self._replay_mode:
+            self._tyre_live_started_mono = time.monotonic()
+            self._tyre_first_compound_logged = False
+            self._tyre_missing_warning_logged = False
+        elif not is_running and self._session_status_is_terminal(payload):
+            self._tyre_live_started_mono = None
         with suppress(Exception):
             msg = str(payload.get("Status") or payload.get("Message") or "").strip()
             started_flag = payload.get("Started")
@@ -5834,6 +5848,24 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 self._state["frozen"] = False
                 # Capture grid positions when session starts
                 self._capture_grid_positions_if_needed()
+
+    @staticmethod
+    def _session_status_is_running(payload: Any) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        status = str(payload.get("Status") or payload.get("Message") or "").strip()
+        return payload.get("Started") is True or status in {
+            "Started",
+            "Green",
+            "GreenFlag",
+        }
+
+    @staticmethod
+    def _session_status_is_terminal(payload: Any) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        status = str(payload.get("Status") or payload.get("Message") or "").strip()
+        return status in {"Finished", "Finalised", "Ends"}
 
     @staticmethod
     def _extract(data: dict, key: str) -> dict | None:

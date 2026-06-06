@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
@@ -5011,6 +5012,8 @@ class F1PitStopsSensor(
         self._attr_icon = "mdi:car-wrench"
         self._attr_native_value = 0
         self._attr_extra_state_attributes = {"cars": {}, "last_update": None}
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._last_reset: datetime.datetime | None = None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -5032,6 +5035,9 @@ class F1PitStopsSensor(
                     self._attr_extra_state_attributes = dict(
                         getattr(last, "attributes", {}) or {}
                     )
+                    self._last_reset = self._parse_last_reset(
+                        self._attr_extra_state_attributes.get("last_reset")
+                    )
             else:
                 self._clear_state()
         self._handle_stream_state(updated)
@@ -5047,6 +5053,7 @@ class F1PitStopsSensor(
         total = payload.get("total_stops")
         cars = payload.get("cars")
         last_update = payload.get("last_update")
+        last_reset = self._parse_last_reset(payload.get("last_reset"))
 
         try:
             total_int = int(total) if total is not None else 0
@@ -5060,13 +5067,27 @@ class F1PitStopsSensor(
         if (not force) and self._attr_native_value == total_int:
             with suppress(Exception):
                 prev_cars = (self._attr_extra_state_attributes or {}).get("cars")
-                if prev_cars == cars:
+                if prev_cars == cars and self._last_reset == last_reset:
                     return
         self._attr_native_value = total_int
+        self._last_reset = last_reset
         self._attr_extra_state_attributes = {
             "cars": cars if isinstance(cars, dict) else {},
             "last_update": last_update,
         }
+
+    @staticmethod
+    def _parse_last_reset(value) -> datetime.datetime | None:
+        if isinstance(value, datetime.datetime):
+            return value if value.tzinfo is not None else None
+        if not isinstance(value, str):
+            return None
+        parsed = dt_util.parse_datetime(value)
+        return parsed if parsed is not None and parsed.tzinfo is not None else None
+
+    @property
+    def last_reset(self) -> datetime.datetime | None:
+        return self._last_reset
 
     def _handle_coordinator_update(self) -> None:
         payload = self._extract_current()

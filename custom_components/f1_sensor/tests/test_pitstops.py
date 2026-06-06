@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -411,3 +412,39 @@ async def test_pitstopseries_limits_entries_per_payload(hass) -> None:
     retained = sum(len(stops) for stops in coordinator._by_car.values())
     assert retained == PITSTOP_MAX_ENTRIES_PER_PAYLOAD
     assert len(coordinator._dedup) == PITSTOP_MAX_ENTRIES_PER_PAYLOAD
+
+
+@pytest.mark.asyncio
+async def test_pitstop_last_reset_is_stable_until_store_reset(
+    hass, monkeypatch
+) -> None:
+    reset_times = iter(
+        (
+            "2026-06-06T10:30:00+00:00",
+            "2026-06-06T10:45:00+00:00",
+            "2026-06-06T11:30:00+00:00",
+        )
+    )
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.__init__.dt_util.utcnow",
+        lambda: datetime.fromisoformat(next(reset_times)),
+    )
+    coordinator = PitStopCoordinator(
+        hass,
+        session_coord=MagicMock(),
+        delay_seconds=0,
+        bus=None,
+        config_entry=None,
+        delay_controller=None,
+        live_state=None,
+    )
+
+    initial_reset = coordinator._state["last_reset"]
+    coordinator._add_stop("44", {"lap": 10, "timestamp": "10:45:00"})
+    coordinator._deliver()
+
+    assert coordinator.data["last_reset"] == initial_reset
+
+    coordinator._reset_store()
+
+    assert coordinator.data["last_reset"] == "2026-06-06T11:30:00+00:00"
