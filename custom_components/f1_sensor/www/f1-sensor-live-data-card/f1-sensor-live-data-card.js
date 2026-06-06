@@ -25926,20 +25926,20 @@ class F1PracticeTimingCard extends LitElement {
     let rows = [];
     let title = this._buildTitle(sessionState);
     const positionsMissing = !positionsState;
-    if (positionsState && !isUnavailableLikeEntityState(positionsState)) {
+    if (positionsState && this._hasUsableDriversEntity(positionsState)) {
       const positionDrivers = this._asDriversList(positionsState?.attributes?.drivers);
 
       const tyresState = this.config.tyres_entity
         ? getEntityStateWithFallback(this.hass, this.config.tyres_entity)
         : null;
-      const tyresDrivers = tyresState && !isUnavailableLikeEntityState(tyresState)
+      const tyresDrivers = tyresState && this._hasUsableDriversEntity(tyresState)
         ? this._asDriversList(tyresState?.attributes?.drivers)
         : [];
 
       const driversState = this.config.drivers_entity
         ? getEntityStateWithFallback(this.hass, this.config.drivers_entity)
         : null;
-      const driverList = driversState && !isUnavailableLikeEntityState(driversState)
+      const driverList = driversState && this._hasUsableDriversEntity(driversState)
         ? this._asDriversList(driversState?.attributes?.drivers)
         : [];
 
@@ -26329,6 +26329,16 @@ class F1PracticeTimingCard extends LitElement {
     if (Array.isArray(value)) return value;
     if (!value || typeof value !== 'object') return [];
     return Object.values(value).filter((entry) => entry && typeof entry === 'object');
+  }
+
+  _hasUsableDriversEntity(entityState) {
+    return Boolean(
+      entityState
+        && (
+          !isUnavailableLikeEntityState(entityState)
+          || this._asDriversList(entityState?.attributes?.drivers).length > 0
+        ),
+    );
   }
 
   _buildLapSnapshot(positionInfo) {
