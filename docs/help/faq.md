@@ -151,6 +151,14 @@ If you want to avoid spoilers before watching, turn on [**No Spoiler Mode**](/fe
 See the [Replay Mode documentation](/features/replay-mode) for setup instructions.
 </details>
 
+<details>
+<summary>Should I use Replay Mode or Developer mode with a replay dump?</summary>
+
+Use [Replay Mode](/features/replay-mode) when you want to watch a completed session later. It downloads the session archive and provides normal controls for selecting, loading, playing, pausing, and seeking.
+
+Use [Developer Mode with Replay Dumps](/help/developer-mode) only for integration development or a specific maintainer-led test. It replaces the live timing connection with a local dump, starts automatically after reload, and does not provide pause or seek controls for that dump.
+</details>
+
 
 <details>
 <summary>How do I keep my dashboard spoiler-free until I can watch?</summary>

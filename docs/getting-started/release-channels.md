@@ -54,6 +54,12 @@ Dev builds can change quickly, include incomplete behavior, or require maintaine
 
 Normal users should not install directly from `dev`. Wait for a beta release if you want to help test new behavior with a safer upgrade path.
 
+:::info[Dev channel and Developer mode are different]
+The **Dev channel** selects which version of F1 Sensor you install. **Developer mode** selects a local replay dump as the live timing source for repeatable testing.
+
+Installing the `dev` branch does not automatically activate Developer mode, and the Developer mode fields remain hidden unless the build explicitly enables them. See [Developer Mode with Replay Dumps](/help/developer-mode).
+:::
+
 ## Switch back to stable
 
 If a beta or dev build causes problems, switch back to the latest stable release.

@@ -75,49 +75,17 @@ When validating the first beta release, focus on behavior that affects real dash
 Debug logs are often required when you report beta issues.
 Follow [Debug Logging and Logs](/help/debug-logging) before reproducing the problem.
 
-## Development replay testing
+## Developer mode testing
 
-Development replay testing lets maintainers run the integration with recorded live timing data.
-This is useful for testing dashboards, automations, and entity behavior without waiting for an active Formula 1 session.
+Developer mode lets maintainers run the integration with a local recording of live timing data. It is useful for repeatable testing without waiting for an active Formula 1 session.
 
 :::warning[Development builds only]
-The development replay controls are not part of the normal beta testing path. In released builds, these controls can be hidden. Use the normal [Replay Mode](/features/replay-mode) page unless the maintainer explicitly asks you to test a development dump.
+Developer mode is not part of the normal beta testing path. Its configuration fields are hidden unless the installed build enables the developer interface.
+
+Use normal [Replay Mode](/features/replay-mode) when you want to watch a completed session. Use [Developer Mode with Replay Dumps](/help/developer-mode) only when you are developing F1 Sensor or the maintainer asks you to test a specific dump.
 :::
 
-### About development replay dumps
-
-A replay dump is a real-time recording of a live session.
-Timing between events is preserved, so a full replay can take up to three hours to complete.
-
-The replay usually starts with a `pre` session phase where weather and session metadata update continuously.
-When the session goes `live`, cars begin running and other sensors such as tyres, laps, and timing become active.
-
-Use only replay dump files provided by the maintainer or created during local development.
-
-### Step 1 - Enable replay mode
-
-1. Open **Home Assistant**.
-2. Go to **Settings**.
-3. Open **Devices & services**.
-4. Select **F1 Sensor**.
-5. Select **Configure**.
-6. Set **Operation mode** to **Development**.
-7. Enter the absolute file path to your replay dump in **Replay dump path**.
-8. Submit the form.
-
-The integration reloads immediately.
-
-![Development mode](/img/dev_mode.png)
-
-### Step 2 - Verify replay mode
-
-Check the logs for this message:
-
-```text
-Starting F1 Sensor in development replay mode
-```
-
-If the replay dump path is missing, invalid, or unreadable, the integration falls back to the live SignalR connection.
+The Developer mode guide explains when to use this mode, why it is useful for regression testing, how local dump timing behaves, and how to return the integration to Live mode.
 
 ## Report issues and feedback
 
@@ -144,7 +112,7 @@ When creating an issue, include:
 
 1. The exact F1 Sensor version.
 2. Your Home Assistant version.
-3. Whether you are running public live timing, F1TV Auth live timing, Replay Mode, or development replay mode.
+3. Whether you are running public live timing, F1TV Auth live timing, Replay Mode, or Developer mode with a replay dump.
 4. Whether you are using a beta release.
 5. A clear description of the problem.
 6. What you expected to happen.

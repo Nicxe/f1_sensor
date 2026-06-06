@@ -15,7 +15,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Testing and Issues',
-      items: ['help/beta-tester', 'help/debug-logging', 'help/issues'],
+      items: ['help/beta-tester', 'help/developer-mode', 'help/debug-logging', 'help/issues'],
     },
     {
       type: 'category',
