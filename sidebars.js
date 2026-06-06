@@ -14,11 +14,6 @@ const sidebars = {
     },
     {
       type: 'category',
-      label: 'Testing and Issues',
-      items: ['help/beta-tester', 'help/debug-logging', 'help/issues'],
-    },
-    {
-      type: 'category',
       label: 'Features',
       items: [
         'features/live-delay',
@@ -64,6 +59,11 @@ const sidebars = {
           items: ['example/custom-card', 'example/custom-card-by'],
         },
       ],
+    },
+    {
+      type: 'category',
+      label: 'Testing and Issues',
+      items: ['help/beta-tester', 'help/developer-mode', 'help/debug-logging', 'help/issues'],
     },
 
     {

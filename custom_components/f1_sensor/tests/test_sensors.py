@@ -619,6 +619,7 @@ def _build_pitstops_data(*, cars: int = 20, stops_per_car: int = 8) -> dict:
         "total_stops": cars * stops_per_car,
         "cars": payload,
         "last_update": "2026-03-01T14:59:00Z",
+        "last_reset": "2026-03-01T14:00:00+00:00",
     }
 
 
@@ -1965,12 +1966,20 @@ async def test_pitstops_sensor_excludes_cars_from_recorder(hass) -> None:
 
     assert "cars" in state.attributes
     assert "last_update" in state.attributes
+    assert state.attributes["state_class"] == "total"
+    assert state.attributes["last_reset"] == "2026-03-01T14:00:00+00:00"
     assert state.state_info is not None
     assert "cars" in state.state_info["unrecorded_attributes"]
 
     shared_attrs, _ = _recorder_shared_attrs(state)
     assert "cars" not in shared_attrs
     assert "last_update" in shared_attrs
+
+    updated_payload = _build_pitstops_data(stops_per_car=8)
+    updated_payload["last_reset"] = "2026-03-01T15:00:00+00:00"
+    sensor._apply_payload(updated_payload)
+
+    assert sensor.last_reset == datetime.fromisoformat("2026-03-01T15:00:00+00:00")
 
 
 @pytest.mark.asyncio

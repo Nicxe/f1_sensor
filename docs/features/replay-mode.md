@@ -7,6 +7,11 @@ Replay Mode lets you watch historical F1 sessions with full Home Assistant integ
 
 Your lights can react to a red flag. Your dashboard can show live timing. Race Control messages can still drive notifications while you watch the session later.
 Likely on-track incident detection can also follow replayed sessions, so incident notifications and the On-track Incident binary sensors can behave like they do during live timing. If the replay includes Track Map data, incident events can include the same optional location summary used during live sessions.
+
+:::info[Replay Mode is the normal historical playback feature]
+Use Replay Mode when you want to watch a completed session later. Do not switch the integration to Developer mode or provide a replay dump for this workflow.
+:::
+
 :::warning[Replay seek behavior]
 Replay Mode includes seek controls for catching up with your broadcast. Rewinding can replay historical events again, so replay-driven automations and notifications may run again by design.
 :::
@@ -19,10 +24,40 @@ If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoil
 ## What to expect
 
 Replay Mode downloads completed session data from Formula 1's public archive and plays it back through your Home Assistant entities. By starting playback at the same moment the session begins on your TV, your dashboard and automations can follow the broadcast closely.
+
+You do not need a local replay dump, a developer build, or F1TV Auth. Replay Mode provides its own selectors, load controls, media player, pause, and seek support.
+
 :::info[Standard entity IDs]
 This page uses the standard Replay Mode entity IDs for new installations, such as `select.f1_replay_year` and `media_player.f1_replay_player`.
 
 If you upgraded from an older release and already have different registry IDs, keep using those existing entities. The integration does not rename installed entities automatically.
+:::
+
+---
+
+## Replay Mode vs Developer mode
+
+Replay Mode and Developer mode both send recorded timing data through live entities, but they solve different problems.
+
+| Choose | When you should use it |
+| --- | --- |
+| **Replay Mode** | You want to watch a completed F1 session and keep Home Assistant synchronized with the broadcast |
+| **Developer mode** | You are developing or testing F1 Sensor and need to reproduce a known sequence from a local replay dump |
+
+| Behavior | Replay Mode | Developer mode |
+| --- | --- | --- |
+| Data source | Formula 1's completed session archive | Local replay dump file |
+| Normal audience | Home Assistant users | Maintainers and contributors |
+| Session selection | Year and session selectors | File path configured before integration reload |
+| Playback start | Manual **Load** and **Play** controls | Starts automatically when the integration loads |
+| Pause and seek | Supported | Not supported for the local dump |
+| Typical goal | Follow a TV or streaming replay | Reproduce bugs and run repeatable tests |
+| Availability | Normal releases | Only builds with the developer interface enabled |
+
+:::tip[Simple decision]
+Watching a race, sprint, qualifying, or practice session later? Use Replay Mode.
+
+Testing the integration with a dump supplied or captured for development? Use [Developer Mode with Replay Dumps](/help/developer-mode).
 :::
 
 ---
