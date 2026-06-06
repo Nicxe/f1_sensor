@@ -85,6 +85,7 @@ const classSource = source.slice(classStart, classEnd);
 const helperSources = [
   extractConst("const resolveEntityIdWithFallback = (hass, entityId) =>"),
   extractConst("const getEntityStateWithFallback = (hass, entityId) =>"),
+  extractConst("const isUnavailableLikeEntityState = (entityState) =>"),
   extractConst("const getStateAgeSeconds = (state, field = 'last_changed') =>"),
   extractStatement("const POST_SESSION_RETENTION_SECONDS ="),
   extractStatement("const TERMINAL_SESSION_STATUSES ="),
@@ -101,6 +102,7 @@ const methodSources = [
   extractMethod(classSource, "_isPracticeSession(sessionState, sessionStatusState) {"),
   extractMethod(classSource, "_isPracticeLikeLabel(label) {"),
   extractMethod(classSource, "_asDriversList(value) {"),
+  extractMethod(classSource, "_hasUsableDriversEntity(entityState) {"),
   extractMethod(classSource, "_buildLapSnapshot(positionInfo) {"),
   extractMethod(classSource, "_normalizeLapEntries(laps) {"),
   extractMethod(classSource, "_resolveLastLapEntry(entries, completedLaps) {"),
@@ -172,6 +174,15 @@ process.stdout.write(
     readsPositionsFastestLap: classSource.includes(
       "positionsState?.attributes?.fastest_lap",
     ),
+    renderUsesUsableDriversEntity: classSource.includes(
+      "positionsState && this._hasUsableDriversEntity(positionsState)",
+    ),
+    unknownStateWithDriversUsable: harness._hasUsableDriversEntity({
+      state: "unknown",
+      attributes: {
+        drivers: payload.positionDrivers,
+      },
+    }),
   }),
 );
 """
@@ -242,6 +253,28 @@ def test_practice_card_prefers_session_number_for_title() -> None:
     )
 
     assert result["title"] == "Free Practice 3"
+
+
+def test_practice_card_uses_driver_attributes_when_position_state_unknown() -> None:
+    """Practice timing remains usable when the lap-count state is unknown."""
+    result = _run_card_probe(
+        session_state={"state": "Practice 3", "attributes": {"number": 3}},
+        session_status_state={"state": "live"},
+        position_drivers=[
+            {
+                "racing_number": "12",
+                "tla": "ANT",
+                "team": "Mercedes",
+                "current_position": "1",
+                "completed_laps": 18,
+                "laps": {"18": "1:12.720"},
+            }
+        ],
+    )
+
+    assert result["renderUsesUsableDriversEntity"] is True
+    assert result["unknownStateWithDriversUsable"] is True
+    assert result["rows"][0]["tla"] == "ANT"
 
 
 def test_practice_card_derives_laps_and_status_from_driver_history() -> None:
