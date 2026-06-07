@@ -18,7 +18,20 @@ It works without F1TV Auth. Public live timing powers core live entities such as
 
 Start with the [installation guide](/getting-started/installation), then use [configuration](/getting-started/add-integration) to add F1 Sensor to Home Assistant.
 
-If you are preparing for beta testing, read [Release Channels](/getting-started/release-channels) first. Stable is for normal use, beta is for validating the next release, and `dev` contains all active unreleased work.
+Most users should install the stable release. See [Release Channels](/getting-started/release-channels) before using beta or `dev` builds.
+
+## Version 5.1
+
+Version 5.1 expands live, replay, dashboard, and automation support:
+
+- [Track Map](/features/track-map) adds live and replay circuit maps with driver markers
+- [Incident Detection](/features/incident-detection) adds neutral stopped-car and on-track incident alerts
+- [Incident Notifications](/blueprints/incident-notifications) adds a ready-made notification blueprint with conservative defaults
+- [F1TV Auth](/features/f1tv-auth) becomes a standard optional feature for supported extra live timing data
+- [Replay Mode](/features/replay-mode) adds a draggable seek bar and improved replay state restoration
+- [Live Data Cards](/cards/cards-overview) add lap position and championship progression charts, Track Map, and compact layouts
+
+Version 5.1 also includes reliability fixes for replay controls, practice timing, pit stop and tyre data, next-race updates, expired F1TV access, and consecutive Track Status blueprint alerts.
 
 ## Features
 
@@ -31,11 +44,9 @@ Take your setup further with focused feature pages:
 - [Track Map](/features/track-map) - Show car markers on a circuit map during live or replay sessions
 - [Incident Detection](/features/incident-detection) - Detect likely stopped cars or on-track incidents with neutral alerts
 
-## Beta testing
+## Blueprints
 
-The first beta release is the point where changes promoted from `dev` become a testable pre-release. Use the beta channel when you want to validate new behavior before it reaches stable, and use the dev branch only for maintainer-led development testing.
-
-For the recommended testing workflow, see [Beta Testing](/help/beta-tester).
+Use ready-made blueprints for [Track Status lights](/blueprints/track-status-light), [Race Control notifications](/blueprints/race-control-notifications), [Incident Notifications](/blueprints/incident-notifications), and [Replay Sync](/blueprints/replay-sync).
 
 ## Timing modes
 
