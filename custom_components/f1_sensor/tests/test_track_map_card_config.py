@@ -130,6 +130,7 @@ const result = {
   labelNumber: card._driverLabel({ tla: "VER", racing_number: "1" }, "number"),
   labelOff: card._driverLabel({ tla: "VER", racing_number: "1" }, "off"),
   emptyState: card._emptyState(),
+  presentation: card._presentationState(),
   layoutMode: card._effectiveLayoutMode(),
   visibleDrivers: card._visibleDrivers(payload.drivers || []).map((driver) => driver.racing_number),
   displayDrivers: card._displayDrivers(payload.drivers || []).map((driver) => driver.racing_number),
@@ -368,6 +369,46 @@ def test_track_map_card_keeps_live_driver_motion_active_until_latest_sample() ->
     assert active_live["hasActiveDriverMotion"] is True
     assert stale_live["hasActiveDriverMotion"] is False
     assert paused_replay["hasActiveDriverMotion"] is False
+
+
+def test_track_map_card_hides_stale_live_positions() -> None:
+    """Stale live snapshots should not leave old cars visible on the map."""
+    result = _run_probe(
+        {
+            "snapshot": {
+                "source": "live",
+                "status": "stale",
+                "stale": True,
+                "session": {
+                    "meeting_name": "Monaco Grand Prix",
+                    "session_name": "Qualifying",
+                },
+                "drivers": [
+                    {"racing_number": "1", "status": "OnTrack"},
+                    {"racing_number": "4", "status": "OnTrack"},
+                ],
+                "track": {"points": [[0, 0], [1, 1]]},
+            },
+            "drivers": [
+                {"racing_number": "1", "status": "OnTrack"},
+                {"racing_number": "4", "status": "OnTrack"},
+            ],
+        }
+    )
+
+    assert result["emptyState"]["title"] == "No active live session"
+    assert result["emptyState"]["detail"] == (
+        "Live timing is waiting for the next active session."
+    )
+    assert result["presentation"] == {
+        "hide_live_metadata": True,
+        "session": {},
+        "show_badges": False,
+        "show_footer": False,
+        "show_session_info": False,
+    }
+    assert result["visibleDrivers"] == []
+    assert result["displayDrivers"] == []
 
 
 def test_track_map_card_hides_retired_drivers() -> None:

@@ -29980,6 +29980,7 @@ class F1TrackMapCard extends LitElement {
     this._snapshotIntervalMs = 0;
     this._driverSampleIntervalMs = 0;
     this._renderClockAt = 0;
+    this._staleTimer = 0;
   }
 
   setConfig(config) {
@@ -30019,6 +30020,7 @@ class F1TrackMapCard extends LitElement {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
     }
+    this._clearStaleTimer();
   }
 
   firstUpdated() {
@@ -30194,6 +30196,7 @@ class F1TrackMapCard extends LitElement {
     this._snapshotIntervalMs = 0;
     this._driverSampleIntervalMs = 0;
     this._renderClockAt = 0;
+    this._clearStaleTimer();
   }
 
   _callUnsubscribe(unsubscribe) {
@@ -30216,6 +30219,7 @@ class F1TrackMapCard extends LitElement {
     this._status = message?.status || this._snapshot?.status || 'not_loaded';
     this._error = null;
     this._ingestDriverSamples(snapshot);
+    this._scheduleStaleTransition(snapshot);
     this.requestUpdate();
     this._scheduleDraw();
   }
@@ -30225,6 +30229,7 @@ class F1TrackMapCard extends LitElement {
     if (replayState === 'paused') return 'Paused';
     if (replayState === 'seeking') return 'Seeking';
     if (replayState === 'playing') return 'Replay';
+    if (this._liveSnapshotIsStale()) return 'No session';
     const sourceLabel = this._sourceLabel(this._snapshot);
     const labels = {
       active: sourceLabel,
@@ -30241,6 +30246,7 @@ class F1TrackMapCard extends LitElement {
   _visualStatusState() {
     const replayState = String(this._snapshot?.replay_state || '').toLowerCase();
     if (['playing', 'paused', 'seeking'].includes(replayState)) return replayState;
+    if (this._liveSnapshotIsStale()) return 'no_session';
     return this._status || 'not_loaded';
   }
 
@@ -30262,6 +30268,12 @@ class F1TrackMapCard extends LitElement {
       };
     }
     const isLive = this._snapshot.source === 'live';
+    if (this._liveSnapshotIsStale(this._snapshot)) {
+      return {
+        title: 'No active live session',
+        detail: 'Live timing is waiting for the next active session.',
+      };
+    }
     if (!this._snapshot.session) {
       return {
         title: isLive ? 'No live timing session loaded' : 'No replay session loaded',
@@ -30297,15 +30309,16 @@ class F1TrackMapCard extends LitElement {
 
   render() {
     const snapshot = this._snapshot;
+    const presentation = this._presentationState(snapshot);
     const drivers = this._visibleDrivers(snapshot?.drivers);
-    const session = snapshot?.session || {};
+    const session = presentation.session;
     const title = this.config?.title || 'F1 Track Map';
     const sessionText = this._sessionText(session);
     const footer = this._footerText(snapshot, drivers.length);
     const empty = this._emptyState();
     const layoutMode = this._effectiveLayoutMode();
-    const trackStatus = this._trackStatusInfo();
-    const lapData = this._lapData();
+    const trackStatus = presentation.show_badges ? this._trackStatusInfo() : null;
+    const lapData = presentation.show_badges ? this._lapData() : null;
     const visualStatus = this._visualStatusState();
     const driverCountText = this.config.show_driver_count !== false
       ? `${drivers.length} ${drivers.length === 1 ? 'car' : 'cars'}`
@@ -30324,20 +30337,20 @@ class F1TrackMapCard extends LitElement {
             <div class="tm-header">
               <div class="tm-title-block">
                 <div class="tm-title">${title}</div>
-                ${this.config.show_session_info !== false ? html`
+                ${presentation.show_session_info ? html`
                   <div class="tm-subtitle">
                     <span>${sessionText}</span>
                     ${driverCountText ? html`<span>${driverCountText}</span>` : null}
                   </div>
                 ` : null}
               </div>
-              <div class="tm-badges">
+              ${presentation.show_badges ? html`<div class="tm-badges">
                 <span class="tm-status">${this._statusLabel()}</span>
                 ${trackStatus && this.config.show_track_status !== false ? html`
                   <span class="tm-status track ${trackStatus.alert ? 'alert' : ''}">${trackStatus.label}</span>
                 ` : null}
                 ${lapData && this.config.show_lap_progress !== false ? this._renderLapBadge(lapData) : null}
-              </div>
+              </div>` : null}
             </div>
           ` : null}
           <div class="tm-canvas-frame">
@@ -30349,7 +30362,7 @@ class F1TrackMapCard extends LitElement {
               </div>
             ` : null}
           </div>
-          ${this.config.show_footer !== false ? html`<div class="tm-footer">
+          ${presentation.show_footer ? html`<div class="tm-footer">
             <span>${sessionText}</span>
             <span>${footer}</span>
           </div>` : null}
@@ -30381,8 +30394,8 @@ class F1TrackMapCard extends LitElement {
   }
 
   _footerText(snapshot, driverCount) {
+    if (this._liveSnapshotIsStale(snapshot)) return '';
     const parts = [this._sourceLabel(snapshot)];
-    if (snapshot?.stale === true) parts.push('Stale');
     if (snapshot?.stream_timestamp) parts.push(`Updated ${this._formatShortTime(snapshot.stream_timestamp)}`);
     parts.push(`${driverCount} ${driverCount === 1 ? 'car' : 'cars'}`);
     return parts.join(' / ');
@@ -30485,6 +30498,50 @@ class F1TrackMapCard extends LitElement {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
 
+  _liveSnapshotIsStale(snapshot = this._snapshot) {
+    if (String(snapshot?.source || '').trim().toLowerCase() !== 'live') return false;
+    const status = String(snapshot?.status || this._status || '').trim().toLowerCase();
+    if (snapshot?.stale === true || status === 'stale') return true;
+    const streamTimestamp = Date.parse(String(snapshot?.stream_timestamp || ''));
+    const staleAfterSeconds = Number(snapshot?.stale_after_seconds);
+    if (!Number.isFinite(streamTimestamp) || !Number.isFinite(staleAfterSeconds)) return false;
+    return Date.now() >= streamTimestamp + (Math.max(0, staleAfterSeconds) * 1000);
+  }
+
+  _presentationState(snapshot = this._snapshot) {
+    const hideLiveMetadata = this._liveSnapshotIsStale(snapshot);
+    return {
+      hide_live_metadata: hideLiveMetadata,
+      session: hideLiveMetadata ? {} : (snapshot?.session || {}),
+      show_badges: !hideLiveMetadata,
+      show_footer: !hideLiveMetadata && this.config?.show_footer !== false,
+      show_session_info: !hideLiveMetadata && this.config?.show_session_info !== false,
+    };
+  }
+
+  _scheduleStaleTransition(snapshot) {
+    this._clearStaleTimer();
+    if (String(snapshot?.source || '').trim().toLowerCase() !== 'live') return;
+    if (this._liveSnapshotIsStale(snapshot)) return;
+    const streamTimestamp = Date.parse(String(snapshot?.stream_timestamp || ''));
+    const staleAfterSeconds = Number(snapshot?.stale_after_seconds);
+    if (!Number.isFinite(streamTimestamp) || !Number.isFinite(staleAfterSeconds)) return;
+    const delay = streamTimestamp + (Math.max(0, staleAfterSeconds) * 1000) - Date.now();
+    if (delay <= 0) return;
+    this._staleTimer = window.setTimeout(() => {
+      this._staleTimer = 0;
+      this._driverSamples.clear();
+      this.requestUpdate();
+      this._scheduleDraw();
+    }, delay + 25);
+  }
+
+  _clearStaleTimer() {
+    if (!this._staleTimer) return;
+    window.clearTimeout(this._staleTimer);
+    this._staleTimer = 0;
+  }
+
   _scheduleDraw() {
     if (this._drawRaf) return;
     this._drawRaf = requestAnimationFrame(() => {
@@ -30514,6 +30571,7 @@ class F1TrackMapCard extends LitElement {
     this._drawGrid(ctx, rect.width, rect.height);
 
     const snapshot = this._snapshot;
+    if (this._liveSnapshotIsStale(snapshot)) return;
     const presentation = this._presentationTransform(snapshot?.track);
     const bounds = this._drawableBounds(snapshot, presentation);
     if (!snapshot || !bounds) return;
@@ -30646,8 +30704,9 @@ class F1TrackMapCard extends LitElement {
     return String(driver?.tla || driver?.racing_number || '').slice(0, 3);
   }
 
-  _visibleDrivers(drivers) {
+  _visibleDrivers(drivers, snapshot = this._snapshot) {
     if (!Array.isArray(drivers)) return [];
+    if (this._liveSnapshotIsStale(snapshot)) return [];
     const retiredKeys = this._retiredDriverKeys();
     return drivers.filter((driver) => !this._isRetiredDriver(driver, retiredKeys));
   }
@@ -30712,7 +30771,7 @@ class F1TrackMapCard extends LitElement {
 
   _noteSnapshotArrival(snapshot) {
     const replayState = String(snapshot?.replay_state || '').toLowerCase();
-    const drivers = this._visibleDrivers(snapshot?.drivers);
+    const drivers = this._visibleDrivers(snapshot?.drivers, snapshot);
     if (!drivers.length || replayState === 'paused' || replayState === 'seeking') {
       this._lastSnapshotAt = 0;
       this._renderClockAt = 0;
@@ -30731,7 +30790,7 @@ class F1TrackMapCard extends LitElement {
   }
 
   _ingestDriverSamples(snapshot) {
-    const drivers = this._visibleDrivers(snapshot?.drivers);
+    const drivers = this._visibleDrivers(snapshot?.drivers, snapshot);
     if (!drivers.length) {
       this._driverSamples.clear();
       return;
@@ -30895,7 +30954,7 @@ class F1TrackMapCard extends LitElement {
         || trackBounds;
     }
 
-    const drivers = this._visibleDrivers(snapshot?.drivers);
+    const drivers = this._visibleDrivers(snapshot?.drivers, snapshot);
     const driverBounds = this._boundsFromDrivers(drivers, presentation);
     if (!driverBounds) return null;
     return this._stableViewportBounds(driverBounds);
