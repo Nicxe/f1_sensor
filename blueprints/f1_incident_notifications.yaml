@@ -10,7 +10,7 @@ blueprint:
     so supported notify targets update an existing incident notification instead of
     creating duplicates for the same incident.
   domain: automation
-  source_url: https://github.com/Nicxe/f1_sensor
+  source_url: https://github.com/Nicxe/f1_sensor/blob/main/blueprints/f1_incident_notifications.yaml
   author: Nicxe
   input:
     notification_targets:

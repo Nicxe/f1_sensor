@@ -142,9 +142,9 @@ This is expected behavior. The live sensors only update shortly before, during, 
 
 Yes. The integration includes [**Replay Mode**](/features/replay-mode), which lets you play back historical sessions with full Home Assistant integration. When you watch a recorded race from F1 TV or another service, your automations and dashboards can follow the replay much more like a live broadcast.
 
-Replay Mode now also includes experimental 30-second catch-up controls in Version 1. You can use **Back 30 seconds** and **Forward 30 seconds** to manually line up the replay with your broadcaster if the timing drifts.
+Replay Mode includes a draggable seek bar and **Back 30 seconds** and **Forward 30 seconds** controls. Use them to line up Home Assistant with your broadcaster if the timing drifts.
 
-This catch-up feature is still experimental, so more refinement may be needed as development continues.
+Seeking backward can replay historical state changes, so replay-driven automations, notifications, and incident alerts may run again.
 
 If you want to avoid spoilers before watching, turn on [**No Spoiler Mode**](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode and experience everything as if it were live.
 

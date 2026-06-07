@@ -58,16 +58,16 @@ The `dev` branch contains all active unreleased work. It can include changes tha
 
 If you need a reliable fallback, switch back to the latest stable release through HACS by using **Redownload** and selecting the latest non-beta version.
 
-## What to focus on in this beta
+## What to test
 
-When validating the first beta release, focus on behavior that affects real dashboards, automations, and update flows:
+When validating a beta release, focus on the changed areas listed in its release notes and the behavior that affects real dashboards, automations, and update flows:
 
 1. Installing and switching between stable and beta through HACS.
 2. Public live timing without F1TV Auth.
 3. Optional F1TV Auth setup and renewal through the Token Helper.
 4. Track Map behavior in live sessions and Replay Mode.
 5. Incident Detection wording, confidence, and notification timing.
-6. Replay Mode controls, including the 30-second catch-up buttons.
+6. Replay Mode controls, including the seek bar and 30-second buttons.
 7. Bundled Live Data Cards after restart and browser reload.
 
 ## Enable debug logging

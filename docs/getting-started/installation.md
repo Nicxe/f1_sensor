@@ -3,18 +3,16 @@ id: installation
 title: Installation & Configuration
 ---
 
-# Installation & Configuration
-
 Get up and running with F1 Sensor in just a few minutes.  
 This guide walks you through installation and configuration in Home Assistant, step by step.
 
 :::info[Choose the right release channel]
-Most users should install the latest stable release. If you want to test the first beta release or follow active development builds, read [Release Channels](/getting-started/release-channels) before installing.
+Most users should install the latest stable release. If you want to test a beta release or follow active development builds, read [Release Channels](/getting-started/release-channels) before installing.
 :::
 
 
 
-## Overview, how it works
+## How it works
 
 
 

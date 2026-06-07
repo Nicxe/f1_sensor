@@ -825,6 +825,12 @@ variables:
     {% else %}
       {{ '' }}
     {% endif %}
+  trigger_from_track_state: >-
+    {% if trigger is defined and trigger.from_state is defined and trigger.from_state is not none %}
+      {{ trigger.from_state.state | upper }}
+    {% else %}
+      {{ '' }}
+    {% endif %}
   current_session_now: >-
     {% if current_session_entity | string | length > 0 %}
       {{ states(current_session_entity) | string }}
@@ -850,12 +856,7 @@ variables:
     {% elif current_session_entity | string | length == 0 %}
       false
     {% else %}
-      {% set now_label = current_session_now | trim %}
-      {% if now_label in ['', 'unknown', 'unavailable', 'none', 'None'] %}
-        false
-      {% else %}
-        {{ now_label in allowed_current_sessions }}
-      {% endif %}
+      {{ (current_session_effective | trim) in allowed_current_sessions }}
     {% endif %}
   session_scope_ok: >-
     {% if not current_session_filter_enabled %}
@@ -1109,7 +1110,13 @@ actions:
         sequence:
           - if:
               - condition: template
-                value_template: "{{ snapshot_before_alert_enabled and trigger.id == 'track_update' and track_state in ['YELLOW', 'RED', 'SC', 'VSC'] }}"
+                value_template: >-
+                  {{
+                    snapshot_before_alert_enabled
+                    and trigger.id == 'track_update'
+                    and track_state in ['YELLOW', 'RED', 'SC', 'VSC']
+                    and trigger_from_track_state not in ['YELLOW', 'RED', 'SC', 'VSC']
+                  }}
             then:
               - continue_on_error: true
                 action: scene.create
