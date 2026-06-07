@@ -10,12 +10,19 @@ const sidebars = {
     {
       type: 'category',
       label: 'Getting Started',
-      items: ['getting-started/installation', 'getting-started/add-integration'],
+      items: ['getting-started/installation', 'getting-started/add-integration', 'getting-started/release-channels'],
     },
     {
       type: 'category',
       label: 'Features',
-      items: ['features/live-delay', 'features/replay-mode', 'features/no-spoiler-mode', 'features/context7'],
+      items: [
+        'features/live-delay',
+        'features/replay-mode',
+        'features/no-spoiler-mode',
+        'features/f1tv-auth',
+        'features/track-map',
+        'features/incident-detection',
+      ],
     },
     {
       type: 'category',
@@ -32,7 +39,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Blueprints',
-      items: ['blueprints/track-status-light', 'blueprints/race-control-notifications', 'blueprints/replay-sync'],
+      items: ['blueprints/track-status-light', 'blueprints/race-control-notifications', 'blueprints/incident-notifications', 'blueprints/replay-sync'],
     },
 
     {
@@ -43,16 +50,9 @@ const sidebars = {
 
     {
       type: 'category',
-      label: 'Testing',
-      items: ['help/beta-tester', 'help/experimental-testing', 'help/debug-logging'],
-    },
-
-    {
-      type: 'category',
       label: 'Showcase',
       items: [
         'example/e-ink',
-        'example/season-progression-charts',
         {
           type: 'category',
           label: 'Community Builds',
@@ -60,16 +60,22 @@ const sidebars = {
         },
       ],
     },
+    {
+      type: 'category',
+      label: 'Testing and Issues',
+      items: ['help/beta-tester', 'help/developer-mode', 'help/debug-logging', 'help/issues'],
+    },
 
     {
       type: 'category',
       label: 'Need Help?',
       items: [
         'help/faq',
-        'help/Issues',
         'help/contact',
+        'help/f1tv-auth-setup',
         'help/f1tv-token-helper',
         'help/f1tv-token-helper-privacy',
+        'features/context7',
       ],
     },
 

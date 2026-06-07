@@ -11,12 +11,14 @@ This blueprint listens to the [Race Control sensor](/entities/live-data#race-con
 :::tip[Sync with your TV]
 For notifications to arrive at the right moment, configure the [Live Delay](/features/live-delay) to match your broadcast offset.
 :::
+:::info[Race Control vs incident alerts]
+Race Control Notifications forward official messages. For neutral likely stopped-car alerts with confidence and incident phases, use the [Incident Notifications](/blueprints/incident-notifications) blueprint.
+:::
 
 ---
 
 
 ## Import the Blueprint
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FNicxe%2Ff1_sensor%2Fblob%2Fmain%2Fblueprints%2Ff1_race_control_notifications.yaml)
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNicxe%2Ff1_sensor%2Fmain%2Fblueprints%2Ff1_race_control_notifications.yaml)
 
@@ -178,7 +180,7 @@ The following variables are available inside your notification actions:
 | --- | --- |
 | `{{ notification_title }}` | Ready-to-use title combining prefix and flag |
 | `{{ notification_message }}` | Ready-to-use message with selected fields |
-| `{{ race_control_message }}` | The raw race control message text |
+| `{{ race_control_message }}` | The full race control message text |
 | `{{ race_control_category }}` | Event category |
 | `{{ race_control_flag }}` | Flag type |
 | `{{ race_control_scope }}` | Scope (track, sector, car) |
@@ -220,5 +222,6 @@ Enable **Filter Out Blue Flags** if you want to keep Race Control notifications 
 
 - [Race Control sensor](/entities/live-data#race-control)
 - [Session Status sensor](/entities/live-data#session-status)
+- [Incident Notifications blueprint](/blueprints/incident-notifications)
 - [Live Delay](/features/live-delay)
 - [Track Status Light blueprint](/blueprints/track-status-light)

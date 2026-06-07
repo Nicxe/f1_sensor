@@ -56,10 +56,28 @@ After Home Assistant restarts:
 1. Reproduce the issue you are testing or reporting.
 2. Note the approximate time when it happened.
 3. Note the installed F1 Sensor version.
-4. Note whether the integration is running in **Live** mode or **Development** replay mode.
-5. Note whether F1TV Auth was connected, expired, rejected, or not configured.
+4. Note whether the integration is using public live timing, F1TV Auth live timing, Replay Mode, or Developer mode with a replay dump.
+5. Note the state of `sensor.f1_f1tv_token_status` if the issue involves live auth.
+6. If present, note the state and attributes of `sensor.f1_live_timing_mode` when live timing is involved.
 
 These details make it easier to match log entries to the behavior you saw.
+
+## Incident detection reports
+
+For false positive or missing on-track incident reports, include the same basic log package plus:
+
+1. Session type and session name.
+2. Driver or car number involved.
+3. Approximate real-world time and, if relevant, broadcast time.
+4. Current `sensor.f1_track_status` state.
+5. Latest Race Control message around the incident.
+6. The `f1_sensor_incident` event payload for the relevant `incident_id`, if one fired.
+7. Whether Live Delay, Replay Mode, No Spoiler Mode, or F1TV Auth was active.
+8. Whether Track Map showed live or replay car positions.
+9. The Track Map card status, source, and stale indicator if visible.
+10. Whether the incident event included `location`, and whether `location.stale` was `true` or `false`.
+
+Do not include F1TV tokens, authorization headers, browser session data, or large telemetry dumps.
 
 ## Find raw logs
 
@@ -81,10 +99,13 @@ When you create a GitHub issue, include:
 1. The F1 Sensor version.
 2. Your Home Assistant version.
 3. Whether you are using a beta release.
-4. Whether you are using Live mode, Development replay mode, or F1TV Auth.
+4. Whether you are using public live timing, F1TV Auth live timing, Replay Mode, or Developer mode with a replay dump.
 5. What you expected to happen.
 6. What actually happened.
-7. Relevant debug log output with secrets removed.
+7. The state and attributes of `sensor.f1_live_timing_mode` when relevant and present.
+8. The state of `sensor.f1_f1tv_token_status` when relevant.
+9. Track Map status, source, and stale state when relevant.
+10. Relevant debug log output with secrets removed.
 
 Logs are often the key to understanding setup failures, token problems, replay behavior, and unexpected entity updates.
 

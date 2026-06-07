@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterator
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from functools import partial
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -95,6 +96,18 @@ from .helpers import (
     get_next_race,
     parse_fia_documents,
 )
+from .incident_detection import (
+    CONFIDENCE_ORDER,
+    DATA_QUALITY_BOOTSTRAP,
+    DATA_QUALITY_LIVE,
+    DATA_QUALITY_REPLAY,
+    IncidentChange,
+    IncidentDetector,
+    IncidentLocationContext,
+    SessionMetadata,
+    normalize_stream,
+)
+from .lap_position_websocket import async_register_lap_position_websocket
 from .live_delay import LiveDelayController, LiveDelayReferenceController
 from .live_window import (
     EventTrackerScheduleSource,
@@ -113,8 +126,25 @@ from .signalr import (
     build_live_subscribe_streams,
 )
 from .starting_grid import StartingGridCoordinator
+from .track_map import (
+    TRACK_MAP_SOURCE_LIVE,
+    TRACK_MAP_SOURCE_REPLAY,
+    TrackMapReplayAdapter,
+    TrackMapRuntimeData,
+    TrackMapStore,
+)
+from .track_map_websocket import TRACK_MAP_WS_MARKER, async_register_track_map_websocket
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _format_update_error(err: Exception) -> str:
+    """Return a useful message for exceptions with empty string output."""
+    if isinstance(err, TimeoutError):
+        return "request timed out"
+    message = str(err).strip()
+    return message or err.__class__.__name__
+
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -128,6 +158,19 @@ _ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES = (
     "_race_time_to_three_hour_limit",
 )
 _ACTIVITY_FILTER_MARKER = "__f1_sensor_activity_filter__"
+RACE_CONTROL_LOG_MAX_ITEMS = 500
+RACE_CONTROL_LOG_MAX_FIELD_CHARS = 512
+RACE_CONTROL_LOG_EVENT_ID_CHARS = 40
+MAX_DELAY_QUEUE_ITEMS = 2048
+DELAY_QUEUE_DROP_LOG_INTERVAL = 60.0
+MAX_TYRE_STINTS_PER_DRIVER = 32
+MAX_TYRE_STINT_INDEX = MAX_TYRE_STINTS_PER_DRIVER - 1
+PITSTOP_MAX_HISTORY_PER_CAR = 10
+PITSTOP_MAX_CARS = 30
+PITSTOP_MAX_CARS_PER_PAYLOAD = 60
+PITSTOP_MAX_ENTRIES_PER_PAYLOAD = 200
+PITSTOP_MAX_RACING_NUMBER_CHARS = 3
+PITSTOP_MAX_TEXT_CHARS = 80
 _ACTIVITY_FILTER_REBIND_MARKER = "__f1_sensor_activity_filter_rebound__"
 _ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER = "__f1_sensor_activity_logbook_subscribe__"
 _ACTIVITY_FILTER_COMPONENTS = frozenset({"recorder", "logbook"})
@@ -138,11 +181,24 @@ _RC_LOG_STORE_KEY = "race_control_log_store"
 _RC_LOG_EVENT = f"{DOMAIN}_race_control_event"
 _RC_LOG_RESET_EVENT = f"{DOMAIN}_race_control_log_reset_event"
 _RC_LOG_WS_TYPE = f"{DOMAIN}/race_control_log/get"
+_INCIDENT_EVENT = f"{DOMAIN}_incident"
+_INCIDENT_STREAMS: tuple[str, ...] = (
+    "DriverList",
+    "SessionInfo",
+    "SessionData",
+    "SessionStatus",
+    "TrackStatus",
+    "RaceControlMessages",
+    "TimingData",
+    "CarData.z",
+)
+_INCIDENT_BOOTSTRAP_SKIP_STREAMS = frozenset({"RaceControlMessages", "TrackStatus"})
 _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
     {
         _JOLPICA_STATS_KEY,
         _RC_LOG_SERVICE_MARKER,
         _RC_LOG_WS_MARKER,
+        TRACK_MAP_WS_MARKER,
     }
 )
 _FINISHING_PLUS_LAPS_RE = re.compile(r"^\+\d+\s+Laps?$", re.IGNORECASE)
@@ -294,10 +350,14 @@ def _apply_activity_log_filter_excludes(hass: HomeAssistant) -> None:
             logbook_websocket_api.async_subscribe_events = wrapped_subscribe
 
 
-def _rc_cleanup_string(value: Any) -> str | None:
+def _rc_cleanup_string(
+    value: Any, *, max_chars: int = RACE_CONTROL_LOG_MAX_FIELD_CHARS
+) -> str | None:
     if value is None:
         return None
     text = str(value).strip()
+    if len(text) > max_chars:
+        text = text[:max_chars]
     return text or None
 
 
@@ -328,6 +388,25 @@ def _format_race_control_state(payload: dict[str, Any]) -> str:
     return " - ".join(parts) if parts else "Race control update"
 
 
+def _race_control_message_id(item: dict[str, Any]) -> str:
+    try:
+        ts = _rc_cleanup_string(
+            item.get("Utc")
+            or item.get("utc")
+            or item.get("processedAt")
+            or item.get("timestamp")
+            or ""
+        )
+        text = _rc_cleanup_string(
+            item.get("Message") or item.get("Text") or item.get("Flag") or ""
+        )
+        cat = _rc_cleanup_string(item.get("Category") or item.get("CategoryType") or "")
+        material = f"{ts or ''}|{cat or ''}|{text or ''}"
+    except Exception:
+        material = json.dumps(item, sort_keys=True, default=str)
+    return hashlib.sha1(material.encode("utf-8", errors="ignore")).hexdigest()
+
+
 def _normalize_race_control_log_item(
     payload: dict[str, Any],
     *,
@@ -353,7 +432,7 @@ def _normalize_race_control_log_item(
         or payload.get("Driver")
     )
     message = _rc_cleanup_string(payload.get("Message") or payload.get("Text"))
-    event_id = RaceControlCoordinator._message_id(payload)
+    event_id = _race_control_message_id(payload)
     item = {
         "event_id": event_id,
         "utc": utc,
@@ -367,6 +446,38 @@ def _normalize_race_control_log_item(
         "sequence": sequence,
     }
     return item
+
+
+def _normalize_stored_race_control_log_item(
+    item: dict[str, Any],
+) -> dict[str, Any] | None:
+    event_id_raw = str(item.get("event_id") or "").strip()
+    event_id = (
+        hashlib.sha1(event_id_raw.encode("utf-8", errors="ignore")).hexdigest()
+        if len(event_id_raw) > RACE_CONTROL_LOG_EVENT_ID_CHARS
+        else event_id_raw
+    )
+    if not event_id:
+        event_id = _race_control_message_id(item)
+    try:
+        sequence = int(item.get("sequence") or 0) or None
+    except (TypeError, ValueError):
+        sequence = None
+    message = _rc_cleanup_string(item.get("message") or item.get("Message"))
+    return {
+        "event_id": event_id,
+        "utc": _normalize_race_control_timestamp(item.get("utc") or item.get("Utc")),
+        "received_at": _rc_cleanup_string(item.get("received_at")),
+        "category": _rc_cleanup_string(item.get("category") or item.get("Category")),
+        "flag": _rc_cleanup_string(item.get("flag") or item.get("Flag")),
+        "scope": _rc_cleanup_string(item.get("scope") or item.get("Scope")),
+        "sector": _rc_cleanup_string(item.get("sector") or item.get("Sector")),
+        "car_number": _rc_cleanup_string(
+            item.get("car_number") or item.get("CarNumber")
+        ),
+        "message": message or _format_race_control_state(item),
+        "sequence": sequence,
+    }
 
 
 def _resolve_race_control_session_label(info: dict[str, Any]) -> str | None:
@@ -450,9 +561,13 @@ class RaceControlLogStore:
             self._session_key = _rc_cleanup_string(stored.get("session_key"))
             raw_items = stored.get("items")
             if isinstance(raw_items, list):
-                self._items = [
-                    dict(item) for item in raw_items if isinstance(item, dict)
-                ]
+                self._items = []
+                for item in raw_items[-RACE_CONTROL_LOG_MAX_ITEMS:]:
+                    if not isinstance(item, dict):
+                        continue
+                    normalized = _normalize_stored_race_control_log_item(item)
+                    if normalized is not None:
+                        self._items.append(normalized)
             self._event_ids = {
                 str(item.get("event_id"))
                 for item in self._items
@@ -497,8 +612,13 @@ class RaceControlLogStore:
     def session_key(self) -> str | None:
         return self._session_key
 
-    def get_items(self) -> list[dict[str, Any]]:
-        return [dict(item) for item in reversed(self._items)]
+    def get_items(
+        self, limit: int = RACE_CONTROL_LOG_MAX_ITEMS
+    ) -> list[dict[str, Any]]:
+        max_items = min(RACE_CONTROL_LOG_MAX_ITEMS, max(0, int(limit or 0)))
+        if max_items <= 0:
+            return []
+        return [dict(item) for item in reversed(self._items[-max_items:])]
 
     def append(
         self, payload: dict[str, Any], *, received_at: str | None = None
@@ -517,6 +637,11 @@ class RaceControlLogStore:
         self._items.append(item)
         if event_id:
             self._event_ids.add(str(event_id))
+        while len(self._items) > RACE_CONTROL_LOG_MAX_ITEMS:
+            old = self._items.pop(0)
+            old_event_id = old.get("event_id")
+            if old_event_id:
+                self._event_ids.discard(str(old_event_id))
         self._next_sequence += 1
         self._schedule_save()
         return dict(item)
@@ -807,6 +932,8 @@ def _init_delayed_ingest_state(instance: Any) -> None:
     instance._delay_queue: deque[tuple[float, Callable[[], None]]] = deque()
     instance._delay_queue_handle = None
     instance._delay_queue_generation = 0
+    instance._delay_queue_dropped = 0
+    instance._delay_queue_last_drop_log = 0.0
 
 
 def _clear_delayed_ingest_state(instance: Any) -> None:
@@ -818,6 +945,8 @@ def _clear_delayed_ingest_state(instance: Any) -> None:
     queue = getattr(instance, "_delay_queue", None)
     if isinstance(queue, deque):
         queue.clear()
+    instance._delay_queue_dropped = 0
+    instance._delay_queue_last_drop_log = 0.0
 
 
 def _close_delayed_ingest_state(instance: Any) -> None:
@@ -893,6 +1022,20 @@ def _queue_delayed_ingest(instance: Any, callback: Callable[[], None]) -> None:
         if not isinstance(queue, deque):
             _init_delayed_ingest_state(instance)
             queue = instance._delay_queue
+        if len(queue) >= MAX_DELAY_QUEUE_ITEMS:
+            queue.popleft()
+            instance._delay_queue_dropped = (
+                int(getattr(instance, "_delay_queue_dropped", 0) or 0) + 1
+            )
+            now_mono = time.monotonic()
+            last_log = float(getattr(instance, "_delay_queue_last_drop_log", 0.0) or 0)
+            if now_mono - last_log >= DELAY_QUEUE_DROP_LOG_INTERVAL:
+                instance._delay_queue_last_drop_log = now_mono
+                _LOGGER.warning(
+                    "Delayed ingest queue reached %d items; dropped oldest payloads=%d",
+                    MAX_DELAY_QUEUE_ITEMS,
+                    instance._delay_queue_dropped,
+                )
         queue.append((received_at, callback))
         _arm_delayed_ingest_queue(instance)
 
@@ -1070,8 +1213,13 @@ def _seed_driver_map_from_ergast(
             if not isinstance(driver, dict):
                 continue
             rn = str(driver.get("permanentNumber") or "").strip()
-            if not rn:
+            if (
+                not rn
+                or not rn.isdecimal()
+                or len(rn) > PITSTOP_MAX_RACING_NUMBER_CHARS
+            ):
                 continue
+            rn = str(int(rn))
             existing = driver_map.get(rn)
             if isinstance(existing, dict) and (
                 existing.get("tla") or existing.get("name") or existing.get("team")
@@ -1092,7 +1240,13 @@ def _seed_driver_map_from_ergast(
                 c0 = constructors[0]
                 if isinstance(c0, dict):
                     team = c0.get("name")
-            driver_map[rn] = {"tla": code, "name": name, "team": team}
+            driver_map[rn] = {
+                "tla": str(code).strip()[:PITSTOP_MAX_TEXT_CHARS] if code else None,
+                "name": str(name).strip()[:PITSTOP_MAX_TEXT_CHARS] if name else None,
+                "team": str(team).strip()[:PITSTOP_MAX_TEXT_CHARS] if team else None,
+            }
+            if len(driver_map) >= PITSTOP_MAX_CARS:
+                break
     except Exception:
         return
 
@@ -1269,6 +1423,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "constructor_points_progression",
             "season_results",
             "sprint_results",
+            "lap_position_progression",
             "calendar",
         )
     )
@@ -1286,6 +1441,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "season_results",
             "driver_points_progression",
             "constructor_points_progression",
+            "lap_position_progression",
         )
     )
     need_sprint_results = any(
@@ -1294,8 +1450,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "sprint_results",
             "driver_points_progression",
             "constructor_points_progression",
+            "lap_position_progression",
         )
     )
+    need_lap_position_progression = "lap_position_progression" in enabled
     need_fia_docs = "fia_documents" in enabled
 
     # Jolpica/Ergast TTL strategy (network-efficient; dashboards can tolerate delay).
@@ -1309,6 +1467,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     TTL_SEASON_STABLE_PAGE = 30 * 24 * 3600  # older pages: effectively static
     TTL_SEASON_RECENT_PAGE = 24 * 3600  # second-to-last-ish pages
     TTL_SEASON_LATEST_PAGE = 6 * 3600  # latest page: updated after weekends
+    TTL_LAP_POSITION_STABLE = 30 * 24 * 3600
+    TTL_LAP_POSITION_LATEST = 6 * 3600
+    TTL_LAP_POSITION_PENDING = 6 * 3600
 
     # Build custom User-Agent for Jolpica/Ergast. Note: HA's async_create_clientsession
     # does not reliably override the default UA in recent core versions, so we apply
@@ -1353,6 +1514,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return TTL_LAST_RESULTS
             if "/ergast/f1/current/sprint.json" in kk:
                 return TTL_SPRINT
+            if "/ergast/f1/" in kk and "/laps.json" in kk:
+                return TTL_LAP_POSITION_STABLE
             if "/ergast/f1/current/results.json" in kk:
                 # Best-effort per-page TTL from offset (latest pages have higher offsets).
                 try:
@@ -1529,6 +1692,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if need_sprint_results
         else None
     )
+    lap_position_progression_coordinator = (
+        F1LapPositionProgressionCoordinator(
+            hass,
+            race_coordinator,
+            season_results_coordinator,
+            sprint_results_coordinator,
+            "F1 Lap Position Progression Coordinator",
+            session=http_session,
+            user_agent=ua_string,
+            cache=http_cache,
+            inflight=http_inflight,
+            ttl_stable=TTL_LAP_POSITION_STABLE,
+            ttl_latest=TTL_LAP_POSITION_LATEST,
+            ttl_pending=TTL_LAP_POSITION_PENDING,
+            persist_map=persisted_map,
+            persist_save=persisted.schedule_save,
+            config_entry=entry,
+        )
+        if need_lap_position_progression
+        else None
+    )
     fia_documents_coordinator = (
         FiaDocumentsCoordinator(
             hass,
@@ -1595,10 +1779,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
+    incident_coordinator = None
     race_control_log_store = None
     live_mode_coordinator = None
     top_three_coordinator = None
     starting_grid_coordinator = None
+    track_map_store = TrackMapStore(entry.entry_id)
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
@@ -1655,7 +1841,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                                 bool(getattr(live_state, "is_live", False)),
                                 getattr(live_state, "reason", None),
                             )
-        entry.async_start_reauth(hass, data=entry.data)
 
     live_bus = LiveBus(
         hass,
@@ -1819,6 +2004,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        incident_coordinator = IncidentCoordinator(
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
+            live_state=live_state,
+            track_map_store=track_map_store,
+        )
         live_mode_coordinator = LiveModeCoordinator(
             hass,
             race_control_coordinator,
@@ -1841,6 +2036,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await season_results_coordinator.async_config_entry_first_refresh()
     if sprint_results_coordinator:
         await sprint_results_coordinator.async_config_entry_first_refresh()
+    if lap_position_progression_coordinator:
+        await lap_position_progression_coordinator.async_config_entry_first_refresh()
     if fia_documents_coordinator:
         try:
             await fia_documents_coordinator.async_config_entry_first_refresh()
@@ -1869,6 +2066,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await weather_data_coordinator.async_config_entry_first_refresh()
     if lap_count_coordinator:
         await lap_count_coordinator.async_config_entry_first_refresh()
+    if incident_coordinator:
+        await incident_coordinator.async_config_entry_first_refresh()
 
     # Conditionally create live-stream coordinators (require enable_rc + sensor enabled).
     # Replay/auth-gated coordinators stay registered in live mode and expose
@@ -1954,6 +2153,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         await championship_prediction_coordinator.async_config_entry_first_refresh()
 
+    def _track_map_position_source() -> str:
+        if operation_mode == OPERATION_MODE_DEVELOPMENT:
+            return TRACK_MAP_SOURCE_REPLAY
+        reason = getattr(live_state, "reason", None)
+        if _is_replay_delay_reason(reason) or _is_replay_only_active_reason(reason):
+            return TRACK_MAP_SOURCE_REPLAY
+        return TRACK_MAP_SOURCE_LIVE
+
+    track_map_replay_adapter = TrackMapReplayAdapter(
+        track_map_store,
+        live_bus,
+        hass=hass,
+        replay_controller=replay_controller,
+        position_source_resolver=_track_map_position_source,
+    )
+    track_map_replay_adapter.start()
+    entry.runtime_data = TrackMapRuntimeData(track_map_store=track_map_store)
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "http_session": http_session,
         "user_agent": ua_string,
@@ -1967,12 +2184,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "last_race_coordinator": last_race_coordinator,
         "season_results_coordinator": season_results_coordinator,
         "sprint_results_coordinator": sprint_results_coordinator,
+        "lap_position_progression_coordinator": lap_position_progression_coordinator,
         "session_coordinator": session_coordinator,
         "track_status_coordinator": track_status_coordinator,
         "session_status_coordinator": session_status_coordinator,
         "session_info_coordinator": session_info_coordinator,
         "session_clock_coordinator": session_clock_coordinator,
         "race_control_coordinator": race_control_coordinator if enable_rc else None,
+        "incident_coordinator": incident_coordinator if enable_rc else None,
         _RC_LOG_STORE_KEY: race_control_log_store if enable_rc else None,
         "live_mode_coordinator": live_mode_coordinator if enable_rc else None,
         "starting_grid_coordinator": starting_grid_coordinator,
@@ -1983,6 +2202,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "championship_prediction_coordinator": championship_prediction_coordinator,
         "drivers_coordinator": drivers_coordinator,
         "fia_documents_coordinator": fia_documents_coordinator,
+        "track_map_store": track_map_store,
+        "track_map_replay_adapter": track_map_replay_adapter,
         "live_bus": live_bus,
         "live_supervisor": live_supervisor,
         "live_schedule_fallback_source": event_tracker_source,
@@ -2015,10 +2236,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             live_mode_coordinator if enable_rc else None,
             weather_data_coordinator if enable_rc else None,
             lap_count_coordinator if enable_rc else None,
+            incident_coordinator if enable_rc else None,
             top_three_coordinator,
             pitstop_coordinator,
             championship_prediction_coordinator,
             drivers_coordinator,
+            track_map_replay_adapter,
         ),
         "activity_filter_unsub": None,
         "no_spoiler_unsub": None,
@@ -2026,6 +2249,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if race_control_log_store is not None:
         _async_register_race_control_log_interfaces(hass)
+    if lap_position_progression_coordinator is not None:
+        async_register_lap_position_websocket(hass)
+    async_register_track_map_websocket(hass)
 
     _apply_activity_log_filter_excludes(hass)
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
@@ -2056,6 +2282,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     last_race_coordinator,
                     season_results_coordinator,
                     sprint_results_coordinator,
+                    lap_position_progression_coordinator,
                     fia_documents_coordinator,
                 )
                 if coord is not None
@@ -2373,22 +2600,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
 
     @staticmethod
     def _message_id(item: dict) -> str:
-        # Compose a stable id from typical fields
-        try:
-            ts = str(
-                item.get("Utc")
-                or item.get("utc")
-                or item.get("processedAt")
-                or item.get("timestamp")
-                or ""
-            )
-            text = str(
-                item.get("Message") or item.get("Text") or item.get("Flag") or ""
-            )
-            cat = str(item.get("Category") or item.get("CategoryType") or "")
-            return f"{ts}|{cat}|{text}"
-        except Exception:
-            return json.dumps(item, sort_keys=True, default=str)
+        return _race_control_message_id(item)
 
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, (dict, list)):
@@ -2552,6 +2764,297 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             ).subscribe("RaceControlMessages", self._on_bus_message)  # type: ignore[attr-defined]
         except Exception:
             self._unsub = None
+
+
+class IncidentCoordinator(DataUpdateCoordinator):
+    """Coordinator that bridges live timing streams to incident events."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: LiveSessionCoordinator,
+        delay_seconds: int = 0,
+        bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+        track_map_store: TrackMapStore | None = None,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator_logger("incident", suppress_manual=True),
+            name="F1 Incident Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._session_coord = session_coord
+        self._bus = bus
+        self._track_map_store = track_map_store
+        self._detector = IncidentDetector(
+            location_resolver=self._resolve_location_context
+        )
+        self._session_metadata = SessionMetadata()
+        self._drivers: dict[str, Any] = {}
+        self._state = self._empty_state()
+        self._latest_change: IncidentChange | None = None
+        self._published_event_keys: set[tuple[str, str, str, str, str]] = set()
+        self._published_event_order: deque[tuple[str, str, str, str, str]] = deque(
+            maxlen=512
+        )
+        self._unsubs: list[Callable[[], None]] = []
+        self._delay_listener: Callable[[], None] | None = None
+        self._live_state_unsub: Callable[[], None] | None = None
+        self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
+        self._closed = False
+        self.available = True
+        _init_delayed_ingest_state(self)
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
+        if live_state is not None:
+            self._replay_mode = _is_replay_delay_reason(live_state.reason)
+            self.available = bool(live_state.is_live)
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+
+    @staticmethod
+    def _empty_state() -> dict[str, Any]:
+        return {
+            "active_count": 0,
+            "highest_confidence": None,
+            "latest_incident_id": None,
+            "latest_driver_number": None,
+            "latest_driver_tla": None,
+            "latest_reason": None,
+            "latest_phase": None,
+            "session_type": None,
+            "session_name": None,
+            "data_quality": None,
+            "latest_location": None,
+            "active_incidents": [],
+        }
+
+    async def async_close(self, *_) -> None:
+        self._closed = True
+        for unsub in self._unsubs:
+            with suppress(Exception):
+                unsub()
+        self._unsubs.clear()
+        self._delay_listener = _call_unsub(self._delay_listener)
+        self._live_state_unsub = _call_unsub(self._live_state_unsub)
+        _close_delayed_ingest_state(self)
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        return self._state
+
+    async def async_config_entry_first_refresh(self) -> None:
+        await super().async_config_entry_first_refresh()
+        bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        if bus is None:
+            return
+        for stream in _INCIDENT_STREAMS:
+            self._subscribe_stream(bus, stream)
+
+    def _subscribe_stream(self, bus: LiveBus, stream: str) -> None:
+        replaying_cached_payload = True
+
+        def _callback(payload: Any) -> None:
+            nonlocal replaying_cached_payload
+            is_bootstrap = replaying_cached_payload and not self._replay_mode
+            self._queue_stream_payload(
+                stream,
+                payload,
+                is_bootstrap=is_bootstrap,
+            )
+
+        try:
+            self._unsubs.append(bus.subscribe(stream, _callback))
+        except Exception:
+            _LOGGER.debug("Incident: failed to subscribe to %s", stream, exc_info=True)
+        finally:
+            replaying_cached_payload = False
+
+    def _queue_stream_payload(
+        self, stream: str, payload: Any, *, is_bootstrap: bool
+    ) -> None:
+        if self._closed:
+            return
+        observed_at = datetime.now(UTC)
+        if self._replay_mode:
+            data_quality = DATA_QUALITY_REPLAY
+        elif is_bootstrap:
+            data_quality = DATA_QUALITY_BOOTSTRAP
+        else:
+            data_quality = DATA_QUALITY_LIVE
+        _queue_delayed_ingest(
+            self,
+            lambda stream=stream, payload=payload, observed_at=observed_at, data_quality=data_quality: (
+                self._handle_stream_payload(
+                    stream,
+                    payload,
+                    observed_at=observed_at,
+                    data_quality=data_quality,
+                )
+            ),
+        )
+
+    def _handle_stream_payload(
+        self,
+        stream: str,
+        payload: Any,
+        *,
+        observed_at: datetime,
+        data_quality: str,
+    ) -> None:
+        if self._closed or _is_no_spoiler_blocked(self):
+            return
+        if (
+            data_quality == DATA_QUALITY_BOOTSTRAP
+            and stream in _INCIDENT_BOOTSTRAP_SKIP_STREAMS
+        ):
+            return
+        signals = normalize_stream(
+            stream,
+            payload,
+            observed_at,
+            session=self._session_metadata,
+            drivers=self._drivers,
+            data_quality=data_quality,
+        )
+        if not signals:
+            return
+        for signal in signals:
+            if signal.kind == "session_context" and signal.session is not None:
+                self._session_metadata = signal.session
+            if signal.kind == "driver_metadata" and signal.driver is not None:
+                self._drivers[signal.driver.racing_number] = signal.driver
+        changes = self._detector.process_signals(signals)
+        if not changes:
+            return
+        self._refresh_state(changes[-1])
+        if data_quality == DATA_QUALITY_BOOTSTRAP:
+            return
+        for change in changes:
+            self._publish_change(change)
+
+    def _publish_change(self, change: IncidentChange) -> None:
+        event_key = (
+            change.incident_id,
+            change.phase,
+            change.confidence,
+            change.reason,
+            change.updated_at.isoformat(),
+        )
+        if event_key in self._published_event_keys:
+            return
+        if len(self._published_event_order) == self._published_event_order.maxlen:
+            old = self._published_event_order.popleft()
+            self._published_event_keys.discard(old)
+        self._published_event_order.append(event_key)
+        self._published_event_keys.add(event_key)
+
+        payload = {
+            "entry_id": self.config_entry.entry_id if self.config_entry else None,
+            **change.to_event_payload(),
+        }
+        self.hass.bus.async_fire(_INCIDENT_EVENT, payload)
+        _LOGGER.debug(
+            "Incident event phase=%s confidence=%s reason=%s driver=%s",
+            change.phase,
+            change.confidence,
+            change.reason,
+            change.driver.racing_number,
+        )
+
+    def _refresh_state(self, latest_change: IncidentChange | None = None) -> None:
+        if latest_change is not None:
+            self._latest_change = latest_change
+        active = list(self._detector.active_incidents())
+        highest = None
+        if active:
+            highest = max(
+                (change.confidence for change in active),
+                key=lambda value: CONFIDENCE_ORDER.get(value, -1),
+            )
+        latest = self._latest_change
+        self._state = {
+            "active_count": len(active),
+            "highest_confidence": highest,
+            "latest_incident_id": latest.incident_id if latest else None,
+            "latest_driver_number": latest.driver.racing_number if latest else None,
+            "latest_driver_tla": latest.driver.tla if latest else None,
+            "latest_reason": latest.reason if latest else None,
+            "latest_phase": latest.phase if latest else None,
+            "session_type": latest.session.session_type if latest else None,
+            "session_name": latest.session.session_name if latest else None,
+            "data_quality": latest.data_quality if latest else None,
+            "latest_location": (
+                latest.location.to_event_payload()
+                if latest and latest.location.status is not None
+                else None
+            ),
+            "active_incidents": [change.to_event_payload() for change in active],
+        }
+        self.async_set_updated_data(self._state)
+
+    def reset_for_replay(self) -> None:
+        self._detector = IncidentDetector(
+            location_resolver=self._resolve_location_context
+        )
+        self._session_metadata = SessionMetadata()
+        self._drivers.clear()
+        self._latest_change = None
+        self._published_event_keys.clear()
+        self._published_event_order.clear()
+        self._state = self._empty_state()
+        _clear_delayed_ingest_state(self)
+        self.async_set_updated_data(self._state)
+
+    def set_delay(self, seconds: int) -> None:
+        _apply_delay_with_queue(self, seconds)
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
+        replay_mode = _is_replay_delay_reason(reason)
+        if replay_mode and not self._replay_mode:
+            self.reset_for_replay()
+        self._replay_mode = replay_mode
+        self.available = is_live
+        if not is_live:
+            self.reset_for_replay()
+
+    def _resolve_location_context(
+        self, racing_number: str, observed_at: datetime
+    ) -> IncidentLocationContext | None:
+        store = self._track_map_store
+        if store is None:
+            return None
+        context = None
+        with suppress(Exception):
+            context = store.location_context(racing_number, now=observed_at)
+        if context is None:
+            return None
+        payload = context.as_dict()
+        distance = payload.get("distance_to_track")
+        if isinstance(distance, (int, float)):
+            distance = round(float(distance), 1)
+        else:
+            distance = None
+        return IncidentLocationContext(
+            status=payload.get("status"),
+            source=payload.get("source"),
+            stale=payload.get("stale"),
+            confidence=payload.get("confidence"),
+            description=payload.get("description"),
+            sector=payload.get("sector"),
+            corner=payload.get("corner"),
+            pit_lane=payload.get("pit_lane"),
+            track_segment=payload.get("track_segment"),
+            distance_to_track=distance,
+            geometry_source=payload.get("geometry_source"),
+            fallback_state=payload.get("fallback_state"),
+            updated_at=getattr(context, "timestamp", None),
+        )
 
 
 class LiveModeCoordinator(DataUpdateCoordinator):
@@ -2855,7 +3358,10 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
 
-        self._history_limit = max(1, int(history_limit or 10))
+        self._history_limit = min(
+            PITSTOP_MAX_HISTORY_PER_CAR,
+            max(1, int(history_limit or PITSTOP_MAX_HISTORY_PER_CAR)),
+        )
         self._by_car: dict[str, list[dict]] = {}
         self._dedup: set[tuple] = set()
         self._driver_map: dict[str, dict[str, Any]] = {}
@@ -2867,6 +3373,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             "total_stops": 0,
             "cars": {},
             "last_update": None,
+            "last_reset": dt_util.utcnow().isoformat(timespec="seconds"),
         }
 
     async def async_close(self, *_):
@@ -2909,7 +3416,12 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._by_car = {}
         self._dedup = set()
         self._driver_pit_counts = {}
-        self._state = {"total_stops": 0, "cars": {}, "last_update": None}
+        self._state = {
+            "total_stops": 0,
+            "cars": {},
+            "last_update": None,
+            "last_reset": dt_util.utcnow().isoformat(timespec="seconds"),
+        }
         with suppress(Exception):
             self.async_set_updated_data(self._state)
 
@@ -2943,30 +3455,81 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         except Exception:
             return None
 
+    @staticmethod
+    def _normalize_racing_number(value: Any) -> str | None:
+        text = str(value or "").strip()
+        if (
+            not text
+            or not text.isdecimal()
+            or len(text) > PITSTOP_MAX_RACING_NUMBER_CHARS
+        ):
+            return None
+        parsed = int(text)
+        return str(parsed) if parsed > 0 else None
+
+    @staticmethod
+    def _bounded_text(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        return text[:PITSTOP_MAX_TEXT_CHARS]
+
+    @staticmethod
+    def _dedup_key(
+        rn: str,
+        lap: int | None,
+        timestamp: str | None,
+        pit_lane_time: float | None,
+        pit_stop_time: float | None,
+    ) -> tuple[Any, ...]:
+        if timestamp:
+            return (rn, "ts", timestamp, pit_lane_time, pit_stop_time)
+        return (rn, "no_ts", lap, pit_lane_time, pit_stop_time)
+
+    def _rebuild_pitstop_dedup(self) -> None:
+        keys: set[tuple[Any, ...]] = set()
+        for rn, stops in (self._by_car or {}).items():
+            if not isinstance(stops, list):
+                continue
+            for stop in stops:
+                if not isinstance(stop, dict):
+                    continue
+                keys.add(
+                    self._dedup_key(
+                        str(rn),
+                        self._parse_int(stop.get("lap")),
+                        self._bounded_text(stop.get("timestamp")),
+                        self._parse_float(stop.get("pit_lane_time")),
+                        self._parse_float(stop.get("pit_stop_time")),
+                    )
+                )
+        self._dedup = keys
+
     def _schedule_deliver(self) -> None:
         self._deliver()
 
     def _add_stop(self, racing_number: str, stop: dict) -> None:
-        rn = str(racing_number or "").strip()
-        if not rn:
+        rn = self._normalize_racing_number(racing_number)
+        if rn is None:
+            return
+        if rn not in self._by_car and len(self._by_car) >= PITSTOP_MAX_CARS:
             return
         lap = self._parse_int(stop.get("lap"))
-        ts = stop.get("timestamp")
+        ts = self._bounded_text(stop.get("timestamp"))
         pit_stop_time = self._parse_float(stop.get("pit_stop_time"))
         pit_lane_time = self._parse_float(stop.get("pit_lane_time"))
 
         # Dedup: prefer timestamp when present, else fall back to lap/times.
-        if ts:
-            key = (rn, "ts", str(ts), pit_lane_time, pit_stop_time)
-        else:
-            key = (rn, "no_ts", lap, pit_lane_time, pit_stop_time)
+        key = self._dedup_key(rn, lap, ts, pit_lane_time, pit_stop_time)
         if key in self._dedup:
             return
         self._dedup.add(key)
 
         entry = {
             "lap": lap,
-            "timestamp": str(ts) if ts else None,
+            "timestamp": ts,
             "pit_stop_time": pit_stop_time,
             "pit_lane_time": pit_lane_time,
             "pit_delta": None,
@@ -2976,30 +3539,38 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         lst.append(entry)
         if len(lst) > self._history_limit:
             self._by_car[rn] = lst[-self._history_limit :]
+            self._rebuild_pitstop_dedup()
 
     def _ingest_pitstopseries(self, msg: dict) -> None:
         pit_times = (msg or {}).get("PitTimes")
         if not isinstance(pit_times, dict):
             return
-        for rn, entries in pit_times.items():
+        processed_entries = 0
+        for car_index, (rn, entries) in enumerate(pit_times.items()):
+            if car_index >= PITSTOP_MAX_CARS_PER_PAYLOAD:
+                break
+            if processed_entries >= PITSTOP_MAX_ENTRIES_PER_PAYLOAD:
+                break
             if isinstance(entries, list):
                 iterable = entries
             elif isinstance(entries, dict):
-                iterable = list(entries.values())
+                iterable = entries.values()
             else:
                 continue
             for item in iterable:
+                if processed_entries >= PITSTOP_MAX_ENTRIES_PER_PAYLOAD:
+                    break
+                processed_entries += 1
                 if not isinstance(item, dict):
                     continue
                 pitstop = item.get("PitStop")
                 if not isinstance(pitstop, dict):
                     continue
-                timestamp = item.get("Timestamp")
                 self._add_stop(
-                    str(pitstop.get("RacingNumber") or rn),
+                    pitstop.get("RacingNumber") or rn,
                     {
                         "lap": pitstop.get("Lap"),
-                        "timestamp": timestamp,
+                        "timestamp": item.get("Timestamp"),
                         "pit_stop_time": pitstop.get("PitStopTime"),
                         "pit_lane_time": pitstop.get("PitLaneTime"),
                     },
@@ -3012,13 +3583,17 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         for rn, info in (payload or {}).items():
             if not isinstance(info, dict):
                 continue
-            racing_number = str(info.get("RacingNumber") or rn).strip()
-            if not racing_number:
+            racing_number = self._normalize_racing_number(
+                info.get("RacingNumber") or rn
+            )
+            if racing_number is None:
                 continue
             self._driver_map[racing_number] = {
-                "tla": info.get("Tla"),
-                "name": info.get("FullName") or info.get("BroadcastName"),
-                "team": info.get("TeamName"),
+                "tla": self._bounded_text(info.get("Tla")),
+                "name": self._bounded_text(
+                    info.get("FullName") or info.get("BroadcastName")
+                ),
+                "team": self._bounded_text(info.get("TeamName")),
             }
 
     def _seed_driver_map_from_ergast(self) -> None:
@@ -3046,16 +3621,19 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         cars: dict[str, Any] = {}
         total = 0
         try:
-            car_numbers = {
-                str(rn) for rn in (self._by_car or {}) if str(rn).strip()
-            } | {
-                str(rn)
-                for rn, count in (self._driver_pit_counts or {}).items()
-                if str(rn).strip() and int(count or 0) > 0
-            }
+            car_numbers: set[str] = set()
+            for rn in self._by_car or {}:
+                normalized = self._normalize_racing_number(rn)
+                if normalized is not None:
+                    car_numbers.add(normalized)
+            for rn, count in (self._driver_pit_counts or {}).items():
+                normalized = self._normalize_racing_number(rn)
+                if normalized is not None and int(count or 0) > 0:
+                    car_numbers.add(normalized)
+            sorted_car_numbers = sorted(car_numbers, key=int)[:PITSTOP_MAX_CARS]
             for rn, stops in sorted(
-                ((rn, self._by_car.get(rn, [])) for rn in car_numbers),
-                key=lambda kv: int(str(kv[0])) if str(kv[0]).isdigit() else str(kv[0]),
+                ((rn, self._by_car.get(rn, [])) for rn in sorted_car_numbers),
+                key=lambda kv: int(str(kv[0])),
             ):
                 lst = list(stops or [])
                 fallback_count = int(self._driver_pit_counts.get(str(rn), 0))
@@ -3070,27 +3648,25 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                 }
                 total += stop_count
         except Exception:
-            cars = {
-                str(rn): {
+            cars = {}
+            combined: dict[str, list[dict[str, Any]]] = {}
+            for rn, stops in (self._by_car or {}).items():
+                normalized = self._normalize_racing_number(rn)
+                if normalized is not None:
+                    combined[normalized] = stops
+            for rn, count in (self._driver_pit_counts or {}).items():
+                normalized = self._normalize_racing_number(rn)
+                if normalized is not None and int(count or 0) > 0:
+                    combined.setdefault(normalized, self._by_car.get(normalized, []))
+            for rn in sorted(combined, key=int)[:PITSTOP_MAX_CARS]:
+                stops = combined.get(rn, [])
+                cars[rn] = {
                     "count": max(
                         len(stops or []),
-                        int(self._driver_pit_counts.get(str(rn), 0)),
+                        int(self._driver_pit_counts.get(rn, 0)),
                     ),
                     "stops": list(stops or []),
                 }
-                for rn, stops in {
-                    **{
-                        str(rn): stops
-                        for rn, stops in (self._by_car or {}).items()
-                        if str(rn).strip()
-                    },
-                    **{
-                        str(rn): self._by_car.get(str(rn), [])
-                        for rn, count in (self._driver_pit_counts or {}).items()
-                        if str(rn).strip() and int(count or 0) > 0
-                    },
-                }.items()
-            }
             try:
                 total = sum(
                     v.get("count", 0) for v in cars.values() if isinstance(v, dict)
@@ -3102,6 +3678,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             "total_stops": int(total),
             "cars": cars,
             "last_update": dt_util.utcnow().isoformat(timespec="seconds"),
+            "last_reset": self._state.get("last_reset"),
         }
         self.async_set_updated_data(self._state)
 
@@ -3169,7 +3746,12 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             return False
         next_counts: dict[str, int] = {}
         for rn, info in drivers.items():
+            if len(next_counts) >= PITSTOP_MAX_CARS:
+                break
             if not isinstance(info, dict):
+                continue
+            normalized = self._normalize_racing_number(rn)
+            if normalized is None:
                 continue
             timing = info.get("timing")
             if not isinstance(timing, dict):
@@ -3177,7 +3759,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             pit_stops = self._parse_int(timing.get("pit_stops"))
             if pit_stops is None:
                 continue
-            next_counts[str(rn)] = max(0, pit_stops)
+            next_counts[normalized] = max(0, pit_stops)
         if next_counts == self._driver_pit_counts:
             return False
         self._driver_pit_counts = next_counts
@@ -3196,14 +3778,16 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         for rn, info in drivers.items():
             if not isinstance(info, dict):
                 continue
+            key = self._normalize_racing_number(rn)
+            if key is None:
+                continue
             identity = info.get("identity")
             if not isinstance(identity, dict):
                 continue
-            key = str(rn)
             entry = self._driver_map.setdefault(key, {})
-            new_tla = identity.get("tla")
-            new_name = identity.get("name")
-            new_team = identity.get("team")
+            new_tla = self._bounded_text(identity.get("tla"))
+            new_name = self._bounded_text(identity.get("name"))
+            new_team = self._bounded_text(identity.get("team"))
             if new_tla and entry.get("tla") != new_tla:
                 entry["tla"] = new_tla
                 updated = True
@@ -3238,9 +3822,9 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         if not isinstance(identity, dict):
             return ident
         return {
-            "tla": identity.get("tla"),
-            "name": identity.get("name"),
-            "team": identity.get("team"),
+            "tla": self._bounded_text(identity.get("tla")),
+            "name": self._bounded_text(identity.get("name")),
+            "team": self._bounded_text(identity.get("team")),
         }
 
     def _refresh_pit_deltas(self) -> bool:
@@ -4525,9 +5109,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             _clear_delayed_ingest_state(self)
             return
         self.available = is_live
-        self._tyre_live_started_mono = (
-            time.monotonic() if is_live and not self._replay_mode else None
-        )
+        self._tyre_live_started_mono = None
         self._tyre_first_compound_logged = False
         self._tyre_missing_warning_logged = False
         if not is_live:
@@ -4557,14 +5139,24 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         items: list[tuple[int, dict[str, Any]]] = []
         if isinstance(stints, list):
             for idx, stint in enumerate(stints):
+                if idx > MAX_TYRE_STINT_INDEX:
+                    break
                 if isinstance(stint, dict):
                     items.append((idx, stint))
         elif isinstance(stints, dict):
             for key, stint in stints.items():
-                if not isinstance(stint, dict) or not str(key).isdigit():
+                key_text = str(key).strip()
+                key_digits = key_text.lstrip("0") or "0"
+                if (
+                    not isinstance(stint, dict)
+                    or not key_text.isdecimal()
+                    or len(key_digits) > len(str(MAX_TYRE_STINT_INDEX))
+                ):
                     continue
                 with suppress(ValueError):
-                    items.append((int(key), stint))
+                    idx = int(key_text)
+                    if 0 <= idx <= MAX_TYRE_STINT_INDEX:
+                        items.append((idx, stint))
         items.sort(key=lambda item: item[0])
         return items
 
@@ -4766,6 +5358,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         Handles incremental updates where only TotalLaps may be present.
         """
+        if stint_idx < 0 or stint_idx > MAX_TYRE_STINT_INDEX:
+            return False
         stints_list = tyre_history["stints"]
         changed = False
 
@@ -5232,7 +5826,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             }
 
     def _merge_sessionstatus(self, payload: dict) -> None:
+        previous = self._state.get("session_status")
+        was_running = self._session_status_is_running(previous)
         self._state["session_status"] = payload
+        is_running = self._session_status_is_running(payload)
+        if is_running and not was_running and not self._replay_mode:
+            self._tyre_live_started_mono = time.monotonic()
+            self._tyre_first_compound_logged = False
+            self._tyre_missing_warning_logged = False
+        elif not is_running and self._session_status_is_terminal(payload):
+            self._tyre_live_started_mono = None
         with suppress(Exception):
             msg = str(payload.get("Status") or payload.get("Message") or "").strip()
             started_flag = payload.get("Started")
@@ -5245,6 +5848,24 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 self._state["frozen"] = False
                 # Capture grid positions when session starts
                 self._capture_grid_positions_if_needed()
+
+    @staticmethod
+    def _session_status_is_running(payload: Any) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        status = str(payload.get("Status") or payload.get("Message") or "").strip()
+        return payload.get("Started") is True or status in {
+            "Started",
+            "Green",
+            "GreenFlag",
+        }
+
+    @staticmethod
+    def _session_status_is_terminal(payload: Any) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        status = str(payload.get("Status") or payload.get("Message") or "").strip()
+        return status in {"Finished", "Finalised", "Ends"}
 
     @staticmethod
     def _extract(data: dict, key: str) -> dict | None:
@@ -5499,6 +6120,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     except Exception as err:  # noqa: BLE001
                         _LOGGER.debug("Error during %s async_close: %s", name, err)
         unregister_entry_name_settings(entry.entry_id)
+        entry.runtime_data = None
         # If this was the last entry, remove dev-only stats reporter.
         if isinstance(data_root, dict):
             with suppress(Exception):
@@ -5544,6 +6166,11 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
     if coordinator is None:
         return
 
+    reset_for_replay = getattr(coordinator, "reset_for_replay", None)
+    if callable(reset_for_replay):
+        reset_for_replay()
+        return
+
     if isinstance(coordinator, WeatherDataCoordinator):
         _clear_delayed_ingest_state(coordinator)
         coordinator._last_message = None
@@ -5562,6 +6189,10 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
         coordinator._seen_ids_order.clear()
         coordinator._startup_cutoff = None
         coordinator.async_set_updated_data(None)
+        return
+
+    if isinstance(coordinator, IncidentCoordinator):
+        coordinator.reset_for_replay()
         return
 
     if isinstance(coordinator, LiveModeCoordinator):
@@ -5773,6 +6404,7 @@ class F1DataCoordinator(DataUpdateCoordinator):
                 "last_race_coordinator",
                 "season_results_coordinator",
                 "sprint_results_coordinator",
+                "lap_position_progression_coordinator",
             ):
                 coord = reg.get(name)
                 if coord is None:
@@ -5807,7 +6439,9 @@ class F1DataCoordinator(DataUpdateCoordinator):
                     return self.data
                 return data
         except Exception as err:
-            raise UpdateFailed(f"Error fetching data: {err}") from err
+            raise UpdateFailed(
+                f"Error fetching data: {_format_update_error(err)}"
+            ) from err
 
 
 class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
@@ -6432,7 +7066,9 @@ class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
             }
             return history
         except Exception as err:
-            raise UpdateFailed(f"Error fetching next race history: {err}") from err
+            raise UpdateFailed(
+                f"Error fetching next race history: {_format_update_error(err)}"
+            ) from err
 
 
 class F1SeasonResultsCoordinator(DataUpdateCoordinator):
@@ -6722,7 +7358,9 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
                 return self._empty_result()
             return result
         except Exception as err:
-            raise UpdateFailed(f"Error fetching season results: {err}") from err
+            raise UpdateFailed(
+                f"Error fetching season results: {_format_update_error(err)}"
+            ) from err
 
 
 class F1SprintResultsCoordinator(DataUpdateCoordinator):
@@ -6780,7 +7418,669 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
                     return self.data
                 return data
         except Exception as err:
-            raise UpdateFailed(f"Error fetching sprint results: {err}") from err
+            raise UpdateFailed(
+                f"Error fetching sprint results: {_format_update_error(err)}"
+            ) from err
+
+
+class F1LapPositionProgressionCoordinator(DataUpdateCoordinator):
+    """Build post-race lap position progression sessions from Jolpica lap data."""
+
+    _LAPS_BASE_URL = "https://api.jolpi.ca/ergast/f1/{season}/{round}/laps.json"
+    _SPRINT_UNSUPPORTED_REASON = (
+        "Jolpica exposes sprint classification but not sprint lap-by-lap positions"
+    )
+    _PENDING_REASON = "Jolpica has not published lap-by-lap positions for this race yet"
+    _CONSTRUCTOR_COLORS = {
+        "alpine": "#0090ff",
+        "aston_martin": "#229971",
+        "ferrari": "#e80020",
+        "haas": "#b6babd",
+        "kick_sauber": "#52e252",
+        "mclaren": "#ff8000",
+        "mercedes": "#27f4d2",
+        "racing_bulls": "#6692ff",
+        "rb": "#6692ff",
+        "red_bull": "#3671c6",
+        "sauber": "#52e252",
+        "williams": "#64c4ff",
+    }
+    _FALLBACK_COLORS = (
+        "#e10600",
+        "#00d2be",
+        "#ff8700",
+        "#1e5bc6",
+        "#dc0000",
+        "#006f62",
+        "#2b4562",
+        "#900000",
+        "#005aff",
+        "#ffffff",
+    )
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        race_coordinator: DataUpdateCoordinator | None,
+        season_results_coordinator: DataUpdateCoordinator | None,
+        sprint_results_coordinator: DataUpdateCoordinator | None,
+        name: str,
+        session=None,
+        user_agent: str | None = None,
+        cache=None,
+        inflight=None,
+        *,
+        ttl_stable: int = 30 * 24 * 3600,
+        ttl_latest: int = 6 * 3600,
+        ttl_pending: int = 6 * 3600,
+        persist_map=None,
+        persist_save=None,
+        config_entry: ConfigEntry | None = None,
+    ):
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=name,
+            update_interval=timedelta(hours=6),
+            config_entry=config_entry,
+        )
+        self._race_coordinator = race_coordinator
+        self._season_results_coordinator = season_results_coordinator
+        self._sprint_results_coordinator = sprint_results_coordinator
+        self._session = session or async_get_clientsession(hass)
+        self._headers = {"User-Agent": str(user_agent)} if user_agent else None
+        self._cache = cache
+        self._inflight = inflight
+        self._ttl_stable = int(ttl_stable or 30 * 24 * 3600)
+        self._ttl_latest = int(ttl_latest or 6 * 3600)
+        self._ttl_pending = int(ttl_pending or 6 * 3600)
+        self._persist = persist_map
+        self._persist_save = persist_save
+        self._session_payload_cache: dict[str, dict[str, Any]] = {}
+
+    async def async_close(self, *_):
+        return
+
+    @staticmethod
+    def _utc_now_iso() -> str:
+        return datetime.now(UTC).isoformat()
+
+    @classmethod
+    def _empty_result(cls, season: str | None = None) -> dict[str, Any]:
+        return {
+            "season": str(season) if season else None,
+            "source": "jolpica",
+            "updated_at": cls._utc_now_iso(),
+            "sessions": [],
+        }
+
+    @staticmethod
+    def _race_table_races(data: Any) -> list[dict]:
+        if not isinstance(data, dict):
+            return []
+        races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+        return [race for race in races if isinstance(race, dict)]
+
+    @staticmethod
+    def _extract_season(data: Any) -> str | None:
+        return F1SeasonResultsCoordinator._extract_season(data)
+
+    def _effective_season(self) -> str:
+        for coordinator in (
+            self._race_coordinator,
+            self._season_results_coordinator,
+            self._sprint_results_coordinator,
+        ):
+            season = self._extract_season(getattr(coordinator, "data", None))
+            if season:
+                return season
+        return str(datetime.now(UTC).year)
+
+    @staticmethod
+    def _round_number(race: dict) -> int | None:
+        try:
+            value = str(race.get("round") or "").strip()
+            return int(value) if value else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _to_int(value: Any) -> int | None:
+        try:
+            if value is None:
+                return None
+            text = str(value).strip()
+            if not text:
+                return None
+            return int(float(text))
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _driver_name(driver: dict) -> str | None:
+        given = str(driver.get("givenName") or "").strip()
+        family = str(driver.get("familyName") or "").strip()
+        full = " ".join(part for part in (given, family) if part)
+        return full or family or given or None
+
+    @staticmethod
+    def _color_key(value: Any) -> str:
+        return (
+            str(value or "")
+            .strip()
+            .lower()
+            .replace("&", "and")
+            .replace(" ", "_")
+            .replace("-", "_")
+        )
+
+    @classmethod
+    def _constructor_color(cls, constructor: dict, fallback_index: int) -> str | None:
+        keys = (
+            constructor.get("constructorId"),
+            constructor.get("name"),
+        )
+        for key in keys:
+            color = cls._CONSTRUCTOR_COLORS.get(cls._color_key(key))
+            if color:
+                return color
+        if fallback_index >= 0:
+            return cls._FALLBACK_COLORS[fallback_index % len(cls._FALLBACK_COLORS)]
+        return None
+
+    @staticmethod
+    def _sort_timing_key(timing: dict) -> tuple[int, str]:
+        position = F1LapPositionProgressionCoordinator._to_int(timing.get("position"))
+        return (
+            position if position is not None else 999,
+            str(timing.get("driverId") or ""),
+        )
+
+    def _page_ttl(self, race: dict, latest_round: int | None) -> int:
+        round_number = self._round_number(race)
+        if latest_round is not None and round_number == latest_round:
+            return self._ttl_latest
+        return self._ttl_stable
+
+    async def _fetch_lap_page(
+        self,
+        season: str,
+        round_number: str,
+        limit: int,
+        offset: int,
+        ttl_seconds: int,
+    ) -> dict:
+        from yarl import URL
+
+        url = str(
+            URL(
+                self._LAPS_BASE_URL.format(
+                    season=season,
+                    round=round_number,
+                )
+            ).with_query({"limit": str(limit), "offset": str(offset)})
+        )
+        async with asyncio.timeout(15):
+            return await fetch_json(
+                self.hass,
+                self._session,
+                url,
+                headers=self._headers,
+                ttl_seconds=ttl_seconds,
+                cache=self._cache,
+                inflight=self._inflight,
+                persist_map=self._persist,
+                persist_save=self._persist_save,
+            )
+
+    async def _fetch_laps_for_race(
+        self, season: str, race: dict, latest_round: int | None
+    ) -> tuple[dict | None, list[dict], bool]:
+        round_number = str(race.get("round") or "").strip()
+        if not season or not round_number:
+            return None, [], False
+
+        request_limit = 100
+        offset = 0
+        ttl_seconds = self._page_ttl(race, latest_round)
+        lap_timings: dict[int, dict[str, dict]] = {}
+        race_meta: dict | None = None
+        total = 0
+        limit_used = request_limit
+        safety = 0
+        max_loops = 1
+
+        while safety < max_loops:
+            page = await self._fetch_lap_page(
+                season, round_number, limit_used, offset, ttl_seconds
+            )
+            mr = (page or {}).get("MRData", {})
+            with suppress(Exception):
+                total = int(mr.get("total") or total or 0)
+            with suppress(Exception):
+                limit_used = int(mr.get("limit") or limit_used or request_limit)
+            with suppress(Exception):
+                offset = int(mr.get("offset") or offset)
+            if total > 0 and limit_used > 0:
+                max_loops = max(1, ((total + limit_used - 1) // limit_used) + 1)
+
+            page_races = self._race_table_races(page)
+            for page_race in page_races:
+                if race_meta is None:
+                    race_meta = {
+                        key: page_race.get(key)
+                        for key in (
+                            "season",
+                            "round",
+                            "raceName",
+                            "date",
+                            "time",
+                            "Circuit",
+                        )
+                    }
+                for lap in page_race.get("Laps", []) or []:
+                    lap_number = self._to_int(lap.get("number"))
+                    if lap_number is None:
+                        continue
+                    timings_by_driver = lap_timings.setdefault(lap_number, {})
+                    for timing in lap.get("Timings", []) or []:
+                        if not isinstance(timing, dict):
+                            continue
+                        driver_id = str(timing.get("driverId") or "").strip()
+                        if not driver_id:
+                            continue
+                        timings_by_driver[driver_id] = dict(timing)
+
+            next_offset = offset + max(1, limit_used)
+            if total <= 0 or next_offset >= total:
+                break
+            offset = next_offset
+            safety += 1
+
+        laps = []
+        for lap_number in sorted(lap_timings):
+            timings = sorted(
+                lap_timings[lap_number].values(),
+                key=self._sort_timing_key,
+            )
+            laps.append({"number": str(lap_number), "Timings": timings})
+        return race_meta, laps, total > 0
+
+    def _result_metadata(self, race: dict) -> dict[str, dict]:
+        metadata = {}
+        for index, result in enumerate(race.get("Results", []) or []):
+            if not isinstance(result, dict):
+                continue
+            driver = result.get("Driver", {}) or {}
+            driver_id = str(driver.get("driverId") or "").strip()
+            if not driver_id:
+                continue
+            constructor = result.get("Constructor", {}) or {}
+            metadata[driver_id] = {
+                "result": result,
+                "driver": driver,
+                "constructor": constructor,
+                "index": index,
+            }
+        return metadata
+
+    def _build_driver_rows(
+        self,
+        race: dict,
+        laps: list[dict],
+    ) -> tuple[list[dict], list[str], list[dict]]:
+        labels = [f"L{lap.get('number')}" for lap in laps]
+        result_metadata = self._result_metadata(race)
+        positions_by_driver: dict[str, dict[int, int]] = {}
+        first_seen: dict[str, int] = {}
+
+        for lap_index, lap in enumerate(laps):
+            lap_number = self._to_int(lap.get("number"))
+            if lap_number is None:
+                continue
+            for timing in lap.get("Timings", []) or []:
+                if not isinstance(timing, dict):
+                    continue
+                driver_id = str(timing.get("driverId") or "").strip()
+                position = self._to_int(timing.get("position"))
+                if not driver_id or position is None:
+                    continue
+                positions_by_driver.setdefault(driver_id, {})[lap_number] = position
+                first_seen.setdefault(driver_id, lap_index)
+
+        ordered_driver_ids = sorted(
+            set(result_metadata) | set(positions_by_driver),
+            key=lambda driver_id: (
+                self._to_int(
+                    result_metadata.get(driver_id, {}).get("result", {}).get("position")
+                )
+                or 999,
+                first_seen.get(driver_id, 999),
+                driver_id,
+            ),
+        )
+
+        lap_numbers = [self._to_int(lap.get("number")) for lap in laps]
+        lap_numbers = [
+            lap_number for lap_number in lap_numbers if lap_number is not None
+        ]
+
+        drivers = []
+        series = []
+        for fallback_index, driver_id in enumerate(ordered_driver_ids):
+            meta = result_metadata.get(driver_id, {})
+            result = meta.get("result", {}) or {}
+            driver = meta.get("driver", {}) or {}
+            constructor = meta.get("constructor", {}) or {}
+            code = str(driver.get("code") or "").strip().upper() or None
+            name = self._driver_name(driver) or code or driver_id
+            positions = [
+                positions_by_driver.get(driver_id, {}).get(lap_number)
+                for lap_number in lap_numbers
+            ]
+            known_positions = [pos for pos in positions if pos is not None]
+            finish_position = self._to_int(result.get("position"))
+            if finish_position is None and known_positions:
+                finish_position = known_positions[-1]
+            grid = self._to_int(result.get("grid"))
+            net_change = (
+                grid - finish_position
+                if grid is not None and grid > 0 and finish_position is not None
+                else None
+            )
+            color = self._constructor_color(constructor, fallback_index)
+            key = code or driver_id
+            driver_row = {
+                "driver_id": driver_id,
+                "code": code,
+                "number": result.get("number") or driver.get("permanentNumber") or None,
+                "name": name,
+                "constructor_id": constructor.get("constructorId"),
+                "constructor_name": constructor.get("name"),
+                "color": color,
+                "grid": grid,
+                "finish_position": finish_position,
+                "status": result.get("status"),
+                "positions": positions,
+                "best_position": min(known_positions) if known_positions else None,
+                "worst_position": max(known_positions) if known_positions else None,
+                "net_position_change": net_change,
+            }
+            drivers.append(driver_row)
+            series.append(
+                {
+                    "key": key,
+                    "name": name,
+                    "color": color,
+                    "data": positions,
+                }
+            )
+
+        return drivers, labels, series
+
+    async def _build_race_session(
+        self,
+        race: dict,
+        season: str,
+        latest_round: int | None,
+    ) -> dict:
+        round_number = str(race.get("round") or "").strip()
+        base = {
+            "key": f"race:{season}:{round_number}",
+            "type": "race",
+            "source": "jolpica_laps",
+            "season": season,
+            "round": round_number,
+            "race_name": race.get("raceName"),
+            "date": race.get("date"),
+            "total_laps": 0,
+            "driver_count": len(race.get("Results", []) or []),
+            "labels": [],
+            "drivers": [],
+            "series": {"labels": [], "series": []},
+        }
+        try:
+            race_meta, laps, saw_lap_payload = await self._fetch_laps_for_race(
+                season, race, latest_round
+            )
+        except Exception as err:  # noqa: BLE001
+            return {
+                **base,
+                "status": "error",
+                "reason": str(err),
+            }
+
+        if race_meta:
+            base["race_name"] = race_meta.get("raceName") or base["race_name"]
+            base["date"] = race_meta.get("date") or base["date"]
+
+        if not saw_lap_payload or not laps:
+            return {
+                **base,
+                "status": "pending",
+                "reason": self._PENDING_REASON,
+            }
+
+        drivers, labels, series = self._build_driver_rows(race, laps)
+        return {
+            **base,
+            "status": "available",
+            "total_laps": len(labels),
+            "driver_count": len(drivers),
+            "labels": labels,
+            "drivers": drivers,
+            "series": {
+                "labels": labels,
+                "series": series,
+            },
+        }
+
+    def _build_race_metadata_session(self, race: dict, season: str) -> dict:
+        round_number = str(race.get("round") or "").strip()
+        return {
+            "key": f"race:{season}:{round_number}",
+            "type": "race",
+            "status": "available",
+            "source": "jolpica_laps",
+            "reason": None,
+            "season": season,
+            "round": round_number,
+            "race_name": race.get("raceName"),
+            "date": race.get("date"),
+            "total_laps": None,
+            "driver_count": len(race.get("Results", []) or []),
+            "labels": [],
+            "drivers": [],
+            "series": {"labels": [], "series": []},
+        }
+
+    def _build_sprint_session(self, race: dict, season: str) -> dict:
+        round_number = str(race.get("round") or "").strip()
+        sprint_results = race.get("SprintResults") or race.get("Results") or []
+        return {
+            "key": f"sprint:{season}:{round_number}",
+            "type": "sprint",
+            "status": "unsupported",
+            "source": "jolpica_sprint_results",
+            "reason": self._SPRINT_UNSUPPORTED_REASON,
+            "season": season,
+            "round": round_number,
+            "race_name": race.get("raceName"),
+            "date": race.get("date"),
+            "total_laps": None,
+            "driver_count": len(sprint_results),
+            "labels": [],
+            "drivers": [],
+            "series": {"labels": [], "series": []},
+        }
+
+    @staticmethod
+    def _session_sort_key(session: dict) -> tuple[int, int, str]:
+        try:
+            round_number = int(str(session.get("round") or "0"))
+        except (TypeError, ValueError):
+            round_number = 0
+        type_order = 0 if session.get("type") == "sprint" else 1
+        return (round_number, type_order, str(session.get("key") or ""))
+
+    def _season_result_races(self) -> list[dict]:
+        return [
+            race
+            for race in self._race_table_races(
+                getattr(self._season_results_coordinator, "data", None)
+            )
+            if race.get("Results")
+        ]
+
+    def _sprint_result_races(self) -> list[dict]:
+        return [
+            race
+            for race in self._race_table_races(
+                getattr(self._sprint_results_coordinator, "data", None)
+            )
+            if race.get("SprintResults") or race.get("Results")
+        ]
+
+    def _latest_completed_round(self, races: list[dict]) -> int | None:
+        return max(
+            (
+                round_number
+                for race in races
+                if (round_number := self._round_number(race)) is not None
+            ),
+            default=None,
+        )
+
+    def _metadata_sessions(self, season: str) -> list[dict]:
+        race_sessions = [
+            self._build_race_metadata_session(race, season)
+            for race in self._season_result_races()
+        ]
+        sprint_sessions = [
+            self._build_sprint_session(race, season)
+            for race in self._sprint_result_races()
+        ]
+        return sorted(
+            [*race_sessions, *sprint_sessions],
+            key=self._session_sort_key,
+        )
+
+    def _find_race_for_session(self, session_key: str, season: str) -> dict | None:
+        prefix = f"race:{season}:"
+        if not session_key.startswith(prefix):
+            return None
+        round_number = session_key.removeprefix(prefix)
+        return next(
+            (
+                race
+                for race in self._season_result_races()
+                if str(race.get("round") or "").strip() == round_number
+            ),
+            None,
+        )
+
+    async def async_get_session(self, session_key: str) -> dict[str, Any]:
+        """Return chart-ready data for one selected lap position session."""
+        season = self._effective_season()
+        metadata_sessions = self._metadata_sessions(season)
+        metadata_by_key = {
+            str(session.get("key")): session for session in metadata_sessions
+        }
+        metadata = metadata_by_key.get(str(session_key))
+        if metadata is None:
+            return {
+                "season": season,
+                "source": "jolpica",
+                "updated_at": self._utc_now_iso(),
+                "status": "not_found",
+                "session": None,
+                "reason": "Session is not available in lap position metadata",
+            }
+
+        if metadata.get("type") == "sprint":
+            return {
+                "season": season,
+                "source": "jolpica",
+                "updated_at": self._utc_now_iso(),
+                "status": metadata.get("status"),
+                "session": metadata,
+            }
+
+        cached = self._session_payload_cache.get(str(session_key))
+        if _is_no_spoiler_jolpica_blocked(self):
+            if cached is not None:
+                return {
+                    "season": season,
+                    "source": "jolpica",
+                    "updated_at": self._utc_now_iso(),
+                    "status": cached.get("status"),
+                    "session": cached,
+                    "cached": True,
+                }
+            blocked = {
+                **metadata,
+                "status": "blocked",
+                "reason": "No Spoiler Mode is active",
+            }
+            return {
+                "season": season,
+                "source": "jolpica",
+                "updated_at": self._utc_now_iso(),
+                "status": "blocked",
+                "session": blocked,
+            }
+
+        race = self._find_race_for_session(str(session_key), season)
+        if race is None:
+            return {
+                "season": season,
+                "source": "jolpica",
+                "updated_at": self._utc_now_iso(),
+                "status": "not_found",
+                "session": None,
+                "reason": "Race is not available in season results",
+            }
+
+        latest_round = self._latest_completed_round(self._season_result_races())
+        session = await self._build_race_session(race, season, latest_round)
+        if session.get("status") == "available":
+            self._session_payload_cache[str(session_key)] = session
+        elif session.get("status") == "error" and cached is not None:
+            return {
+                "season": season,
+                "source": "jolpica",
+                "updated_at": self._utc_now_iso(),
+                "status": cached.get("status"),
+                "session": cached,
+                "cached": True,
+                "warning": session.get("reason"),
+            }
+
+        return {
+            "season": season,
+            "source": "jolpica",
+            "updated_at": self._utc_now_iso(),
+            "status": session.get("status"),
+            "session": session,
+        }
+
+    async def _async_update_data(self):
+        season = self._effective_season()
+        result = {
+            "season": season,
+            "source": "jolpica",
+            "updated_at": self._utc_now_iso(),
+            "sessions": self._metadata_sessions(season),
+            "data_mode": "metadata",
+            "session_data_api": "websocket",
+            "session_data_type": "f1_sensor/lap_position/session",
+        }
+
+        if _is_no_spoiler_jolpica_blocked(self):
+            if isinstance(self.data, dict):
+                return self.data
+            return self._empty_result(season)
+        return result
 
 
 class FiaDocumentsCoordinator(DataUpdateCoordinator):
@@ -6845,7 +8145,9 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
                     persist_save=self._persist_save,
                 )
         except Exception as err:  # noqa: BLE001
-            raise UpdateFailed(f"Error fetching FIA documents: {err}") from err
+            raise UpdateFailed(
+                f"Error fetching FIA documents: {_format_update_error(err)}"
+            ) from err
 
         try:
             docs = parse_fia_documents(html)

@@ -19,6 +19,8 @@ from custom_components.f1_sensor import (
     _RC_LOG_SERVICE,
     _RC_LOG_SERVICE_MARKER,
     CONFIG_SCHEMA,
+    RACE_CONTROL_LOG_MAX_FIELD_CHARS,
+    RACE_CONTROL_LOG_MAX_ITEMS,
     RaceControlCoordinator,
     RaceControlLogStore,
     _is_activity_log_excluded_entity,
@@ -37,9 +39,15 @@ from custom_components.f1_sensor.const import (
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
     PLATFORMS,
+    SUPPORTED_SENSOR_KEYS,
 )
 from custom_components.f1_sensor.live_delay import LiveDelayReferenceController
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
+from custom_components.f1_sensor.track_map import (
+    TrackMapReplayAdapter,
+    TrackMapRuntimeData,
+    TrackMapStore,
+)
 
 
 def test_config_schema_marks_integration_config_entry_only(caplog) -> None:
@@ -169,6 +177,10 @@ def _coordinator_patches(
         ),
         patch(
             "custom_components.f1_sensor.F1SprintResultsCoordinator",
+            DummyCoordinator,
+        ),
+        patch(
+            "custom_components.f1_sensor.F1LapPositionProgressionCoordinator",
             DummyCoordinator,
         ),
         patch(
@@ -450,6 +462,35 @@ async def test_race_control_log_clears_when_source_stops(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_race_control_log_store_bounds_history_and_fields(hass) -> None:
+    store = RaceControlLogStore(hass, "entry-1")
+
+    try:
+        await store.async_initialize()
+
+        for idx in range(RACE_CONTROL_LOG_MAX_ITEMS + 5):
+            store.append(
+                {
+                    "Utc": f"2026-03-12T14:{idx % 60:02d}:00Z",
+                    "Category": "Other",
+                    "Message": f"{idx}-"
+                    + ("x" * (RACE_CONTROL_LOG_MAX_FIELD_CHARS + 10)),
+                }
+            )
+        await hass.async_block_till_done()
+
+        items = store.get_items()
+        assert len(items) == RACE_CONTROL_LOG_MAX_ITEMS
+        assert items[0]["message"].startswith(f"{RACE_CONTROL_LOG_MAX_ITEMS + 4}-")
+        assert len(items[0]["message"]) == RACE_CONTROL_LOG_MAX_FIELD_CHARS
+        assert all(len(item["event_id"]) == 40 for item in items)
+        assert len(store.get_items(limit=1)) == 1
+        assert store.get_items(limit=0) == []
+    finally:
+        await store.async_close()
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:
     with ExitStack() as stack:
         stack.enter_context(
@@ -486,6 +527,111 @@ async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:
     assert entry_data["operation_mode"] == OPERATION_MODE_DEVELOPMENT
     assert entry_data["replay_file"] == mock_config_entry.data[CONF_REPLAY_FILE]
     assert entry_data["live_bus"].started is True
+    assert isinstance(mock_config_entry.runtime_data, TrackMapRuntimeData)
+    assert isinstance(entry_data["track_map_store"], TrackMapStore)
+    assert isinstance(entry_data["track_map_replay_adapter"], TrackMapReplayAdapter)
+    assert (
+        entry_data["track_map_store"] is mock_config_entry.runtime_data.track_map_store
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_creates_lap_position_dependencies_when_enabled(
+    hass, replay_file
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            "enable_race_control": False,
+            CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+            CONF_REPLAY_FILE: replay_file,
+            "disabled_sensors": sorted(
+                SUPPORTED_SENSOR_KEYS - {"lap_position_progression"}
+            ),
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        for cm in _coordinator_patches():
+            stack.enter_context(cm)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+
+        result = await async_setup_entry(hass, entry)
+
+    assert result is True
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    assert entry_data["race_coordinator"] is not None
+    assert entry_data["season_results_coordinator"] is not None
+    assert entry_data["sprint_results_coordinator"] is not None
+    assert entry_data["lap_position_progression_coordinator"] is not None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_skips_lap_position_coordinator_when_disabled(
+    hass, replay_file
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            "enable_race_control": False,
+            CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+            CONF_REPLAY_FILE: replay_file,
+            "disabled_sensors": sorted(SUPPORTED_SENSOR_KEYS),
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        for cm in _coordinator_patches():
+            stack.enter_context(cm)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+
+        result = await async_setup_entry(hass, entry)
+
+    assert result is True
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    assert entry_data["lap_position_progression_coordinator"] is None
 
 
 @pytest.mark.asyncio
@@ -548,9 +694,7 @@ async def test_async_setup_entry_live_mode_wires_event_tracker_fallback(hass) ->
 async def test_async_setup_entry_live_mode_exposes_auth_capability(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", True
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", True)
     token = _jwt(datetime.now(UTC) + timedelta(days=2))
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -607,6 +751,17 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
     assert FakeLiveBus.last_instance.auth_header == f"Bearer {token}"
     entry_data = hass.data[DOMAIN][entry.entry_id]
     assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is True
+    assert (
+        "Position.z"
+        in entry_data["signalr_stream_capabilities"]["auth_gated_live_streams"]
+    )
+    assert (
+        "Position.z" in entry_data["signalr_stream_capabilities"]["active_live_streams"]
+    )
+    assert (
+        "Position.z"
+        not in entry_data["signalr_stream_capabilities"]["public_live_streams"]
+    )
     assert entry_data["f1tv_auth_status"].status == "valid"
     assert entry_data["f1tv_auth_status"].used_for_live_timing is True
     entry.async_start_reauth = MagicMock()
@@ -615,7 +770,13 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
 
     assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is False
     assert entry_data["f1tv_auth_status"].status == "rejected"
-    entry.async_start_reauth.assert_called_once_with(hass, data=entry.data)
+    entry.async_start_reauth.assert_not_called()
+    assert (
+        ir.async_get(hass).async_get_issue(
+            DOMAIN, f1tv_auth_repair_issue_id(entry.entry_id)
+        )
+        is not None
+    )
 
 
 @pytest.mark.asyncio
@@ -686,12 +847,82 @@ async def test_async_setup_entry_uses_auth_when_development_ui_disabled(
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_creates_repair_for_expired_auth_and_keeps_public_live(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", True)
+    token = _jwt(datetime.now(UTC) - timedelta(hours=1))
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            "enable_race_control": False,
+            CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+            CONF_REPLAY_FILE: "",
+            CONF_LIVE_TIMING_AUTH_HEADER: f"Bearer {token}",
+        },
+    )
+    entry.async_start_reauth = MagicMock()
+    entry.add_to_hass(hass)
+    FakeLiveBus.last_instance = None
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.EventTrackerScheduleSource",
+                lambda *_args, **_kwargs: object(),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionSupervisor",
+                FakeLiveSupervisor,
+            )
+        )
+        for cm in _coordinator_patches():
+            stack.enter_context(cm)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+        result = await async_setup_entry(hass, entry)
+
+    assert result is True
+    assert FakeLiveBus.last_instance is not None
+    assert FakeLiveBus.last_instance.auth_header == ""
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is False
+    assert entry_data["f1tv_auth_status"].status == "expired"
+    entry.async_start_reauth.assert_not_called()
+    assert (
+        ir.async_get(hass).async_get_issue(
+            DOMAIN, f1tv_auth_repair_issue_id(entry.entry_id)
+        )
+        is not None
+    )
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_suppresses_expired_auth_when_gate_disabled(
     hass, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.const.ENABLE_EXPERIMENTAL_F1TV_AUTH", False
-    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", False)
     token = _jwt(datetime.now(UTC) - timedelta(hours=1))
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -862,6 +1093,7 @@ async def test_async_setup_entry_live_mode_registers_replay_only_components(
             "RaceControlCoordinator",
             "WeatherDataCoordinator",
             "LapCountCoordinator",
+            "IncidentCoordinator",
             "LiveModeCoordinator",
             "LiveDriversCoordinator",
             "TopThreeCoordinator",
@@ -893,6 +1125,7 @@ async def test_async_setup_entry_live_mode_registers_replay_only_components(
     entry_data = hass.data[DOMAIN][entry.entry_id]
     assert entry_data["operation_mode"] == OPERATION_MODE_LIVE
     assert entry_data["formation_start_tracker"] is sentinel_tracker
+    assert entry_data["incident_coordinator"] is not None
     assert entry_data["pitstop_coordinator"] is not None
     assert entry_data["championship_prediction_coordinator"] is not None
 

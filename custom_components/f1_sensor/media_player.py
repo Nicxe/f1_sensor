@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+from math import isfinite
 
 from homeassistant.components.media_player import MediaPlayerEntity
 from homeassistant.components.media_player.const import (
@@ -54,6 +55,7 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
     _attr_supported_features = (
         MediaPlayerEntityFeature.PLAY
         | MediaPlayerEntityFeature.PAUSE
+        | MediaPlayerEntityFeature.SEEK
         | MediaPlayerEntityFeature.STOP
     )
     _attr_icon = "mdi:play-circle"
@@ -194,6 +196,34 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
         """Pause replay playback."""
         if self._controller.state == ReplayState.PLAYING:
             await self._controller.async_pause()
+
+    async def async_media_seek(self, position: float) -> None:
+        """Seek replay playback to a media position in seconds."""
+        if self._controller.state not in (
+            ReplayState.READY,
+            ReplayState.PLAYING,
+            ReplayState.PAUSED,
+        ):
+            _LOGGER.debug(
+                "Ignoring replay seek while replay is %s",
+                self._controller.state.value,
+            )
+            return
+
+        self._refresh_from_controller()
+        duration = max(0, int(self._attr_media_duration or 0))
+        requested_position = float(position)
+        if not isfinite(requested_position):
+            requested_position = 0.0
+        target_position = int(max(0, min(requested_position, duration)))
+        try:
+            await self._controller.async_seek_to_position(target_position)
+        except RuntimeError as err:
+            _LOGGER.warning("Replay seek failed: %s", err)
+            return
+
+        self._refresh_from_controller()
+        self._safe_write_ha_state()
 
     async def async_media_stop(self) -> None:
         """Stop replay playback and reset state."""

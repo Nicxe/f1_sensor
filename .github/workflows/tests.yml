@@ -4,7 +4,9 @@ on:
   push:
     branches: [dev, beta, main]
     paths:
+      - ".github/workflows/tests.yml"
       - "custom_components/**/*.py"
+      - "custom_components/**/*.js"
       - "custom_components/**/tests/**"
   pull_request:
 

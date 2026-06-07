@@ -40,6 +40,7 @@ async def test_timingapp_warn_once_when_compounds_stay_missing_live(
     )
 
     coord._handle_live_state(True, "live-Race")
+    coord._merge_sessionstatus({"Status": "Started", "Started": True})
 
     now["value"] = 401.0
     coord._merge_timingapp(
@@ -68,6 +69,7 @@ async def test_timingapp_logs_first_meaningful_compound_live(
     )
 
     coord._handle_live_state(True, "live-Race")
+    coord._merge_sessionstatus({"Status": "Started", "Started": True})
 
     now["value"] = 287.5
     coord._merge_timingapp(
@@ -88,6 +90,34 @@ async def test_timingapp_logs_first_meaningful_compound_live(
 
 
 @pytest.mark.asyncio
+async def test_timingapp_warning_timer_starts_when_session_starts(
+    hass, monkeypatch, caplog
+) -> None:
+    coord = _make_coord(hass)
+    caplog.set_level(logging.WARNING, logger="custom_components.f1_sensor")
+
+    now = {"value": 100.0}
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.__init__.time.monotonic",
+        lambda: now["value"],
+    )
+
+    coord._handle_live_state(True, "live-Race")
+    now["value"] = 3700.0
+    coord._merge_timingapp({"Lines": {"1": {"Stints": []}}})
+    assert "without tyre compounds" not in caplog.text
+
+    coord._merge_sessionstatus({"Status": "Started", "Started": True})
+    now["value"] = 4001.0
+    coord._merge_timingapp({"Lines": {"1": {"Stints": []}}})
+
+    assert (
+        "TimingAppData frames received for 301s of live session without tyre compounds"
+        in caplog.text
+    )
+
+
+@pytest.mark.asyncio
 async def test_extract_stint_items_normalizes_list_and_dict_inputs(hass) -> None:
     coord = _make_coord(hass)
 
@@ -104,6 +134,30 @@ async def test_extract_stint_items_normalizes_list_and_dict_inputs(hass) -> None
         (2, {"Compound": "HARD"}),
     ]
     assert coord._extract_stint_items(None) == []
+
+
+@pytest.mark.asyncio
+async def test_timingapp_ignores_sparse_or_out_of_range_stint_indexes(hass) -> None:
+    coord = _make_coord(hass)
+
+    assert coord._extract_stint_items(
+        {
+            "0": {"Compound": "MEDIUM"},
+            "31": {"Compound": "HARD"},
+            "32": {"Compound": "SOFT"},
+            "100000000": {"Compound": "SOFT"},
+        }
+    ) == [
+        (0, {"Compound": "MEDIUM"}),
+        (31, {"Compound": "HARD"}),
+    ]
+
+    tyre_history = {"stints": [], "current_stint_index": None}
+    assert (
+        coord._update_stint_history(tyre_history, 100000000, {"Compound": "SOFT"})
+        is False
+    )
+    assert tyre_history["stints"] == []
 
 
 @pytest.mark.asyncio

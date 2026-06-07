@@ -8,6 +8,7 @@ title: Configuration
 To add the integration to your Home Assistant instance, use the button below:
 
 [![Open your Home Assistant instance and start configuration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start?domain=f1_sensor)
+
 :::info
 During installation, you can choose exactly which sensors you want to include in your setup.
 This gives you control over which data points to load, for example, only the next race and weather, without standings or calendar.
@@ -20,6 +21,21 @@ This documentation always refers to the standard `entity_id`, for example `senso
 Display names in Home Assistant can be localized, and older installations may already have different registry IDs. When you search in Home Assistant, search for the `f1_` suffix or check the entity’s `entity_id` in the entity settings instead of relying on the display name alone.
 :::
 
+## Configuration choices
+
+The setup form lets you choose how much F1 data Home Assistant should create and update.
+
+| Setting | What to choose |
+| --- | --- |
+| **Device name** | Keep the default unless you run multiple F1 Sensor entries |
+| **Enabled sensors** | Select the static, live, and helper entities you want Home Assistant to create |
+| **Enable live F1 API** | Turn this on for live session status, track status, Safety Car, Race Control, weather, timing, tyres, and incident alerts |
+| **First day of race week** | Choose when `binary_sensor.f1_race_week` should turn on for your dashboards and automations |
+| **Connect F1TV access with Token Helper** | Optional. Use this only when you want extra live-auth features such as live Track Map, Pit Stops, Championship Prediction, or earlier incident candidates |
+
+:::info[F1TV Auth is optional]
+Public live timing works without F1TV Auth. Leave F1TV pairing off if you only need schedules, standings, public live timing, Race Control, weather, driver timing, tyres, and confirmed incident alerts.
+:::
 
 ### Manual Configuration
 
@@ -45,7 +61,7 @@ The integration organizes all entities across **six dedicated sub-devices**, whi
 | **Officials** | Race control messages, FIA documents, track limits, investigations |
 | **System** | Live delay, calibration controls, replay controls, live timing connectivity, F1TV token status and controls |
 
-*Entities marked with an asterisk depend on Replay Mode or experimental F1TV Auth testing, depending on the selected feature.
+*Entities marked with an asterisk depend on either [Replay Mode](/features/replay-mode) or optional [F1TV Auth](/features/f1tv-auth), depending on whether you are using historical replay data or extra live timing data.
 
 Each device exposes its own set of [device automation triggers](/automation#device-automation-triggers), making it straightforward to build automations directly from the UI without writing YAML.
 :::warning[Upgrading from v3 to v4]
@@ -58,11 +74,17 @@ All entity IDs remain unchanged, so automations and dashboard cards that referen
 
 ## Live data setup
 
-When enabling live data, you can set an initial delay to better align live updates with your TV broadcast.
+Enable **Enable live F1 API** when you want Home Assistant to create and update live session entities. When live data is enabled, you can set an initial delay to better align live updates with your TV broadcast.
 
 For detailed instructions on syncing with your TV, including guided calibration, see [Live Delay](/features/live-delay).
 
-Public live timing works without F1TV access. Experimental [F1TV Auth testing](/help/experimental-testing) is optional and only needed when you want to test auth-gated live timing streams such as Pit Stops, Championship Prediction, or formation start data during a real live session.
+Public live timing works without F1TV Auth. This covers the normal live features most users need, including session status, track status, Safety Car, Race Control, weather, driver timing, tyres, and confirmed incident alerts.
+
+Optional [F1TV Auth](/features/f1tv-auth) can be paired with the [F1TV Token Helper](/help/f1tv-token-helper) when you want extra live timing features during a real live session. It can enable or improve features such as [Track Map](/features/track-map), Pit Stops, Championship Prediction, formation start data, and earlier incident candidates.
+
+Replay Mode is a separate mode. It can show some data that requires F1TV Auth during live sessions because replay uses Formula 1's public session archive after the session has completed.
+
+For the practical F1TV Auth setup, see [F1TV Auth Setup](/help/f1tv-auth-setup). For incident behavior, see [Incident Detection](/features/incident-detection).
 :::tip[Quick start]
 A typical streaming delay is 30–45 seconds. You can always fine-tune this later using the [Live Delay](/features/live-delay) feature.
 :::

@@ -231,6 +231,10 @@ async def async_setup_entry(
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
         "sprint_results": (F1SprintResultsSensor, data["sprint_results_coordinator"]),
+        "lap_position_progression": (
+            F1LapPositionProgressionSensor,
+            data.get("lap_position_progression_coordinator"),
+        ),
         "driver_points_progression": (
             F1DriverPointsProgressionSensor,
             data["season_results_coordinator"],
@@ -466,6 +470,7 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
         "ChampionshipPrediction",
         "DriverRaceInfo",
         "CarData.z",
+        "Position.z",
     )
 
     def __init__(self, hass: HomeAssistant, entry_id: str, device_name: str) -> None:
@@ -808,6 +813,8 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_icon = "mdi:flag-checkered"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
         self._history_coordinator = None
 
     async def async_added_to_hass(self):
@@ -819,29 +826,23 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
                 self._handle_history_update
             )
             self.async_on_remove(removal)
+        self._refresh_cached_state()
 
     @callback
     def _handle_history_update(self) -> None:
+        self._refresh_cached_state()
         self._safe_write_ha_state()
 
     def _history_attributes(self) -> dict:
         data = getattr(self._history_coordinator, "data", None)
         return data if isinstance(data, dict) else {}
 
-    @property
-    def state(self):
-        next_race = self._get_next_race()
-        if not next_race:
-            return None
-        return _combine_date_time(
-            next_race.get("date"), next_race.get("time"), force_utc=True
-        )
-
-    @property
-    def extra_state_attributes(self):
+    def _refresh_cached_state(self) -> None:
         race = self._get_next_race()
         if not race:
-            return {}
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {}
+            return
 
         circuit = race.get("Circuit", {})
         loc = circuit.get("Location", {})
@@ -913,7 +914,21 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         _populate("sprint_start", sprint_start)
         attrs.update(self._history_attributes())
 
-        return attrs
+        self._attr_native_value = race_start
+        self._attr_extra_state_attributes = attrs
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._refresh_cached_state()
+        self._safe_write_ha_state()
+
+    @property
+    def state(self):
+        return self._attr_native_value
+
+    @property
+    def extra_state_attributes(self):
+        return self._attr_extra_state_attributes
 
 
 class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
@@ -1542,6 +1557,67 @@ class F1SprintResultsSensor(F1BaseEntity, SensorEntity):
                 }
             )
         return {"races": cleaned}
+
+
+class F1LapPositionProgressionSensor(F1BaseEntity, SensorEntity):
+    """Sensor exposing post-race lap-by-lap position progression sessions."""
+
+    _device_category = "race"
+    _unrecorded_attributes = frozenset({"sessions"})
+
+    _attr_translation_key = "lap_position_progression"
+
+    def __init__(self, coordinator, unique_id, entry_id, device_name):
+        super().__init__(coordinator, unique_id, entry_id, device_name)
+        self._attr_icon = "mdi:chart-timeline-variant"
+
+    def _get_sessions(self) -> list[dict]:
+        data = self.coordinator.data if isinstance(self.coordinator.data, dict) else {}
+        sessions = data.get("sessions")
+        if not isinstance(sessions, list):
+            return []
+        return [session for session in sessions if isinstance(session, dict)]
+
+    @staticmethod
+    def _clean_session(session: dict) -> dict:
+        return {
+            "key": session.get("key"),
+            "type": session.get("type"),
+            "status": session.get("status"),
+            "source": session.get("source"),
+            "reason": session.get("reason"),
+            "season": session.get("season"),
+            "round": session.get("round"),
+            "race_name": session.get("race_name"),
+            "date": session.get("date"),
+            "total_laps": session.get("total_laps"),
+            "driver_count": session.get("driver_count"),
+        }
+
+    @property
+    def state(self):
+        valid_statuses = {"available", "pending", "unsupported", "error"}
+        return sum(
+            1
+            for session in self._get_sessions()
+            if session.get("status") in valid_statuses
+        )
+
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data if isinstance(self.coordinator.data, dict) else {}
+        return {
+            "season": data.get("season"),
+            "source": data.get("source") or "jolpica",
+            "updated_at": data.get("updated_at"),
+            "data_mode": data.get("data_mode") or "metadata",
+            "session_data_api": data.get("session_data_api") or "websocket",
+            "session_data_type": data.get("session_data_type")
+            or "f1_sensor/lap_position/session",
+            "sessions": [
+                self._clean_session(session) for session in self._get_sessions()
+            ],
+        }
 
 
 class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
@@ -4936,7 +5012,8 @@ class F1PitStopsSensor(
         self._attr_icon = "mdi:car-wrench"
         self._attr_native_value = 0
         self._attr_extra_state_attributes = {"cars": {}, "last_update": None}
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._last_reset: datetime.datetime | None = None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -4958,6 +5035,9 @@ class F1PitStopsSensor(
                     self._attr_extra_state_attributes = dict(
                         getattr(last, "attributes", {}) or {}
                     )
+                    self._last_reset = self._parse_last_reset(
+                        self._attr_extra_state_attributes.get("last_reset")
+                    )
             else:
                 self._clear_state()
         self._handle_stream_state(updated)
@@ -4973,6 +5053,7 @@ class F1PitStopsSensor(
         total = payload.get("total_stops")
         cars = payload.get("cars")
         last_update = payload.get("last_update")
+        last_reset = self._parse_last_reset(payload.get("last_reset"))
 
         try:
             total_int = int(total) if total is not None else 0
@@ -4986,13 +5067,27 @@ class F1PitStopsSensor(
         if (not force) and self._attr_native_value == total_int:
             with suppress(Exception):
                 prev_cars = (self._attr_extra_state_attributes or {}).get("cars")
-                if prev_cars == cars:
+                if prev_cars == cars and self._last_reset == last_reset:
                     return
         self._attr_native_value = total_int
+        self._last_reset = last_reset
         self._attr_extra_state_attributes = {
             "cars": cars if isinstance(cars, dict) else {},
             "last_update": last_update,
         }
+
+    @staticmethod
+    def _parse_last_reset(value) -> datetime.datetime | None:
+        if isinstance(value, datetime.datetime):
+            return value if value.tzinfo is not None else None
+        if not isinstance(value, str):
+            return None
+        parsed = dt_util.parse_datetime(value)
+        return parsed if parsed is not None and parsed.tzinfo is not None else None
+
+    @property
+    def last_reset(self) -> datetime.datetime | None:
+        return self._last_reset
 
     def _handle_coordinator_update(self) -> None:
         payload = self._extract_current()

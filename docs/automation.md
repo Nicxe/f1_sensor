@@ -8,7 +8,7 @@ Automate your home based on live F1 data. These examples use [live data sensors]
 For automations to match what you see on screen, configure the [Live Delay](/features/live-delay) to match your broadcast delay.
 :::
 :::info[Ready-made blueprints]
-Looking for an easy starting point? The [Blueprints](/blueprints/track-status-light) section has ready-made automations for light control and race control notifications — no YAML required.
+Looking for an easy starting point? The [Blueprints](/blueprints/track-status-light) section has ready-made automations for light control, race control notifications, incident notifications, and replay sync - no YAML required.
 :::
 :::info[Use entity IDs from this page]
 All examples below use the standard `entity_id`, such as `sensor.f1_session_status` and `binary_sensor.f1_safety_car`.
@@ -22,7 +22,7 @@ If your Home Assistant UI shows translated display names, search for the documen
 
 The easiest way to build automations is through the Home Assistant UI using device triggers. Go to **Settings > Devices & Services > Devices**, select any F1 Sensor sub-device, and choose **Automations > Add trigger** to see the available triggers without writing any YAML.
 :::info
-Device triggers are the recommended starting point. They automatically reference the correct entity and are always kept in sync with the integration. YAML examples further down on this page show what happens under the hood.
+Device triggers are the recommended starting point. They automatically reference the correct entity and are always kept in sync with the integration. YAML examples further down on this page show equivalent manual setups.
 :::
 
 Triggers are organized per sub-device. Only triggers whose backing entity is enabled will appear.
@@ -49,6 +49,10 @@ Triggers are organized per sub-device. Only triggers whose backing entity is ena
 | Track status: Safety Car | Track status becomes SC |
 | Track status: VSC | Track status becomes VSC |
 | Track status: Red Flag | Track status becomes RED |
+| Possible on-track incident detected | A candidate, confirmed, or updated incident becomes active |
+| Possible on-track incident cleared | No possible incident remains active |
+| On-track incident detected | A confirmed incident becomes active |
+| On-track incident cleared | No confirmed incident remains active |
 
 ### Officials device
 
@@ -189,7 +193,7 @@ mode: single
 
 ### Race Control Event Notifications
 
-Uses the [Race Control event stream](/entities/events) for a low-latency trigger on every race control message — flag changes, incident reports, and steward notes.
+Uses [Race Control events](/entities/events) for a low-latency trigger on every race control message — flag changes, incident reports, and steward notes.
 
 You can also use the [Race Control sensor](/entities/live-data#race-control) if you prefer a sensor-state trigger with attribute access and history.
 
@@ -207,4 +211,105 @@ action:
       message: "{{ trigger.event.data.message.Message }}"
 mode: queued
 max: 10
+```
+
+---
+
+### Possible on-track incident notification
+
+Uses the [`f1_sensor_incident` event](/entities/events#on-track-incident) to notify only for confirmed medium or high confidence incidents during race, sprint, or qualifying sessions. For a ready-made version, see the [Incident Notifications blueprint](/blueprints/incident-notifications). For behavior details, see [Incident Detection](/features/incident-detection).
+
+:::tip[Sync with your TV]
+Incident events respect Live Delay, so set [Live Delay](/features/live-delay) to match your broadcast if you want notifications to line up with the pictures.
+:::
+
+```yaml
+alias: F1 - Possible on-track incident
+description: Notify for confirmed likely stopped cars or on-track incidents
+trigger:
+  - platform: event
+    event_type: f1_sensor_incident
+condition:
+  - condition: template
+    value_template: "{{ trigger.event.data.phase == 'confirmed' }}"
+  - condition: template
+    value_template: "{{ trigger.event.data.confidence in ['medium', 'high'] }}"
+  - condition: template
+    value_template: "{{ trigger.event.data.session.session_type in ['race', 'sprint', 'qualifying'] }}"
+action:
+  - service: notify.mobile_app_your_phone
+    data:
+      title: "Possible F1 incident"
+      message: >
+        {% set data = trigger.event.data %}
+        {% set location = data.get('location') or {} %}
+        {{ trigger.event.data.driver.tla }} may have stopped on track
+        during {{ trigger.event.data.session.session_name }}.
+        {% if location.get('description') %}
+        Location: {{ location.get('description') }}
+        {% endif %}
+mode: queued
+max: 5
+```
+
+The wording is intentionally neutral. F1 Sensor detects likely stopped cars and on-track incidents, not guaranteed crashes. Location text only appears when fresh Track Map context is available.
+
+---
+
+### Optional candidate incident notification
+
+Candidate incidents are earlier and less certain than confirmed incidents. They can come from public context and can also be improved by optional F1TV Auth car movement data when it correlates with flag or Safety Car context.
+
+:::warning[Advanced use]
+Use candidate notifications only if you are comfortable with more false positives. Keep the wording neutral and consider limiting this automation to races and sprints.
+:::
+
+```yaml
+alias: F1 - Candidate on-track incident
+description: Advanced alert for candidate incident events
+trigger:
+  - platform: event
+    event_type: f1_sensor_incident
+condition:
+  - condition: template
+    value_template: "{{ trigger.event.data.phase == 'candidate' }}"
+  - condition: template
+    value_template: "{{ trigger.event.data.confidence in ['medium', 'high'] }}"
+  - condition: template
+    value_template: "{{ trigger.event.data.session.session_type in ['race', 'sprint'] }}"
+action:
+  - service: notify.mobile_app_your_phone
+    data:
+      title: "Possible F1 incident candidate"
+      message: >
+        {% set data = trigger.event.data %}
+        {% set location = data.get('location') or {} %}
+        {{ data.driver.tla }} may be slow or stopped
+        during {{ data.session.session_name }}.
+        {% if location.get('description') %}
+        Location: {{ location.get('description') }}
+        {% endif %}
+mode: queued
+max: 5
+```
+
+---
+
+### Dashboard trigger for active incidents
+
+Use the [On-track Incident binary sensor](/entities/live-data#on-track-incident) when you only need to know whether any confirmed incident is currently active.
+
+```yaml
+alias: F1 - Incident indicator on
+description: Turn on a scene while a confirmed incident is active
+trigger:
+  - platform: state
+    entity_id: binary_sensor.f1_on_track_incident
+    to: "on"
+condition: []
+action:
+  - service: scene.turn_on
+    target:
+      entity_id: scene.f1_caution
+mode: single
 ```

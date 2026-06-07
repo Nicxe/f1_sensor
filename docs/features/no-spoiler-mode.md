@@ -20,9 +20,9 @@ You never miss any data. FIA documents, race control messages, and results all a
 
 ---
 
-## How it works
+## What to expect
 
-When No Spoiler Mode is turned on, the integration stops delivering new data to all spoiler-sensitive entities. Internally it continues to fetch and cache data in the background, so when you turn the mode off, everything updates immediately.
+When No Spoiler Mode is turned on, the integration stops showing new data for spoiler-sensitive entities. When you turn the mode off, everything updates immediately.
 
 Live sessions are handled cleanly too. If a session is in progress when you activate the mode, the live connection is dropped straight away. When you deactivate, blocked data is refreshed at once and the live connection re-establishes if a session is still running.
 
@@ -46,8 +46,11 @@ Not all data is blocked. Schedule and calendar data is always kept up to date so
 - Championship predictions
 - FIA documents and race control messages
 - Pit stop data
+- On-track incident detection and incident notifications while the mode is active
 
 When you deactivate the mode, all frozen data is refreshed immediately and delivered to your entities at once. If any FIA documents were published during the blackout, they all appear at the same time.
+
+Incident alerts are treated as spoiler-sensitive. While No Spoiler Mode is active, new live incident events are blocked from dashboards and notification automations. They are not sent later as push notifications from the live session; use [Replay Mode](/features/replay-mode) when you are ready to watch the session with incident alerts.
 
 ---
 
@@ -57,7 +60,7 @@ No Spoiler Mode is controlled by a single global switch:
 
 | Entity | Purpose |
 | --- | --- |
-| `switch.f1_sensor_no_spoiler_mode` | Turn No Spoiler Mode on or off |
+| `switch.f1_no_spoiler_mode` | Turn No Spoiler Mode on or off |
 
 The switch is available under the F1 system device, alongside the live delay calibration switch. It controls the mode for all your F1 Sensor entries at once.
 :::info[One switch for everything]
@@ -90,7 +93,7 @@ automation:
     action:
       - action: switch.turn_on
         target:
-          entity_id: switch.f1_sensor_no_spoiler_mode
+          entity_id: switch.f1_no_spoiler_mode
 ```
 
 Turn it off manually when you are done watching the replay.

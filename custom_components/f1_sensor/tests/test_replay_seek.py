@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,13 +28,27 @@ from custom_components.f1_sensor.const import (
     RCM_OVERTAKE_ENABLED,
     REPLAY_START_REFERENCE_SESSION,
 )
+from custom_components.f1_sensor.incident_detection import (
+    DATA_QUALITY_BOOTSTRAP,
+    DATA_QUALITY_REPLAY,
+    PHASE_CONFIRMED,
+    IncidentDetector,
+)
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.replay_mode import (
     ReplayController,
     ReplayFrame,
     ReplayIndex,
+    ReplaySession,
     ReplaySessionManager,
     ReplayState,
+)
+from custom_components.f1_sensor.track_map import (
+    TRACK_MAP_POSITION_STREAM,
+    TrackMapPosition,
+    TrackMapReplayAdapter,
+    TrackMapStore,
+    track_map_positions_to_payload,
 )
 
 ENTRY_ID = "entry-test"
@@ -100,6 +115,21 @@ def _write_frames(tmp_path: Path, frames: list[tuple[int, str, dict]]) -> Path:
     ]
     frames_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return frames_file
+
+
+def _position_payload(racing_number: str, z: int) -> dict:
+    return track_map_positions_to_payload(
+        [
+            TrackMapPosition(
+                racing_number=racing_number,
+                timestamp=datetime(2025, 12, 7, 13, 0, z, tzinfo=UTC),
+                x=100 + z,
+                y=200 + z,
+                z=z,
+                status="OnTrack",
+            )
+        ]
+    )
 
 
 def _build_index(
@@ -376,6 +406,118 @@ def test_build_initial_state_merges_timingapp_stints_without_tyre_stints(hass) -
     assert timingapp["Lines"]["81"]["Stints"]["0"]["Compound"] == "HARD"
 
 
+def test_build_initial_state_merges_timingdata_for_incident_baseline(hass) -> None:
+    manager = ReplaySessionManager(hass, ENTRY_ID, AsyncMock())  # type: ignore[arg-type]
+    frames = [
+        ReplayFrame(
+            timestamp_ms=0,
+            stream="TimingData",
+            payload={
+                "Lines": {
+                    "6": {
+                        "Stopped": False,
+                        "InPit": False,
+                        "Status": 64,
+                        "Sectors": [
+                            {"Stopped": False},
+                            {"Stopped": False},
+                            {"Stopped": False},
+                        ],
+                    },
+                    "10": {"Stopped": False, "InPit": False, "Status": 64},
+                }
+            },
+        ),
+        ReplayFrame(
+            timestamp_ms=500,
+            stream="TimingData",
+            payload={
+                "Lines": {
+                    "5": {"Sectors": {"2": {"Segments": {"6": {"Status": 2048}}}}}
+                }
+            },
+        ),
+        ReplayFrame(
+            timestamp_ms=1_000,
+            stream="TrackStatus",
+            payload={"Status": "4", "Message": "SCDeployed"},
+        ),
+    ]
+
+    initial_state = manager._build_initial_state(frames, 1_000)
+
+    timing_data = initial_state["TimingData"]
+    assert timing_data["Lines"]["6"]["Stopped"] is False
+    assert timing_data["Lines"]["6"]["InPit"] is False
+    assert timing_data["Lines"]["10"]["Stopped"] is False
+    assert timing_data["Lines"]["5"]["Sectors"]["2"]["Segments"]["6"]["Status"] == 2048
+
+    detector = IncidentDetector()
+    detector.process_stream(
+        "TimingData",
+        timing_data,
+        data_quality=DATA_QUALITY_BOOTSTRAP,
+    )
+    detector.process_stream(
+        "TrackStatus",
+        {"Status": "4", "Message": "SCDeployed"},
+        data_quality=DATA_QUALITY_REPLAY,
+    )
+
+    changes = detector.process_stream(
+        "TimingData",
+        {"Lines": {"6": {"Stopped": True, "Status": 68}}},
+        data_quality=DATA_QUALITY_REPLAY,
+    )
+
+    assert [change.phase for change in changes] == [PHASE_CONFIRMED]
+    assert changes[0].driver.racing_number == "6"
+
+
+def test_build_seek_state_checkpoints_merge_stateful_streams(hass) -> None:
+    manager = ReplaySessionManager(hass, ENTRY_ID, AsyncMock())
+    frames = [
+        ReplayFrame(0, "SessionInfo", {"Type": "Race", "Name": "Race"}),
+        ReplayFrame(
+            5_000,
+            "RaceControlMessages",
+            {"Messages": {"1": {"Message": "First", "Category": "Flag"}}},
+        ),
+        ReplayFrame(
+            10_000,
+            "PitStopSeries",
+            {
+                "PitTimes": {
+                    "1": {
+                        "1": {
+                            "Timestamp": "2025-12-07T13:00:10Z",
+                            "PitStop": {"RacingNumber": "1", "Lap": 1},
+                        }
+                    }
+                }
+            },
+        ),
+        ReplayFrame(15_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 1)),
+        ReplayFrame(
+            30_000,
+            "RaceControlMessages",
+            {"Messages": {"2": {"Message": "Second", "Category": "Drs"}}},
+        ),
+        ReplayFrame(30_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 2)),
+    ]
+
+    checkpoints = manager._build_seek_state_checkpoints(frames)
+
+    assert len(checkpoints) == 1
+    state = checkpoints[0]["state"]
+    assert state["RaceControlMessages"]["Messages"] == {
+        "1": {"Message": "First", "Category": "Flag", "id": 1},
+        "2": {"Message": "Second", "Category": "Drs", "id": 2},
+    }
+    assert state["PitStopSeries"]["PitTimes"]["1"]["1"]["PitStop"]["Lap"] == 1
+    assert state[TRACK_MAP_POSITION_STREAM] == _position_payload("1", 2)
+
+
 @pytest.mark.asyncio
 async def test_replay_seek_ready_updates_planned_position(hass, tmp_path: Path) -> None:
     controller, index, _bus, _live_state = await _setup_controller(
@@ -424,6 +566,278 @@ async def test_replay_seek_forward_replays_intermediate_state_changes(
     assert live_mode.data["overtake_enabled"] is True
 
     await controller.async_stop()
+
+
+@pytest.mark.asyncio
+async def test_replay_absolute_forward_seek_uses_state_checkpoint(
+    hass, tmp_path: Path
+) -> None:
+    controller, index, bus, _live_state = await _setup_controller(
+        hass,
+        tmp_path,
+        initial_state={"SessionInfo": {"Type": "Race", "Name": "Race"}},
+        frames=[
+            (0, "SessionInfo", {"Type": "Race", "Name": "Race"}),
+            (10_000, "TrackStatus", {"Status": "2"}),
+            (60_000, "TrackStatus", {"Status": "3"}),
+            (90_000, "TrackStatus", {"Status": "4"}),
+            (120_000, "TrackStatus", {"Status": "5"}),
+        ],
+        coordinators=(),
+    )
+    index.seek_checkpoints = [{"t": 90_000, "state": {"TrackStatus": {"Status": "4"}}}]
+
+    await controller.async_play()
+    await asyncio.sleep(0)
+    bus.injected.clear()
+
+    await controller.async_seek_to_position(120)
+    await asyncio.sleep(0)
+
+    assert ("TrackStatus", {"Status": "4"}) in bus.injected
+    assert ("TrackStatus", {"Status": "5"}) in bus.injected
+    assert ("TrackStatus", {"Status": "2"}) not in bus.injected
+    assert ("TrackStatus", {"Status": "3"}) not in bus.injected
+
+    await controller.async_stop()
+
+
+@pytest.mark.asyncio
+async def test_replay_cached_index_upgrades_seek_checkpoints(
+    hass, tmp_path: Path
+) -> None:
+    manager = ReplaySessionManager(hass, ENTRY_ID, AsyncMock())
+    manager._cache_dir = tmp_path
+    session = ReplaySession(
+        year=2025,
+        meeting_key=1,
+        meeting_name="Test GP",
+        session_key=2,
+        session_name="Race",
+        session_type="Race",
+        path="2025/Test/Race",
+        start_utc=datetime(2025, 12, 7, 13, 0, tzinfo=UTC),
+        end_utc=datetime(2025, 12, 7, 15, 0, tzinfo=UTC),
+    )
+    session_dir = manager._safe_session_cache_dir(session.unique_id)
+    assert session_dir is not None
+    session_dir.mkdir(parents=True)
+    _write_frames(
+        session_dir,
+        [
+            (0, "SessionInfo", {"Type": "Race", "Name": "Race"}),
+            (30_000, "TrackStatus", {"Status": "1"}),
+        ],
+    )
+    index_file = session_dir / "index.json"
+    index_file.write_text(
+        json.dumps(
+            {
+                "cache_version": 11,
+                "session_id": session.unique_id,
+                "total_frames": 2,
+                "duration_ms": 30_000,
+                "session_started_at_ms": 0,
+                "initial_state": {"SessionInfo": {"Type": "Race", "Name": "Race"}},
+                "seek_index": [{"t": 0, "offset": 0}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    index = await manager._download_and_index_session(session)
+    upgraded = json.loads(index_file.read_text(encoding="utf-8"))
+
+    assert index.seek_checkpoints
+    assert upgraded["cache_version"] == 12
+    assert upgraded["seek_checkpoints"][0]["state"]["TrackStatus"] == {"Status": "1"}
+
+
+@pytest.mark.asyncio
+async def test_replay_seek_coalesces_position_z_frames(hass, tmp_path: Path) -> None:
+    controller, _index, bus, _live_state = await _setup_controller(
+        hass,
+        tmp_path,
+        initial_state={
+            "SessionInfo": {"Type": "Race", "Name": "Race"},
+            "DriverList": {"1": {"RacingNumber": "1", "Tla": "VER"}},
+        },
+        frames=[
+            (0, "SessionInfo", {"Type": "Race", "Name": "Race"}),
+            (0, "DriverList", {"1": {"RacingNumber": "1", "Tla": "VER"}}),
+            (5_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 1)),
+            (10_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 2)),
+            (15_000, "TrackStatus", {"Status": "1"}),
+            (20_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 3)),
+            (30_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 4)),
+        ],
+        coordinators=(),
+    )
+
+    await controller.async_play()
+    await controller.async_seek_by(30)
+
+    position_frames = [
+        payload
+        for stream, payload in bus.injected
+        if stream == TRACK_MAP_POSITION_STREAM
+    ]
+
+    assert position_frames == [_position_payload("1", 4)]
+    assert ("TrackStatus", {"Status": "1"}) in bus.injected
+
+    await controller.async_stop()
+
+
+@pytest.mark.asyncio
+async def test_replay_seek_backward_resets_then_coalesces_position_z(
+    hass, tmp_path: Path
+) -> None:
+    reset_calls = 0
+
+    def reset_callback() -> None:
+        nonlocal reset_calls
+        reset_calls += 1
+
+    controller, _index, bus, _live_state = await _setup_controller(
+        hass,
+        tmp_path,
+        initial_state={
+            "SessionInfo": {"Type": "Race", "Name": "Race"},
+            "DriverList": {"1": {"RacingNumber": "1", "Tla": "VER"}},
+        },
+        frames=[
+            (0, "SessionInfo", {"Type": "Race", "Name": "Race"}),
+            (0, "DriverList", {"1": {"RacingNumber": "1", "Tla": "VER"}}),
+            (5_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 1)),
+            (10_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 2)),
+            (20_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 3)),
+            (30_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 4)),
+        ],
+        coordinators=(),
+    )
+    hass.data[DOMAIN][ENTRY_ID]["replay_reset_callbacks"] = [reset_callback]
+
+    await controller.async_play()
+    await controller.async_seek_by(30)
+    await controller.async_seek_by(-10)
+
+    position_frames = [
+        payload
+        for stream, payload in bus.injected
+        if stream == TRACK_MAP_POSITION_STREAM
+    ]
+
+    assert reset_calls == 2
+    assert position_frames == [_position_payload("1", 4), _position_payload("1", 3)]
+
+    await controller.async_stop()
+
+
+@pytest.mark.asyncio
+async def test_replay_seek_keeps_track_map_at_target_position(
+    hass, tmp_path: Path
+) -> None:
+    controller, _index, bus, _live_state = await _setup_controller(
+        hass,
+        tmp_path,
+        initial_state={
+            "SessionInfo": {
+                "Type": "Race",
+                "Name": "Race",
+                "Key": "101",
+                "Meeting": {
+                    "Key": "55",
+                    "Name": "Test Grand Prix",
+                    "Circuit": {"Key": "999", "ShortName": "Test"},
+                },
+            },
+            "DriverList": {
+                "1": {
+                    "RacingNumber": "1",
+                    "Tla": "VER",
+                    "FullName": "Max Verstappen",
+                    "TeamColour": "#3671C6",
+                }
+            },
+        },
+        frames=[
+            (
+                0,
+                "SessionInfo",
+                {
+                    "Type": "Race",
+                    "Name": "Race",
+                    "Key": "101",
+                    "Meeting": {
+                        "Key": "55",
+                        "Name": "Test Grand Prix",
+                        "Circuit": {"Key": "999", "ShortName": "Test"},
+                    },
+                },
+            ),
+            (
+                0,
+                "DriverList",
+                {
+                    "1": {
+                        "RacingNumber": "1",
+                        "Tla": "VER",
+                        "FullName": "Max Verstappen",
+                        "TeamColour": "#3671C6",
+                    }
+                },
+            ),
+            (5_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 1)),
+            (15_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 2)),
+            (30_000, TRACK_MAP_POSITION_STREAM, _position_payload("1", 9)),
+        ],
+        coordinators=(),
+    )
+    store = TrackMapStore("entry-test", stale_after=timedelta(days=30))
+    adapter = TrackMapReplayAdapter(store, bus, geometry_rebuild_frames=1)
+    adapter.start()
+
+    await controller.async_play()
+    await controller.async_seek_by(30)
+
+    snapshot = store.snapshot(now=datetime(2025, 12, 7, 13, 0, 31, tzinfo=UTC))
+
+    assert snapshot["drivers"][0]["racing_number"] == "1"
+    assert snapshot["drivers"][0]["name"] == "Max Verstappen"
+    assert snapshot["drivers"][0]["z"] == 9
+
+    await controller.async_stop()
+    await adapter.async_close()
+
+
+def test_replay_read_frames_range_uses_seek_index_checkpoint(tmp_path: Path) -> None:
+    prefix = b"\xff\xff\n"
+    line_10 = json.dumps(
+        {"t": 10_000, "s": "TrackStatus", "p": {"Status": "1"}},
+        separators=(",", ":"),
+    ).encode()
+    line_20 = json.dumps(
+        {"t": 20_000, "s": "TrackStatus", "p": {"Status": "5"}},
+        separators=(",", ":"),
+    ).encode()
+    frames_file = tmp_path / "frames.jsonl"
+    frames_file.write_bytes(prefix + line_10 + b"\n" + line_20 + b"\n")
+
+    frames = ReplayController._read_frames_range_sync(
+        frames_file,
+        start_exclusive_ms=15_000,
+        end_inclusive_ms=25_000,
+        seek_index=[{"t": 0, "offset": 0}, {"t": 10_000, "offset": len(prefix)}],
+    )
+
+    assert frames == [
+        ReplayFrame(
+            timestamp_ms=20_000,
+            stream="TrackStatus",
+            payload={"Status": "5"},
+        )
+    ]
 
 
 @pytest.mark.asyncio

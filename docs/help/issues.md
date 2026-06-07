@@ -1,5 +1,5 @@
 ---
-id: Issues
+id: issues
 title: Known Issues
 ---
 Use the [F1 Sensor issue tracker](https://github.com/Nicxe/f1_sensor/issues) for both integration and Live Data Card bugs. For dashboard card problems, select **Live data card** in the issue form component field and include a screenshot or screen recording when the problem is visual.

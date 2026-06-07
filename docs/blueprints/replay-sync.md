@@ -16,7 +16,7 @@ This blueprint requires [Replay Mode](/features/replay-mode) to be set up and a 
 
 ## Import the Blueprint
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FNicxe%2Ff1_sensor%2Fblob%2Fmain%2Fblueprints%2Ff1_replay_sync.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNicxe%2Ff1_sensor%2Fmain%2Fblueprints%2Ff1_replay_sync.yaml)
 
 Or go to **Settings > Automations & Scenes > Blueprints** and import manually using the URL:
 
@@ -53,7 +53,7 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_replay_sync
 
 ---
 
-## How it works
+## Behavior
 
 The blueprint watches your main TV for state changes. When the TV pauses and the F1 replay is currently playing, the replay is paused. When the TV resumes and the replay is currently paused, the replay resumes.
 

@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncGenerator, Callable
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import suppress
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -30,12 +31,18 @@ from .const import (
     REPLAY_START_REFERENCE_FORMATION,
 )
 from .formation_start import FormationStartTracker
-from .helpers import parse_cardata_lines
+from .helpers import CARDATA_MAX_LINE_BYTES, parse_cardata_lines
 from .replay_start import ReplayStartReferenceController
+from .track_map import (
+    TRACK_MAP_POSITION_STREAM,
+    parse_position_z_line,
+    track_map_positions_to_payload,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-# Streams to download (matches SUBSCRIBE_MSG in signalr.py)
+# Streams to download for replay archives. This list is intentionally broader than
+# the public live SignalR contract; live subscriptions stay defined in signalr.py.
 REPLAY_STREAMS = [
     "RaceControlMessages",
     "TrackStatus",
@@ -53,6 +60,7 @@ REPLAY_STREAMS = [
     "PitStopSeries",
     "ChampionshipPrediction",
     "DriverRaceInfo",
+    TRACK_MAP_POSITION_STREAM,
 ]
 
 STATIC_BASE = "https://livetiming.formula1.com/static"
@@ -65,9 +73,25 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when replay index contents change in a way that
 # requires re-downloading cached sessions.
-CACHE_VERSION = 8
+CACHE_VERSION = 12
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
+SEEK_INDEX_INTERVAL_MS = 5_000
+SEEK_STATE_CHECKPOINT_INTERVAL_MS = 30_000
+SEEK_CHECKPOINT_MIN_FORWARD_DELTA_MS = 60_000
+
+
+def _parse_replay_int(value: Any) -> int | None:
+    """Return a non-negative replay identifier integer."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and value.strip().isdecimal():
+        parsed = int(value.strip())
+    else:
+        return None
+    return parsed if parsed >= 0 else None
 
 
 class ReplayState(Enum):
@@ -96,6 +120,16 @@ class ReplaySession:
     start_utc: datetime
     end_utc: datetime
     available: bool = False  # Set after HEAD check
+
+    def __post_init__(self) -> None:
+        year = _parse_replay_int(self.year)
+        meeting_key = _parse_replay_int(self.meeting_key)
+        session_key = _parse_replay_int(self.session_key)
+        if year is None or year <= 0 or meeting_key is None or session_key is None:
+            raise ValueError("Replay session identifiers must be non-negative integers")
+        self.year = year
+        self.meeting_key = meeting_key
+        self.session_key = session_key
 
     @property
     def label(self) -> str:
@@ -144,6 +178,54 @@ class ReplayIndex:
     # Snapshot of all streams at session_started_at_ms for initial state
     initial_state: dict[str, Any] | None = None
     formation_initial_state: dict[str, Any] | None = None
+    seek_index: list[dict[str, int]] | None = None
+    seek_checkpoints: list[dict[str, Any]] | None = None
+
+
+def _seek_offset_for_ms(
+    seek_index: list[dict[str, int]] | None,
+    target_ms: int,
+) -> int:
+    """Return the nearest cached byte offset at or before target_ms."""
+    if not seek_index:
+        return 0
+
+    selected_offset = 0
+    for checkpoint in seek_index:
+        try:
+            checkpoint_ms = int(checkpoint.get("t", 0))
+            checkpoint_offset = int(checkpoint.get("offset", 0))
+        except (TypeError, ValueError):
+            continue
+        if checkpoint_ms > target_ms:
+            break
+        selected_offset = max(0, checkpoint_offset)
+    return selected_offset
+
+
+def _seek_state_checkpoint_for_ms(
+    seek_checkpoints: list[dict[str, Any]] | None,
+    *,
+    after_ms: int,
+    target_ms: int,
+) -> dict[str, Any] | None:
+    """Return the nearest state checkpoint after after_ms and at/before target_ms."""
+    if not seek_checkpoints:
+        return None
+
+    selected: dict[str, Any] | None = None
+    for checkpoint in seek_checkpoints:
+        try:
+            checkpoint_ms = int(checkpoint.get("t", 0))
+        except (TypeError, ValueError):
+            continue
+        if checkpoint_ms <= after_ms:
+            continue
+        if checkpoint_ms > target_ms:
+            break
+        if isinstance(checkpoint.get("state"), dict):
+            selected = checkpoint
+    return selected
 
 
 class ReplaySessionManager:
@@ -335,6 +417,8 @@ class ReplaySessionManager:
             meetings = list(meetings.values())
 
         for meeting in meetings:
+            if not isinstance(meeting, dict):
+                continue
             meeting_key = meeting.get("Key")
             meeting_name = meeting.get("Name") or meeting.get("OfficialName", "Unknown")
 
@@ -343,6 +427,8 @@ class ReplaySessionManager:
                 meeting_sessions = list(meeting_sessions.values())
 
             for sess in meeting_sessions:
+                if not isinstance(sess, dict):
+                    continue
                 session_key = sess.get("Key")
                 session_name = sess.get("Name", "Session")
                 session_type = sess.get("Type", "Unknown")
@@ -356,8 +442,8 @@ class ReplaySessionManager:
                 end_utc = self._parse_datetime(end_str, gmt_offset)
 
                 if start_utc and path:
-                    sessions.append(
-                        ReplaySession(
+                    try:
+                        session = ReplaySession(
                             year=year,
                             meeting_key=meeting_key,
                             meeting_name=meeting_name,
@@ -368,7 +454,12 @@ class ReplaySessionManager:
                             start_utc=start_utc,
                             end_utc=end_utc or start_utc,
                         )
-                    )
+                    except ValueError:
+                        _LOGGER.debug(
+                            "Skipping replay session with invalid identifiers"
+                        )
+                        continue
+                    sessions.append(session)
 
         # Filter to only past sessions (skip availability validation at fetch time
         # to avoid slow HEAD requests blocking the list - validate on demand when loading)
@@ -468,7 +559,10 @@ class ReplaySessionManager:
 
     async def _delete_session_cache(self, session_id: str) -> None:
         """Delete cached data for a specific session."""
-        session_dir = self._cache_dir / session_id
+        session_dir = self._safe_session_cache_dir(session_id)
+        if session_dir is None:
+            _LOGGER.warning("Refusing to delete replay cache outside cache directory")
+            return
         if session_dir.exists():
             try:
                 await self._hass.async_add_executor_job(shutil.rmtree, session_dir)
@@ -523,7 +617,9 @@ class ReplaySessionManager:
 
     async def _download_and_index_session(self, session: ReplaySession) -> ReplayIndex:
         """Download all stream files and create a merged, indexed cache file."""
-        session_dir = self._cache_dir / session.unique_id
+        session_dir = self._safe_session_cache_dir(session.unique_id)
+        if session_dir is None:
+            raise RuntimeError("Invalid replay session cache identifier")
         session_dir.mkdir(parents=True, exist_ok=True)
 
         frames_file = session_dir / "frames.jsonl"
@@ -559,6 +655,48 @@ class ReplaySessionManager:
                         formation_initial_state=index_data.get(
                             "formation_initial_state"
                         ),
+                        seek_index=index_data.get("seek_index"),
+                        seek_checkpoints=index_data.get("seek_checkpoints"),
+                    )
+                if cached_version >= 11 and not index_data.get("seek_checkpoints"):
+                    _LOGGER.info(
+                        "Upgrading cached replay index for %s with seek checkpoints",
+                        session.unique_id,
+                    )
+                    frames = await self._hass.async_add_executor_job(
+                        self._read_frames_file_sync,
+                        frames_file,
+                    )
+                    seek_checkpoints = await self._hass.async_add_executor_job(
+                        self._build_seek_state_checkpoints,
+                        frames,
+                    )
+                    index_data["cache_version"] = CACHE_VERSION
+                    index_data["seek_checkpoints"] = seek_checkpoints
+                    await self._hass.async_add_executor_job(
+                        self._write_json_file,
+                        index_file,
+                        index_data,
+                    )
+                    return ReplayIndex(
+                        session_id=session.unique_id,
+                        total_frames=index_data["total_frames"],
+                        duration_ms=index_data["duration_ms"],
+                        session_started_at_ms=index_data["session_started_at_ms"],
+                        formation_started_at_ms=index_data.get(
+                            "formation_started_at_ms"
+                        ),
+                        formation_start_utc=_parse_optional_utc(
+                            index_data.get("formation_start_utc")
+                        ),
+                        frames_file=frames_file,
+                        index_file=index_file,
+                        initial_state=index_data.get("initial_state"),
+                        formation_initial_state=index_data.get(
+                            "formation_initial_state"
+                        ),
+                        seek_index=index_data.get("seek_index"),
+                        seek_checkpoints=seek_checkpoints,
                     )
                 else:
                     _LOGGER.info(
@@ -654,6 +792,12 @@ class ReplaySessionManager:
             )
             frames_lines.append(line)
 
+        seek_index = self._build_seek_index(frames_lines)
+        seek_checkpoints = await self._hass.async_add_executor_job(
+            self._build_seek_state_checkpoints,
+            all_frames,
+        )
+
         await self._hass.async_add_executor_job(
             self._write_lines_file, frames_file, frames_lines
         )
@@ -672,6 +816,8 @@ class ReplaySessionManager:
             else None,
             "initial_state": initial_state,
             "formation_initial_state": formation_initial_state,
+            "seek_index": seek_index,
+            "seek_checkpoints": seek_checkpoints,
             "created_at": dt_util.utcnow().isoformat(),
         }
 
@@ -693,6 +839,8 @@ class ReplaySessionManager:
             index_file=index_file,
             initial_state=initial_state,
             formation_initial_state=formation_initial_state,
+            seek_index=seek_index,
+            seek_checkpoints=seek_checkpoints,
         )
 
     async def _download_stream(self, url: str, stream_name: str) -> list[ReplayFrame]:
@@ -714,6 +862,15 @@ class ReplaySessionManager:
             return frames
         except Exception as err:
             _LOGGER.debug("Error downloading %s: %s", stream_name, err)
+            return frames
+
+        if stream_name == TRACK_MAP_POSITION_STREAM:
+            frames = await self._hass.async_add_executor_job(
+                self._parse_position_z_stream_text,
+                text,
+                stream_name,
+            )
+            _LOGGER.debug("Downloaded %d frames from %s", len(frames), stream_name)
             return frames
 
         # Parse jsonStream format: each line is timestamp + JSON
@@ -749,6 +906,41 @@ class ReplaySessionManager:
 
         _LOGGER.debug("Downloaded %d frames from %s", len(frames), stream_name)
         return frames
+
+    def _parse_position_z_stream_text(
+        self,
+        text: str,
+        stream_name: str,
+    ) -> list[ReplayFrame]:
+        """Parse Position.z jsonStream text using the track map decoder."""
+        frames: list[ReplayFrame] = []
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            timestamp_str, payload_line = self._split_position_z_line(line)
+            try:
+                timestamp_ms = self._parse_timestamp_to_ms(timestamp_str)
+                positions = parse_position_z_line(payload_line)
+            except Exception:  # noqa: BLE001
+                continue
+            if not positions:
+                continue
+            frames.append(
+                ReplayFrame(
+                    timestamp_ms=timestamp_ms,
+                    stream=stream_name,
+                    payload=track_map_positions_to_payload(positions),
+                )
+            )
+        return frames
+
+    @staticmethod
+    def _split_position_z_line(line: str) -> tuple[str, str]:
+        quote_idx = line.find('"')
+        if quote_idx == -1:
+            return "", line
+        return line[:quote_idx].strip(), line[quote_idx:]
 
     def _merge_topthree_state(self, state: dict[str, Any], payload: dict) -> None:
         """Merge a TopThree payload into accumulated state.
@@ -845,6 +1037,65 @@ class ReplaySessionManager:
     @staticmethod
     def _has_timingapp_state(state: dict[str, Any]) -> bool:
         return isinstance(state, dict) and bool(state)
+
+    def _merge_timingdata_state(self, state: dict[str, Any], payload: dict) -> None:
+        """Accumulate TimingData frames into a replay bootstrap snapshot."""
+        if not isinstance(payload, dict):
+            return
+
+        for key, value in payload.items():
+            if key != "Lines":
+                state[key] = deepcopy(value)
+
+        lines = payload.get("Lines")
+        if not isinstance(lines, dict):
+            return
+
+        cur_lines = state.setdefault("Lines", {})
+        for rn, line_data in lines.items():
+            if not isinstance(line_data, dict):
+                continue
+            rn_key = str(rn)
+            entry = cur_lines.setdefault(rn_key, {})
+            self._deep_merge_replay_state(entry, line_data)
+
+    def _deep_merge_replay_state(self, target: Any, delta: Any) -> Any:
+        if isinstance(target, dict) and isinstance(delta, dict):
+            for key, value in delta.items():
+                current = target.get(key)
+                if isinstance(current, dict) and isinstance(value, dict):
+                    self._deep_merge_replay_state(current, value)
+                elif isinstance(current, list) and isinstance(value, dict):
+                    self._merge_replay_list_state(current, value)
+                else:
+                    target[key] = deepcopy(value)
+            return target
+        if isinstance(target, list) and isinstance(delta, dict):
+            return self._merge_replay_list_state(target, delta)
+        return deepcopy(delta)
+
+    def _merge_replay_list_state(
+        self, target: list[Any], delta: dict[str, Any]
+    ) -> list[Any]:
+        for key, value in delta.items():
+            try:
+                idx = int(key)
+            except (TypeError, ValueError):
+                continue
+            if idx < 0:
+                continue
+            while len(target) <= idx:
+                target.append(None)
+            current = target[idx]
+            if isinstance(current, dict) and isinstance(value, dict):
+                self._deep_merge_replay_state(current, value)
+            else:
+                target[idx] = deepcopy(value)
+        return target
+
+    @staticmethod
+    def _has_timingdata_state(state: dict[str, Any]) -> bool:
+        return isinstance(state, dict) and bool(state.get("Lines"))
 
     def _merge_lap_history_state(
         self,
@@ -1030,6 +1281,7 @@ class ReplaySessionManager:
             "withheld": False,
         }
         timingapp_state: dict[str, Any] = {}
+        timingdata_state: dict[str, Any] = {}
         lap_history_state: dict[str, Any] = {}
         last_lap_times: dict[str, str] = {}
 
@@ -1046,7 +1298,7 @@ class ReplaySessionManager:
                 self._merge_lap_history_state(
                     lap_history_state, last_lap_times, frame.payload
                 )
-                initial_state[frame.stream] = frame.payload
+                self._merge_timingdata_state(timingdata_state, frame.payload)
             elif frame.stream == "DriverRaceInfo" and isinstance(frame.payload, dict):
                 self._extract_grid_from_driver_race_info(
                     lap_history_state, frame.payload
@@ -1065,6 +1317,8 @@ class ReplaySessionManager:
             }
         if self._has_timingapp_state(timingapp_state):
             initial_state["TimingAppData"] = timingapp_state
+        if self._has_timingdata_state(timingdata_state):
+            initial_state["TimingData"] = timingdata_state
         if self._has_lap_history_state(lap_history_state):
             initial_state["LapHistory"] = lap_history_state
 
@@ -1111,6 +1365,214 @@ class ReplaySessionManager:
                 initial_state["TimingAppData"] = timingapp_state
 
         return initial_state
+
+    def _new_seek_checkpoint_accumulator(self) -> dict[str, Any]:
+        """Return mutable replay state used while building seek checkpoints."""
+        return {
+            "state": {},
+            "topthree_state": {
+                "lines": [None, None, None],
+                "withheld": False,
+            },
+            "timingapp_state": {},
+            "timingdata_state": {},
+            "lap_history_state": {},
+            "last_lap_times": {},
+        }
+
+    @staticmethod
+    def _checkpoint_message_key(item: dict[str, Any], fallback: int) -> str:
+        for key in ("id", "Id", "Utc", "utc", "processedAt", "timestamp"):
+            value = item.get(key)
+            if value is not None:
+                text = str(value).strip()
+                if text:
+                    return text
+        return str(fallback)
+
+    def _merge_race_control_checkpoint_state(
+        self,
+        state: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> None:
+        target = state.setdefault("RaceControlMessages", {"Messages": {}})
+        messages_target = target.setdefault("Messages", {})
+        if not isinstance(messages_target, dict):
+            messages_target = {}
+            target["Messages"] = messages_target
+
+        messages = payload.get("Messages")
+        items: list[tuple[str | None, dict[str, Any]]] = []
+        if isinstance(messages, dict):
+            items.extend(
+                (str(key), value)
+                for key, value in messages.items()
+                if isinstance(value, dict)
+            )
+        elif isinstance(messages, list):
+            items.extend((None, value) for value in messages if isinstance(value, dict))
+        elif payload:
+            items.append((None, payload))
+
+        for key, item in items:
+            message_key = key or self._checkpoint_message_key(
+                item,
+                len(messages_target) + 1,
+            )
+            stored = deepcopy(item)
+            if str(message_key).isdecimal():
+                stored.setdefault("id", int(message_key))
+            messages_target[str(message_key)] = stored
+
+    @staticmethod
+    def _pitstop_checkpoint_key(item: dict[str, Any], fallback: int) -> str:
+        timestamp = item.get("Timestamp")
+        if timestamp is not None:
+            text = str(timestamp).strip()
+            if text:
+                return text
+        pitstop = item.get("PitStop")
+        if isinstance(pitstop, dict):
+            lap = pitstop.get("Lap")
+            if lap is not None:
+                text = str(lap).strip()
+                if text:
+                    return text
+        return str(fallback)
+
+    def _merge_pitstop_checkpoint_state(
+        self,
+        state: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> None:
+        pit_times = payload.get("PitTimes")
+        if not isinstance(pit_times, dict):
+            return
+
+        target = state.setdefault("PitStopSeries", {"PitTimes": {}})
+        target_pit_times = target.setdefault("PitTimes", {})
+        if not isinstance(target_pit_times, dict):
+            target_pit_times = {}
+            target["PitTimes"] = target_pit_times
+
+        for rn, entries in pit_times.items():
+            rn_key = str(rn)
+            current_entries = target_pit_times.setdefault(rn_key, {})
+            if not isinstance(current_entries, dict):
+                current_entries = {}
+                target_pit_times[rn_key] = current_entries
+
+            if isinstance(entries, dict):
+                for key, item in entries.items():
+                    if isinstance(item, dict):
+                        current_entries[str(key)] = deepcopy(item)
+            elif isinstance(entries, list):
+                for item in entries:
+                    if not isinstance(item, dict):
+                        continue
+                    item_key = self._pitstop_checkpoint_key(
+                        item,
+                        len(current_entries) + 1,
+                    )
+                    current_entries[str(item_key)] = deepcopy(item)
+
+    def _accumulate_seek_checkpoint_frame(
+        self,
+        accumulator: dict[str, Any],
+        frame: ReplayFrame,
+    ) -> None:
+        if not isinstance(frame.payload, dict):
+            return
+
+        state: dict[str, Any] = accumulator["state"]
+        if frame.stream == "TopThree":
+            self._merge_topthree_state(accumulator["topthree_state"], frame.payload)
+        elif frame.stream == "TimingAppData":
+            self._merge_timingapp_state(accumulator["timingapp_state"], frame.payload)
+        elif frame.stream == "TimingData":
+            self._merge_lap_history_state(
+                accumulator["lap_history_state"],
+                accumulator["last_lap_times"],
+                frame.payload,
+            )
+            self._merge_timingdata_state(accumulator["timingdata_state"], frame.payload)
+        elif frame.stream == "RaceControlMessages":
+            self._merge_race_control_checkpoint_state(state, frame.payload)
+        elif frame.stream == "PitStopSeries":
+            self._merge_pitstop_checkpoint_state(state, frame.payload)
+        elif frame.stream in {"DriverList", "DriverRaceInfo"}:
+            if frame.stream == "DriverList":
+                self._extract_grid_from_driverlist(
+                    accumulator["lap_history_state"], frame.payload
+                )
+            else:
+                self._extract_grid_from_driver_race_info(
+                    accumulator["lap_history_state"], frame.payload
+                )
+            current = state.setdefault(frame.stream, {})
+            if isinstance(current, dict):
+                self._deep_merge_replay_state(current, frame.payload)
+            else:
+                state[frame.stream] = deepcopy(frame.payload)
+        else:
+            state[frame.stream] = deepcopy(frame.payload)
+
+    def _seek_checkpoint_state(
+        self,
+        accumulator: dict[str, Any],
+    ) -> dict[str, Any]:
+        state = deepcopy(accumulator["state"])
+        topthree_state = accumulator["topthree_state"]
+        if topthree_state["lines"] != [None, None, None]:
+            state["TopThree"] = {
+                "Withheld": topthree_state.get("withheld", False),
+                "Lines": deepcopy(topthree_state["lines"]),
+            }
+
+        timingapp_state = accumulator["timingapp_state"]
+        if self._has_timingapp_state(timingapp_state):
+            state["TimingAppData"] = deepcopy(timingapp_state)
+
+        timingdata_state = accumulator["timingdata_state"]
+        if self._has_timingdata_state(timingdata_state):
+            state["TimingData"] = deepcopy(timingdata_state)
+
+        lap_history_state = accumulator["lap_history_state"]
+        if self._has_lap_history_state(lap_history_state):
+            state["LapHistory"] = deepcopy(lap_history_state)
+
+        return state
+
+    def _build_seek_state_checkpoints(
+        self,
+        frames: list[ReplayFrame],
+    ) -> list[dict[str, Any]]:
+        """Build state snapshots that make large absolute seeks fast."""
+        checkpoints: list[dict[str, Any]] = []
+        accumulator = self._new_seek_checkpoint_accumulator()
+        next_checkpoint_ms = SEEK_STATE_CHECKPOINT_INTERVAL_MS
+
+        for idx, frame in enumerate(frames):
+            self._accumulate_seek_checkpoint_frame(accumulator, frame)
+            next_frame_ms = (
+                frames[idx + 1].timestamp_ms if idx + 1 < len(frames) else None
+            )
+            if (
+                frame.timestamp_ms < next_checkpoint_ms
+                or next_frame_ms == frame.timestamp_ms
+            ):
+                continue
+
+            checkpoints.append(
+                {
+                    "t": frame.timestamp_ms,
+                    "state": self._seek_checkpoint_state(accumulator),
+                }
+            )
+            while next_checkpoint_ms <= frame.timestamp_ms:
+                next_checkpoint_ms += SEEK_STATE_CHECKPOINT_INTERVAL_MS
+
+        return checkpoints
 
     @staticmethod
     def _is_race_or_sprint_session(session: ReplaySession) -> bool:
@@ -1208,6 +1670,9 @@ class ReplaySessionManager:
                         raw = await resp.content.readline()
                         if not raw:
                             break
+                        if len(raw) > CARDATA_MAX_LINE_BYTES:
+                            _LOGGER.debug("Skipping oversized replay CarData line")
+                            continue
                         line = raw.decode("utf-8", errors="ignore").strip()
                         if not line:
                             continue
@@ -1296,9 +1761,15 @@ class ReplaySessionManager:
 
         cutoff = time.time() - (REPLAY_CACHE_RETENTION_DAYS * 24 * 3600)
         cleaned = 0
+        cache_root = self._cache_dir.resolve()
 
         for session_dir in self._cache_dir.iterdir():
             if not session_dir.is_dir():
+                continue
+            try:
+                session_dir.resolve().relative_to(cache_root)
+            except ValueError:
+                _LOGGER.warning("Skipping replay cache entry outside cache directory")
                 continue
 
             index_file = session_dir / "index.json"
@@ -1312,6 +1783,19 @@ class ReplaySessionManager:
                     cleaned += 1
                     _LOGGER.debug("Cleaned old replay cache: %s", session_dir.name)
         return cleaned
+
+    def _safe_session_cache_dir(self, session_id: str) -> Path | None:
+        """Return a cache directory path only when it stays inside replay cache."""
+        session_name = str(session_id or "").strip()
+        if not session_name or Path(session_name).name != session_name:
+            return None
+        cache_root = self._cache_dir.resolve()
+        candidate = (self._cache_dir / session_name).resolve()
+        try:
+            candidate.relative_to(cache_root)
+        except ValueError:
+            return None
+        return candidate
 
     @staticmethod
     def _read_json_file(file_path: Path) -> dict:
@@ -1331,6 +1815,51 @@ class ReplaySessionManager:
         with open(file_path, "w", encoding="utf-8") as f:
             for line in lines:
                 f.write(line + "\n")
+
+    @staticmethod
+    def _read_frames_file_sync(file_path: Path) -> list[ReplayFrame]:
+        """Read a cached frames file into replay frames (called via executor)."""
+        frames: list[ReplayFrame] = []
+        with open(file_path, "rb") as handle:
+            for raw_line in handle:
+                try:
+                    line = raw_line.decode("utf-8").strip()
+                    if not line:
+                        continue
+                    frame = json.loads(line)
+                    frames.append(
+                        ReplayFrame(
+                            timestamp_ms=int(frame["t"]),
+                            stream=str(frame["s"]),
+                            payload=frame["p"],
+                        )
+                    )
+                except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+                    continue
+        return frames
+
+    @staticmethod
+    def _build_seek_index(lines: list[str]) -> list[dict[str, int]]:
+        """Build compact byte-offset checkpoints for replay frame files."""
+        seek_index: list[dict[str, int]] = [{"t": 0, "offset": 0}]
+        next_checkpoint_ms = SEEK_INDEX_INTERVAL_MS
+        offset = 0
+
+        for line in lines:
+            try:
+                frame = json.loads(line)
+                frame_ms = int(frame["t"])
+            except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+                frame_ms = None
+
+            if frame_ms is not None and frame_ms >= next_checkpoint_ms:
+                seek_index.append({"t": frame_ms, "offset": offset})
+                while next_checkpoint_ms <= frame_ms:
+                    next_checkpoint_ms += SEEK_INDEX_INTERVAL_MS
+
+            offset += len((line + "\n").encode("utf-8"))
+
+        return seek_index
 
     def _parse_datetime(
         self, date_str: str | None, gmt_offset: str | None
@@ -1430,13 +1959,23 @@ class ReplayTransport:
 
             def _read_frames_stream() -> None:
                 try:
-                    with open(self._index.frames_file, encoding="utf-8") as f:
+                    start_offset = _seek_offset_for_ms(
+                        self._index.seek_index,
+                        start_ms,
+                    )
+                    with open(self._index.frames_file, "rb") as f:
+                        if start_offset > 0:
+                            f.seek(start_offset)
                         for line in f:
                             if self._closed:
                                 break
                             try:
+                                decoded_line = line.decode("utf-8")
+                            except UnicodeDecodeError:
+                                continue
+                            try:
                                 fut = asyncio.run_coroutine_threadsafe(
-                                    queue.put(line), loop
+                                    queue.put(decoded_line), loop
                                 )
                                 while not self._closed:
                                     try:
@@ -1715,11 +2254,18 @@ class ReplayController:
         *,
         start_exclusive_ms: int,
         end_inclusive_ms: int,
+        seek_index: list[dict[str, int]] | None = None,
     ) -> list[ReplayFrame]:
         frames: list[ReplayFrame] = []
-        with open(frames_file, encoding="utf-8") as handle:
+        start_offset = _seek_offset_for_ms(seek_index, start_exclusive_ms)
+        with open(frames_file, "rb") as handle:
+            if start_offset > 0:
+                handle.seek(start_offset)
             for raw_line in handle:
-                line = raw_line.strip()
+                try:
+                    line = raw_line.decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    continue
                 if not line:
                     continue
                 try:
@@ -1740,12 +2286,30 @@ class ReplayController:
                     continue
         return frames
 
+    @staticmethod
+    def _coalesce_seek_frames(frames: list[ReplayFrame]) -> list[ReplayFrame]:
+        """Return seek frames with high-frequency position updates collapsed."""
+        coalesced: list[ReplayFrame] = []
+        latest_position_frame: ReplayFrame | None = None
+
+        for frame in frames:
+            if frame.stream == TRACK_MAP_POSITION_STREAM:
+                latest_position_frame = frame
+                continue
+            coalesced.append(frame)
+
+        if latest_position_frame is not None:
+            coalesced.append(latest_position_frame)
+
+        return coalesced
+
     async def _replay_frames_range(
         self,
         index: ReplayIndex,
         *,
         start_exclusive_ms: int,
         end_inclusive_ms: int,
+        coalesce_position_z: bool = False,
     ) -> None:
         if end_inclusive_ms <= start_exclusive_ms:
             return
@@ -1755,8 +2319,11 @@ class ReplayController:
                 index.frames_file,
                 start_exclusive_ms=start_exclusive_ms,
                 end_inclusive_ms=end_inclusive_ms,
+                seek_index=index.seek_index,
             )
         )
+        if coalesce_position_z:
+            frames = self._coalesce_seek_frames(frames)
         for frame in frames:
             if isinstance(frame.payload, dict):
                 self._live_bus.inject_message(frame.stream, frame.payload)
@@ -1770,6 +2337,30 @@ class ReplayController:
                     await result
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Replay reset callback failed", exc_info=True)
+
+    def _reset_track_map_runtime(self) -> None:
+        registry = self._get_registry()
+        target = registry.get("track_map_replay_adapter") or registry.get(
+            "track_map_store"
+        )
+        reset_for_replay = getattr(target, "reset_for_replay", None)
+        if callable(reset_for_replay):
+            try:
+                reset_for_replay()
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Track map replay reset failed", exc_info=True)
+
+    async def _prepare_track_map_replay_index(self, index: ReplayIndex) -> None:
+        adapter = self._get_registry().get("track_map_replay_adapter")
+        prepare = getattr(adapter, "async_prepare_replay_index", None)
+        if not callable(prepare):
+            return
+        try:
+            result = prepare(index)
+            if isawaitable(result):
+                await result
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Track map replay geometry preload failed", exc_info=True)
 
     async def _stop_active_replay_transport(self) -> None:
         if self._transport is not None:
@@ -1896,20 +2487,52 @@ class ReplayController:
 
         await self._stop_active_replay_transport()
 
-        if target_ms < current_ms:
+        checkpoint: dict[str, Any] | None = None
+        if (
+            target_ms > current_ms
+            and target_ms - current_ms >= SEEK_CHECKPOINT_MIN_FORWARD_DELTA_MS
+        ):
+            checkpoint = _seek_state_checkpoint_for_ms(
+                index.seek_checkpoints,
+                after_ms=current_ms,
+                target_ms=target_ms,
+            )
+        elif target_ms < current_ms:
+            checkpoint = _seek_state_checkpoint_for_ms(
+                index.seek_checkpoints,
+                after_ms=baseline_ms,
+                target_ms=target_ms,
+            )
+
+        if checkpoint is not None:
+            checkpoint_ms = int(checkpoint["t"])
+            await self._run_replay_reset_callbacks()
+            self._inject_initial_state(checkpoint["state"])
+            await self._prepare_track_map_replay_index(index)
+            self._inject_formation_ready_if_applicable(index)
+            await self._replay_frames_range(
+                index,
+                start_exclusive_ms=checkpoint_ms,
+                end_inclusive_ms=target_ms,
+                coalesce_position_z=True,
+            )
+        elif target_ms < current_ms:
             await self._run_replay_reset_callbacks()
             self._inject_initial_state(initial_state)
+            await self._prepare_track_map_replay_index(index)
             self._inject_formation_ready_if_applicable(index)
             await self._replay_frames_range(
                 index,
                 start_exclusive_ms=baseline_ms,
                 end_inclusive_ms=target_ms,
+                coalesce_position_z=True,
             )
         else:
             await self._replay_frames_range(
                 index,
                 start_exclusive_ms=current_ms,
                 end_inclusive_ms=target_ms,
+                coalesce_position_z=True,
             )
 
         await self._start_transport(
@@ -1943,6 +2566,7 @@ class ReplayController:
         # Lock replay state first so the supervisor cannot re-arm the bus
         # while we await async_close below
         self._pending_start_ms = None
+        self._reset_track_map_runtime()
         if self._live_state is not None:
             self._live_state.set_state(False, "replay-preparing")
 
@@ -1980,12 +2604,14 @@ class ReplayController:
         self._ensure_replay_active()
         await self._run_replay_reset_callbacks()
         self._inject_initial_state(initial_state)
+        await self._prepare_track_map_replay_index(index)
         self._inject_formation_ready_if_applicable(index)
         if start_from_ms > baseline_ms:
             await self._replay_frames_range(
                 index,
                 start_exclusive_ms=baseline_ms,
                 end_inclusive_ms=start_from_ms,
+                coalesce_position_z=True,
             )
             include_start_frame = False
 
@@ -2040,6 +2666,7 @@ class ReplayController:
             self._playback_task = None
 
         self._pending_start_ms = None
+        self._reset_track_map_runtime()
 
         # Restore live state to idle - let LiveSessionSupervisor control it
         if self._live_state is not None:
@@ -2095,6 +2722,7 @@ class ReplayController:
                     self._live_state.set_state(False, "replay-completed")
 
                 self._reset_formation_tracker()
+                self._reset_track_map_runtime()
 
                 # Wake the supervisor so it can reconnect if a live session is active
                 if self._on_replay_ended is not None:

@@ -61,6 +61,7 @@ SENSOR_OPTIONS = {
     "last_race_results": "Last race results",
     "season_results": "Season results",
     "sprint_results": "Sprint results",
+    "lap_position_progression": "Lap position progression",
     "driver_points_progression": "Driver points progression",
     "constructor_points_progression": "Constructor points progression",
     "fia_documents": "FIA decisions",
@@ -78,11 +79,13 @@ SENSOR_OPTIONS = {
     "session_time_elapsed": "Session time elapsed (live)",
     "race_time_to_three_hour_limit": "Race time to 3h limit (live)",
     "safety_car": "Safety car (live)",
+    "on_track_incident": "On-track incident (live)",
+    "possible_on_track_incident": "Possible on-track incident (live)",
     "formation_start": "Formation start (replay or live with F1TV access)",
     "race_control": "Race control (live)",
     "top_three": "Top three (leader, live)",
-    "pitstops": "Pit stops (experimental F1TV live/replay)",
-    "championship_prediction": "Championship prediction (experimental F1TV live/replay)",
+    "pitstops": "Pit stops (F1TV live/replay)",
+    "championship_prediction": "Championship prediction (F1TV live/replay)",
     "driver_positions": "Driver positions (live)",
     "starting_grid": "Starting grid (live)",
     "track_limits": "Track limits (live)",
@@ -142,7 +145,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
 
             # Resolve and validate operation mode. Development/replay controls stay
-            # tied to developer UI even when experimental F1TV auth is public.
+            # tied to developer UI even when F1TV auth is public.
             mode = user_input.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
             if not const.ENABLE_DEVELOPMENT_MODE_UI or mode not in (
                 OPERATION_MODE_LIVE,
@@ -335,7 +338,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
         # Reconfigure keeps replay/development controls behind the developer UI
-        # gate, independently of the public experimental F1TV auth surface.
+        # gate, independently of the public F1TV auth surface.
         show_dev_controls = const.ENABLE_DEVELOPMENT_MODE_UI
 
         if show_dev_controls:
@@ -410,7 +413,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema(
             {
                 vol.Optional(CONF_START_F1TV_PAIRING, default=False): cv.boolean,
-                vol.Required(CONF_LIVE_TIMING_AUTH_HEADER): _AUTH_HEADER_SELECTOR,
+                vol.Optional(CONF_LIVE_TIMING_AUTH_HEADER): _AUTH_HEADER_SELECTOR,
                 vol.Optional(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, default=False): (
                     cv.boolean
                 ),

@@ -9,6 +9,7 @@ from yarl import URL
 
 from custom_components.f1_sensor.__init__ import (
     F1DataCoordinator,
+    F1LapPositionProgressionCoordinator,
     F1SeasonResultsCoordinator,
     FiaDocumentsCoordinator,
     LiveSessionCoordinator,
@@ -62,6 +63,54 @@ def _future_race_payload() -> dict:
             }
         }
     }
+
+
+def _lap_position_result(driver_id: str, code: str, position: int, grid: int) -> dict:
+    return {
+        "number": str(position),
+        "position": str(position),
+        "grid": str(grid),
+        "status": "Finished",
+        "Driver": {
+            "driverId": driver_id,
+            "permanentNumber": str(position),
+            "code": code,
+            "givenName": f"Driver {code}",
+            "familyName": "Test",
+        },
+        "Constructor": {
+            "constructorId": "mclaren" if code == "NOR" else "red_bull",
+            "name": "McLaren" if code == "NOR" else "Red Bull",
+        },
+    }
+
+
+def _lap_position_season_payload() -> dict:
+    return {
+        "MRData": {
+            "RaceTable": {
+                "season": "2026",
+                "Races": [
+                    {
+                        "season": "2026",
+                        "round": "1",
+                        "raceName": "Australian Grand Prix",
+                        "date": "2026-03-08",
+                        "Results": [
+                            _lap_position_result("norris", "NOR", 1, 2),
+                            _lap_position_result("verstappen", "VER", 2, 1),
+                        ],
+                    }
+                ],
+            }
+        }
+    }
+
+
+def _mock_data_coordinator(data: dict | None):
+    coordinator = MagicMock()
+    coordinator.data = data
+    return coordinator
 
 
 @pytest.mark.asyncio
@@ -144,7 +193,9 @@ async def test_f1_data_coordinator_timeout_maps_to_update_failed(hass) -> None:
             "custom_components.f1_sensor.__init__.fetch_json",
             mock_fetch,
         )
-        with pytest.raises(UpdateFailed, match="Error fetching data"):
+        with pytest.raises(
+            UpdateFailed, match="Error fetching data: request timed out"
+        ):
             await coordinator._async_update_data()
 
 
@@ -202,6 +253,336 @@ async def test_season_results_coordinator_paginates_all_pages(hass) -> None:
     races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
     assert len(races) == 4
     assert mock_fetch.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_lap_position_progression_coordinator_paginates_and_merges_laps(
+    hass,
+) -> None:
+    coordinator = F1LapPositionProgressionCoordinator(
+        hass,
+        _mock_data_coordinator(
+            {"MRData": {"RaceTable": {"season": "2026", "Races": []}}}
+        ),
+        _mock_data_coordinator(_lap_position_season_payload()),
+        _mock_data_coordinator({"MRData": {"RaceTable": {"Races": []}}}),
+        "Test Lap Position Progression Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        persist_map={},
+        persist_save=MagicMock(),
+    )
+
+    async def _fake_fetch_json(_hass, _session, url, **_kwargs):
+        query = URL(url).query
+        offset = int(query.get("offset") or "0")
+        if offset == 0:
+            laps = [
+                {
+                    "number": "1",
+                    "Timings": [
+                        {"driverId": "norris", "position": "1"},
+                        {"driverId": "verstappen", "position": "2"},
+                    ],
+                },
+                {
+                    "number": "2",
+                    "Timings": [{"driverId": "norris", "position": "2"}],
+                },
+            ]
+        else:
+            laps = [
+                {
+                    "number": "2",
+                    "Timings": [{"driverId": "verstappen", "position": "1"}],
+                }
+            ]
+        return {
+            "MRData": {
+                "total": "4",
+                "limit": "3",
+                "offset": str(offset),
+                "RaceTable": {
+                    "season": "2026",
+                    "round": "1",
+                    "Races": [
+                        {
+                            "season": "2026",
+                            "round": "1",
+                            "raceName": "Australian Grand Prix",
+                            "date": "2026-03-08",
+                            "Laps": laps,
+                        }
+                    ],
+                },
+            }
+        }
+
+    mock_fetch = AsyncMock(side_effect=_fake_fetch_json)
+    with pytest.MonkeyPatch().context() as monkeypatch:
+        monkeypatch.setattr(
+            "custom_components.f1_sensor.__init__.fetch_json",
+            mock_fetch,
+        )
+        data = await coordinator.async_get_session("race:2026:1")
+
+    session = data["session"]
+    assert session["status"] == "available"
+    assert session["labels"] == ["L1", "L2"]
+    assert mock_fetch.await_count == 2
+
+    drivers = {driver["code"]: driver for driver in session["drivers"]}
+    assert drivers["NOR"]["positions"] == [1, 2]
+    assert drivers["NOR"]["net_position_change"] == 1
+    assert drivers["VER"]["positions"] == [2, 1]
+    assert drivers["VER"]["net_position_change"] == -1
+    assert session["series"]["series"][0]["data"] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_lap_position_progression_coordinator_metadata_refresh_does_not_fetch_laps(
+    hass,
+) -> None:
+    coordinator = F1LapPositionProgressionCoordinator(
+        hass,
+        _mock_data_coordinator(
+            {"MRData": {"RaceTable": {"season": "2026", "Races": []}}}
+        ),
+        _mock_data_coordinator(_lap_position_season_payload()),
+        _mock_data_coordinator({"MRData": {"RaceTable": {"Races": []}}}),
+        "Test Lap Position Progression Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        persist_map={},
+        persist_save=MagicMock(),
+    )
+    mock_fetch = AsyncMock()
+
+    with pytest.MonkeyPatch().context() as monkeypatch:
+        monkeypatch.setattr(
+            "custom_components.f1_sensor.__init__.fetch_json",
+            mock_fetch,
+        )
+        data = await coordinator._async_update_data()
+
+    assert data["data_mode"] == "metadata"
+    assert data["session_data_type"] == "f1_sensor/lap_position/session"
+    assert data["sessions"][0]["status"] == "available"
+    assert data["sessions"][0]["drivers"] == []
+    assert mock_fetch.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_lap_position_progression_coordinator_marks_pending_when_laps_missing(
+    hass,
+) -> None:
+    coordinator = F1LapPositionProgressionCoordinator(
+        hass,
+        _mock_data_coordinator(None),
+        _mock_data_coordinator(_lap_position_season_payload()),
+        _mock_data_coordinator(None),
+        "Test Lap Position Progression Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        persist_map={},
+        persist_save=MagicMock(),
+    )
+    mock_fetch = AsyncMock(
+        return_value={
+            "MRData": {
+                "total": "0",
+                "limit": "100",
+                "offset": "0",
+                "RaceTable": {"Races": []},
+            }
+        }
+    )
+    with pytest.MonkeyPatch().context() as monkeypatch:
+        monkeypatch.setattr(
+            "custom_components.f1_sensor.__init__.fetch_json",
+            mock_fetch,
+        )
+        data = await coordinator.async_get_session("race:2026:1")
+
+    assert data["session"]["status"] == "pending"
+    assert data["session"]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_lap_position_progression_coordinator_marks_sprints_unsupported(
+    hass,
+) -> None:
+    sprint_payload = {
+        "MRData": {
+            "RaceTable": {
+                "season": "2026",
+                "Races": [
+                    {
+                        "season": "2026",
+                        "round": "5",
+                        "raceName": "Chinese Grand Prix",
+                        "SprintResults": [_lap_position_result("norris", "NOR", 1, 2)],
+                    }
+                ],
+            }
+        }
+    }
+    coordinator = F1LapPositionProgressionCoordinator(
+        hass,
+        _mock_data_coordinator(None),
+        _mock_data_coordinator({"MRData": {"RaceTable": {"Races": []}}}),
+        _mock_data_coordinator(sprint_payload),
+        "Test Lap Position Progression Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        persist_map={},
+        persist_save=MagicMock(),
+    )
+
+    data = await coordinator._async_update_data()
+
+    assert data["sessions"] == [
+        {
+            "key": "sprint:2026:5",
+            "type": "sprint",
+            "status": "unsupported",
+            "source": "jolpica_sprint_results",
+            "reason": (
+                "Jolpica exposes sprint classification but not sprint "
+                "lap-by-lap positions"
+            ),
+            "season": "2026",
+            "round": "5",
+            "race_name": "Chinese Grand Prix",
+            "date": None,
+            "total_laps": None,
+            "driver_count": 1,
+            "labels": [],
+            "drivers": [],
+            "series": {"labels": [], "series": []},
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_lap_position_progression_coordinator_no_spoiler_blocks_uncached_session(
+    hass,
+) -> None:
+    coordinator = F1LapPositionProgressionCoordinator(
+        hass,
+        _mock_data_coordinator(None),
+        _mock_data_coordinator(_lap_position_season_payload()),
+        _mock_data_coordinator(None),
+        "Test Lap Position Progression Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        persist_map={},
+        persist_save=MagicMock(),
+    )
+    coordinator.data = None
+    mock_fetch = AsyncMock(
+        return_value={
+            "MRData": {
+                "total": "2",
+                "limit": "100",
+                "offset": "0",
+                "RaceTable": {
+                    "Races": [
+                        {
+                            "Laps": [
+                                {
+                                    "number": "1",
+                                    "Timings": [
+                                        {"driverId": "norris", "position": "1"},
+                                        {"driverId": "verstappen", "position": "2"},
+                                    ],
+                                }
+                            ]
+                        }
+                    ]
+                },
+            }
+        }
+    )
+    with pytest.MonkeyPatch().context() as monkeypatch:
+        monkeypatch.setattr(
+            "custom_components.f1_sensor.__init__.fetch_json",
+            mock_fetch,
+        )
+        monkeypatch.setattr(
+            "custom_components.f1_sensor.__init__._is_no_spoiler_jolpica_blocked",
+            lambda _coord: True,
+        )
+        data = await coordinator.async_get_session("race:2026:1")
+
+    assert data["status"] == "blocked"
+    assert data["session"]["status"] == "blocked"
+    assert mock_fetch.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_lap_position_progression_coordinator_no_spoiler_keeps_previous_data(
+    hass,
+) -> None:
+    previous_session = {
+        "key": "race:2026:1",
+        "type": "race",
+        "status": "available",
+        "season": "2026",
+        "round": "1",
+        "race_name": "Australian Grand Prix",
+        "drivers": [{"code": "NOR", "positions": [1]}],
+        "labels": ["L1"],
+        "series": {"labels": ["L1"], "series": []},
+    }
+    coordinator = F1LapPositionProgressionCoordinator(
+        hass,
+        _mock_data_coordinator(None),
+        _mock_data_coordinator(_lap_position_season_payload()),
+        _mock_data_coordinator(None),
+        "Test Lap Position Progression Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        persist_map={},
+        persist_save=MagicMock(),
+    )
+    coordinator._session_payload_cache["race:2026:1"] = previous_session
+    mock_fetch = AsyncMock(
+        return_value={
+            "MRData": {
+                "total": "0",
+                "limit": "100",
+                "offset": "0",
+                "RaceTable": {"Races": []},
+            }
+        }
+    )
+    with pytest.MonkeyPatch().context() as monkeypatch:
+        monkeypatch.setattr(
+            "custom_components.f1_sensor.__init__.fetch_json",
+            mock_fetch,
+        )
+        monkeypatch.setattr(
+            "custom_components.f1_sensor.__init__._is_no_spoiler_jolpica_blocked",
+            lambda _coord: True,
+        )
+        data = await coordinator.async_get_session("race:2026:1")
+
+    assert data["cached"] is True
+    assert data["session"] is previous_session
+    assert mock_fetch.await_count == 0
 
 
 @pytest.mark.asyncio
