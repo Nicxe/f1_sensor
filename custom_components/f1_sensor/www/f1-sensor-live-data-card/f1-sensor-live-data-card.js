@@ -22120,6 +22120,7 @@ class F1RaceControlCard extends LitElement {
       entity: 'sensor.f1_race_control',
       show_fia_logo: true,
       hide_blue_flags: false,
+      hide_track_limits: false,
       min_display_time: 0,
       ...config,
     };
@@ -22220,8 +22221,10 @@ class F1RaceControlCard extends LitElement {
 
   _shouldHideMessage(item) {
     if (!item) return true;
-    if (this.config?.hide_blue_flags !== true) return false;
-    return this._isBlueFlagMessage(item);
+    if (this.config?.hide_blue_flags === true && this._isBlueFlagMessage(item)) {
+      return true;
+    }
+    return this.config?.hide_track_limits === true && this._isTrackLimitsMessage(item);
   }
 
   _isBlueFlagMessage(item) {
@@ -22231,6 +22234,11 @@ class F1RaceControlCard extends LitElement {
 
     const message = this._formatMessage(item?.message || '').toLowerCase();
     return message.includes('waved blue flag') || message.includes('blue flag');
+  }
+
+  _isTrackLimitsMessage(item) {
+    const message = this._formatMessage(item?.message || '').toUpperCase();
+    return message.includes('TRACK LIMITS');
   }
 
   _parseIncidentTime(value) {
@@ -22546,6 +22554,7 @@ class F1RaceControlCardEditor extends LitElement {
       display_mode: 'latest',
       show_fia_logo: true,
       hide_blue_flags: false,
+      hide_track_limits: false,
       min_display_time: 0,
       list_max_height: 600,
       show_clear_button: true,
@@ -22637,6 +22646,11 @@ class F1RaceControlCardEditor extends LitElement {
           'hide_blue_flags',
           'Hide blue flag messages',
           'Remove blue flag notices from the banner or list without deleting them from saved history'
+        )}
+        ${this._renderSwitch(
+          'hide_track_limits',
+          'Hide track limits messages',
+          'Remove track limits notices from the banner or list without deleting them from saved history'
         )}
 
         ${this._config.display_mode === 'list' ? html`
