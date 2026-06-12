@@ -30226,6 +30226,7 @@ class F1TrackMapCard extends LitElement {
 
   _statusLabel() {
     const replayState = String(this._snapshot?.replay_state || '').toLowerCase();
+    if (this._replaySnapshotIsStale()) return 'No position data';
     if (replayState === 'paused') return 'Paused';
     if (replayState === 'seeking') return 'Seeking';
     if (replayState === 'playing') return 'Replay';
@@ -30245,6 +30246,7 @@ class F1TrackMapCard extends LitElement {
 
   _visualStatusState() {
     const replayState = String(this._snapshot?.replay_state || '').toLowerCase();
+    if (this._replaySnapshotIsStale()) return 'stale';
     if (['playing', 'paused', 'seeking'].includes(replayState)) return replayState;
     if (this._liveSnapshotIsStale()) return 'no_session';
     return this._status || 'not_loaded';
@@ -30268,6 +30270,12 @@ class F1TrackMapCard extends LitElement {
       };
     }
     const isLive = this._snapshot.source === 'live';
+    if (this._replaySnapshotIsStale(this._snapshot)) {
+      return {
+        title: 'Replay position data unavailable',
+        detail: 'The source stream does not contain valid Position.z samples at this point.',
+      };
+    }
     if (this._liveSnapshotIsStale(this._snapshot)) {
       return {
         title: 'No active live session',
@@ -30508,6 +30516,12 @@ class F1TrackMapCard extends LitElement {
     return Date.now() >= streamTimestamp + (Math.max(0, staleAfterSeconds) * 1000);
   }
 
+  _replaySnapshotIsStale(snapshot = this._snapshot) {
+    if (String(snapshot?.source || '').trim().toLowerCase() !== 'replay') return false;
+    const status = String(snapshot?.status || this._status || '').trim().toLowerCase();
+    return snapshot?.stale === true || status === 'stale';
+  }
+
   _presentationState(snapshot = this._snapshot) {
     const hideLiveMetadata = this._liveSnapshotIsStale(snapshot);
     return {
@@ -30706,7 +30720,9 @@ class F1TrackMapCard extends LitElement {
 
   _visibleDrivers(drivers, snapshot = this._snapshot) {
     if (!Array.isArray(drivers)) return [];
-    if (this._liveSnapshotIsStale(snapshot)) return [];
+    if (this._liveSnapshotIsStale(snapshot) || this._replaySnapshotIsStale(snapshot)) {
+      return [];
+    }
     const retiredKeys = this._retiredDriverKeys();
     return drivers.filter((driver) => !this._isRetiredDriver(driver, retiredKeys));
   }
