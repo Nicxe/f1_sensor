@@ -18,10 +18,6 @@ CARD_PATH = (
     / "f1-sensor-live-data-card"
     / "f1-sensor-live-data-card.js"
 )
-DEV_CARD_PATH = (
-    ROOT / "www" / "f1-sensor-live-data-card" / "f1-sensor-live-data-card.js"
-)
-
 NODE_PROBE_SCRIPT = r"""
 const fs = require("node:fs");
 
@@ -91,11 +87,9 @@ process.stdout.write(JSON.stringify(result));
 """
 
 
-def _run_probe(
-    config: dict, items: list[dict], card_path: Path = CARD_PATH
-) -> list[bool]:
-    if not card_path.exists():
-        pytest.skip(f"card JS not found at {card_path}")
+def _run_probe(config: dict, items: list[dict]) -> list[bool]:
+    if not CARD_PATH.exists():
+        pytest.skip(f"card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for race control card filter tests")
@@ -106,7 +100,7 @@ def _run_probe(
         capture_output=True,
         text=True,
         env={
-            "RACE_CONTROL_CARD_PATH": str(card_path),
+            "RACE_CONTROL_CARD_PATH": str(CARD_PATH),
             "RACE_CONTROL_FILTER_PAYLOAD": json.dumps(
                 {"config": config, "items": items}
             ),
@@ -147,22 +141,8 @@ def test_race_control_filters_are_independent() -> None:
 
 
 def test_track_limits_filter_is_available_in_card_editor() -> None:
-    for card_path in (CARD_PATH, DEV_CARD_PATH):
-        source = card_path.read_text()
+    source = CARD_PATH.read_text()
 
-        assert "hide_track_limits: false" in source
-        assert "'hide_track_limits'," in source
-        assert "'Hide track limits messages'," in source
-
-
-def test_home_assistant_dev_card_filters_track_limits() -> None:
-    result = _run_probe(
-        {"hide_track_limits": True},
-        [
-            {"message": "CAR 44 TIME DELETED - TRACK LIMITS AT TURN 1 LAP 5"},
-            {"message": "DRS ENABLED"},
-        ],
-        DEV_CARD_PATH,
-    )
-
-    assert result == [True, False]
+    assert "hide_track_limits: false" in source
+    assert "'hide_track_limits'," in source
+    assert "'Hide track limits messages'," in source

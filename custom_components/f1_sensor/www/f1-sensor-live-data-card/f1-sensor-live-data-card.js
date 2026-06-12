@@ -82,6 +82,79 @@ const formatHassDateTime = (hass, date, options = {}, fallback = '') => {
   }
 };
 
+function getF1UnitSystemUnit(hass, key, fallback) {
+  const unit = hass?.config?.unit_system?.[key];
+  return typeof unit === 'string' && unit.trim() ? unit : fallback;
+}
+
+function getF1TemperatureUnit(hass, entity) {
+  const entityUnit = entity?.attributes?.unit_of_measurement;
+  if (['°C', '°F', 'K'].includes(entityUnit)) {
+    return entityUnit;
+  }
+  return getF1UnitSystemUnit(hass, 'temperature', '°C');
+}
+
+function convertF1Temperature(value, fromUnit, toUnit) {
+  if (value === null || value === undefined || value === '') return value;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || fromUnit === toUnit) return numericValue;
+
+  let celsius;
+  if (fromUnit === '°F') {
+    celsius = (numericValue - 32) / 1.8;
+  } else if (fromUnit === 'K') {
+    celsius = numericValue - 273.15;
+  } else if (fromUnit === '°C') {
+    celsius = numericValue;
+  } else {
+    return numericValue;
+  }
+
+  if (toUnit === '°F') return celsius * 1.8 + 32;
+  if (toUnit === 'K') return celsius + 273.15;
+  return celsius;
+}
+
+function convertF1Speed(value, fromUnit, toUnit) {
+  if (value === null || value === undefined || value === '') return value;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || fromUnit === toUnit) return numericValue;
+
+  let metersPerSecond;
+  if (fromUnit === 'Beaufort') {
+    metersPerSecond = 0.836 * numericValue ** 1.5;
+  } else {
+    const fromRatio = {
+      'ft/s': 3.280839895013124,
+      'in/s': 39.37007874015748,
+      'km/h': 3.6,
+      kn: 1.9438444924406046,
+      'm/min': 60,
+      'm/s': 1,
+      'mm/s': 1000,
+      mph: 2.2369362920544025,
+    }[fromUnit];
+    if (!fromRatio) return numericValue;
+    metersPerSecond = numericValue / fromRatio;
+  }
+
+  if (toUnit === 'Beaufort') {
+    return Math.round(((metersPerSecond / 0.836) ** 2) ** (1 / 3));
+  }
+  const toRatio = {
+    'ft/s': 3.280839895013124,
+    'in/s': 39.37007874015748,
+    'km/h': 3.6,
+    kn: 1.9438444924406046,
+    'm/min': 60,
+    'm/s': 1,
+    'mm/s': 1000,
+    mph: 2.2369362920544025,
+  }[toUnit];
+  return toRatio ? metersPerSecond * toRatio : numericValue;
+}
+
 const F1_THEME_STYLES = css`
   :host {
     --f1-card-bg: #0b0b0d;
@@ -15482,7 +15555,24 @@ class F1LiveSessionCard extends LitElement {
     if (!entity || entity.state === 'unavailable' || entity.state === 'unknown') {
       return null;
     }
-    return entity.attributes || {};
+    const attributes = entity.attributes || {};
+    const temperatureUnit = getF1TemperatureUnit(this.hass, entity);
+    const windSpeedUnit = getF1UnitSystemUnit(this.hass, 'wind_speed', 'm/s');
+    const entityTemperature = Number(entity.state);
+    return {
+      ...attributes,
+      air_temperature: Number.isFinite(entityTemperature)
+        ? entityTemperature
+        : convertF1Temperature(attributes.air_temperature, '°C', temperatureUnit),
+      track_temperature: convertF1Temperature(
+        attributes.track_temperature,
+        '°C',
+        temperatureUnit,
+      ),
+      temperature_unit: temperatureUnit,
+      wind_speed: convertF1Speed(attributes.wind_speed, 'm/s', windSpeedUnit),
+      wind_speed_unit: windSpeedUnit,
+    };
   }
 
   _getCountryFlagUrl(country) {
@@ -15734,22 +15824,22 @@ class F1LiveSessionCard extends LitElement {
 
           ${this.config.show_weather !== false && weather ? html`
             <div class="ls-weather">
-              ${weather.wind_speed !== undefined ? html`
+              ${weather.wind_speed !== undefined && weather.wind_speed !== null ? html`
                 <div class="ls-weather-col">
                   <span class="ls-weather-label">Wind</span>
-                  <span class="ls-weather-value">${Number(weather.wind_speed).toFixed(1)} m/s ${this._windDirectionToCardinal(weather.wind_from_direction_degrees)}</span>
+                  <span class="ls-weather-value">${Number(weather.wind_speed).toFixed(1)} ${weather.wind_speed_unit || 'm/s'} ${this._windDirectionToCardinal(weather.wind_from_direction_degrees)}</span>
                 </div>
               ` : null}
-              ${weather.track_temperature !== undefined ? html`
+              ${weather.track_temperature !== undefined && weather.track_temperature !== null ? html`
                 <div class="ls-weather-col">
                   <span class="ls-weather-label">Track</span>
-                  <span class="ls-weather-value">${Number(weather.track_temperature).toFixed(1)} °C</span>
+                  <span class="ls-weather-value">${Number(weather.track_temperature).toFixed(1)} ${weather.temperature_unit || '°C'}</span>
                 </div>
               ` : null}
-              ${weather.air_temperature !== undefined ? html`
+              ${weather.air_temperature !== undefined && weather.air_temperature !== null ? html`
                 <div class="ls-weather-col">
                   <span class="ls-weather-label">Air</span>
-                  <span class="ls-weather-value">${Number(weather.air_temperature).toFixed(1)} °C</span>
+                  <span class="ls-weather-value">${Number(weather.air_temperature).toFixed(1)} ${weather.temperature_unit || '°C'}</span>
                 </div>
               ` : null}
               ${weather.humidity !== undefined ? html`
@@ -19148,6 +19238,11 @@ class F1NextRaceCard extends LitElement {
   _resolveWeatherComparison(weatherState, trackWeatherState, sessionStatus) {
     const weatherAttrs = weatherState?.attributes || {};
     const trackAttrs = trackWeatherState?.attributes || {};
+    const weatherTemperatureUnit = getF1TemperatureUnit(this.hass, weatherState);
+    const trackTemperatureUnit = getF1TemperatureUnit(this.hass, trackWeatherState);
+    const windSpeedUnit = getF1UnitSystemUnit(this.hass, 'wind_speed', 'm/s');
+    const weatherStateTemperature = Number(weatherState?.state);
+    const trackStateTemperature = Number(trackWeatherState?.state);
     const status = String(sessionStatus?.state || '').toLowerCase();
     const weekendActive = ['pre', 'live', 'suspended', 'break'].includes(status);
     const useLiveNow = this.config.prefer_live_weather !== false
@@ -19163,9 +19258,21 @@ class F1NextRaceCard extends LitElement {
           icon: weatherAttrs.icon || 'mdi:weather-partly-cloudy',
           title: 'Now at circuit',
           status: 'Live track feed',
-          temperature: trackAttrs.air_temperature,
-          trackTemperature: trackAttrs.track_temperature,
-          windSpeed: trackAttrs.wind_speed,
+          temperature: Number.isFinite(trackStateTemperature)
+            ? trackStateTemperature
+            : convertF1Temperature(
+              trackAttrs.air_temperature,
+              '°C',
+              trackTemperatureUnit,
+            ),
+          trackTemperature: convertF1Temperature(
+            trackAttrs.track_temperature,
+            '°C',
+            trackTemperatureUnit,
+          ),
+          temperatureUnit: trackTemperatureUnit,
+          windSpeed: convertF1Speed(trackAttrs.wind_speed, 'm/s', windSpeedUnit),
+          windSpeedUnit,
           windDirection: trackAttrs.wind_from_direction_degrees,
           rainfall: trackAttrs.rainfall,
           precipitationProbability: null,
@@ -19177,9 +19284,21 @@ class F1NextRaceCard extends LitElement {
           icon: weatherAttrs.icon || 'mdi:weather-partly-cloudy',
           title: 'Now at circuit',
           status: 'Current forecast',
-          temperature: weatherAttrs.current_temperature,
+          temperature: Number.isFinite(weatherStateTemperature)
+            ? weatherStateTemperature
+            : convertF1Temperature(
+              weatherAttrs.current_temperature,
+              '°C',
+              weatherTemperatureUnit,
+            ),
           trackTemperature: null,
-          windSpeed: weatherAttrs.current_wind_speed,
+          temperatureUnit: weatherTemperatureUnit,
+          windSpeed: convertF1Speed(
+            weatherAttrs.current_wind_speed,
+            'm/s',
+            windSpeedUnit,
+          ),
+          windSpeedUnit,
           windDirection: weatherAttrs.current_wind_from_direction_degrees,
           rainfall: weatherAttrs.current_precipitation,
           precipitationProbability: weatherAttrs.current_precipitation_probability,
@@ -19192,9 +19311,15 @@ class F1NextRaceCard extends LitElement {
       icon: weatherAttrs.race_weather_icon || weatherAttrs.icon || 'mdi:weather-partly-cloudy',
       title: 'Race start',
       status: 'Race start forecast',
-      temperature: weatherAttrs.race_temperature,
+      temperature: convertF1Temperature(
+        weatherAttrs.race_temperature,
+        '°C',
+        weatherTemperatureUnit,
+      ),
       trackTemperature: null,
-      windSpeed: weatherAttrs.race_wind_speed,
+      temperatureUnit: weatherTemperatureUnit,
+      windSpeed: convertF1Speed(weatherAttrs.race_wind_speed, 'm/s', windSpeedUnit),
+      windSpeedUnit,
       windDirection: weatherAttrs.race_wind_from_direction_degrees,
       rainfall: weatherAttrs.race_precipitation,
       precipitationProbability: weatherAttrs.race_precipitation_probability,
@@ -19219,9 +19344,9 @@ class F1NextRaceCard extends LitElement {
     return directions[index];
   }
 
-  _formatTemperature(value) {
+  _formatTemperature(value, unit) {
     const num = Number(value);
-    return Number.isFinite(num) ? `${num.toFixed(1)} °C` : 'n/a';
+    return Number.isFinite(num) ? `${num.toFixed(1)} ${unit || '°C'}` : 'n/a';
   }
 
   _formatNumber(value, suffix = '', digits = 0) {
@@ -19230,11 +19355,11 @@ class F1NextRaceCard extends LitElement {
     return `${num.toFixed(digits)}${suffix}`;
   }
 
-  _formatWind(speed, directionDegrees) {
+  _formatWind(speed, directionDegrees, unit) {
     const speedValue = Number(speed);
     if (!Number.isFinite(speedValue)) return 'n/a';
     const direction = this._windDirectionToCardinal(directionDegrees);
-    return `${speedValue.toFixed(1)} m/s${direction ? ` ${direction}` : ''}`;
+    return `${speedValue.toFixed(1)} ${unit || 'm/s'}${direction ? ` ${direction}` : ''}`;
   }
 
   _formatCountdownCompact(countdown) {
@@ -19483,7 +19608,7 @@ class F1NextRaceCard extends LitElement {
       ? this._formatNumber(block.humidity, '%')
       : 'n/a';
     const trackOrHumidity = block.trackTemperature !== null && block.trackTemperature !== undefined
-      ? this._formatTemperature(block.trackTemperature)
+      ? this._formatTemperature(block.trackTemperature, block.temperatureUnit)
       : humidityValue;
     const trackOrHumidityLabel = block.trackTemperature !== null && block.trackTemperature !== undefined
       ? 'Track'
@@ -19493,9 +19618,19 @@ class F1NextRaceCard extends LitElement {
       : this._formatNumber(block.rainfall, ' mm', 1);
 
     return [
-      { label: 'Air', value: this._formatTemperature(block.temperature) },
+      {
+        label: 'Air',
+        value: this._formatTemperature(block.temperature, block.temperatureUnit),
+      },
       { label: trackOrHumidityLabel, value: trackOrHumidity },
-      { label: 'Wind', value: this._formatWind(block.windSpeed, block.windDirection) },
+      {
+        label: 'Wind',
+        value: this._formatWind(
+          block.windSpeed,
+          block.windDirection,
+          block.windSpeedUnit,
+        ),
+      },
       { label: 'Rain', value: rainValue },
     ].filter((item) => item.value !== 'n/a');
   }
@@ -19653,15 +19788,31 @@ class F1NextRaceCard extends LitElement {
       : this._formatNumber(block.rainfall, ' mm', 1);
 
     const secondaryMetric = block.trackTemperature !== null && block.trackTemperature !== undefined
-      ? { label: 'Track', value: this._formatTemperature(block.trackTemperature) }
+      ? {
+          label: 'Track',
+          value: this._formatTemperature(
+            block.trackTemperature,
+            block.temperatureUnit,
+          ),
+        }
       : block.humidity !== null && block.humidity !== undefined
         ? { label: 'Humidity', value: this._formatNumber(block.humidity, '%') }
         : null;
 
     return [
-      { label: 'Air', value: this._formatTemperature(block.temperature) },
+      {
+        label: 'Air',
+        value: this._formatTemperature(block.temperature, block.temperatureUnit),
+      },
       secondaryMetric,
-      { label: 'Wind', value: this._formatWind(block.windSpeed, block.windDirection) },
+      {
+        label: 'Wind',
+        value: this._formatWind(
+          block.windSpeed,
+          block.windDirection,
+          block.windSpeedUnit,
+        ),
+      },
       rainValue !== 'n/a'
         ? { label: 'Rain', value: rainValue }
         : block.humidity !== null && block.humidity !== undefined && secondaryMetric?.label !== 'Humidity'
