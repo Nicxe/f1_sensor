@@ -340,6 +340,10 @@ class TrackMapReplayAdapter:
             return
         position_source = self._position_source()
         self._reset_interpolation_if_source_changed(position_source)
+        if _is_unavailable_position_frame(positions):
+            self._reset_interpolation_state(source=position_source)
+            self._store.mark_positions_unavailable(source=position_source)
+            return
         self._position_frame_count += 1
         if self._should_interpolate_positions(position_source):
             now = self._loop_time()
@@ -627,6 +631,7 @@ class TrackMapStore:
         self._latest_positions: dict[str, TrackMapPosition] = {}
         self._geometry: TrackGeometry | None = None
         self._stream_timestamp: datetime | None = None
+        self._position_data_unavailable = False
         self._replay_state: str | None = None
         self._listeners: dict[int, Callable[[], None]] = {}
         self._next_listener_id = 0
@@ -699,6 +704,7 @@ class TrackMapStore:
         if source:
             self._source = source
         changed = False
+        positions_updated = False
         for position in positions:
             if (
                 self._driver_metadata
@@ -712,9 +718,24 @@ class TrackMapStore:
             ):
                 self._stream_timestamp = position.timestamp
             changed = True
+            positions_updated = True
+        if positions_updated and self._position_data_unavailable:
+            self._position_data_unavailable = False
         changed = self._prune_unknown_driver_positions() or changed
         if changed:
             self._notify_listeners()
+
+    def mark_positions_unavailable(self, *, source: str | None = None) -> None:
+        """Mark the latest position frame as unavailable without losing good data."""
+        if self._closed:
+            return
+        source_changed = bool(source and source != self._source)
+        if source:
+            self._source = source
+        if self._position_data_unavailable and not source_changed:
+            return
+        self._position_data_unavailable = True
+        self._notify_listeners()
 
     def set_geometry(self, geometry: TrackGeometry | None) -> None:
         """Set or clear the current track geometry."""
@@ -744,6 +765,7 @@ class TrackMapStore:
         self._latest_positions.clear()
         self._geometry = None
         self._stream_timestamp = None
+        self._position_data_unavailable = False
         self._replay_state = None
 
     def reset_for_replay(self) -> None:
@@ -752,6 +774,8 @@ class TrackMapStore:
 
     def is_stale(self, now: datetime | None = None) -> bool:
         """Return whether the latest stream update is older than stale_after."""
+        if self._position_data_unavailable and self._latest_positions:
+            return True
         if self._source == TRACK_MAP_SOURCE_REPLAY:
             return False
         if self._stream_timestamp is None:
@@ -944,6 +968,8 @@ class TrackMapStore:
         }
 
     def _position_is_stale(self, position: TrackMapPosition, now: datetime) -> bool:
+        if self._position_data_unavailable:
+            return True
         if self._source == TRACK_MAP_SOURCE_REPLAY:
             return False
         return now - position.timestamp > self._stale_after
@@ -1058,6 +1084,19 @@ def _interpolate_positions(
 
 def _position_distance(start: TrackMapPosition, end: TrackMapPosition) -> float:
     return ((end.x - start.x) ** 2 + (end.y - start.y) ** 2) ** 0.5
+
+
+def _is_unavailable_position_frame(
+    positions: Iterable[TrackMapPosition],
+) -> bool:
+    frame = tuple(positions)
+    racing_numbers = {position.racing_number for position in frame}
+    return len(racing_numbers) > 1 and all(
+        position.status.strip().lower() == "ontrack"
+        and position.x == 0
+        and position.y == 0
+        for position in frame
+    )
 
 
 def analyze_position_z_lines(lines: Iterable[str]) -> TrackMapDataMetrics:

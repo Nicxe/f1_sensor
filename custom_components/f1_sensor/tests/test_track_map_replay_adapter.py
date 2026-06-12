@@ -24,6 +24,7 @@ from custom_components.f1_sensor.track_map import (
     TRACK_MAP_SOURCE_REPLAY,
     TRACK_MAP_STATIC_GEOMETRY_SOURCE,
     TRACK_MAP_STATUS_ACTIVE,
+    TRACK_MAP_STATUS_STALE,
     TrackMapPosition,
     TrackMapReplayAdapter,
     TrackMapStore,
@@ -201,6 +202,97 @@ def test_track_map_replay_adapter_feeds_store_and_geometry() -> None:
 
     adapter.reset_for_replay()
     assert store.snapshot(now=BASE_TIME + timedelta(seconds=1))["session"] is None
+
+
+def test_track_map_replay_adapter_rejects_all_zero_ontrack_frame() -> None:
+    store = TrackMapStore("entry-1", stale_after=timedelta(days=30))
+    bus = FakeBus()
+    adapter = TrackMapReplayAdapter(store, bus)
+    adapter.start()
+    bus.emit("SessionInfo", _static_session_payload())
+    bus.emit(
+        "DriverList",
+        {
+            "1": {"RacingNumber": "1", "Tla": "VER"},
+            "4": {"RacingNumber": "4", "Tla": "NOR"},
+        },
+    )
+    bus.emit(
+        TRACK_MAP_POSITION_STREAM,
+        track_map_positions_to_payload(
+            [
+                TrackMapPosition("1", BASE_TIME, 100, 200, 0, "OnTrack"),
+                TrackMapPosition("4", BASE_TIME, 300, 400, 0, "OnTrack"),
+            ]
+        ),
+    )
+
+    bus.emit(
+        TRACK_MAP_POSITION_STREAM,
+        track_map_positions_to_payload(
+            [
+                TrackMapPosition(
+                    "1",
+                    BASE_TIME + timedelta(seconds=1),
+                    0,
+                    0,
+                    0,
+                    "OnTrack",
+                ),
+                TrackMapPosition(
+                    "4",
+                    BASE_TIME + timedelta(seconds=1),
+                    0,
+                    0,
+                    0,
+                    "OnTrack",
+                ),
+            ]
+        ),
+    )
+
+    snapshot = store.snapshot(now=BASE_TIME + timedelta(seconds=1))
+
+    assert snapshot["status"] == TRACK_MAP_STATUS_STALE
+    assert snapshot["stale"] is True
+    assert [(driver["x"], driver["y"]) for driver in snapshot["drivers"]] == [
+        (100, 200),
+        (300, 400),
+    ]
+    assert all(driver["stale"] is True for driver in snapshot["drivers"])
+
+    bus.emit(
+        TRACK_MAP_POSITION_STREAM,
+        track_map_positions_to_payload(
+            [
+                TrackMapPosition(
+                    "1",
+                    BASE_TIME + timedelta(seconds=2),
+                    0,
+                    0,
+                    0,
+                    "OffTrack",
+                ),
+                TrackMapPosition(
+                    "4",
+                    BASE_TIME + timedelta(seconds=2),
+                    500,
+                    600,
+                    0,
+                    "OnTrack",
+                ),
+            ]
+        ),
+    )
+
+    recovered = store.snapshot(now=BASE_TIME + timedelta(seconds=2))
+
+    assert recovered["status"] == TRACK_MAP_STATUS_ACTIVE
+    assert recovered["stale"] is False
+    assert [(driver["x"], driver["y"]) for driver in recovered["drivers"]] == [
+        (0, 0),
+        (500, 600),
+    ]
 
 
 def test_track_map_adapter_marks_auth_live_positions_as_live_source() -> None:
