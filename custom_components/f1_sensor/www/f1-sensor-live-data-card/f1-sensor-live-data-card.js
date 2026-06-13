@@ -998,7 +998,7 @@ const renderFontStyleSelect = (editor) => renderEditorSelect(
     value: option.value,
     label: option.label,
   })),
-  'Controls card typography. Wide keeps the original look; Balanced improves compact/mobile readability; System uses the Home Assistant font.',
+  'Controls card typography. Wide uses F1 wide styling. Balanced reduces wide-font usage. System uses Home Assistant font.',
 );
 
 const renderThemeModeSelect = (editor) => html`
