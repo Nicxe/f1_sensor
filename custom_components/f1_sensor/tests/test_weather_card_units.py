@@ -240,6 +240,37 @@ def test_next_race_weather_converts_raw_attributes_to_selected_units() -> None:
     assert result["race"]["windSpeed"] == pytest.approx(22.3693629205)
 
 
+def test_next_race_forecast_matches_converted_sensor_state() -> None:
+    result = _run_probe(
+        {
+            "action": "next_race",
+            "hass": _hass(),
+            "config": {"prefer_live_weather": False},
+            "weatherState": {
+                "state": "69.8",
+                "attributes": {
+                    "unit_of_measurement": "°F",
+                    "current_temperature": 21,
+                    "current_wind_speed": 0.58,
+                    "race_temperature": 28.8,
+                    "race_wind_speed": 3.81,
+                },
+            },
+            "trackWeatherState": None,
+            "sessionStatus": None,
+        }
+    )
+
+    assert result["now"]["temperature"] == 69.8
+    assert result["now"]["temperatureUnit"] == "°F"
+    assert result["now"]["windSpeed"] == pytest.approx(1.2974230494)
+    assert result["now"]["windSpeedUnit"] == "mph"
+    assert result["race"]["temperature"] == pytest.approx(83.84)
+    assert result["race"]["temperatureUnit"] == "°F"
+    assert result["race"]["windSpeed"] == pytest.approx(8.5227280717)
+    assert result["race"]["windSpeedUnit"] == "mph"
+
+
 def test_weather_formatters_render_selected_units() -> None:
     result = _run_probe(
         {
