@@ -86,6 +86,9 @@ const helperSources = [
   extractConst("const resolveEntityIdWithFallback = (hass, entityId) =>"),
   extractConst("const getEntityStateWithFallback = (hass, entityId) =>"),
   extractConst("const isUnavailableLikeEntityState = (entityState) =>"),
+  extractConst("const parseF1TimingSeconds = (value) =>"),
+  extractConst("const resolveF1CurrentSector = (positionInfo, sectorNumber) =>"),
+  extractConst("const getF1TimingClass = (timing) =>"),
   extractConst("const getStateAgeSeconds = (state, field = 'last_changed') =>"),
   extractStatement("const POST_SESSION_RETENTION_SECONDS ="),
   extractStatement("const TERMINAL_SESSION_STATUSES ="),
@@ -372,3 +375,45 @@ def test_practice_card_derives_laps_and_status_from_driver_history() -> None:
     assert colapinto["last_lap"] is None
     assert colapinto["best_lap"] is None
     assert colapinto["is_fastest"] is False
+
+
+def test_practice_card_exposes_current_sector_values_and_timing_classes() -> None:
+    """Practice rows should carry live sectors when the optional columns are enabled."""
+    result = _run_card_probe(
+        session_state={"state": "Practice 1", "attributes": {"number": 1}},
+        session_status_state={"state": "live"},
+        position_drivers=[
+            {
+                "racing_number": "16",
+                "tla": "LEC",
+                "current_position": "1",
+                "sectors": {
+                    "current": {
+                        "sector_1": {
+                            "time": 26.123,
+                            "overall_fastest": True,
+                            "personal_fastest": True,
+                        },
+                        "sector_2": {
+                            "time": 31.456,
+                            "overall_fastest": False,
+                            "personal_fastest": True,
+                        },
+                        "sector_3": {
+                            "time": 28.789,
+                            "overall_fastest": False,
+                            "personal_fastest": False,
+                        },
+                    }
+                },
+            }
+        ],
+    )
+
+    row = result["rows"][0]
+    assert row["sector_1"] == pytest.approx(26.123)
+    assert row["sector_1_class"] == "overall-fastest"
+    assert row["sector_2"] == pytest.approx(31.456)
+    assert row["sector_2_class"] == "personal-fastest"
+    assert row["sector_3"] == pytest.approx(28.789)
+    assert row["sector_3_class"] == "timed"
