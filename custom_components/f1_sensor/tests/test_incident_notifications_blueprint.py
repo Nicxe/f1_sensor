@@ -45,6 +45,10 @@ async def _setup_blueprint_automation(
     allowed_session_types: list[str] | None = None,
     include_candidate_events: bool = False,
     include_cleared_notifications: bool = False,
+    presence_devices: list[str] | None = None,
+    media_player_gate: str = "",
+    enable_dnd: bool = False,
+    activation_condition: list[dict[str, Any]] | None = None,
 ) -> bool:
     config = {
         "automation": [
@@ -61,6 +65,12 @@ async def _setup_blueprint_automation(
                         or ["race", "sprint", "qualifying"],
                         "include_candidate_events": include_candidate_events,
                         "include_cleared_notifications": include_cleared_notifications,
+                        "presence_devices": presence_devices or [],
+                        "media_player_gate": media_player_gate,
+                        "enable_dnd": enable_dnd,
+                        "dnd_start_time": "23:00:00",
+                        "dnd_end_time": "07:00:00",
+                        "activation_condition": activation_condition or [],
                         "title_prefix": "F1 Incident Test",
                     },
                 },
@@ -285,3 +295,55 @@ async def test_incident_updates_use_same_notification_tag_for_dedupe(
     assert calls[0]["data"]["tag"] == calls[1]["data"]["tag"]
     assert calls[1]["data"]["phase"] == "updated"
     assert calls[1]["data"]["confidence"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_media_player_gate_only_notifies_when_media_player_is_active(
+    hass: HomeAssistant,
+) -> None:
+    await _install_blueprint(hass)
+    calls = _register_notification_service(hass)
+    hass.states.async_set("media_player.living_room", "off")
+
+    assert await _setup_blueprint_automation(
+        hass,
+        media_player_gate="media_player.living_room",
+    )
+    calls.clear()
+
+    await _fire_incident(hass)
+    assert calls == []
+
+    hass.states.async_set("media_player.living_room", "playing")
+    await _fire_incident(hass)
+
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_extra_activation_condition_controls_notifications(
+    hass: HomeAssistant,
+) -> None:
+    await _install_blueprint(hass)
+    calls = _register_notification_service(hass)
+    hass.states.async_set("input_boolean.f1_notifications", "off")
+
+    assert await _setup_blueprint_automation(
+        hass,
+        activation_condition=[
+            {
+                "condition": "state",
+                "entity_id": "input_boolean.f1_notifications",
+                "state": "on",
+            }
+        ],
+    )
+    calls.clear()
+
+    await _fire_incident(hass)
+    assert calls == []
+
+    hass.states.async_set("input_boolean.f1_notifications", "on")
+    await _fire_incident(hass)
+
+    assert len(calls) == 1
