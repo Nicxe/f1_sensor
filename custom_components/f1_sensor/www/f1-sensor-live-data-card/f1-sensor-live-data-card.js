@@ -17881,7 +17881,7 @@ class F1NextRaceCard extends LitElement {
 
     .nr-countdown-inline {
       font-size: clamp(13px, 1.7vw, 17px);
-      letter-spacing: var(--f1-card-display-letter-spacing, 0.03em);
+      letter-spacing: var(--f1-card-display-letter-spacing, normal);
     }
 
     .nr-countdown-meta,
@@ -18012,7 +18012,7 @@ class F1NextRaceCard extends LitElement {
       font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(15px, 2vw, 19px);
       line-height: 1.05;
-      letter-spacing: var(--f1-card-display-letter-spacing, 0.03em);
+      letter-spacing: var(--f1-card-display-letter-spacing, normal);
       color: var(--nr-text);
       white-space: nowrap;
     }
