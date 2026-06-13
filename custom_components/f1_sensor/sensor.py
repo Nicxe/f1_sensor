@@ -1339,7 +1339,7 @@ class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
         return min(dirs, key=lambda x: abs(deg - x[0]))[1]
 
     @property
-    def state(self):
+    def native_value(self):
         return self._current.get("temperature")
 
     @property

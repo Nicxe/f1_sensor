@@ -82,6 +82,79 @@ const formatHassDateTime = (hass, date, options = {}, fallback = '') => {
   }
 };
 
+function getF1UnitSystemUnit(hass, key, fallback) {
+  const unit = hass?.config?.unit_system?.[key];
+  return typeof unit === 'string' && unit.trim() ? unit : fallback;
+}
+
+function getF1TemperatureUnit(hass, entity) {
+  const entityUnit = entity?.attributes?.unit_of_measurement;
+  if (['°C', '°F', 'K'].includes(entityUnit)) {
+    return entityUnit;
+  }
+  return getF1UnitSystemUnit(hass, 'temperature', '°C');
+}
+
+function convertF1Temperature(value, fromUnit, toUnit) {
+  if (value === null || value === undefined || value === '') return value;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || fromUnit === toUnit) return numericValue;
+
+  let celsius;
+  if (fromUnit === '°F') {
+    celsius = (numericValue - 32) / 1.8;
+  } else if (fromUnit === 'K') {
+    celsius = numericValue - 273.15;
+  } else if (fromUnit === '°C') {
+    celsius = numericValue;
+  } else {
+    return numericValue;
+  }
+
+  if (toUnit === '°F') return celsius * 1.8 + 32;
+  if (toUnit === 'K') return celsius + 273.15;
+  return celsius;
+}
+
+function convertF1Speed(value, fromUnit, toUnit) {
+  if (value === null || value === undefined || value === '') return value;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || fromUnit === toUnit) return numericValue;
+
+  let metersPerSecond;
+  if (fromUnit === 'Beaufort') {
+    metersPerSecond = 0.836 * numericValue ** 1.5;
+  } else {
+    const fromRatio = {
+      'ft/s': 3.280839895013124,
+      'in/s': 39.37007874015748,
+      'km/h': 3.6,
+      kn: 1.9438444924406046,
+      'm/min': 60,
+      'm/s': 1,
+      'mm/s': 1000,
+      mph: 2.2369362920544025,
+    }[fromUnit];
+    if (!fromRatio) return numericValue;
+    metersPerSecond = numericValue / fromRatio;
+  }
+
+  if (toUnit === 'Beaufort') {
+    return Math.round(((metersPerSecond / 0.836) ** 2) ** (1 / 3));
+  }
+  const toRatio = {
+    'ft/s': 3.280839895013124,
+    'in/s': 39.37007874015748,
+    'km/h': 3.6,
+    kn: 1.9438444924406046,
+    'm/min': 60,
+    'm/s': 1,
+    'mm/s': 1000,
+    mph: 2.2369362920544025,
+  }[toUnit];
+  return toRatio ? metersPerSecond * toRatio : numericValue;
+}
+
 const F1_THEME_STYLES = css`
   :host {
     --f1-card-bg: #0b0b0d;
@@ -826,6 +899,76 @@ const formatF1DeltaSeconds = (value, zeroValue = '--') => {
   if (!Number.isFinite(value)) return '--';
   if (Math.abs(value) < 0.0005) return zeroValue;
   return `${value > 0 ? '+' : ''}${value.toFixed(3)}`;
+};
+
+const parseF1TimingSeconds = (value) => {
+  if (Number.isFinite(value)) return Number(value);
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  if (!text) return null;
+  const sections = text.split(':');
+  const seconds = Number(sections.pop());
+  if (!Number.isFinite(seconds)) return null;
+  let total = seconds;
+  let multiplier = 60;
+  for (let index = sections.length - 1; index >= 0; index -= 1) {
+    const part = Number(sections[index]);
+    if (!Number.isFinite(part)) return null;
+    total += part * multiplier;
+    multiplier *= 60;
+  }
+  return Number.isFinite(total) ? total : null;
+};
+
+const resolveF1CurrentSector = (positionInfo, sectorNumber) => {
+  const empty = {
+    time: null,
+    overall_fastest: false,
+    personal_fastest: false,
+  };
+  if (!positionInfo || ![1, 2, 3].includes(sectorNumber)) return empty;
+
+  const current = positionInfo.sectors && typeof positionInfo.sectors === 'object'
+    ? positionInfo.sectors.current
+    : null;
+  const detail = current && typeof current === 'object'
+    ? current[`sector_${sectorNumber}`]
+      ?? current[String(sectorNumber)]
+      ?? current[String(sectorNumber - 1)]
+    : null;
+  if (detail && typeof detail === 'object') {
+    const time = parseF1TimingSeconds(detail.time);
+    return {
+      time,
+      overall_fastest: time != null && detail.overall_fastest === true,
+      personal_fastest: time != null && detail.personal_fastest === true,
+    };
+  }
+
+  const time = parseF1TimingSeconds(positionInfo[`sector_${sectorNumber}`]);
+  return {
+    time,
+    overall_fastest: time != null && positionInfo[`sector_${sectorNumber}_overall_fastest`] === true,
+    personal_fastest: time != null && positionInfo[`sector_${sectorNumber}_personal_fastest`] === true,
+  };
+};
+
+const formatF1SectorSeconds = (value) => {
+  if (!Number.isFinite(value)) return '--';
+  const totalMs = Math.round(value * 1000);
+  const milliseconds = totalMs % 1000;
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const suffix = `${String(seconds).padStart(minutes > 0 ? 2 : 1, '0')}.${String(milliseconds).padStart(3, '0')}`;
+  return minutes > 0 ? `${minutes}:${suffix}` : suffix;
+};
+
+const getF1TimingClass = (timing) => {
+  if (!timing || !Number.isFinite(timing.time)) return '';
+  if (timing.overall_fastest === true) return 'overall-fastest';
+  if (timing.personal_fastest === true) return 'personal-fastest';
+  return 'timed';
 };
 
 const renderEditorSelect = (editor, name, label, options, helper = null) => {
@@ -15482,7 +15625,24 @@ class F1LiveSessionCard extends LitElement {
     if (!entity || entity.state === 'unavailable' || entity.state === 'unknown') {
       return null;
     }
-    return entity.attributes || {};
+    const attributes = entity.attributes || {};
+    const temperatureUnit = getF1TemperatureUnit(this.hass, entity);
+    const windSpeedUnit = getF1UnitSystemUnit(this.hass, 'wind_speed', 'm/s');
+    const entityTemperature = Number(entity.state);
+    return {
+      ...attributes,
+      air_temperature: Number.isFinite(entityTemperature)
+        ? entityTemperature
+        : convertF1Temperature(attributes.air_temperature, '°C', temperatureUnit),
+      track_temperature: convertF1Temperature(
+        attributes.track_temperature,
+        '°C',
+        temperatureUnit,
+      ),
+      temperature_unit: temperatureUnit,
+      wind_speed: convertF1Speed(attributes.wind_speed, 'm/s', windSpeedUnit),
+      wind_speed_unit: windSpeedUnit,
+    };
   }
 
   _getCountryFlagUrl(country) {
@@ -15734,22 +15894,22 @@ class F1LiveSessionCard extends LitElement {
 
           ${this.config.show_weather !== false && weather ? html`
             <div class="ls-weather">
-              ${weather.wind_speed !== undefined ? html`
+              ${weather.wind_speed !== undefined && weather.wind_speed !== null ? html`
                 <div class="ls-weather-col">
                   <span class="ls-weather-label">Wind</span>
-                  <span class="ls-weather-value">${Number(weather.wind_speed).toFixed(1)} m/s ${this._windDirectionToCardinal(weather.wind_from_direction_degrees)}</span>
+                  <span class="ls-weather-value">${Number(weather.wind_speed).toFixed(1)} ${weather.wind_speed_unit || 'm/s'} ${this._windDirectionToCardinal(weather.wind_from_direction_degrees)}</span>
                 </div>
               ` : null}
-              ${weather.track_temperature !== undefined ? html`
+              ${weather.track_temperature !== undefined && weather.track_temperature !== null ? html`
                 <div class="ls-weather-col">
                   <span class="ls-weather-label">Track</span>
-                  <span class="ls-weather-value">${Number(weather.track_temperature).toFixed(1)} °C</span>
+                  <span class="ls-weather-value">${Number(weather.track_temperature).toFixed(1)} ${weather.temperature_unit || '°C'}</span>
                 </div>
               ` : null}
-              ${weather.air_temperature !== undefined ? html`
+              ${weather.air_temperature !== undefined && weather.air_temperature !== null ? html`
                 <div class="ls-weather-col">
                   <span class="ls-weather-label">Air</span>
-                  <span class="ls-weather-value">${Number(weather.air_temperature).toFixed(1)} °C</span>
+                  <span class="ls-weather-value">${Number(weather.air_temperature).toFixed(1)} ${weather.temperature_unit || '°C'}</span>
                 </div>
               ` : null}
               ${weather.humidity !== undefined ? html`
@@ -19148,6 +19308,11 @@ class F1NextRaceCard extends LitElement {
   _resolveWeatherComparison(weatherState, trackWeatherState, sessionStatus) {
     const weatherAttrs = weatherState?.attributes || {};
     const trackAttrs = trackWeatherState?.attributes || {};
+    const weatherTemperatureUnit = getF1TemperatureUnit(this.hass, weatherState);
+    const trackTemperatureUnit = getF1TemperatureUnit(this.hass, trackWeatherState);
+    const windSpeedUnit = getF1UnitSystemUnit(this.hass, 'wind_speed', 'm/s');
+    const weatherStateTemperature = Number(weatherState?.state);
+    const trackStateTemperature = Number(trackWeatherState?.state);
     const status = String(sessionStatus?.state || '').toLowerCase();
     const weekendActive = ['pre', 'live', 'suspended', 'break'].includes(status);
     const useLiveNow = this.config.prefer_live_weather !== false
@@ -19163,9 +19328,21 @@ class F1NextRaceCard extends LitElement {
           icon: weatherAttrs.icon || 'mdi:weather-partly-cloudy',
           title: 'Now at circuit',
           status: 'Live track feed',
-          temperature: trackAttrs.air_temperature,
-          trackTemperature: trackAttrs.track_temperature,
-          windSpeed: trackAttrs.wind_speed,
+          temperature: Number.isFinite(trackStateTemperature)
+            ? trackStateTemperature
+            : convertF1Temperature(
+              trackAttrs.air_temperature,
+              '°C',
+              trackTemperatureUnit,
+            ),
+          trackTemperature: convertF1Temperature(
+            trackAttrs.track_temperature,
+            '°C',
+            trackTemperatureUnit,
+          ),
+          temperatureUnit: trackTemperatureUnit,
+          windSpeed: convertF1Speed(trackAttrs.wind_speed, 'm/s', windSpeedUnit),
+          windSpeedUnit,
           windDirection: trackAttrs.wind_from_direction_degrees,
           rainfall: trackAttrs.rainfall,
           precipitationProbability: null,
@@ -19177,9 +19354,21 @@ class F1NextRaceCard extends LitElement {
           icon: weatherAttrs.icon || 'mdi:weather-partly-cloudy',
           title: 'Now at circuit',
           status: 'Current forecast',
-          temperature: weatherAttrs.current_temperature,
+          temperature: Number.isFinite(weatherStateTemperature)
+            ? weatherStateTemperature
+            : convertF1Temperature(
+              weatherAttrs.current_temperature,
+              '°C',
+              weatherTemperatureUnit,
+            ),
           trackTemperature: null,
-          windSpeed: weatherAttrs.current_wind_speed,
+          temperatureUnit: weatherTemperatureUnit,
+          windSpeed: convertF1Speed(
+            weatherAttrs.current_wind_speed,
+            'm/s',
+            windSpeedUnit,
+          ),
+          windSpeedUnit,
           windDirection: weatherAttrs.current_wind_from_direction_degrees,
           rainfall: weatherAttrs.current_precipitation,
           precipitationProbability: weatherAttrs.current_precipitation_probability,
@@ -19192,9 +19381,15 @@ class F1NextRaceCard extends LitElement {
       icon: weatherAttrs.race_weather_icon || weatherAttrs.icon || 'mdi:weather-partly-cloudy',
       title: 'Race start',
       status: 'Race start forecast',
-      temperature: weatherAttrs.race_temperature,
+      temperature: convertF1Temperature(
+        weatherAttrs.race_temperature,
+        '°C',
+        weatherTemperatureUnit,
+      ),
       trackTemperature: null,
-      windSpeed: weatherAttrs.race_wind_speed,
+      temperatureUnit: weatherTemperatureUnit,
+      windSpeed: convertF1Speed(weatherAttrs.race_wind_speed, 'm/s', windSpeedUnit),
+      windSpeedUnit,
       windDirection: weatherAttrs.race_wind_from_direction_degrees,
       rainfall: weatherAttrs.race_precipitation,
       precipitationProbability: weatherAttrs.race_precipitation_probability,
@@ -19219,9 +19414,9 @@ class F1NextRaceCard extends LitElement {
     return directions[index];
   }
 
-  _formatTemperature(value) {
+  _formatTemperature(value, unit) {
     const num = Number(value);
-    return Number.isFinite(num) ? `${num.toFixed(1)} °C` : 'n/a';
+    return Number.isFinite(num) ? `${num.toFixed(1)} ${unit || '°C'}` : 'n/a';
   }
 
   _formatNumber(value, suffix = '', digits = 0) {
@@ -19230,11 +19425,11 @@ class F1NextRaceCard extends LitElement {
     return `${num.toFixed(digits)}${suffix}`;
   }
 
-  _formatWind(speed, directionDegrees) {
+  _formatWind(speed, directionDegrees, unit) {
     const speedValue = Number(speed);
     if (!Number.isFinite(speedValue)) return 'n/a';
     const direction = this._windDirectionToCardinal(directionDegrees);
-    return `${speedValue.toFixed(1)} m/s${direction ? ` ${direction}` : ''}`;
+    return `${speedValue.toFixed(1)} ${unit || 'm/s'}${direction ? ` ${direction}` : ''}`;
   }
 
   _formatCountdownCompact(countdown) {
@@ -19483,7 +19678,7 @@ class F1NextRaceCard extends LitElement {
       ? this._formatNumber(block.humidity, '%')
       : 'n/a';
     const trackOrHumidity = block.trackTemperature !== null && block.trackTemperature !== undefined
-      ? this._formatTemperature(block.trackTemperature)
+      ? this._formatTemperature(block.trackTemperature, block.temperatureUnit)
       : humidityValue;
     const trackOrHumidityLabel = block.trackTemperature !== null && block.trackTemperature !== undefined
       ? 'Track'
@@ -19493,9 +19688,19 @@ class F1NextRaceCard extends LitElement {
       : this._formatNumber(block.rainfall, ' mm', 1);
 
     return [
-      { label: 'Air', value: this._formatTemperature(block.temperature) },
+      {
+        label: 'Air',
+        value: this._formatTemperature(block.temperature, block.temperatureUnit),
+      },
       { label: trackOrHumidityLabel, value: trackOrHumidity },
-      { label: 'Wind', value: this._formatWind(block.windSpeed, block.windDirection) },
+      {
+        label: 'Wind',
+        value: this._formatWind(
+          block.windSpeed,
+          block.windDirection,
+          block.windSpeedUnit,
+        ),
+      },
       { label: 'Rain', value: rainValue },
     ].filter((item) => item.value !== 'n/a');
   }
@@ -19653,15 +19858,31 @@ class F1NextRaceCard extends LitElement {
       : this._formatNumber(block.rainfall, ' mm', 1);
 
     const secondaryMetric = block.trackTemperature !== null && block.trackTemperature !== undefined
-      ? { label: 'Track', value: this._formatTemperature(block.trackTemperature) }
+      ? {
+          label: 'Track',
+          value: this._formatTemperature(
+            block.trackTemperature,
+            block.temperatureUnit,
+          ),
+        }
       : block.humidity !== null && block.humidity !== undefined
         ? { label: 'Humidity', value: this._formatNumber(block.humidity, '%') }
         : null;
 
     return [
-      { label: 'Air', value: this._formatTemperature(block.temperature) },
+      {
+        label: 'Air',
+        value: this._formatTemperature(block.temperature, block.temperatureUnit),
+      },
       secondaryMetric,
-      { label: 'Wind', value: this._formatWind(block.windSpeed, block.windDirection) },
+      {
+        label: 'Wind',
+        value: this._formatWind(
+          block.windSpeed,
+          block.windDirection,
+          block.windSpeedUnit,
+        ),
+      },
       rainValue !== 'n/a'
         ? { label: 'Rain', value: rainValue }
         : block.humidity !== null && block.humidity !== undefined && secondaryMetric?.label !== 'Humidity'
@@ -22120,6 +22341,7 @@ class F1RaceControlCard extends LitElement {
       entity: 'sensor.f1_race_control',
       show_fia_logo: true,
       hide_blue_flags: false,
+      hide_track_limits: false,
       min_display_time: 0,
       ...config,
     };
@@ -22220,8 +22442,10 @@ class F1RaceControlCard extends LitElement {
 
   _shouldHideMessage(item) {
     if (!item) return true;
-    if (this.config?.hide_blue_flags !== true) return false;
-    return this._isBlueFlagMessage(item);
+    if (this.config?.hide_blue_flags === true && this._isBlueFlagMessage(item)) {
+      return true;
+    }
+    return this.config?.hide_track_limits === true && this._isTrackLimitsMessage(item);
   }
 
   _isBlueFlagMessage(item) {
@@ -22231,6 +22455,11 @@ class F1RaceControlCard extends LitElement {
 
     const message = this._formatMessage(item?.message || '').toLowerCase();
     return message.includes('waved blue flag') || message.includes('blue flag');
+  }
+
+  _isTrackLimitsMessage(item) {
+    const message = this._formatMessage(item?.message || '').toUpperCase();
+    return message.includes('TRACK LIMITS');
   }
 
   _parseIncidentTime(value) {
@@ -22546,6 +22775,7 @@ class F1RaceControlCardEditor extends LitElement {
       display_mode: 'latest',
       show_fia_logo: true,
       hide_blue_flags: false,
+      hide_track_limits: false,
       min_display_time: 0,
       list_max_height: 600,
       show_clear_button: true,
@@ -22637,6 +22867,11 @@ class F1RaceControlCardEditor extends LitElement {
           'hide_blue_flags',
           'Hide blue flag messages',
           'Remove blue flag notices from the banner or list without deleting them from saved history'
+        )}
+        ${this._renderSwitch(
+          'hide_track_limits',
+          'Hide track limits messages',
+          'Remove track limits notices from the banner or list without deleting them from saved history'
         )}
 
         ${this._config.display_mode === 'list' ? html`
@@ -25711,6 +25946,36 @@ class F1PracticeTimingCard extends LitElement {
       text-align: right;
     }
 
+    .pt-sector {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 5px;
+      border-radius: 5px;
+      box-sizing: border-box;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      min-width: 52px;
+      font-size: clamp(9px, 1.4vw, 11px);
+      background: var(--sector-bg, transparent);
+      color: var(--sector-text, var(--pt-muted));
+    }
+
+    .pt-sector.overall-fastest {
+      --sector-bg: var(--f1-timing-overall-fastest-bg, rgba(139, 92, 246, 0.28));
+      --sector-text: var(--f1-timing-overall-fastest-text, #d8b4fe);
+    }
+
+    .pt-sector.personal-fastest {
+      --sector-bg: var(--f1-timing-personal-fastest-bg, rgba(34, 197, 94, 0.22));
+      --sector-text: var(--f1-timing-personal-fastest-text, #86efac);
+    }
+
+    .pt-sector.timed {
+      --sector-bg: var(--f1-timing-timed-bg, rgba(234, 179, 8, 0.18));
+      --sector-text: var(--f1-timing-timed-text, #fde047);
+    }
+
     .pt-lap {
       display: inline-flex;
       align-items: center;
@@ -25726,6 +25991,7 @@ class F1PracticeTimingCard extends LitElement {
       color: var(--lap-text, var(--pt-muted));
     }
 
+    .pt-cell.center .pt-sector,
     .pt-cell.center .pt-lap {
       width: 100%;
       max-width: 100%;
@@ -25791,6 +26057,7 @@ class F1PracticeTimingCard extends LitElement {
       show_status: true,
       show_tyre: true,
       show_tyre_age: true,
+      show_sectors: false,
       show_last_lap: true,
       show_fastest_lap: true,
       show_timing_indicators: false,
@@ -25836,6 +26103,7 @@ class F1PracticeTimingCard extends LitElement {
       positions_entity: '',
       session_entity: 'sensor.f1_current_session',
       title: 'Free Practice',
+      show_sectors: false,
     };
   }
 
@@ -26018,6 +26286,18 @@ class F1PracticeTimingCard extends LitElement {
     if (this.config.show_tyre_age !== false && !mediumLayout && !narrowLayout) {
       columns.push({ key: 'tyre_age', label: 'Age', width: 'minmax(28px, 0.28fr)', center: true });
     }
+    if (this.config.show_sectors === true) {
+      const sectorWidth = narrowLayout
+        ? 'minmax(54px, 0.72fr)'
+        : mediumLayout
+          ? 'minmax(58px, 0.72fr)'
+          : 'minmax(62px, 0.75fr)';
+      columns.push(
+        { key: 'sector_1', label: 'S1', width: sectorWidth, center: true, groupStart: true },
+        { key: 'sector_2', label: 'S2', width: sectorWidth, center: true },
+        { key: 'sector_3', label: 'S3', width: sectorWidth, center: true },
+      );
+    }
     if (this.config.show_last_lap !== false) {
       columns.push({ key: 'last_lap', label: 'Last Lap', width: narrowLayout ? 'minmax(72px, 1fr)' : 'minmax(78px, 0.95fr)', center: true, groupStart: true });
     }
@@ -26099,6 +26379,16 @@ class F1PracticeTimingCard extends LitElement {
       return html`
         <div class="${classes.join(' ')}">
           <span class="pt-tyre-age">${row.tyre_age != null ? row.tyre_age : '-'}</span>
+        </div>
+      `;
+    }
+
+    if (col.key === 'sector_1' || col.key === 'sector_2' || col.key === 'sector_3') {
+      const sectorClass = row[`${col.key}_class`] || '';
+      const indicator = this._timingIndicator(sectorClass);
+      return html`
+        <div class="${classes.join(' ')}">
+          <span class="pt-sector ${sectorClass}">${indicator}${formatF1SectorSeconds(row[col.key])}</span>
         </div>
       `;
     }
@@ -26216,6 +26506,9 @@ class F1PracticeTimingCard extends LitElement {
       // the integration only exposes top-level fastest_lap metadata during race sessions.
       const lapSnapshot = this._buildLapSnapshot(pos);
       const position = this._parsePosition(pos?.current_position ?? pos?.grid_position);
+      const sector1 = resolveF1CurrentSector(pos, 1);
+      const sector2 = resolveF1CurrentSector(pos, 2);
+      const sector3 = resolveF1CurrentSector(pos, 3);
 
       return {
         rn,
@@ -26231,6 +26524,12 @@ class F1PracticeTimingCard extends LitElement {
         compound_short: compoundShort || '-',
         compound_color: compoundColor,
         tyre_age: tyreAge,
+        sector_1: sector1.time,
+        sector_1_class: getF1TimingClass(sector1),
+        sector_2: sector2.time,
+        sector_2_class: getF1TimingClass(sector2),
+        sector_3: sector3.time,
+        sector_3_class: getF1TimingClass(sector3),
         last_lap: lapSnapshot.last_lap,
         best_lap: lapSnapshot.best_lap,
         best_lap_seconds: lapSnapshot.best_lap_seconds,
@@ -26693,6 +26992,7 @@ class F1PracticeTimingCardEditor extends LitElement {
         ${this._renderSwitch('show_gap_toggle', 'Show live gap toggle', 'Lets viewers switch between car ahead and leader from the card header')}
         ${this._renderSwitch('show_tyre', 'Show tyre')}
         ${this._renderSwitch('show_tyre_age', 'Show tyre age')}
+        ${this._renderSwitch('show_sectors', 'Show S1-S3 sectors', 'Shows live sector progress from the driver positions sensor')}
         ${this._renderSwitch('show_last_lap', 'Show last lap')}
         ${this._renderSwitch('show_fastest_lap', 'Show fastest lap')}
 
@@ -27061,6 +27361,36 @@ class F1RaceLapCard extends LitElement {
       text-align: right;
     }
 
+    .rl-sector {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 5px;
+      border-radius: 5px;
+      box-sizing: border-box;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      min-width: 52px;
+      font-size: clamp(9px, 1.4vw, 11px);
+      background: var(--sector-bg, transparent);
+      color: var(--sector-text, var(--rl-muted));
+    }
+
+    .rl-sector.overall-fastest {
+      --sector-bg: var(--f1-timing-overall-fastest-bg, rgba(139, 92, 246, 0.28));
+      --sector-text: var(--f1-timing-overall-fastest-text, #d8b4fe);
+    }
+
+    .rl-sector.personal-fastest {
+      --sector-bg: var(--f1-timing-personal-fastest-bg, rgba(34, 197, 94, 0.22));
+      --sector-text: var(--f1-timing-personal-fastest-text, #86efac);
+    }
+
+    .rl-sector.timed {
+      --sector-bg: var(--f1-timing-timed-bg, rgba(234, 179, 8, 0.18));
+      --sector-text: var(--f1-timing-timed-text, #fde047);
+    }
+
     .rl-lap {
       display: inline-flex;
       align-items: center;
@@ -27077,6 +27407,7 @@ class F1RaceLapCard extends LitElement {
     }
 
     .rl-cell.center .rl-gap,
+    .rl-cell.center .rl-sector,
     .rl-cell.center .rl-lap {
       width: 100%;
       max-width: 100%;
@@ -27176,6 +27507,7 @@ class F1RaceLapCard extends LitElement {
       show_tyre: true,
       show_tyre_age: true,
       show_pit_count: true,
+      show_sectors: false,
       show_last_lap: true,
       show_fastest_lap: true,
       show_timing_indicators: false,
@@ -27249,6 +27581,7 @@ class F1RaceLapCard extends LitElement {
       positions_entity: '',
       session_entity: 'sensor.f1_current_session',
       title: 'Race Lap',
+      show_sectors: false,
     };
   }
 
@@ -27470,6 +27803,18 @@ class F1RaceLapCard extends LitElement {
     if (this.config.show_pit_count !== false && !suppressPit) {
       columns.push({ key: 'pit_count', label: 'Pit', width: 'minmax(30px, 0.32fr)', center: true });
     }
+    if (this.config.show_sectors === true) {
+      const sectorWidth = narrowLayout
+        ? 'minmax(54px, 0.72fr)'
+        : mediumLayout
+          ? 'minmax(58px, 0.72fr)'
+          : 'minmax(62px, 0.75fr)';
+      columns.push(
+        { key: 'sector_1', label: 'S1', width: sectorWidth, center: true, groupStart: true },
+        { key: 'sector_2', label: 'S2', width: sectorWidth, center: true },
+        { key: 'sector_3', label: 'S3', width: sectorWidth, center: true },
+      );
+    }
     if (this.config.show_last_lap !== false) {
       columns.push({ key: 'last_lap', label: 'Last Lap', width: narrowLayout ? 'minmax(72px, 1fr)' : 'minmax(78px, 0.95fr)', center: true, groupStart: true });
     }
@@ -27567,6 +27912,16 @@ class F1RaceLapCard extends LitElement {
       return html`<div class="${classes.join(' ')}">${row.pit_count != null ? row.pit_count : '-'}</div>`;
     }
 
+    if (col.key === 'sector_1' || col.key === 'sector_2' || col.key === 'sector_3') {
+      const sectorClass = row[`${col.key}_class`] || '';
+      const indicator = this._timingIndicator(sectorClass);
+      return html`
+        <div class="${classes.join(' ')}">
+          <span class="rl-sector ${sectorClass}">${indicator}${formatF1SectorSeconds(row[col.key])}</span>
+        </div>
+      `;
+    }
+
     if (col.key === 'last_lap') {
       const lastLap = row.last_lap || '--:--.---';
       const isPersonalFastest = this._isLapTimeMatch(row.last_lap, row.best_lap);
@@ -27662,6 +28017,9 @@ class F1RaceLapCard extends LitElement {
       const bestLap = lapSnapshot.best_lap || (typeof pos?.fastest_lap_time === 'string' ? pos.fastest_lap_time.trim() : null);
       const isFastest = Boolean(pos?.fastest_lap) || this._matchesFastest(rn, tla, fastestInfo);
       const position = this._parsePosition(pos?.current_position ?? pos?.grid_position);
+      const sector1 = resolveF1CurrentSector(pos, 1);
+      const sector2 = resolveF1CurrentSector(pos, 2);
+      const sector3 = resolveF1CurrentSector(pos, 3);
 
       let pitCount = null;
       if (hasPitState) {
@@ -27685,6 +28043,12 @@ class F1RaceLapCard extends LitElement {
         compound_color: compoundColor,
         tyre_age: tyreAge,
         pit_count: pitCount,
+        sector_1: sector1.time,
+        sector_1_class: getF1TimingClass(sector1),
+        sector_2: sector2.time,
+        sector_2_class: getF1TimingClass(sector2),
+        sector_3: sector3.time,
+        sector_3_class: getF1TimingClass(sector3),
         last_lap: lapSnapshot.last_lap,
         best_lap: bestLap,
         gap_to_leader: normalizeF1GapValue(pos?.gap_to_leader),
@@ -28161,6 +28525,7 @@ class F1RaceLapCardEditor extends LitElement {
         ${this._renderSwitch('show_tyre', 'Show tyre')}
         ${this._renderSwitch('show_tyre_age', 'Show tyre age')}
         ${this._renderSwitch('show_pit_count', 'Show pit stops')}
+        ${this._renderSwitch('show_sectors', 'Show S1-S3 sectors', 'Shows live sector progress from the driver positions sensor')}
         ${this._renderSwitch('show_last_lap', 'Show last lap')}
         ${this._renderSwitch('show_fastest_lap', 'Show fastest lap')}
         ${this._renderSwitch(
@@ -30226,6 +30591,7 @@ class F1TrackMapCard extends LitElement {
 
   _statusLabel() {
     const replayState = String(this._snapshot?.replay_state || '').toLowerCase();
+    if (this._replaySnapshotIsStale()) return 'No position data';
     if (replayState === 'paused') return 'Paused';
     if (replayState === 'seeking') return 'Seeking';
     if (replayState === 'playing') return 'Replay';
@@ -30245,6 +30611,7 @@ class F1TrackMapCard extends LitElement {
 
   _visualStatusState() {
     const replayState = String(this._snapshot?.replay_state || '').toLowerCase();
+    if (this._replaySnapshotIsStale()) return 'stale';
     if (['playing', 'paused', 'seeking'].includes(replayState)) return replayState;
     if (this._liveSnapshotIsStale()) return 'no_session';
     return this._status || 'not_loaded';
@@ -30268,6 +30635,12 @@ class F1TrackMapCard extends LitElement {
       };
     }
     const isLive = this._snapshot.source === 'live';
+    if (this._replaySnapshotIsStale(this._snapshot)) {
+      return {
+        title: 'Replay position data unavailable',
+        detail: 'The source stream does not contain valid Position.z samples at this point.',
+      };
+    }
     if (this._liveSnapshotIsStale(this._snapshot)) {
       return {
         title: 'No active live session',
@@ -30508,6 +30881,12 @@ class F1TrackMapCard extends LitElement {
     return Date.now() >= streamTimestamp + (Math.max(0, staleAfterSeconds) * 1000);
   }
 
+  _replaySnapshotIsStale(snapshot = this._snapshot) {
+    if (String(snapshot?.source || '').trim().toLowerCase() !== 'replay') return false;
+    const status = String(snapshot?.status || this._status || '').trim().toLowerCase();
+    return snapshot?.stale === true || status === 'stale';
+  }
+
   _presentationState(snapshot = this._snapshot) {
     const hideLiveMetadata = this._liveSnapshotIsStale(snapshot);
     return {
@@ -30706,7 +31085,9 @@ class F1TrackMapCard extends LitElement {
 
   _visibleDrivers(drivers, snapshot = this._snapshot) {
     if (!Array.isArray(drivers)) return [];
-    if (this._liveSnapshotIsStale(snapshot)) return [];
+    if (this._liveSnapshotIsStale(snapshot) || this._replaySnapshotIsStale(snapshot)) {
+      return [];
+    }
     const retiredKeys = this._retiredDriverKeys();
     return drivers.filter((driver) => !this._isRetiredDriver(driver, retiredKeys));
   }
@@ -31781,7 +32162,7 @@ window.customCards.push({
 window.customCards.push({
   type: 'f1-practice-timing-card',
   name: 'F1 Free Practice Timing',
-  description: 'Practice-only timing table with tyre age, last lap, and fastest lap per driver',
+  description: 'Practice-only timing table with optional live sectors, tyre age, last lap, and fastest lap per driver',
   configurable: true,
   preview: true,
 });
@@ -31789,7 +32170,7 @@ window.customCards.push({
 window.customCards.push({
   type: 'f1-race-lap-card',
   name: 'F1 Race Lap',
-  description: 'Race-only timing table with lap count title, tyre age, fastest lap highlights, and pit stops for Replay Mode or live with F1TV access',
+  description: 'Race-only timing table with optional live sectors, lap count, tyre age, fastest lap highlights, and pit stops',
   configurable: true,
   preview: true,
 });

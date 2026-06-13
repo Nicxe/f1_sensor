@@ -10,7 +10,7 @@ blueprint:
     so supported notify targets update an existing incident notification instead of
     creating duplicates for the same incident.
   domain: automation
-  source_url: https://github.com/Nicxe/f1_sensor/blob/main/blueprints/f1_incident_notifications.yaml
+  source_url: https://github.com/Nicxe/f1_sensor
   author: Nicxe
   input:
     notification_targets:
@@ -96,6 +96,53 @@ blueprint:
           selector:
             boolean: {}
 
+    activation_conditions:
+      name: Activation Conditions
+      icon: mdi:filter-check
+      collapsed: true
+      description: Optional gates that must pass before incident notifications are sent.
+      input:
+        presence_devices:
+          name: Presence Devices
+          description: Optional. At least one selected device must be home for notifications to be sent.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: device_tracker
+              multiple: true
+        media_player_gate:
+          name: Media Player Gate
+          description: Optional. Selected media player must be on, idle, or playing for notifications to be sent.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: media_player
+              multiple: false
+        enable_dnd:
+          name: Enable Do Not Disturb Window
+          description: Blocks incident notifications inside the configured time window.
+          default: false
+          selector:
+            boolean: {}
+        dnd_start_time:
+          name: DND Start Time
+          default: "23:00:00"
+          selector:
+            time: {}
+        dnd_end_time:
+          name: DND End Time
+          default: "07:00:00"
+          selector:
+            time: {}
+        activation_condition:
+          name: Activation Condition
+          description: Optional extra conditions. If not met, no incident notifications are sent.
+          default: []
+          selector:
+            condition: {}
+
     notification_content:
       name: Notification Content
       icon: mdi:message-badge
@@ -122,6 +169,11 @@ variables:
   allowed_session_types_input: !input allowed_session_types
   include_candidate_events_input: !input include_candidate_events
   include_cleared_notifications_input: !input include_cleared_notifications
+  presence_list: !input presence_devices
+  media_player_entity: !input media_player_gate
+  enable_dnd_window: !input enable_dnd
+  dnd_start: !input dnd_start_time
+  dnd_end: !input dnd_end_time
   title_prefix_input: !input title_prefix
 
   incident_id: "{{ trigger.event.data.incident_id | default('', true) | string }}"
@@ -198,6 +250,29 @@ variables:
     {{ incident_session_type in allowed }}
   confidence_ok: >-
     {{ incident_confidence_score | int(-1) >= min_confidence_score | int(0) }}
+  presence_ok: >-
+    {% if presence_list | count == 0 %}
+      true
+    {% else %}
+      {{ expand(presence_list) | selectattr('state', 'eq', 'home') | list | count > 0 }}
+    {% endif %}
+  media_ok: >-
+    {% if media_player_entity | string | length == 0 %}
+      true
+    {% else %}
+      {{ states(media_player_entity) in ['on', 'idle', 'playing'] }}
+    {% endif %}
+  dnd_blocked: >-
+    {% if not enable_dnd_window %}
+      false
+    {% else %}
+      {% set now_s = now().hour * 3600 + now().minute * 60 + now().second %}
+      {% set start_parts = dnd_start.split(':') %}
+      {% set end_parts = dnd_end.split(':') %}
+      {% set start_s = (start_parts[0] | int(0)) * 3600 + (start_parts[1] | int(0)) * 60 + (start_parts[2] | int(0)) %}
+      {% set end_s = (end_parts[0] | int(0)) * 3600 + (end_parts[1] | int(0)) * 60 + (end_parts[2] | int(0)) %}
+      {{ (start_s <= end_s and start_s <= now_s <= end_s) or (start_s > end_s and (now_s >= start_s or now_s <= end_s)) }}
+    {% endif %}
   notify_service_targets: >-
     {% set ns = namespace(services=[]) %}
     {% set raw = (notify_services_raw | default('', true) | string).replace(';', ',') %}
@@ -260,6 +335,10 @@ condition:
     value_template: "{{ session_ok | bool }}"
   - condition: template
     value_template: "{{ confidence_ok | bool }}"
+  - condition: template
+    value_template: "{{ (presence_ok | bool) and (media_ok | bool) and not (dnd_blocked | bool) }}"
+  - condition: and
+    conditions: !input activation_condition
 
 action:
   - repeat:

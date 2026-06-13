@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -49,6 +50,8 @@ DEFAULT_TRACK_MAP_REPLAY_INTERPOLATION_TICK_SECONDS = 0.1
 DEFAULT_TRACK_MAP_REPLAY_INTERPOLATION_MIN_SECONDS = 0.45
 DEFAULT_TRACK_MAP_REPLAY_INTERPOLATION_MAX_SECONDS = 2.0
 DEFAULT_TRACK_MAP_REPLAY_INTERPOLATION_FACTOR = 2.2
+MAX_TRACK_MAP_DELAY_QUEUE_ITEMS = 4096
+TRACK_MAP_DELAY_QUEUE_DROP_LOG_INTERVAL = 60.0
 MAX_TRACK_MAP_RACING_NUMBER = 99
 TRACK_MAP_SOURCE_LIVE = "live"
 TRACK_MAP_SOURCE_REPLAY = "replay"
@@ -227,6 +230,7 @@ class TrackMapReplayAdapter:
         geometry_min_driver_points: int = DEFAULT_TRACK_MAP_GEOMETRY_MIN_DRIVER_POINTS,
         interpolation_tick_seconds: float = DEFAULT_TRACK_MAP_REPLAY_INTERPOLATION_TICK_SECONDS,
         position_source_resolver: Callable[[], str] | None = None,
+        delay_controller: Any | None = None,
     ) -> None:
         self._store = store
         self._bus = bus
@@ -247,6 +251,16 @@ class TrackMapReplayAdapter:
         self._interpolation_tick_seconds = max(0.02, float(interpolation_tick_seconds))
         self._position_source_resolver = position_source_resolver
         self._interpolation_handle: Any | None = None
+        self._delay = 0
+        self._delay_queue: deque[tuple[float, Callable[[Any], None], Any]] = deque()
+        self._delay_queue_handle: Any | None = None
+        self._delay_queue_dropped = 0
+        self._delay_queue_last_drop_log = 0.0
+        self._delay_listener: Callable[[], None] | None = None
+        if delay_controller is not None:
+            add_listener = getattr(delay_controller, "add_listener", None)
+            if callable(add_listener):
+                self._delay_listener = add_listener(self.set_delay)
         self._unsubs: list[Callable[[], None]] = []
         self._closed = False
 
@@ -264,7 +278,9 @@ class TrackMapReplayAdapter:
             if not callable(subscribe):
                 return
             try:
-                self._unsubs.append(subscribe(stream, callback))
+                self._unsubs.append(
+                    subscribe(stream, self._wrap_live_delayed_handler(callback))
+                )
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Failed to subscribe track map stream %s", stream)
         replay_manager = getattr(self._replay_controller, "session_manager", None)
@@ -278,6 +294,11 @@ class TrackMapReplayAdapter:
     async def async_close(self) -> None:
         """Unsubscribe from live bus callbacks."""
         self._closed = True
+        self._clear_delay_queue()
+        if self._delay_listener is not None:
+            with suppress(Exception):
+                self._delay_listener()
+            self._delay_listener = None
         for unsub in self._unsubs:
             with suppress(Exception):
                 unsub()
@@ -289,12 +310,109 @@ class TrackMapReplayAdapter:
 
     def reset_for_replay(self) -> None:
         """Clear track map data before replay rebuild, rewind or stop."""
+        self._clear_delay_queue()
         self._geometry_positions_by_driver.clear()
         self._geometry_sample_count = 0
         self._geometry_preloaded = False
         self._position_frame_count = 0
         self._reset_interpolation_state()
         self._store.reset_for_replay()
+
+    def set_delay(self, seconds: int) -> None:
+        """Update the live stream delay and reschedule queued map data."""
+        new_delay = max(0, int(seconds or 0))
+        if new_delay == self._delay:
+            return
+        self._delay = new_delay
+        self._cancel_delay_queue_timer()
+        if not self._delay_queue:
+            return
+        if new_delay <= 0:
+            self._drain_delay_queue()
+            return
+        self._arm_delay_queue()
+
+    def _wrap_live_delayed_handler(
+        self,
+        callback: Callable[[Any], None],
+    ) -> Callable[[Any], None]:
+        def _wrapped(payload: Any) -> None:
+            if (
+                self._closed
+                or self._position_source() != TRACK_MAP_SOURCE_LIVE
+                or self._delay <= 0
+            ):
+                callback(payload)
+                return
+            self._queue_live_payload(callback, payload)
+
+        return _wrapped
+
+    def _queue_live_payload(
+        self,
+        callback: Callable[[Any], None],
+        payload: Any,
+    ) -> None:
+        if len(self._delay_queue) >= MAX_TRACK_MAP_DELAY_QUEUE_ITEMS:
+            self._delay_queue.popleft()
+            self._delay_queue_dropped += 1
+            now_mono = time.monotonic()
+            if (
+                now_mono - self._delay_queue_last_drop_log
+                >= TRACK_MAP_DELAY_QUEUE_DROP_LOG_INTERVAL
+            ):
+                self._delay_queue_last_drop_log = now_mono
+                _LOGGER.warning(
+                    "Track map delay queue reached %d items; dropped oldest payloads=%d",
+                    MAX_TRACK_MAP_DELAY_QUEUE_ITEMS,
+                    self._delay_queue_dropped,
+                )
+        self._delay_queue.append((time.monotonic(), callback, payload))
+        self._arm_delay_queue()
+
+    def _arm_delay_queue(self) -> None:
+        if self._delay_queue_handle is not None or not self._delay_queue:
+            return
+        loop = getattr(self._hass, "loop", None)
+        call_later = getattr(loop, "call_later", None)
+        if not callable(call_later):
+            self._drain_delay_queue()
+            return
+        received_at = self._delay_queue[0][0]
+        wait = max(0.0, received_at + self._delay - time.monotonic())
+        self._delay_queue_handle = call_later(wait, self._drain_delay_queue)
+
+    def _drain_delay_queue(self) -> None:
+        self._delay_queue_handle = None
+        if self._closed:
+            self._delay_queue.clear()
+            return
+        if self._position_source() != TRACK_MAP_SOURCE_LIVE:
+            self._delay_queue.clear()
+            return
+        while self._delay_queue:
+            received_at, callback, payload = self._delay_queue[0]
+            if self._delay > 0 and received_at + self._delay > time.monotonic() + 0.001:
+                break
+            self._delay_queue.popleft()
+            try:
+                callback(payload)
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Delayed track map callback failed", exc_info=True)
+        self._arm_delay_queue()
+
+    def _clear_delay_queue(self) -> None:
+        self._cancel_delay_queue_timer()
+        self._delay_queue.clear()
+        self._delay_queue_dropped = 0
+        self._delay_queue_last_drop_log = 0.0
+
+    def _cancel_delay_queue_timer(self) -> None:
+        if self._delay_queue_handle is None:
+            return
+        with suppress(Exception):
+            self._delay_queue_handle.cancel()
+        self._delay_queue_handle = None
 
     async def async_prepare_replay_index(self, replay_index: Any) -> None:
         """Preload replay track geometry from cached Position.z frames."""
@@ -339,16 +457,31 @@ class TrackMapReplayAdapter:
         if not positions:
             return
         position_source = self._position_source()
+        observed_at = (
+            datetime.now(UTC) if position_source == TRACK_MAP_SOURCE_LIVE else None
+        )
         self._reset_interpolation_if_source_changed(position_source)
+        if _is_unavailable_position_frame(positions):
+            self._reset_interpolation_state(source=position_source)
+            self._store.mark_positions_unavailable(source=position_source)
+            return
         self._position_frame_count += 1
         if self._should_interpolate_positions(position_source):
             now = self._loop_time()
             self._set_interpolation_targets(positions, now, source=position_source)
-            self._publish_interpolated_positions(now, source=position_source)
+            self._publish_interpolated_positions(
+                now,
+                source=position_source,
+                observed_at=observed_at,
+            )
             self._schedule_interpolation_tick()
         else:
             self._reset_interpolation_state(source=position_source)
-            self._store.update_positions(positions, source=position_source)
+            self._store.update_positions(
+                positions,
+                source=position_source,
+                observed_at=observed_at,
+            )
         self._extend_geometry_positions(positions)
         self._maybe_rebuild_geometry()
 
@@ -491,6 +624,7 @@ class TrackMapReplayAdapter:
         now: float,
         *,
         source: str | None = None,
+        observed_at: datetime | None = None,
     ) -> bool:
         if not self._position_segments:
             return False
@@ -505,7 +639,11 @@ class TrackMapReplayAdapter:
             if segment.duration > 0 and now < segment.started_at + segment.duration:
                 active = True
         if positions:
-            self._store.update_positions(positions, source=position_source)
+            self._store.update_positions(
+                positions,
+                source=position_source,
+                observed_at=observed_at,
+            )
         return active
 
     def _current_interpolated_position(
@@ -590,6 +728,11 @@ class TrackMapReplayAdapter:
         active = self._publish_interpolated_positions(
             self._loop_time(),
             source=self._interpolation_source,
+            observed_at=(
+                datetime.now(UTC)
+                if self._interpolation_source == TRACK_MAP_SOURCE_LIVE
+                else None
+            ),
         )
         if active:
             self._schedule_interpolation_tick()
@@ -627,6 +770,9 @@ class TrackMapStore:
         self._latest_positions: dict[str, TrackMapPosition] = {}
         self._geometry: TrackGeometry | None = None
         self._stream_timestamp: datetime | None = None
+        self._stream_observed_at: datetime | None = None
+        self._position_observed_at: dict[str, datetime] = {}
+        self._position_data_unavailable = False
         self._replay_state: str | None = None
         self._listeners: dict[int, Callable[[], None]] = {}
         self._next_listener_id = 0
@@ -692,13 +838,16 @@ class TrackMapStore:
         positions: Iterable[TrackMapPosition],
         *,
         source: str | None = None,
+        observed_at: datetime | str | None = None,
     ) -> None:
         """Store the latest known position for each driver."""
         if self._closed:
             return
         if source:
             self._source = source
+        observed = _parse_utc(observed_at)
         changed = False
+        positions_updated = False
         for position in positions:
             if (
                 self._driver_metadata
@@ -706,15 +855,37 @@ class TrackMapStore:
             ):
                 continue
             self._latest_positions[position.racing_number] = position
+            position_observed_at = observed or position.timestamp
+            self._position_observed_at[position.racing_number] = position_observed_at
             if (
                 self._stream_timestamp is None
                 or position.timestamp > self._stream_timestamp
             ):
                 self._stream_timestamp = position.timestamp
+            if (
+                self._stream_observed_at is None
+                or position_observed_at > self._stream_observed_at
+            ):
+                self._stream_observed_at = position_observed_at
             changed = True
+            positions_updated = True
+        if positions_updated and self._position_data_unavailable:
+            self._position_data_unavailable = False
         changed = self._prune_unknown_driver_positions() or changed
         if changed:
             self._notify_listeners()
+
+    def mark_positions_unavailable(self, *, source: str | None = None) -> None:
+        """Mark the latest position frame as unavailable without losing good data."""
+        if self._closed:
+            return
+        source_changed = bool(source and source != self._source)
+        if source:
+            self._source = source
+        if self._position_data_unavailable and not source_changed:
+            return
+        self._position_data_unavailable = True
+        self._notify_listeners()
 
     def set_geometry(self, geometry: TrackGeometry | None) -> None:
         """Set or clear the current track geometry."""
@@ -744,6 +915,9 @@ class TrackMapStore:
         self._latest_positions.clear()
         self._geometry = None
         self._stream_timestamp = None
+        self._stream_observed_at = None
+        self._position_observed_at.clear()
+        self._position_data_unavailable = False
         self._replay_state = None
 
     def reset_for_replay(self) -> None:
@@ -752,12 +926,15 @@ class TrackMapStore:
 
     def is_stale(self, now: datetime | None = None) -> bool:
         """Return whether the latest stream update is older than stale_after."""
+        if self._position_data_unavailable and self._latest_positions:
+            return True
         if self._source == TRACK_MAP_SOURCE_REPLAY:
             return False
-        if self._stream_timestamp is None:
+        freshness_timestamp = self._freshness_timestamp()
+        if freshness_timestamp is None:
             return False
         now_utc = _snapshot_now(now)
-        return now_utc - self._stream_timestamp > self._stale_after
+        return now_utc - freshness_timestamp > self._stale_after
 
     def location_context(
         self,
@@ -773,7 +950,11 @@ class TrackMapStore:
         if position is None:
             return None
         now_utc = _snapshot_now(now)
-        stale = self._position_is_stale(position, now_utc)
+        stale = self._position_is_stale(
+            position,
+            now_utc,
+            observed_at=self._position_observed_at.get(normalized),
+        )
         geometry_context = _position_geometry_context(position, self._geometry)
         fallback_state = _track_map_fallback_state(self._session, self._geometry)
         status_context = _position_status_context(position.status)
@@ -812,7 +993,8 @@ class TrackMapStore:
             "source": self._source,
             "status": self._snapshot_status(now_utc),
             "generated_at": _format_utc(now_utc),
-            "stream_timestamp": _format_utc(self._stream_timestamp),
+            "stream_timestamp": _format_utc(self._freshness_timestamp()),
+            "position_timestamp": _format_utc(self._stream_timestamp),
             "replay_state": self._replay_state,
             "stale": self.is_stale(now_utc),
             "stale_after_seconds": self._stale_after.total_seconds(),
@@ -908,6 +1090,7 @@ class TrackMapStore:
         ]
         for racing_number in stale_racing_numbers:
             self._latest_positions.pop(racing_number, None)
+            self._position_observed_at.pop(racing_number, None)
         return bool(stale_racing_numbers)
 
     def _snapshot_status(self, now: datetime) -> str:
@@ -940,13 +1123,30 @@ class TrackMapStore:
             "y": position.y,
             "z": position.z,
             "status": position.status,
-            "stale": self._position_is_stale(position, now),
+            "stale": self._position_is_stale(
+                position,
+                now,
+                observed_at=self._position_observed_at.get(position.racing_number),
+            ),
         }
 
-    def _position_is_stale(self, position: TrackMapPosition, now: datetime) -> bool:
+    def _freshness_timestamp(self) -> datetime | None:
+        if self._source == TRACK_MAP_SOURCE_LIVE:
+            return self._stream_observed_at or self._stream_timestamp
+        return self._stream_timestamp
+
+    def _position_is_stale(
+        self,
+        position: TrackMapPosition,
+        now: datetime,
+        *,
+        observed_at: datetime | None = None,
+    ) -> bool:
+        if self._position_data_unavailable:
+            return True
         if self._source == TRACK_MAP_SOURCE_REPLAY:
             return False
-        return now - position.timestamp > self._stale_after
+        return now - (observed_at or position.timestamp) > self._stale_after
 
 
 def decode_position_z_payload(
@@ -1058,6 +1258,19 @@ def _interpolate_positions(
 
 def _position_distance(start: TrackMapPosition, end: TrackMapPosition) -> float:
     return ((end.x - start.x) ** 2 + (end.y - start.y) ** 2) ** 0.5
+
+
+def _is_unavailable_position_frame(
+    positions: Iterable[TrackMapPosition],
+) -> bool:
+    frame = tuple(positions)
+    racing_numbers = {position.racing_number for position in frame}
+    return len(racing_numbers) > 1 and all(
+        position.status.strip().lower() == "ontrack"
+        and position.x == 0
+        and position.y == 0
+        for position in frame
+    )
 
 
 def analyze_position_z_lines(lines: Iterable[str]) -> TrackMapDataMetrics:

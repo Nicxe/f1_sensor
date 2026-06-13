@@ -411,6 +411,40 @@ def test_track_map_card_hides_stale_live_positions() -> None:
     assert result["displayDrivers"] == []
 
 
+def test_track_map_card_reports_unavailable_replay_positions() -> None:
+    """Invalid replay frames should show a clear missing-data state."""
+    result = _run_probe(
+        {
+            "snapshot": {
+                "source": "replay",
+                "status": "stale",
+                "stale": True,
+                "replay_state": "playing",
+                "session": {
+                    "meeting_name": "Monaco Grand Prix",
+                    "session_name": "Race",
+                },
+                "drivers": [
+                    {"racing_number": "1", "status": "OnTrack", "x": 100, "y": 200},
+                    {"racing_number": "4", "status": "OnTrack", "x": 300, "y": 400},
+                ],
+                "track": {"points": [[0, 0], [1, 1]]},
+            },
+            "drivers": [
+                {"racing_number": "1", "status": "OnTrack", "x": 100, "y": 200},
+                {"racing_number": "4", "status": "OnTrack", "x": 300, "y": 400},
+            ],
+        }
+    )
+
+    assert result["emptyState"]["title"] == "Replay position data unavailable"
+    assert result["emptyState"]["detail"] == (
+        "The source stream does not contain valid Position.z samples at this point."
+    )
+    assert result["visibleDrivers"] == []
+    assert result["displayDrivers"] == []
+
+
 def test_track_map_card_hides_retired_drivers() -> None:
     """Drivers marked OUT should not remain visible on the track map."""
     result = _run_probe(
