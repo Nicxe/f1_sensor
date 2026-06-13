@@ -2167,6 +2167,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass=hass,
         replay_controller=replay_controller,
         position_source_resolver=_track_map_position_source,
+        delay_controller=delay_controller,
     )
     track_map_replay_adapter.start()
     entry.runtime_data = TrackMapRuntimeData(track_map_store=track_map_store)
