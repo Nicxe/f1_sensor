@@ -10104,7 +10104,9 @@ class F1LapPositionProgressionCard extends LitElement {
   }
 
   _normalizeDriverSeries(driver, expectedLength, driverList, index) {
-    const positions = this._normalizePositions(driver?.positions, expectedLength);
+    const rawPositions = this._normalizePositions(driver?.positions, expectedLength);
+    const finishPosition = this._toNumber(driver?.finish_position) ?? this._latestFinite(rawPositions);
+    const positions = this._withClassifiedFinish(rawPositions, finishPosition);
     const code = String(driver?.code || '').trim().toUpperCase();
     const name = String(driver?.name || code || driver?.driver_id || `Driver ${index + 1}`).trim();
     const meta = this._findDriverMeta(driver, driverList);
@@ -10118,7 +10120,7 @@ class F1LapPositionProgressionCard extends LitElement {
       color,
       positions,
       grid: this._toNumber(driver?.grid),
-      finishPosition: this._toNumber(driver?.finish_position) ?? this._latestFinite(positions),
+      finishPosition,
       status: driver?.status || '',
       media: this._resolveDriverMedia(teamName),
     };
@@ -10160,6 +10162,21 @@ class F1LapPositionProgressionCard extends LitElement {
       positions.push(...Array.from({ length: expectedLength - positions.length }, () => null));
     }
     return positions;
+  }
+
+  _withClassifiedFinish(positions, finishPosition) {
+    const reconciled = [...positions];
+    if (!Number.isFinite(finishPosition) || finishPosition <= 0) {
+      return reconciled;
+    }
+    // Lap timing excludes post-race classification changes such as penalties.
+    for (let index = reconciled.length - 1; index >= 0; index -= 1) {
+      if (Number.isFinite(reconciled[index])) {
+        reconciled[index] = finishPosition;
+        break;
+      }
+    }
+    return reconciled;
   }
 
   _positionTicks(maxPosition) {
