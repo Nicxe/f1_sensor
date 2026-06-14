@@ -923,6 +923,8 @@ const parseF1TimingSeconds = (value) => {
 const resolveF1CurrentSector = (positionInfo, sectorNumber) => {
   const empty = {
     time: null,
+    lap: null,
+    source: null,
     overall_fastest: false,
     personal_fastest: false,
   };
@@ -938,19 +940,140 @@ const resolveF1CurrentSector = (positionInfo, sectorNumber) => {
     : null;
   if (detail && typeof detail === 'object') {
     const time = parseF1TimingSeconds(detail.time);
+    const lapValue = detail.lap ?? positionInfo[`sector_${sectorNumber}_lap`];
+    const parsedLap = Number(lapValue);
     return {
       time,
+      lap: time != null && Number.isFinite(parsedLap) && parsedLap > 0
+        ? Math.trunc(parsedLap)
+        : null,
+      source: time != null ? String(detail.source || 'current') : null,
       overall_fastest: time != null && detail.overall_fastest === true,
       personal_fastest: time != null && detail.personal_fastest === true,
     };
   }
 
   const time = parseF1TimingSeconds(positionInfo[`sector_${sectorNumber}`]);
+  const parsedLap = Number(positionInfo[`sector_${sectorNumber}_lap`]);
   return {
     time,
+    lap: time != null && Number.isFinite(parsedLap) && parsedLap > 0
+      ? Math.trunc(parsedLap)
+      : null,
+    source: time != null
+      ? String(positionInfo[`sector_${sectorNumber}_source`] || 'current')
+      : null,
     overall_fastest: time != null && positionInfo[`sector_${sectorNumber}_overall_fastest`] === true,
     personal_fastest: time != null && positionInfo[`sector_${sectorNumber}_personal_fastest`] === true,
   };
+};
+
+const resolveF1CurrentSectorSet = (card, positionInfo) => {
+  const direct = [1, 2, 3].map((sectorNumber) => (
+    resolveF1CurrentSector(positionInfo, sectorNumber)
+  ));
+  if (!card || !positionInfo) return direct;
+
+  const driverKey = String(
+    positionInfo.racing_number
+      ?? positionInfo.racingNumber
+      ?? positionInfo.driver_number
+      ?? positionInfo.tla
+      ?? '',
+  ).trim();
+  if (!driverKey) return direct;
+
+  if (!(card._f1SectorLapCache instanceof Map)) {
+    card._f1SectorLapCache = new Map();
+  }
+  let driverCache = card._f1SectorLapCache.get(driverKey);
+  if (!driverCache) {
+    driverCache = {
+      laps: new Map(),
+      unscoped: [null, null, null],
+    };
+    card._f1SectorLapCache.set(driverKey, driverCache);
+  }
+
+  const parseLap = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
+  };
+  const sectorState = String(
+    positionInfo.sector_state ?? positionInfo.sectors?.state ?? '',
+  ).trim().toLowerCase();
+  const explicitCurrentLap = parseLap(
+    positionInfo.sector_current_lap ?? positionInfo.sectors?.current_lap,
+  );
+  const directLaps = direct
+    .map((timing) => timing.lap)
+    .filter((lap) => lap !== null);
+  const targetLap = directLaps.length > 0
+    ? Math.max(...directLaps)
+    : explicitCurrentLap;
+
+  let selected;
+  if (targetLap !== null) {
+    for (const timing of direct) {
+      if (!Number.isFinite(timing.time)) continue;
+      const sectorLap = timing.lap ?? targetLap;
+      let lapSectors = driverCache.laps.get(sectorLap);
+      if (!lapSectors) {
+        lapSectors = [null, null, null];
+        driverCache.laps.set(sectorLap, lapSectors);
+      }
+      const sectorIndex = direct.indexOf(timing);
+      lapSectors[sectorIndex] = {
+        ...timing,
+        lap: sectorLap,
+        source: timing.source || 'current',
+      };
+    }
+    selected = driverCache.laps.get(targetLap) || [null, null, null];
+
+    const cachedLaps = [...driverCache.laps.keys()].sort((left, right) => left - right);
+    while (cachedLaps.length > 3) {
+      driverCache.laps.delete(cachedLaps.shift());
+    }
+  } else {
+    if (sectorState === 's1_done' && Number.isFinite(direct[0].time)) {
+      driverCache.unscoped = [null, null, null];
+    }
+    direct.forEach((timing, index) => {
+      if (!Number.isFinite(timing.time)) return;
+      driverCache.unscoped[index] = {
+        ...timing,
+        source: timing.source || 'current',
+      };
+    });
+    selected = driverCache.unscoped;
+  }
+
+  const completedLaps = parseLap(positionInfo.completed_laps);
+  const previousLap = sectorState === 'lap_complete'
+    || (
+      targetLap !== null
+      && completedLaps !== null
+      && targetLap <= completedLaps
+    );
+
+  return selected.map((timing) => {
+    if (!timing || !Number.isFinite(timing.time)) {
+      return {
+        time: null,
+        lap: targetLap,
+        source: null,
+        previous_lap: false,
+        overall_fastest: false,
+        personal_fastest: false,
+      };
+    }
+    return {
+      ...timing,
+      source: previousLap ? 'previous_lap' : timing.source || 'current',
+      previous_lap: previousLap,
+    };
+  });
 };
 
 const formatF1SectorSeconds = (value) => {
@@ -966,6 +1089,9 @@ const formatF1SectorSeconds = (value) => {
 
 const getF1TimingClass = (timing) => {
   if (!timing || !Number.isFinite(timing.time)) return '';
+  if (timing.previous_lap === true || timing.source === 'previous_lap') {
+    return 'previous-lap';
+  }
   if (timing.overall_fastest === true) return 'overall-fastest';
   if (timing.personal_fastest === true) return 'personal-fastest';
   return 'timed';
@@ -1298,6 +1424,11 @@ const cloneTimingSnapshotRows = (rows) => (
 
 const syncTimingSnapshotSession = (card, sessionKey) => {
   if (!card) return;
+  const normalizedSessionKey = sessionKey || null;
+  if (card._f1SectorSessionKey !== normalizedSessionKey) {
+    card._f1SectorSessionKey = normalizedSessionKey;
+    card._f1SectorLapCache = new Map();
+  }
   if (!sessionKey || card._postSessionSnapshot?.key !== sessionKey) {
     card._postSessionSnapshot = null;
   }
@@ -24381,6 +24512,12 @@ class F1QualifyingTimingCard extends LitElement {
       --sector-text: var(--f1-timing-timed-text, #fde047);
     }
 
+    .qt-sector.previous-lap {
+      --sector-bg: rgba(148, 163, 184, 0.12);
+      --sector-text: var(--qt-muted);
+      opacity: 0.72;
+    }
+
     .qt-sector.source-personal-best {
       box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sector-text, var(--qt-muted)) 45%, transparent);
     }
@@ -25077,9 +25214,10 @@ class F1QualifyingTimingCard extends LitElement {
         )
         : compoundBaseColor;
       const tyreAge = tyre?.stint_laps ?? null;
-      const sector1 = this._resolveSectorDisplay(pos, 1, sectorDisplayMode);
-      const sector2 = this._resolveSectorDisplay(pos, 2, sectorDisplayMode);
-      const sector3 = this._resolveSectorDisplay(pos, 3, sectorDisplayMode);
+      const currentSectors = resolveF1CurrentSectorSet(this, pos);
+      const sector1 = this._resolveSectorDisplay(pos, 1, sectorDisplayMode, currentSectors);
+      const sector2 = this._resolveSectorDisplay(pos, 2, sectorDisplayMode, currentSectors);
+      const sector3 = this._resolveSectorDisplay(pos, 3, sectorDisplayMode, currentSectors);
       return {
         rn,
         tla: driverDisplay.tla || tla || '--',
@@ -25154,6 +25292,10 @@ class F1QualifyingTimingCard extends LitElement {
         const source = row[`sector_${idx}_source`];
         if (!Number.isFinite(time)) {
           row[`sector_${idx}_class`] = '';
+          continue;
+        }
+        if (source === 'previous_lap') {
+          row[`sector_${idx}_class`] = 'previous-lap';
           continue;
         }
         if (source === 'personal_best') {
@@ -25321,8 +25463,10 @@ class F1QualifyingTimingCard extends LitElement {
     return 'current';
   }
 
-  _resolveSectorDisplay(pos, idx, mode = 'current') {
-    const current = this._sectorFromSource(pos, idx, 'current');
+  _resolveSectorDisplay(pos, idx, mode = 'current', currentSectors = null) {
+    const current = Array.isArray(currentSectors)
+      ? currentSectors[idx - 1] || this._sectorFromSource(pos, idx, 'current')
+      : this._sectorFromSource(pos, idx, 'current');
     const personalBest = this._sectorFromSource(pos, idx, 'personal_best');
     if (mode === 'personal_best') return personalBest;
     if (mode === 'hybrid' && current.time == null) return personalBest;
@@ -25993,6 +26137,12 @@ class F1PracticeTimingCard extends LitElement {
       --sector-text: var(--f1-timing-timed-text, #fde047);
     }
 
+    .pt-sector.previous-lap {
+      --sector-bg: rgba(148, 163, 184, 0.12);
+      --sector-text: var(--pt-muted);
+      opacity: 0.72;
+    }
+
     .pt-lap {
       display: inline-flex;
       align-items: center;
@@ -26523,9 +26673,7 @@ class F1PracticeTimingCard extends LitElement {
       // the integration only exposes top-level fastest_lap metadata during race sessions.
       const lapSnapshot = this._buildLapSnapshot(pos);
       const position = this._parsePosition(pos?.current_position ?? pos?.grid_position);
-      const sector1 = resolveF1CurrentSector(pos, 1);
-      const sector2 = resolveF1CurrentSector(pos, 2);
-      const sector3 = resolveF1CurrentSector(pos, 3);
+      const [sector1, sector2, sector3] = resolveF1CurrentSectorSet(this, pos);
 
       return {
         rn,
@@ -26542,10 +26690,16 @@ class F1PracticeTimingCard extends LitElement {
         compound_color: compoundColor,
         tyre_age: tyreAge,
         sector_1: sector1.time,
+        sector_1_lap: sector1.lap,
+        sector_1_source: sector1.source,
         sector_1_class: getF1TimingClass(sector1),
         sector_2: sector2.time,
+        sector_2_lap: sector2.lap,
+        sector_2_source: sector2.source,
         sector_2_class: getF1TimingClass(sector2),
         sector_3: sector3.time,
+        sector_3_lap: sector3.lap,
+        sector_3_source: sector3.source,
         sector_3_class: getF1TimingClass(sector3),
         last_lap: lapSnapshot.last_lap,
         best_lap: lapSnapshot.best_lap,
@@ -27408,6 +27562,12 @@ class F1RaceLapCard extends LitElement {
       --sector-text: var(--f1-timing-timed-text, #fde047);
     }
 
+    .rl-sector.previous-lap {
+      --sector-bg: rgba(148, 163, 184, 0.12);
+      --sector-text: var(--rl-muted);
+      opacity: 0.72;
+    }
+
     .rl-lap {
       display: inline-flex;
       align-items: center;
@@ -28034,9 +28194,7 @@ class F1RaceLapCard extends LitElement {
       const bestLap = lapSnapshot.best_lap || (typeof pos?.fastest_lap_time === 'string' ? pos.fastest_lap_time.trim() : null);
       const isFastest = Boolean(pos?.fastest_lap) || this._matchesFastest(rn, tla, fastestInfo);
       const position = this._parsePosition(pos?.current_position ?? pos?.grid_position);
-      const sector1 = resolveF1CurrentSector(pos, 1);
-      const sector2 = resolveF1CurrentSector(pos, 2);
-      const sector3 = resolveF1CurrentSector(pos, 3);
+      const [sector1, sector2, sector3] = resolveF1CurrentSectorSet(this, pos);
 
       let pitCount = null;
       if (hasPitState) {
@@ -28061,10 +28219,16 @@ class F1RaceLapCard extends LitElement {
         tyre_age: tyreAge,
         pit_count: pitCount,
         sector_1: sector1.time,
+        sector_1_lap: sector1.lap,
+        sector_1_source: sector1.source,
         sector_1_class: getF1TimingClass(sector1),
         sector_2: sector2.time,
+        sector_2_lap: sector2.lap,
+        sector_2_source: sector2.source,
         sector_2_class: getF1TimingClass(sector2),
         sector_3: sector3.time,
+        sector_3_lap: sector3.lap,
+        sector_3_source: sector3.source,
         sector_3_class: getF1TimingClass(sector3),
         last_lap: lapSnapshot.last_lap,
         best_lap: bestLap,

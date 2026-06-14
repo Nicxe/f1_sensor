@@ -45,6 +45,23 @@ function extractMethod(signature) {
   return source.slice(start, end + 1);
 }
 
+function extractConst(signature) {
+  const start = source.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`Const signature not found: ${signature}`);
+  }
+  const braceStart = source.indexOf("{", start);
+  const end = findMatchingBrace(source, braceStart);
+  const semicolon = source.indexOf(";", end);
+  return source.slice(start, semicolon + 1);
+}
+
+const helperSources = [
+  extractConst("const parseF1TimingSeconds = (value) =>"),
+  extractConst("const resolveF1CurrentSector = (positionInfo, sectorNumber) =>"),
+  extractConst("const resolveF1CurrentSectorSet = (card, positionInfo) =>"),
+];
+
 const methodSources = [
   extractMethod(
     "_buildRows(positionDrivers, tyresDrivers, driverList, currentQPart)",
@@ -53,7 +70,9 @@ const methodSources = [
   extractMethod("_normalizeQualifyingPart(value)"),
   extractMethod("_inferQualifyingPartFromDrivers(drivers)"),
   extractMethod("_normalizeSectorDisplayMode(value)"),
-  extractMethod("_resolveSectorDisplay(pos, idx, mode = 'current')"),
+  extractMethod(
+    "_resolveSectorDisplay(pos, idx, mode = 'current', currentSectors = null)",
+  ),
   extractMethod("_sectorFromSource(pos, idx, source)"),
   extractMethod("_parseSectorSeconds(value)"),
   extractMethod("_parseLapTimeSeconds(value)"),
@@ -76,6 +95,8 @@ const Harness = new Function(
     WET: "#0a84ff",
   };
   const getTeamLogoMeta = () => null;
+
+  ${helperSources.join("\n\n")}
 
   class Harness {
     constructor() {
