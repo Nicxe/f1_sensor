@@ -113,6 +113,15 @@ lovelace:
 
 Each card has a visual editor with **Data Sources** for entity selection and **Display Options** for columns, theme, labels, logos, and layout.
 
+Example:
+
+```yaml
+type: custom:f1-next-race-card
+entity: sensor.f1_next_race
+theme_mode: auto
+font_style: balanced
+```
+
 :::info[Entity IDs]
 The defaults use the standard F1 Sensor entity IDs, such as `sensor.f1_driver_positions`. Older installations may have existing registry IDs from earlier releases. Select the correct entities in the visual editor if your IDs differ.
 :::
@@ -126,6 +135,7 @@ Many cards expose the same display options.
 | Option | Values | Description |
 | --- | --- | --- |
 | `theme_mode` | `dark`, `light`, `auto` | Visual theme. `dark` keeps the original F1 card look, `light` uses a light palette, and `auto` follows the Home Assistant theme. |
+| `font_style` | `wide`, `balanced`, `system` | Typography style. `wide` keeps the original F1 Sensor look, `balanced` keeps an F1-inspired style without the wide font in dense/mobile text, and `system` uses the Home Assistant/system font. |
 | `show_header` | `true`, `false` | Show the card title/header area. |
 | `show_table_header` | `true`, `false` | Show column labels above table-style cards. |
 | `show_full_name` | `true`, `false` | Show full driver names instead of TLA codes where supported. |

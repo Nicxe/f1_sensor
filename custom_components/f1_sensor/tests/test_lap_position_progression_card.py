@@ -187,6 +187,32 @@ async function main() {
       series: []
     }
   };
+  const classifiedFinishSessionPayload = {
+    key: "race:2026:6",
+    type: "race",
+    status: "available",
+    round: "6",
+    race_name: "Monaco Grand Prix",
+    total_laps: 3,
+    driver_count: 1,
+    labels: ["L1", "L2", "L3"],
+    drivers: [
+      {
+        driver_id: "bortoleto",
+        code: "BOR",
+        name: "Gabriel Bortoleto",
+        constructor_name: "Audi",
+        color: "#ff0000",
+        grid: 16,
+        finish_position: 11,
+        positions: [16, 20, 13],
+      },
+    ],
+    series: {
+      labels: ["L1", "L2", "L3"],
+      series: []
+    }
+  };
 
   const wsMessages = [];
   const card = new F1LapPositionProgressionCard();
@@ -247,6 +273,7 @@ async function main() {
   const gappedLeftSteps = gappedLeftY.slice(1).map((y, index) => Number((y - gappedLeftY[index]).toFixed(2)));
   const gappedCurrentLabels = [...gappedSvgOutput.matchAll(/class="lp-side-label right"[^>]*>([^<]+)<\/text>/g)].map((match) => match[1]);
   const gappedPathCount = [...gappedSvgOutput.matchAll(/<path class="lp-series-line"/g)].length;
+  const classifiedFinishModel = card._buildChartModel(classifiedFinishSessionPayload);
 
   const firstSeries = model.series[0];
   card._toggleSeriesVisibility(firstSeries, { stopPropagation() {}, preventDefault() {} });
@@ -299,6 +326,7 @@ async function main() {
     gappedLeftSteps,
     gappedCurrentLabels,
     gappedPathCount,
+    classifiedFinishPositions: classifiedFinishModel.series[0].positions,
     p1Y: coords ? Number(coords[1]) : null,
     p2Y: coords ? Number(coords[2]) : null,
     pathWithGap,
@@ -412,6 +440,7 @@ def test_lap_position_card_model_and_interactions(card_path: Path) -> None:
     assert len(set(result["gappedLeftSteps"])) == 1
     assert len(result["gappedCurrentLabels"]) == 22
     assert result["gappedPathCount"] == 20
+    assert result["classifiedFinishPositions"] == [16, 20, 11]
     assert result["tooltip"]["name"] == "Lando Norris"
     assert result["tooltip"]["lap"] == "L1"
     assert result["tooltip"]["position"] == 1

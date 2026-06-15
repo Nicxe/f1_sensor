@@ -38,17 +38,53 @@ const ensureF1Fonts = () => {
 
 const F1_THEME_MODES = ['dark', 'light', 'auto'];
 const DEFAULT_F1_THEME_MODE = 'dark';
+const DEFAULT_FONT_STYLE = 'wide';
+const FONT_STYLE_OPTIONS = [
+  {
+    value: 'wide',
+    label: 'Wide',
+    description: 'Original F1 Sensor typography.',
+  },
+  {
+    value: 'balanced',
+    label: 'Balanced',
+    description: 'F1-inspired style with improved readability on compact/mobile layouts.',
+  },
+  {
+    value: 'system',
+    label: 'System',
+    description: 'Use the Home Assistant/system font.',
+  },
+];
+const VALID_FONT_STYLES = new Set(FONT_STYLE_OPTIONS.map((option) => option.value));
 
 const normalizeThemeMode = (mode) => {
   const value = String(mode || DEFAULT_F1_THEME_MODE).toLowerCase();
   return F1_THEME_MODES.includes(value) ? value : DEFAULT_F1_THEME_MODE;
 };
 
+const normalizeFontStyle = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return VALID_FONT_STYLES.has(normalized) ? normalized : DEFAULT_FONT_STYLE;
+};
+
+const normalizeSharedCardConfig = (config = {}) => ({
+  ...config,
+  font_style: normalizeFontStyle(config?.font_style),
+});
+
 const applyF1ThemeMode = (element, config, hass = null) => {
   const mode = normalizeThemeMode(config?.theme_mode);
   if (config) config.theme_mode = mode;
   element.dataset.themeMode = mode;
   element.dataset.effectiveTheme = isEffectiveLightTheme(hass, config) ? 'light' : 'dark';
+};
+
+const applyFontStyleAttribute = (element, config) => {
+  const fontStyle = normalizeFontStyle(config?.font_style);
+  if (element.getAttribute('data-font-style') !== fontStyle) {
+    element.setAttribute('data-font-style', fontStyle);
+  }
 };
 
 const isEffectiveLightTheme = (hass, config) => {
@@ -232,6 +268,31 @@ const F1_THEME_STYLES = css`
     --f1-timing-personal-fastest-text: #86efac;
     --f1-timing-timed-bg: rgba(234, 179, 8, 0.14);
     --f1-timing-timed-text: #fde047;
+    --f1-font-system: var(--primary-font-family, Roboto, Arial, sans-serif);
+    --f1-font-brand-display: "Formula1 Display", "Titillium Web", var(--f1-font-system);
+    --f1-font-brand-wide: "Formula1 Wide", "Formula1 Display", "Titillium Web", var(--f1-font-system);
+  }
+
+  :host([data-font-style='balanced']) {
+    --f1-card-body-font-family: var(--f1-font-system);
+    --f1-card-heading-font-family: var(--f1-font-brand-display);
+    --f1-card-display-font-family: var(--f1-font-brand-display);
+    --f1-card-table-font-family: var(--f1-font-system);
+    --f1-card-label-font-family: var(--f1-font-system);
+    --f1-card-heading-letter-spacing: 0.03em;
+    --f1-card-display-letter-spacing: 0.01em;
+    --f1-card-label-letter-spacing: 0.04em;
+  }
+
+  :host([data-font-style='system']) {
+    --f1-card-body-font-family: var(--f1-font-system);
+    --f1-card-heading-font-family: var(--f1-font-system);
+    --f1-card-display-font-family: var(--f1-font-system);
+    --f1-card-table-font-family: var(--f1-font-system);
+    --f1-card-label-font-family: var(--f1-font-system);
+    --f1-card-heading-letter-spacing: normal;
+    --f1-card-display-letter-spacing: normal;
+    --f1-card-label-letter-spacing: normal;
   }
 
   :host([data-theme-mode='light']) {
@@ -375,7 +436,7 @@ const F1_THEME_STYLES = css`
   .f1-no-spoiler-title {
     max-width: 300px;
     color: var(--f1-card-text);
-    font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+    font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
     font-size: 16px;
     font-weight: 700;
     letter-spacing: 0;
@@ -923,6 +984,8 @@ const parseF1TimingSeconds = (value) => {
 const resolveF1CurrentSector = (positionInfo, sectorNumber) => {
   const empty = {
     time: null,
+    lap: null,
+    source: null,
     overall_fastest: false,
     personal_fastest: false,
   };
@@ -938,19 +1001,140 @@ const resolveF1CurrentSector = (positionInfo, sectorNumber) => {
     : null;
   if (detail && typeof detail === 'object') {
     const time = parseF1TimingSeconds(detail.time);
+    const lapValue = detail.lap ?? positionInfo[`sector_${sectorNumber}_lap`];
+    const parsedLap = Number(lapValue);
     return {
       time,
+      lap: time != null && Number.isFinite(parsedLap) && parsedLap > 0
+        ? Math.trunc(parsedLap)
+        : null,
+      source: time != null ? String(detail.source || 'current') : null,
       overall_fastest: time != null && detail.overall_fastest === true,
       personal_fastest: time != null && detail.personal_fastest === true,
     };
   }
 
   const time = parseF1TimingSeconds(positionInfo[`sector_${sectorNumber}`]);
+  const parsedLap = Number(positionInfo[`sector_${sectorNumber}_lap`]);
   return {
     time,
+    lap: time != null && Number.isFinite(parsedLap) && parsedLap > 0
+      ? Math.trunc(parsedLap)
+      : null,
+    source: time != null
+      ? String(positionInfo[`sector_${sectorNumber}_source`] || 'current')
+      : null,
     overall_fastest: time != null && positionInfo[`sector_${sectorNumber}_overall_fastest`] === true,
     personal_fastest: time != null && positionInfo[`sector_${sectorNumber}_personal_fastest`] === true,
   };
+};
+
+const resolveF1CurrentSectorSet = (card, positionInfo) => {
+  const direct = [1, 2, 3].map((sectorNumber) => (
+    resolveF1CurrentSector(positionInfo, sectorNumber)
+  ));
+  if (!card || !positionInfo) return direct;
+
+  const driverKey = String(
+    positionInfo.racing_number
+      ?? positionInfo.racingNumber
+      ?? positionInfo.driver_number
+      ?? positionInfo.tla
+      ?? '',
+  ).trim();
+  if (!driverKey) return direct;
+
+  if (!(card._f1SectorLapCache instanceof Map)) {
+    card._f1SectorLapCache = new Map();
+  }
+  let driverCache = card._f1SectorLapCache.get(driverKey);
+  if (!driverCache) {
+    driverCache = {
+      laps: new Map(),
+      unscoped: [null, null, null],
+    };
+    card._f1SectorLapCache.set(driverKey, driverCache);
+  }
+
+  const parseLap = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
+  };
+  const sectorState = String(
+    positionInfo.sector_state ?? positionInfo.sectors?.state ?? '',
+  ).trim().toLowerCase();
+  const explicitCurrentLap = parseLap(
+    positionInfo.sector_current_lap ?? positionInfo.sectors?.current_lap,
+  );
+  const directLaps = direct
+    .map((timing) => timing.lap)
+    .filter((lap) => lap !== null);
+  const targetLap = directLaps.length > 0
+    ? Math.max(...directLaps)
+    : explicitCurrentLap;
+
+  let selected;
+  if (targetLap !== null) {
+    for (const timing of direct) {
+      if (!Number.isFinite(timing.time)) continue;
+      const sectorLap = timing.lap ?? targetLap;
+      let lapSectors = driverCache.laps.get(sectorLap);
+      if (!lapSectors) {
+        lapSectors = [null, null, null];
+        driverCache.laps.set(sectorLap, lapSectors);
+      }
+      const sectorIndex = direct.indexOf(timing);
+      lapSectors[sectorIndex] = {
+        ...timing,
+        lap: sectorLap,
+        source: timing.source || 'current',
+      };
+    }
+    selected = driverCache.laps.get(targetLap) || [null, null, null];
+
+    const cachedLaps = [...driverCache.laps.keys()].sort((left, right) => left - right);
+    while (cachedLaps.length > 3) {
+      driverCache.laps.delete(cachedLaps.shift());
+    }
+  } else {
+    if (sectorState === 's1_done' && Number.isFinite(direct[0].time)) {
+      driverCache.unscoped = [null, null, null];
+    }
+    direct.forEach((timing, index) => {
+      if (!Number.isFinite(timing.time)) return;
+      driverCache.unscoped[index] = {
+        ...timing,
+        source: timing.source || 'current',
+      };
+    });
+    selected = driverCache.unscoped;
+  }
+
+  const completedLaps = parseLap(positionInfo.completed_laps);
+  const previousLap = sectorState === 'lap_complete'
+    || (
+      targetLap !== null
+      && completedLaps !== null
+      && targetLap <= completedLaps
+    );
+
+  return selected.map((timing) => {
+    if (!timing || !Number.isFinite(timing.time)) {
+      return {
+        time: null,
+        lap: targetLap,
+        source: null,
+        previous_lap: false,
+        overall_fastest: false,
+        personal_fastest: false,
+      };
+    }
+    return {
+      ...timing,
+      source: previousLap ? 'previous_lap' : timing.source || 'current',
+      previous_lap: previousLap,
+    };
+  });
 };
 
 const formatF1SectorSeconds = (value) => {
@@ -966,6 +1150,9 @@ const formatF1SectorSeconds = (value) => {
 
 const getF1TimingClass = (timing) => {
   if (!timing || !Number.isFinite(timing.time)) return '';
+  if (timing.previous_lap === true || timing.source === 'previous_lap') {
+    return 'previous-lap';
+  }
   if (timing.overall_fastest === true) return 'overall-fastest';
   if (timing.personal_fastest === true) return 'personal-fastest';
   return 'timed';
@@ -999,17 +1186,69 @@ const renderEditorSelect = (editor, name, label, options, helper = null) => {
   `;
 };
 
-const renderThemeModeSelect = (editor) => renderEditorSelect(
+const renderFontStyleSelect = (editor) => renderEditorSelect(
   editor,
-  'theme_mode',
-  'Theme mode',
-  [
-    { value: 'dark', label: 'Dark (default)' },
-    { value: 'light', label: 'Light' },
-    { value: 'auto', label: 'Follow Home Assistant theme' },
-  ],
-  'Default keeps the current dark F1 style for existing cards.',
+  'font_style',
+  'Font style',
+  FONT_STYLE_OPTIONS.map((option) => ({
+    value: option.value,
+    label: option.label,
+  })),
+  'Controls card typography. Wide uses F1 wide styling. Balanced reduces wide-font usage. System uses Home Assistant font.',
 );
+
+const renderThemeModeSelect = (editor) => html`
+  ${renderEditorSelect(
+    editor,
+    'theme_mode',
+    'Theme mode',
+    [
+      { value: 'dark', label: 'Dark (default)' },
+      { value: 'light', label: 'Light' },
+      { value: 'auto', label: 'Follow Home Assistant theme' },
+    ],
+    'Default keeps the current dark F1 style for existing cards.',
+  )}
+  ${renderFontStyleSelect(editor)}
+`;
+
+const installFontStyleSupport = (CardClass) => {
+  if (!CardClass?.prototype || CardClass.prototype._f1FontStyleSupportInstalled) {
+    return;
+  }
+
+  const proto = CardClass.prototype;
+  const originalSetConfig = proto.setConfig;
+  const originalConnectedCallback = proto.connectedCallback;
+  const originalUpdated = proto.updated;
+
+  proto.setConfig = function setConfig(config = {}) {
+    const normalizedConfig = normalizeSharedCardConfig(config);
+    if (typeof originalSetConfig === 'function') {
+      originalSetConfig.call(this, normalizedConfig);
+    } else {
+      this.config = normalizedConfig;
+    }
+    this.config = normalizeSharedCardConfig(this.config || normalizedConfig);
+    applyFontStyleAttribute(this, this.config);
+  };
+
+  proto.connectedCallback = function connectedCallback(...args) {
+    if (typeof originalConnectedCallback === 'function') {
+      originalConnectedCallback.call(this, ...args);
+    }
+    applyFontStyleAttribute(this, this.config);
+  };
+
+  proto.updated = function updated(changed, ...args) {
+    if (typeof originalUpdated === 'function') {
+      originalUpdated.call(this, changed, ...args);
+    }
+    applyFontStyleAttribute(this, this.config);
+  };
+
+  proto._f1FontStyleSupportInstalled = true;
+};
 
 const DELTA_PILL = {
   HARD: 'linear-gradient(135deg, #6b1b6b, #32133e)',
@@ -1298,6 +1537,11 @@ const cloneTimingSnapshotRows = (rows) => (
 
 const syncTimingSnapshotSession = (card, sessionKey) => {
   if (!card) return;
+  const normalizedSessionKey = sessionKey || null;
+  if (card._f1SectorSessionKey !== normalizedSessionKey) {
+    card._f1SectorSessionKey = normalizedSessionKey;
+    card._f1SectorLapCache = new Map();
+  }
   if (!sessionKey || card._postSessionSnapshot?.key !== sessionKey) {
     card._postSessionSnapshot = null;
   }
@@ -1807,7 +2051,7 @@ class F1TyreStatisticsCard extends LitElement {
       --ts-chip: var(--f1-card-chip);
       --ts-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -1832,7 +2076,7 @@ class F1TyreStatisticsCard extends LitElement {
 
     .ts-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.6vw, 22px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -1886,7 +2130,7 @@ class F1TyreStatisticsCard extends LitElement {
     }
 
     .ts-compound-name {
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(12px, 3.2cqw, 22px);
       font-weight: 700;
       letter-spacing: clamp(0.05em, 0.08em, 0.1em);
@@ -2507,7 +2751,7 @@ class F1PitStopOverviewCard extends LitElement {
       --ts-chip: var(--f1-card-chip);
       --ts-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -2536,7 +2780,7 @@ class F1PitStopOverviewCard extends LitElement {
 
     .ps-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.4vw, 20px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -2644,7 +2888,7 @@ class F1PitStopOverviewCard extends LitElement {
     .ps-tla.full-name {
       letter-spacing: 0.01em;
       text-transform: none;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
       font-weight: 600;
     }
 
@@ -3962,7 +4206,7 @@ class F1DriverLapTimesCard extends LitElement {
       --ts-chip: var(--f1-card-chip);
       --ts-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -4001,7 +4245,7 @@ class F1DriverLapTimesCard extends LitElement {
 
     .dl-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.4vw, 20px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -4190,7 +4434,7 @@ class F1DriverLapTimesCard extends LitElement {
     .dl-tla.full-name {
       letter-spacing: 0.01em;
       text-transform: none;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
       font-weight: 600;
     }
 
@@ -5281,7 +5525,7 @@ class F1ChampionshipPredictionDriversCard extends LitElement {
       --ts-chip: var(--f1-card-chip);
       --ts-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -5306,7 +5550,7 @@ class F1ChampionshipPredictionDriversCard extends LitElement {
 
     .cpd-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.4vw, 20px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -5491,7 +5735,7 @@ class F1ChampionshipPredictionDriversCard extends LitElement {
     .cpd-driver.full {
       letter-spacing: 0.01em;
       text-transform: none;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
       font-weight: 600;
     }
 
@@ -6439,7 +6683,7 @@ class F1ChampionshipPredictionTeamsCard extends LitElement {
       --ts-chip: var(--f1-card-chip);
       --ts-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -6464,7 +6708,7 @@ class F1ChampionshipPredictionTeamsCard extends LitElement {
 
     .cpt-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.4vw, 20px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -7531,7 +7775,7 @@ class F1SeasonProgressionCard extends LitElement {
         --sp-panel-soft: var(--f1-card-panel-soft, color-mix(in srgb, var(--primary-text-color, #111827) 3%, transparent));
         --sp-shadow: var(--f1-card-shadow, var(--ha-card-box-shadow, 0 12px 30px rgba(15, 23, 42, 0.14)));
         --sp-chart-height: 320px;
-        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-family: var(--f1-card-body-font-family, "Formula1 Display", "Noto Sans", system-ui, sans-serif);
       }
 
       ha-card {
@@ -7641,7 +7885,7 @@ class F1SeasonProgressionCard extends LitElement {
 
       .sp-axis-label {
         fill: var(--sp-muted);
-        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-family: var(--f1-card-body-font-family, "Formula1 Display", "Noto Sans", system-ui, sans-serif);
         font-size: 10px;
         font-weight: 700;
         letter-spacing: 0;
@@ -9184,7 +9428,7 @@ class F1LapPositionProgressionCard extends LitElement {
         --lp-panel-soft: var(--f1-card-panel-soft, color-mix(in srgb, var(--primary-text-color, #111827) 3%, transparent));
         --lp-shadow: var(--f1-card-shadow, var(--ha-card-box-shadow, 0 12px 30px rgba(15, 23, 42, 0.14)));
         --lp-chart-height: 320px;
-        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-family: var(--f1-card-body-font-family, "Formula1 Display", "Noto Sans", system-ui, sans-serif);
       }
 
       ha-card {
@@ -9342,7 +9586,7 @@ class F1LapPositionProgressionCard extends LitElement {
 
       .lp-axis-label {
         fill: var(--lp-muted);
-        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-family: var(--f1-card-body-font-family, "Formula1 Display", "Noto Sans", system-ui, sans-serif);
         font-size: 10px;
         font-weight: 700;
         letter-spacing: 0;
@@ -9350,7 +9594,7 @@ class F1LapPositionProgressionCard extends LitElement {
 
       .lp-side-heading {
         fill: var(--lp-muted);
-        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-family: var(--f1-card-body-font-family, "Formula1 Display", "Noto Sans", system-ui, sans-serif);
         font-size: 10px;
         font-weight: 800;
         letter-spacing: 0;
@@ -9358,7 +9602,7 @@ class F1LapPositionProgressionCard extends LitElement {
 
       .lp-side-label {
         fill: var(--lp-text);
-        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-family: var(--f1-card-body-font-family, "Formula1 Display", "Noto Sans", system-ui, sans-serif);
         font-size: 10px;
         font-weight: 800;
         letter-spacing: 0;
@@ -9366,7 +9610,7 @@ class F1LapPositionProgressionCard extends LitElement {
 
       .lp-side-position {
         fill: var(--lp-muted);
-        font-family: "Formula1 Display", "Noto Sans", system-ui, sans-serif;
+        font-family: var(--f1-card-body-font-family, "Formula1 Display", "Noto Sans", system-ui, sans-serif);
         font-size: 9px;
         font-weight: 800;
         letter-spacing: 0;
@@ -10104,7 +10348,9 @@ class F1LapPositionProgressionCard extends LitElement {
   }
 
   _normalizeDriverSeries(driver, expectedLength, driverList, index) {
-    const positions = this._normalizePositions(driver?.positions, expectedLength);
+    const rawPositions = this._normalizePositions(driver?.positions, expectedLength);
+    const finishPosition = this._toNumber(driver?.finish_position) ?? this._latestFinite(rawPositions);
+    const positions = this._withClassifiedFinish(rawPositions, finishPosition);
     const code = String(driver?.code || '').trim().toUpperCase();
     const name = String(driver?.name || code || driver?.driver_id || `Driver ${index + 1}`).trim();
     const meta = this._findDriverMeta(driver, driverList);
@@ -10118,7 +10364,7 @@ class F1LapPositionProgressionCard extends LitElement {
       color,
       positions,
       grid: this._toNumber(driver?.grid),
-      finishPosition: this._toNumber(driver?.finish_position) ?? this._latestFinite(positions),
+      finishPosition,
       status: driver?.status || '',
       media: this._resolveDriverMedia(teamName),
     };
@@ -10160,6 +10406,21 @@ class F1LapPositionProgressionCard extends LitElement {
       positions.push(...Array.from({ length: expectedLength - positions.length }, () => null));
     }
     return positions;
+  }
+
+  _withClassifiedFinish(positions, finishPosition) {
+    const reconciled = [...positions];
+    if (!Number.isFinite(finishPosition) || finishPosition <= 0) {
+      return reconciled;
+    }
+    // Lap timing excludes post-race classification changes such as penalties.
+    for (let index = reconciled.length - 1; index >= 0; index -= 1) {
+      if (Number.isFinite(reconciled[index])) {
+        reconciled[index] = finishPosition;
+        break;
+      }
+    }
+    return reconciled;
   }
 
   _positionTicks(maxPosition) {
@@ -11807,7 +12068,7 @@ class F1LastRaceResultsCard extends LitElement {
       --ts-chip: var(--f1-card-chip);
       --ts-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -11832,7 +12093,7 @@ class F1LastRaceResultsCard extends LitElement {
 
     .cpd-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.4vw, 20px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -12022,7 +12283,7 @@ class F1LastRaceResultsCard extends LitElement {
     .cpd-driver.full {
       letter-spacing: 0.01em;
       text-transform: none;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
       font-weight: 600;
     }
 
@@ -12139,7 +12400,7 @@ class F1LastRaceResultsCard extends LitElement {
       background: var(--f1-card-chip);
       color: var(--ts-text);
       padding: 6px 34px 6px 10px;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.02em;
@@ -12913,7 +13174,7 @@ class F1InvestigationsCard extends LitElement {
       --ts-chip: var(--f1-card-chip);
       --ts-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -12938,7 +13199,7 @@ class F1InvestigationsCard extends LitElement {
 
     .inv-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.4vw, 20px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -13011,7 +13272,7 @@ class F1InvestigationsCard extends LitElement {
     .inv-tla.full-name {
       letter-spacing: 0.01em;
       text-transform: none;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
       font-weight: 600;
     }
 
@@ -13794,7 +14055,7 @@ class F1TrackLimitsCard extends LitElement {
       --ts-chip: var(--f1-card-chip);
       --ts-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -13819,7 +14080,7 @@ class F1TrackLimitsCard extends LitElement {
 
     .tl-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.4vw, 20px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -13894,7 +14155,7 @@ class F1TrackLimitsCard extends LitElement {
     .tl-tla.full-name {
       letter-spacing: 0.01em;
       text-transform: none;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
       font-weight: 600;
     }
 
@@ -14613,7 +14874,7 @@ class F1LiveSessionCard extends LitElement {
     }
 
     .ls-card {
-      font-family: 'Formula1 Display', 'Titillium Web', Arial, sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       display: flex;
       flex-direction: column;
       gap: clamp(8px, 1.5vw, 12px);
@@ -14658,7 +14919,7 @@ class F1LiveSessionCard extends LitElement {
     }
 
     .ls-gp-name {
-      font-family: 'Formula1 Wide', 'Formula1 Display', Arial, sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', Arial, sans-serif);
       font-weight: 600;
       font-size: clamp(13px, 2.2vw, 16px);
       letter-spacing: 0.02em;
@@ -14747,7 +15008,7 @@ class F1LiveSessionCard extends LitElement {
       align-items: center;
       padding: clamp(4px, 0.7vw, 6px) clamp(10px, 1.5vw, 14px);
       border-radius: 20px;
-      font-family: 'Formula1 Display', Arial, sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', Arial, sans-serif);
       font-weight: 700;
       font-size: clamp(9px, 1.3vw, 11px);
       text-transform: uppercase;
@@ -14838,7 +15099,7 @@ class F1LiveSessionCard extends LitElement {
     }
 
     .ls-weather-value {
-      font-family: 'Formula1 Display', Arial, sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', Arial, sans-serif);
       font-weight: 700;
       font-size: clamp(11px, 1.5vw, 13px);
       white-space: normal;
@@ -14880,7 +15141,7 @@ class F1LiveSessionCard extends LitElement {
     }
 
 	    .ls-time-value {
-	      font-family: 'Formula1 Display', Arial, sans-serif;
+	      font-family: var(--f1-card-body-font-family, 'Formula1 Display', Arial, sans-serif);
 	      font-weight: 700;
 	      font-size: clamp(11px, 1.5vw, 13px);
 	      color: var(--ls-text);
@@ -16379,7 +16640,7 @@ class F1ReplayControlCard extends LitElement {
     }
 
     .rc-card {
-      font-family: 'Formula1 Display', 'Titillium Web', Arial, sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -16415,7 +16676,7 @@ class F1ReplayControlCard extends LitElement {
     }
 
     .rc-title {
-      font-family: 'Formula1 Wide', 'Formula1 Display', Arial, sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', Arial, sans-serif);
       font-weight: 600;
       font-size: 14px;
       letter-spacing: 0.018em;
@@ -17728,7 +17989,7 @@ class F1NextRaceCard extends LitElement {
     .nr-card {
       position: relative;
       overflow: hidden;
-      font-family: 'Formula1 Display', 'Titillium Web', Arial, sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       display: flex;
       flex-direction: column;
       gap: clamp(6px, 1vw, 10px);
@@ -17787,10 +18048,10 @@ class F1NextRaceCard extends LitElement {
     }
 
     .nr-title {
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-heading-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(14px, 2vw, 18px);
       line-height: 1.06;
-      letter-spacing: 0.02em;
+      letter-spacing: var(--f1-card-heading-letter-spacing, 0.02em);
       text-wrap: balance;
       margin: 0;
     }
@@ -17803,7 +18064,7 @@ class F1NextRaceCard extends LitElement {
       font-size: clamp(9px, 1.15vw, 11px);
       color: var(--nr-muted);
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: var(--f1-card-label-letter-spacing, 0.05em);
     }
 
     .nr-countdown-compact {
@@ -17831,14 +18092,14 @@ class F1NextRaceCard extends LitElement {
 
     .nr-countdown-inline,
     .nr-metric-value {
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       line-height: 1.05;
       white-space: nowrap;
     }
 
     .nr-countdown-inline {
       font-size: clamp(13px, 1.7vw, 17px);
-      letter-spacing: 0.03em;
+      letter-spacing: var(--f1-card-display-letter-spacing, 0.03em);
     }
 
     .nr-countdown-meta,
@@ -17859,9 +18120,10 @@ class F1NextRaceCard extends LitElement {
     .nr-section-label,
     .nr-weather-label,
     .nr-history-label {
+      font-family: var(--f1-card-label-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       font-size: 8px;
       font-weight: 700;
-      letter-spacing: 0.12em;
+      letter-spacing: var(--f1-card-label-letter-spacing, 0.12em);
       text-transform: uppercase;
       color: var(--nr-soft);
     }
@@ -17911,9 +18173,9 @@ class F1NextRaceCard extends LitElement {
 
     .nr-section-title,
     .nr-mini-title {
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-heading-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(10px, 1vw, 11px);
-      letter-spacing: 0.05em;
+      letter-spacing: var(--f1-card-heading-letter-spacing, 0.05em);
       margin: 0;
       text-transform: uppercase;
       color: var(--nr-text);
@@ -17965,9 +18227,10 @@ class F1NextRaceCard extends LitElement {
     }
 
     .nr-summary-countdown-value {
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(15px, 2vw, 19px);
       line-height: 1.05;
+      letter-spacing: var(--f1-card-display-letter-spacing, normal);
       color: var(--nr-text);
       white-space: nowrap;
     }
@@ -18051,11 +18314,12 @@ class F1NextRaceCard extends LitElement {
     }
 
     .nr-schedule-head {
+      font-family: var(--f1-card-label-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       padding: 0 0 4px;
       border-bottom: 1px solid var(--f1-card-divider);
       font-size: 8px;
       font-weight: 700;
-      letter-spacing: 0.12em;
+      letter-spacing: var(--f1-card-label-letter-spacing, 0.12em);
       text-transform: uppercase;
       color: var(--nr-soft);
     }
@@ -18095,6 +18359,7 @@ class F1NextRaceCard extends LitElement {
     }
 
     .nr-schedule-cell {
+      font-family: var(--f1-card-table-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       min-width: 0;
       font-size: 10px;
       color: var(--nr-text);
@@ -18160,9 +18425,10 @@ class F1NextRaceCard extends LitElement {
     }
 
     .nr-schedule-inline-time label {
+      font-family: var(--f1-card-label-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       font-size: 8px;
       color: var(--nr-soft);
-      letter-spacing: 0.08em;
+      letter-spacing: var(--f1-card-label-letter-spacing, 0.08em);
       text-transform: uppercase;
     }
 
@@ -18334,9 +18600,10 @@ class F1NextRaceCard extends LitElement {
     }
 
     .nr-weather-row-label {
+      font-family: var(--f1-card-label-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       font-size: 8px;
       font-weight: 700;
-      letter-spacing: 0.1em;
+      letter-spacing: var(--f1-card-label-letter-spacing, 0.1em);
       text-transform: uppercase;
       color: var(--nr-soft);
     }
@@ -18435,7 +18702,7 @@ class F1NextRaceCard extends LitElement {
     }
 
     .nr-map-fallback-title {
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(11px, 1.4vw, 14px);
       line-height: 1;
       max-width: 14ch;
@@ -18449,6 +18716,7 @@ class F1NextRaceCard extends LitElement {
     }
 
     .nr-chip {
+      font-family: var(--f1-card-label-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       display: inline-flex;
       align-items: center;
       gap: 4px;
@@ -18456,7 +18724,7 @@ class F1NextRaceCard extends LitElement {
       border-radius: 999px;
       font-size: 8px;
       font-weight: 700;
-      letter-spacing: 0.1em;
+      letter-spacing: var(--f1-card-label-letter-spacing, 0.1em);
       text-transform: uppercase;
       color: var(--nr-text);
       background: var(--f1-card-chip);
@@ -18545,10 +18813,11 @@ class F1NextRaceCard extends LitElement {
     }
 
     .nr-time-line span {
+      font-family: var(--f1-card-label-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       font-size: 8px;
       color: var(--nr-muted);
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: var(--f1-card-label-letter-spacing, 0.08em);
     }
 
     .nr-time-line strong {
@@ -18640,6 +18909,7 @@ class F1NextRaceCard extends LitElement {
     }
 
     .nr-history-toggle {
+      font-family: var(--f1-card-label-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -18652,7 +18922,7 @@ class F1NextRaceCard extends LitElement {
       font: inherit;
       font-size: 9px;
       font-weight: 700;
-      letter-spacing: 0.06em;
+      letter-spacing: var(--f1-card-label-letter-spacing, 0.06em);
       text-transform: uppercase;
       cursor: pointer;
     }
@@ -20608,7 +20878,7 @@ class F1SeasonCalendarCard extends LitElement {
       --sc-shadow: var(--f1-card-shadow);
       --sc-panel: var(--f1-card-panel);
       display: block;
-      font-family: 'Formula1 Display', 'Titillium Web', Arial, sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
     }
 
     ha-card {
@@ -20672,7 +20942,7 @@ class F1SeasonCalendarCard extends LitElement {
 
     .sc-title {
       margin: 0;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(14px, 2vw, 18px);
       line-height: 1.06;
       letter-spacing: 0.02em;
@@ -20844,7 +21114,7 @@ class F1SeasonCalendarCard extends LitElement {
     }
 
     .sc-date {
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: 10px;
       line-height: 1.1;
       color: var(--sc-text);
@@ -21452,7 +21722,7 @@ class F1RaceControlCard extends LitElement {
     }
 
     .rc-card {
-      font-family: 'Formula1 Display', 'Titillium Web', Arial, sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       display: flex;
       align-items: center;
       flex-wrap: wrap;
@@ -21567,7 +21837,7 @@ class F1RaceControlCard extends LitElement {
     }
 
     .rc-list-shell {
-      font-family: 'Formula1 Display', 'Titillium Web', Arial, sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       border-radius: var(--ha-card-border-radius, 12px);
       background:
         radial-gradient(circle at 10% 20%, var(--f1-card-panel), transparent 40%),
@@ -23002,7 +23272,7 @@ class F1FiaDocumentsCard extends LitElement {
       --fd-shadow: var(--f1-card-compact-shadow);
       --fd-red: #ff3b30;
       display: block;
-      font-family: 'Formula1 Display', 'Titillium Web', Arial, sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
     }
 
     ha-card {
@@ -24120,7 +24390,7 @@ class F1QualifyingTimingCard extends LitElement {
       --qt-chip: var(--f1-card-chip);
       --qt-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -24158,7 +24428,7 @@ class F1QualifyingTimingCard extends LitElement {
 
     .qt-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.4vw, 20px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -24179,7 +24449,7 @@ class F1QualifyingTimingCard extends LitElement {
       background: rgba(139, 92, 246, 0.22);
       border: 1px solid rgba(139, 92, 246, 0.45);
       color: #d8b4fe;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(13px, 2vw, 16px);
       font-weight: 700;
       letter-spacing: 0.06em;
@@ -24265,7 +24535,7 @@ class F1QualifyingTimingCard extends LitElement {
     .qt-tla.full-name {
       letter-spacing: 0.01em;
       text-transform: none;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
       font-weight: 600;
     }
 
@@ -24362,6 +24632,12 @@ class F1QualifyingTimingCard extends LitElement {
     .qt-sector.timed {
       --sector-bg: var(--f1-timing-timed-bg, rgba(234, 179, 8, 0.18));
       --sector-text: var(--f1-timing-timed-text, #fde047);
+    }
+
+    .qt-sector.previous-lap {
+      --sector-bg: rgba(148, 163, 184, 0.12);
+      --sector-text: var(--qt-muted);
+      opacity: 0.72;
     }
 
     .qt-sector.source-personal-best {
@@ -25060,9 +25336,10 @@ class F1QualifyingTimingCard extends LitElement {
         )
         : compoundBaseColor;
       const tyreAge = tyre?.stint_laps ?? null;
-      const sector1 = this._resolveSectorDisplay(pos, 1, sectorDisplayMode);
-      const sector2 = this._resolveSectorDisplay(pos, 2, sectorDisplayMode);
-      const sector3 = this._resolveSectorDisplay(pos, 3, sectorDisplayMode);
+      const currentSectors = resolveF1CurrentSectorSet(this, pos);
+      const sector1 = this._resolveSectorDisplay(pos, 1, sectorDisplayMode, currentSectors);
+      const sector2 = this._resolveSectorDisplay(pos, 2, sectorDisplayMode, currentSectors);
+      const sector3 = this._resolveSectorDisplay(pos, 3, sectorDisplayMode, currentSectors);
       return {
         rn,
         tla: driverDisplay.tla || tla || '--',
@@ -25137,6 +25414,10 @@ class F1QualifyingTimingCard extends LitElement {
         const source = row[`sector_${idx}_source`];
         if (!Number.isFinite(time)) {
           row[`sector_${idx}_class`] = '';
+          continue;
+        }
+        if (source === 'previous_lap') {
+          row[`sector_${idx}_class`] = 'previous-lap';
           continue;
         }
         if (source === 'personal_best') {
@@ -25304,8 +25585,10 @@ class F1QualifyingTimingCard extends LitElement {
     return 'current';
   }
 
-  _resolveSectorDisplay(pos, idx, mode = 'current') {
-    const current = this._sectorFromSource(pos, idx, 'current');
+  _resolveSectorDisplay(pos, idx, mode = 'current', currentSectors = null) {
+    const current = Array.isArray(currentSectors)
+      ? currentSectors[idx - 1] || this._sectorFromSource(pos, idx, 'current')
+      : this._sectorFromSource(pos, idx, 'current');
     const personalBest = this._sectorFromSource(pos, idx, 'personal_best');
     if (mode === 'personal_best') return personalBest;
     if (mode === 'hybrid' && current.time == null) return personalBest;
@@ -25735,7 +26018,7 @@ class F1PracticeTimingCard extends LitElement {
       --pt-chip: var(--f1-card-chip);
       --pt-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -25772,7 +26055,7 @@ class F1PracticeTimingCard extends LitElement {
 
     .pt-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.4vw, 20px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -25868,7 +26151,7 @@ class F1PracticeTimingCard extends LitElement {
     .pt-driver.full-name {
       letter-spacing: 0.01em;
       text-transform: none;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
       font-weight: 600;
     }
 
@@ -25974,6 +26257,12 @@ class F1PracticeTimingCard extends LitElement {
     .pt-sector.timed {
       --sector-bg: var(--f1-timing-timed-bg, rgba(234, 179, 8, 0.18));
       --sector-text: var(--f1-timing-timed-text, #fde047);
+    }
+
+    .pt-sector.previous-lap {
+      --sector-bg: rgba(148, 163, 184, 0.12);
+      --sector-text: var(--pt-muted);
+      opacity: 0.72;
     }
 
     .pt-lap {
@@ -26506,9 +26795,7 @@ class F1PracticeTimingCard extends LitElement {
       // the integration only exposes top-level fastest_lap metadata during race sessions.
       const lapSnapshot = this._buildLapSnapshot(pos);
       const position = this._parsePosition(pos?.current_position ?? pos?.grid_position);
-      const sector1 = resolveF1CurrentSector(pos, 1);
-      const sector2 = resolveF1CurrentSector(pos, 2);
-      const sector3 = resolveF1CurrentSector(pos, 3);
+      const [sector1, sector2, sector3] = resolveF1CurrentSectorSet(this, pos);
 
       return {
         rn,
@@ -26525,10 +26812,16 @@ class F1PracticeTimingCard extends LitElement {
         compound_color: compoundColor,
         tyre_age: tyreAge,
         sector_1: sector1.time,
+        sector_1_lap: sector1.lap,
+        sector_1_source: sector1.source,
         sector_1_class: getF1TimingClass(sector1),
         sector_2: sector2.time,
+        sector_2_lap: sector2.lap,
+        sector_2_source: sector2.source,
         sector_2_class: getF1TimingClass(sector2),
         sector_3: sector3.time,
+        sector_3_lap: sector3.lap,
+        sector_3_source: sector3.source,
         sector_3_class: getF1TimingClass(sector3),
         last_lap: lapSnapshot.last_lap,
         best_lap: lapSnapshot.best_lap,
@@ -27112,7 +27405,7 @@ class F1RaceLapCard extends LitElement {
       --rl-chip: var(--f1-card-chip);
       --rl-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -27150,7 +27443,7 @@ class F1RaceLapCard extends LitElement {
 
     .rl-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.4vw, 20px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -27277,7 +27570,7 @@ class F1RaceLapCard extends LitElement {
     .rl-driver.full-name {
       letter-spacing: 0.01em;
       text-transform: none;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
       font-weight: 600;
     }
 
@@ -27389,6 +27682,12 @@ class F1RaceLapCard extends LitElement {
     .rl-sector.timed {
       --sector-bg: var(--f1-timing-timed-bg, rgba(234, 179, 8, 0.18));
       --sector-text: var(--f1-timing-timed-text, #fde047);
+    }
+
+    .rl-sector.previous-lap {
+      --sector-bg: rgba(148, 163, 184, 0.12);
+      --sector-text: var(--rl-muted);
+      opacity: 0.72;
     }
 
     .rl-lap {
@@ -28017,9 +28316,7 @@ class F1RaceLapCard extends LitElement {
       const bestLap = lapSnapshot.best_lap || (typeof pos?.fastest_lap_time === 'string' ? pos.fastest_lap_time.trim() : null);
       const isFastest = Boolean(pos?.fastest_lap) || this._matchesFastest(rn, tla, fastestInfo);
       const position = this._parsePosition(pos?.current_position ?? pos?.grid_position);
-      const sector1 = resolveF1CurrentSector(pos, 1);
-      const sector2 = resolveF1CurrentSector(pos, 2);
-      const sector3 = resolveF1CurrentSector(pos, 3);
+      const [sector1, sector2, sector3] = resolveF1CurrentSectorSet(this, pos);
 
       let pitCount = null;
       if (hasPitState) {
@@ -28044,10 +28341,16 @@ class F1RaceLapCard extends LitElement {
         tyre_age: tyreAge,
         pit_count: pitCount,
         sector_1: sector1.time,
+        sector_1_lap: sector1.lap,
+        sector_1_source: sector1.source,
         sector_1_class: getF1TimingClass(sector1),
         sector_2: sector2.time,
+        sector_2_lap: sector2.lap,
+        sector_2_source: sector2.source,
         sector_2_class: getF1TimingClass(sector2),
         sector_3: sector3.time,
+        sector_3_lap: sector3.lap,
+        sector_3_source: sector3.source,
         sector_3_class: getF1TimingClass(sector3),
         last_lap: lapSnapshot.last_lap,
         best_lap: bestLap,
@@ -28632,7 +28935,7 @@ class F1StartingGridCard extends LitElement {
       --sg-chip: var(--f1-card-chip);
       --sg-shadow: var(--f1-card-shadow);
       display: block;
-      font-family: 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Noto Sans', sans-serif);
     }
 
     ha-card {
@@ -28679,7 +28982,7 @@ class F1StartingGridCard extends LitElement {
 
     .sg-header {
       text-align: center;
-      font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
       font-size: clamp(16px, 2.4vw, 20px);
       font-weight: 700;
       letter-spacing: clamp(0.03em, 0.06em, 0.08em);
@@ -30021,7 +30324,7 @@ class F1TrackMapCard extends LitElement {
     css`
       :host {
         display: block;
-        font-family: 'Formula1 Display', 'Titillium Web', Arial, sans-serif;
+        font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
       }
 
       ha-card {
@@ -30112,7 +30415,7 @@ class F1TrackMapCard extends LitElement {
       }
 
       .tm-title {
-        font-family: 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif;
+        font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
         font-size: clamp(16px, 2.4vw, 20px);
         font-weight: 700;
         line-height: 1.1;
@@ -31064,7 +31367,10 @@ class F1TrackMapCard extends LitElement {
       if (label) {
         const alignRight = canvasWidth > 0 && xy.x > canvasWidth - 54;
         const labelX = xy.x + (alignRight ? -9 : 9);
-        ctx.font = '700 11px "Formula1 Display", sans-serif';
+        const labelFontFamily = getComputedStyle(this)
+          .getPropertyValue('--f1-card-label-font-family')
+          .trim() || '"Formula1 Display", sans-serif';
+        ctx.font = `700 11px ${labelFontFamily}`;
         ctx.textAlign = alignRight ? 'right' : 'left';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#f6f8fb';
@@ -31823,6 +32129,32 @@ installSectionsAutoHeight(F1TrackMapCard, {
   max_columns: 12,
   min_rows: 3,
 });
+
+const F1_FONT_STYLE_CARD_CLASSES = [
+  F1TyreStatisticsCard,
+  F1PitStopOverviewCard,
+  F1DriverLapTimesCard,
+  F1ChampionshipPredictionDriversCard,
+  F1ChampionshipPredictionTeamsCard,
+  F1SeasonProgressionCard,
+  F1LastRaceResultsCard,
+  F1LapPositionProgressionCard,
+  F1InvestigationsCard,
+  F1TrackLimitsCard,
+  F1LiveSessionCard,
+  F1ReplayControlCard,
+  F1NextRaceCard,
+  F1SeasonCalendarCard,
+  F1RaceControlCard,
+  F1FiaDocumentsCard,
+  F1QualifyingTimingCard,
+  F1PracticeTimingCard,
+  F1RaceLapCard,
+  F1StartingGridCard,
+  ...(typeof F1TrackMapCard === 'undefined' ? [] : [F1TrackMapCard]),
+];
+
+F1_FONT_STYLE_CARD_CLASSES.forEach(installFontStyleSupport);
 
 const F1_NO_SPOILER_CARD_CLASSES = [
   F1TyreStatisticsCard,

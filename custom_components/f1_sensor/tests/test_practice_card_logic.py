@@ -88,6 +88,7 @@ const helperSources = [
   extractConst("const isUnavailableLikeEntityState = (entityState) =>"),
   extractConst("const parseF1TimingSeconds = (value) =>"),
   extractConst("const resolveF1CurrentSector = (positionInfo, sectorNumber) =>"),
+  extractConst("const resolveF1CurrentSectorSet = (card, positionInfo) =>"),
   extractConst("const getF1TimingClass = (timing) =>"),
   extractConst("const getStateAgeSeconds = (state, field = 'last_changed') =>"),
   extractStatement("const POST_SESSION_RETENTION_SECONDS ="),
