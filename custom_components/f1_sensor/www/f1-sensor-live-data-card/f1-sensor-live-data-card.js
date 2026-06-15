@@ -18099,7 +18099,7 @@ class F1NextRaceCard extends LitElement {
 
     .nr-countdown-inline {
       font-size: clamp(13px, 1.7vw, 17px);
-      letter-spacing: var(--f1-card-display-letter-spacing, normal);
+      letter-spacing: var(--f1-card-display-letter-spacing, 0.03em);
     }
 
     .nr-countdown-meta,
