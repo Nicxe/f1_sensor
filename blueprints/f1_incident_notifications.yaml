@@ -343,7 +343,16 @@ variables:
       {{ prefix }}
     {% endif %}
   notification_summary: >-
-    {{ ((driver_label | trim) ~ ' ' ~ (reason_label | trim) ~ confidence_suffix) | trim }}
+    {% set confidence = confidence_label | trim %}
+    {{
+      (
+        (driver_label | trim)
+        ~ ' '
+        ~ (reason_label | trim)
+        ~ (' (' ~ confidence ~ ')' if include_confidence_in_message_input and confidence else '')
+      )
+      | trim
+    }}
   notification_message: >-
     {%- set style = message_style_input | default('compact', true) | string | lower -%}
     {%- if style == 'compact' -%}
