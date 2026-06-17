@@ -49,6 +49,8 @@ async def _setup_blueprint_automation(
     media_player_gate: str = "",
     enable_dnd: bool = False,
     activation_condition: list[dict[str, Any]] | None = None,
+    message_style: str = "compact",
+    message_detail_fields: list[str] | None = None,
 ) -> bool:
     config = {
         "automation": [
@@ -72,6 +74,8 @@ async def _setup_blueprint_automation(
                         "dnd_end_time": "07:00:00",
                         "activation_condition": activation_condition or [],
                         "title_prefix": "F1 Incident Test",
+                        "message_style": message_style,
+                        "message_detail_fields": message_detail_fields or [],
                     },
                 },
             }
@@ -162,7 +166,7 @@ async def test_default_incident_notification_is_neutral_and_tagged(
     assert calls == [
         {
             "title": "F1 Incident Test (MEDIUM)",
-            "message": "Possible on-track incident: GAS stopped\nSession: Race",
+            "message": "GAS stopped on track (Medium)",
             "data": {
                 "tag": "f1_incident_2026_miami_race_10_2026_05_03t17_00_01z",
                 "group": "f1_incidents",
@@ -231,9 +235,7 @@ async def test_practice_high_can_pass_when_practice_is_selected(
     )
 
     assert len(calls) == 1
-    assert calls[0]["message"] == (
-        "Possible on-track incident: GAS stopped\nSession: Practice 1"
-    )
+    assert calls[0]["message"] == "GAS stopped on track (High)"
 
 
 @pytest.mark.asyncio
@@ -243,13 +245,17 @@ async def test_incident_notification_includes_optional_location_description(
     await _install_blueprint(hass)
     calls = _register_notification_service(hass)
 
-    assert await _setup_blueprint_automation(hass)
+    assert await _setup_blueprint_automation(
+        hass,
+        message_style="standard",
+        message_detail_fields=["session", "location"],
+    )
     calls.clear()
 
     await _fire_incident(hass, location_description="on track, sector 2")
 
     assert calls[0]["message"] == (
-        "Possible on-track incident: GAS stopped\n"
+        "GAS stopped on track (Medium)\n"
         "Session: Race\n"
         "Location: on track, sector 2"
     )
@@ -273,9 +279,7 @@ async def test_candidate_and_cleared_notifications_are_opt_in(
     await _fire_incident(hass, phase="cleared", confidence="medium")
 
     assert [call["data"]["phase"] for call in calls] == ["candidate", "cleared"]
-    assert calls[1]["message"] == (
-        "Possible on-track incident: GAS cleared\nSession: Race"
-    )
+    assert calls[1]["message"] == "GAS incident cleared (Medium)"
 
 
 @pytest.mark.asyncio
