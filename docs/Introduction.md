@@ -20,18 +20,18 @@ Start with the [installation guide](/getting-started/installation), then use [co
 
 Most users should install the stable release. See [Release Channels](/getting-started/release-channels) before using beta or `dev` builds.
 
-## Version 5.1
+## Version 5.2
 
-Version 5.1 expands live, replay, dashboard, and automation support:
+Version 5.2 improves the bundled dashboard cards, incident notifications, and live timing sync:
 
-- [Track Map](/features/track-map) adds live and replay circuit maps with driver markers
-- [Incident Detection](/features/incident-detection) adds neutral stopped-car and on-track incident alerts
-- [Incident Notifications](/blueprints/incident-notifications) adds a ready-made notification blueprint with conservative defaults
-- [F1TV Auth](/features/f1tv-auth) becomes a standard optional feature for supported extra live timing data
-- [Replay Mode](/features/replay-mode) adds a draggable seek bar and improved replay state restoration
-- [Live Data Cards](/cards/cards-overview) add lap position and championship progression charts, Track Map, and compact layouts
+- [Live Data Cards](/cards/cards-overview) add configurable font styles for wide, balanced, and system typography
+- Practice and Race timing cards can show optional S1, S2, and S3 sector columns with timing highlights
+- The Race Control card can hide track limits messages without deleting saved Race Control history
+- [Track Map](/features/track-map) now follows [Live Delay](/features/live-delay) during live sessions and handles unavailable position data more clearly
+- [Incident Notifications](/blueprints/incident-notifications) add optional presence, media player, do-not-disturb, and custom activation conditions
+- Weather sensors and cards now match Home Assistant temperature and wind unit preferences more consistently
 
-Version 5.1 also includes reliability fixes for replay controls, practice timing, pit stop and tyre data, next-race updates, expired F1TV access, and consecutive Track Status blueprint alerts.
+Version 5.2 also includes correctness fixes for sector timing alignment, lap position progression finish positions, and post-race position lines in the bundled cards.
 
 ## Features
 

@@ -17,9 +17,13 @@ Track Map shows car markers on a circuit map during live or replay sessions. It 
 
 Live Track Map depends on [F1TV Auth](/features/f1tv-auth). Replay Track Map is separate from live auth and can work later from archived replay data when the session archive contains car positions.
 
+During live sessions, Track Map follows the configured [Live Delay](/features/live-delay). This keeps car markers aligned with the rest of the Live Data Cards and with delayed TV or streaming broadcasts. Replay Track Map is not delayed.
+
 ## What to expect
 
 The card shows a circuit outline, driver markers, optional lap progress, and track status context. If the session does not provide usable car positions, the card waits instead of showing misleading locations.
+
+If Formula 1 publishes an invalid position frame, for example a frame that places every on-track car at the same zero coordinates, the card marks position data as unavailable and keeps the last usable markers stale instead of moving every car to the wrong place. It automatically recovers when valid positions return.
 
 Supported circuits can show a map quickly. For newer or unsupported circuits, replay data may need enough usable position updates before the map can be drawn.
 
@@ -67,6 +71,7 @@ The card is bundled with F1 Sensor and is registered with the other [Live Data C
 | `Replay` | Replay Mode is playing Track Map data |
 | `Waiting` | A session is loaded but no car positions are available yet |
 | `Stale` | The latest live position data is too old to trust |
+| `No position data` | Replay position data is unavailable at this point in the loaded session |
 | `No geometry` | Car positions exist but the map outline is not ready |
 | `No session` | No live or replay session is loaded for Track Map |
 | `Not loaded` | The card has not received a Track Map snapshot yet |

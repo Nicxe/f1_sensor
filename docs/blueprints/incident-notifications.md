@@ -78,6 +78,21 @@ Public confirmed incident alerts work without F1TV Auth. F1TV Auth can improve c
 
 Supported notification services receive a stable tag based on `incident_id`. This lets later updates replace the existing notification instead of creating a duplicate.
 
+### Step 4 - Add activation conditions
+
+Activation conditions are optional. Leave them empty if incident notifications should always use the filters above.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| **Presence Devices** | Empty | If configured, at least one selected device tracker must be `home` |
+| **Media Player Gate** | Empty | If configured, the selected media player must be `on`, `idle`, or `playing` |
+| **Enable Do Not Disturb Window** | Off | Blocks incident notifications during the configured time window |
+| **DND Start Time** | `23:00:00` | Start of the quiet window |
+| **DND End Time** | `07:00:00` | End of the quiet window |
+| **Activation Condition** | Empty | Extra Home Assistant conditions that must pass before a notification is sent |
+
+Use activation conditions when you only want incident alerts while someone is home, while a Formula 1 screen is active, or outside quiet hours.
+
 ## Notification wording
 
 Blueprint messages use neutral wording such as:
