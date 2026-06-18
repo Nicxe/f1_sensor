@@ -1,4 +1,4 @@
-name: Comment on fixed issues when release is published
+name: Comment on released issues when release is published
 
 on:
   release:
@@ -11,7 +11,7 @@ jobs:
   comment-on-issues:
     runs-on: ubuntu-latest
     steps:
-      - name: Post comment on fixed issues
+      - name: Post comment on released issues
         uses: actions/github-script@v7
         with:
           script: |
@@ -32,14 +32,34 @@ jobs:
               const value = (v || '').trim();
               return /^_?no response_?$/i.test(value) ? '' : value;
             };
+            const getIssueLabels = issue =>
+              issue.labels.map(label => (label.name || label || '').toString().toLowerCase());
             const extractField = (body, label) => {
               const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
               const pattern = new RegExp(`### ${escaped}\\s*\\n+([^#]+?)(?=\\n### |$)`, 'i');
               const match = (body || '').match(pattern);
               return match ? cleanValue(match[1]) : '';
             };
+            const hasTitlePrefix = (issue, prefix) =>
+              new RegExp(`^\\s*\\[${prefix}\\]\\s*:?`, 'i').test(issue.title || '');
+            const getIssueType = issue => {
+              const labels = getIssueLabels(issue);
+              if (hasTitlePrefix(issue, 'feature')) {
+                return 'feature';
+              }
+              if (hasTitlePrefix(issue, 'bug')) {
+                return 'bug';
+              }
+              if (labels.includes('enhancement')) {
+                return 'feature';
+              }
+              if (labels.includes('bug')) {
+                return 'bug';
+              }
+              return 'bug';
+            };
             const isCardIssue = issue => {
-              const labels = issue.labels.map(label => label.name || label);
+              const labels = getIssueLabels(issue);
               const component = extractField(issue.body, 'Component').toLowerCase();
               return (
                 labels.includes('card') ||
@@ -47,10 +67,23 @@ jobs:
                 component.includes('both integration and card')
               );
             };
-            const buildComment = cardIssue => {
+            const buildReleaseLine = issueType => {
+              if (issueType === 'feature') {
+                return isPrerelease
+                  ? `This feature has been implemented and is available for testing in **[${releaseTag}](${releaseUrl})**, a BETA pre-release of F1 Sensor.`
+                  : `This feature is now available in **[${releaseTag}](${releaseUrl})**, the latest stable release of F1 Sensor.`;
+              }
+
+              return isPrerelease
+                ? `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, a BETA pre-release of F1 Sensor.`
+                : `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, the latest stable release of F1 Sensor.`;
+            };
+            const buildComment = (cardIssue, issueType) => {
+              const cardChangeType = issueType === 'feature' ? 'changes' : 'fixes';
+
               if (isPrerelease) {
                 const lines = [
-                  `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, a BETA pre-release of F1 Sensor.`,
+                  buildReleaseLine(issueType),
                   '',
                   'To test the beta version, open HACS in Home Assistant, go to **Integrations**, and find **F1 Sensor**. Click the three-dot menu and select **Redownload**. Make sure **Show beta versions** is enabled in the HACS settings for this integration. Alternatively, you can download the release manually from the [Releases page](' + releaseUrl + ').',
                 ];
@@ -58,19 +91,19 @@ jobs:
                 if (cardIssue) {
                   lines.push(
                     '',
-                    'For live data card fixes, restart Home Assistant after updating and reload your browser so the dashboard loads the latest bundled card assets.'
+                    `For live data card ${cardChangeType}, restart Home Assistant after updating and reload your browser so the dashboard loads the latest bundled card assets.`
                   );
                 }
 
                 lines.push(
                   '',
-                  'Your feedback on the beta is very welcome \u2014 please report any issues you run into so they can be fixed before the stable release.'
+                  'Your feedback on the beta is very welcome \u2014 please report any issues you run into so they can be addressed before the stable release.'
                 );
                 return lines.join('\n');
               }
 
               const lines = [
-                `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, the latest stable release of F1 Sensor.`,
+                buildReleaseLine(issueType),
                 '',
                 'To update via HACS, open Home Assistant, go to **HACS \u2192 Integrations**, find **F1 Sensor**, and click **Update**. If you installed it manually, download the latest release from the [Releases page](' + releaseUrl + ') and replace the existing files.',
                 '',
@@ -80,7 +113,7 @@ jobs:
               if (cardIssue) {
                 lines.push(
                   '',
-                  'For bundled live data card fixes, reload your browser after restarting Home Assistant. If you still have the old standalone HACS dashboard card installed, remove the old card repository and stale dashboard resource only after confirming the bundled card works.'
+                  `For bundled live data card ${cardChangeType}, reload your browser after restarting Home Assistant. If you still have the old standalone HACS dashboard card installed, remove the old card repository and stale dashboard resource only after confirming the bundled card works.`
                 );
               }
 
@@ -98,14 +131,37 @@ jobs:
                 // Skip pull requests
                 if (issue.pull_request) continue;
 
-                const comment = buildComment(isCardIssue(issue));
+                const issueType = getIssueType(issue);
+                const comment = buildComment(isCardIssue(issue), issueType);
+                const { data: comments } = await github.rest.issues.listComments({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: num,
+                  per_page: 100,
+                });
+                const alreadyCommented = comments.some(existing => {
+                  const body = existing.body || '';
+                  return (
+                    body.includes(releaseUrl) &&
+                    (
+                      body.includes('A fix for this issue is now available') ||
+                      body.includes('This feature has been implemented') ||
+                      body.includes('This feature is now available')
+                    )
+                  );
+                });
+                if (alreadyCommented) {
+                  console.log(`Release comment already present on ${issueType} issue #${num}`);
+                  continue;
+                }
+
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: num,
                   body: comment,
                 });
-                console.log(`Commented on issue #${num}`);
+                console.log(`Commented on ${issueType} issue #${num}`);
               } catch (e) {
                 console.log(`Skipping #${num}: ${e.message}`);
               }
