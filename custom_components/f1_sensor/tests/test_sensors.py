@@ -18,6 +18,7 @@ from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.json import json_bytes
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util.json import json_loads
+from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 import pytest
 
 from custom_components.f1_sensor import (
@@ -2346,6 +2347,27 @@ def test_weather_sensor_uses_celsius_unit(hass) -> None:
 
     assert sensor.device_class == SensorDeviceClass.TEMPERATURE
     assert sensor.native_unit_of_measurement == UnitOfTemperature.CELSIUS
+
+
+@pytest.mark.asyncio
+async def test_weather_sensor_converts_native_temperature_to_ha_unit(hass) -> None:
+    hass.config.units = US_CUSTOMARY_SYSTEM
+    coordinator = _build_coordinator(hass, {"MRData": {"RaceTable": {"Races": []}}})
+    entry_id = "test_entry"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1WeatherSensor(
+        coordinator,
+        f"{entry_id}_weather",
+        entry_id,
+        "F1",
+    )
+    sensor._current = {"temperature": 21.0}
+
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == "69.8"
+    assert state.attributes["unit_of_measurement"] == UnitOfTemperature.FAHRENHEIT
 
 
 @pytest.mark.asyncio

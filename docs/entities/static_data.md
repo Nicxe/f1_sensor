@@ -332,12 +332,16 @@ Each entry in `Constructors` contains:
 `sensor.f1_weather` - Compact weather for the circuit location: current and projected at race start.
 
 **State**
-- Number: current air temperature (°C), or `unknown`.
+- Number: current air temperature in Home Assistant's selected temperature unit, or `unknown`.
 
 **Example**
 ```text
 18.6
 ```
+
+:::info
+Home Assistant may display the sensor state in another temperature unit, such as Fahrenheit, when your system uses that unit. The weather attributes remain in the documented source units, such as Celsius for temperatures and meters per second for wind speed.
+:::
 
 **Attributes**
 

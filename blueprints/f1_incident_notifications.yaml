@@ -6,11 +6,10 @@ blueprint:
     Send neutral notifications for F1 Sensor incident alerts.
 
     The automation listens for f1_sensor_incident events and can filter by confidence,
-    session type, and event phase. Notifications use a stable tag based on incident_id
-    so supported notify targets update an existing incident notification instead of
-    creating duplicates for the same incident.
+    session type, and event phase. Notifications use short text by default for TV
+    overlays, with optional details for targets that can show more context.
   domain: automation
-  source_url: https://github.com/Nicxe/f1_sensor/blob/main/blueprints/f1_incident_notifications.yaml
+  source_url: https://github.com/Nicxe/f1_sensor
   author: Nicxe
   input:
     notification_targets:
@@ -96,17 +95,101 @@ blueprint:
           selector:
             boolean: {}
 
+    activation_conditions:
+      name: Activation Conditions
+      icon: mdi:filter-check
+      collapsed: true
+      description: Optional gates that must pass before incident notifications are sent.
+      input:
+        presence_devices:
+          name: Presence Devices
+          description: Optional. At least one selected device must be home for notifications to be sent.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: device_tracker
+              multiple: true
+        media_player_gate:
+          name: Media Player Gate
+          description: Optional. Selected media player must be on, idle, or playing for notifications to be sent.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: media_player
+              multiple: false
+        enable_dnd:
+          name: Enable Do Not Disturb Window
+          description: Blocks incident notifications inside the configured time window.
+          default: false
+          selector:
+            boolean: {}
+        dnd_start_time:
+          name: DND Start Time
+          default: "23:00:00"
+          selector:
+            time: {}
+        dnd_end_time:
+          name: DND End Time
+          default: "07:00:00"
+          selector:
+            time: {}
+        activation_condition:
+          name: Activation Condition
+          description: Optional extra conditions. If not met, no incident notifications are sent.
+          default: []
+          selector:
+            condition: {}
+
     notification_content:
       name: Notification Content
       icon: mdi:message-badge
       collapsed: true
-      description: Customize the generated title.
+      description: Customize the generated title and message text.
       input:
         title_prefix:
           name: Title Prefix
-          default: F1 Incident Alert
+          default: F1 Incident
           selector:
             text: {}
+        message_style:
+          name: Message Style
+          description: Compact is designed for short-lived TV overlays.
+          default: compact
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Compact
+                  value: compact
+                - label: Standard
+                  value: standard
+                - label: Detailed
+                  value: detailed
+        include_confidence_in_message:
+          name: Include Confidence In Message
+          description: Adds Low, Medium, or High to the message text.
+          default: true
+          selector:
+            boolean: {}
+        message_detail_fields:
+          name: Message Detail Fields
+          description: Extra fields for standard messages. Detailed messages include all available fields.
+          default: []
+          selector:
+            select:
+              mode: dropdown
+              multiple: true
+              options:
+                - label: Session
+                  value: session
+                - label: Race control
+                  value: race_control
+                - label: Track status
+                  value: track_status
+                - label: Location
+                  value: location
 
 mode: queued
 max: 10
@@ -122,7 +205,15 @@ variables:
   allowed_session_types_input: !input allowed_session_types
   include_candidate_events_input: !input include_candidate_events
   include_cleared_notifications_input: !input include_cleared_notifications
+  presence_list: !input presence_devices
+  media_player_entity: !input media_player_gate
+  enable_dnd_window: !input enable_dnd
+  dnd_start: !input dnd_start_time
+  dnd_end: !input dnd_end_time
   title_prefix_input: !input title_prefix
+  message_style_input: !input message_style
+  include_confidence_in_message_input: !input include_confidence_in_message
+  message_detail_fields_input: !input message_detail_fields
 
   incident_id: "{{ trigger.event.data.incident_id | default('', true) | string }}"
   incident_phase: "{{ trigger.event.data.phase | default('', true) | string | lower }}"
@@ -134,40 +225,30 @@ variables:
   track_status: "{{ trigger.event.data.track_status | default({}, true) }}"
   location: "{{ trigger.event.data.location | default({}, true) }}"
   driver_label: >-
-    {% set tla = driver.tla | default('', true) | string | trim %}
-    {% set number = driver.racing_number | default('', true) | string | trim %}
-    {% set name = driver.name | default('', true) | string | trim %}
-    {% if tla %}
-      {{ tla }}
-    {% elif number %}
-      Car {{ number }}
-    {% elif name %}
-      {{ name }}
-    {% else %}
-      a car
-    {% endif %}
+    {%- set tla = driver.tla | default('', true) | string | trim -%}
+    {%- set number = driver.racing_number | default('', true) | string | trim -%}
+    {%- set name = driver.name | default('', true) | string | trim -%}
+    {{ tla if tla else ('Car ' ~ number if number else (name if name else 'a car')) }}
   incident_session_type: >-
     {{ session.session_type | default('unknown', true) | string | lower }}
   incident_session_name: >-
     {{ session.session_name | default('', true) | string | trim }}
   reason_label: >-
-    {% if incident_phase == 'cleared' %}
-      cleared
-    {% elif incident_reason == 'race_control_stopped_with_car_low_speed' %}
-      stopped
-    {% elif incident_reason.startswith('car_low_speed') %}
-      may have stopped
-    {% elif incident_reason == 'timing_stopped' %}
-      stopped
-    {% elif incident_reason == 'race_control' %}
-      race control report
-    {% elif incident_reason == 'track_status' %}
-      track status alert
-    {% elif incident_reason %}
-      {{ incident_reason | replace('_', ' ') }}
-    {% else %}
-      reported
-    {% endif %}
+    {%- if incident_phase == 'cleared' -%}
+    incident cleared
+    {%- elif incident_reason in ['race_control_stopped_with_car_low_speed', 'timing_stopped'] -%}
+    stopped on track
+    {%- elif incident_reason.startswith('car_low_speed') -%}
+    possibly stopped on track
+    {%- elif incident_reason == 'race_control' -%}
+    race control alert
+    {%- elif incident_reason == 'track_status' -%}
+    track status alert
+    {%- elif incident_reason -%}
+    {{ incident_reason | replace('_', ' ') }}
+    {%- else -%}
+    reported
+    {%- endif -%}
   incident_confidence_score: >-
     {% if incident_confidence == 'high' %}
       2
@@ -186,6 +267,17 @@ variables:
     {% else %}
       0
     {% endif %}
+  confidence_label: >-
+    {{ 'High' if incident_confidence == 'high' else 'Medium' if incident_confidence == 'medium' else 'Low' if incident_confidence == 'low' else 'Unknown' }}
+  confidence_suffix: >-
+    {{ (' (' ~ confidence_label ~ ')') if include_confidence_in_message_input and confidence_label else '' }}
+  message_detail_fields: >-
+    {% set fields = message_detail_fields_input | default([]) %}
+    {% if fields is string %}
+      {{ [fields] if fields else [] }}
+    {% else %}
+      {{ fields }}
+    {% endif %}
   phase_ok: >-
     {{
       incident_phase in ['confirmed', 'updated']
@@ -198,6 +290,29 @@ variables:
     {{ incident_session_type in allowed }}
   confidence_ok: >-
     {{ incident_confidence_score | int(-1) >= min_confidence_score | int(0) }}
+  presence_ok: >-
+    {% if presence_list | count == 0 %}
+      true
+    {% else %}
+      {{ expand(presence_list) | selectattr('state', 'eq', 'home') | list | count > 0 }}
+    {% endif %}
+  media_ok: >-
+    {% if media_player_entity | string | length == 0 %}
+      true
+    {% else %}
+      {{ states(media_player_entity) in ['on', 'idle', 'playing'] }}
+    {% endif %}
+  dnd_blocked: >-
+    {% if not enable_dnd_window %}
+      false
+    {% else %}
+      {% set now_s = now().hour * 3600 + now().minute * 60 + now().second %}
+      {% set start_parts = dnd_start.split(':') %}
+      {% set end_parts = dnd_end.split(':') %}
+      {% set start_s = (start_parts[0] | int(0)) * 3600 + (start_parts[1] | int(0)) * 60 + (start_parts[2] | int(0)) %}
+      {% set end_s = (end_parts[0] | int(0)) * 3600 + (end_parts[1] | int(0)) * 60 + (end_parts[2] | int(0)) %}
+      {{ (start_s <= end_s and start_s <= now_s <= end_s) or (start_s > end_s and (now_s >= start_s or now_s <= end_s)) }}
+    {% endif %}
   notify_service_targets: >-
     {% set ns = namespace(services=[]) %}
     {% set raw = (notify_services_raw | default('', true) | string).replace(';', ',') %}
@@ -220,34 +335,53 @@ variables:
   notification_tag: >-
     {{ 'f1_incident_' ~ (incident_id | slugify) if incident_id else 'f1_incident' }}
   notification_title: >-
-    {% set prefix = title_prefix_input | default('F1 Incident Alert', true) | string | trim %}
+    {% set prefix = title_prefix_input | default('F1 Incident', true) | string | trim %}
     {% set confidence = incident_confidence | upper %}
     {% if confidence %}
       {{ prefix ~ ' (' ~ confidence ~ ')' }}
     {% else %}
       {{ prefix }}
     {% endif %}
+  notification_summary: >-
+    {% set confidence = confidence_label | trim %}
+    {{
+      (
+        (driver_label | trim)
+        ~ ' '
+        ~ (reason_label | trim)
+        ~ (' (' ~ confidence ~ ')' if include_confidence_in_message_input and confidence else '')
+      )
+      | trim
+    }}
   notification_message: >-
-    {% set base = 'Possible on-track incident: ' ~ driver_label ~ ' ' ~ reason_label %}
-    {% set ns = namespace(lines=[base | trim]) %}
-    {% if incident_session_name %}
-      {% set ns.lines = ns.lines + ['Session: ' ~ incident_session_name] %}
-    {% elif incident_session_type %}
-      {% set ns.lines = ns.lines + ['Session: ' ~ (incident_session_type | title)] %}
-    {% endif %}
-    {% set rc_message = race_control.message | default('', true) | string | trim %}
-    {% if rc_message %}
-      {% set ns.lines = ns.lines + ['Race control: ' ~ rc_message] %}
-    {% endif %}
-    {% set track_message = track_status.message | default('', true) | string | trim %}
-    {% if track_message %}
-      {% set ns.lines = ns.lines + ['Track status: ' ~ track_message] %}
-    {% endif %}
-    {% set location_description = location.description | default('', true) | string | trim %}
-    {% if location_description %}
-      {% set ns.lines = ns.lines + ['Location: ' ~ location_description] %}
-    {% endif %}
-    {{ ns.lines | join('\n') }}
+    {%- set style = message_style_input | default('compact', true) | string | lower -%}
+    {%- if style == 'compact' -%}
+    {{ notification_summary }}
+    {%- else -%}
+      {% set details = message_detail_fields | default([], true) %}
+      {% set include_all_details = style == 'detailed' %}
+      {% set ns = namespace(lines=[notification_summary | trim]) %}
+      {% if include_all_details or 'session' in details %}
+        {% if incident_session_name %}
+          {% set ns.lines = ns.lines + ['Session: ' ~ incident_session_name] %}
+        {% elif incident_session_type %}
+          {% set ns.lines = ns.lines + ['Session: ' ~ (incident_session_type | title)] %}
+        {% endif %}
+      {% endif %}
+      {% set rc_message = race_control.message | default('', true) | string | trim %}
+      {% if rc_message and (include_all_details or 'race_control' in details) %}
+        {% set ns.lines = ns.lines + ['Race control: ' ~ rc_message] %}
+      {% endif %}
+      {% set track_message = track_status.message | default('', true) | string | trim %}
+      {% if track_message and (include_all_details or 'track_status' in details) %}
+        {% set ns.lines = ns.lines + ['Track status: ' ~ track_message] %}
+      {% endif %}
+      {% set location_description = location.description | default('', true) | string | trim %}
+      {% if location_description and (include_all_details or 'location' in details) %}
+        {% set ns.lines = ns.lines + ['Location: ' ~ location_description] %}
+      {% endif %}
+      {{- ns.lines | join('\n') -}}
+    {%- endif -%}
 
 condition:
   - condition: template
@@ -260,6 +394,10 @@ condition:
     value_template: "{{ session_ok | bool }}"
   - condition: template
     value_template: "{{ confidence_ok | bool }}"
+  - condition: template
+    value_template: "{{ (presence_ok | bool) and (media_ok | bool) and not (dnd_blocked | bool) }}"
+  - condition: and
+    conditions: !input activation_condition
 
 action:
   - repeat:

@@ -515,12 +515,16 @@ This sensor is active only during sprint and race sessions.
 Live trackside weather from F1 Live Timing. Updates only in direct connection with a session, and remains unchanged otherwise.
 
 **State**
-- Number: air temperature (°C), or `unknown`.
+- Number: air temperature in Home Assistant's selected temperature unit, or `unknown`.
 
 **Example**
 ```text
 18.6
 ```
+
+:::info
+Home Assistant may display the sensor state in another temperature unit, such as Fahrenheit, when your system uses that unit. The weather attributes remain in the documented source units, such as Celsius for temperatures and meters per second for wind speed.
+:::
 
 **Attributes**
 

@@ -26,11 +26,11 @@ Public live timing works without F1TV Auth. Cards that show live Track Map, Pit 
 | [F1 Live Session](#f1-live-session-card) | `custom:f1-live-session-card` | Session status, track condition, weather, and lap counter |
 | [F1 Next Race](#f1-next-race-card) | `custom:f1-next-race-card` | Next race countdown, schedule, circuit map, weather, and track time |
 | [F1 Season Calendar](#f1-season-calendar-card) | `custom:f1-season-calendar-card` | Season schedule with past and upcoming races |
-| [F1 Race Control](#f1-race-control-card) | `custom:f1-race-control-card` | Race Control messages and flags |
+| [F1 Race Control](#f1-race-control-card) | `custom:f1-race-control-card` | Race Control messages, flags, and optional message filters |
 | [F1 FIA Documents](#f1-fia-documents-card) | `custom:f1-fia-documents-card` | FIA documents and decision PDFs for the current weekend |
 | [F1 Qualifying Timing](#f1-qualifying-timing-card) | `custom:f1-qualifying-timing-card` | Qualifying order, sector timing, and Q1/Q2/Q3 data |
-| [F1 Practice Timing](#f1-practice-timing-card) | `custom:f1-practice-timing-card` | Practice order, tyre age, lap times, and timing indicators |
-| [F1 Race Lap](#f1-race-lap-card) | `custom:f1-race-lap-card` | Race or sprint order with gaps, tyres, pit stops, and lap times |
+| [F1 Practice Timing](#f1-practice-timing-card) | `custom:f1-practice-timing-card` | Practice order, tyre age, optional sectors, lap times, and timing indicators |
+| [F1 Race Lap](#f1-race-lap-card) | `custom:f1-race-lap-card` | Race or sprint order with gaps, optional sectors, tyres, pit stops, and lap times |
 | [F1 Starting Grid](#f1-starting-grid-card) | `custom:f1-starting-grid-card` | Provisional or confirmed Sprint and Race starting grid |
 | [F1 Last Race Results](#f1-last-race-results-card) | `custom:f1-last-race-results-card` | Race and sprint classifications with grid, delta, points, and status |
 | [F1 Lap Position Progression](#f1-lap-position-progression-card) | `custom:f1-lap-position-progression-card` | Post-race lap-by-lap position chart for completed main races |
@@ -113,6 +113,15 @@ lovelace:
 
 Each card has a visual editor with **Data Sources** for entity selection and **Display Options** for columns, theme, labels, logos, and layout.
 
+Example:
+
+```yaml
+type: custom:f1-next-race-card
+entity: sensor.f1_next_race
+theme_mode: auto
+font_style: balanced
+```
+
 :::info[Entity IDs]
 The defaults use the standard F1 Sensor entity IDs, such as `sensor.f1_driver_positions`. Older installations may have existing registry IDs from earlier releases. Select the correct entities in the visual editor if your IDs differ.
 :::
@@ -126,6 +135,7 @@ Many cards expose the same display options.
 | Option | Values | Description |
 | --- | --- | --- |
 | `theme_mode` | `dark`, `light`, `auto` | Visual theme. `dark` keeps the original F1 card look, `light` uses a light palette, and `auto` follows the Home Assistant theme. |
+| `font_style` | `wide`, `balanced`, `system` | Typography style. `wide` keeps the original F1 Sensor look, `balanced` keeps an F1-inspired style without the wide font in dense/mobile text, and `system` uses the Home Assistant/system font. |
 | `show_header` | `true`, `false` | Show the card title/header area. |
 | `show_table_header` | `true`, `false` | Show column labels above table-style cards. |
 | `show_full_name` | `true`, `false` | Show full driver names instead of TLA codes where supported. |
@@ -217,7 +227,7 @@ Displays the current season schedule as a compact race list. Past races can be d
 
 `custom:f1-race-control-card`
 
-Shows Race Control messages with category, flag state, and optional FIA branding. It can display only the latest message or a scrollable message list.
+Shows Race Control messages with category, flag state, and optional FIA branding. It can display only the latest message or a scrollable message list, and can hide noisy blue flag or track limits notices from the visible card.
 
 ![Placeholder - F1 Race Control card screenshot](/img/placeholder_card_race_control.png)
 
@@ -229,6 +239,7 @@ Shows Race Control messages with category, flag state, and optional FIA branding
 | `display_mode` | `latest` | Use `latest` for a compact card or `list` for a feed view |
 | `show_fia_logo` | `true` | Show the FIA logo in the header |
 | `hide_blue_flags` | `false` | Hide blue flag messages |
+| `hide_track_limits` | `false` | Hide track limits messages from the banner or list without deleting saved history |
 | `min_display_time` | `0` | Minimum time in milliseconds before rotating to a newer message |
 | `list_max_height` | `600` | Maximum list height in pixels when using list mode |
 | `show_clear_button` | `true` | Show the clear button in list mode |
@@ -294,11 +305,13 @@ This card is designed for Qualifying and Sprint Qualifying. Outside those sessio
 | `show_full_name` | `false` | Show full driver names |
 | `show_delta` | `true` | Show timing delta when available |
 | `show_timing_indicators` | `false` | Highlight overall fastest, personal fastest, and timed sector states |
-| `sector_display_mode` | `current` | Sector display mode used by the visual editor |
+| `sector_display_mode` | `current` | Sector display mode. Use `current`, `personal_best`, or `hybrid` |
 | `team_logo_style` | `color` | Logo appearance |
 | `color_overall_fastest` | card default | Color for overall fastest timing cells |
 | `color_personal_fastest` | card default | Color for personal best timing cells |
 | `color_timed` | card default | Color for normally timed cells |
+
+Current sector mode keeps S1, S2, and S3 aligned with live sector progress. After a lap completes, the completed lap sectors remain visible and dimmed until the driver completes the next S1, so the card does not mix sector times from different laps.
 
 ---
 
@@ -306,7 +319,7 @@ This card is designed for Qualifying and Sprint Qualifying. Outside those sessio
 
 `custom:f1-practice-timing-card`
 
-Shows practice order with driver status, tyres, tyre age, last lap, fastest lap, and optional timing indicators.
+Shows practice order with driver status, tyres, tyre age, optional S1-S3 sectors, last lap, fastest lap, and optional timing indicators.
 
 ![Placeholder - F1 Practice Timing card screenshot](/img/placeholder_card_practice_timing.png)
 
@@ -326,6 +339,7 @@ Shows practice order with driver status, tyres, tyre age, last lap, fastest lap,
 | `show_status` | `true` | Show driver status |
 | `show_tyre` | `true` | Show tyre compound |
 | `show_tyre_age` | `true` | Show tyre stint age |
+| `show_sectors` | `false` | Show optional S1, S2, and S3 live sector columns |
 | `show_last_lap` | `true` | Show last lap |
 | `show_fastest_lap` | `true` | Show personal fastest lap |
 | `show_timing_indicators` | `false` | Highlight timing states |
@@ -337,7 +351,7 @@ Shows practice order with driver status, tyres, tyre age, last lap, fastest lap,
 
 `custom:f1-race-lap-card`
 
-Displays race or sprint order with driver gaps, tyre compound, tyre age, pit count, last lap, and personal fastest lap. Gap mode can show the gap to the leader or interval to the car ahead.
+Displays race or sprint order with driver gaps, tyre compound, tyre age, pit count, optional S1-S3 sectors, last lap, and personal fastest lap. Gap mode can show the gap to the leader or interval to the car ahead.
 
 :::info[Session availability]
 This card is designed for Race and Sprint sessions. Some columns depend on data that is only available during live or authenticated/replay timing.
@@ -365,11 +379,14 @@ This card is designed for Race and Sprint sessions. Some columns depend on data 
 | `show_tyre` | `true` | Show tyre compound |
 | `show_tyre_age` | `true` | Show tyre stint age |
 | `show_pit_count` | `true` | Show number of pit stops |
+| `show_sectors` | `false` | Show optional S1, S2, and S3 live sector columns |
 | `show_last_lap` | `true` | Show last lap time |
 | `show_fastest_lap` | `true` | Show personal fastest lap |
 | `show_timing_indicators` | `false` | Highlight timing states |
 | `team_logo_style` | `color` | Logo appearance |
 | `show_availability_notice` | `true` | Show notices for unavailable F1TV Auth enhanced data |
+
+Practice and Race sector columns use the same live sector handling as Qualifying. Completed lap sectors stay aligned and dimmed until the driver completes the next S1.
 
 ---
 
@@ -477,7 +494,7 @@ top_limit: 10
 | `top_limit` | `0` | Limit visible entries by final position. `0` shows all drivers |
 | `chart_height` | `420` | Chart height in pixels |
 
-The chart places P1 at the top and lap number on the x-axis. Driver labels on the left show the starting order, while the right side shows the current final order for completed races. Select a driver label on either side to hide or show that driver's progression line. Drivers that have classification metadata but no lap timing rows are still listed in the side labels, but they do not draw a progression line. Hover or focus a chart point to see driver, lap, position, race name, and grid-to-finish context when available. Jolpica data is loaded for one selected race at a time and reused from the integration cache where possible.
+The chart places P1 at the top and lap number on the x-axis. Driver labels on the left show the starting order, while the right side shows the official classified finishing order for completed races. Each progression line ends at the driver's classified result, so the chart stays consistent when penalties or other post-race adjustments change the order after the final lap. Select a driver label on either side to hide or show that driver's progression line. Drivers that have classification metadata but no lap timing rows are still listed in the side labels, but they do not draw a progression line. Hover or focus a chart point to see driver, lap, position, race name, and grid-to-finish context when available. Jolpica data is loaded for one selected race at a time and reused from the integration cache where possible.
 
 :::info[Sprint limitation]
 Sprint sessions can appear in the selector so the season context is complete, but Jolpica currently exposes sprint classification results rather than sprint lap-by-lap positions. Those sprint entries render an unsupported state instead of a chart.
@@ -789,6 +806,8 @@ Shows a circuit map with driver markers, optional lap progress, and track status
 :::info[Availability]
 The card needs the F1 Sensor integration, an active live or replay session, and usable Track Map data. During live sessions, car positions require F1TV Auth. During Replay Mode, car positions require archived position data for the loaded session.
 :::
+
+When [Live Delay](/features/live-delay) is configured, live Track Map updates follow the same delay as other live dashboard data. Replay playback remains immediate.
 
 **Required setup:** F1 Sensor integration with live data or Replay Mode enabled
 

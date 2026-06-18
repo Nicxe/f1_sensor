@@ -24,6 +24,7 @@ from custom_components.f1_sensor.track_map import (
     TRACK_MAP_SOURCE_REPLAY,
     TRACK_MAP_STATIC_GEOMETRY_SOURCE,
     TRACK_MAP_STATUS_ACTIVE,
+    TRACK_MAP_STATUS_STALE,
     TrackMapPosition,
     TrackMapReplayAdapter,
     TrackMapStore,
@@ -57,7 +58,9 @@ class FakeBus:
 
 
 class FakeTimerHandle:
-    def __init__(self) -> None:
+    def __init__(self, due: float, callback) -> None:
+        self.due = due
+        self.callback = callback
         self.cancelled = False
 
     def cancel(self) -> None:
@@ -72,10 +75,48 @@ class FakeLoop:
     def time(self) -> float:
         return self.now
 
-    def call_later(self, _delay: float, _callback) -> FakeTimerHandle:
-        handle = FakeTimerHandle()
+    def call_later(self, delay: float, callback) -> FakeTimerHandle:
+        handle = FakeTimerHandle(self.now + delay, callback)
         self.handles.append(handle)
         return handle
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+        while True:
+            due_handles = sorted(
+                (
+                    handle
+                    for handle in self.handles
+                    if not handle.cancelled and handle.due <= self.now
+                ),
+                key=lambda handle: handle.due,
+            )
+            if not due_handles:
+                return
+            handle = due_handles[0]
+            handle.cancelled = True
+            handle.callback()
+
+
+class FakeDelayController:
+    def __init__(self, current: int) -> None:
+        self.current = current
+        self._listeners = []
+
+    def add_listener(self, callback):
+        self._listeners.append(callback)
+        callback(self.current)
+
+        def _unsub() -> None:
+            if callback in self._listeners:
+                self._listeners.remove(callback)
+
+        return _unsub
+
+    def set_delay(self, seconds: int) -> None:
+        self.current = seconds
+        for callback in list(self._listeners):
+            callback(seconds)
 
 
 class _Response:
@@ -203,6 +244,97 @@ def test_track_map_replay_adapter_feeds_store_and_geometry() -> None:
     assert store.snapshot(now=BASE_TIME + timedelta(seconds=1))["session"] is None
 
 
+def test_track_map_replay_adapter_rejects_all_zero_ontrack_frame() -> None:
+    store = TrackMapStore("entry-1", stale_after=timedelta(days=30))
+    bus = FakeBus()
+    adapter = TrackMapReplayAdapter(store, bus)
+    adapter.start()
+    bus.emit("SessionInfo", _static_session_payload())
+    bus.emit(
+        "DriverList",
+        {
+            "1": {"RacingNumber": "1", "Tla": "VER"},
+            "4": {"RacingNumber": "4", "Tla": "NOR"},
+        },
+    )
+    bus.emit(
+        TRACK_MAP_POSITION_STREAM,
+        track_map_positions_to_payload(
+            [
+                TrackMapPosition("1", BASE_TIME, 100, 200, 0, "OnTrack"),
+                TrackMapPosition("4", BASE_TIME, 300, 400, 0, "OnTrack"),
+            ]
+        ),
+    )
+
+    bus.emit(
+        TRACK_MAP_POSITION_STREAM,
+        track_map_positions_to_payload(
+            [
+                TrackMapPosition(
+                    "1",
+                    BASE_TIME + timedelta(seconds=1),
+                    0,
+                    0,
+                    0,
+                    "OnTrack",
+                ),
+                TrackMapPosition(
+                    "4",
+                    BASE_TIME + timedelta(seconds=1),
+                    0,
+                    0,
+                    0,
+                    "OnTrack",
+                ),
+            ]
+        ),
+    )
+
+    snapshot = store.snapshot(now=BASE_TIME + timedelta(seconds=1))
+
+    assert snapshot["status"] == TRACK_MAP_STATUS_STALE
+    assert snapshot["stale"] is True
+    assert [(driver["x"], driver["y"]) for driver in snapshot["drivers"]] == [
+        (100, 200),
+        (300, 400),
+    ]
+    assert all(driver["stale"] is True for driver in snapshot["drivers"])
+
+    bus.emit(
+        TRACK_MAP_POSITION_STREAM,
+        track_map_positions_to_payload(
+            [
+                TrackMapPosition(
+                    "1",
+                    BASE_TIME + timedelta(seconds=2),
+                    0,
+                    0,
+                    0,
+                    "OffTrack",
+                ),
+                TrackMapPosition(
+                    "4",
+                    BASE_TIME + timedelta(seconds=2),
+                    500,
+                    600,
+                    0,
+                    "OnTrack",
+                ),
+            ]
+        ),
+    )
+
+    recovered = store.snapshot(now=BASE_TIME + timedelta(seconds=2))
+
+    assert recovered["status"] == TRACK_MAP_STATUS_ACTIVE
+    assert recovered["stale"] is False
+    assert [(driver["x"], driver["y"]) for driver in recovered["drivers"]] == [
+        (0, 0),
+        (500, 600),
+    ]
+
+
 def test_track_map_adapter_marks_auth_live_positions_as_live_source() -> None:
     store = TrackMapStore("entry-1", stale_after=timedelta(days=30))
     bus = FakeBus()
@@ -234,6 +366,99 @@ def test_track_map_adapter_marks_auth_live_positions_as_live_source() -> None:
     assert snapshot["drivers"][0]["z"] == 7
     assert diagnostics["source"] == TRACK_MAP_SOURCE_LIVE
     assert diagnostics["fallback_state"] == TRACK_MAP_FALLBACK_STATE_STATIC_CATALOG
+
+
+def test_track_map_adapter_delays_live_streams_and_keeps_positions_fresh(
+    monkeypatch,
+) -> None:
+    store = TrackMapStore("entry-1", stale_after=timedelta(seconds=10))
+    bus = FakeBus()
+    loop = FakeLoop()
+    delay_controller = FakeDelayController(30)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.track_map.time.monotonic",
+        loop.time,
+    )
+    adapter = TrackMapReplayAdapter(
+        store,
+        bus,
+        hass=SimpleNamespace(loop=loop),
+        delay_controller=delay_controller,
+        position_source_resolver=lambda: TRACK_MAP_SOURCE_LIVE,
+    )
+    adapter.start()
+    positions = [
+        TrackMapPosition("1", BASE_TIME, 100, 200, 0, "OnTrack"),
+    ]
+
+    bus.emit("SessionInfo", _static_session_payload())
+    bus.emit("DriverList", {"1": {"RacingNumber": "1", "Tla": "VER"}})
+    bus.emit(TRACK_MAP_POSITION_STREAM, track_map_positions_to_payload(positions))
+
+    assert store.snapshot()["session"] is None
+
+    loop.advance(29)
+    assert store.snapshot()["session"] is None
+
+    loop.advance(1)
+    snapshot = store.snapshot()
+
+    assert snapshot["status"] == TRACK_MAP_STATUS_ACTIVE
+    assert snapshot["session"]["session_key"] == "101"
+    assert snapshot["drivers"][0]["racing_number"] == "1"
+    assert snapshot["drivers"][0]["stale"] is False
+    assert snapshot["stale"] is False
+
+
+def test_track_map_adapter_flushes_queued_live_streams_when_delay_is_disabled(
+    monkeypatch,
+) -> None:
+    store = TrackMapStore("entry-1")
+    bus = FakeBus()
+    loop = FakeLoop()
+    delay_controller = FakeDelayController(60)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.track_map.time.monotonic",
+        loop.time,
+    )
+    adapter = TrackMapReplayAdapter(
+        store,
+        bus,
+        hass=SimpleNamespace(loop=loop),
+        delay_controller=delay_controller,
+        position_source_resolver=lambda: TRACK_MAP_SOURCE_LIVE,
+    )
+    adapter.start()
+
+    bus.emit("SessionInfo", _session_payload())
+    assert store.snapshot()["session"] is None
+
+    delay_controller.set_delay(0)
+
+    assert store.snapshot()["session"]["session_key"] == "101"
+
+
+def test_track_map_adapter_does_not_delay_replay_streams(monkeypatch) -> None:
+    store = TrackMapStore("entry-1")
+    bus = FakeBus()
+    loop = FakeLoop()
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.track_map.time.monotonic",
+        loop.time,
+    )
+    adapter = TrackMapReplayAdapter(
+        store,
+        bus,
+        hass=SimpleNamespace(loop=loop),
+        delay_controller=FakeDelayController(60),
+        position_source_resolver=lambda: TRACK_MAP_SOURCE_REPLAY,
+    )
+    adapter.start()
+
+    bus.emit("SessionInfo", _session_payload())
+
+    assert store.snapshot()["session"]["session_key"] == "101"
+    assert loop.handles == []
 
 
 def test_track_map_replay_adapter_builds_geometry_from_one_driver() -> None:

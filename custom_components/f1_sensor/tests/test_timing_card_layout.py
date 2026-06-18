@@ -153,6 +153,11 @@ const helperSources = [
   extractConst("const normalizeF1GapMode = (value, fallback = 'ahead') =>"),
   extractConst("const normalizeF1GapValue = (value) =>"),
   extractConst("const formatF1DeltaSeconds = (value, zeroValue = '--') =>"),
+  extractConst("const parseF1TimingSeconds = (value) =>"),
+  extractConst("const resolveF1CurrentSector = (positionInfo, sectorNumber) =>"),
+  extractConst("const resolveF1CurrentSectorSet = (card, positionInfo) =>"),
+  extractConst("const formatF1SectorSeconds = (value) =>"),
+  extractConst("const getF1TimingClass = (timing) =>"),
   extractConst("const measureRenderedCardWidth = (host) =>"),
   extractConst("const DEFAULT_RESPONSIVE_BREAKPOINTS ="),
   extractConst("const getResponsiveBreakpoints = (host) =>"),
@@ -171,6 +176,7 @@ const teamsClass = extractClass("class F1ChampionshipPredictionTeamsCard extends
 const teamsEditorClass = extractClass("class F1ChampionshipPredictionTeamsCardEditor extends LitElement {");
 const pitStopClass = extractClass("class F1PitStopOverviewCard extends LitElement {");
 const pitStopEditorClass = extractClass("class F1PitStopOverviewCardEditor extends LitElement {");
+const practiceEditorClass = extractClass("class F1PracticeTimingCardEditor extends LitElement {");
 const raceLapEditorClass = extractClass("class F1RaceLapCardEditor extends LitElement {");
 const investigationsClass = extractClass("class F1InvestigationsCard extends LitElement {");
 const trackLimitsClass = extractClass("class F1TrackLimitsCard extends LitElement {");
@@ -215,7 +221,7 @@ const Harnesses = new Function(
     ${extractMethod(qualifyingClass, "_normalizeQualifyingPart(value) {")}
     ${extractMethod(qualifyingClass, "_inferQualifyingPartFromDrivers(drivers) {")}
     ${extractMethod(qualifyingClass, "_normalizeSectorDisplayMode(value) {")}
-    ${extractMethod(qualifyingClass, "_resolveSectorDisplay(pos, idx, mode = 'current') {")}
+    ${extractMethod(qualifyingClass, "_resolveSectorDisplay(pos, idx, mode = 'current', currentSectors = null) {")}
     ${extractMethod(qualifyingClass, "_sectorFromSource(pos, idx, source) {")}
     ${extractMethod(qualifyingClass, "_parseSectorSeconds(value) {")}
     ${extractMethod(qualifyingClass, "_resolveLastLapTime(pos) {")}
@@ -235,6 +241,7 @@ const Harnesses = new Function(
         show_status: true,
         show_tyre: true,
         show_tyre_age: true,
+        show_sectors: false,
         show_last_lap: true,
         show_fastest_lap: true,
         ...config,
@@ -271,6 +278,7 @@ const Harnesses = new Function(
         show_tyre: true,
         show_tyre_age: true,
         show_pit_count: true,
+        show_sectors: false,
         show_last_lap: true,
         show_fastest_lap: true,
         ...config,
@@ -310,6 +318,10 @@ const Harnesses = new Function(
     PitStopHarness,
     normalizeTeamName,
     getTeamLogoMeta,
+    resolveF1CurrentSector,
+    resolveF1CurrentSectorSet,
+    formatF1SectorSeconds,
+    getF1TimingClass,
   };
 `,
 )();
@@ -374,6 +386,26 @@ if (payload.action === "measure_width") {
     Boolean(payload.suppressPit),
     payload.gapMode || "ahead",
   );
+} else if (payload.action === "sector_timing") {
+  const timing = Harnesses.resolveF1CurrentSector(
+    payload.positionInfo || {},
+    payload.sectorNumber || 1,
+  );
+  result = {
+    ...timing,
+    formatted: Harnesses.formatF1SectorSeconds(timing.time),
+    timingClass: Harnesses.getF1TimingClass(timing),
+  };
+} else if (payload.action === "sector_sequence") {
+  const card = {};
+  result = (payload.steps || []).map((positionInfo) => (
+    Harnesses.resolveF1CurrentSectorSet(card, positionInfo).map((timing) => ({
+      time: timing.time,
+      lap: timing.lap,
+      source: timing.source,
+      timingClass: Harnesses.getF1TimingClass(timing),
+    }))
+  ));
 } else if (payload.action === "pit_stop_columns") {
   result = new Harnesses.PitStopHarness(payload.config || {})._columns(
     payload.rows || [],
@@ -427,6 +459,22 @@ if (payload.action === "measure_width") {
     raceLapGapFieldsPresent: raceLapClass.includes("gap_to_leader")
       && raceLapClass.includes("interval_to_position_ahead")
       && raceLapClass.includes("_renderGapModeToggle(gapMode)"),
+    practiceSectorColumnsPresent: practiceClass.includes("this.config.show_sectors === true")
+      && practiceClass.includes("resolveF1CurrentSectorSet(this, pos)")
+      && practiceClass.includes("formatF1SectorSeconds(row[col.key])"),
+    raceLapSectorColumnsPresent: raceLapClass.includes("this.config.show_sectors === true")
+      && raceLapClass.includes("resolveF1CurrentSectorSet(this, pos)")
+      && raceLapClass.includes("formatF1SectorSeconds(row[col.key])"),
+    sharedSectorLapResolverPresent: qualifyingClass.includes(
+      "resolveF1CurrentSectorSet(this, pos)",
+    ) && practiceClass.includes("resolveF1CurrentSectorSet(this, pos)")
+      && raceLapClass.includes("resolveF1CurrentSectorSet(this, pos)"),
+    practiceSectorEditorPresent: practiceEditorClass.includes(
+      "_renderSwitch('show_sectors', 'Show S1-S3 sectors'",
+    ),
+    raceLapSectorEditorPresent: raceLapEditorClass.includes(
+      "_renderSwitch('show_sectors', 'Show S1-S3 sectors'",
+    ),
     qualifyingDeltaPresent: qualifyingClass.includes("_applyCurrentSegmentDeltas(rows)")
       && qualifyingClass.includes("current_segment_delta")
       && qualifyingClass.includes("formatF1DeltaSeconds(delta, '--')"),
@@ -740,6 +788,150 @@ def test_race_lap_gap_column_can_switch_mode_and_hide() -> None:
     assert all(column["key"] != "gap" for column in hidden_columns)
 
 
+@pytest.mark.parametrize("action", ["practice_columns", "race_lap_columns"])
+def test_practice_and_race_sector_columns_are_optional(action: str) -> None:
+    hidden_columns = _run_probe({"action": action, "layoutMode": "wide"})
+    visible_columns = _run_probe(
+        {
+            "action": action,
+            "layoutMode": "wide",
+            "config": {"show_sectors": True},
+        }
+    )
+
+    assert all(not column["key"].startswith("sector_") for column in hidden_columns)
+    sector_columns = [
+        column for column in visible_columns if column["key"].startswith("sector_")
+    ]
+    assert [column["key"] for column in sector_columns] == [
+        "sector_1",
+        "sector_2",
+        "sector_3",
+    ]
+    assert [column["label"] for column in sector_columns] == ["S1", "S2", "S3"]
+    assert all(column["width"] == "minmax(62px, 0.75fr)" for column in sector_columns)
+
+
+def test_live_sector_timing_supports_structured_and_flat_driver_data() -> None:
+    structured = _run_probe(
+        {
+            "action": "sector_timing",
+            "sectorNumber": 1,
+            "positionInfo": {
+                "sectors": {
+                    "current": {
+                        "sector_1": {
+                            "time": "26.543",
+                            "overall_fastest": True,
+                            "personal_fastest": True,
+                        }
+                    }
+                }
+            },
+        }
+    )
+    flat = _run_probe(
+        {
+            "action": "sector_timing",
+            "sectorNumber": 2,
+            "positionInfo": {
+                "sector_2": "1:02.345",
+                "sector_2_personal_fastest": True,
+            },
+        }
+    )
+
+    assert structured == {
+        "time": 26.543,
+        "lap": None,
+        "source": "current",
+        "overall_fastest": True,
+        "personal_fastest": True,
+        "formatted": "26.543",
+        "timingClass": "overall-fastest",
+    }
+    assert flat == {
+        "time": 62.345,
+        "lap": None,
+        "source": "current",
+        "overall_fastest": False,
+        "personal_fastest": True,
+        "formatted": "1:02.345",
+        "timingClass": "personal-fastest",
+    }
+
+
+def test_sector_sequence_retains_completed_lap_until_next_s1() -> None:
+    """Completed sectors should stay aligned by lap across sparse live updates."""
+    result = _run_probe(
+        {
+            "action": "sector_sequence",
+            "steps": [
+                {
+                    "racing_number": "23",
+                    "completed_laps": 8,
+                    "sector_state": "s1_done",
+                    "sector_current_lap": 9,
+                    "sector_1": 21.668,
+                    "sector_1_lap": 9,
+                    "sector_1_personal_fastest": True,
+                },
+                {
+                    "racing_number": "23",
+                    "completed_laps": 8,
+                    "sector_state": "s2_done",
+                    "sector_current_lap": 9,
+                    "sector_1": 21.668,
+                    "sector_1_lap": 9,
+                    "sector_1_personal_fastest": True,
+                    "sector_2": 24.109,
+                    "sector_2_lap": 9,
+                    "sector_2_personal_fastest": True,
+                },
+                {
+                    "racing_number": "23",
+                    "completed_laps": 9,
+                    "sector_state": "lap_complete",
+                    "sector_current_lap": 9,
+                    "sector_1": None,
+                    "sector_2": None,
+                    "sector_3": 30.691,
+                    "sector_3_lap": 9,
+                },
+                {
+                    "racing_number": "23",
+                    "completed_laps": 9,
+                    "sector_state": "s1_done",
+                    "sector_current_lap": 10,
+                    "sector_1": 21.941,
+                    "sector_1_lap": 10,
+                    "sector_2": None,
+                    "sector_3": None,
+                },
+            ],
+        }
+    )
+
+    assert [sector["time"] for sector in result[2]] == [
+        pytest.approx(21.668),
+        pytest.approx(24.109),
+        pytest.approx(30.691),
+    ]
+    assert {sector["lap"] for sector in result[2]} == {9}
+    assert {sector["source"] for sector in result[2]} == {"previous_lap"}
+    assert {sector["timingClass"] for sector in result[2]} == {"previous-lap"}
+
+    assert [sector["time"] for sector in result[3]] == [
+        pytest.approx(21.941),
+        None,
+        None,
+    ]
+    assert result[3][0]["lap"] == 10
+    assert result[3][0]["source"] == "current"
+    assert result[3][0]["timingClass"] == "timed"
+    assert all(sector["timingClass"] == "" for sector in result[3][1:])
+
+
 def test_qualifying_medium_layout_distributes_extra_width_across_timing_columns() -> (
     None
 ):
@@ -1048,6 +1240,11 @@ def test_timing_card_source_keeps_auth_aware_notices_and_short_titles() -> None:
         "raceLapPitSuppressionCallPresent": True,
         "driverLapTimesGapFieldsPresent": True,
         "raceLapGapFieldsPresent": True,
+        "practiceSectorColumnsPresent": True,
+        "raceLapSectorColumnsPresent": True,
+        "sharedSectorLapResolverPresent": True,
+        "practiceSectorEditorPresent": True,
+        "raceLapSectorEditorPresent": True,
         "qualifyingDeltaPresent": True,
         "qualifyingDeltaColumnDynamic": True,
         "tableCardsAvoidMaxContentTables": True,

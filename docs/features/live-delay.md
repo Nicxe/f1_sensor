@@ -3,17 +3,17 @@ id: live-delay
 title: Live Delay, Sync with TV
 ---
 
-The live update delay lets you delay delivery of live messages so they better align with what you see on TV or streaming services.
+The live update delay lets you delay delivery of live messages and live Track Map updates so they better align with what you see on TV or streaming services.
 
 This is especially useful for dashboards and automations, for example flashing lights on a red flag or reacting to safety car deployments, so they happen at the same moment you see them on screen.
 
-### Typical broadcast delays
+## Typical broadcast delays
 
 Actual delays vary by provider, but these ranges are common:
 
-• **Broadcast TV** (satellite, cable, terrestrial): ~5–10 seconds behind
-• **Streaming services**: ~20–45 seconds behind, sometimes more
-• **Sports cable / OTT providers**: ~45–60 seconds or more depending on provider
+- **Broadcast TV** (satellite, cable, terrestrial): about 5-10 seconds behind
+- **Streaming services**: about 20-45 seconds behind, sometimes more
+- **Sports cable / OTT providers**: about 45-60 seconds or more depending on provider
 
 By setting the delay accordingly, Home Assistant can react in sync with the live pictures you are watching.
 :::info[Standard entity IDs]
@@ -42,9 +42,13 @@ During the broadcast, they always show the moment the race clock flips to the st
 
 ## Incident alerts and notifications
 
-Live Delay also applies to likely on-track incident updates. This means `f1_sensor_incident` events, the On-track Incident and Possible On-track Incident binary sensors, and notification blueprints can be delayed to match what you see on TV.
+Live Delay also applies to live Track Map updates and likely on-track incident updates. This means the Track Map card, `f1_sensor_incident` events, the On-track Incident and Possible On-track Incident binary sensors, and notification blueprints can be delayed to match what you see on TV.
 
 Use this when you want a possible stopped-car notification to arrive with the broadcast pictures instead of ahead of them.
+
+:::info
+Replay Mode does not wait for Live Delay. Replay playback and replay Track Map data are shown immediately according to the replay controls.
+:::
 
 
 ---
