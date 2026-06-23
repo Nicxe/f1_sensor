@@ -142,7 +142,11 @@ Many cards expose the same display options.
 | `show_team_logo` | `true`, `false` | Show team logos where supported. |
 | `team_logo_style` | `color`, `white` | Use colored team logos or white logos. |
 | `auth_status_entity` | entity ID | Optional F1TV token status entity used by cards that display F1TV Auth enhanced data. |
-| `show_availability_notice` | `true`, `false` | Show a notice when a card depends on data that is unavailable, replay-only, or requires F1TV Auth live. |
+| `show_availability_notice` | `true`, `false` | Show informational notices when F1TV Auth enhanced data is unavailable or requires Replay Mode. Authentication warnings that require your attention remain visible. |
+
+:::info[F1TV Auth warnings]
+Setting `show_availability_notice: false` hides informational availability notices. It does not hide warnings when configured F1TV access is expired, invalid, or rejected. These warnings remain visible to explain why live enhanced data is hidden and what requires your attention.
+:::
 
 ---
 
@@ -384,7 +388,7 @@ This card is designed for Race and Sprint sessions. Some columns depend on data 
 | `show_fastest_lap` | `true` | Show personal fastest lap |
 | `show_timing_indicators` | `false` | Highlight timing states |
 | `team_logo_style` | `color` | Logo appearance |
-| `show_availability_notice` | `true` | Show notices for unavailable F1TV Auth enhanced data |
+| `show_availability_notice` | `true` | Show informational notices for unavailable F1TV Auth enhanced data. Authentication warnings remain visible. |
 
 Practice and Race sector columns use the same live sector handling as Qualifying. Completed lap sectors stay aligned and dimmed until the driver completes the next S1.
 
@@ -560,7 +564,7 @@ Shows pit stop history for all drivers: stop count, tyre fitted, tyre age, pit t
 | `show_pit_time` | `true` | Show pit stop duration |
 | `show_pit_lane_time` | `true` | Show total pit lane time |
 | `show_pit_delta` | `true` | Show delta to fastest stop |
-| `show_availability_notice` | `true` | Show notices for unavailable F1TV Auth enhanced data |
+| `show_availability_notice` | `true` | Show informational notices for unavailable F1TV Auth enhanced data. Authentication warnings remain visible. |
 
 ---
 
@@ -671,7 +675,7 @@ Displays current driver standings beside predicted final standings, predicted po
 | `show_predicted_points` | `true` | Show predicted final points |
 | `show_current_points` | `true` | Show current points |
 | `show_delta` | `true` | Show predicted points delta |
-| `show_availability_notice` | `true` | Show notices for unavailable F1TV Auth enhanced data |
+| `show_availability_notice` | `true` | Show informational notices for unavailable F1TV Auth enhanced data. Authentication warnings remain visible. |
 | `top_limit` | `0` | Limit rows to top N. `0` shows all. |
 
 ---
@@ -702,7 +706,7 @@ Displays current constructor standings beside predicted final standings, predict
 | `show_predicted_points` | `true` | Show predicted final points |
 | `show_current_points` | `true` | Show current points |
 | `show_delta` | `true` | Show predicted points delta |
-| `show_availability_notice` | `true` | Show notices for unavailable F1TV Auth enhanced data |
+| `show_availability_notice` | `true` | Show informational notices for unavailable F1TV Auth enhanced data. Authentication warnings remain visible. |
 | `top_limit` | `0` | Limit rows to top N. `0` shows all. |
 
 ---
