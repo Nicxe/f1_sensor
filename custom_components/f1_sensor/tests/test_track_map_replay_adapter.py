@@ -523,7 +523,7 @@ def test_track_map_replay_adapter_interpolates_positions_while_playing() -> None
     assert driver["y"] == 100
 
 
-def test_track_map_adapter_interpolates_live_positions() -> None:
+def test_track_map_adapter_publishes_live_positions_without_interpolation() -> None:
     store = TrackMapStore("entry-1", stale_after=timedelta(days=30))
     store.update_session_info(_session_payload())
     loop = FakeLoop()
@@ -554,8 +554,50 @@ def test_track_map_adapter_interpolates_live_positions() -> None:
     driver = snapshot["drivers"][0]
 
     assert snapshot["source"] == TRACK_MAP_SOURCE_LIVE
-    assert driver["x"] == 150
-    assert driver["y"] == 100
+    assert driver["timestamp"] == second.timestamp.isoformat().replace("+00:00", "Z")
+    assert driver["x"] == 200
+    assert driver["y"] == 150
+
+
+def test_track_map_live_delay_releases_latest_position_without_extra_smoothing(
+    monkeypatch,
+) -> None:
+    """Live delay should not add smoothing lag after releasing Position.z samples."""
+    store = TrackMapStore("entry-1", stale_after=timedelta(days=30))
+    loop = FakeLoop()
+    bus = FakeBus()
+    delay_controller = FakeDelayController(30)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.track_map.time.monotonic",
+        loop.time,
+    )
+    adapter = TrackMapReplayAdapter(
+        store,
+        bus,
+        hass=SimpleNamespace(loop=loop),
+        delay_controller=delay_controller,
+        position_source_resolver=lambda: TRACK_MAP_SOURCE_LIVE,
+    )
+    adapter.start()
+    position = TrackMapPosition(
+        "1",
+        BASE_TIME,
+        200,
+        150,
+        0,
+        "OnTrack",
+    )
+
+    bus.emit("SessionInfo", _session_payload())
+    bus.emit(TRACK_MAP_POSITION_STREAM, track_map_positions_to_payload([position]))
+    assert store.snapshot()["session"] is None
+
+    loop.advance(30)
+    driver = store.snapshot(now=BASE_TIME + timedelta(seconds=1))["drivers"][0]
+
+    assert driver["timestamp"] == position.timestamp.isoformat().replace("+00:00", "Z")
+    assert driver["x"] == 200
+    assert driver["y"] == 150
 
 
 def test_track_map_replay_adapter_resets_interpolation_on_source_switch() -> None:

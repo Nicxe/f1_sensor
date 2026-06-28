@@ -31496,6 +31496,10 @@ class F1TrackMapCard extends LitElement {
       const sample = { ...driver, x, y, arrivalAt: now };
       const samples = this._driverSamples.get(key) || [];
       const previous = samples[samples.length - 1];
+      const liveAuto = this._usesLiveAutoSmoothing();
+      const transitionFrom = liveAuto && previous && !shouldSnap
+        ? this._sampledLiveAutoDriverPosition(samples, now)
+        : previous;
       const timestampKey = String(driver?.timestamp || '');
       const unchanged = previous
         && previous.timestampKey === timestampKey
@@ -31503,11 +31507,18 @@ class F1TrackMapCard extends LitElement {
         && Number(previous.y) === y;
       if (unchanged && !shouldSnap) continue;
       sample.timestampKey = timestampKey;
-      if (shouldSnap || !previous || this._isLargeDriverJump(previous, sample)) {
+      if (shouldSnap || !previous || this._isLargeDriverJump(transitionFrom, sample)) {
         this._driverSamples.set(key, [sample]);
         continue;
       }
       this._noteDriverSampleInterval(now - previous.arrivalAt);
+      if (liveAuto && transitionFrom) {
+        this._driverSamples.set(key, [
+          { ...previous, ...transitionFrom, arrivalAt: now },
+          sample,
+        ]);
+        continue;
+      }
       this._driverSamples.set(key, [...samples.slice(-5), sample]);
     }
     for (const key of [...this._driverSamples.keys()]) {
@@ -31529,6 +31540,9 @@ class F1TrackMapCard extends LitElement {
   _sampledDriverPosition(key, renderAt) {
     const samples = this._driverSamples.get(key);
     if (!Array.isArray(samples) || samples.length === 0) return null;
+    if (this._usesLiveAutoSmoothing()) {
+      return this._sampledLiveAutoDriverPosition(samples, renderAt);
+    }
     if (samples.length === 1 || renderAt <= samples[0].arrivalAt) return samples[0];
     for (let index = 0; index < samples.length - 1; index += 1) {
       const from = samples[index];
@@ -31546,11 +31560,45 @@ class F1TrackMapCard extends LitElement {
     return samples[samples.length - 1];
   }
 
+  _sampledLiveAutoDriverPosition(samples, now) {
+    const latest = samples[samples.length - 1];
+    if (samples.length === 1) return latest;
+    const previous = samples[samples.length - 2];
+    const duration = this._liveAutoSmoothingDuration();
+    if (duration <= 0) return latest;
+    const elapsed = Math.max(0, now - Number(latest.arrivalAt || 0));
+    if (elapsed >= duration) return latest;
+    const progress = Math.max(0, Math.min(1, elapsed / duration));
+    return {
+      ...latest,
+      x: Number(previous.x) + ((Number(latest.x) - Number(previous.x)) * progress),
+      y: Number(previous.y) + ((Number(latest.y) - Number(previous.y)) * progress),
+    };
+  }
+
   _noteDriverSampleInterval(interval) {
     if (!Number.isFinite(interval) || interval < 120 || interval > 5000) return;
     this._driverSampleIntervalMs = this._driverSampleIntervalMs
       ? (this._driverSampleIntervalMs * 0.7) + (interval * 0.3)
       : interval;
+  }
+
+  _usesLiveAutoSmoothing() {
+    if (Number.isFinite(Number(this.config?.interpolation_ms))) return false;
+    return String(this._snapshot?.source || '').trim().toLowerCase() === 'live';
+  }
+
+  _liveAutoSmoothingDuration() {
+    if (this._driverSampleIntervalMs > 0) {
+      return Math.max(350, Math.min(2000, this._driverSampleIntervalMs * 0.95));
+    }
+    if (this._snapshotIntervalMs > 0) {
+      return Math.max(350, Math.min(2000, this._snapshotIntervalMs * 0.95));
+    }
+    const throttle = Number(this.config?.throttle_ms);
+    return Number.isFinite(throttle) && throttle > 0
+      ? Math.max(500, Math.min(1200, throttle * 9))
+      : 900;
   }
 
   _driverRenderTime() {
@@ -31567,6 +31615,9 @@ class F1TrackMapCard extends LitElement {
     const configured = Number(this.config?.interpolation_ms);
     if (Number.isFinite(configured)) {
       return Math.max(0, Math.min(5000, configured));
+    }
+    if (String(this._snapshot?.source || '').trim().toLowerCase() === 'live') {
+      return 0;
     }
     if (this._driverSampleIntervalMs > 0) {
       return Math.max(220, Math.min(900, this._driverSampleIntervalMs * 1.8));
@@ -31597,7 +31648,17 @@ class F1TrackMapCard extends LitElement {
     const renderAt = this._driverRenderTime();
     for (const samples of this._driverSamples.values()) {
       const latest = samples?.[samples.length - 1];
-      if (samples?.length > 1 && latest && renderAt < latest.arrivalAt) return true;
+      if (!samples?.length || !latest) continue;
+      if (this._usesLiveAutoSmoothing()) {
+        if (
+          samples.length > 1
+          && renderAt < Number(latest.arrivalAt || 0) + this._liveAutoSmoothingDuration()
+        ) {
+          return true;
+        }
+        continue;
+      }
+      if (samples.length > 1 && renderAt < latest.arrivalAt) return true;
     }
     return false;
   }
@@ -31939,7 +32000,7 @@ class F1TrackMapCardEditor extends LitElement {
         ${this._renderTextField(
           'interpolation_ms',
           'Interpolation (ms)',
-          'Visual motion smoothing for car markers. Auto follows the incoming sample rate, 0 disables smoothing, and higher values add more visual delay.',
+          'Visual motion smoothing for car markers. Auto keeps live movement continuous without adding a render buffer and smooths replay playback. Use 0 to disable smoothing, or higher values for more visual delay.',
         )}
       </div>
     `;
