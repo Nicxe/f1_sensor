@@ -45,7 +45,7 @@ class FakeConnection:
 
 
 def _store(hass, entry_id: str = "entry-1") -> TrackMapStore:
-    store = TrackMapStore(entry_id, stale_after=timedelta(days=30))
+    store = TrackMapStore(entry_id, stale_after=timedelta(days=3650))
     hass.data.setdefault(DOMAIN, {})[entry_id] = {"track_map_store": store}
     return store
 
