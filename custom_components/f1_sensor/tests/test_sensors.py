@@ -1406,6 +1406,10 @@ async def test_track_time_sensor_exposes_machine_readable_datetimes(
 async def test_next_race_sensor_exposes_circuit_history_attrs(
     hass, monkeypatch
 ) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.helpers.dt_util.utcnow",
+        lambda: datetime(2026, 6, 27, tzinfo=UTC),
+    )
     next_race, payloads = _build_next_race_history_fixture()
     race_coordinator = _build_coordinator(
         hass,
@@ -1532,6 +1536,10 @@ async def test_next_race_sensor_exposes_circuit_history_attrs(
 async def test_next_race_history_last_year_podium_missing_returns_none(
     hass, monkeypatch
 ) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.helpers.dt_util.utcnow",
+        lambda: datetime(2026, 6, 27, tzinfo=UTC),
+    )
     next_race, payloads = _build_next_race_history_fixture(
         include_previous_season=False
     )
