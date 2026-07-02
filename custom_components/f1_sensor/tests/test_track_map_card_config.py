@@ -143,9 +143,42 @@ if (payload.motion) {
   card._driverSamples = new Map(
     (motion.samples || []).map(([key, samples]) => [key, samples]),
   );
+  card._driverSampleIntervalMs = motion.driverSampleIntervalMs || 0;
+  card._snapshotIntervalMs = motion.snapshotIntervalMs || 0;
   card._renderClockAt = motion.renderClockAt || 0;
   card._nowMs = () => motion.nowMs;
+  result.driverRenderLag = card._driverRenderLag();
+  result.liveAutoSmoothingDuration = card._liveAutoSmoothingDuration();
+  result.driverRenderTime = card._driverRenderTime();
+  result.motionDisplayDrivers = card._displayDrivers(motion.drivers || []);
   result.hasActiveDriverMotion = card._hasActiveDriverMotion();
+}
+
+if (payload.ingestMotion) {
+  const motion = payload.ingestMotion;
+  card._snapshot = motion.initialSnapshot || null;
+  card._status = motion.status || motion.initialSnapshot?.status || "not_loaded";
+  card._driverSamples = new Map(
+    (motion.samples || []).map(([key, samples]) => [key, samples]),
+  );
+  card._driverSampleIntervalMs = motion.driverSampleIntervalMs || 0;
+  card._snapshotIntervalMs = motion.snapshotIntervalMs || 0;
+  card._renderClockAt = motion.renderClockAt || 0;
+  let nowMs = motion.nowMs;
+  card._nowMs = () => nowMs;
+  result.beforeIngestDisplayDrivers = card._displayDrivers(motion.initialDrivers || []);
+  nowMs = motion.ingestNowMs ?? nowMs;
+  card._snapshot = motion.nextSnapshot || card._snapshot;
+  card._status = motion.status || motion.nextSnapshot?.status || card._status;
+  card._ingestDriverSamples(card._snapshot);
+  result.ingestedSamples = Array.from(card._driverSamples.entries());
+  if (motion.afterNowMs !== undefined) {
+    nowMs = motion.afterNowMs;
+    result.afterIngestDisplayDrivers = card._displayDrivers(
+      motion.nextSnapshot?.drivers || motion.initialDrivers || [],
+    );
+  }
+  result.ingestDriverSampleIntervalMs = card._driverSampleIntervalMs;
 }
 
 process.stdout.write(JSON.stringify(result));
@@ -312,8 +345,8 @@ def test_track_map_card_reports_specific_empty_states() -> None:
     assert waiting_positions["emptyState"]["title"] == "Waiting for live car positions"
 
 
-def test_track_map_card_keeps_live_driver_motion_active_until_latest_sample() -> None:
-    """Live snapshots should keep redrawing while visual smoothing is in flight."""
+def test_track_map_card_keeps_live_auto_motion_during_short_catch_up() -> None:
+    """Live auto smoothing should redraw only during the short catch-up window."""
     samples = [
         [
             "1",
@@ -325,6 +358,21 @@ def test_track_map_card_keeps_live_driver_motion_active_until_latest_sample() ->
     ]
     active_live = _run_probe(
         {
+            "motion": {
+                "nowMs": 2200,
+                "samples": samples,
+                "snapshot": {
+                    "source": "live",
+                    "status": "active",
+                    "stale": False,
+                    "replay_state": None,
+                },
+            },
+        }
+    )
+    explicit_live = _run_probe(
+        {
+            "config": {"interpolation_ms": 900},
             "motion": {
                 "nowMs": 2200,
                 "samples": samples,
@@ -367,8 +415,148 @@ def test_track_map_card_keeps_live_driver_motion_active_until_latest_sample() ->
     )
 
     assert active_live["hasActiveDriverMotion"] is True
+    assert explicit_live["hasActiveDriverMotion"] is True
     assert stale_live["hasActiveDriverMotion"] is False
     assert paused_replay["hasActiveDriverMotion"] is False
+
+
+def test_track_map_card_auto_interpolation_keeps_live_positions_moving() -> None:
+    """Auto marker smoothing should keep live positions moving until the next sample."""
+    motion = {
+        "nowMs": 2100,
+        "driverSampleIntervalMs": 1000,
+        "samples": [
+            [
+                "1",
+                [
+                    {"x": 100, "y": 50, "arrivalAt": 1000},
+                    {"x": 200, "y": 150, "arrivalAt": 2000},
+                ],
+            ]
+        ],
+        "drivers": [
+            {"racing_number": "1", "status": "OnTrack", "x": 200, "y": 150},
+        ],
+        "snapshot": {
+            "source": "live",
+            "status": "active",
+            "stale": False,
+            "replay_state": None,
+        },
+    }
+
+    auto_live = _run_probe({"config": {}, "motion": motion})
+    still_moving_live = _run_probe({"config": {}, "motion": {**motion, "nowMs": 2300}})
+    explicit_live = _run_probe({"config": {"interpolation_ms": 900}, "motion": motion})
+    disabled_live = _run_probe({"config": {"interpolation_ms": 0}, "motion": motion})
+    auto_replay = _run_probe(
+        {
+            "config": {},
+            "motion": {
+                **motion,
+                "snapshot": {
+                    "source": "replay",
+                    "status": "active",
+                    "stale": False,
+                    "replay_state": "playing",
+                },
+            },
+        }
+    )
+
+    assert auto_live["driverRenderLag"] == 0
+    assert auto_live["liveAutoSmoothingDuration"] == 950
+    assert auto_live["driverRenderTime"] == 2100
+    assert auto_live["motionDisplayDrivers"][0]["x"] == pytest.approx(110.526315789)
+    assert auto_live["motionDisplayDrivers"][0]["y"] == pytest.approx(60.526315789)
+    assert auto_live["hasActiveDriverMotion"] is True
+    assert still_moving_live["driverRenderLag"] == 0
+    assert still_moving_live["driverRenderTime"] == 2300
+    assert still_moving_live["motionDisplayDrivers"][0]["x"] == pytest.approx(
+        131.578947368
+    )
+    assert still_moving_live["motionDisplayDrivers"][0]["y"] == pytest.approx(
+        81.578947368
+    )
+    assert still_moving_live["hasActiveDriverMotion"] is True
+    assert explicit_live["driverRenderLag"] == 900
+    assert explicit_live["driverRenderTime"] == 1200
+    assert explicit_live["motionDisplayDrivers"][0]["x"] == pytest.approx(110.4)
+    assert explicit_live["motionDisplayDrivers"][0]["y"] == pytest.approx(60.4)
+    assert disabled_live["driverRenderLag"] == 0
+    assert disabled_live["motionDisplayDrivers"][0]["x"] == 200
+    assert disabled_live["motionDisplayDrivers"][0]["y"] == 150
+    assert disabled_live["hasActiveDriverMotion"] is False
+    assert auto_replay["driverRenderLag"] == 900
+    assert auto_replay["driverRenderTime"] == 1200
+    assert auto_replay["motionDisplayDrivers"][0]["x"] == pytest.approx(110.4)
+    assert auto_replay["motionDisplayDrivers"][0]["y"] == pytest.approx(60.4)
+
+
+def test_track_map_card_live_sample_starts_from_current_rendered_position() -> None:
+    """Early live samples should continue from the current visual position."""
+    result = _run_probe(
+        {
+            "config": {},
+            "ingestMotion": {
+                "nowMs": 2300,
+                "ingestNowMs": 2300,
+                "afterNowMs": 2300,
+                "driverSampleIntervalMs": 1000,
+                "samples": [
+                    [
+                        "1",
+                        [
+                            {"x": 100, "y": 50, "arrivalAt": 1000},
+                            {
+                                "x": 200,
+                                "y": 150,
+                                "arrivalAt": 2000,
+                                "timestampKey": "old",
+                            },
+                        ],
+                    ]
+                ],
+                "initialDrivers": [
+                    {"racing_number": "1", "status": "OnTrack", "x": 200, "y": 150},
+                ],
+                "initialSnapshot": {
+                    "source": "live",
+                    "status": "active",
+                    "stale": False,
+                    "replay_state": None,
+                },
+                "nextSnapshot": {
+                    "source": "live",
+                    "status": "active",
+                    "stale": False,
+                    "replay_state": None,
+                    "drivers": [
+                        {
+                            "racing_number": "1",
+                            "status": "OnTrack",
+                            "timestamp": "new",
+                            "x": 300,
+                            "y": 250,
+                        },
+                    ],
+                },
+            },
+        }
+    )
+
+    before = result["beforeIngestDisplayDrivers"][0]
+    samples = result["ingestedSamples"][0][1]
+
+    assert before["x"] == pytest.approx(131.578947368)
+    assert before["y"] == pytest.approx(81.578947368)
+    assert samples[0]["x"] == pytest.approx(before["x"])
+    assert samples[0]["y"] == pytest.approx(before["y"])
+    assert samples[0]["arrivalAt"] == 2300
+    assert samples[1]["x"] == 300
+    assert samples[1]["y"] == 250
+    assert result["afterIngestDisplayDrivers"][0]["x"] == pytest.approx(before["x"])
+    assert result["afterIngestDisplayDrivers"][0]["y"] == pytest.approx(before["y"])
 
 
 def test_track_map_card_hides_stale_live_positions() -> None:

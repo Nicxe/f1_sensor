@@ -687,8 +687,6 @@ class TrackMapReplayAdapter:
         return TRACK_MAP_SOURCE_REPLAY
 
     def _should_interpolate_positions(self, source: str | None) -> bool:
-        if source == TRACK_MAP_SOURCE_LIVE:
-            return True
         return source == TRACK_MAP_SOURCE_REPLAY and self._replay_state == "playing"
 
     def _reset_interpolation_if_source_changed(self, source: str) -> None:

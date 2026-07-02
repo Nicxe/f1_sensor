@@ -218,6 +218,40 @@ F1_CIRCUIT_IMAGE_SLUGS: dict[str, dict[str, str]] = {
     }
 }
 
+F1_CIRCUIT_TIME_ZONES: dict[str, str] = {
+    "albert_park": "Australia/Melbourne",
+    "americas": "America/Chicago",
+    "bahrain": "Asia/Bahrain",
+    "baku": "Asia/Baku",
+    "catalunya": "Europe/Madrid",
+    "hungaroring": "Europe/Budapest",
+    "imola": "Europe/Rome",
+    "interlagos": "America/Sao_Paulo",
+    "istanbul": "Europe/Istanbul",
+    "jeddah": "Asia/Riyadh",
+    "losail": "Asia/Qatar",
+    "madring": "Europe/Madrid",
+    "marina_bay": "Asia/Singapore",
+    "miami": "America/New_York",
+    "monaco": "Europe/Monaco",
+    "monza": "Europe/Rome",
+    "mugello": "Europe/Rome",
+    "nurburgring": "Europe/Berlin",
+    "portimao": "Europe/Lisbon",
+    "red_bull_ring": "Europe/Vienna",
+    "ricard": "Europe/Paris",
+    "rodriguez": "America/Mexico_City",
+    "shanghai": "Asia/Shanghai",
+    "silverstone": "Europe/London",
+    "sochi": "Europe/Moscow",
+    "spa": "Europe/Brussels",
+    "suzuka": "Asia/Tokyo",
+    "vegas": "America/Los_Angeles",
+    "villeneuve": "America/Toronto",
+    "yas_marina": "Asia/Dubai",
+    "zandvoort": "Europe/Amsterdam",
+}
+
 # Legacy circuit map support (official F1 track maps with DRS zones)
 CIRCUIT_IMAGE_LEGACY_CDN_BASE_URL = "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets"
 CIRCUIT_MAP_LEGACY_CDN_PATH = "Circuit%20maps%2016x9"
