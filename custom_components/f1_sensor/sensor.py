@@ -56,6 +56,7 @@ from .entity import (
 from .helpers import (
     get_circuit_map_url,
     get_circuit_outline_url,
+    get_circuit_timezone,
     get_country_code,
     get_country_flag_url,
     get_next_race,
@@ -151,6 +152,13 @@ def _combine_date_time(
 
 def _timezone_from_location(lat, lon):
     return get_timezone(lat, lon)
+
+
+def _timezone_from_circuit(circuit):
+    loc = circuit.get("Location", {})
+    return get_circuit_timezone(circuit.get("circuitId")) or _timezone_from_location(
+        loc.get("lat"), loc.get("long")
+    )
 
 
 def _to_local(iso_ts, timezone):
@@ -846,7 +854,7 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
 
         circuit = race.get("Circuit", {})
         loc = circuit.get("Location", {})
-        timezone = _timezone_from_location(loc.get("lat"), loc.get("long"))
+        timezone = _timezone_from_circuit(circuit)
 
         first_practice = race.get("FirstPractice", {})
         second_practice = race.get("SecondPractice", {})
@@ -946,8 +954,7 @@ class F1TrackTimeSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
     def _get_circuit_timezone(self, race):
         if not race:
             return None
-        loc = race.get("Circuit", {}).get("Location", {})
-        return _timezone_from_location(loc.get("lat"), loc.get("long"))
+        return _timezone_from_circuit(race.get("Circuit", {}))
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -1409,7 +1416,7 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
         results = [_clean_result(r) for r in race.get("Results", [])]
         circuit = race.get("Circuit", {})
         loc = circuit.get("Location", {})
-        timezone = _timezone_from_location(loc.get("lat"), loc.get("long"))
+        timezone = _timezone_from_circuit(circuit)
         race_start = _combine_date_time(
             race.get("date"), race.get("time"), force_utc=True
         )

@@ -28,6 +28,7 @@ from .const import (
     CIRCUIT_OUTLINE_LEGACY_CDN_PATH,
     DOMAIN,
     F1_CIRCUIT_IMAGE_SLUGS,
+    F1_CIRCUIT_TIME_ZONES,
     F1_COUNTRY_CODES,
     F1_LEGACY_CIRCUIT_MAP_NAMES,
     F1_LEGACY_CIRCUIT_OUTLINE_NAMES,
@@ -169,7 +170,7 @@ _TZFPY_WARNED = False
 
 
 def get_timezone(lat: Any, lon: Any) -> str | None:
-    """Return an IANA timezone name for the provided coordinates via tzfpy."""
+    """Return an IANA timezone name for coordinates via optional tzfpy."""
     if lat is None or lon is None:
         return None
 
@@ -182,8 +183,8 @@ def get_timezone(lat: Any, lon: Any) -> str | None:
     if _tzfpy_get_tz is None:
         global _TZFPY_WARNED
         if not _TZFPY_WARNED:
-            _LOGGER.error(
-                "tzfpy dependency missing; timezone lookups disabled for coordinates"
+            _LOGGER.debug(
+                "Optional tzfpy dependency missing; coordinate timezone lookups disabled"
             )
             _TZFPY_WARNED = True
         return None
@@ -197,6 +198,13 @@ def get_timezone(lat: Any, lon: Any) -> str | None:
             )
         return None
     return tz
+
+
+def get_circuit_timezone(circuit_id: str | None) -> str | None:
+    """Return the known IANA timezone name for an F1 circuit."""
+    if not circuit_id:
+        return None
+    return F1_CIRCUIT_TIME_ZONES.get(circuit_id)
 
 
 def get_country_code(country_name: str | None) -> str | None:

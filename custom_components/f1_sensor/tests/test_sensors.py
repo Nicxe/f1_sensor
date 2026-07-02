@@ -178,6 +178,13 @@ process.stdout.write(JSON.stringify(result));
 """
 
 
+def test_manifest_keeps_timezone_lookup_optional() -> None:
+    manifest_path = ROOT / "custom_components" / "f1_sensor" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+
+    assert "tzfpy>=1.1.0" not in manifest["requirements"]
+
+
 class _LiveState:
     def __init__(self, is_live: bool = False) -> None:
         self.is_live = is_live
@@ -1303,6 +1310,37 @@ async def test_next_race_sensor_uses_2026_detailed_circuit_map(
 
 
 @pytest.mark.asyncio
+async def test_next_race_sensor_uses_known_circuit_timezone_without_tzfpy(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.helpers.dt_util.utcnow",
+        lambda: datetime(2026, 3, 10, tzinfo=UTC),
+    )
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.sensor._timezone_from_location",
+        lambda _lat, _lon: None,
+    )
+    coordinator = _build_coordinator(
+        hass,
+        {"MRData": {"RaceTable": {"Races": [_build_race(date="2026-03-15")]}}},
+    )
+    entry_id = "test_entry_next_race_timezone"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1NextRaceSensor(
+        coordinator,
+        f"{entry_id}_next_race",
+        entry_id,
+        "F1",
+    )
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.attributes["circuit_timezone"] == "Australia/Melbourne"
+    assert state.attributes["race_start_local"] == "2026-03-15T15:00:00+11:00"
+
+
+@pytest.mark.asyncio
 async def test_next_race_sensor_caches_state_attributes(hass, monkeypatch) -> None:
     monkeypatch.setattr(
         "custom_components.f1_sensor.helpers.dt_util.utcnow",
@@ -1321,7 +1359,18 @@ async def test_next_race_sensor_caches_state_attributes(hass, monkeypatch) -> No
     )
     coordinator = _build_coordinator(
         hass,
-        {"MRData": {"RaceTable": {"Races": [_build_race(date="2026-03-15")]}}},
+        {
+            "MRData": {
+                "RaceTable": {
+                    "Races": [
+                        _build_race(
+                            circuit_id="unknown_test",
+                            date="2026-03-15",
+                        )
+                    ]
+                }
+            }
+        },
     )
     entry_id = "test_entry_next_race_cache"
     _set_entry_context(hass, entry_id)
@@ -1347,7 +1396,15 @@ async def test_next_race_sensor_caches_state_attributes(hass, monkeypatch) -> No
     coordinator.async_set_updated_data(
         {
             "MRData": {
-                "RaceTable": {"Races": [_build_race(round_="2", date="2026-03-22")]}
+                "RaceTable": {
+                    "Races": [
+                        _build_race(
+                            circuit_id="unknown_test",
+                            round_="2",
+                            date="2026-03-22",
+                        )
+                    ]
+                }
             }
         }
     )
