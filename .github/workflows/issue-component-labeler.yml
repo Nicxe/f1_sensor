@@ -13,7 +13,7 @@ jobs:
     if: github.event.issue.pull_request == null
     steps:
       - name: Apply component labels
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const body = context.payload.issue.body || '';
