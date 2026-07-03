@@ -5,18 +5,50 @@ registries:
     type: npm-registry
     url: https://npm.pkg.github.com
     token: ${{ secrets.DEPENDABOT_GH_PACKAGES_TOKEN }}
-    scope: "@nicxe"
 
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"
     registries:
       - github-packages
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    groups:
+      docs-site:
+        patterns:
+          - "@docusaurus/*"
+          - "@easyops-cn/docusaurus-search-local"
+          - "@mdx-js/*"
+          - "clsx"
+          - "prism-react-renderer"
+          - "react"
+          - "react-dom"
+      release-tooling:
+        dependency-type: "development"
+        patterns:
+          - "@nicxe/semantic-release-config"
+          - "@semantic-release/*"
+          - "conventional-changelog-conventionalcommits"
+          - "semantic-release"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
