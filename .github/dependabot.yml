@@ -48,6 +48,10 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     groups:
       github-actions:
         patterns:
