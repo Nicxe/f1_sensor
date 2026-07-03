@@ -427,6 +427,19 @@ def test_static_track_geometry_catalog_returns_suzuka_by_alias() -> None:
     assert geometry.points[0] == geometry.points[-1]
 
 
+def test_static_track_geometry_catalog_uses_full_silverstone_loop() -> None:
+    geometry = get_static_track_geometry(circuit_key="2")
+
+    assert geometry is not None
+    assert geometry.circuit_key == "2"
+    assert geometry.points[0] == geometry.points[-1]
+    assert geometry.bounds.min_x <= -2280
+    assert geometry.bounds.max_x >= 7780
+    assert geometry.bounds.min_y <= -4080
+    assert geometry.bounds.max_y >= 13090
+    assert any(x <= -2200 and -400 <= y <= 600 for x, y in geometry.points)
+
+
 def test_static_track_geometry_catalog_contains_2025_calendar_tracks() -> None:
     expected = {
         "2": "Silverstone",
