@@ -1830,6 +1830,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if live_state is not None:
                 for coordinator_key in (
                     "championship_prediction_coordinator",
+                    "team_radio_coordinator",
                     "pitstop_coordinator",
                 ):
                     coordinator = entry_data.get(coordinator_key)
@@ -2074,6 +2075,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # unavailable state until their backing stream capability becomes available.
     need_drivers = any(k in enabled for k in ("driver_list",))
     need_top_three = any(k in enabled for k in ("top_three",))
+    need_team_radio = any(k in enabled for k in ("team_radio",))
     need_pitstops = any(k in enabled for k in ("pitstops",))
     need_championship_prediction = any(
         k in enabled for k in ("championship_prediction",)
@@ -2124,6 +2126,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             live_state=live_state,
         )
         await top_three_coordinator.async_config_entry_first_refresh()
+
+    team_radio_coordinator = None
+    if enable_rc and need_team_radio:
+        team_radio_coordinator = TeamRadioCoordinator(
+            hass,
+            session_coordinator,
+            live_delay,
+            bus=live_bus,
+            config_entry=entry,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
+        await team_radio_coordinator.async_config_entry_first_refresh()
 
     pitstop_coordinator = None
     if enable_rc and need_pitstops:
@@ -2199,6 +2214,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "weather_data_coordinator": weather_data_coordinator if enable_rc else None,
         "lap_count_coordinator": lap_count_coordinator if enable_rc else None,
         "top_three_coordinator": top_three_coordinator,
+        "team_radio_coordinator": team_radio_coordinator,
         "pitstop_coordinator": pitstop_coordinator,
         "championship_prediction_coordinator": championship_prediction_coordinator,
         "drivers_coordinator": drivers_coordinator,
@@ -2239,6 +2255,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             lap_count_coordinator if enable_rc else None,
             incident_coordinator if enable_rc else None,
             top_three_coordinator,
+            team_radio_coordinator,
             pitstop_coordinator,
             championship_prediction_coordinator,
             drivers_coordinator,
@@ -3304,6 +3321,167 @@ class LapCountCoordinator(DataUpdateCoordinator):
             self.data_list = []
             # Notify entities to clear their state
             self.async_set_updated_data(self._last_message)
+
+
+class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
+    """Coordinator for TeamRadio updates using SignalR."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session_coord: LiveSessionCoordinator,
+        delay_seconds: int = 0,
+        bus: LiveBus | None = None,
+        config_entry: ConfigEntry | None = None,
+        delay_controller: LiveDelayController | None = None,
+        live_state: LiveAvailabilityTracker | None = None,
+        history_limit: int = 20,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator_logger("team_radio", suppress_manual=True),
+            name="F1 Team Radio Coordinator",
+            update_interval=None,
+            config_entry=config_entry,
+        )
+        self._session_coord = session_coord
+        self.available = False
+        self._bus = bus
+        self._config_entry = config_entry
+        self._unsubs: list[Callable[[], None]] = []
+        self._delay_listener: Callable[[], None] | None = None
+        _init_delayed_ingest_state(self)
+        self._delay = max(0, int(delay_seconds or 0))
+        self._replay_mode = False
+        self._history_limit = max(1, int(history_limit or 20))
+        self._state: dict[str, Any] = {"latest": None, "history": []}
+        if delay_controller is not None:
+            self._delay_listener = delay_controller.add_listener(self.set_delay)
+        self._live_state_unsub: Callable[[], None] | None = None
+        if live_state is not None:
+            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+        self._session_unsub: Callable[[], None] | None = None
+        self._session_fingerprint: str | None = None
+
+    async def async_close(self, *_):
+        _close_unsubs(self._unsubs)
+        self._delay_listener = _call_unsub(self._delay_listener)
+        self._live_state_unsub = _call_unsub(self._live_state_unsub)
+        self._session_unsub = _call_unsub(self._session_unsub)
+        _close_delayed_ingest_state(self)
+
+    async def _async_update_data(self):
+        return self._state
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
+        self._replay_mode = _is_replay_delay_reason(reason)
+        if self._replay_mode:
+            _clear_delayed_ingest_state(self)
+        if _is_no_spoiler_live_state(reason):
+            _clear_delayed_ingest_state(self)
+            return
+        replay_available = bool(is_live and self._replay_mode)
+        auth_live_available = bool(
+            is_live
+            and not self._replay_mode
+            and self._bus is not None
+            and getattr(self._bus, "auth_enabled", False)
+        )
+        self.available = replay_available or auth_live_available
+        if not self.available:
+            _clear_delayed_ingest_state(self)
+            self._reset_store()
+
+    def set_delay(self, seconds: int) -> None:
+        _apply_delay_with_queue(self, seconds)
+
+    def _reset_store(self) -> None:
+        self._state = {"latest": None, "history": []}
+        with suppress(Exception):
+            self.async_set_updated_data(self._state)
+
+    @staticmethod
+    def _normalize_captures(payload: dict) -> list[dict]:
+        """Extract a flat list of TeamRadio capture dictionaries."""
+        if not isinstance(payload, dict):
+            return []
+        captures = payload.get("Captures")
+        static_root = payload.get("_static_root")
+        result: list[dict] = []
+
+        def _append_capture(item: Any) -> None:
+            if not isinstance(item, dict):
+                return
+            capture = dict(item)
+            if static_root and "_static_root" not in capture:
+                capture["_static_root"] = static_root
+            result.append(capture)
+
+        if isinstance(captures, list):
+            for item in captures:
+                _append_capture(item)
+        elif isinstance(captures, dict):
+            numeric_keys = [key for key in captures if str(key).isdigit()]
+            if numeric_keys:
+                for key in sorted(numeric_keys, key=lambda value: int(str(value))):
+                    _append_capture(captures.get(key))
+            elif any(key in captures for key in ("Utc", "RacingNumber", "Path")):
+                _append_capture(captures)
+        elif any(key in payload for key in ("Utc", "RacingNumber", "Path")):
+            _append_capture(payload)
+
+        return result
+
+    def _on_bus_message(self, msg: dict) -> None:
+        if not isinstance(msg, dict) or _is_no_spoiler_blocked(self):
+            return
+        captures = self._normalize_captures(msg)
+        if not captures:
+            return
+        history: list[dict] = [
+            dict(item)
+            for item in (self._state.get("history") or [])
+            if isinstance(item, dict)
+        ]
+        history.extend(captures)
+        if len(history) > self._history_limit:
+            history = history[-self._history_limit :]
+        self._state = {
+            "latest": captures[-1],
+            "history": history,
+        }
+        self.async_set_updated_data(self._state)
+        _LOGGER.debug(
+            "TeamRadio delivered latest=%s history_len=%s",
+            {
+                "Utc": captures[-1].get("Utc"),
+                "RacingNumber": captures[-1].get("RacingNumber"),
+                "Path": captures[-1].get("Path"),
+            },
+            len(history),
+        )
+
+    async def async_config_entry_first_refresh(self):
+        await super().async_config_entry_first_refresh()
+        try:
+            self._session_fingerprint = _compute_session_fingerprint(
+                getattr(self._session_coord, "data", None)
+            )
+            self._session_unsub = self._session_coord.async_add_listener(
+                self._on_session_index_update
+            )
+        except Exception:
+            self._session_unsub = None
+        bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        with suppress(Exception):
+            self._unsubs.append(
+                bus.subscribe(
+                    "TeamRadio",
+                    _wrap_delayed_handler(self, self._on_bus_message),
+                )
+            )
 
 
 class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
@@ -6209,6 +6387,11 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
         return
 
     if isinstance(coordinator, PitStopCoordinator):
+        _clear_delayed_ingest_state(coordinator)
+        coordinator._reset_store()
+        return
+
+    if isinstance(coordinator, TeamRadioCoordinator):
         _clear_delayed_ingest_state(coordinator)
         coordinator._reset_store()
         return

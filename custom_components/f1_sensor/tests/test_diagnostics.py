@@ -92,6 +92,7 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
                     "CarData.z",
                     "ChampionshipPrediction",
                     "PitStopSeries",
+                    "TeamRadio",
                 }
             ),
             "replay_only_streams": frozenset(),
@@ -101,6 +102,7 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
                     "TrackStatus",
                     "ChampionshipPrediction",
                     "PitStopSeries",
+                    "TeamRadio",
                 }
             ),
             "auth_enabled": True,
@@ -122,11 +124,13 @@ async def test_diagnostics_redacts_auth_header_and_exposes_safe_runtime_state(
             "CarData.z",
             "ChampionshipPrediction",
             "PitStopSeries",
+            "TeamRadio",
         ],
         "active_live_streams": [
             "ChampionshipPrediction",
             "PitStopSeries",
             "SessionStatus",
+            "TeamRadio",
             "TrackStatus",
         ],
     }
@@ -193,6 +197,7 @@ async def test_diagnostics_hides_auth_state_when_f1tv_auth_disabled(
                     "CarData.z",
                     "ChampionshipPrediction",
                     "PitStopSeries",
+                    "TeamRadio",
                 }
             ),
             "replay_only_streams": frozenset(),

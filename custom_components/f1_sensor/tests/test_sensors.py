@@ -55,6 +55,7 @@ from custom_components.f1_sensor.sensor import (
     F1PitStopsSensor,
     F1SeasonResultsSensor,
     F1SprintResultsSensor,
+    F1TeamRadioSensor,
     F1TopThreePositionSensor,
     F1TrackTimeSensor,
     F1TvTokenExpiresAtSensor,
@@ -2046,6 +2047,45 @@ async def test_pitstops_sensor_excludes_cars_from_recorder(hass) -> None:
     sensor._apply_payload(updated_payload)
 
     assert sensor.last_reset == datetime.fromisoformat("2026-03-01T15:00:00+00:00")
+
+
+@pytest.mark.asyncio
+async def test_team_radio_sensor_exposes_latest_clip_url(hass) -> None:
+    coordinator = _build_coordinator(
+        hass,
+        {
+            "latest": {
+                "Utc": "2026-07-05T14:01:01.3296419Z",
+                "RacingNumber": "44",
+                "Path": "TeamRadio/HAM_44_20260705_154016.mp3",
+                "_static_root": (
+                    "https://livetiming.formula1.com/static/2026/"
+                    "2026-07-05_British_Grand_Prix/2026-07-05_Race"
+                ),
+            },
+            "history": [],
+        },
+    )
+    entry_id = "test_entry_team_radio"
+    _set_entry_context(hass, entry_id, stream_active=True)
+
+    sensor = F1TeamRadioSensor(
+        coordinator,
+        f"{entry_id}_team_radio",
+        entry_id,
+        "F1",
+    )
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == "2026-07-05T14:01:01+00:00"
+    assert state.attributes["racing_number"] == "44"
+    assert state.attributes["path"] == "TeamRadio/HAM_44_20260705_154016.mp3"
+    assert state.attributes["clip_url"] == (
+        "https://livetiming.formula1.com/static/2026/"
+        "2026-07-05_British_Grand_Prix/2026-07-05_Race/"
+        "TeamRadio/HAM_44_20260705_154016.mp3"
+    )
+    assert state.attributes["history"][0]["clip_url"] == state.attributes["clip_url"]
 
 
 @pytest.mark.asyncio
