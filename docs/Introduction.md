@@ -53,7 +53,7 @@ Use ready-made blueprints for [Track Status lights](/blueprints/track-status-lig
 | Mode | What it means |
 | --- | --- |
 | Public live timing | Standard live mode without F1TV Auth. Core live entities and confirmed incident alerts work here |
-| F1TV Auth live timing | Optional mode for extra live features such as live Track Map, Pit Stops, Championship Prediction, and earlier incident candidates |
+| F1TV Auth live timing | Optional mode for extra live features such as live Track Map, Pit Stops, Team Radio, Championship Prediction, and earlier incident candidates |
 | Replay Mode | Historical playback from Formula 1's session archive. Some live-auth features can appear later when the archived session contains the needed data |
 | Developer mode | Advanced testing with a local replay dump. Use it to reproduce integration behavior, not to follow a TV replay |
 

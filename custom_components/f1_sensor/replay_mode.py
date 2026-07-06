@@ -57,6 +57,7 @@ REPLAY_STREAMS = [
     "DriverList",
     "TimingAppData",
     "TopThree",
+    "TeamRadio",
     "PitStopSeries",
     "ChampionshipPrediction",
     "DriverRaceInfo",
@@ -73,7 +74,7 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when replay index contents change in a way that
 # requires re-downloading cached sessions.
-CACHE_VERSION = 12
+CACHE_VERSION = 13
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 SEEK_INDEX_INTERVAL_MS = 5_000
@@ -874,6 +875,7 @@ class ReplaySessionManager:
             return frames
 
         # Parse jsonStream format: each line is timestamp + JSON
+        static_root = url.rstrip("/").rsplit("/", 1)[0]
         for line in text.splitlines():
             line = line.strip()
             if not line:
@@ -891,6 +893,9 @@ class ReplaySessionManager:
             try:
                 timestamp_ms = self._parse_timestamp_to_ms(timestamp_str)
                 payload = json.loads(json_str)
+                if stream_name == "TeamRadio" and isinstance(payload, dict):
+                    payload = dict(payload)
+                    payload["_static_root"] = static_root
 
                 frames.append(
                     ReplayFrame(

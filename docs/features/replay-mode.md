@@ -66,7 +66,7 @@ Testing the integration with a dump supplied or captured for development? Use [D
 
 Replay Mode is separate from live F1TV Auth. Public live timing works without a token, optional [F1TV Auth](/features/f1tv-auth) can unlock extra live features during a real live session, and Replay Mode can use archived data after the session has completed.
 
-This means Replay Mode can sometimes show data that public live timing did not show during the live session. For example, Pit Stops, Championship Prediction, Track Map, and incident location context can work in replay when the archive contains the needed data.
+This means Replay Mode can sometimes show data that public live timing did not show during the live session. For example, Pit Stops, Team Radio, Championship Prediction, Track Map, and incident location context can work in replay when the archive contains the needed data.
 
 ## What Replay Mode can replay
 
@@ -74,6 +74,7 @@ This means Replay Mode can sometimes show data that public live timing did not s
 | --- | --- |
 | Public live timing | Session status, track status, Race Control, weather, driver timing, tyres, and top three can replay when available in the archive |
 | Pit Stops | Works when the replay archive contains pit stop data |
+| Team Radio | Works when the replay archive contains team radio clips |
 | Championship Prediction | Works when the replay archive contains prediction data |
 | Formation Start | Works for race and sprint sessions when the replay data supports it |
 | Track Map | Best effort when the replay archive contains car position data |

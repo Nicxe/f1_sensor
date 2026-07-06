@@ -5,6 +5,7 @@ import pytest
 from custom_components.f1_sensor import (
     ChampionshipPredictionCoordinator,
     PitStopCoordinator,
+    TeamRadioCoordinator,
 )
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 
@@ -19,6 +20,7 @@ class _StubBus:
 @pytest.mark.parametrize(
     ("coordinator_cls", "extra_kwargs"),
     [
+        (TeamRadioCoordinator, {}),
         (PitStopCoordinator, {}),
     ],
 )

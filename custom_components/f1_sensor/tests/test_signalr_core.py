@@ -384,6 +384,7 @@ def test_no_auth_live_stream_contract_excludes_gated_and_replay_only_streams():
         "Position.z",
         "DriverRaceInfo",
         "ChampionshipPrediction",
+        "TeamRadio",
         "PitStopSeries",
     )
     assert REPLAY_ONLY_STREAMS == ()

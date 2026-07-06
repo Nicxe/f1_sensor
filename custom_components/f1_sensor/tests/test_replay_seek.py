@@ -36,6 +36,7 @@ from custom_components.f1_sensor.incident_detection import (
 )
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.replay_mode import (
+    CACHE_VERSION,
     ReplayController,
     ReplayFrame,
     ReplayIndex,
@@ -649,7 +650,7 @@ async def test_replay_cached_index_upgrades_seek_checkpoints(
     upgraded = json.loads(index_file.read_text(encoding="utf-8"))
 
     assert index.seek_checkpoints
-    assert upgraded["cache_version"] == 12
+    assert upgraded["cache_version"] == CACHE_VERSION
     assert upgraded["seek_checkpoints"][0]["state"]["TrackStatus"] == {"Status": "1"}
 
 

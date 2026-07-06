@@ -31,7 +31,7 @@ Public live timing covers the normal live features most dashboards and automatio
 
 ## What F1TV Auth can add during live sessions
 
-F1TV Auth can support live features such as Track Map, Pit Stops, Championship Prediction, formation start refinement, and earlier incident candidate signals. These features still depend on what Formula 1 publishes for each session, so a valid token does not guarantee that every extra feature is available every time.
+F1TV Auth can support live features such as Track Map, Pit Stops, Team Radio, Championship Prediction, formation start refinement, and earlier incident candidate signals. These features still depend on what Formula 1 publishes for each session, so a valid token does not guarantee that every extra feature is available every time.
 
 ## Subscription requirement
 
@@ -55,6 +55,7 @@ Public live timing continues to work if F1TV access is missing, expired, invalid
 | Track Map | Not available live | Requires F1TV Auth and live car position data | Works when replay contains car position data |
 | Incident location context | Not available from live position | Can improve when Track Map has fresh location data | Works when replay contains car position data |
 | Pit Stops | Not available live | Can work when Formula 1 publishes live pit stop data | Works when replay contains pit stop data |
+| Team Radio | Not available live | Can work when Formula 1 publishes live team radio clips | Works when replay contains team radio clips |
 | Championship Prediction | Not available live | Can work when Formula 1 publishes live prediction data | Works when replay contains prediction data |
 | Formation Start | Public fallback only where available | Can improve when extra live timing data is available | Works in Replay Mode |
 

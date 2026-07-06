@@ -105,6 +105,7 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "on_track_incident",
         "possible_on_track_incident",
         "top_three",
+        "team_radio",
         "pitstops",
         "championship_prediction",
         "live_timing_diagnostics",

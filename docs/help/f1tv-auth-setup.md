@@ -4,7 +4,7 @@ title: F1TV Auth Setup
 ---
 
 F1TV Auth connects optional Formula 1 live timing access to F1 Sensor through the F1TV Token Helper.
-Use this page when you want live Track Map, Pit Stops, Championship Prediction, formation start refinements, or earlier incident candidates during an active Formula 1 session.
+Use this page when you want live Track Map, Pit Stops, Team Radio, Championship Prediction, formation start refinements, or earlier incident candidates during an active Formula 1 session.
 
 ## How it works
 
@@ -43,6 +43,7 @@ F1TV Auth can add live features such as:
 ```text
 Live Track Map
 Pit Stops during live sessions
+Team Radio during live sessions
 Championship Prediction during live sessions
 Formation start improvements
 Earlier incident candidates
@@ -52,7 +53,7 @@ In **Live Mode**, these features should not be expected to update with public li
 They can update during live sessions after you add a valid F1TV token and Formula 1 publishes the required data.
 
 Some F1TV Auth features also have replay support.
-For example, Championship Prediction and Pit Stops can use the recorded session archive in **Replay Mode**, but they require F1TV Auth during a real live session.
+For example, Championship Prediction, Pit Stops, and Team Radio can use the recorded session archive in **Replay Mode**, but they require F1TV Auth during a real live session.
 
 If the token is missing, expired, or rejected, extra live data becomes unavailable or stops receiving F1TV-only updates while public live timing continues.
 

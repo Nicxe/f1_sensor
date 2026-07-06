@@ -21,6 +21,7 @@
       "new_race_control_message": "Uusi viesti kilpailun johdolta",
       "new_fia_document": "Uusi FIA:n dokumentti julkaistu",
       "investigation_changed": "Tutkinnan tila muuttui",
+      "new_team_radio": "Uusi tiimiradioviesti",
       "live_timing_online": "Live-ajoitus yhdistetty",
       "live_timing_offline": "Live-ajoitus katkaistu"
     }
@@ -207,6 +208,9 @@
       },
       "tyre_statistics": {
         "name": "Rengastilastot"
+      },
+      "team_radio": {
+        "name": "Tiimiradio"
       },
       "race_lap_count": {
         "name": "Kierrosmäärä"

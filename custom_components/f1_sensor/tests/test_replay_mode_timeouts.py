@@ -43,6 +43,22 @@ class _TextResponse:
         return self._text
 
 
+class _RawTextResponse:
+    def __init__(self, text: str) -> None:
+        self.status = 200
+        self._text = text
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        del exc_type, exc, tb
+        return False
+
+    async def text(self) -> str:
+        return self._text
+
+
 class _IndexHttp:
     def __init__(self, payload: dict) -> None:
         self.payload = payload
@@ -51,6 +67,16 @@ class _IndexHttp:
     def get(self, url: str):
         self.get_calls.append(url)
         return _TextResponse(self.payload)
+
+
+class _StreamHttp:
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.get_calls: list[str] = []
+
+    def get(self, url: str):
+        self.get_calls.append(url)
+        return _RawTextResponse(self.text)
 
 
 def _session() -> ReplaySession:
@@ -166,6 +192,33 @@ async def test_download_stream_timeout_returns_empty_list(hass) -> None:
 
     assert frames == []
     assert len(timeout_http.get_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_download_stream_annotates_team_radio_static_root(hass) -> None:
+    http = _StreamHttp(
+        "\n".join(
+            (
+                '00:00:01.000{"Captures":[{"Utc":"2026-07-05T14:01:01Z",'
+                '"RacingNumber":"3","Path":"TeamRadio/VER_3.mp3"}]}',
+                '00:00:02.000{"Captures":{"1":{"Utc":"2026-07-05T14:40:34Z",'
+                '"RacingNumber":"44","Path":"TeamRadio/HAM_44.mp3"}}}',
+            )
+        )
+    )
+    manager = ReplaySessionManager(hass, "entry-test", http)  # type: ignore[arg-type]
+
+    frames = await manager._download_stream(
+        "https://livetiming.formula1.com/static/2026/session/TeamRadio.jsonStream",
+        "TeamRadio",
+    )
+
+    assert len(frames) == 2
+    assert frames[0].stream == "TeamRadio"
+    assert frames[0].payload["_static_root"] == (
+        "https://livetiming.formula1.com/static/2026/session"
+    )
+    assert frames[1].payload["Captures"]["1"]["Path"] == "TeamRadio/HAM_44.mp3"
 
 
 @pytest.mark.asyncio
