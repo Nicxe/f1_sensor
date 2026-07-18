@@ -73,7 +73,7 @@ F1 controls subscription names, availability, and prices. As a rough guide, F1 T
 
 F1TV Auth can unlock extra live data when Formula 1 provides it during an active session.
 
-This can enable live [Track Map](/features/track-map), Pit Stops, Championship Prediction, formation start improvements, and earlier incident candidates. Replay Mode is separate and can show some of this data later when the replay archive contains it.
+This can enable live [Track Map](/features/track-map), Pit Stops, Team Radio, Championship Prediction, formation start improvements, and earlier incident candidates. Replay Mode is separate and can show some of this data later when the replay archive contains it.
 </details>
 
 <details>
@@ -99,12 +99,13 @@ The same cleanup clears the Home Assistant Repairs warning for stale standalone 
 
 
 <details>
-<summary>Why are some entities like Pit Stops and Championship Prediction unavailable without F1TV Auth?</summary>
+<summary>Why are some entities like Pit Stops, Team Radio, and Championship Prediction unavailable without F1TV Auth?</summary>
 
 These entities depend on data that is not part of public live timing. They can update in [Replay Mode](/features/replay-mode), and they can update during real live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token. Without that token, they remain unavailable while public live timing continues.
 
 The affected entities are:
 - `sensor.f1_pitstops`
+- `sensor.f1_team_radio`
 - `sensor.f1_championship_prediction_drivers`
 - `sensor.f1_championship_prediction_teams`
 - `binary_sensor.f1_formation_start`
@@ -125,7 +126,7 @@ Check `sensor.f1_f1tv_token_status`, the Track Map card status, and `sensor.f1_l
 
 Replay Mode uses Formula 1's session archive after the session has completed. Some data that requires F1TV Auth during a live session can be available later in the replay archive.
 
-That is why Track Map, Pit Stops, Championship Prediction, or incident location context can appear in Replay Mode even when they were not available from public live timing during the live session.
+That is why Track Map, Pit Stops, Team Radio, Championship Prediction, or incident location context can appear in Replay Mode even when they were not available from public live timing during the live session.
 </details>
 
 

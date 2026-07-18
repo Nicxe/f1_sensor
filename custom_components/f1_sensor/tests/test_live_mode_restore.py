@@ -28,6 +28,7 @@ from custom_components.f1_sensor.sensor import (
     F1ChampionshipPredictionTeamsSensor,
     F1PitStopsSensor,
     F1StraightModeSensor,
+    F1TeamRadioSensor,
     F1TrackStatusSensor,
     F1TrackWeatherSensor,
 )
@@ -619,6 +620,13 @@ async def test_formation_start_is_available_during_auth_live_sessions(hass) -> N
     ("factory", "restored_state", "attributes"),
     [
         (
+            lambda coordinator, entry_id: F1TeamRadioSensor(
+                coordinator, f"{entry_id}_team_radio", entry_id, "F1"
+            ),
+            "2026-03-08T04:00:00+00:00",
+            {"history": []},
+        ),
+        (
             lambda coordinator, entry_id: F1PitStopsSensor(
                 coordinator, f"{entry_id}_pitstops", entry_id, "F1"
             ),
@@ -653,6 +661,14 @@ async def test_replay_capable_sensors_stay_unavailable_during_public_live(
 @pytest.mark.parametrize(
     ("factory", "restored_state", "attributes", "stream"),
     [
+        (
+            lambda coordinator, entry_id: F1TeamRadioSensor(
+                coordinator, f"{entry_id}_team_radio", entry_id, "F1"
+            ),
+            "2026-03-08T04:00:00+00:00",
+            {"history": []},
+            "TeamRadio",
+        ),
         (
             lambda coordinator, entry_id: F1PitStopsSensor(
                 coordinator, f"{entry_id}_pitstops", entry_id, "F1"

@@ -30,6 +30,7 @@ KNOWN_STREAMS = {
     "TimingData",
     "DriverList",
     "TimingAppData",
+    "TeamRadio",
     "PitStopSeries",
     "ChampionshipPrediction",
     TRACK_MAP_POSITION_STREAM,
@@ -115,6 +116,7 @@ class ReplaySignalRClient:
         frames: list[ReplayFrame] = []
         prev_ts: float | None = None
         stream_hint = self._stream_hint
+        static_root: str | None = None
         try:
             with self._path.open("r", encoding="utf-8") as handle:
                 for raw_line in handle:
@@ -126,6 +128,7 @@ class ReplaySignalRClient:
                         # Extract stream name from the *.jsonStream URL.
                         url_stream = self._extract_stream_from_url(line)
                         stream_hint = url_stream or stream_hint
+                        static_root = self._extract_static_root_from_url(line)
                         continue
                     if stream_hint == TRACK_MAP_POSITION_STREAM and "{" not in line:
                         ts_part, payload_line = self._split_position_z_line(line)
@@ -161,6 +164,14 @@ class ReplaySignalRClient:
                     current_ts = self._parse_timestamp(ts_part)
                     delay = self._compute_delay(current_ts, prev_ts)
                     prev_ts = current_ts
+                    if (
+                        static_root
+                        and stream_name == "TeamRadio"
+                        and isinstance(payload, dict)
+                        and "_static_root" not in payload
+                    ):
+                        payload = dict(payload)
+                        payload["_static_root"] = static_root
                     frames.append(
                         ReplayFrame(delay=delay, stream=stream_name, payload=payload)
                     )
@@ -237,6 +248,17 @@ class ReplaySignalRClient:
         if tail.endswith(".jsonStream"):
             tail = tail[: -len(".jsonStream")]
         return tail if tail in KNOWN_STREAMS else None
+
+    @staticmethod
+    def _extract_static_root_from_url(line: str) -> str | None:
+        try:
+            _, url = line.split(":", 1)
+        except ValueError:
+            return None
+        full_url = url.strip().rstrip("/")
+        if not full_url or "/" not in full_url:
+            return None
+        return full_url.rsplit("/", 1)[0]
 
     @staticmethod
     def _extract_stream(obj: dict) -> tuple[str | None, dict | None]:

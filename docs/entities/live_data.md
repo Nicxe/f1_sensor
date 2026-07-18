@@ -22,7 +22,7 @@ Live data uses three separate availability modes:
 | Mode | What it means |
 | --- | --- |
 | Public live timing | Standard live mode without F1TV Auth. This powers session status, track status, Safety Car, Race Control, weather, driver timing, tyres, top three, and confirmed incident detection |
-| F1TV Auth live timing | Optional live mode. It can add extra live data for features such as Track Map, Pit Stops, Championship Prediction, formation start refinement, and earlier incident candidates |
+| F1TV Auth live timing | Optional live mode. It can add extra live data for features such as Track Map, Pit Stops, Team Radio, Championship Prediction, formation start refinement, and earlier incident candidates |
 | Replay Mode | Historical playback from Formula 1's session archive. Some data that requires F1TV Auth live can work later when the replay archive contains it |
 
 [Track Map](/features/track-map) is not a normal Home Assistant entity. It is a dashboard card feature that uses live or replay car position data when available.
@@ -147,6 +147,7 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_track_weather](#track-weather)             | Current on-track weather (air temp, track temp, rainfall, wind speed, etc.)|
 | [sensor.f1_driver_list](#driver-list)                 | Show list and details on all drivers, including team color, headshot URL etc| 
 | [sensor.f1_pitstops](#pit-stops)                      | Pit stop events and aggregated pit stop series per car `(Replay Mode or F1TV Auth live timing)` |
+| [sensor.f1_team_radio](#team-radio)                   | Latest team radio clip and rolling history `(Replay Mode or F1TV Auth live timing)` |
 | [sensor.f1_current_tyres](#current-tyres)             | Current tyre compound per driver |
 | [sensor.f1_tyre_statistics](#tyre-statistics)         | Aggregated tyre statistics per compound |
 | [sensor.f1_driver_positions](#driver-positions)       | Driver positions and lap times |
@@ -167,7 +168,7 @@ Use this section to understand the possible values for enum-type states and attr
 All of these entities update **only in relation to an active session**, typically starting less than an hour before and continuing for a few minutes after the session ends. Outside these windows, the entities will be set to **Unavailable** (not updating and not providing new data).
 :::
 :::info[Replay and F1TV Auth live timing entities]
-Some entities stay registered in Home Assistant even when the needed source data is not available. Pit Stops and Championship Prediction can update in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token.
+Some entities stay registered in Home Assistant even when the needed source data is not available. Pit Stops, Team Radio, and Championship Prediction can update in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token.
 
 Formation Start can also improve during live sessions when the needed extra live timing data is available.
 :::
@@ -731,6 +732,47 @@ Each entry in `stops` contains:
 :::info[INFO]
 Available during race and sprint sessions in Replay Mode, and during live F1TV Auth timing when the required extra live data is available.
 :::
+
+---
+
+## Team Radio
+:::info[Replay Mode or F1TV Auth live timing]
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live team radio data is available.
+:::
+
+Latest curated team radio clip with a rolling history. This is not the full raw driver radio feed; it follows the Team Radio clips Formula 1 publishes for the session.
+
+**State**
+- ISO-8601 timestamp of the most recent radio clip, or `unknown` when none are available.
+
+**Example**
+```text
+2026-07-05T14:01:01+00:00
+```
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| utc | string | ISO-8601 timestamp of the radio clip |
+| received_at | string | ISO-8601 timestamp when Home Assistant received the message |
+| racing_number | string | Car number for the driver |
+| path | string | Relative path to the audio file |
+| clip_url | string | Full URL to the audio clip when available |
+| sequence | number | Message counter for deduplication |
+| raw_message | object | Raw team radio capture from the timing feed |
+| history | list | Rolling list of recent radio clips, up to 20 items |
+
+Each entry in `history` contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| utc | string | ISO-8601 timestamp of the radio clip |
+| racing_number | string | Car number for the driver |
+| path | string | Relative path to the audio file |
+| clip_url | string | Full URL to the audio clip when available |
+
+---
 
 ## Current Tyres
 
