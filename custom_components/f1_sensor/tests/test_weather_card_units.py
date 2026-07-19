@@ -48,6 +48,26 @@ function extractFunction(signature) {
   return source.slice(start, end + 1);
 }
 
+function extractStatement(signature) {
+  const start = source.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`Statement signature not found: ${signature}`);
+  }
+  const end = source.indexOf(";", start);
+  return source.slice(start, end + 1);
+}
+
+function extractConstFunction(signature) {
+  const start = source.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`Const function signature not found: ${signature}`);
+  }
+  const arrow = source.indexOf("=>", start);
+  const braceStart = source.indexOf("{", arrow);
+  const end = findMatchingBrace(source, braceStart);
+  return source.slice(start, source.indexOf(";", end) + 1);
+}
+
 function extractClass(signature) {
   const start = source.indexOf(signature);
   if (start === -1) {
@@ -69,14 +89,24 @@ function extractMethod(classSource, signature) {
 }
 
 const helpers = [
+  extractConstFunction("const formatHassDateTime = (hass, date, options = {}, fallback = '') =>"),
   extractFunction("function getF1UnitSystemUnit(hass, key, fallback) {"),
   extractFunction("function getF1TemperatureUnit(hass, entity) {"),
   extractFunction("function convertF1Temperature(value, fromUnit, toUnit) {"),
   extractFunction("function convertF1Speed(value, fromUnit, toUnit) {"),
+  extractStatement("const F1_WEATHER_ACTIVE_SESSION_STATES ="),
+  extractStatement("const F1_WMO_CONDITIONS ="),
+  extractFunction("function toF1FiniteNumber(value) {"),
+  extractFunction("function getF1WeatherCondition(code, rainfall = null, isLive = false) {"),
+  extractFunction("function hasF1TrackWeather(trackWeatherState) {"),
+  extractFunction("function hasF1ForecastWeather(weatherState) {"),
+  extractFunction("function f1WeatherBlockHasData(block) {"),
+  extractFunction("function resolveF1WeatherComparison("),
 ];
 
 const liveClass = extractClass("class F1LiveSessionCard extends LitElement {");
 const nextRaceClass = extractClass("class F1NextRaceCard extends LitElement {");
+const weatherClass = extractClass("class F1WeatherCard extends LitElement {");
 
 const Harness = new Function(
   `
@@ -113,6 +143,7 @@ const Harness = new Function(
     ${extractMethod(nextRaceClass, "_formatTemperature(value, unit) {")}
     ${extractMethod(nextRaceClass, "_formatWind(speed, directionDegrees, unit) {")}
     ${extractMethod(nextRaceClass, "_windDirectionToCardinal(degrees) {")}
+    ${extractMethod(weatherClass, "_formatRaceStart(nextRace) {")}
   }
 
   return Harness;
@@ -135,6 +166,8 @@ if (payload.action === "live") {
     temperature: harness._formatTemperature(payload.temperature, payload.temperatureUnit),
     wind: harness._formatWind(payload.wind, payload.windDirection, payload.windUnit),
   };
+} else if (payload.action === "race_start") {
+  result = harness._formatRaceStart(payload.nextRace || {});
 } else {
   throw new Error(`Unknown action: ${payload.action}`);
 }
@@ -288,3 +321,84 @@ def test_weather_formatters_render_selected_units() -> None:
         "temperature": "77.0 °F",
         "wind": "22.4 mph E",
     }
+
+
+def test_weather_prefers_live_track_feed_during_active_weekend() -> None:
+    result = _run_probe(
+        {
+            "action": "next_race",
+            "hass": _hass(temperature="°C", wind_speed="m/s"),
+            "weatherState": {
+                "state": "16.7",
+                "attributes": {
+                    "unit_of_measurement": "°C",
+                    "current_weather_code": 0,
+                    "race_temperature": 17,
+                    "race_weather_code": 61,
+                },
+            },
+            "trackWeatherState": {
+                "state": "18.1",
+                "attributes": {
+                    "unit_of_measurement": "°C",
+                    "track_temperature": 36.5,
+                    "rainfall": 0,
+                },
+            },
+            "sessionStatus": {"state": "pre"},
+        }
+    )
+
+    assert result["usingLiveNow"] is True
+    assert result["now"]["source"] == "LIVE"
+    assert result["now"]["condition"] == "Dry track"
+    assert result["race"]["condition"] == "Light rain"
+
+
+def test_weather_returns_to_forecast_after_weekend() -> None:
+    result = _run_probe(
+        {
+            "action": "next_race",
+            "hass": _hass(temperature="°C", wind_speed="m/s"),
+            "weatherState": {
+                "state": "12",
+                "attributes": {
+                    "unit_of_measurement": "°C",
+                    "current_weather_code": 3,
+                    "race_temperature": 13,
+                },
+            },
+            "trackWeatherState": {
+                "state": "20",
+                "attributes": {"unit_of_measurement": "°C", "rainfall": 1},
+            },
+            "sessionStatus": {"state": "ended"},
+        }
+    )
+
+    assert result["usingLiveNow"] is False
+    assert result["now"]["source"] == "FORECAST"
+    assert result["now"]["condition"] == "Overcast"
+    assert result["now"]["temperature"] == 12
+
+
+@pytest.mark.parametrize(
+    ("time_format", "expected_fragment"),
+    [("24", "15:00"), ("12", "3:00")],
+)
+def test_weather_formats_race_start_with_home_assistant_clock(
+    time_format: str, expected_fragment: str
+) -> None:
+    hass = _hass()
+    hass["locale"] = {"time_format": time_format, "language": "en-GB"}
+    hass["config"]["time_zone"] = "Europe/Stockholm"
+
+    result = _run_probe(
+        {
+            "action": "race_start",
+            "hass": hass,
+            "nextRace": {"race_start_utc": "2026-07-19T13:00:00Z"},
+        }
+    )
+
+    assert expected_fragment in result

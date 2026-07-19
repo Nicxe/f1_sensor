@@ -17935,6 +17935,235 @@ class F1ReplayControlCardEditor extends LitElement {
 }
 
 // ============================================================================
+// Shared F1 weather model
+// ============================================================================
+
+const F1_WEATHER_ACTIVE_SESSION_STATES = new Set(['pre', 'live', 'suspended', 'break']);
+
+const F1_WMO_CONDITIONS = new Map([
+  [0, 'Clear sky'],
+  [1, 'Mainly clear'],
+  [2, 'Partly cloudy'],
+  [3, 'Overcast'],
+  [45, 'Fog'],
+  [48, 'Rime fog'],
+  [51, 'Light drizzle'],
+  [53, 'Drizzle'],
+  [55, 'Heavy drizzle'],
+  [56, 'Light freezing drizzle'],
+  [57, 'Freezing drizzle'],
+  [61, 'Light rain'],
+  [63, 'Rain'],
+  [65, 'Heavy rain'],
+  [66, 'Light freezing rain'],
+  [67, 'Freezing rain'],
+  [71, 'Light snow'],
+  [73, 'Snow'],
+  [75, 'Heavy snow'],
+  [77, 'Snow grains'],
+  [80, 'Light rain showers'],
+  [81, 'Rain showers'],
+  [82, 'Heavy rain showers'],
+  [85, 'Light snow showers'],
+  [86, 'Snow showers'],
+  [95, 'Thunderstorm'],
+  [96, 'Thunderstorm with hail'],
+  [99, 'Severe thunderstorm with hail'],
+]);
+
+function toF1FiniteNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function getF1WeatherCondition(code, rainfall = null, isLive = false) {
+  const rain = toF1FiniteNumber(rainfall);
+  if (isLive && rain !== null) {
+    return rain > 0 ? 'Rain detected' : 'Dry track';
+  }
+  const numericCode = toF1FiniteNumber(code);
+  return numericCode === null
+    ? 'Conditions unavailable'
+    : F1_WMO_CONDITIONS.get(numericCode) || 'Conditions unavailable';
+}
+
+function hasF1TrackWeather(trackWeatherState) {
+  const attrs = trackWeatherState?.attributes || {};
+  return [
+    trackWeatherState?.state,
+    attrs.air_temperature,
+    attrs.track_temperature,
+    attrs.wind_speed,
+    attrs.rainfall,
+  ].some((value) => toF1FiniteNumber(value) !== null);
+}
+
+function hasF1ForecastWeather(weatherState) {
+  const attrs = weatherState?.attributes || {};
+  return [
+    weatherState?.state,
+    attrs.current_temperature,
+    attrs.race_temperature,
+    attrs.current_precipitation_probability,
+    attrs.race_precipitation_probability,
+  ].some((value) => toF1FiniteNumber(value) !== null);
+}
+
+function f1WeatherBlockHasData(block) {
+  if (!block) return false;
+  return [
+    block.temperature,
+    block.trackTemperature,
+    block.windSpeed,
+    block.windGusts,
+    block.rainfall,
+    block.precipitationProbability,
+    block.cloudCover,
+    block.humidity,
+    block.pressure,
+  ].some((value) => toF1FiniteNumber(value) !== null);
+}
+
+function resolveF1WeatherComparison(
+  hass,
+  config,
+  weatherState,
+  trackWeatherState,
+  sessionStatus,
+) {
+  const weatherAttrs = weatherState?.attributes || {};
+  const trackAttrs = trackWeatherState?.attributes || {};
+  const weatherTemperatureUnit = getF1TemperatureUnit(hass, weatherState);
+  const trackTemperatureUnit = getF1TemperatureUnit(hass, trackWeatherState);
+  const windSpeedUnit = getF1UnitSystemUnit(hass, 'wind_speed', 'm/s');
+  const weatherStateTemperature = toF1FiniteNumber(weatherState?.state);
+  const trackStateTemperature = toF1FiniteNumber(trackWeatherState?.state);
+  const status = String(sessionStatus?.state || '').toLowerCase();
+  const hasLiveTrackFeed = hasF1TrackWeather(trackWeatherState);
+  const useLiveNow = config?.prefer_live_weather !== false
+    && F1_WEATHER_ACTIVE_SESSION_STATES.has(status)
+    && hasLiveTrackFeed;
+  const fallbackToLiveNow = config?.prefer_live_weather !== false
+    && !sessionStatus
+    && hasLiveTrackFeed;
+  const preferLiveNow = useLiveNow || fallbackToLiveNow;
+
+  const liveRainfall = toF1FiniteNumber(trackAttrs.rainfall);
+  const now = preferLiveNow
+    ? {
+        icon: liveRainfall !== null && liveRainfall > 0
+          ? 'mdi:weather-rainy'
+          : weatherAttrs.icon || 'mdi:weather-partly-cloudy',
+        title: 'Now at circuit',
+        status: 'Live track feed',
+        source: 'LIVE',
+        isLive: true,
+        weatherCode: toF1FiniteNumber(weatherAttrs.current_weather_code),
+        condition: getF1WeatherCondition(null, liveRainfall, true),
+        temperature: trackStateTemperature ?? toF1FiniteNumber(convertF1Temperature(
+          trackAttrs.air_temperature,
+          '°C',
+          trackTemperatureUnit,
+        )),
+        trackTemperature: toF1FiniteNumber(convertF1Temperature(
+          trackAttrs.track_temperature,
+          '°C',
+          trackTemperatureUnit,
+        )),
+        temperatureUnit: trackTemperatureUnit,
+        windSpeed: toF1FiniteNumber(convertF1Speed(trackAttrs.wind_speed, 'm/s', windSpeedUnit)),
+        windGusts: null,
+        windSpeedUnit,
+        windDirection: toF1FiniteNumber(trackAttrs.wind_from_direction_degrees),
+        rainfall: liveRainfall,
+        precipitationProbability: null,
+        cloudCover: null,
+        humidity: toF1FiniteNumber(trackAttrs.humidity),
+        pressure: toF1FiniteNumber(trackAttrs.pressure),
+      }
+    : {
+        icon: weatherAttrs.icon || 'mdi:weather-partly-cloudy',
+        title: 'Now at circuit',
+        status: 'Current forecast',
+        source: 'FORECAST',
+        isLive: false,
+        weatherCode: toF1FiniteNumber(weatherAttrs.current_weather_code),
+        condition: getF1WeatherCondition(weatherAttrs.current_weather_code),
+        temperature: weatherStateTemperature ?? toF1FiniteNumber(convertF1Temperature(
+          weatherAttrs.current_temperature,
+          '°C',
+          weatherTemperatureUnit,
+        )),
+        trackTemperature: null,
+        temperatureUnit: weatherTemperatureUnit,
+        windSpeed: toF1FiniteNumber(convertF1Speed(
+          weatherAttrs.current_wind_speed,
+          'm/s',
+          windSpeedUnit,
+        )),
+        windGusts: toF1FiniteNumber(convertF1Speed(
+          weatherAttrs.current_wind_gusts,
+          'm/s',
+          windSpeedUnit,
+        )),
+        windSpeedUnit,
+        windDirection: toF1FiniteNumber(weatherAttrs.current_wind_from_direction_degrees),
+        rainfall: toF1FiniteNumber(weatherAttrs.current_precipitation),
+        precipitationProbability: toF1FiniteNumber(
+          weatherAttrs.current_precipitation_probability,
+        ),
+        cloudCover: toF1FiniteNumber(weatherAttrs.current_cloud_cover),
+        humidity: toF1FiniteNumber(weatherAttrs.current_humidity),
+        pressure: null,
+      };
+
+  const race = {
+    icon: weatherAttrs.race_weather_icon || weatherAttrs.icon || 'mdi:weather-partly-cloudy',
+    title: 'Race start',
+    status: 'Race start forecast',
+    source: 'FORECAST',
+    isLive: false,
+    weatherCode: toF1FiniteNumber(weatherAttrs.race_weather_code),
+    condition: getF1WeatherCondition(weatherAttrs.race_weather_code),
+    temperature: toF1FiniteNumber(convertF1Temperature(
+      weatherAttrs.race_temperature,
+      '°C',
+      weatherTemperatureUnit,
+    )),
+    trackTemperature: null,
+    temperatureUnit: weatherTemperatureUnit,
+    windSpeed: toF1FiniteNumber(convertF1Speed(
+      weatherAttrs.race_wind_speed,
+      'm/s',
+      windSpeedUnit,
+    )),
+    windGusts: toF1FiniteNumber(convertF1Speed(
+      weatherAttrs.race_wind_gusts,
+      'm/s',
+      windSpeedUnit,
+    )),
+    windSpeedUnit,
+    windDirection: toF1FiniteNumber(weatherAttrs.race_wind_from_direction_degrees),
+    rainfall: toF1FiniteNumber(weatherAttrs.race_precipitation),
+    precipitationProbability: toF1FiniteNumber(
+      weatherAttrs.race_precipitation_probability,
+    ),
+    cloudCover: toF1FiniteNumber(weatherAttrs.race_cloud_cover),
+    humidity: toF1FiniteNumber(weatherAttrs.race_humidity),
+    pressure: null,
+  };
+
+  return {
+    show: f1WeatherBlockHasData(now) || f1WeatherBlockHasData(race),
+    now: f1WeatherBlockHasData(now) ? now : null,
+    race: f1WeatherBlockHasData(race) ? race : null,
+    hasForecast: hasF1ForecastWeather(weatherState),
+    usingLiveNow: preferLiveNow,
+  };
+}
+
+// ============================================================================
 // F1 Next Race Overview Card
 // ============================================================================
 
@@ -19549,130 +19778,25 @@ class F1NextRaceCard extends LitElement {
   }
 
   _hasTrackWeather(trackWeatherState) {
-    const attrs = trackWeatherState?.attributes || {};
-    return attrs.air_temperature !== undefined
-      || attrs.track_temperature !== undefined
-      || attrs.wind_speed !== undefined;
+    return hasF1TrackWeather(trackWeatherState);
   }
 
   _hasForecastWeather(weatherState) {
-    const attrs = weatherState?.attributes || {};
-    return attrs.current_temperature !== undefined
-      || attrs.race_temperature !== undefined;
+    return hasF1ForecastWeather(weatherState);
   }
 
   _weatherBlockHasData(block) {
-    if (!block) return false;
-    return [
-      block.temperature,
-      block.trackTemperature,
-      block.windSpeed,
-      block.rainfall,
-      block.precipitationProbability,
-      block.cloudCover,
-      block.humidity,
-      block.pressure,
-    ].some((value) => value !== null && value !== undefined && value !== '');
+    return f1WeatherBlockHasData(block);
   }
 
   _resolveWeatherComparison(weatherState, trackWeatherState, sessionStatus) {
-    const weatherAttrs = weatherState?.attributes || {};
-    const trackAttrs = trackWeatherState?.attributes || {};
-    const weatherTemperatureUnit = getF1TemperatureUnit(this.hass, weatherState);
-    const trackTemperatureUnit = getF1TemperatureUnit(this.hass, trackWeatherState);
-    const windSpeedUnit = getF1UnitSystemUnit(this.hass, 'wind_speed', 'm/s');
-    const weatherStateTemperature = Number(weatherState?.state);
-    const trackStateTemperature = Number(trackWeatherState?.state);
-    const status = String(sessionStatus?.state || '').toLowerCase();
-    const weekendActive = ['pre', 'live', 'suspended', 'break'].includes(status);
-    const useLiveNow = this.config.prefer_live_weather !== false
-      && weekendActive
-      && this._hasTrackWeather(trackWeatherState);
-    const fallbackToLiveNow = this.config.prefer_live_weather !== false
-      && !sessionStatus
-      && this._hasTrackWeather(trackWeatherState);
-    const preferLiveNow = useLiveNow || fallbackToLiveNow;
-
-    const now = preferLiveNow
-      ? {
-          icon: weatherAttrs.icon || 'mdi:weather-partly-cloudy',
-          title: 'Now at circuit',
-          status: 'Live track feed',
-          temperature: Number.isFinite(trackStateTemperature)
-            ? trackStateTemperature
-            : convertF1Temperature(
-              trackAttrs.air_temperature,
-              '°C',
-              trackTemperatureUnit,
-            ),
-          trackTemperature: convertF1Temperature(
-            trackAttrs.track_temperature,
-            '°C',
-            trackTemperatureUnit,
-          ),
-          temperatureUnit: trackTemperatureUnit,
-          windSpeed: convertF1Speed(trackAttrs.wind_speed, 'm/s', windSpeedUnit),
-          windSpeedUnit,
-          windDirection: trackAttrs.wind_from_direction_degrees,
-          rainfall: trackAttrs.rainfall,
-          precipitationProbability: null,
-          cloudCover: null,
-          humidity: trackAttrs.humidity,
-          pressure: trackAttrs.pressure,
-        }
-      : {
-          icon: weatherAttrs.icon || 'mdi:weather-partly-cloudy',
-          title: 'Now at circuit',
-          status: 'Current forecast',
-          temperature: Number.isFinite(weatherStateTemperature)
-            ? weatherStateTemperature
-            : convertF1Temperature(
-              weatherAttrs.current_temperature,
-              '°C',
-              weatherTemperatureUnit,
-            ),
-          trackTemperature: null,
-          temperatureUnit: weatherTemperatureUnit,
-          windSpeed: convertF1Speed(
-            weatherAttrs.current_wind_speed,
-            'm/s',
-            windSpeedUnit,
-          ),
-          windSpeedUnit,
-          windDirection: weatherAttrs.current_wind_from_direction_degrees,
-          rainfall: weatherAttrs.current_precipitation,
-          precipitationProbability: weatherAttrs.current_precipitation_probability,
-          cloudCover: weatherAttrs.current_cloud_cover,
-          humidity: weatherAttrs.current_humidity,
-          pressure: null,
-        };
-
-    const race = {
-      icon: weatherAttrs.race_weather_icon || weatherAttrs.icon || 'mdi:weather-partly-cloudy',
-      title: 'Race start',
-      status: 'Race start forecast',
-      temperature: convertF1Temperature(
-        weatherAttrs.race_temperature,
-        '°C',
-        weatherTemperatureUnit,
-      ),
-      trackTemperature: null,
-      temperatureUnit: weatherTemperatureUnit,
-      windSpeed: convertF1Speed(weatherAttrs.race_wind_speed, 'm/s', windSpeedUnit),
-      windSpeedUnit,
-      windDirection: weatherAttrs.race_wind_from_direction_degrees,
-      rainfall: weatherAttrs.race_precipitation,
-      precipitationProbability: weatherAttrs.race_precipitation_probability,
-      cloudCover: weatherAttrs.race_cloud_cover,
-      humidity: weatherAttrs.race_humidity,
-      pressure: null,
-    };
-
-    return {
-      show: this._weatherBlockHasData(now) || this._weatherBlockHasData(race),
-      now: this._weatherBlockHasData(now) ? now : null,
-      race: this._weatherBlockHasData(race) ? race : null,
-    };
+    return resolveF1WeatherComparison(
+      this.hass,
+      this.config,
+      weatherState,
+      trackWeatherState,
+      sessionStatus,
+    );
   }
 
   _windDirectionToCardinal(degrees) {
@@ -20848,6 +20972,914 @@ class F1NextRaceCardEditor extends LitElement {
         @value-changed=${this._formValueChanged}
       ></ha-form>
       ${helper ? html`<div class="helper">${helper}</div>` : ''}
+    `;
+  }
+
+  _formValueChanged(ev) {
+    if (!this._config) return;
+    const value = ev.detail?.value || {};
+    const newConfig = { ...this._config, ...value };
+    this._config = newConfig;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: newConfig } }));
+  }
+}
+
+// ============================================================================
+// F1 Race Weather Card
+// ============================================================================
+
+class F1WeatherCard extends LitElement {
+  static properties = {
+    hass: {},
+    config: {},
+  };
+
+  static styles = [F1_THEME_STYLES, css`
+    @keyframes fwLivePulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.62; transform: scale(0.82); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    :host {
+      --fw-bg: var(--f1-card-bg);
+      --fw-bg-soft: var(--f1-card-bg-soft);
+      --fw-bg-end: var(--f1-card-bg-end);
+      --fw-border: var(--f1-card-border);
+      --fw-panel: var(--f1-card-panel);
+      --fw-panel-soft: var(--f1-card-panel-soft);
+      --fw-text: var(--f1-card-text);
+      --fw-muted: var(--f1-card-muted);
+      --fw-soft: var(--f1-card-soft);
+      --fw-accent: #e10600;
+      --fw-rain: #49a7ff;
+      --fw-shadow: var(--f1-card-shadow);
+      --fw-card-title-size: clamp(14px, 2.2cqw, 18px);
+      --fw-panel-title-size: clamp(11px, 3.5cqw, 13px);
+      --fw-icon-box-size: clamp(40px, 12cqw, 46px);
+      --fw-icon-size: clamp(24px, 7cqw, 28px);
+      --fw-temperature-size: clamp(25px, 9cqw, 34px);
+      --fw-condition-size: clamp(9px, 2.5cqw, 10px);
+      display: block;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', 'Titillium Web', Arial, sans-serif);
+    }
+
+    ha-card {
+      padding: 0;
+      background: transparent;
+      box-shadow: none;
+      border: none;
+    }
+
+    .fw-card {
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: clamp(8px, 1.2cqw, 10px);
+      padding: clamp(8px, 1.5cqw, 12px) clamp(10px, 1.8cqw, 14px);
+      border: 1px solid var(--fw-border);
+      border-radius: var(--ha-card-border-radius, 12px);
+      background:
+        radial-gradient(circle at 15% 10%, var(--f1-card-chip), transparent 45%),
+        linear-gradient(160deg, var(--fw-bg) 0%, var(--fw-bg-soft) 60%, var(--fw-bg-end) 100%);
+      box-shadow: var(--fw-shadow);
+      color: var(--fw-text);
+      container-type: inline-size;
+    }
+
+    .fw-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px 16px;
+      align-items: end;
+      padding: 2px 2px 10px;
+      border-bottom: 1px solid var(--f1-card-divider);
+    }
+
+    .fw-identity,
+    .fw-start {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .fw-start {
+      align-items: flex-end;
+      text-align: right;
+    }
+
+    .fw-kicker,
+    .fw-panel-kicker,
+    .fw-metric-label,
+    .fw-rain-label,
+    .fw-start-label {
+      color: var(--fw-muted);
+      font-size: 8px;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: var(--f1-card-label-letter-spacing, 0.08em);
+      text-transform: uppercase;
+    }
+
+    .fw-kicker {
+      color: var(--fw-accent);
+    }
+
+    .fw-title {
+      margin: 0;
+      font-family: var(--f1-card-heading-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
+      font-size: var(--fw-card-title-size);
+      line-height: 1.08;
+      letter-spacing: var(--f1-card-heading-letter-spacing, 0.02em);
+      text-wrap: balance;
+    }
+
+    .fw-location,
+    .fw-start-value {
+      color: var(--fw-muted);
+      font-size: clamp(9px, 1.3cqw, 10px);
+      line-height: 1.3;
+    }
+
+    .fw-start-value {
+      color: var(--fw-text);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .fw-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(8px, 1.5cqw, 12px);
+    }
+
+    .fw-panel {
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+      padding: clamp(10px, 1.5cqw, 12px);
+      border: 1px solid var(--f1-card-divider);
+      border-radius: 12px;
+      background:
+        linear-gradient(145deg, var(--fw-panel) 0%, var(--fw-panel-soft) 100%);
+      container-type: inline-size;
+    }
+
+    .fw-panel.race::before {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      background: var(--fw-accent);
+      content: '';
+    }
+
+    .fw-panel-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .fw-panel-title-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .fw-panel-title {
+      margin: 0;
+      font-family: var(--f1-card-heading-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
+      font-size: var(--fw-panel-title-size);
+      line-height: 1.1;
+      letter-spacing: var(--f1-card-heading-letter-spacing, 0.02em);
+    }
+
+    .fw-source {
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+      flex: 0 0 auto;
+      padding: 3px 6px;
+      border: 1px solid var(--f1-card-divider);
+      border-radius: 999px;
+      background: var(--f1-card-chip);
+      color: var(--fw-muted);
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .fw-source.live {
+      border-color: color-mix(in srgb, var(--fw-accent) 45%, transparent);
+      color: var(--fw-text);
+    }
+
+    .fw-live-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--fw-accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--fw-accent) 18%, transparent);
+      animation: fwLivePulse 1.6s ease-in-out infinite;
+    }
+
+    .fw-hero {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+    }
+
+    .fw-weather-icon {
+      display: grid;
+      width: var(--fw-icon-box-size);
+      height: var(--fw-icon-box-size);
+      place-items: center;
+      border: 1px solid var(--f1-card-divider);
+      border-radius: 11px;
+      background: var(--f1-card-chip);
+      color: var(--fw-text);
+    }
+
+    .fw-weather-icon ha-icon {
+      --mdc-icon-size: var(--fw-icon-size);
+    }
+
+    .fw-temperature-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .fw-temperature {
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
+      font-size: var(--fw-temperature-size);
+      line-height: 1;
+      letter-spacing: var(--f1-card-display-letter-spacing, -0.02em);
+      white-space: nowrap;
+    }
+
+    .fw-temperature-unit {
+      padding-left: 2px;
+      color: var(--fw-muted);
+      font-size: 0.38em;
+      letter-spacing: 0;
+      vertical-align: top;
+    }
+
+    .fw-condition {
+      overflow: hidden;
+      color: var(--fw-muted);
+      font-size: var(--fw-condition-size);
+      line-height: 1.3;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .fw-rain {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 8px;
+      border: 1px solid var(--f1-card-divider);
+      border-radius: 10px;
+      background: var(--f1-card-chip);
+    }
+
+    .fw-rain-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .fw-rain-value {
+      font-family: var(--f1-card-display-font-family, 'Formula1 Wide', 'Formula1 Display', 'Noto Sans', sans-serif);
+      font-size: 10px;
+      line-height: 1;
+    }
+
+    .fw-rain-track {
+      overflow: hidden;
+      height: 4px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--fw-muted) 18%, transparent);
+    }
+
+    .fw-rain-fill {
+      width: var(--fw-rain-level, 0%);
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #167bc2, var(--fw-rain));
+      transition: width 300ms ease;
+    }
+
+    .fw-rain-caption {
+      color: var(--fw-muted);
+      font-size: 8px;
+      line-height: 1.25;
+    }
+
+    .fw-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1px;
+      overflow: hidden;
+      margin-top: auto;
+      border: 1px solid var(--f1-card-divider);
+      border-radius: 10px;
+      background: var(--f1-card-divider);
+    }
+
+    .fw-metric {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 6px;
+      align-items: center;
+      min-width: 0;
+      padding: 7px 8px;
+      background: var(--fw-panel);
+    }
+
+    .fw-metric ha-icon {
+      --mdc-icon-size: 15px;
+      color: var(--fw-muted);
+    }
+
+    .fw-metric-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .fw-metric-value {
+      overflow: hidden;
+      color: var(--fw-text);
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .fw-empty-panel,
+    .fw-unavailable {
+      display: grid;
+      min-height: 180px;
+      place-items: center;
+      color: var(--fw-muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .fw-unavailable {
+      min-height: 108px;
+    }
+
+    .fw-card[data-layout='narrow'] {
+      padding: 8px 9px;
+    }
+
+    .fw-card[data-layout='narrow'] .fw-header,
+    .fw-card[data-layout='narrow'] .fw-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .fw-card[data-layout='narrow'] .fw-start {
+      align-items: flex-start;
+      text-align: left;
+    }
+
+    .fw-card[data-layout='narrow'] .fw-start-value {
+      white-space: normal;
+    }
+
+    .fw-card[data-layout='narrow'] .fw-empty-panel {
+      min-height: 120px;
+    }
+
+    @container (max-width: 560px) {
+      .fw-header,
+      .fw-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .fw-start {
+        align-items: flex-start;
+        text-align: left;
+      }
+    }
+  `];
+
+  connectedCallback() {
+    super.connectedCallback();
+    ensureF1Fonts();
+  }
+
+  setConfig(config) {
+    this.config = {
+      theme_mode: DEFAULT_F1_THEME_MODE,
+      weather_entity: 'sensor.f1_weather',
+      track_weather_entity: 'sensor.f1_track_weather',
+      next_race_entity: 'sensor.f1_next_race',
+      session_status_entity: 'sensor.f1_session_status',
+      prefer_live_weather: true,
+      show_header: true,
+      ...config,
+    };
+    applyF1ThemeMode(this, this.config);
+  }
+
+  static getConfigElement() {
+    return document.createElement('f1-weather-card-editor');
+  }
+
+  static getStubConfig() {
+    return {
+      type: 'custom:f1-weather-card',
+      weather_entity: 'sensor.f1_weather',
+      track_weather_entity: 'sensor.f1_track_weather',
+      next_race_entity: 'sensor.f1_next_race',
+      session_status_entity: 'sensor.f1_session_status',
+      prefer_live_weather: true,
+      show_header: true,
+    };
+  }
+
+  getCardSize() {
+    return 3;
+  }
+
+  getGridOptions() {
+    return {
+      columns: 12,
+      min_columns: 6,
+      max_columns: 12,
+      min_rows: 3,
+    };
+  }
+
+  _responsiveLayoutBreakpoints() {
+    return {
+      narrow: 560,
+      medium: 920,
+    };
+  }
+
+  _configuredEntityId(key, legacyDefault = null) {
+    if (!this.config || typeof this.config !== 'object') return legacyDefault;
+    const hasKey = Object.prototype.hasOwnProperty.call(this.config, key);
+    const value = this.config[key];
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+      return hasKey ? null : legacyDefault;
+    }
+    if (value != null) return value;
+    return hasKey ? null : legacyDefault;
+  }
+
+  _getEntityState(key, legacyDefault) {
+    const entityId = this._configuredEntityId(key, legacyDefault);
+    if (!entityId) return null;
+    const entity = getEntityStateWithFallback(this.hass, entityId);
+    return entity && !isUnavailableLikeEntityState(entity) ? entity : null;
+  }
+
+  _getWeatherState() {
+    return this._getEntityState('weather_entity', 'sensor.f1_weather');
+  }
+
+  _getTrackWeatherState() {
+    return this._getEntityState('track_weather_entity', 'sensor.f1_track_weather');
+  }
+
+  _getSessionStatusState() {
+    return this._getEntityState('session_status_entity', 'sensor.f1_session_status');
+  }
+
+  _getNextRaceData() {
+    const entity = this._getEntityState('next_race_entity', 'sensor.f1_next_race');
+    return entity ? { state: entity.state, ...entity.attributes } : null;
+  }
+
+  _windDirectionToCardinal(degrees) {
+    const number = toF1FiniteNumber(degrees);
+    if (number === null) return '';
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    return directions[Math.round(number / 45) % 8];
+  }
+
+  _formatTemperatureValue(value) {
+    const number = toF1FiniteNumber(value);
+    return number === null ? null : number.toFixed(1);
+  }
+
+  _formatNumber(value, suffix = '', digits = 0) {
+    const number = toF1FiniteNumber(value);
+    return number === null ? null : `${number.toFixed(digits)}${suffix}`;
+  }
+
+  _formatWind(block) {
+    const speed = toF1FiniteNumber(block?.windSpeed);
+    if (speed === null) return null;
+    const direction = this._windDirectionToCardinal(block?.windDirection);
+    return `${speed.toFixed(1)} ${block?.windSpeedUnit || 'm/s'}${direction ? ` ${direction}` : ''}`;
+  }
+
+  _formatRaceStart(nextRace) {
+    const raw = nextRace?.race_start_utc || nextRace?.race_start || nextRace?.state;
+    if (!raw) return null;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return null;
+    return formatHassDateTime(
+      this.hass,
+      date,
+      {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: this.hass?.config?.time_zone || undefined,
+      },
+      null,
+    );
+  }
+
+  _getRaceIdentity(nextRace, weatherState) {
+    const attrs = weatherState?.attributes || {};
+    const raceName = nextRace?.race_name || attrs.race_name || nextRace?.state || 'Race weather';
+    const circuit = nextRace?.circuit_name || attrs.circuit_name || attrs.circuit || null;
+    const locality = nextRace?.circuit_locality || attrs.circuit_locality || null;
+    const country = nextRace?.circuit_country || attrs.circuit_country || attrs.country || null;
+    const location = [circuit, [locality, country].filter(Boolean).join(', ')]
+      .filter(Boolean)
+      .join(' · ');
+    return { raceName, location };
+  }
+
+  _renderMetric(icon, label, value) {
+    if (!value) return null;
+    return html`
+      <div class="fw-metric">
+        <ha-icon .icon=${icon} aria-hidden="true"></ha-icon>
+        <div class="fw-metric-copy">
+          <span class="fw-metric-label">${label}</span>
+          <span class="fw-metric-value">${value}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderRain(block) {
+    const probability = toF1FiniteNumber(block?.precipitationProbability);
+    const rainfall = toF1FiniteNumber(block?.rainfall);
+    const level = Math.max(0, Math.min(100, probability ?? (rainfall !== null && rainfall > 0 ? 100 : 0)));
+    const label = block?.isLive ? 'Track surface' : 'Rain risk';
+    const value = block?.isLive
+      ? (rainfall !== null && rainfall > 0 ? 'RAIN DETECTED' : 'DRY')
+      : (probability !== null ? `${probability.toFixed(0)}%` : 'NO ESTIMATE');
+    const caption = rainfall !== null
+      ? `${block?.isLive ? 'Measured' : 'Expected'} precipitation ${rainfall.toFixed(1)} mm`
+      : (block?.isLive ? 'Based on live track telemetry' : 'Forecast precipitation unavailable');
+
+    return html`
+      <div class="fw-rain" style=${`--fw-rain-level: ${level}%`}>
+        <div class="fw-rain-head">
+          <span class="fw-rain-label">${label}</span>
+          <span class="fw-rain-value">${value}</span>
+        </div>
+        <div class="fw-rain-track" role="meter" aria-label=${label} aria-valuemin="0" aria-valuemax="100" aria-valuenow=${String(level)}>
+          <div class="fw-rain-fill"></div>
+        </div>
+        <span class="fw-rain-caption">${caption}</span>
+      </div>
+    `;
+  }
+
+  _renderPanel(block, variant) {
+    const isRace = variant === 'race';
+    if (!block) {
+      return html`
+        <section class="fw-panel ${variant} fw-empty-panel">
+          ${isRace ? 'Race-start forecast is not available' : 'Current circuit weather is not available'}
+        </section>
+      `;
+    }
+
+    const metrics = [
+      block.trackTemperature !== null
+        ? this._renderMetric(
+            'mdi:road-variant',
+            'Track',
+            `${this._formatTemperatureValue(block.trackTemperature)} ${block.temperatureUnit || '°C'}`,
+          )
+        : null,
+      this._renderMetric('mdi:water-percent', 'Humidity', this._formatNumber(block.humidity, '%')),
+      this._renderMetric('mdi:weather-windy', 'Wind', this._formatWind(block)),
+      this._renderMetric('mdi:weather-windy-variant', 'Gusts', this._formatNumber(
+        block.windGusts,
+        ` ${block.windSpeedUnit || 'm/s'}`,
+        1,
+      )),
+      this._renderMetric('mdi:weather-cloudy', 'Cloud cover', this._formatNumber(block.cloudCover, '%')),
+      this._renderMetric('mdi:gauge', 'Pressure', this._formatNumber(block.pressure, ' hPa', 1)),
+    ].filter(Boolean);
+    const temperature = this._formatTemperatureValue(block.temperature);
+
+    return html`
+      <section class="fw-panel ${variant}">
+        <div class="fw-panel-head">
+          <div class="fw-panel-title-wrap">
+            <span class="fw-panel-kicker">${isRace ? 'Forecast' : 'Circuit conditions'}</span>
+            <h3 class="fw-panel-title">${block.title}</h3>
+          </div>
+          <span class="fw-source ${block.isLive ? 'live' : ''}">
+            ${block.isLive ? html`<span class="fw-live-dot" aria-hidden="true"></span>` : null}
+            ${block.source}
+          </span>
+        </div>
+
+        <div class="fw-hero">
+          <div class="fw-weather-icon">
+            <ha-icon .icon=${block.icon} aria-hidden="true"></ha-icon>
+          </div>
+          <div class="fw-temperature-wrap">
+            <div class="fw-temperature">
+              ${temperature ?? '—'}<span class="fw-temperature-unit">${temperature ? block.temperatureUnit || '°C' : ''}</span>
+            </div>
+            <span class="fw-condition">${block.condition}</span>
+          </div>
+        </div>
+
+        ${this._renderRain(block)}
+        ${metrics.length ? html`<div class="fw-metrics">${metrics}</div>` : null}
+      </section>
+    `;
+  }
+
+  render() {
+    if (!this.hass || !this.config) {
+      return html`<ha-card><div class="fw-card fw-unavailable">Loading weather…</div></ha-card>`;
+    }
+
+    const weatherState = this._getWeatherState();
+    const trackWeatherState = this._getTrackWeatherState();
+    const sessionStatus = this._getSessionStatusState();
+    const nextRace = this._getNextRaceData();
+    const weather = resolveF1WeatherComparison(
+      this.hass,
+      this.config,
+      weatherState,
+      trackWeatherState,
+      sessionStatus,
+    );
+    if (!weather.show) {
+      return html`
+        <ha-card>
+          <div class="fw-card fw-unavailable">No current or race-start weather data available</div>
+        </ha-card>
+      `;
+    }
+
+    const identity = this._getRaceIdentity(nextRace, weatherState);
+    const raceStart = this._formatRaceStart(nextRace);
+    const layoutMode = getResponsiveLayoutMode(this);
+    return html`
+      <ha-card>
+        <div class="fw-card" data-layout=${layoutMode}>
+          ${this.config.show_header !== false ? html`
+            <header class="fw-header">
+              <div class="fw-identity">
+                <span class="fw-kicker">Race weather</span>
+                <h2 class="fw-title">${identity.raceName}</h2>
+                ${identity.location ? html`<span class="fw-location">${identity.location}</span>` : null}
+              </div>
+              ${raceStart ? html`
+                <div class="fw-start">
+                  <span class="fw-start-label">Race start</span>
+                  <span class="fw-start-value">${raceStart}</span>
+                </div>
+              ` : null}
+            </header>
+          ` : null}
+          <div class="fw-grid">
+            ${this._renderPanel(weather.now, 'now')}
+            ${this._renderPanel(weather.race, 'race')}
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+}
+
+class F1WeatherCardEditor extends LitElement {
+  static properties = {
+    hass: {},
+    _config: {},
+    _activeTab: { state: true },
+  };
+
+  static styles = css`
+    .card-config,
+    .section,
+    .display-section {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tabs {
+      display: flex;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--divider-color);
+    }
+
+    .tabs button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      background: none;
+      color: var(--primary-text-color);
+      cursor: pointer;
+      font: inherit;
+      font-size: 14px;
+    }
+
+    .tabs button.active {
+      margin-bottom: -1px;
+      border-bottom: 2px solid var(--primary-color);
+      color: var(--primary-color);
+    }
+
+    .section {
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .display-section {
+      gap: 12px;
+    }
+
+    .section-header {
+      margin-top: 8px;
+      color: var(--secondary-text-color);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .helper,
+    .warning {
+      padding-left: 16px;
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .warning {
+      color: var(--error-color);
+    }
+
+    ha-form {
+      width: 100%;
+    }
+  `;
+
+  constructor() {
+    super();
+    this._activeTab = 'sources';
+  }
+
+  setConfig(config) {
+    this._config = {
+      weather_entity: 'sensor.f1_weather',
+      track_weather_entity: 'sensor.f1_track_weather',
+      next_race_entity: 'sensor.f1_next_race',
+      session_status_entity: 'sensor.f1_session_status',
+      prefer_live_weather: true,
+      show_header: true,
+      ...config,
+    };
+  }
+
+  render() {
+    if (!this.hass || !this._config) return html``;
+    return html`
+      <div class="card-config">
+        <div class="tabs">
+          <button class=${this._activeTab === 'sources' ? 'active' : ''} @click=${() => this._activeTab = 'sources'}>
+            Data Sources
+          </button>
+          <button class=${this._activeTab === 'display' ? 'active' : ''} @click=${() => this._activeTab = 'display'}>
+            Display
+          </button>
+        </div>
+        ${this._activeTab === 'sources' ? this._renderSources() : this._renderDisplay()}
+      </div>
+    `;
+  }
+
+  _renderSources() {
+    return html`
+      <div class="section">
+        <div class="section-header">Required sensor</div>
+        ${this._renderEntityPicker(
+          'weather_entity',
+          'Race Weather Sensor',
+          'Provides the current forecast and the forecast for race start.',
+          true,
+        )}
+      </div>
+      <div class="section">
+        <div class="section-header">Optional sensors</div>
+        ${this._renderEntityPicker(
+          'track_weather_entity',
+          'Live Track Weather Sensor',
+          'Replaces current forecast values with live circuit measurements during an active weekend.',
+          false,
+        )}
+        ${this._renderEntityPicker(
+          'next_race_entity',
+          'Next Race Sensor',
+          'Adds the race name, circuit location, and localized race-start time.',
+          false,
+        )}
+        ${this._renderEntityPicker(
+          'session_status_entity',
+          'Session Status Sensor',
+          'Controls when live track measurements are preferred over the current forecast.',
+          false,
+        )}
+      </div>
+    `;
+  }
+
+  _renderDisplay() {
+    return html`
+      <div class="display-section">
+        ${renderThemeModeSelect(this)}
+        ${this._renderSwitch('show_header', 'Show race header')}
+        ${this._renderSwitch(
+          'prefer_live_weather',
+          'Prefer live track weather when weekend is active',
+          'Uses the live sensor for “Now at circuit” in pre, live, suspended, and break states.',
+        )}
+      </div>
+    `;
+  }
+
+  _renderEntityPicker(name, label, helper, required) {
+    const showWarning = required && !this._config[name];
+    const schema = [{ name, label, required, selector: { entity: { domain: 'sensor' } } }];
+    return html`
+      <div class="field">
+        <ha-form
+          .hass=${this.hass}
+          .data=${this._config}
+          .schema=${schema}
+          .computeLabel=${() => label}
+          @value-changed=${this._formValueChanged}
+        ></ha-form>
+        <div class="helper">${helper}</div>
+        ${showWarning ? html`<div class="warning">This sensor is required for the card to function</div>` : null}
+      </div>
+    `;
+  }
+
+  _renderSwitch(name, label, helper = null) {
+    const schema = [{ name, label, selector: { boolean: {} } }];
+    return html`
+      <ha-form
+        .hass=${this.hass}
+        .data=${this._config}
+        .schema=${schema}
+        .computeLabel=${() => label}
+        @value-changed=${this._formValueChanged}
+      ></ha-form>
+      ${helper ? html`<div class="helper">${helper}</div>` : null}
     `;
   }
 
@@ -32121,6 +33153,13 @@ installSectionsAutoHeight(F1NextRaceCard, {
   min_rows: 5,
 });
 
+installSectionsAutoHeight(F1WeatherCard, {
+  columns: 12,
+  min_columns: 6,
+  max_columns: 12,
+  min_rows: 3,
+});
+
 installSectionsAutoHeight(F1SeasonCalendarCard, {
   columns: 12,
   min_columns: 4,
@@ -32205,6 +33244,7 @@ const F1_FONT_STYLE_CARD_CLASSES = [
   F1LiveSessionCard,
   F1ReplayControlCard,
   F1NextRaceCard,
+  F1WeatherCard,
   F1SeasonCalendarCard,
   F1RaceControlCard,
   F1FiaDocumentsCard,
@@ -32341,6 +33381,14 @@ if (!customElements.get('f1-next-race-card')) {
 
 if (!customElements.get('f1-next-race-card-editor')) {
   customElements.define('f1-next-race-card-editor', F1NextRaceCardEditor);
+}
+
+if (!customElements.get('f1-weather-card')) {
+  customElements.define('f1-weather-card', F1WeatherCard);
+}
+
+if (!customElements.get('f1-weather-card-editor')) {
+  customElements.define('f1-weather-card-editor', F1WeatherCardEditor);
 }
 
 if (!customElements.get('f1-season-calendar-card')) {
@@ -32508,6 +33556,14 @@ window.customCards.push({
   type: 'f1-next-race-card',
   name: 'F1 Next Race Overview',
   description: 'Next race overview with countdown, track map, weekend schedule, weather, and history',
+  configurable: true,
+  preview: true,
+});
+
+window.customCards.push({
+  type: 'f1-weather-card',
+  name: 'F1 Race Weather',
+  description: 'Current circuit conditions and the weather forecast for race start',
   configurable: true,
   preview: true,
 });
