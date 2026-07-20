@@ -7,6 +7,7 @@ import logging
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -16,7 +17,7 @@ from .const import (
     LIVE_DELAY_REFERENCE_LAP_SYNC,
     LIVE_DELAY_REFERENCE_SESSION,
 )
-from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
+from .entity import F1AuxEntity, default_object_id, set_default_entity_id
 from .live_delay import LiveDelayReferenceController
 from .replay_entities import (
     F1ReplaySessionSelect,
@@ -50,7 +51,9 @@ async def async_setup_entry(
             entry.entry_id,
             name,
         )
-        set_suggested_object_id(entity, default_object_id("live_delay_reference"))
+        set_default_entity_id(
+            entity, Platform.SELECT, default_object_id("live_delay_reference")
+        )
         entities.append(entity)
 
     # Replay session selector
@@ -62,7 +65,7 @@ async def async_setup_entry(
             entry.entry_id,
             name,
         )
-        set_suggested_object_id(entity, default_object_id("replay_year"))
+        set_default_entity_id(entity, Platform.SELECT, default_object_id("replay_year"))
         entities.append(entity)
         entity = F1ReplaySessionSelect(
             replay_controller,
@@ -70,7 +73,9 @@ async def async_setup_entry(
             entry.entry_id,
             name,
         )
-        set_suggested_object_id(entity, default_object_id("replay_session"))
+        set_default_entity_id(
+            entity, Platform.SELECT, default_object_id("replay_session")
+        )
         entities.append(entity)
         start_reference_controller = registry.get("replay_start_reference_controller")
         if start_reference_controller is not None:
@@ -80,7 +85,11 @@ async def async_setup_entry(
                 entry.entry_id,
                 name,
             )
-            set_suggested_object_id(entity, default_object_id("replay_start_reference"))
+            set_default_entity_id(
+                entity,
+                Platform.SELECT,
+                default_object_id("replay_start_reference"),
+            )
             entities.append(entity)
 
     if entities:

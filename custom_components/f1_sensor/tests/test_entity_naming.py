@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from unittest.mock import Mock
 
+from homeassistant.const import Platform
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_component import EntityComponent
 import pytest
@@ -31,7 +32,9 @@ from custom_components.f1_sensor.const import (
 )
 from custom_components.f1_sensor.entity import (
     async_prepare_translation_names,
+    default_object_id,
     register_entry_name_settings,
+    set_default_entity_id,
 )
 from custom_components.f1_sensor.helpers import format_entity_name
 from custom_components.f1_sensor.number import F1LiveDelayNumber
@@ -98,6 +101,38 @@ async def test_sensor_setup_entry_uses_translation_key_for_track_status(hass) ->
     assert entity.unique_id == f"{entry.entry_id}_track_status"
     assert entity._attr_translation_key == "track_status"
     assert entity._attr_suggested_object_id == "f1_track_status"
+    assert entity.entity_id == "sensor.f1_track_status"
+
+
+@pytest.mark.asyncio
+async def test_new_driver_list_uses_documented_entity_id(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1 Drivers",
+            "disabled_sensors": sorted(SUPPORTED_SENSOR_KEYS - {"driver_list"}),
+        },
+    )
+    entry.add_to_hass(hass)
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "constructor_coordinator": Mock(),
+        "driver_coordinator": Mock(),
+        "drivers_coordinator": Mock(),
+        "last_race_coordinator": Mock(),
+        "race_coordinator": Mock(),
+        "season_results_coordinator": Mock(),
+        "sprint_results_coordinator": Mock(),
+    }
+
+    async_add_entities = Mock()
+    await sensor_platform.async_setup_entry(hass, entry, async_add_entities)
+
+    entities = async_add_entities.call_args[0][0]
+    assert len(entities) == 1
+    entity = entities[0]
+    assert entity.unique_id == f"{entry.entry_id}_driver_list"
+    assert entity.suggested_object_id == "f1_driver_list"
+    assert entity.entity_id == "sensor.f1_driver_list"
 
 
 @pytest.mark.asyncio
@@ -134,6 +169,7 @@ async def test_sensor_setup_entry_uses_translation_key_for_lap_position_progress
     assert entity.unique_id == f"{entry.entry_id}_lap_position_progression"
     assert entity._attr_translation_key == "lap_position_progression"
     assert entity._attr_suggested_object_id == "f1_lap_position_progression"
+    assert entity.entity_id == "sensor.f1_lap_position_progression"
 
 
 @pytest.mark.asyncio
@@ -206,6 +242,7 @@ async def test_binary_sensor_setup_entry_uses_translation_keys(
     object_ids = {
         entity.unique_id: entity._attr_suggested_object_id for entity in entities
     }
+    entity_ids = {entity.unique_id: entity.entity_id for entity in entities}
 
     assert translation_keys[f"{entry.entry_id}_race_week"] == "race_week"
     assert (
@@ -213,6 +250,10 @@ async def test_binary_sensor_setup_entry_uses_translation_keys(
     )
     assert object_ids[f"{entry.entry_id}_race_week"] == "f1_race_week"
     assert object_ids[f"{entry.entry_id}_live_timing_online"] == "f1_live_timing_online"
+    assert entity_ids[f"{entry.entry_id}_race_week"] == "binary_sensor.f1_race_week"
+    assert entity_ids[f"{entry.entry_id}_live_timing_online"] == (
+        "binary_sensor.f1_live_timing_online"
+    )
 
 
 @pytest.mark.asyncio
@@ -337,6 +378,7 @@ async def test_localized_aux_entity_keeps_english_entity_id(hass) -> None:
     state = hass.states.get(entity.entity_id)
     assert state is not None
     assert state.attributes["friendly_name"] == "Livefördröjning"
+    await component._async_reset()
 
 
 @pytest.mark.asyncio
@@ -390,6 +432,7 @@ async def test_legacy_entry_keeps_english_name_and_entity_id(hass) -> None:
     state = hass.states.get(entity.entity_id)
     assert state is not None
     assert state.attributes["friendly_name"] == "Live delay"
+    await component._async_reset()
 
 
 def test_mode_entities_use_standard_english_object_ids() -> None:
@@ -432,6 +475,7 @@ async def test_aux_platforms_use_standard_english_object_ids(hass) -> None:
     await number_platform.async_setup_entry(hass, entry, add_number_entities)
     number_entities = add_number_entities.call_args[0][0]
     assert number_entities[0].suggested_object_id == "f1_live_delay"
+    assert number_entities[0].entity_id == "number.f1_live_delay"
 
     add_select_entities = Mock()
     await select_platform.async_setup_entry(hass, entry, add_select_entities)
@@ -449,6 +493,12 @@ async def test_aux_platforms_use_standard_english_object_ids(hass) -> None:
     assert select_entities[f"{entry.entry_id}_replay_start_reference"] == (
         "f1_replay_start_reference"
     )
+    assert {entity.entity_id for entity in add_select_entities.call_args[0][0]} == {
+        "select.f1_live_delay_reference",
+        "select.f1_replay_session",
+        "select.f1_replay_start_reference",
+        "select.f1_replay_year",
+    }
 
     add_button_entities = Mock()
     await button_platform.async_setup_entry(hass, entry, add_button_entities)
@@ -468,6 +518,17 @@ async def test_aux_platforms_use_standard_english_object_ids(hass) -> None:
     )
     assert button_entities[f"{entry.entry_id}_replay_stop"] == "f1_replay_stop"
     assert button_entities[f"{entry.entry_id}_replay_refresh"] == "f1_replay_refresh"
+    assert {entity.entity_id for entity in add_button_entities.call_args[0][0]} == {
+        "button.f1_delay_calibration_match",
+        "button.f1_refresh_f1tv_access",
+        "button.f1_replay_back_30",
+        "button.f1_replay_forward_30",
+        "button.f1_replay_load",
+        "button.f1_replay_pause",
+        "button.f1_replay_play",
+        "button.f1_replay_refresh",
+        "button.f1_replay_stop",
+    }
 
     add_switch_entities = Mock()
     await switch_platform.async_setup_entry(hass, entry, add_switch_entities)
@@ -479,6 +540,10 @@ async def test_aux_platforms_use_standard_english_object_ids(hass) -> None:
         "f1_delay_calibration"
     )
     assert switch_entities["f1_sensor_no_spoiler_mode"] == "f1_no_spoiler_mode"
+    assert {entity.entity_id for entity in add_switch_entities.call_args[0][0]} == {
+        "switch.f1_delay_calibration",
+        "switch.f1_no_spoiler_mode",
+    }
 
     add_media_player_entities = Mock()
     await media_player_platform.async_setup_entry(
@@ -486,11 +551,86 @@ async def test_aux_platforms_use_standard_english_object_ids(hass) -> None:
     )
     media_player_entities = add_media_player_entities.call_args[0][0]
     assert media_player_entities[0].suggested_object_id == "f1_replay_player"
+    assert media_player_entities[0].entity_id == "media_player.f1_replay_player"
 
     add_calendar_entities = Mock()
     await calendar_platform.async_setup_entry(hass, entry, add_calendar_entities)
     calendar_entities = add_calendar_entities.call_args[0][0]
     assert calendar_entities[0].suggested_object_id == "f1_season_calendar"
+    assert calendar_entities[0].entity_id == "calendar.f1_season_calendar"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "existing_entity_id",
+    [
+        "number.f1_drivers_f1_live_delay",
+        "number.my_custom_delay",
+    ],
+)
+async def test_existing_registry_entity_id_is_preserved(
+    hass, existing_entity_id: str
+) -> None:
+    unique_id = "existing_live_delay"
+    registry = er.async_get(hass)
+    registry.async_get_or_create(
+        Platform.NUMBER,
+        Platform.NUMBER,
+        unique_id,
+        suggested_object_id=existing_entity_id.removeprefix("number."),
+    )
+    entity = F1LiveDelayNumber(
+        controller=_DummyDelayController(5),
+        calibration=None,
+        unique_id=unique_id,
+        entry_id="existing_entry",
+        device_name="Drivers",
+    )
+    set_default_entity_id(
+        entity,
+        Platform.NUMBER,
+        default_object_id("live_delay"),
+    )
+
+    component = EntityComponent(_LOGGER, Platform.NUMBER, hass)
+    await component.async_add_entities([entity])
+    await hass.async_block_till_done()
+
+    assert entity.entity_id == existing_entity_id
+    registry_entry = registry.async_get(existing_entity_id)
+    assert registry_entry is not None
+    assert registry_entry.unique_id == unique_id
+    await component._async_reset()
+
+
+@pytest.mark.asyncio
+async def test_new_default_entity_id_collision_gets_suffix(hass) -> None:
+    entities = [
+        F1LiveDelayNumber(
+            controller=_DummyDelayController(index),
+            calibration=None,
+            unique_id=f"new_live_delay_{index}",
+            entry_id=f"new_entry_{index}",
+            device_name=f"RaceHub {index}",
+        )
+        for index in range(2)
+    ]
+    for entity in entities:
+        set_default_entity_id(
+            entity,
+            Platform.NUMBER,
+            default_object_id("live_delay"),
+        )
+
+    component = EntityComponent(_LOGGER, Platform.NUMBER, hass)
+    await component.async_add_entities(entities)
+    await hass.async_block_till_done()
+
+    assert {entity.entity_id for entity in entities} == {
+        "number.f1_live_delay",
+        "number.f1_live_delay_2",
+    }
+    await component._async_reset()
 
 
 @pytest.mark.asyncio

@@ -6,12 +6,13 @@ from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 
 from .calibration import LiveDelayCalibrationManager
 from .const import DOMAIN
-from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
+from .entity import F1AuxEntity, default_object_id, set_default_entity_id
 from .live_delay import LiveDelayController
 
 
@@ -34,7 +35,7 @@ async def async_setup_entry(
         entry_id=entry.entry_id,
         device_name=entry.data.get("sensor_name", "F1"),
     )
-    set_suggested_object_id(entity, default_object_id("live_delay"))
+    set_default_entity_id(entity, Platform.NUMBER, default_object_id("live_delay"))
     async_add_entities([entity])
 
 

@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import Platform, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import EntityCategory
@@ -51,7 +51,7 @@ from .entity import (
     is_auth_gated_stream_active,
     is_no_spoiler_live_state,
     is_replay_only_stream_active,
-    set_suggested_object_id,
+    set_default_entity_id,
 )
 from .helpers import (
     get_circuit_map_url,
@@ -314,7 +314,7 @@ async def async_setup_entry(
                     base,
                     pos,
                 )
-                set_suggested_object_id(sensor, object_id)
+                set_default_entity_id(sensor, Platform.SENSOR, object_id)
                 sensors.append(sensor)
         elif key == "championship_prediction":
             if not coord:
@@ -325,8 +325,10 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            set_suggested_object_id(
-                drivers_sensor, default_object_id("championship_prediction_drivers")
+            set_default_entity_id(
+                drivers_sensor,
+                Platform.SENSOR,
+                default_object_id("championship_prediction_drivers"),
             )
             sensors.append(drivers_sensor)
             teams_sensor = F1ChampionshipPredictionTeamsSensor(
@@ -335,8 +337,10 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            set_suggested_object_id(
-                teams_sensor, default_object_id("championship_prediction_teams")
+            set_default_entity_id(
+                teams_sensor,
+                Platform.SENSOR,
+                default_object_id("championship_prediction_teams"),
             )
             sensors.append(teams_sensor)
         elif key == "live_timing_diagnostics":
@@ -347,7 +351,9 @@ async def async_setup_entry(
                     entry.entry_id,
                     base,
                 )
-                set_suggested_object_id(sensor, default_object_id("live_timing_mode"))
+                set_default_entity_id(
+                    sensor, Platform.SENSOR, default_object_id("live_timing_mode")
+                )
                 sensors.append(sensor)
         elif cls and coord:
             sensor = cls(
@@ -356,18 +362,22 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            set_suggested_object_id(sensor, default_object_id(key))
+            set_default_entity_id(sensor, Platform.SENSOR, default_object_id(key))
             sensors.append(sensor)
 
     auth_status = data.get(AUTH_RUNTIME_STATUS)
     if isinstance(auth_status, F1TvAuthStatus) and is_auth_health_visible(auth_status):
         status_sensor = F1TvTokenStatusSensor(hass, entry.entry_id, base)
-        set_suggested_object_id(status_sensor, default_object_id("f1tv_token_status"))
+        set_default_entity_id(
+            status_sensor, Platform.SENSOR, default_object_id("f1tv_token_status")
+        )
         sensors.append(status_sensor)
 
         expires_sensor = F1TvTokenExpiresAtSensor(hass, entry.entry_id, base)
-        set_suggested_object_id(
-            expires_sensor, default_object_id("f1tv_token_expires_at")
+        set_default_entity_id(
+            expires_sensor,
+            Platform.SENSOR,
+            default_object_id("f1tv_token_expires_at"),
         )
         sensors.append(expires_sensor)
 
@@ -380,7 +390,9 @@ async def async_setup_entry(
             entry.entry_id,
             base,
         )
-        set_suggested_object_id(sensor, default_object_id("replay_status"))
+        set_default_entity_id(
+            sensor, Platform.SENSOR, default_object_id("replay_status")
+        )
         sensors.append(sensor)
 
     async_add_entities(sensors, True)

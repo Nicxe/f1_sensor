@@ -6,12 +6,13 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 
 from .calibration import LiveDelayCalibrationManager
 from .const import DOMAIN
-from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
+from .entity import F1AuxEntity, default_object_id, set_default_entity_id
 from .no_spoiler import NoSpoilerModeManager
 
 _NO_SPOILER_SWITCH_ENTRY_KEY = "no_spoiler_switch_entry_id"
@@ -36,7 +37,9 @@ async def async_setup_entry(
             entry.entry_id,
             name,
         )
-        set_suggested_object_id(entity, default_object_id("delay_calibration"))
+        set_default_entity_id(
+            entity, Platform.SWITCH, default_object_id("delay_calibration")
+        )
         entities.append(entity)
 
     # No Spoiler Mode switch — global, registered only by the first entry that loads.
@@ -57,7 +60,9 @@ async def async_setup_entry(
             entry.entry_id,
             name,
         )
-        set_suggested_object_id(entity, default_object_id("no_spoiler_mode"))
+        set_default_entity_id(
+            entity, Platform.SWITCH, default_object_id("no_spoiler_mode")
+        )
         entities.append(entity)
 
     if entities:

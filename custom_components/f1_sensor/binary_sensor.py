@@ -11,6 +11,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.event import async_track_time_interval
@@ -38,7 +39,7 @@ from .entity import (
     is_auth_gated_stream_active,
     is_no_spoiler_live_state,
     is_replay_only_stream_active,
-    set_suggested_object_id,
+    set_default_entity_id,
 )
 from .formation_start import FormationStartTracker
 from .helpers import get_next_race, normalize_track_status
@@ -110,7 +111,9 @@ async def async_setup_entry(
             entry.entry_id,
             base,
         )
-        set_suggested_object_id(sensor, default_object_id("live_timing_online"))
+        set_default_entity_id(
+            sensor, Platform.BINARY_SENSOR, default_object_id("live_timing_online")
+        )
         sensors.append(sensor)
     if "race_week" not in disabled:
         sensor = F1RaceWeekSensor(
@@ -120,7 +123,9 @@ async def async_setup_entry(
             base,
             race_week_start=race_week_start,
         )
-        set_suggested_object_id(sensor, default_object_id("race_week"))
+        set_default_entity_id(
+            sensor, Platform.BINARY_SENSOR, default_object_id("race_week")
+        )
         sensors.append(sensor)
     if "safety_car" not in disabled:
         coord = data.get("track_status_coordinator")
@@ -131,7 +136,9 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            set_suggested_object_id(sensor, default_object_id("safety_car"))
+            set_default_entity_id(
+                sensor, Platform.BINARY_SENSOR, default_object_id("safety_car")
+            )
             sensors.append(sensor)
     if "on_track_incident" not in disabled:
         coord = data.get("incident_coordinator")
@@ -142,7 +149,11 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            set_suggested_object_id(sensor, default_object_id("on_track_incident"))
+            set_default_entity_id(
+                sensor,
+                Platform.BINARY_SENSOR,
+                default_object_id("on_track_incident"),
+            )
             sensors.append(sensor)
     if "possible_on_track_incident" not in disabled:
         coord = data.get("incident_coordinator")
@@ -153,8 +164,10 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            set_suggested_object_id(
-                sensor, default_object_id("possible_on_track_incident")
+            set_default_entity_id(
+                sensor,
+                Platform.BINARY_SENSOR,
+                default_object_id("possible_on_track_incident"),
             )
             sensors.append(sensor)
     if "formation_start" not in disabled:
@@ -166,7 +179,9 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            set_suggested_object_id(sensor, default_object_id("formation_start"))
+            set_default_entity_id(
+                sensor, Platform.BINARY_SENSOR, default_object_id("formation_start")
+            )
             sensors.append(sensor)
     if "overtake_mode" not in disabled:
         coord = data.get("live_mode_coordinator")
@@ -177,7 +192,9 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            set_suggested_object_id(sensor, default_object_id("overtake_mode"))
+            set_default_entity_id(
+                sensor, Platform.BINARY_SENSOR, default_object_id("overtake_mode")
+            )
             sensors.append(sensor)
     async_add_entities(sensors, True)
 
