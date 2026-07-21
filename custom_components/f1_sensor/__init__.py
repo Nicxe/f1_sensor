@@ -115,6 +115,7 @@ from .live_window import (
     LiveSessionSupervisor,
 )
 from .no_spoiler import NoSpoilerModeManager
+from .race_weather import F1RaceWeatherCoordinator
 from .replay import ReplaySignalRClient
 from .replay_mode import ReplayController, ReplayState
 from .replay_start import ReplayStartReferenceController
@@ -1603,6 +1604,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     if next_race_history_coordinator is not None:
         next_race_history_coordinator._no_spoiler_sensitive = False
+    race_weather_coordinator = (
+        F1RaceWeatherCoordinator(
+            hass,
+            race_coordinator,
+            session=http_session,
+            config_entry=entry,
+        )
+        if race_coordinator is not None and "weather" in enabled
+        else None
+    )
     driver_coordinator = (
         F1DataCoordinator(
             hass,
@@ -2027,6 +2038,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await race_coordinator.async_config_entry_first_refresh()
     if next_race_history_coordinator:
         await next_race_history_coordinator.async_refresh()
+    if race_weather_coordinator:
+        # Weather is an optional upstream. A failed first refresh must not prevent
+        # unrelated F1 entities from loading; CoordinatorEntity exposes it as
+        # unavailable and the hourly coordinator will retry automatically.
+        await race_weather_coordinator.async_refresh()
     if driver_coordinator:
         await driver_coordinator.async_config_entry_first_refresh()
     if constructor_coordinator:
@@ -2195,6 +2211,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "http_persist": persisted_map,
         "race_coordinator": race_coordinator,
         "next_race_history_coordinator": next_race_history_coordinator,
+        "race_weather_coordinator": race_weather_coordinator,
         "driver_coordinator": driver_coordinator,
         "constructor_coordinator": constructor_coordinator,
         "last_race_coordinator": last_race_coordinator,
@@ -2264,6 +2281,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "activity_filter_unsub": None,
         "no_spoiler_unsub": None,
     }
+
+    if race_weather_coordinator is not None:
+        race_weather_coordinator.async_start()
 
     if race_control_log_store is not None:
         _async_register_race_control_log_interfaces(hass)

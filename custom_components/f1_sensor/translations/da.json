@@ -176,6 +176,11 @@
         "name": "Ingen Spoiler-tilstand"
       }
     },
+    "weather": {
+      "weather": {
+        "name": "Vejr"
+      }
+    },
     "button": {
       "clear_f1tv_access": {
         "name": "Clear F1TV access"

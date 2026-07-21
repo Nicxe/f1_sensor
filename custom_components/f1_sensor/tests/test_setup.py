@@ -530,6 +530,7 @@ async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:
     assert isinstance(mock_config_entry.runtime_data, TrackMapRuntimeData)
     assert isinstance(entry_data["track_map_store"], TrackMapStore)
     assert isinstance(entry_data["track_map_replay_adapter"], TrackMapReplayAdapter)
+    assert entry_data["race_weather_coordinator"] is not None
     assert (
         entry_data["track_map_store"] is mock_config_entry.runtime_data.track_map_store
     )
@@ -632,6 +633,7 @@ async def test_async_setup_entry_skips_lap_position_coordinator_when_disabled(
     assert result is True
     entry_data = hass.data[DOMAIN][entry.entry_id]
     assert entry_data["lap_position_progression_coordinator"] is None
+    assert entry_data["race_weather_coordinator"] is None
 
 
 @pytest.mark.asyncio
