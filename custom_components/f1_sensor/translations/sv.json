@@ -269,6 +269,11 @@
         "name": "Replay-status"
       }
     },
+    "weather": {
+      "weather": {
+        "name": "Väder"
+      }
+    },
     "button": {
       "delay_calibration_match": {
         "name": "Matcha livefördröjning"

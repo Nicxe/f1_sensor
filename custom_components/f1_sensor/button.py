@@ -8,6 +8,7 @@ import time
 from homeassistant.components import persistent_notification
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 
@@ -28,7 +29,7 @@ from .const import (
     CONF_LIVE_TIMING_AUTH_HEADER,
     DOMAIN,
 )
-from .entity import F1AuxEntity, default_object_id, set_suggested_object_id
+from .entity import F1AuxEntity, default_object_id, set_default_entity_id
 from .replay_entities import (
     F1ReplayBackButton,
     F1ReplayForwardButton,
@@ -59,7 +60,9 @@ async def async_setup_entry(
             entry.entry_id,
             name,
         )
-        set_suggested_object_id(entity, default_object_id("delay_calibration_match"))
+        set_default_entity_id(
+            entity, Platform.BUTTON, default_object_id("delay_calibration_match")
+        )
         entities.append(entity)
 
     # Public F1TV auth can be enabled without exposing developer-only Jolpica
@@ -71,7 +74,9 @@ async def async_setup_entry(
             device_name=name,
             unique_id=f"{entry.entry_id}_clear_f1tv_access",
         )
-        set_suggested_object_id(entity, default_object_id("clear_f1tv_access"))
+        set_default_entity_id(
+            entity, Platform.BUTTON, default_object_id("clear_f1tv_access")
+        )
         entities.append(entity)
 
     if is_auth_feature_enabled():
@@ -81,7 +86,9 @@ async def async_setup_entry(
             device_name=name,
             unique_id=f"{entry.entry_id}_refresh_f1tv_access",
         )
-        set_suggested_object_id(entity, default_object_id("refresh_f1tv_access"))
+        set_default_entity_id(
+            entity, Platform.BUTTON, default_object_id("refresh_f1tv_access")
+        )
         entities.append(entity)
 
     if const.ENABLE_DEVELOPMENT_MODE_UI and registry.get("http_session") is not None:
@@ -91,7 +98,9 @@ async def async_setup_entry(
             device_name=name,
             unique_id=f"{entry.entry_id}_jolpica_user_agent_test",
         )
-        set_suggested_object_id(entity, default_object_id("jolpica_ua_test"))
+        set_default_entity_id(
+            entity, Platform.BUTTON, default_object_id("jolpica_ua_test")
+        )
         entities.append(entity)
 
     # Replay mode buttons
@@ -113,7 +122,7 @@ async def async_setup_entry(
                 entry.entry_id,
                 name,
             )
-            set_suggested_object_id(entity, default_object_id(key))
+            set_default_entity_id(entity, Platform.BUTTON, default_object_id(key))
             entities.append(entity)
 
     if entities:

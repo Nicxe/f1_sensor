@@ -191,15 +191,6 @@ class _LiveState:
         self.is_live = is_live
 
 
-class _TimeoutSession:
-    def __init__(self) -> None:
-        self.calls = 0
-
-    def get(self, *_args, **_kwargs):
-        self.calls += 1
-        raise TimeoutError
-
-
 def _build_coordinator(hass, data: dict | None) -> DataUpdateCoordinator:
     coordinator = DataUpdateCoordinator(
         hass,
@@ -2439,7 +2430,7 @@ async def test_standings_sensor_counts_expandable(hass) -> None:
 
 
 def test_weather_sensor_uses_celsius_unit(hass) -> None:
-    coordinator = _build_coordinator(hass, {"MRData": {"RaceTable": {"Races": []}}})
+    coordinator = _build_coordinator(hass, {"current": {}})
     entry_id = "test_entry"
     _set_entry_context(hass, entry_id)
 
@@ -2457,47 +2448,12 @@ def test_weather_sensor_uses_celsius_unit(hass) -> None:
 @pytest.mark.asyncio
 async def test_weather_sensor_converts_native_temperature_to_ha_unit(hass) -> None:
     hass.config.units = US_CUSTOMARY_SYSTEM
-    coordinator = _build_coordinator(hass, {"MRData": {"RaceTable": {"Races": []}}})
-    entry_id = "test_entry"
-    _set_entry_context(hass, entry_id)
-
-    sensor = F1WeatherSensor(
-        coordinator,
-        f"{entry_id}_weather",
-        entry_id,
-        "F1",
-    )
-    sensor._current = {"temperature": 21.0}
-
-    state = await _add_sensor_and_get_state(hass, sensor)
-
-    assert state.state == "69.8"
-    assert state.attributes["unit_of_measurement"] == UnitOfTemperature.FAHRENHEIT
-
-
-@pytest.mark.asyncio
-async def test_weather_sensor_timeout_clears_stale_state(hass, monkeypatch) -> None:
     coordinator = _build_coordinator(
         hass,
         {
-            "MRData": {
-                "RaceTable": {
-                    "Races": [
-                        {
-                            "season": "2026",
-                            "round": "1",
-                            "raceName": "Australian Grand Prix",
-                            "date": "2099-03-20",
-                            "time": "05:00:00Z",
-                            "Circuit": {
-                                "circuitId": "albert_park",
-                                "circuitName": "Albert Park",
-                                "Location": {"lat": "-37.8497", "long": "144.968"},
-                            },
-                        }
-                    ]
-                }
-            }
+            "circuit": {},
+            "current": {"temperature": 21.0, "weather_code": 1},
+            "race": {},
         },
     )
     entry_id = "test_entry"
@@ -2509,25 +2465,66 @@ async def test_weather_sensor_timeout_clears_stale_state(hass, monkeypatch) -> N
         entry_id,
         "F1",
     )
-    sensor._current = {"temperature": 31.2, "weather_source": "stale"}
-    sensor._race = {"temperature": 27.5, "weather_source": "stale"}
-    sensor._attr_icon = "mdi:weather-sunny"
-    timeout_session = _TimeoutSession()
+    state = await _add_sensor_and_get_state(hass, sensor)
 
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.sensor.async_get_clientsession",
-        lambda _hass: timeout_session,
+    assert state.state == "69.8"
+    assert state.attributes["unit_of_measurement"] == UnitOfTemperature.FAHRENHEIT
+
+
+@pytest.mark.asyncio
+async def test_weather_sensor_preserves_legacy_attributes(hass) -> None:
+    coordinator = _build_coordinator(
+        hass,
+        {
+            "circuit": {
+                "season": "2026",
+                "round": "1",
+                "race_name": "Australian Grand Prix",
+                "circuit_id": "albert_park",
+                "circuit_name": "Albert Park",
+            },
+            "current": {
+                "temperature": 31.2,
+                "humidity": 40,
+                "cloud_coverage": 10,
+                "precipitation": 0.0,
+                "precipitation_probability": 2,
+                "wind_speed": 3.2,
+                "wind_bearing": 304.0,
+                "wind_gust_speed": 8.3,
+                "visibility": 34840.0,
+                "weather_code": 1,
+                "is_daytime": True,
+            },
+            "race": {
+                "temperature": 27.5,
+                "precipitation": 1.2,
+                "weather_code": 3,
+                "is_daytime": True,
+            },
+        },
     )
-    sensor._hass = hass
-    sensor.async_write_ha_state = MagicMock()
+    entry_id = "test_entry"
+    _set_entry_context(hass, entry_id)
 
-    await sensor._update_weather()
+    sensor = F1WeatherSensor(
+        coordinator,
+        f"{entry_id}_weather",
+        entry_id,
+        "F1",
+    )
 
-    assert timeout_session.calls == 1
-    assert sensor._current == {}
-    assert sensor._race == {}
-    assert sensor._attr_icon == "mdi:weather-partly-cloudy"
-    sensor.async_write_ha_state.assert_called_once()
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.state == "31.2"
+    assert state.attributes["race_name"] == "Australian Grand Prix"
+    assert state.attributes["current_weather_source"] == "open-meteo"
+    assert state.attributes["current_wind_direction"] == "NW"
+    assert state.attributes["current_visibility_unit"] == "m"
+    assert state.attributes["race_temperature"] == 27.5
+    assert state.attributes["race_precipitation_amount_min"] == 1.2
+    assert state.attributes["race_precipitation_amount_max"] == 1.2
+    assert state.attributes["race_weather_icon"] == "mdi:weather-cloudy"
 
 
 @pytest.mark.asyncio

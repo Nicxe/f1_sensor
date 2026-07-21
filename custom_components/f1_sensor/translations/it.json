@@ -262,6 +262,11 @@
         "name": "Stato replay"
       }
     },
+    "weather": {
+      "weather": {
+        "name": "Meteo"
+      }
+    },
     "button": {
       "delay_calibration_match": {
         "name": "Imposta ritardo diretta"

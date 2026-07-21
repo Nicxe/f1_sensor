@@ -7,11 +7,12 @@ import logging
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .entity import F1BaseEntity, default_object_id, set_suggested_object_id
+from .entity import F1BaseEntity, default_object_id, set_default_entity_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,7 +86,9 @@ async def async_setup_entry(
         entry_id=entry.entry_id,
         device_name=base,
     )
-    set_suggested_object_id(entity, default_object_id("season_calendar"))
+    set_default_entity_id(
+        entity, Platform.CALENDAR, default_object_id("season_calendar")
+    )
     async_add_entities([entity])
 
 

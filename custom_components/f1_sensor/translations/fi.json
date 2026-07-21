@@ -239,6 +239,11 @@
         "name": "F1TV token expires at"
       }
     },
+    "weather": {
+      "weather": {
+        "name": "Sää"
+      }
+    },
     "button": {
       "delay_calibration_match": {
         "name": "Kohdista live-viiveeseen"

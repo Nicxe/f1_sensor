@@ -176,6 +176,11 @@
         "name": "Geen-spoilermodus"
       }
     },
+    "weather": {
+      "weather": {
+        "name": "Weer"
+      }
+    },
     "button": {
       "clear_f1tv_access": {
         "name": "Clear F1TV access"

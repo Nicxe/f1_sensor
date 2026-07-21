@@ -12,6 +12,7 @@ PLATFORMS: list[Platform] = [
     Platform.SWITCH,
     Platform.SELECT,
     Platform.CALENDAR,
+    Platform.WEATHER,
 ]
 
 # Replay Mode
