@@ -223,3 +223,56 @@ async def test_diagnostics_hides_auth_state_when_f1tv_auth_disabled(
     }
     assert CONF_LIVE_TIMING_AUTH_HEADER not in payload["entry"]["data"]
     assert "secret-token" not in str(payload)
+
+
+async def test_diagnostics_exposes_only_safe_jolpica_runtime_scalars(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="F1",
+        data={CONF_OPERATION_MODE: OPERATION_MODE_LIVE},
+    )
+    entry.add_to_hass(hass)
+
+    client = MagicMock()
+    client.diagnostics.return_value = {
+        "user_agent_configured": True,
+        "second_limit": 3,
+        "hour_limit": 450,
+        "max_queue_wait_seconds": 5.0,
+        "requests_last_second": 2,
+        "requests_last_hour": 27,
+        "queue_length": 1,
+        "blocked_requests": 4,
+        "cooldown_remaining_seconds": 5.5,
+        "latest_429": "2026-07-28T10:00:00+00:00",
+        "cache_entries": 8,
+        "inflight_requests": 1,
+        "request_urls": ["https://api.jolpi.ca/ergast/f1/current.json"],
+        "headers": {"User-Agent": "must-not-be-exposed"},
+        "cache_keys": ["sensitive-request-key"],
+    }
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "operation_mode": OPERATION_MODE_LIVE,
+        "jolpica_client": client,
+        "http_cache": {"first": object(), "second": object()},
+    }
+
+    payload = await diagnostics_module.async_get_config_entry_diagnostics(hass, entry)
+
+    assert payload["runtime"]["jolpica"] == {
+        "user_agent_configured": True,
+        "second_limit": 3,
+        "hour_limit": 450,
+        "max_queue_wait_seconds": 5.0,
+        "requests_last_second": 2,
+        "requests_last_hour": 27,
+        "queue_length": 1,
+        "blocked_requests": 4,
+        "cooldown_remaining_seconds": 5.5,
+        "latest_429": "2026-07-28T10:00:00+00:00",
+        "cache_entries": 2,
+        "inflight_requests": 1,
+    }
+    assert "api.jolpi.ca" not in str(payload)
+    assert "must-not-be-exposed" not in str(payload)
+    assert "sensitive-request-key" not in str(payload)

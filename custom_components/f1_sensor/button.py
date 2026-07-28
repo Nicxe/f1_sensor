@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from inspect import isawaitable
 import logging
 import time
@@ -91,7 +90,7 @@ async def async_setup_entry(
         )
         entities.append(entity)
 
-    if const.ENABLE_DEVELOPMENT_MODE_UI and registry.get("http_session") is not None:
+    if const.ENABLE_DEVELOPMENT_MODE_UI and registry.get("jolpica_client") is not None:
         entity = F1JolpicaUserAgentTestButton(
             hass=hass,
             entry_id=entry.entry_id,
@@ -274,7 +273,7 @@ class F1MatchDelayButton(F1AuxEntity, ButtonEntity):
 
 
 class F1JolpicaUserAgentTestButton(F1AuxEntity, ButtonEntity):
-    """Diagnostic button that performs a single Jolpica call and logs the UA used."""
+    """Diagnostic button that performs a limiter-controlled Jolpica call."""
 
     _device_category = "system"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -296,20 +295,9 @@ class F1JolpicaUserAgentTestButton(F1AuxEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
-        session = reg.get("http_session")
-        ua_configured = reg.get("user_agent")
-        ua_session = None
-        try:
-            ua_session = (
-                session.headers.get("User-Agent")
-                if session is not None and getattr(session, "headers", None) is not None
-                else None
-            )
-        except Exception:
-            ua_session = None
-
-        if session is None:
-            msg = "No dedicated Jolpica HTTP session found; reload the integration."
+        client = reg.get("jolpica_client")
+        if client is None:
+            msg = "No Jolpica API client found; reload the integration."
             _LOGGER.warning(msg)
             res = persistent_notification.async_create(
                 self.hass,
@@ -321,38 +309,29 @@ class F1JolpicaUserAgentTestButton(F1AuxEntity, ButtonEntity):
                 await res
             return
 
-        # Make an actual network request so the remote server sees the UA.
-        # Use a small valid query to keep payload tiny.
-        status = None
         err = None
-        started = time.time()
-        headers = {"User-Agent": str(ua_configured)} if ua_configured else None
+        started = time.monotonic()
         try:
-            async with asyncio.timeout(10):
-                async with session.get(
-                    API_URL, params={"limit": "1"}, headers=headers
-                ) as resp:
-                    status = resp.status
-                    # Drain response to keep session healthy; ignore content.
-                    await resp.text()
+            await client.async_get_json(
+                API_URL,
+                params={"limit": "1", "offset": "0"},
+                timeout=10,
+                retry_on_rate_limit=False,
+            )
         except Exception as e:  # noqa: BLE001
             err = str(e)
 
-        elapsed_ms = int(round((time.time() - started) * 1000))
+        elapsed_ms = int(round((time.monotonic() - started) * 1000))
         if err is not None:
-            log = (
-                f"Jolpica UA test FAILED (elapsed={elapsed_ms}ms) "
-                f"ua_configured={ua_configured!r} ua_session={ua_session!r} ua_sent={headers.get('User-Agent') if isinstance(headers, dict) else None!r} error={err}"
+            _LOGGER.warning(
+                "Jolpica API test failed after %sms: %s",
+                elapsed_ms,
+                err,
             )
-            _LOGGER.warning(log)
-            message = log
+            message = f"Jolpica API test FAILED (elapsed={elapsed_ms}ms) error={err}"
         else:
-            log = (
-                f"Jolpica UA test OK (status={status}, elapsed={elapsed_ms}ms) "
-                f"ua_configured={ua_configured!r} ua_session={ua_session!r} ua_sent={headers.get('User-Agent') if isinstance(headers, dict) else None!r} url={API_URL}"
-            )
-            _LOGGER.info(log)
-            message = log
+            _LOGGER.info("Jolpica API test succeeded in %sms", elapsed_ms)
+            message = f"Jolpica API test OK (elapsed={elapsed_ms}ms)"
 
         res = persistent_notification.async_create(
             self.hass,
