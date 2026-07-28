@@ -42,7 +42,11 @@ from .auth import (
     is_auth_transport_enabled,
     rejected_f1tv_auth_status,
 )
-from .auth_http import async_setup_f1tv_auth_http
+from .auth_http import (
+    AUTH_HTTP_VIEW_REGISTERED,
+    AUTH_PAIRING_SESSIONS,
+    async_setup_f1tv_auth_http,
+)
 from .calibration import LiveDelayCalibrationManager
 from .const import (
     API_URL,
@@ -107,7 +111,25 @@ from .incident_detection import (
     SessionMetadata,
     normalize_stream,
 )
-from .lap_position_websocket import async_register_lap_position_websocket
+from .jolpica import (
+    JOLPICA_CLIENT_KEY,
+    JolpicaClient,
+    JolpicaRouteNotFoundError,
+)
+from .jolpica_pagination import (
+    JolpicaPaginationError,
+    async_paginate_jolpica,
+    lap_leaf_keys,
+    merge_result_pages,
+    race_leaf_keys,
+    result_leaf_keys,
+    standings_leaf_keys,
+    validate_single_page_jolpica,
+)
+from .lap_position_websocket import (
+    LAP_POSITION_WS_MARKER,
+    async_register_lap_position_websocket,
+)
 from .live_delay import LiveDelayController, LiveDelayReferenceController
 from .live_window import (
     EventTrackerScheduleSource,
@@ -150,6 +172,7 @@ def _format_update_error(err: Exception) -> str:
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
+_JOLPICA_CLIENT_INIT_TASK_KEY = "__jolpica_client_init_task__"
 _REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode", "replay-preparing"})
 _REPLAY_ONLY_ACTIVE_REASONS = frozenset({"replay", "replay-mode"})
 _ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES = (
@@ -197,8 +220,13 @@ _INCIDENT_BOOTSTRAP_SKIP_STREAMS = frozenset({"RaceControlMessages", "TrackStatu
 _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
     {
         _JOLPICA_STATS_KEY,
+        JOLPICA_CLIENT_KEY,
+        _JOLPICA_CLIENT_INIT_TASK_KEY,
         _RC_LOG_SERVICE_MARKER,
         _RC_LOG_WS_MARKER,
+        AUTH_HTTP_VIEW_REGISTERED,
+        AUTH_PAIRING_SESSIONS,
+        LAP_POSITION_WS_MARKER,
         TRACK_MAP_WS_MARKER,
     }
 )
@@ -1397,6 +1425,36 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
+async def _async_get_shared_jolpica_client(
+    hass: HomeAssistant,
+    session: Any,
+    user_agent: str,
+) -> JolpicaClient:
+    """Return the one domain-wide initialized Jolpica client."""
+    domain_root = hass.data.setdefault(DOMAIN, {})
+    client = domain_root.get(JOLPICA_CLIENT_KEY)
+    if isinstance(client, JolpicaClient):
+        return client
+
+    init_task = domain_root.get(_JOLPICA_CLIENT_INIT_TASK_KEY)
+    if not isinstance(init_task, asyncio.Task):
+
+        async def _async_initialize() -> JolpicaClient:
+            initialized = JolpicaClient(hass, session, user_agent)
+            await initialized.async_initialize()
+            domain_root[JOLPICA_CLIENT_KEY] = initialized
+            return initialized
+
+        init_task = hass.loop.create_task(_async_initialize())
+        domain_root[_JOLPICA_CLIENT_INIT_TASK_KEY] = init_task
+
+    try:
+        return await asyncio.shield(init_task)
+    finally:
+        if domain_root.get(_JOLPICA_CLIENT_INIT_TASK_KEY) is init_task:
+            domain_root.pop(_JOLPICA_CLIENT_INIT_TASK_KEY, None)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up integration via config flow."""
     # Dev-only: periodically report how many Jolpica requests actually hit the network.
@@ -1477,6 +1535,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # this UA per request in the coordinators instead.
     ua_string = await build_user_agent(hass)
     http_session = async_get_clientsession(hass)
+    jolpica_client = await _async_get_shared_jolpica_client(
+        hass,
+        http_session,
+        ua_string,
+    )
     _LOGGER.debug(
         "Configured User-Agent for Jolpica/Ergast (per-request): %s", ua_string
     )
@@ -1546,7 +1609,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             data = v.get("data") if isinstance(v, dict) else None
             if data is None:
                 continue
-            ttl = int(_startup_ttl_for_key(str(k)) or 0)
+            stored_ttl = v.get("ttl_seconds") if isinstance(v, dict) else None
+            try:
+                ttl = max(1, int(stored_ttl))
+            except (TypeError, ValueError):
+                ttl = int(_startup_ttl_for_key(str(k)) or 0)
             saved_at = None
             try:
                 saved_at = float(v.get("saved_at")) if isinstance(v, dict) else None
@@ -2206,6 +2273,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "http_session": http_session,
         "user_agent": ua_string,
+        "jolpica_client": jolpica_client,
+        "http_persistent_cache": persisted,
         "http_cache": http_cache,
         "http_inflight": http_inflight,
         "http_persist": persisted_map,
@@ -6312,6 +6381,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for name, obj in list(data.items()):
                 if obj is None:
                     continue
+                if name == "jolpica_client":
+                    continue
                 close = getattr(obj, "async_close", None)
                 if callable(close):
                     try:
@@ -6346,6 +6417,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     with suppress(Exception):
                         unsub()
                 data_root.pop(_JOLPICA_STATS_KEY, None)
+                shared_client = data_root.pop(JOLPICA_CLIENT_KEY, None)
+                close = getattr(shared_client, "async_close", None)
+                if callable(close):
+                    with suppress(Exception):
+                        await close()
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("Error during entry data cleanup: %s", err)
     return unload_ok
@@ -6624,17 +6700,41 @@ class F1DataCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from the F1 API."""
         try:
+            from yarl import URL
+
+            request_url = str(URL(self._url).update_query({"limit": "100"}))
+
+            def _validate(payload: dict[str, Any]) -> None:
+                if "/driverstandings.json" in request_url:
+                    validate_single_page_jolpica(
+                        payload,
+                        lambda data: standings_leaf_keys(data, "DriverStandings"),
+                    )
+                elif "/constructorstandings.json" in request_url:
+                    validate_single_page_jolpica(
+                        payload,
+                        lambda data: standings_leaf_keys(data, "ConstructorStandings"),
+                    )
+                elif "/results.json" in request_url:
+                    validate_single_page_jolpica(
+                        payload,
+                        lambda data: result_leaf_keys(data, "Results"),
+                    )
+                else:
+                    validate_single_page_jolpica(payload, race_leaf_keys)
+
             async with asyncio.timeout(10):
                 data = await fetch_json(
                     self.hass,
                     self._session,
-                    self._url,
+                    request_url,
                     headers=self._headers,
                     ttl_seconds=self._ttl,
                     cache=self._cache,
                     inflight=self._inflight,
                     persist_map=self._persist,
                     persist_save=self._persist_save,
+                    validator=_validate,
                 )
                 # Detect season rollovers in current.json and clear stale caches if needed.
                 self._handle_season_rollover_if_needed(data)
@@ -6928,18 +7028,38 @@ class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
         )
 
     async def _fetch_url(self, url: str) -> Any:
+        from yarl import URL
+
+        request_url = str(URL(url).update_query({"limit": "100"}))
+
+        def _validate(payload: dict[str, Any]) -> None:
+            if "/qualifying.json" in request_url:
+                validate_single_page_jolpica(
+                    payload,
+                    lambda data: result_leaf_keys(data, "QualifyingResults"),
+                )
+            elif "/results" in request_url:
+                validate_single_page_jolpica(
+                    payload,
+                    lambda data: result_leaf_keys(data, "Results"),
+                )
+            else:
+                validate_single_page_jolpica(payload, race_leaf_keys)
+
         async with asyncio.timeout(10):
-            return await fetch_json(
+            payload = await fetch_json(
                 self.hass,
                 self._session,
-                url,
+                request_url,
                 headers=self._headers,
                 ttl_seconds=self._ttl,
                 cache=self._cache,
                 inflight=self._inflight,
                 persist_map=self._persist,
                 persist_save=self._persist_save,
+                validator=_validate,
             )
+        return payload
 
     def _target_race(self) -> dict[str, Any] | None:
         payload = getattr(self._race_coordinator, "data", None) or {}
@@ -7364,82 +7484,62 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             return base.replace(marker, f"/ergast/f1/{season}/")
         return base
 
-    def _ttl_for_offset(self, offset: int, last_offset: int, page_size: int) -> int:
-        """Return TTL for a given results page offset.
-
-        - Stable pages (older part of season): very long TTL.
-        - Recent pages: daily.
-        - Latest page: every few hours.
-        """
-        try:
-            o = int(offset)
-            last = int(last_offset)
-            size = max(1, int(page_size))
-        except Exception:
-            return self._ttl_latest
-        if last <= 0:
-            return self._ttl_latest
-        if o >= last:
-            return self._ttl_latest
-        if o >= max(0, last - size):
-            return self._ttl_recent
-        return self._ttl_stable
-
     async def _fetch_page(
-        self, limit: int, offset: int, *, ttl_seconds: int | None = None
-    ):
+        self,
+        limit: int,
+        offset: int,
+        ttl_seconds: int,
+        force_refresh: bool = False,
+        validator: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
         from yarl import URL
 
-        ttl = int(ttl_seconds or self._ttl_latest)
+        if not 1 <= int(limit) <= 100:
+            raise JolpicaPaginationError(
+                f"Refusing Jolpica request with invalid limit {limit}"
+            )
 
-        # Primary: season-scoped URL when we can derive season from current.json.
         primary_base = self._effective_base_url()
         primary_url = str(
             URL(primary_base).with_query({"limit": str(limit), "offset": str(offset)})
         )
-
-        async with asyncio.timeout(10):
-            try:
+        try:
+            async with asyncio.timeout(15):
                 return await fetch_json(
                     self.hass,
                     self._session,
                     primary_url,
                     headers=self._headers,
-                    ttl_seconds=ttl,
+                    ttl_seconds=ttl_seconds,
                     cache=self._cache,
                     inflight=self._inflight,
                     persist_map=self._persist,
                     persist_save=self._persist_save,
+                    force_refresh=force_refresh,
+                    validator=validator,
                 )
-            except Exception:
-                # Fallback: legacy /current/ URL (in case the API doesn't support season-scoped paths)
-                fallback_url = str(
-                    URL(str(self._base_url)).with_query(
-                        {"limit": str(limit), "offset": str(offset)}
-                    )
+        except JolpicaRouteNotFoundError:
+            fallback_url = str(
+                URL(str(self._base_url)).with_query(
+                    {"limit": str(limit), "offset": str(offset)}
                 )
-                if fallback_url == primary_url:
-                    raise
+            )
+            if fallback_url == primary_url:
+                raise
+            async with asyncio.timeout(15):
                 return await fetch_json(
                     self.hass,
                     self._session,
                     fallback_url,
                     headers=self._headers,
-                    ttl_seconds=ttl,
+                    ttl_seconds=ttl_seconds,
                     cache=self._cache,
                     inflight=self._inflight,
                     persist_map=self._persist,
                     persist_save=self._persist_save,
+                    force_refresh=force_refresh,
+                    validator=validator,
                 )
-
-    @staticmethod
-    def _race_key(r: dict) -> tuple:
-        season = r.get("season")
-        round_ = r.get("round")
-        return (
-            str(season) if season is not None else "",
-            str(round_) if round_ is not None else "",
-        )
 
     @staticmethod
     def _empty_result() -> dict[str, Any]:
@@ -7447,111 +7547,14 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         try:
-            # Start with a large page size; use API-returned limit/offset/total for correctness
-            request_limit = 200
-            offset = 0
-
-            races_by_key: dict[tuple, dict] = {}
-            order: list[tuple] = []
-
-            def merge_page(page_races: list[dict]):
-                for race in page_races or []:
-                    key = self._race_key(race)
-                    existing = races_by_key.get(key)
-                    if not existing:
-                        copy = dict(race)
-                        copy["Results"] = list(race.get("Results", []) or [])
-                        races_by_key[key] = copy
-                        order.append(key)
-                    else:
-                        seen = {
-                            (res.get("Driver", {}).get("driverId"), res.get("position"))
-                            for res in existing.get("Results", [])
-                        }
-                        for res in race.get("Results", []) or []:
-                            ident = (
-                                res.get("Driver", {}).get("driverId"),
-                                res.get("position"),
-                            )
-                            if ident not in seen:
-                                existing["Results"].append(res)
-                                seen.add(ident)
-
-            # Fetch first page (use recent TTL; we'll apply more specific TTLs
-            # for additional pages once we know the total/last offset).
-            first = await self._fetch_page(
-                request_limit, offset, ttl_seconds=self._ttl_recent
+            paginated = await async_paginate_jolpica(
+                self._fetch_page,
+                lambda payload: result_leaf_keys(payload, "Results"),
+                ttl_stable=self._ttl_stable,
+                ttl_recent=self._ttl_recent,
+                ttl_latest=self._ttl_latest,
             )
-            mr = (first or {}).get("MRData", {})
-            total = int(mr.get("total") or "0")
-            limit_used = int(mr.get("limit") or request_limit)
-            offset_used = int(mr.get("offset") or offset)
-
-            merge_page((mr.get("RaceTable", {}) or {}).get("Races", []) or [])
-
-            # Determine last page offset for TTL selection
-            try:
-                last_page_offset = (max(0, total - 1) // max(1, limit_used)) * max(
-                    1, limit_used
-                )
-            except Exception:
-                last_page_offset = offset_used
-
-            # Defensive cap for pagination loop, based on server-reported totals.
-            max_loops = 50
-            if total > 0 and limit_used > 0:
-                max_loops = max(1, ((total + limit_used - 1) // limit_used) + 1)
-
-            # Iterate deterministically using server-reported paging
-            next_offset = offset_used + limit_used
-            # Cap loop iterations defensively
-            safety = 0
-            while next_offset < total and safety < max_loops:
-                page_ttl = self._ttl_for_offset(
-                    next_offset, last_page_offset, limit_used
-                )
-                page = await self._fetch_page(
-                    limit_used, next_offset, ttl_seconds=page_ttl
-                )
-                pmr = (page or {}).get("MRData", {})
-                praces = (pmr.get("RaceTable", {}) or {}).get("Races", []) or []
-                merge_page(praces)
-                with suppress(Exception):
-                    limit_used = int(pmr.get("limit") or limit_used)
-                    offset_used = int(pmr.get("offset") or next_offset)
-                    total = int(pmr.get("total") or total)
-                    if total > 0 and limit_used > 0:
-                        max_loops = max(
-                            max_loops,
-                            max(1, ((total + limit_used - 1) // limit_used) + 1),
-                        )
-                next_offset = offset_used + limit_used
-                safety += 1
-
-            # Assemble and sort by season then numeric round
-            assembled_races = [races_by_key[k] for k in order]
-            assembled_races.sort(
-                key=lambda r: (str(r.get("season")), int(str(r.get("round") or 0)))
-            )
-            # Warn only if pagination was cut short by the safety cap, meaning
-            # some result rows were not fetched. Note: `total` counts individual
-            # driver-race result rows, not races, so comparing len(assembled_races)
-            # to total would be a false positive whenever there are fewer races
-            # than classified finishers per race.
-            if safety >= max_loops and next_offset < total:
-                _LOGGER.warning(
-                    "Season results pagination incomplete: safety cap reached "
-                    "at offset %s, total reported as %s",
-                    next_offset,
-                    total,
-                )
-            result = {
-                "MRData": {
-                    "RaceTable": {
-                        "Races": assembled_races,
-                    }
-                }
-            }
+            result = merge_result_pages(paginated, "Results")
             # No-spoiler: keep cache warm but don't deliver new data to entities.
             if _is_no_spoiler_jolpica_blocked(self):
                 blocked_data = self.data
@@ -7567,8 +7570,8 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             ) from err
 
 
-class F1SprintResultsCoordinator(DataUpdateCoordinator):
-    """Fetch sprint results for the current season (single, non-paginated endpoint)."""
+class F1SprintResultsCoordinator(F1SeasonResultsCoordinator):
+    """Fetch complete sprint results for the current season."""
 
     def __init__(
         self,
@@ -7586,41 +7589,36 @@ class F1SprintResultsCoordinator(DataUpdateCoordinator):
     ):
         super().__init__(
             hass,
-            _LOGGER,
-            name=name,
-            update_interval=timedelta(hours=1),
+            url,
+            name,
+            session=session,
+            user_agent=user_agent,
+            cache=cache,
+            inflight=inflight,
+            ttl_seconds=ttl_seconds,
+            ttl_stable=ttl_seconds,
+            ttl_recent=ttl_seconds,
+            ttl_latest=ttl_seconds,
+            persist_map=persist_map,
+            persist_save=persist_save,
             config_entry=config_entry,
         )
-        self._session = session or async_get_clientsession(hass)
-        self._headers = {"User-Agent": str(user_agent)} if user_agent else None
-        self._url = url
-        self._cache = cache
-        self._inflight = inflight
-        self._ttl = int(ttl_seconds or 60)
-        self._persist = persist_map
-        self._persist_save = persist_save
-
-    async def async_close(self, *_):
-        return
 
     async def _async_update_data(self):
         try:
-            async with asyncio.timeout(10):
-                data = await fetch_json(
-                    self.hass,
-                    self._session,
-                    self._url,
-                    headers=self._headers,
-                    ttl_seconds=self._ttl,
-                    cache=self._cache,
-                    inflight=self._inflight,
-                    persist_map=self._persist,
-                    persist_save=self._persist_save,
+            paginated = await async_paginate_jolpica(
+                self._fetch_page,
+                lambda payload: result_leaf_keys(payload, "SprintResults"),
+                ttl_stable=self._ttl_stable,
+                ttl_recent=self._ttl_recent,
+                ttl_latest=self._ttl_latest,
+            )
+            data = merge_result_pages(paginated, "SprintResults")
+            if _is_no_spoiler_jolpica_blocked(self):
+                return (
+                    self.data if isinstance(self.data, dict) else self._empty_result()
                 )
-                # No-spoiler: keep cache warm but don't deliver new data to entities.
-                if _is_no_spoiler_jolpica_blocked(self):
-                    return self.data
-                return data
+            return data
         except Exception as err:
             raise UpdateFailed(
                 f"Error fetching sprint results: {_format_update_error(err)}"
@@ -7813,9 +7811,15 @@ class F1LapPositionProgressionCoordinator(DataUpdateCoordinator):
         limit: int,
         offset: int,
         ttl_seconds: int,
+        force_refresh: bool = False,
+        validator: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict:
         from yarl import URL
 
+        if not 1 <= int(limit) <= 100:
+            raise JolpicaPaginationError(
+                f"Refusing Jolpica request with invalid limit {limit}"
+            )
         url = str(
             URL(
                 self._LAPS_BASE_URL.format(
@@ -7835,6 +7839,8 @@ class F1LapPositionProgressionCoordinator(DataUpdateCoordinator):
                 inflight=self._inflight,
                 persist_map=self._persist,
                 persist_save=self._persist_save,
+                force_refresh=force_refresh,
+                validator=validator,
             )
 
     async def _fetch_laps_for_race(
@@ -7844,31 +7850,38 @@ class F1LapPositionProgressionCoordinator(DataUpdateCoordinator):
         if not season or not round_number:
             return None, [], False
 
-        request_limit = 100
-        offset = 0
         ttl_seconds = self._page_ttl(race, latest_round)
         lap_timings: dict[int, dict[str, dict]] = {}
         race_meta: dict | None = None
-        total = 0
-        limit_used = request_limit
-        safety = 0
-        max_loops = 1
 
-        while safety < max_loops:
-            page = await self._fetch_lap_page(
-                season, round_number, limit_used, offset, ttl_seconds
+        async def _fetch_page(
+            limit: int,
+            offset: int,
+            page_ttl: int,
+            force_refresh: bool,
+            validator: Callable[[dict[str, Any]], None],
+        ) -> dict[str, Any]:
+            return await self._fetch_lap_page(
+                season,
+                round_number,
+                limit,
+                offset,
+                page_ttl,
+                force_refresh,
+                validator,
             )
-            mr = (page or {}).get("MRData", {})
-            with suppress(Exception):
-                total = int(mr.get("total") or total or 0)
-            with suppress(Exception):
-                limit_used = int(mr.get("limit") or limit_used or request_limit)
-            with suppress(Exception):
-                offset = int(mr.get("offset") or offset)
-            if total > 0 and limit_used > 0:
-                max_loops = max(1, ((total + limit_used - 1) // limit_used) + 1)
 
-            page_races = self._race_table_races(page)
+        paginated = await async_paginate_jolpica(
+            _fetch_page,
+            lap_leaf_keys,
+            ttl_stable=ttl_seconds,
+            ttl_recent=ttl_seconds,
+            ttl_latest=ttl_seconds,
+            ttl_probe=self._ttl_pending,
+        )
+
+        for validated_page in paginated.pages:
+            page_races = self._race_table_races(validated_page.payload)
             for page_race in page_races:
                 if race_meta is None:
                     race_meta = {
@@ -7895,12 +7908,6 @@ class F1LapPositionProgressionCoordinator(DataUpdateCoordinator):
                             continue
                         timings_by_driver[driver_id] = dict(timing)
 
-            next_offset = offset + max(1, limit_used)
-            if total <= 0 or next_offset >= total:
-                break
-            offset = next_offset
-            safety += 1
-
         laps = []
         for lap_number in sorted(lap_timings):
             timings = sorted(
@@ -7908,7 +7915,7 @@ class F1LapPositionProgressionCoordinator(DataUpdateCoordinator):
                 key=self._sort_timing_key,
             )
             laps.append({"number": str(lap_number), "Timings": timings})
-        return race_meta, laps, total > 0
+        return race_meta, laps, paginated.total > 0
 
     def _result_metadata(self, race: dict) -> dict[str, dict]:
         metadata = {}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
@@ -23,6 +24,7 @@ from custom_components.f1_sensor import (
     RACE_CONTROL_LOG_MAX_ITEMS,
     RaceControlCoordinator,
     RaceControlLogStore,
+    _async_get_shared_jolpica_client,
     _is_activity_log_excluded_entity,
     _refresh_recorder_entity_filter,
     _wrap_activity_filter,
@@ -131,6 +133,26 @@ class DummyCoordinator:
             listener()
 
 
+class DummyJolpicaClient:
+    instances = 0
+    created: list[object] = []
+
+    def __init__(self, *_args, **_kwargs) -> None:
+        type(self).instances += 1
+        type(self).created.append(self)
+        self.initialized = False
+        self.closed = False
+
+    async def async_initialize(self) -> None:
+        self.initialized = True
+
+    async def async_close(self) -> None:
+        self.closed = True
+
+    def diagnostics(self) -> dict:
+        return {}
+
+
 class FakeReplayController:
     def __init__(self, *args, **kwargs) -> None:
         self._initialized = False
@@ -170,6 +192,7 @@ def _coordinator_patches(
 ):
     """Return context managers that replace all coordinator classes with DummyCoordinator."""
     return (
+        patch("custom_components.f1_sensor.JolpicaClient", DummyJolpicaClient),
         patch("custom_components.f1_sensor.F1DataCoordinator", DummyCoordinator),
         patch(
             "custom_components.f1_sensor.F1SeasonResultsCoordinator",
@@ -217,6 +240,25 @@ def test_activity_log_exclude_entity_matcher() -> None:
     assert _is_activity_log_excluded_entity("sensor.f1_race_time_to_three_hour_limit")
     assert not _is_activity_log_excluded_entity("sensor.f1_next_race")
     assert not _is_activity_log_excluded_entity("binary_sensor.f1_track_time")
+
+
+@pytest.mark.asyncio
+async def test_shared_jolpica_client_initializes_once_for_concurrent_entries(
+    hass,
+) -> None:
+    DummyJolpicaClient.instances = 0
+    with patch(
+        "custom_components.f1_sensor.JolpicaClient",
+        DummyJolpicaClient,
+    ):
+        first, second = await asyncio.gather(
+            _async_get_shared_jolpica_client(hass, MagicMock(), "ua"),
+            _async_get_shared_jolpica_client(hass, MagicMock(), "ua"),
+        )
+
+    assert first is second
+    assert first.initialized is True
+    assert DummyJolpicaClient.instances == 1
 
 
 def test_activity_log_filter_wrapper() -> None:
@@ -534,6 +576,53 @@ async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:
     assert (
         entry_data["track_map_store"] is mock_config_entry.runtime_data.track_map_store
     )
+
+
+@pytest.mark.asyncio
+async def test_setup_unload_reload_flushes_and_recreates_shared_transport(
+    hass,
+    mock_config_entry,
+) -> None:
+    DummyJolpicaClient.instances = 0
+    DummyJolpicaClient.created = []
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        for context_manager in _coordinator_patches():
+            stack.enter_context(context_manager)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+        hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+
+        assert await async_setup_entry(hass, mock_config_entry)
+        first_client = hass.data[DOMAIN][mock_config_entry.entry_id]["jolpica_client"]
+        assert await async_unload_entry(hass, mock_config_entry)
+        assert first_client.closed is True
+
+        assert await async_setup_entry(hass, mock_config_entry)
+        second_client = hass.data[DOMAIN][mock_config_entry.entry_id]["jolpica_client"]
+        assert second_client is not first_client
+        assert second_client.initialized is True
+        assert await async_unload_entry(hass, mock_config_entry)
+
+    assert second_client.closed is True
+    assert DummyJolpicaClient.instances == 2
 
 
 @pytest.mark.asyncio

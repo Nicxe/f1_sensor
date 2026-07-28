@@ -1737,14 +1737,19 @@ async def test_season_results_coordinator_no_spoiler_without_cached_data_returns
     payload = {
         "MRData": {
             "total": "1",
-            "limit": "200",
+            "limit": "1",
             "offset": "0",
             "RaceTable": {
                 "Races": [
                     {
                         "season": "2026",
                         "round": "1",
-                        "Results": [{"position": "1"}],
+                        "Results": [
+                            {
+                                "position": "1",
+                                "Driver": {"driverId": "test_driver"},
+                            }
+                        ],
                     }
                 ]
             },
@@ -1760,7 +1765,7 @@ async def test_season_results_coordinator_no_spoiler_without_cached_data_returns
     data = await coordinator._async_update_data()
 
     assert data == {"MRData": {"RaceTable": {"Races": []}}}
-    assert mock_fetch.await_count == 1
+    assert mock_fetch.await_count == 2
 
 
 @pytest.mark.asyncio

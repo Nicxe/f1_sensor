@@ -46,6 +46,23 @@ _TRACKED_STREAMS = (
     "Position.z",
     "PitStopSeries",
 )
+_JOLPICA_DIAGNOSTIC_KEYS = frozenset(
+    {
+        "blocked_requests",
+        "cache_entries",
+        "cooldown_remaining_seconds",
+        "hour_limit",
+        "inflight_requests",
+        "latest_429",
+        "max_queue_wait_seconds",
+        "queue_length",
+        "requests_last_hour",
+        "requests_last_second",
+        "second_limit",
+        "user_agent_configured",
+    }
+)
+_DIAGNOSTIC_SCALAR_TYPES = (bool, float, int, str)
 
 
 def _sorted_strings(value: object) -> list[str] | None:
@@ -135,6 +152,26 @@ def _serialize_track_map_runtime(track_map_store: object) -> dict[str, Any]:
     return payload
 
 
+def _serialize_jolpica_runtime(client: object) -> dict[str, Any]:
+    """Return only safe, documented Jolpica transport counters."""
+    diagnostics = getattr(client, "diagnostics", None)
+    if not callable(diagnostics):
+        return {}
+
+    payload: object = {}
+    with suppress(Exception):
+        payload = diagnostics()
+    if not isinstance(payload, dict):
+        return {}
+
+    return {
+        key: value
+        for key, value in payload.items()
+        if key in _JOLPICA_DIAGNOSTIC_KEYS
+        and (value is None or isinstance(value, _DIAGNOSTIC_SCALAR_TYPES))
+    }
+
+
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -181,6 +218,15 @@ async def async_get_config_entry_diagnostics(
     track_map_store = entry_runtime.get("track_map_store")
     if track_map_store is not None:
         runtime["track_map"] = _serialize_track_map_runtime(track_map_store)
+
+    jolpica_client = entry_runtime.get("jolpica_client")
+    if jolpica_client is not None:
+        jolpica_runtime = _serialize_jolpica_runtime(jolpica_client)
+        http_cache = entry_runtime.get("http_cache")
+        if http_cache is not None:
+            with suppress(Exception):
+                jolpica_runtime["cache_entries"] = len(http_cache)
+        runtime["jolpica"] = jolpica_runtime
 
     entry_data = dict(entry.data)
     if not include_auth_transport:

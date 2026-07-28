@@ -42,9 +42,6 @@ except ImportError:  # pragma: no cover - handled gracefully when dependency mis
 
 _LOGGER = logging.getLogger(__name__)
 
-# Avoid log spam: only log Jolpica cache-hit UA once per cache key per runtime.
-_JOLPICA_UA_HIT_LOGGED: set[str] = set()
-_JOLPICA_UA_TEXT_HIT_LOGGED: set[str] = set()
 _ENTITY_NAME_ACRONYMS = {"f1": "F1", "fia": "FIA"}
 CARDATA_MAX_LINE_BYTES = 256 * 1024
 CARDATA_MAX_DECOMPRESSED_BYTES = 2 * 1024 * 1024
@@ -320,6 +317,8 @@ async def fetch_json(
     inflight: dict[str, asyncio.Future] | None = None,
     persist_map: dict[str, Any] | None = None,
     persist_save: Callable[[], None] | None = None,
+    force_refresh: bool = False,
+    validator: Callable[[Any], None] | None = None,
 ) -> Any:
     """Fetch JSON with TTL cache and in-flight request de-duplication.
 
@@ -334,40 +333,31 @@ async def fetch_json(
     )
     persist_store: dict[str, Any] = persist_map if isinstance(persist_map, dict) else {}
 
+    if force_refresh:
+        cache_map.pop(key, None)
+        if persist_store.pop(key, None) is not None and callable(persist_save):
+            persist_save()
+
     # Cache hit
     try:
         exp, data = cache_map.get(key, (0.0, None))
         if exp and now < exp:
-            if _LOGGER.isEnabledFor(logging.DEBUG):
-                is_jolpica = "api.jolpi.ca" in str(url) or "/ergast/" in str(url)
-                if is_jolpica:
-                    # ua_sent: prefer explicit per-request headers when provided
-                    ua_sent = None
-                    try:
-                        if isinstance(headers, dict) and headers.get("User-Agent"):
-                            ua_sent = headers.get("User-Agent")
-                        else:
-                            ua_sent = (
-                                session.headers.get("User-Agent")
-                                if getattr(session, "headers", None) is not None
-                                else None
-                            )
-                    except Exception:
-                        ua_sent = None
-                    # Log cache-hit UA once per key to keep logs readable
-                    if key not in _JOLPICA_UA_HIT_LOGGED:
-                        _JOLPICA_UA_HIT_LOGGED.add(key)
+            try:
+                if callable(validator):
+                    validator(data)
+            except Exception:
+                cache_map.pop(key, None)
+                persist_store.pop(key, None)
+                if callable(persist_save):
+                    persist_save()
+            else:
+                if _LOGGER.isEnabledFor(logging.DEBUG):
+                    is_jolpica = "api.jolpi.ca" in str(url) or "/ergast/" in str(url)
+                    if not is_jolpica:
                         _LOGGER.debug(
-                            "Jolpica cache HIT key=%s ttl_left=%.1fs ua_sent=%s",
-                            key,
-                            exp - now,
-                            ua_sent,
+                            "HTTP cache HIT key=%s ttl_left=%.1fs", key, exp - now
                         )
-                else:
-                    _LOGGER.debug(
-                        "HTTP cache HIT key=%s ttl_left=%.1fs", key, exp - now
-                    )
-            return data
+                return data
     except Exception:
         _LOGGER.debug("Cache lookup failed for key=%s", key, exc_info=True)
 
@@ -376,46 +366,48 @@ async def fetch_json(
     if fut is not None and not fut.done():
         if _LOGGER.isEnabledFor(logging.DEBUG):
             _LOGGER.debug("HTTP request COALESCED key=%s (awaiting in-flight)", key)
-        return await asyncio.shield(fut)
+        data = await asyncio.shield(fut)
+        try:
+            if callable(validator):
+                validator(data)
+        except Exception:
+            cache_map.pop(key, None)
+            persist_store.pop(key, None)
+            if callable(persist_save):
+                persist_save()
+            raise
+        return data
 
     # First requester: perform network call
     loop = hass.loop
     fut = loop.create_future()
     inflight_map[key] = fut
     try:
-        if _LOGGER.isEnabledFor(logging.DEBUG):
-            ua_sent = None
-            try:
-                if isinstance(headers, dict) and headers.get("User-Agent"):
-                    ua_sent = headers.get("User-Agent")
-                else:
-                    # aiohttp ClientSession exposes default headers via `.headers`
-                    ua_sent = (
-                        session.headers.get("User-Agent")
-                        if getattr(session, "headers", None) is not None
-                        else None
-                    )
-            except Exception:
-                ua_sent = None
-            if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
-                _LOGGER.debug(
-                    "Jolpica request MISS -> url=%s ua_sent=%s key=%s",
-                    url,
-                    ua_sent,
-                    key,
-                )
-            else:
-                _LOGGER.debug("HTTP cache MISS key=%s -> fetching", key)
+        if _LOGGER.isEnabledFor(logging.DEBUG) and not (
+            "api.jolpi.ca" in str(url) or "/ergast/" in str(url)
+        ):
+            _LOGGER.debug("HTTP cache MISS key=%s -> fetching", key)
         if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
             _record_jolpica_miss(hass, key)
-        async with asyncio.timeout(30):
-            async with session.get(url, params=params, headers=headers) as resp:
-                resp.raise_for_status()
-                text = await resp.text()
-        data = json.loads(text.lstrip("\ufeff"))
+        parsed_url = urlparse(str(url))
+        if parsed_url.hostname == "api.jolpi.ca":
+            from .jolpica import JOLPICA_CLIENT_KEY
+
+            client = (hass.data.get(DOMAIN) or {}).get(JOLPICA_CLIENT_KEY)
+            if client is None:
+                raise RuntimeError("Shared Jolpica client is not initialized")
+            data = await client.async_get_json(url, params=params, timeout=30)
+        else:
+            async with asyncio.timeout(30):
+                async with session.get(url, params=params, headers=headers) as resp:
+                    resp.raise_for_status()
+                    text = await resp.text()
+            data = json.loads(text.lstrip("\ufeff"))
+        if callable(validator):
+            validator(data)
         # Update cache
         try:
-            cache_map[key] = (now + max(1, int(ttl_seconds)), data)
+            cache_map[key] = (time.monotonic() + max(1, int(ttl_seconds)), data)
         except Exception:
             _LOGGER.debug("Failed to update cache for key=%s", key, exc_info=True)
         # Persist simplified record (data only). Validation headers are optional future work.
@@ -423,6 +415,7 @@ async def fetch_json(
             persist_store[key] = {
                 "data": data,
                 "saved_at": time.time(),
+                "ttl_seconds": max(1, int(ttl_seconds)),
             }
             if callable(persist_save):
                 # Save debounced by caller; we just request a save
@@ -466,6 +459,7 @@ async def fetch_text(
     inflight: dict[str, asyncio.Future] | None = None,
     persist_map: dict[str, Any] | None = None,
     persist_save: Callable[[], None] | None = None,
+    force_refresh: bool = False,
 ) -> str:
     """Fetch raw text with TTL cache and in-flight de-duplication."""
     base_key = _make_cache_key(url, params)
@@ -477,33 +471,17 @@ async def fetch_text(
     )
     persist_store: dict[str, Any] = persist_map if isinstance(persist_map, dict) else {}
 
+    if force_refresh:
+        cache_map.pop(key, None)
+        if persist_store.pop(key, None) is not None and callable(persist_save):
+            persist_save()
+
     try:
         exp, data = cache_map.get(key, (0.0, None))
         if exp and now < exp and isinstance(data, str):
             if _LOGGER.isEnabledFor(logging.DEBUG):
                 is_jolpica = "api.jolpi.ca" in str(url) or "/ergast/" in str(url)
-                if is_jolpica:
-                    ua_sent = None
-                    try:
-                        if isinstance(headers, dict) and headers.get("User-Agent"):
-                            ua_sent = headers.get("User-Agent")
-                        else:
-                            ua_sent = (
-                                session.headers.get("User-Agent")
-                                if getattr(session, "headers", None) is not None
-                                else None
-                            )
-                    except Exception:
-                        ua_sent = None
-                    if key not in _JOLPICA_UA_TEXT_HIT_LOGGED:
-                        _JOLPICA_UA_TEXT_HIT_LOGGED.add(key)
-                        _LOGGER.debug(
-                            "Jolpica text cache HIT key=%s ttl_left=%.1fs ua_sent=%s",
-                            key,
-                            exp - now,
-                            ua_sent,
-                        )
-                else:
+                if not is_jolpica:
                     _LOGGER.debug(
                         "HTTP text cache HIT key=%s ttl_left=%.1fs", key, exp - now
                     )
@@ -521,42 +499,34 @@ async def fetch_text(
     fut = loop.create_future()
     inflight_map[key] = fut
     try:
-        if _LOGGER.isEnabledFor(logging.DEBUG):
-            ua_sent = None
-            try:
-                if isinstance(headers, dict) and headers.get("User-Agent"):
-                    ua_sent = headers.get("User-Agent")
-                else:
-                    ua_sent = (
-                        session.headers.get("User-Agent")
-                        if getattr(session, "headers", None) is not None
-                        else None
-                    )
-            except Exception:
-                ua_sent = None
-            if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
-                _LOGGER.debug(
-                    "Jolpica text request MISS -> url=%s ua_sent=%s key=%s",
-                    url,
-                    ua_sent,
-                    key,
-                )
-            else:
-                _LOGGER.debug("HTTP text cache MISS key=%s -> fetching", key)
+        if _LOGGER.isEnabledFor(logging.DEBUG) and not (
+            "api.jolpi.ca" in str(url) or "/ergast/" in str(url)
+        ):
+            _LOGGER.debug("HTTP text cache MISS key=%s -> fetching", key)
         if "api.jolpi.ca" in str(url) or "/ergast/" in str(url):
             _record_jolpica_miss(hass, key)
-        async with asyncio.timeout(30):
-            async with session.get(url, params=params, headers=headers) as resp:
-                resp.raise_for_status()
-                text = await resp.text()
+        parsed_url = urlparse(str(url))
+        if parsed_url.hostname == "api.jolpi.ca":
+            from .jolpica import JOLPICA_CLIENT_KEY
+
+            client = (hass.data.get(DOMAIN) or {}).get(JOLPICA_CLIENT_KEY)
+            if client is None:
+                raise RuntimeError("Shared Jolpica client is not initialized")
+            text = await client.async_get_text(url, params=params, timeout=30)
+        else:
+            async with asyncio.timeout(30):
+                async with session.get(url, params=params, headers=headers) as resp:
+                    resp.raise_for_status()
+                    text = await resp.text()
         try:
-            cache_map[key] = (now + max(1, int(ttl_seconds)), text)
+            cache_map[key] = (time.monotonic() + max(1, int(ttl_seconds)), text)
         except Exception:
             _LOGGER.debug("Failed to update text cache for key=%s", key, exc_info=True)
         try:
             persist_store[key] = {
                 "data": text,
                 "saved_at": time.time(),
+                "ttl_seconds": max(1, int(ttl_seconds)),
             }
             if callable(persist_save):
                 persist_save()
@@ -624,6 +594,16 @@ class PersistentCache:
             # Fallback to immediate save
             with suppress(Exception):
                 self._hass.loop.create_task(self._store.async_save(self._data))
+
+    async def async_close(self) -> None:
+        """Flush pending cache writes before config-entry unload completes."""
+        task = self._save_task
+        if task is not None and not task.done():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        with suppress(Exception):
+            await self._store.async_save(self._data)
 
 
 _PDF_ANCHOR_RE = re.compile(
