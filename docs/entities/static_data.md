@@ -19,6 +19,7 @@ Display names can be translated in Home Assistant, and older installations may a
 | [sensor.f1_current_season](#current-season)                                       | Full race schedule                                | 
 | [sensor.f1_driver_standings](#driver-standings)                                   | Current driver championship standings             | 
 | [sensor.f1_constructor_standings](#constructor-standings)                         | Current constructor standings                     | 
+| [weather.f1_weather](#next-race-weather)                                          | Native current conditions and forecasts for the next race circuit |
 | [sensor.f1_weather](#weather-summary)                                             | Weather forecast at next race circuit             | 
 | [sensor.f1_last_race_results](#last-race-results)                                 | Most recent race results                          | 
 | [sensor.f1_season_results](#season-results)                                       | All season race results                           | 
@@ -328,8 +329,54 @@ Each entry in `Constructors` contains:
 | constructor_standings | list | Ergast “ConstructorStandings” array (positions, points, wins, constructor info) |
 
 
-## Weather (Summary)
-`sensor.f1_weather` - Compact weather for the circuit location: current and projected at race start.
+## Next Race Weather
+
+`weather.f1_weather` provides current conditions and native forecasts for the circuit hosting the next race. Its display name includes the circuit and city when both are available, and it updates when the next race destination changes.
+
+**State**
+
+- Home Assistant weather condition, such as `sunny`, `cloudy`, `rainy`, or `lightning-rainy`.
+
+**Example**
+
+```text
+partlycloudy
+```
+
+**Forecasts**
+
+The entity supports Home Assistant's hourly, daily, and twice-daily forecast types. Forecast values use your Home Assistant unit preferences when displayed in the UI.
+
+**Attributes**
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| temperature | number | Current air temperature |
+| humidity | number | Current relative humidity (%) |
+| cloud_coverage | number | Current cloud cover (%) |
+| wind_speed | number | Current wind speed |
+| wind_gust_speed | number | Current wind gust speed |
+| wind_bearing | number | Current wind direction in degrees |
+| visibility | number | Current visibility |
+| race_start | string | Race start timestamp |
+| race_forecast_available | boolean | Whether a forecast for race start is available |
+| season | string | Season year for the next race |
+| round | string | Round number for the next race |
+| race_name | string | Grand Prix name |
+| circuit_id | string | Circuit identifier |
+| circuit_name | string | Circuit name |
+| circuit_locality | string | City/area |
+| circuit_country | string | Country |
+
+:::info[Existing weather sensor]
+The existing `sensor.f1_weather` remains available for backward compatibility and for bundled cards that compare current conditions with the race-start forecast.
+:::
+
+---
+
+## Weather Summary
+
+`sensor.f1_weather` provides compact weather data for the circuit location, both now and at race start.
 
 **State**
 - Number: current air temperature in Home Assistant's selected temperature unit, or `unknown`.

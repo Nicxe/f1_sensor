@@ -25,6 +25,7 @@ Public live timing works without F1TV Auth. Cards that show live Track Map, Pit 
 | --- | --- | --- |
 | [F1 Live Session](#f1-live-session-card) | `custom:f1-live-session-card` | Session status, track condition, weather, and lap counter |
 | [F1 Next Race](#f1-next-race-card) | `custom:f1-next-race-card` | Next race countdown, schedule, circuit map, weather, and track time |
+| [F1 Race Weather](#f1-race-weather-card) | `custom:f1-weather-card` | Current circuit conditions and the forecast for race start |
 | [F1 Season Calendar](#f1-season-calendar-card) | `custom:f1-season-calendar-card` | Season schedule with past and upcoming races |
 | [F1 Race Control](#f1-race-control-card) | `custom:f1-race-control-card` | Race Control messages, flags, and optional message filters |
 | [F1 FIA Documents](#f1-fia-documents-card) | `custom:f1-fia-documents-card` | FIA documents and decision PDFs for the current weekend |
@@ -200,6 +201,39 @@ Shows the next race, countdown, weekend schedule, circuit map, track time, weath
 | `show_weather` | `true` | Show weather information |
 | `show_history` | `true` | Show race history when available |
 | `prefer_live_weather` | `true` | Prefer `sensor.f1_track_weather` during live sessions |
+
+---
+
+### F1 Race Weather Card
+
+`custom:f1-weather-card`
+
+Compares the current conditions at the next race circuit with the forecast for race start. During an active weekend, the card can replace the current forecast with live track measurements while keeping the race-start forecast visible.
+
+**Required entity:** `sensor.f1_weather`
+
+**Optional entities:** `sensor.f1_track_weather`, `sensor.f1_next_race`, `sensor.f1_session_status`
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `weather_entity` | `sensor.f1_weather` | Provides current conditions and the race-start forecast |
+| `track_weather_entity` | `sensor.f1_track_weather` | Provides live air temperature, track temperature, rainfall, humidity, pressure, and wind |
+| `next_race_entity` | `sensor.f1_next_race` | Adds the race name, circuit location, and race-start time |
+| `session_status_entity` | `sensor.f1_session_status` | Determines when live track conditions replace the current forecast |
+| `prefer_live_weather` | `true` | Prefer live track conditions during `pre`, `live`, `suspended`, and `break` session states |
+| `show_header` | `true` | Show the race, circuit location, and race-start time |
+| `theme_mode` | `dark` | Card theme |
+
+```yaml
+type: custom:f1-weather-card
+weather_entity: sensor.f1_weather
+track_weather_entity: sensor.f1_track_weather
+next_race_entity: sensor.f1_next_race
+session_status_entity: sensor.f1_session_status
+prefer_live_weather: true
+show_header: true
+theme_mode: auto
+```
 
 ---
 
