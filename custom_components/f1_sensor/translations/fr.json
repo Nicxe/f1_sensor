@@ -176,6 +176,11 @@
         "name": "Mode sans spoilers"
       }
     },
+    "weather": {
+      "weather": {
+        "name": "Météo"
+      }
+    },
     "button": {
       "clear_f1tv_access": {
         "name": "Clear F1TV access"

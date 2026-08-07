@@ -20,18 +20,16 @@ Start with the [installation guide](/getting-started/installation), then use [co
 
 Most users should install the stable release. See [Release Channels](/getting-started/release-channels) before using beta or `dev` builds.
 
-## Version 5.2
+## Version 5.4
 
-Version 5.2 improves the bundled dashboard cards, incident notifications, and live timing sync:
+Version 5.4 expands race weather support and improves data reliability:
 
-- [Live Data Cards](/cards/cards-overview) add configurable font styles for wide, balanced, and system typography
-- Practice and Race timing cards can show optional S1, S2, and S3 sector columns with timing highlights
-- The Race Control card can hide track limits messages without deleting saved Race Control history
-- [Track Map](/features/track-map) now follows [Live Delay](/features/live-delay) during live sessions and handles unavailable position data more clearly
-- [Incident Notifications](/blueprints/incident-notifications) add optional presence, media player, do-not-disturb, and custom activation conditions
-- Weather sensors and cards now match Home Assistant temperature and wind unit preferences more consistently
+- The new [F1 Race Weather card](/cards/cards-overview#f1-race-weather-card) compares current circuit conditions with the forecast for race start
+- A native [next-race weather entity](/entities/static-data#next-race-weather) provides hourly, daily, and twice-daily forecasts for the circuit
+- New installations receive the documented entity IDs without an extra device-name prefix; existing entity IDs and customizations stay unchanged
+- Season, sprint, and lap results update only after complete data has been received, preventing partial classifications from replacing complete results
 
-Version 5.2 also includes correctness fixes for sector timing alignment, lap position progression finish positions, and post-race position lines in the bundled cards.
+The existing `sensor.f1_weather` remains available for dashboards and automations that already use it.
 
 ## Features
 

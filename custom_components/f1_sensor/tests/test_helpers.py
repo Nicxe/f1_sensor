@@ -5,6 +5,7 @@ import base64
 from datetime import UTC, datetime
 import gc
 import json
+import time
 from types import TracebackType
 from unittest.mock import AsyncMock, MagicMock
 import zlib
@@ -12,6 +13,7 @@ import zlib
 import pytest
 
 from custom_components.f1_sensor.__init__ import FiaDocumentsCoordinator
+from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor.helpers import (
     CARDATA_MAX_DECOMPRESSED_BYTES,
     CARDATA_MAX_ENTRIES,
@@ -21,6 +23,7 @@ from custom_components.f1_sensor.helpers import (
     parse_cardata_line,
     parse_fia_documents,
 )
+from custom_components.f1_sensor.jolpica import JOLPICA_CLIENT_KEY
 
 
 class _TimeoutResponse:
@@ -35,6 +38,29 @@ class _TimeoutResponse:
     ) -> bool:
         del exc_type, exc, tb
         return False
+
+
+class _JsonResponse:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
+        del exc_type, exc, tb
+        return False
+
+    def raise_for_status(self) -> None:
+        return None
+
+    async def text(self) -> str:
+        return json.dumps(self._payload)
 
 
 def _future_race_payload() -> dict:
@@ -175,6 +201,95 @@ async def test_http_fetch_helpers_drain_unretrieved_future_exceptions(
         hass.loop.set_exception_handler(previous_handler)
 
     assert contexts == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_json_evicts_invalid_cached_page_before_one_refetch(hass) -> None:
+    url = "https://example.com/page"
+    invalid = {"valid": False}
+    valid = {"valid": True}
+    cache = {url: (time.monotonic() + 60, invalid)}
+    persisted = {url: {"data": invalid, "saved_at": time.time()}}
+    persist_save = MagicMock()
+    session = MagicMock()
+    session.get.return_value = _JsonResponse(valid)
+
+    def _validate(payload: dict) -> None:
+        if payload.get("valid") is not True:
+            raise ValueError("invalid page")
+
+    result = await fetch_json(
+        hass,
+        session,
+        url,
+        ttl_seconds=123,
+        cache=cache,
+        inflight={},
+        persist_map=persisted,
+        persist_save=persist_save,
+        validator=_validate,
+    )
+
+    assert result == valid
+    session.get.assert_called_once()
+    assert cache[url][1] == valid
+    assert persisted[url]["data"] == valid
+    assert persisted[url]["ttl_seconds"] == 123
+    assert persist_save.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_json_never_caches_invalid_fresh_page(hass) -> None:
+    url = "https://example.com/page"
+    cache = {}
+    persisted = {}
+    session = MagicMock()
+    session.get.return_value = _JsonResponse({"valid": False})
+
+    def _validate(payload: dict) -> None:
+        if payload.get("valid") is not True:
+            raise ValueError("invalid page")
+
+    with pytest.raises(ValueError, match="invalid page"):
+        await fetch_json(
+            hass,
+            session,
+            url,
+            cache=cache,
+            inflight={},
+            persist_map=persisted,
+            validator=_validate,
+        )
+
+    assert cache == {}
+    assert persisted == {}
+
+
+@pytest.mark.asyncio
+async def test_fetch_json_routes_jolpica_only_through_shared_client(hass) -> None:
+    client = MagicMock()
+    client.async_get_json = AsyncMock(return_value={"MRData": {}})
+    hass.data.setdefault(DOMAIN, {})[JOLPICA_CLIENT_KEY] = client
+    session = MagicMock()
+
+    result = await fetch_json(
+        hass,
+        session,
+        "https://api.jolpi.ca/ergast/f1/current.json",
+        params={"limit": "1", "offset": "0"},
+        headers={"User-Agent": "must-not-be-used"},
+        cache={},
+        inflight={},
+        persist_map={},
+    )
+
+    assert result == {"MRData": {}}
+    client.async_get_json.assert_awaited_once_with(
+        "https://api.jolpi.ca/ergast/f1/current.json",
+        params={"limit": "1", "offset": "0"},
+        timeout=30,
+    )
+    session.get.assert_not_called()
 
 
 @pytest.mark.asyncio

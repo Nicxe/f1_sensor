@@ -13,9 +13,8 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import Platform, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.event import (
     async_call_later,
@@ -51,7 +50,7 @@ from .entity import (
     is_auth_gated_stream_active,
     is_no_spoiler_live_state,
     is_replay_only_stream_active,
-    set_suggested_object_id,
+    set_default_entity_id,
 )
 from .helpers import (
     get_circuit_map_url,
@@ -63,40 +62,10 @@ from .helpers import (
     get_timezone,
     normalize_track_status,
 )
+from .race_weather import legacy_weather_observation, weather_icon
 from .replay_entities import F1ReplayStatusSensor
 
 TEAM_RADIO_STATIC_BASE = "https://livetiming.formula1.com/static"
-
-WMO_CODE_TO_MDI = {
-    0: "mdi:weather-sunny",
-    1: "mdi:weather-partly-cloudy",
-    2: "mdi:weather-partly-cloudy",
-    3: "mdi:weather-cloudy",
-    45: "mdi:weather-fog",
-    48: "mdi:weather-fog",
-    51: "mdi:weather-rainy",
-    53: "mdi:weather-rainy",
-    55: "mdi:weather-rainy",
-    56: "mdi:weather-snowy-rainy",
-    57: "mdi:weather-snowy-rainy",
-    61: "mdi:weather-rainy",
-    63: "mdi:weather-rainy",
-    65: "mdi:weather-pouring",
-    66: "mdi:weather-snowy-rainy",
-    67: "mdi:weather-snowy-rainy",
-    71: "mdi:weather-snowy",
-    73: "mdi:weather-snowy",
-    75: "mdi:weather-snowy",
-    77: "mdi:weather-snowy",
-    80: "mdi:weather-rainy",
-    81: "mdi:weather-rainy",
-    82: "mdi:weather-pouring",
-    85: "mdi:weather-snowy",
-    86: "mdi:weather-snowy",
-    95: "mdi:weather-lightning",
-    96: "mdi:weather-lightning-rainy",
-    99: "mdi:weather-lightning-rainy",
-}
 
 
 class _ReplayOrAuthGatedStreamMixin:
@@ -235,7 +204,7 @@ async def async_setup_entry(
             F1ConstructorStandingsSensor,
             data["constructor_coordinator"],
         ),
-        "weather": (F1WeatherSensor, data["race_coordinator"]),
+        "weather": (F1WeatherSensor, data.get("race_weather_coordinator")),
         "track_weather": (F1TrackWeatherSensor, data.get("weather_data_coordinator")),
         "race_lap_count": (F1RaceLapCountSensor, data.get("lap_count_coordinator")),
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
@@ -314,7 +283,7 @@ async def async_setup_entry(
                     base,
                     pos,
                 )
-                set_suggested_object_id(sensor, object_id)
+                set_default_entity_id(sensor, Platform.SENSOR, object_id)
                 sensors.append(sensor)
         elif key == "championship_prediction":
             if not coord:
@@ -325,8 +294,10 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            set_suggested_object_id(
-                drivers_sensor, default_object_id("championship_prediction_drivers")
+            set_default_entity_id(
+                drivers_sensor,
+                Platform.SENSOR,
+                default_object_id("championship_prediction_drivers"),
             )
             sensors.append(drivers_sensor)
             teams_sensor = F1ChampionshipPredictionTeamsSensor(
@@ -335,8 +306,10 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            set_suggested_object_id(
-                teams_sensor, default_object_id("championship_prediction_teams")
+            set_default_entity_id(
+                teams_sensor,
+                Platform.SENSOR,
+                default_object_id("championship_prediction_teams"),
             )
             sensors.append(teams_sensor)
         elif key == "live_timing_diagnostics":
@@ -347,7 +320,9 @@ async def async_setup_entry(
                     entry.entry_id,
                     base,
                 )
-                set_suggested_object_id(sensor, default_object_id("live_timing_mode"))
+                set_default_entity_id(
+                    sensor, Platform.SENSOR, default_object_id("live_timing_mode")
+                )
                 sensors.append(sensor)
         elif cls and coord:
             sensor = cls(
@@ -356,18 +331,22 @@ async def async_setup_entry(
                 entry.entry_id,
                 base,
             )
-            set_suggested_object_id(sensor, default_object_id(key))
+            set_default_entity_id(sensor, Platform.SENSOR, default_object_id(key))
             sensors.append(sensor)
 
     auth_status = data.get(AUTH_RUNTIME_STATUS)
     if isinstance(auth_status, F1TvAuthStatus) and is_auth_health_visible(auth_status):
         status_sensor = F1TvTokenStatusSensor(hass, entry.entry_id, base)
-        set_suggested_object_id(status_sensor, default_object_id("f1tv_token_status"))
+        set_default_entity_id(
+            status_sensor, Platform.SENSOR, default_object_id("f1tv_token_status")
+        )
         sensors.append(status_sensor)
 
         expires_sensor = F1TvTokenExpiresAtSensor(hass, entry.entry_id, base)
-        set_suggested_object_id(
-            expires_sensor, default_object_id("f1tv_token_expires_at")
+        set_default_entity_id(
+            expires_sensor,
+            Platform.SENSOR,
+            default_object_id("f1tv_token_expires_at"),
         )
         sensors.append(expires_sensor)
 
@@ -380,7 +359,9 @@ async def async_setup_entry(
             entry.entry_id,
             base,
         )
-        set_suggested_object_id(sensor, default_object_id("replay_status"))
+        set_default_entity_id(
+            sensor, Platform.SENSOR, default_object_id("replay_status")
+        )
         sensors.append(sensor)
 
     async_add_entities(sensors, True)
@@ -1148,216 +1129,54 @@ class F1ConstructorStandingsSensor(F1BaseEntity, SensorEntity):
         }
 
 
-class F1WeatherSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
-    """Sensor for current and race-start weather."""
+class F1WeatherSensor(F1BaseEntity, SensorEntity):
+    """Backward-compatible sensor for current and race-start weather."""
 
     _device_category = "race"
-
     _attr_translation_key = "weather"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
 
-    def __init__(self, coordinator, unique_id, entry_id, device_name):
-        super().__init__(coordinator, unique_id, entry_id, device_name)
-        self._attr_icon = "mdi:weather-partly-cloudy"
-        self._attr_device_class = SensorDeviceClass.TEMPERATURE
-        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-        self._current = {}
-        self._race = {}
-        self._circuit = {}
+    @property
+    def _weather_data(self) -> dict:
+        """Return the shared coordinator snapshot."""
+        data = self.coordinator.data
+        return data if isinstance(data, dict) else {}
 
-    async def async_added_to_hass(self):
-        await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(
-            lambda: self.hass.async_create_task(self._update_weather())
-        )
-        self.async_on_remove(removal)
-        await self._update_weather()
+    @property
+    def available(self) -> bool:
+        """Return whether current next-race weather is available."""
+        current = self._weather_data.get("current", {})
+        return super().available and current.get("temperature") is not None
 
-    async def _update_weather(self):
-        race = self._get_next_race()
-        # Store which circuit this weather is for, so the UI can show context even
-        # when only temperature is used as the sensor state.
-        if race:
-            circuit = race.get("Circuit", {}) or {}
-            loc = circuit.get("Location", {}) or {}
-            self._circuit = {
-                "season": race.get("season"),
-                "round": race.get("round"),
-                "race_name": race.get("raceName"),
-                "race_url": race.get("url"),
-                "circuit_id": circuit.get("circuitId"),
-                "circuit_name": circuit.get("circuitName"),
-                "circuit_url": circuit.get("url"),
-                "circuit_lat": loc.get("lat"),
-                "circuit_long": loc.get("long"),
-                "circuit_locality": loc.get("locality"),
-                "circuit_country": loc.get("country"),
-            }
-        else:
-            self._circuit = {}
-        loc = race.get("Circuit", {}).get("Location", {}) if race else {}
-        lat, lon = loc.get("lat"), loc.get("long")
-        if lat is None or lon is None:
-            return
-        session = async_get_clientsession(self.hass)
-        current_vars = ",".join(
-            [
-                "temperature_2m",
-                "relative_humidity_2m",
-                "precipitation",
-                "precipitation_probability",
-                "cloud_cover",
-                "wind_speed_10m",
-                "wind_direction_10m",
-                "wind_gusts_10m",
-                "visibility",
-                "weather_code",
-            ]
-        )
-        hourly_vars = current_vars
-        url = (
-            f"https://api.open-meteo.com/v1/forecast"
-            f"?latitude={lat}&longitude={lon}"
-            f"&current={current_vars}"
-            f"&hourly={hourly_vars}"
-            f"&wind_speed_unit=ms"
-            f"&timezone=UTC"
-            f"&forecast_days=16"
-        )
-        try:
-            async with asyncio.timeout(10):
-                async with session.get(url) as resp:
-                    resp.raise_for_status()
-                    data = await resp.json()
-        except Exception:
-            # Avoid showing stale weather when a refresh fails.
-            self._current = {}
-            self._race = {}
-            self._attr_icon = "mdi:weather-partly-cloudy"
-            self.async_write_ha_state()
-            return
-
-        # Parse current conditions from the dedicated current block.
-        current_block = data.get("current", {})
-        self._current = self._extract(current_block)
-        current_code = current_block.get("weather_code")
-        self._attr_icon = WMO_CODE_TO_MDI.get(current_code, "mdi:weather-partly-cloudy")
-
-        # Build an index over the hourly time series for race-start lookup.
-        hourly = data.get("hourly", {})
-        hourly_times = hourly.get("time", [])
-        hourly_vars_keys = [
-            "temperature_2m",
-            "relative_humidity_2m",
-            "precipitation",
-            "precipitation_probability",
-            "cloud_cover",
-            "wind_speed_10m",
-            "wind_direction_10m",
-            "wind_gusts_10m",
-            "visibility",
-            "weather_code",
-        ]
-        hourly_entries = []
-        for i, t in enumerate(hourly_times):
-            entry = {"time": t}
-            for key in hourly_vars_keys:
-                vals = hourly.get(key, [])
-                entry[key] = vals[i] if i < len(vals) else None
-            hourly_entries.append(entry)
-
-        start_iso = (
-            _combine_date_time(race.get("date"), race.get("time")) if race else None
-        )
-        self._race = dict.fromkeys(self._current)
-        if start_iso and hourly_entries:
-            start_dt = datetime.datetime.fromisoformat(start_iso)
-            # Ensure start_dt is UTC-aware for comparison.
-            if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=datetime.UTC)
-            closest = min(
-                hourly_entries,
-                key=lambda e: abs(
-                    datetime.datetime.fromisoformat(e["time"]).replace(
-                        tzinfo=datetime.UTC
-                    )
-                    - start_dt
-                ),
-            )
-            self._race = self._extract(closest)
-            race_code = closest.get("weather_code")
-            race_icon = WMO_CODE_TO_MDI.get(race_code, self._attr_icon)
-            self._race["weather_icon"] = race_icon
-        self.async_write_ha_state()
-
-    def _extract(self, d):
-        wd = d.get("wind_direction_10m")
-        precip = d.get("precipitation", 0) or 0
-        return {
-            "temperature": d.get("temperature_2m"),
-            "temperature_unit": "celsius",
-            "humidity": d.get("relative_humidity_2m"),
-            "humidity_unit": "%",
-            "cloud_cover": d.get("cloud_cover"),
-            "cloud_cover_unit": "%",
-            "precipitation": precip,
-            # open-meteo gives an exact forecast value, not a range; expose the
-            # same value for min/max to preserve backwards compatibility.
-            "precipitation_amount_min": precip,
-            "precipitation_amount_max": precip,
-            "precipitation_probability": d.get("precipitation_probability"),
-            "precipitation_probability_unit": "%",
-            "precipitation_unit": "mm",
-            "wind_speed": d.get("wind_speed_10m"),
-            "wind_speed_unit": "m/s",
-            "wind_direction": self._abbr(wd),
-            "wind_from_direction_degrees": wd,
-            "wind_from_direction_unit": "degrees",
-            "wind_gusts": d.get("wind_gusts_10m"),
-            "wind_gusts_unit": "m/s",
-            "visibility": d.get("visibility"),
-            "visibility_unit": "m",
-            "weather_code": d.get("weather_code"),
-            "weather_source": "open-meteo",
-        }
-
-    def _abbr(self, deg):
-        if deg is None:
-            return None
-        dirs = [
-            (i * 22.5, d)
-            for i, d in enumerate(
-                [
-                    "N",
-                    "NNE",
-                    "NE",
-                    "ENE",
-                    "E",
-                    "ESE",
-                    "SE",
-                    "SSE",
-                    "S",
-                    "SSW",
-                    "SW",
-                    "WSW",
-                    "W",
-                    "WNW",
-                    "NW",
-                    "NNW",
-                    "N",
-                ]
-            )
-        ]
-        return min(dirs, key=lambda x: abs(deg - x[0]))[1]
+    @property
+    def icon(self):
+        """Return an icon matching the current normalized condition."""
+        current = self._weather_data.get("current", {})
+        return weather_icon(current.get("weather_code"), current.get("is_daytime"))
 
     @property
     def native_value(self):
-        return self._current.get("temperature")
+        """Return the current circuit temperature."""
+        return self._weather_data.get("current", {}).get("temperature")
 
     @property
     def extra_state_attributes(self):
-        attrs = dict(self._circuit or {})
-        attrs.update({f"current_{k}": v for k, v in self._current.items()})
-        attrs.update({f"race_{k}": v for k, v in self._race.items()})
+        """Preserve the established current_* and race_* sensor attributes."""
+        data = self._weather_data
+        current = legacy_weather_observation(data.get("current"))
+        race = legacy_weather_observation(data.get("race"))
+        race["weather_icon"] = (
+            weather_icon(
+                data.get("race", {}).get("weather_code"),
+                data.get("race", {}).get("is_daytime"),
+            )
+            if data.get("race")
+            else None
+        )
+        attrs = dict(data.get("circuit", {}))
+        attrs.update({f"current_{key}": value for key, value in current.items()})
+        attrs.update({f"race_{key}": value for key, value in race.items()})
         return attrs
 
 

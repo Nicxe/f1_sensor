@@ -3,6 +3,7 @@ from contextlib import suppress
 import json
 from pathlib import Path
 
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import Entity
@@ -146,10 +147,20 @@ def default_object_id(key: str | None) -> str | None:
     return _default_object_id_from_translation_key(key)
 
 
-def set_suggested_object_id(entity: Entity, object_id: str | None) -> None:
-    """Set a stable suggested object ID when one is provided."""
+def set_default_entity_id(
+    entity: Entity, platform: Platform, object_id: str | None
+) -> None:
+    """Set the stable default entity ID for a newly registered entity.
+
+    Home Assistant 2026.2 and later treats ``suggested_object_id`` as a base
+    name and may prefix it with the device name. Setting a domain-correct
+    ``entity_id`` keeps the integration's established defaults for new registry
+    entries. Existing registry entries are still resolved by unique ID and keep
+    their current entity IDs.
+    """
     if object_id:
         entity._attr_suggested_object_id = object_id
+        entity.entity_id = f"{platform}.{object_id}"
 
 
 def _entity_name_from_key(

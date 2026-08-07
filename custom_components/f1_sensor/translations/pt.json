@@ -176,6 +176,11 @@
         "name": "Modo sem spoilers"
       }
     },
+    "weather": {
+      "weather": {
+        "name": "Clima"
+      }
+    },
     "button": {
       "clear_f1tv_access": {
         "name": "Clear F1TV access"

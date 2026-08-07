@@ -22,23 +22,31 @@ from custom_components.f1_sensor.button import (
 from custom_components.f1_sensor.const import CONF_LIVE_TIMING_AUTH_HEADER, DOMAIN
 
 
-class _TimeoutSession:
-    def __init__(self) -> None:
-        self.headers = {"User-Agent": "session-ua"}
-        self.calls = 0
+class _TestJolpicaClient:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        self.calls: list[tuple[str, dict[str, str], int, bool]] = []
 
-    def get(self, *_args, **_kwargs):
-        self.calls += 1
-        raise TimeoutError
+    async def async_get_json(
+        self,
+        url: str,
+        *,
+        params: dict[str, str],
+        timeout: int,
+        retry_on_rate_limit: bool,
+    ) -> dict:
+        self.calls.append((url, params, timeout, retry_on_rate_limit))
+        if self.error is not None:
+            raise self.error
+        return {"MRData": {}}
 
 
 @pytest.mark.asyncio
 async def test_jolpica_ua_button_timeout_reports_failure(hass, monkeypatch) -> None:
     entry_id = "entry-test"
-    session = _TimeoutSession()
+    client = _TestJolpicaClient(TimeoutError())
     hass.data.setdefault(DOMAIN, {})[entry_id] = {
-        "http_session": session,
-        "user_agent": "configured-ua",
+        "jolpica_client": client,
     }
 
     notifications = AsyncMock()
@@ -47,7 +55,7 @@ async def test_jolpica_ua_button_timeout_reports_failure(hass, monkeypatch) -> N
         notifications,
     )
     monkeypatch.setattr(
-        "custom_components.f1_sensor.button.time.time",
+        "custom_components.f1_sensor.button.time.monotonic",
         lambda: 10.0,
     )
 
@@ -60,12 +68,41 @@ async def test_jolpica_ua_button_timeout_reports_failure(hass, monkeypatch) -> N
 
     await button.async_press()
 
-    assert session.calls == 1
+    assert len(client.calls) == 1
+    _, params, timeout, retry_on_rate_limit = client.calls[0]
+    assert params == {"limit": "1", "offset": "0"}
+    assert timeout == 10
+    assert retry_on_rate_limit is False
     notifications.assert_awaited_once()
     message = notifications.await_args.args[1]
-    assert "Jolpica UA test FAILED" in message
-    assert "ua_configured='configured-ua'" in message
-    assert "ua_session='session-ua'" in message
+    assert "Jolpica API test FAILED" in message
+
+
+@pytest.mark.asyncio
+async def test_jolpica_ua_button_429_reports_failure(hass, monkeypatch) -> None:
+    entry_id = "entry-test"
+    client = _TestJolpicaClient(RuntimeError("HTTP 429 Too Many Requests"))
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        "jolpica_client": client,
+    }
+    notifications = AsyncMock()
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.button.persistent_notification.async_create",
+        notifications,
+    )
+
+    button = F1JolpicaUserAgentTestButton(
+        hass=hass,
+        unique_id=f"{entry_id}_jolpica_ua_test",
+        entry_id=entry_id,
+        device_name="F1",
+    )
+
+    await button.async_press()
+
+    notifications.assert_awaited_once()
+    assert "FAILED" in notifications.await_args.args[1]
+    assert "429" in notifications.await_args.args[1]
 
 
 @pytest.mark.asyncio
@@ -215,7 +252,7 @@ async def test_jolpica_ua_button_is_not_added_when_only_f1tv_auth_is_public(
     )
     entry.add_to_hass(hass)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
-        "http_session": _TimeoutSession()
+        "jolpica_client": _TestJolpicaClient()
     }
     added = []
 

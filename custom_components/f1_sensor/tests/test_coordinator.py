@@ -11,6 +11,7 @@ from custom_components.f1_sensor.__init__ import (
     F1DataCoordinator,
     F1LapPositionProgressionCoordinator,
     F1SeasonResultsCoordinator,
+    F1SprintResultsCoordinator,
     FiaDocumentsCoordinator,
     LiveSessionCoordinator,
 )
@@ -18,7 +19,10 @@ from custom_components.f1_sensor.const import (
     API_URL,
     FIA_SEASON_FALLBACK_URL,
     SEASON_RESULTS_URL,
+    SPRINT_RESULTS_URL,
 )
+from custom_components.f1_sensor.jolpica import JolpicaRouteNotFoundError
+from custom_components.f1_sensor.jolpica_pagination import JolpicaPaginationError
 
 
 class _TimeoutSession:
@@ -130,7 +134,14 @@ async def test_f1_data_coordinator_update(hass) -> None:
             persist_map={},
             persist_save=MagicMock(),
         )
-    payload = {"MRData": {"RaceTable": {"season": "2025", "Races": []}}}
+    payload = {
+        "MRData": {
+            "total": "0",
+            "limit": "100",
+            "offset": "0",
+            "RaceTable": {"season": "2025", "Races": []},
+        }
+    }
 
     mock_fetch = AsyncMock(return_value=payload)
     with pytest.MonkeyPatch().context() as monkeypatch:
@@ -219,20 +230,24 @@ async def test_season_results_coordinator_paginates_all_pages(hass) -> None:
         return {
             "season": "2025",
             "round": str(round_num),
-            "Results": [{"position": "1"}],
+            "Results": [
+                {
+                    "position": "1",
+                    "Driver": {"driverId": f"driver_{round_num}"},
+                }
+            ],
         }
 
     async def _fake_fetch_json(_hass, _session, url, **_kwargs):
         query = URL(url).query
+        requested_limit = int(query.get("limit") or "100")
         offset = int(query.get("offset") or "0")
-        response_limit = 2
+        response_limit = min(2, requested_limit)
         response_total = 4
-        if offset == 0:
-            races = [_race(1), _race(2)]
-        elif offset == 2:
-            races = [_race(3), _race(4)]
-        else:
-            races = []
+        races = [
+            _race(round_num)
+            for round_num in range(offset + 1, min(4, offset + response_limit) + 1)
+        ]
         return {
             "MRData": {
                 "total": str(response_total),
@@ -252,7 +267,158 @@ async def test_season_results_coordinator_paginates_all_pages(hass) -> None:
 
     races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
     assert len(races) == 4
-    assert mock_fetch.await_count == 2
+    assert mock_fetch.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_season_results_timeout_keeps_previous_snapshot_without_fallback(
+    hass,
+) -> None:
+    coordinator = F1SeasonResultsCoordinator(
+        hass,
+        SEASON_RESULTS_URL,
+        "Test Season Results Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        persist_map={},
+        persist_save=MagicMock(),
+        season_source=_mock_data_coordinator(
+            {"MRData": {"RaceTable": {"season": "2025", "Races": []}}}
+        ),
+    )
+    previous = {"MRData": {"RaceTable": {"Races": [{"round": "1"}]}}}
+    coordinator.data = previous
+    mock_fetch = AsyncMock(side_effect=TimeoutError)
+
+    with (
+        patch("custom_components.f1_sensor.__init__.fetch_json", mock_fetch),
+        pytest.raises(UpdateFailed),
+    ):
+        await coordinator._async_update_data()
+
+    assert coordinator.data is previous
+    mock_fetch.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_season_results_uses_current_fallback_only_for_route_not_found(
+    hass,
+) -> None:
+    coordinator = F1SeasonResultsCoordinator(
+        hass,
+        SEASON_RESULTS_URL,
+        "Test Season Results Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        persist_map={},
+        persist_save=MagicMock(),
+        season_source=_mock_data_coordinator(
+            {"MRData": {"RaceTable": {"season": "2025", "Races": []}}}
+        ),
+    )
+    urls: list[str] = []
+
+    async def _fake_fetch(_hass, _session, url, **_kwargs):
+        urls.append(url)
+        if "/ergast/f1/2025/" in url:
+            raise JolpicaRouteNotFoundError("missing season route")
+        query = URL(url).query
+        limit = int(query.get("limit") or "100")
+        return {
+            "MRData": {
+                "total": "1",
+                "limit": str(limit),
+                "offset": "0",
+                "RaceTable": {
+                    "Races": [
+                        {
+                            "season": "2025",
+                            "round": "1",
+                            "Results": [
+                                {
+                                    "position": "1",
+                                    "Driver": {"driverId": "driver_1"},
+                                }
+                            ],
+                        }
+                    ]
+                },
+            }
+        }
+
+    with patch(
+        "custom_components.f1_sensor.__init__.fetch_json",
+        AsyncMock(side_effect=_fake_fetch),
+    ):
+        data = await coordinator._async_update_data()
+
+    assert len(data["MRData"]["RaceTable"]["Races"]) == 1
+    assert len(urls) == 4
+    assert sum("/ergast/f1/2025/" in url for url in urls) == 2
+    assert sum("/ergast/f1/current/" in url for url in urls) == 2
+
+
+@pytest.mark.asyncio
+async def test_sprint_results_coordinator_keeps_all_120_rows(hass) -> None:
+    coordinator = F1SprintResultsCoordinator(
+        hass,
+        SPRINT_RESULTS_URL,
+        "Test Sprint Results Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        ttl_seconds=5,
+        persist_map={},
+        persist_save=MagicMock(),
+    )
+    drivers = [f"driver_{index}" for index in range(120)]
+
+    async def _fake_fetch_json(_hass, _session, url, **_kwargs):
+        query = URL(url).query
+        limit = int(query.get("limit") or "100")
+        offset = int(query.get("offset") or "0")
+        selected = drivers[offset : offset + limit]
+        return {
+            "MRData": {
+                "total": "120",
+                "limit": str(limit),
+                "offset": str(offset),
+                "RaceTable": {
+                    "season": "2025",
+                    "Races": [
+                        {
+                            "season": "2025",
+                            "round": "6",
+                            "SprintResults": [
+                                {
+                                    "position": str(offset + index + 1),
+                                    "Driver": {"driverId": driver_id},
+                                }
+                                for index, driver_id in enumerate(selected)
+                            ],
+                        }
+                    ],
+                },
+            }
+        }
+
+    mock_fetch = AsyncMock(side_effect=_fake_fetch_json)
+    with pytest.MonkeyPatch().context() as monkeypatch:
+        monkeypatch.setattr(
+            "custom_components.f1_sensor.__init__.fetch_json",
+            mock_fetch,
+        )
+        data = await coordinator._async_update_data()
+
+    races = data["MRData"]["RaceTable"]["Races"]
+    assert len(races) == 1
+    assert len(races[0]["SprintResults"]) == 120
+    assert mock_fetch.await_count == 3
 
 
 @pytest.mark.asyncio
@@ -277,32 +443,27 @@ async def test_lap_position_progression_coordinator_paginates_and_merges_laps(
 
     async def _fake_fetch_json(_hass, _session, url, **_kwargs):
         query = URL(url).query
+        requested_limit = int(query.get("limit") or "100")
         offset = int(query.get("offset") or "0")
-        if offset == 0:
-            laps = [
-                {
-                    "number": "1",
-                    "Timings": [
-                        {"driverId": "norris", "position": "1"},
-                        {"driverId": "verstappen", "position": "2"},
-                    ],
-                },
-                {
-                    "number": "2",
-                    "Timings": [{"driverId": "norris", "position": "2"}],
-                },
-            ]
-        else:
-            laps = [
-                {
-                    "number": "2",
-                    "Timings": [{"driverId": "verstappen", "position": "1"}],
-                }
-            ]
+        response_limit = min(3, requested_limit)
+        all_timings = [
+            ("1", {"driverId": "norris", "position": "1"}),
+            ("1", {"driverId": "verstappen", "position": "2"}),
+            ("2", {"driverId": "norris", "position": "2"}),
+            ("2", {"driverId": "verstappen", "position": "1"}),
+        ]
+        selected = all_timings[offset : offset + response_limit]
+        timings_by_lap = {}
+        for lap_number, timing in selected:
+            timings_by_lap.setdefault(lap_number, []).append(timing)
+        laps = [
+            {"number": lap_number, "Timings": timings}
+            for lap_number, timings in timings_by_lap.items()
+        ]
         return {
             "MRData": {
                 "total": "4",
-                "limit": "3",
+                "limit": str(response_limit),
                 "offset": str(offset),
                 "RaceTable": {
                     "season": "2026",
@@ -331,7 +492,7 @@ async def test_lap_position_progression_coordinator_paginates_and_merges_laps(
     session = data["session"]
     assert session["status"] == "available"
     assert session["labels"] == ["L1", "L2"]
-    assert mock_fetch.await_count == 2
+    assert mock_fetch.await_count == 3
 
     drivers = {driver["code"]: driver for driver in session["drivers"]}
     assert drivers["NOR"]["positions"] == [1, 2]
@@ -397,7 +558,7 @@ async def test_lap_position_progression_coordinator_marks_pending_when_laps_miss
         return_value={
             "MRData": {
                 "total": "0",
-                "limit": "100",
+                "limit": "1",
                 "offset": "0",
                 "RaceTable": {"Races": []},
             }
@@ -412,6 +573,69 @@ async def test_lap_position_progression_coordinator_marks_pending_when_laps_miss
 
     assert data["session"]["status"] == "pending"
     assert data["session"]["reason"]
+    assert mock_fetch.await_args.kwargs["ttl_seconds"] == coordinator._ttl_pending
+
+
+@pytest.mark.asyncio
+async def test_lap_position_failure_reuses_only_previous_complete_session(hass) -> None:
+    coordinator = F1LapPositionProgressionCoordinator(
+        hass,
+        _mock_data_coordinator(None),
+        _mock_data_coordinator(_lap_position_season_payload()),
+        _mock_data_coordinator(None),
+        "Test Lap Position Progression Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        persist_map={},
+        persist_save=MagicMock(),
+    )
+    previous = {
+        "key": "race:2026:1",
+        "status": "available",
+        "labels": ["L1"],
+        "drivers": [{"driver_id": "norris", "positions": [1]}],
+        "series": {"labels": ["L1"], "series": []},
+    }
+    coordinator._session_payload_cache["race:2026:1"] = previous
+
+    with patch(
+        "custom_components.f1_sensor.__init__.fetch_json",
+        AsyncMock(side_effect=JolpicaPaginationError("incomplete laps")),
+    ):
+        data = await coordinator.async_get_session("race:2026:1")
+
+    assert data["cached"] is True
+    assert data["session"] is previous
+    assert data["warning"] == "incomplete laps"
+
+
+@pytest.mark.asyncio
+async def test_lap_position_failure_without_complete_cache_returns_error(hass) -> None:
+    coordinator = F1LapPositionProgressionCoordinator(
+        hass,
+        _mock_data_coordinator(None),
+        _mock_data_coordinator(_lap_position_season_payload()),
+        _mock_data_coordinator(None),
+        "Test Lap Position Progression Coordinator",
+        session=MagicMock(),
+        user_agent="ua",
+        cache={},
+        inflight={},
+        persist_map={},
+        persist_save=MagicMock(),
+    )
+
+    with patch(
+        "custom_components.f1_sensor.__init__.fetch_json",
+        AsyncMock(side_effect=JolpicaPaginationError("incomplete laps")),
+    ):
+        data = await coordinator.async_get_session("race:2026:1")
+
+    assert data["status"] == "error"
+    assert data["session"]["status"] == "error"
+    assert data["session"]["labels"] == []
 
 
 @pytest.mark.asyncio

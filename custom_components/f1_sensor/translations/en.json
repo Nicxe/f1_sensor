@@ -273,6 +273,11 @@
         "name": "Replay status"
       }
     },
+    "weather": {
+      "weather": {
+        "name": "Weather"
+      }
+    },
     "button": {
       "delay_calibration_match": {
         "name": "Match live delay"
