@@ -9,6 +9,7 @@ on:
       - "hacs.json"
       - "package-lock.json"
       - "package.json"
+      - "patches/**"
       - "release.config.cjs"
 
 permissions:
