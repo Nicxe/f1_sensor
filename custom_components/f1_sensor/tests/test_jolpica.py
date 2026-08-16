@@ -22,6 +22,7 @@ from custom_components.f1_sensor.jolpica import (
 
 _URL = "https://api.jolpi.ca/ergast/f1/current.json"
 _USER_AGENT = "HomeAssistantF1Sensor/1.0.0 HomeAssistant/2026.7.0"
+_CLIENTS_KEY = "_f1_sensor_test_jolpica_clients"
 
 
 class _Response:
@@ -89,9 +90,19 @@ class _Session:
 
 async def _client(hass, session: _Session, **kwargs) -> JolpicaClient:
     client = JolpicaClient(hass, session, _USER_AGENT, **kwargs)
+    hass.data.setdefault(_CLIENTS_KEY, []).append(client)
     with patch.object(client._store, "async_load", AsyncMock(return_value=None)):
         await client.async_initialize()
     return client
+
+
+@pytest.fixture(autouse=True)
+async def close_jolpica_clients(hass) -> None:
+    """Close clients created by a test and cancel their delayed saves."""
+    yield
+    for client in reversed(hass.data.pop(_CLIENTS_KEY, [])):
+        with patch.object(client._store, "async_save", AsyncMock()):
+            await client.async_close()
 
 
 async def test_requires_canonical_user_agent(hass) -> None:

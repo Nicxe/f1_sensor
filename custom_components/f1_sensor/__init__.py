@@ -866,7 +866,9 @@ def _arm_delayed_ingest_queue(instance: Any) -> None:
 
 
 def _drain_delayed_ingest_queue(instance: Any) -> None:
-    instance._delay_queue_handle = None
+    instance._delay_queue_handle = _cancel_handle(
+        getattr(instance, "_delay_queue_handle", None)
+    )
     queue = getattr(instance, "_delay_queue", None)
     if not isinstance(queue, deque):
         return

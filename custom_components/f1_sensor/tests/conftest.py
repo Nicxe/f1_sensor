@@ -31,6 +31,15 @@ def clear_f1_entry_name_settings() -> None:
 
 
 @pytest.fixture
+async def cleanup_test_entity_components(hass) -> None:
+    """Remove standalone entity components created by unit tests."""
+    yield
+    components = hass.data.pop("_f1_sensor_test_entity_components", [])
+    for component in reversed(components):
+        await component._async_reset()
+
+
+@pytest.fixture
 def replay_file(tmp_path: Path) -> str:
     path = tmp_path / "replay.txt"
     path.write_text("00:00:00.000{}", encoding="utf-8")

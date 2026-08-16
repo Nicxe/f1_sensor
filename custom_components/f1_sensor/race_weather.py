@@ -555,6 +555,7 @@ class F1RaceWeatherCoordinator(DataUpdateCoordinator[RaceWeatherData]):
         if self._race_unsub is not None:
             self._race_unsub()
             self._race_unsub = None
+        await super().async_shutdown()
 
     @callback
     def _handle_schedule_update(self) -> None:

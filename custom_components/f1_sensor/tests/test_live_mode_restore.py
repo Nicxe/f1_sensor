@@ -111,6 +111,7 @@ def _set_status_context(
 
 async def _add_entity_and_get_state(hass, domain: str, entity):
     component = EntityComponent(_LOGGER, domain, hass)
+    hass.data.setdefault("_f1_sensor_test_entity_components", []).append(component)
     await component.async_add_entities([entity])
     await hass.async_block_till_done()
     state = hass.states.get(entity.entity_id)
@@ -495,7 +496,9 @@ class _FormationTracker:
 
 
 @pytest.mark.asyncio
-async def test_formation_start_turns_off_once_session_goes_live(hass) -> None:
+async def test_formation_start_turns_off_once_session_goes_live(
+    hass, cleanup_test_entity_components
+) -> None:
     entry_id = "test_entry"
     live_state = _LiveState(True, "replay-mode")
     hass.data.setdefault(DOMAIN, {})[entry_id] = {
@@ -545,7 +548,7 @@ async def test_formation_start_turns_off_once_session_goes_live(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_formation_start_is_unavailable_during_public_live_sessions(
-    hass,
+    hass, cleanup_test_entity_components
 ) -> None:
     entry_id = "test_entry"
     live_state = _LiveState(True, "live-Race")
@@ -579,7 +582,9 @@ async def test_formation_start_is_unavailable_during_public_live_sessions(
 
 
 @pytest.mark.asyncio
-async def test_formation_start_is_available_during_auth_live_sessions(hass) -> None:
+async def test_formation_start_is_available_during_auth_live_sessions(
+    hass, cleanup_test_entity_components
+) -> None:
     entry_id = "test_entry"
     live_state = _LiveState(True, "live-Race")
     hass.data.setdefault(DOMAIN, {})[entry_id] = {
@@ -937,7 +942,9 @@ async def test_track_weather_becomes_available_after_first_payload(hass) -> None
 
 
 @pytest.mark.asyncio
-async def test_formation_start_is_unavailable_outside_replay(hass) -> None:
+async def test_formation_start_is_unavailable_outside_replay(
+    hass, cleanup_test_entity_components
+) -> None:
     entry_id = "test_entry_live"
     live_state = _LiveState(True)
     hass.data.setdefault(DOMAIN, {})[entry_id] = {

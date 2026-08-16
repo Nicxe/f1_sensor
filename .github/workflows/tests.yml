@@ -30,7 +30,7 @@ jobs:
           - name: Minimum HA 2024.11
             python-version: "3.12"
             test-package: pytest-homeassistant-custom-component==0.13.181
-            compatibility-pins: "josepy<2 pycares==4.4.0"
+            compatibility-pins: '"josepy<2" "pycares==4.4.0"'
             test-paths: >-
               custom_components/f1_sensor/tests/test_setup.py
               custom_components/f1_sensor/tests/test_config_flow_entity_naming.py

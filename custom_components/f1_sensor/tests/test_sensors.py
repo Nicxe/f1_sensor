@@ -226,6 +226,7 @@ def _set_entry_context(hass, entry_id: str, *, stream_active: bool = False) -> N
 
 async def _add_sensor_and_get_state(hass, sensor):
     component = EntityComponent(_LOGGER, "sensor", hass)
+    hass.data.setdefault("_f1_sensor_test_entity_components", []).append(component)
     await component.async_add_entities([sensor])
     await hass.async_block_till_done()
     state = hass.states.get(sensor.entity_id)
@@ -1410,7 +1411,7 @@ async def test_next_race_sensor_caches_state_attributes(hass, monkeypatch) -> No
 
 @pytest.mark.asyncio
 async def test_track_time_sensor_exposes_machine_readable_datetimes(
-    hass, monkeypatch
+    hass, monkeypatch, cleanup_test_entity_components
 ) -> None:
     fixed_utc = datetime(2026, 3, 8, 4, 15, 30, tzinfo=UTC)
 
@@ -1453,7 +1454,7 @@ async def test_track_time_sensor_exposes_machine_readable_datetimes(
 
 @pytest.mark.asyncio
 async def test_next_race_sensor_exposes_circuit_history_attrs(
-    hass, monkeypatch
+    hass, monkeypatch, cleanup_test_entity_components
 ) -> None:
     monkeypatch.setattr(
         "custom_components.f1_sensor.helpers.dt_util.utcnow",
@@ -2154,7 +2155,9 @@ async def test_live_bus_stream_diagnostics_track_frames_and_keys(
 
 
 @pytest.mark.asyncio
-async def test_live_timing_mode_sensor_exposes_stream_diagnostics(hass) -> None:
+async def test_live_timing_mode_sensor_exposes_stream_diagnostics(
+    hass, cleanup_test_entity_components
+) -> None:
     entry_id = "test_entry_live_diagnostics"
     _set_entry_context(hass, entry_id, stream_active=True)
 
@@ -2234,7 +2237,9 @@ async def test_live_timing_mode_sensor_exposes_stream_diagnostics(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_f1tv_token_status_sensor_exposes_safe_metadata(hass) -> None:
+async def test_f1tv_token_status_sensor_exposes_safe_metadata(
+    hass, cleanup_test_entity_components
+) -> None:
     entry_id = "test_entry_f1tv_token_status"
     expires_at = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
     _set_entry_context(hass, entry_id, stream_active=False)
@@ -2255,7 +2260,9 @@ async def test_f1tv_token_status_sensor_exposes_safe_metadata(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_f1tv_token_expires_at_sensor_exposes_timestamp(hass) -> None:
+async def test_f1tv_token_expires_at_sensor_exposes_timestamp(
+    hass, cleanup_test_entity_components
+) -> None:
     entry_id = "test_entry_f1tv_token_expires_at"
     expires_at = (datetime.now(UTC) + timedelta(hours=2)).replace(microsecond=0)
     _set_entry_context(hass, entry_id, stream_active=False)
