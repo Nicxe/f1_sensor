@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from homeassistant.components.lovelace.const import (
     CONF_RESOURCE_TYPE_WS,
     CONF_URL,
-    LOVELACE_DATA,
+    DOMAIN as LOVELACE_DATA,
 )
 from homeassistant.const import CONF_ID, CONF_TYPE
 from homeassistant.core import HomeAssistant, callback as ha_callback

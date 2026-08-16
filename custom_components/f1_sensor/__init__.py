@@ -17,7 +17,6 @@ from urllib.parse import urljoin
 
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_COMPONENT_LOADED
 from homeassistant.core import HomeAssistant, ServiceCall, callback as ha_callback
 from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
@@ -64,7 +63,6 @@ from .const import (
     FIA_DOCS_FETCH_TIMEOUT,
     FIA_DOCS_POLL_INTERVAL,
     FIA_DOCUMENTS_BASE_URL,
-    FIA_SEASON_FALLBACK_URL,
     FIA_SEASON_LIST_URL,
     LAST_RACE_RESULTS_URL,
     LATEST_TRACK_STATUS,
@@ -141,6 +139,15 @@ from .race_weather import F1RaceWeatherCoordinator
 from .replay import ReplaySignalRClient
 from .replay_mode import ReplayController, ReplayState
 from .replay_start import ReplayStartReferenceController
+from .runtime import (
+    CacheRuntime,
+    CapabilityState,
+    F1ConfigEntry,
+    F1RuntimeData,
+    LiveRuntime,
+    ReplayRuntime,
+    StaticRuntime,
+)
 from .signalr import (
     AUTH_GATED_LIVE_STREAMS,
     PUBLIC_LIVE_STREAMS,
@@ -149,6 +156,7 @@ from .signalr import (
     build_live_subscribe_streams,
 )
 from .starting_grid import StartingGridCoordinator
+from .storage import async_remove_entry_storage
 from .track_map import (
     TRACK_MAP_SOURCE_LIVE,
     TRACK_MAP_SOURCE_REPLAY,
@@ -175,13 +183,6 @@ _JOLPICA_STATS_KEY = "__jolpica_stats__"
 _JOLPICA_CLIENT_INIT_TASK_KEY = "__jolpica_client_init_task__"
 _REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode", "replay-preparing"})
 _REPLAY_ONLY_ACTIVE_REASONS = frozenset({"replay", "replay-mode"})
-_ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES = (
-    "_track_time",
-    "_session_time_remaining",
-    "_session_time_elapsed",
-    "_race_time_to_three_hour_limit",
-)
-_ACTIVITY_FILTER_MARKER = "__f1_sensor_activity_filter__"
 RACE_CONTROL_LOG_MAX_ITEMS = 500
 RACE_CONTROL_LOG_MAX_FIELD_CHARS = 512
 RACE_CONTROL_LOG_EVENT_ID_CHARS = 40
@@ -195,9 +196,6 @@ PITSTOP_MAX_CARS_PER_PAYLOAD = 60
 PITSTOP_MAX_ENTRIES_PER_PAYLOAD = 200
 PITSTOP_MAX_RACING_NUMBER_CHARS = 3
 PITSTOP_MAX_TEXT_CHARS = 80
-_ACTIVITY_FILTER_REBIND_MARKER = "__f1_sensor_activity_filter_rebound__"
-_ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER = "__f1_sensor_activity_logbook_subscribe__"
-_ACTIVITY_FILTER_COMPONENTS = frozenset({"recorder", "logbook"})
 _RC_LOG_SERVICE_MARKER = "__race_control_log_service_registered__"
 _RC_LOG_WS_MARKER = "__race_control_log_ws_registered__"
 _RC_LOG_SERVICE = "clear_race_control_log"
@@ -239,144 +237,6 @@ def _is_replay_delay_reason(reason: str | None) -> bool:
 
 def _is_replay_only_active_reason(reason: str | None) -> bool:
     return reason in _REPLAY_ONLY_ACTIVE_REASONS
-
-
-def _is_activity_log_excluded_entity(entity_id: str | None) -> bool:
-    """Return True for high-frequency timer entities we do not want in activity log."""
-    if not entity_id or not isinstance(entity_id, str):
-        return False
-    entity_id_l = entity_id.lower()
-    if not entity_id_l.startswith("sensor."):
-        return False
-    return entity_id_l.endswith(_ACTIVITY_LOG_EXCLUDED_SENSOR_SUFFIXES)
-
-
-def _wrap_activity_filter(
-    existing_filter: Callable[[str], bool] | None,
-) -> Callable[[str], bool]:
-    """Wrap a recorder/logbook entity filter with f1 high-frequency excludes."""
-    if existing_filter is not None and getattr(
-        existing_filter, _ACTIVITY_FILTER_MARKER, False
-    ):
-        return existing_filter
-
-    def _wrapped(entity_id: str) -> bool:
-        if _is_activity_log_excluded_entity(entity_id):
-            return False
-        if existing_filter is None:
-            return True
-        return bool(existing_filter(entity_id))
-
-    setattr(_wrapped, _ACTIVITY_FILTER_MARKER, True)
-    return _wrapped
-
-
-def _refresh_recorder_entity_filter(instance: Any) -> None:
-    """Apply wrapped entity filter and rebind event listener when needed."""
-    current = getattr(instance, "entity_filter", None)
-    wrapped = _wrap_activity_filter(current)
-    changed = wrapped is not current
-    instance.entity_filter = wrapped
-    rebound = bool(getattr(instance, _ACTIVITY_FILTER_REBIND_MARKER, False))
-    needs_rebind = changed or not rebound
-    if not bool(getattr(instance, "recording", False)):
-        return
-    if not needs_rebind:
-        return
-    stop_listener = getattr(
-        instance, "_async_stop_queue_watcher_and_event_listener", None
-    )
-    init_listener = getattr(instance, "async_initialize", None)
-    if callable(stop_listener) and callable(init_listener):
-        stop_listener()
-        init_listener()
-        setattr(instance, _ACTIVITY_FILTER_REBIND_MARKER, True)
-
-
-def _wrap_logbook_subscribe_events(
-    existing_subscribe: Callable[..., Any] | None,
-) -> Callable[..., Any] | None:
-    """Wrap logbook live subscription so excluded entities never emit activity rows."""
-    if not callable(existing_subscribe):
-        return existing_subscribe
-    if getattr(existing_subscribe, _ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER, False):
-        return existing_subscribe
-
-    def _wrapped_subscribe(
-        hass: HomeAssistant,
-        subscriptions: list[Callable[[], None]],
-        target: Callable[[Any], None],
-        event_types: Any,
-        entities_filter: Callable[[str], bool] | None,
-        entity_ids: list[str] | None,
-        device_ids: list[str] | None,
-    ) -> None:
-        @ha_callback
-        def _filtered_target(event: Any) -> None:
-            data = getattr(event, "data", None)
-            if isinstance(data, dict):
-                raw_entity = data.get("entity_id")
-                if isinstance(raw_entity, str) and _is_activity_log_excluded_entity(
-                    raw_entity
-                ):
-                    return
-                if isinstance(raw_entity, list):
-                    if any(
-                        _is_activity_log_excluded_entity(entity_id)
-                        for entity_id in raw_entity
-                    ):
-                        return
-                new_state = data.get("new_state")
-                if _is_activity_log_excluded_entity(
-                    getattr(new_state, "entity_id", None)
-                ):
-                    return
-            target(event)
-
-        existing_subscribe(
-            hass,
-            subscriptions,
-            _filtered_target,
-            event_types,
-            entities_filter,
-            entity_ids,
-            device_ids,
-        )
-
-    setattr(_wrapped_subscribe, _ACTIVITY_LOGBOOK_SUBSCRIBE_MARKER, True)
-    return _wrapped_subscribe
-
-
-def _apply_activity_log_filter_excludes(hass: HomeAssistant) -> None:
-    """Exclude noisy timer entities from recorder/logbook filters."""
-    with suppress(Exception):
-        from homeassistant.components import (
-            recorder as recorder_component,  # noqa: PLC0415
-        )
-
-        instance = recorder_component.get_instance(hass)
-        if instance is not None:
-            _refresh_recorder_entity_filter(instance)
-
-    with suppress(Exception):
-        from homeassistant.components.logbook import (  # noqa: PLC0415  # noqa: PLC0415
-            DOMAIN as LOGBOOK_DOMAIN,  # noqa: PLC0415
-            helpers as logbook_helpers,
-            websocket_api as logbook_websocket_api,
-        )
-
-        logbook_data = hass.data.get(LOGBOOK_DOMAIN)
-        if logbook_data is not None and hasattr(logbook_data, "entity_filter"):
-            logbook_data.entity_filter = _wrap_activity_filter(
-                getattr(logbook_data, "entity_filter", None)
-            )
-
-        wrapped_subscribe = _wrap_logbook_subscribe_events(
-            getattr(logbook_helpers, "async_subscribe_events", None)
-        )
-        if callable(wrapped_subscribe):
-            logbook_helpers.async_subscribe_events = wrapped_subscribe
-            logbook_websocket_api.async_subscribe_events = wrapped_subscribe
 
 
 def _rc_cleanup_string(
@@ -1422,6 +1282,126 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await manager.async_load()
         domain_root[_NO_SPOILER_MANAGER_KEY] = manager
     async_setup_f1tv_auth_http(hass)
+    _async_register_race_control_log_interfaces(hass)
+    return True
+
+
+class _SetupTransaction:
+    """Track resources until config-entry runtime ownership is published."""
+
+    def __init__(self) -> None:
+        self._resources: list[Any] = []
+        self._committed = False
+
+    def track(self, *resources: Any) -> None:
+        """Track closeable resources in creation order."""
+        self._resources.extend(
+            resource for resource in resources if resource is not None
+        )
+
+    def commit(self) -> None:
+        """Transfer cleanup ownership to the published runtime."""
+        self._committed = True
+        self._resources.clear()
+
+    async def async_rollback(self) -> None:
+        """Close tracked resources in reverse creation order."""
+        if self._committed:
+            return
+        seen: set[int] = set()
+        for resource in reversed(self._resources):
+            resource_id = id(resource)
+            if resource_id in seen:
+                continue
+            seen.add(resource_id)
+            close = getattr(resource, "async_close", None)
+            if not callable(close):
+                continue
+            with suppress(Exception):
+                result = close()
+                if asyncio.iscoroutine(result):
+                    await result
+        self._resources.clear()
+
+
+async def _async_close_runtime_mapping(data: dict[str, Any]) -> None:
+    """Close every entry-owned runtime object exactly once."""
+    seen: set[int] = set()
+    for name, obj in reversed(list(data.items())):
+        if obj is None or name == "jolpica_client":
+            continue
+        obj_id = id(obj)
+        if obj_id in seen:
+            continue
+        seen.add(obj_id)
+        if name.endswith("_unsub") and callable(obj):
+            with suppress(Exception):
+                obj()
+            continue
+        close = getattr(obj, "async_close", None)
+        if callable(close):
+            with suppress(Exception):
+                result = close()
+                if asyncio.iscoroutine(result):
+                    await result
+
+
+async def _async_close_shared_client_if_unused(hass: HomeAssistant) -> None:
+    """Close the domain client after a failed setup with no remaining entries."""
+    root = hass.data.get(DOMAIN)
+    if not isinstance(root, dict):
+        return
+    if any(
+        isinstance(value, dict)
+        for key, value in root.items()
+        if key not in _DOMAIN_ROOT_INTERNAL_KEYS and key != _NO_SPOILER_MANAGER_KEY
+    ):
+        return
+    client = root.pop(JOLPICA_CLIENT_KEY, None)
+    close = getattr(client, "async_close", None)
+    if callable(close):
+        with suppress(Exception):
+            await close()
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
+    """Migrate legacy sensor allowlists and establish single-instance identity."""
+    if entry.version > 2:
+        _LOGGER.error("Cannot migrate config entry from version %s", entry.version)
+        return False
+
+    data = dict(entry.data)
+    changed = False
+    if entry.version < 2 and "disabled_sensors" not in data:
+        raw_enabled = data.get("enabled_sensors")
+        if isinstance(raw_enabled, (list, tuple, set, frozenset)):
+            normalized = {
+                "next_race" if str(key) == "next_session" else str(key)
+                for key in raw_enabled
+            }
+            enabled = normalized & SUPPORTED_SENSOR_KEYS
+            data["disabled_sensors"] = sorted(SUPPORTED_SENSOR_KEYS - enabled)
+        else:
+            data["disabled_sensors"] = []
+        changed = True
+
+    unique_id = entry.unique_id
+    if unique_id is None:
+        conflicting = any(
+            candidate.entry_id != entry.entry_id and candidate.unique_id == DOMAIN
+            for candidate in hass.config_entries.async_entries(DOMAIN)
+        )
+        if not conflicting:
+            unique_id = DOMAIN
+            changed = True
+
+    if changed or entry.version != 2:
+        hass.config_entries.async_update_entry(
+            entry,
+            data=data,
+            unique_id=unique_id,
+            version=2,
+        )
     return True
 
 
@@ -1455,7 +1435,34 @@ async def _async_get_shared_jolpica_client(
             domain_root.pop(_JOLPICA_CLIENT_INIT_TASK_KEY, None)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
+    """Set up one config entry transactionally."""
+    transaction = _SetupTransaction()
+    try:
+        return await _async_setup_entry(hass, entry, transaction)
+    except BaseException:
+        data_root = hass.data.get(DOMAIN)
+        data = (
+            data_root.pop(entry.entry_id, None) if isinstance(data_root, dict) else None
+        )
+        if isinstance(data, dict):
+            await _async_close_runtime_mapping(data)
+        else:
+            await transaction.async_rollback()
+        with suppress(Exception):
+            await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+        async_cancel_f1tv_auth_status_refresh(hass, entry.entry_id)
+        unregister_entry_name_settings(entry.entry_id)
+        entry.runtime_data = None
+        await _async_close_shared_client_if_unused(hass)
+        raise
+
+
+async def _async_setup_entry(
+    hass: HomeAssistant,
+    entry: F1ConfigEntry,
+    transaction: _SetupTransaction,
+) -> bool:
     """Set up integration via config flow."""
     # Dev-only: periodically report how many Jolpica requests actually hit the network.
     _ensure_jolpica_stats_reporting(hass)
@@ -1549,6 +1556,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     http_inflight: dict = {}
     # Persistent cache (across restarts) for rarely-changing endpoints
     persisted = PersistentCache(hass, entry.entry_id)
+    transaction.track(persisted)
     persisted_map = await persisted.load()
 
     # Seed in-memory cache from persisted content with conservative startup TTLs
@@ -1807,19 +1815,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if (need_fia_docs and race_coordinator is not None)
         else None
     )
+    transaction.track(
+        race_coordinator,
+        next_race_history_coordinator,
+        race_weather_coordinator,
+        driver_coordinator,
+        constructor_coordinator,
+        last_race_coordinator,
+        season_results_coordinator,
+        sprint_results_coordinator,
+        lap_position_progression_coordinator,
+        fia_documents_coordinator,
+    )
     year = dt_util.utcnow().year
     session_coordinator = LiveSessionCoordinator(hass, year, config_entry=entry)
+    transaction.track(session_coordinator)
     enable_rc = entry.data.get("enable_race_control", False)
     configured_delay = int(entry.data.get("live_delay_seconds", 0) or 0)
     delay_controller = LiveDelayController(hass, entry.entry_id)
+    transaction.track(delay_controller)
     live_delay = await delay_controller.async_initialize(configured_delay)
     reference_controller = LiveDelayReferenceController(hass, entry.entry_id)
+    transaction.track(reference_controller)
     await reference_controller.async_initialize(
         entry.data.get(CONF_LIVE_DELAY_REFERENCE, DEFAULT_LIVE_DELAY_REFERENCE)
     )
     replay_start_reference_controller = ReplayStartReferenceController(
         hass, entry.entry_id
     )
+    transaction.track(replay_start_reference_controller)
     await replay_start_reference_controller.async_initialize(
         entry.data.get(CONF_REPLAY_START_REFERENCE, DEFAULT_REPLAY_START_REFERENCE)
     )
@@ -1834,7 +1858,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             operation_mode = OPERATION_MODE_LIVE
         else:
             replay_path = Path(replay_source).expanduser()
-            if not replay_path.exists():
+            if not await hass.async_add_executor_job(replay_path.is_file):
                 _LOGGER.warning(
                     "Replay file %s not found; falling back to live SignalR",
                     replay_path,
@@ -1863,6 +1887,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     top_three_coordinator = None
     starting_grid_coordinator = None
     track_map_store = TrackMapStore(entry.entry_id)
+    transaction.track(track_map_store)
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
     session = async_get_clientsession(hass)
@@ -1930,6 +1955,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _handle_live_timing_auth_failed if live_timing_auth_header else None
         ),
     )
+    transaction.track(live_bus)
     live_supervisor: LiveSessionSupervisor | None = None
     event_tracker_source: EventTrackerScheduleSource | None = None
     live_state: LiveAvailabilityTracker
@@ -1942,10 +1968,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             http_session=session,
             fallback_source=event_tracker_source,
         )
-        await live_supervisor.async_start()
+        transaction.track(live_supervisor)
         live_state = live_supervisor.availability
     else:
-        await live_bus.start()
         live_state = LiveAvailabilityTracker()
         live_state.set_state(True, "replay-mode")
 
@@ -1977,6 +2002,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         http_session=session,
         availability_guard=_formation_start_stream_active,
     )
+    transaction.track(formation_tracker)
 
     def _reload_entry():
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
@@ -1992,6 +2018,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         formation_tracker=formation_tracker,
         on_replay_ended=live_supervisor.wake if live_supervisor else None,
     )
+    transaction.track(replay_controller)
     await replay_controller.async_initialize()
 
     calibration_manager = LiveDelayCalibrationManager(
@@ -2004,6 +2031,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         formation_tracker=formation_tracker,
         replay_controller=replay_controller,
     )
+    transaction.track(calibration_manager)
 
     if "starting_grid" in enabled:
         starting_grid_coordinator = StartingGridCoordinator(
@@ -2054,6 +2082,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             session_info_coordinator=session_info_coordinator,
             session_status_coordinator=session_status_coordinator,
         )
+        transaction.track(race_control_log_store)
         await race_control_log_store.async_initialize()
         race_control_coordinator = RaceControlCoordinator(
             hass,
@@ -2100,6 +2129,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             config_entry=entry,
             live_state=live_state,
         )
+
+    transaction.track(
+        starting_grid_coordinator,
+        track_status_coordinator,
+        session_status_coordinator,
+        session_info_coordinator,
+        race_control_coordinator,
+        weather_data_coordinator,
+        lap_count_coordinator,
+        incident_coordinator,
+        race_control_log_store,
+        live_mode_coordinator,
+    )
 
     if race_coordinator:
         await race_coordinator.async_config_entry_first_refresh()
@@ -2183,6 +2225,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             live_supervisor=live_supervisor,
             replay_controller=replay_controller,
         )
+        transaction.track(session_clock_coordinator)
         await session_clock_coordinator.async_config_entry_first_refresh()
 
     drivers_coordinator = None
@@ -2196,6 +2239,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        transaction.track(drivers_coordinator)
         await drivers_coordinator.async_config_entry_first_refresh()
 
     if enable_rc and need_top_three:
@@ -2208,6 +2252,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        transaction.track(top_three_coordinator)
         await top_three_coordinator.async_config_entry_first_refresh()
 
     team_radio_coordinator = None
@@ -2221,6 +2266,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        transaction.track(team_radio_coordinator)
         await team_radio_coordinator.async_config_entry_first_refresh()
 
     pitstop_coordinator = None
@@ -2236,6 +2282,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             history_limit=10,
             drivers_coordinator=drivers_coordinator,
         )
+        transaction.track(pitstop_coordinator)
         await pitstop_coordinator.async_config_entry_first_refresh()
 
     championship_prediction_coordinator = None
@@ -2249,6 +2296,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        transaction.track(championship_prediction_coordinator)
         await championship_prediction_coordinator.async_config_entry_first_refresh()
 
     def _track_map_position_source() -> str:
@@ -2267,10 +2315,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         position_source_resolver=_track_map_position_source,
         delay_controller=delay_controller,
     )
-    track_map_replay_adapter.start()
-    entry.runtime_data = TrackMapRuntimeData(track_map_store=track_map_store)
+    transaction.track(track_map_replay_adapter)
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+    entry_data: dict[str, Any] = {
         "http_session": http_session,
         "user_agent": ua_string,
         "jolpica_client": jolpica_client,
@@ -2316,9 +2363,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "auth_gated_live_streams": frozenset(AUTH_GATED_LIVE_STREAMS),
             "replay_only_streams": frozenset(REPLAY_ONLY_STREAMS),
             "auth_enabled": live_bus.auth_enabled,
+            "requested_streams": frozenset(
+                build_live_subscribe_streams(include_auth_gated=live_bus.auth_enabled)
+            ),
             "active_live_streams": frozenset(
                 build_live_subscribe_streams(include_auth_gated=live_bus.auth_enabled)
             ),
+            "stream_reasons": {},
         },
         AUTH_RUNTIME_STATUS: live_timing_auth_status,
         AUTH_RUNTIME_STATUS_REFRESH_UNSUB: None,
@@ -2350,31 +2401,81 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "activity_filter_unsub": None,
         "no_spoiler_unsub": None,
     }
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = entry_data
 
-    if race_weather_coordinator is not None:
-        race_weather_coordinator.async_start()
+    stream_capabilities = entry_data["signalr_stream_capabilities"]
+    active_streams = frozenset(stream_capabilities["active_live_streams"])
+    entry.runtime_data = F1RuntimeData(
+        static=StaticRuntime(
+            coordinators={
+                key: value
+                for key, value in entry_data.items()
+                if key.endswith("_coordinator")
+                and key
+                in {
+                    "race_coordinator",
+                    "next_race_history_coordinator",
+                    "race_weather_coordinator",
+                    "driver_coordinator",
+                    "constructor_coordinator",
+                    "last_race_coordinator",
+                    "season_results_coordinator",
+                    "sprint_results_coordinator",
+                    "lap_position_progression_coordinator",
+                    "fia_documents_coordinator",
+                }
+            }
+        ),
+        live=LiveRuntime(
+            bus=live_bus,
+            availability=live_state,
+            supervisor=live_supervisor,
+            coordinators={
+                key: value
+                for key, value in entry_data.items()
+                if key.endswith("_coordinator")
+                and key
+                not in {
+                    "race_coordinator",
+                    "next_race_history_coordinator",
+                    "race_weather_coordinator",
+                    "driver_coordinator",
+                    "constructor_coordinator",
+                    "last_race_coordinator",
+                    "season_results_coordinator",
+                    "sprint_results_coordinator",
+                    "lap_position_progression_coordinator",
+                    "fia_documents_coordinator",
+                }
+            },
+        ),
+        replay=ReplayRuntime(
+            controller=replay_controller,
+            track_map_adapter=track_map_replay_adapter,
+        ),
+        track_map=TrackMapRuntimeData(track_map_store=track_map_store),
+        cache=CacheRuntime(
+            persistent=persisted,
+            memory=http_cache,
+            inflight=http_inflight,
+            persisted=persisted_map,
+        ),
+        capabilities=CapabilityState(
+            requested_features=frozenset(enabled),
+            requested_streams=active_streams,
+            active_streams=active_streams,
+        ),
+        legacy=entry_data,
+    )
 
-    if race_control_log_store is not None:
-        _async_register_race_control_log_interfaces(hass)
     if lap_position_progression_coordinator is not None:
         async_register_lap_position_websocket(hass)
     async_register_track_map_websocket(hass)
 
-    _apply_activity_log_filter_excludes(hass)
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
     if isinstance(hass_data, dict):
         async_update_f1tv_auth_repair_issue(hass, entry, live_timing_auth_status)
         async_schedule_f1tv_auth_status_refresh(hass, entry)
-
-        def _on_component_loaded(event):
-            component = str((getattr(event, "data", {}) or {}).get("component") or "")
-            if component in _ACTIVITY_FILTER_COMPONENTS:
-                _apply_activity_log_filter_excludes(hass)
-
-        hass_data["activity_filter_unsub"] = hass.bus.async_listen(
-            EVENT_COMPONENT_LOADED,
-            _on_component_loaded,
-        )
 
         # Register no-spoiler listener for catch-up on deactivation.
         no_spoiler_mgr: NoSpoilerModeManager | None = hass.data.get(DOMAIN, {}).get(
@@ -2424,6 +2525,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await async_ensure_live_data_card_frontend(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    track_map_replay_adapter.start()
+    if race_weather_coordinator is not None:
+        race_weather_coordinator.async_start()
+    if operation_mode == OPERATION_MODE_LIVE and live_supervisor is not None:
+        await live_supervisor.async_start()
+    else:
+        await live_bus.start()
+    transaction.commit()
     return True
 
 
@@ -6369,26 +6478,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if isinstance(data_root, dict):
             data = data_root.pop(entry.entry_id, None)
         if isinstance(data, dict):
-            auth_status_unsub = data.pop(AUTH_RUNTIME_STATUS_REFRESH_UNSUB, None)
-            if callable(auth_status_unsub):
-                with suppress(Exception):
-                    auth_status_unsub()
-            activity_filter_unsub = data.pop("activity_filter_unsub", None)
-            if callable(activity_filter_unsub):
-                with suppress(Exception):
-                    activity_filter_unsub()
             async_cancel_f1tv_auth_status_refresh(hass, entry.entry_id)
-            for name, obj in list(data.items()):
-                if obj is None:
-                    continue
-                if name == "jolpica_client":
-                    continue
-                close = getattr(obj, "async_close", None)
-                if callable(close):
-                    try:
-                        await close()
-                    except Exception as err:  # noqa: BLE001
-                        _LOGGER.debug("Error during %s async_close: %s", name, err)
+            await _async_close_runtime_mapping(data)
         unregister_entry_name_settings(entry.entry_id)
         entry.runtime_data = None
         # If this was the last entry, remove dev-only stats reporter.
@@ -6407,10 +6498,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 and k != _NO_SPOILER_MANAGER_KEY
             ]
             if not remaining_entries:
-                if hass.services.has_service(DOMAIN, _RC_LOG_SERVICE):
-                    with suppress(Exception):
-                        hass.services.async_remove(DOMAIN, _RC_LOG_SERVICE)
-                data_root.pop(_RC_LOG_SERVICE_MARKER, None)
                 stats = data_root.get(_JOLPICA_STATS_KEY)
                 unsub = stats.get("unsub") if isinstance(stats, dict) else None
                 if callable(unsub):
@@ -6425,6 +6512,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("Error during entry data cleanup: %s", err)
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> None:
+    """Remove storage owned by a deleted config entry."""
+    await async_remove_entry_storage(hass, entry.entry_id)
 
 
 def _build_replay_reset_callbacks(*coordinators: Any) -> list[Callable[[], None]]:
@@ -6559,7 +6651,6 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
 
     if isinstance(coordinator, SessionClockCoordinator):
         _clear_delayed_ingest_state(coordinator)
-        coordinator._stop_tick()
         coordinator._reset_runtime()
         coordinator._state = coordinator._empty_state()
         coordinator.data_list = [coordinator._state]
@@ -8424,14 +8515,8 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("Failed to resolve FIA season slug for %s: %s", season, err)
         if not slug:
-            _LOGGER.debug(
-                "FIA season slug not found for %s; using fallback URL", season
-            )
-        url = (
-            urljoin(FIA_DOCUMENTS_BASE_URL + "/", slug)
-            if slug
-            else FIA_SEASON_FALLBACK_URL
-        )
+            raise UpdateFailed(f"FIA season page for {season} is unavailable")
+        url = urljoin(FIA_DOCUMENTS_BASE_URL + "/", slug)
         self._season_url_cache[season] = url
         return url
 
@@ -9334,6 +9419,21 @@ class SessionClockCoordinator(DataUpdateCoordinator):
     )
     _QUALI_TOTALS = {1: 18 * 60, 2: 15 * 60, 3: 12 * 60}
     _SPRINT_QUALI_TOTALS = {1: 12 * 60, 2: 10 * 60, 3: 8 * 60}
+    _PUBLISH_FIELDS = (
+        "clock_total_s",
+        "session_part",
+        "session_type",
+        "session_name",
+        "session_status",
+        "clock_running",
+        "clock_phase",
+        "source_quality",
+    )
+    _ANCHOR_FIELDS = (
+        "session_start_utc",
+        "race_start_utc",
+        "race_three_hour_cap_utc",
+    )
 
     def __init__(
         self,
@@ -9360,7 +9460,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         self._state = self._empty_state()
         self.data_list: list[dict] = [self._state]
         self._live_supervisor = live_supervisor
-        self._tick_unsub: Callable[[], None] | None = None
+        self._last_published_state: dict[str, Any] | None = None
         self._replay_controller = replay_controller
         self._replay_state_unsub: Callable[[], None] | None = None
         self._reset_runtime()
@@ -9373,7 +9473,6 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         )
 
     async def async_close(self, *_):
-        self._stop_tick()
         if self._replay_state_unsub is not None:
             with suppress(Exception):
                 self._replay_state_unsub()
@@ -9381,6 +9480,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         _close_stream_delay_state(self)
 
     async def _async_update_data(self):
+        self._last_published_state = dict(self._state)
         return self._state
 
     @staticmethod
@@ -9492,18 +9592,36 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             return
         remaining_s = self._parse_remaining(msg.get("Remaining"))
         anchor_utc = self._parse_utc(msg.get("Utc"))
+        force_publish = False
+        if (
+            remaining_s is not None
+            and anchor_utc is not None
+            and self._clock_anchor_remaining_s is not None
+            and self._clock_anchor_utc is not None
+        ):
+            elapsed = max(0, int((anchor_utc - self._clock_anchor_utc).total_seconds()))
+            expected = (
+                max(0, self._clock_anchor_remaining_s - elapsed)
+                if self._clock_anchor_extrapolating
+                else self._clock_anchor_remaining_s
+            )
+            force_publish = abs(remaining_s - expected) > 2
+        previous_extrapolating = self._clock_anchor_extrapolating
         if remaining_s is not None:
             self._clock_anchor_remaining_s = remaining_s
         if anchor_utc is not None:
             self._clock_anchor_utc = anchor_utc
         if "Extrapolating" in msg:
             self._clock_anchor_extrapolating = bool(msg.get("Extrapolating"))
+            force_publish = force_publish or (
+                previous_extrapolating != self._clock_anchor_extrapolating
+            )
         segment_id = self._segment_id(
             self._resolve_session_part_at(anchor_utc or self._server_now_utc())
         )
         self._clock_anchor_segment_id = segment_id
         self._update_clock_total(segment_id, remaining_s)
-        self._schedule_deliver()
+        self._deliver(force=force_publish)
 
     def _on_heartbeat(self, msg: dict) -> None:
         if not isinstance(msg, dict):
@@ -9513,12 +9631,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         )
         if hb_utc is None:
             return
+        had_heartbeat = self._last_heartbeat_utc is not None
         mono_now = time.monotonic()
         self._last_heartbeat_utc = hb_utc
         self._last_heartbeat_mono = mono_now
         self._replay_now_anchor_utc = hb_utc
         self._replay_now_anchor_mono = mono_now
-        self._schedule_deliver()
+        self._deliver(force=not had_heartbeat and self._clock_anchor_utc is not None)
 
     def _on_session_status(self, msg: dict) -> None:
         if not isinstance(msg, dict):
@@ -9653,7 +9772,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             ReplayState.PLAYING,
             ReplayState.SEEKING,
         ):
-            self._deliver()
+            self._deliver(force=True)
 
     def _server_now_utc(self) -> datetime:
         if self._is_replay_temporarily_frozen():
@@ -10141,62 +10260,32 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             "last_server_utc": self._iso(now_utc),
         }
 
-    def _stop_tick(self) -> None:
-        if self._tick_unsub:
-            with suppress(Exception):
-                self._tick_unsub()
-            self._tick_unsub = None
-
-    def _on_tick(self, _now: datetime | None = None) -> None:
-        if not self.available:
-            self._stop_tick()
-            return
-        self._deliver()
-
-    def _should_tick(self, state: dict[str, Any]) -> bool:
-        if not self.available:
-            return False
-        if self._is_replay_temporarily_frozen():
-            return False
-        if bool(state.get("clock_running")):
+    def _should_publish_state(self, state: dict[str, Any]) -> bool:
+        previous = self._last_published_state
+        if not isinstance(previous, dict):
             return True
-        status = str(state.get("session_status") or "").strip() or None
-        has_official_clock = isinstance(
-            state.get("clock_remaining_s"), int
-        ) and isinstance(state.get("clock_total_s"), int)
-        elapsed = state.get("clock_elapsed_s")
-        if (
-            not has_official_clock
-            and isinstance(elapsed, int)
-            and not self._status_is_terminal(status)
-        ):
+        if any(previous.get(key) != state.get(key) for key in self._PUBLISH_FIELDS):
             return True
-        race_remaining = state.get("race_three_hour_remaining_s")
-        return (
-            isinstance(race_remaining, int)
-            and race_remaining > 0
-            and not self._status_is_terminal(status)
-        )
+        for key in self._ANCHOR_FIELDS:
+            previous_value = self._parse_utc(previous.get(key))
+            current_value = self._parse_utc(state.get(key))
+            if previous_value is None or current_value is None:
+                if previous_value != current_value:
+                    return True
+                continue
+            if abs((current_value - previous_value).total_seconds()) > 2:
+                return True
+        return False
 
-    def _ensure_tick(self, state: dict[str, Any]) -> None:
-        should_tick = self._should_tick(state)
-        if should_tick and self._tick_unsub is None:
-            self._tick_unsub = async_track_time_interval(
-                self.hass,
-                self._on_tick,
-                timedelta(seconds=1),
-            )
-        elif not should_tick and self._tick_unsub is not None:
-            self._stop_tick()
-
-    def _deliver(self) -> None:
+    def _deliver(self, *, force: bool = False) -> None:
         if _is_no_spoiler_blocked(self):
             return
         self.available = True
         self._state = self._build_state()
         self.data_list = [self._state]
-        self.async_set_updated_data(self._state)
-        self._ensure_tick(self._state)
+        if force or self._should_publish_state(self._state):
+            self._last_published_state = dict(self._state)
+            self.async_set_updated_data(self._state)
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
@@ -10249,12 +10338,10 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             _clear_delayed_ingest_state(self)
         if _is_no_spoiler_live_state(reason):
             _clear_delayed_ingest_state(self)
-            self._stop_tick()
             return
         self.available = is_live
         if not is_live:
             _clear_delayed_ingest_state(self)
-            self._stop_tick()
             self._reset_runtime()
             self._state = self._empty_state()
             self.data_list = [self._state]

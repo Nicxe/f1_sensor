@@ -196,7 +196,7 @@ async def async_setup_entry(
                 sensor, Platform.BINARY_SENSOR, default_object_id("overtake_mode")
             )
             sensors.append(sensor)
-    async_add_entities(sensors, True)
+    async_add_entities(sensors, False)
 
 
 class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):

@@ -178,7 +178,6 @@ FIA_DOCUMENTS_BASE_URL = (
     "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14"
 )
 FIA_SEASON_LIST_URL = f"{FIA_DOCUMENTS_BASE_URL}/season"
-FIA_SEASON_FALLBACK_URL = f"{FIA_DOCUMENTS_BASE_URL}/season/season-2025-2071"
 FIA_DOCS_POLL_INTERVAL = 900  # seconds
 FIA_DOCS_FETCH_TIMEOUT = 15
 

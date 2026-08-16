@@ -5,7 +5,9 @@ on:
     branches: [dev, beta, main]
     paths:
       - ".github/workflows/tests.yml"
+      - "hacs.json"
       - "custom_components/**/*.py"
+      - "custom_components/**/manifest.json"
       - "custom_components/**/*.js"
       - "custom_components/**/tests/**"
   pull_request:
@@ -19,23 +21,50 @@ concurrency:
 
 jobs:
   tests:
-    name: Run pytest
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Minimum HA 2024.11
+            python-version: "3.12"
+            test-package: pytest-homeassistant-custom-component==0.13.181
+            compatibility-pins: "josepy<2 pycares==4.4.0"
+            test-paths: >-
+              custom_components/f1_sensor/tests/test_setup.py
+              custom_components/f1_sensor/tests/test_config_flow_entity_naming.py
+              custom_components/f1_sensor/tests/test_storage.py
+              custom_components/f1_sensor/tests/test_helpers.py
+              custom_components/f1_sensor/tests/test_coordinator.py
+              custom_components/f1_sensor/tests/test_device_trigger.py
+              custom_components/f1_sensor/tests/test_diagnostics.py
+              custom_components/f1_sensor/tests/test_frontend.py
+              custom_components/f1_sensor/tests/test_session_clock.py
+          - name: Current HA
+            python-version: "3.14"
+            test-package: pytest-homeassistant-custom-component
+            compatibility-pins: ""
+            test-paths: custom_components/f1_sensor/tests/
     steps:
       - uses: actions/checkout@v6
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install test dependencies
-        run: pip install pytest-homeassistant-custom-component pytest-cov
+        run: >
+          pip install
+          "${{ matrix.test-package }}"
+          ${{ matrix.compatibility-pins }}
+          pytest-cov
 
       - name: Run tests
         run: >
           python -m pytest
-          custom_components/f1_sensor/tests/
+          ${{ matrix.test-paths }}
           --cov=custom_components.f1_sensor
           --cov-report=term-missing
           -q

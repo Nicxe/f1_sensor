@@ -6,7 +6,7 @@ from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 import json
 import logging
-from types import SimpleNamespace
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.exceptions import ConfigEntryNotReady
@@ -25,10 +25,8 @@ from custom_components.f1_sensor import (
     RaceControlCoordinator,
     RaceControlLogStore,
     _async_get_shared_jolpica_client,
-    _is_activity_log_excluded_entity,
-    _refresh_recorder_entity_filter,
-    _wrap_activity_filter,
-    _wrap_logbook_subscribe_events,
+    async_migrate_entry,
+    async_remove_entry,
     async_setup_entry,
     async_unload_entry,
 )
@@ -45,9 +43,9 @@ from custom_components.f1_sensor.const import (
 )
 from custom_components.f1_sensor.live_delay import LiveDelayReferenceController
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
+from custom_components.f1_sensor.runtime import F1RuntimeData
 from custom_components.f1_sensor.track_map import (
     TrackMapReplayAdapter,
-    TrackMapRuntimeData,
     TrackMapStore,
 )
 
@@ -75,6 +73,7 @@ class FakeLiveBus:
         self.auth_header = auth_header
         self.auth_failed_callback = auth_failed_callback
         self.started = False
+        self.closed = False
         FakeLiveBus.last_instance = self
 
     @property
@@ -83,9 +82,11 @@ class FakeLiveBus:
 
     async def start(self) -> None:
         self.started = True
+        self.closed = False
 
     async def async_close(self) -> None:
         self.started = False
+        self.closed = True
 
     def subscribe(self, _stream, _callback):
         return lambda: None
@@ -115,9 +116,14 @@ class DummyCoordinator:
         self.config_entry = kwargs.get("config_entry")
         self.data = kwargs.get("data", {})
         self._listeners = []
+        self.closed = False
 
     async def async_config_entry_first_refresh(self) -> None:
         return None
+
+    async def async_close(self) -> None:
+        self.closed = True
+        self._listeners.clear()
 
     def async_add_listener(self, update_callback):
         self._listeners.append(update_callback)
@@ -156,9 +162,13 @@ class DummyJolpicaClient:
 class FakeReplayController:
     def __init__(self, *args, **kwargs) -> None:
         self._initialized = False
+        self.closed = False
 
     async def async_initialize(self) -> None:
         self._initialized = True
+
+    async def async_close(self) -> None:
+        self.closed = True
 
 
 class FakeLiveSupervisor:
@@ -167,10 +177,14 @@ class FakeLiveSupervisor:
     def __init__(self, _hass, _session_coord, _live_bus, **kwargs) -> None:
         self.availability = LiveAvailabilityTracker()
         self.fallback_source = kwargs.get("fallback_source")
+        self.closed = False
         FakeLiveSupervisor.last_instance = self
 
     async def async_start(self) -> None:
         return None
+
+    async def async_close(self) -> None:
+        self.closed = True
 
     def wake(self) -> None:
         return None
@@ -189,11 +203,15 @@ class DummyRaceControlLogStore:
 
 def _coordinator_patches(
     fia_documents_coordinator_cls=DummyCoordinator,
+    f1_data_coordinator_cls=DummyCoordinator,
 ):
     """Return context managers that replace all coordinator classes with DummyCoordinator."""
     return (
         patch("custom_components.f1_sensor.JolpicaClient", DummyJolpicaClient),
-        patch("custom_components.f1_sensor.F1DataCoordinator", DummyCoordinator),
+        patch(
+            "custom_components.f1_sensor.F1DataCoordinator",
+            f1_data_coordinator_cls,
+        ),
         patch(
             "custom_components.f1_sensor.F1SeasonResultsCoordinator",
             DummyCoordinator,
@@ -233,15 +251,6 @@ class FailingFiaDocumentsCoordinator(DummyCoordinator):
         return {"event_key": None, "race": None, "documents": []}
 
 
-def test_activity_log_exclude_entity_matcher() -> None:
-    assert _is_activity_log_excluded_entity("sensor.f1_track_time")
-    assert _is_activity_log_excluded_entity("sensor.f1_session_time_remaining")
-    assert _is_activity_log_excluded_entity("sensor.f1_session_time_elapsed")
-    assert _is_activity_log_excluded_entity("sensor.f1_race_time_to_three_hour_limit")
-    assert not _is_activity_log_excluded_entity("sensor.f1_next_race")
-    assert not _is_activity_log_excluded_entity("binary_sensor.f1_track_time")
-
-
 @pytest.mark.asyncio
 async def test_shared_jolpica_client_initializes_once_for_concurrent_entries(
     hass,
@@ -261,98 +270,13 @@ async def test_shared_jolpica_client_initializes_once_for_concurrent_entries(
     assert DummyJolpicaClient.instances == 1
 
 
-def test_activity_log_filter_wrapper() -> None:
-    def base_filter(entity_id: str) -> bool:
-        return entity_id != "sensor.block_me"
-
-    wrapped = _wrap_activity_filter(base_filter)
-
-    assert not wrapped("sensor.f1_track_time")
-    assert not wrapped("sensor.f1_session_time_remaining")
-    assert not wrapped("sensor.block_me")
-    assert wrapped("sensor.f1_next_race")
-    assert _wrap_activity_filter(wrapped) is wrapped
-
-
-def test_refresh_recorder_entity_filter_rebinds_listener() -> None:
-    class _FakeRecorder:
-        def __init__(self) -> None:
-            self.entity_filter = None
-            self.recording = True
-            self.stop_calls = 0
-            self.init_calls = 0
-
-        def _async_stop_queue_watcher_and_event_listener(self) -> None:
-            self.stop_calls += 1
-
-        def async_initialize(self) -> None:
-            self.init_calls += 1
-
-    fake = _FakeRecorder()
-    _refresh_recorder_entity_filter(fake)
-    assert fake.stop_calls == 1
-    assert fake.init_calls == 1
-
-    # Migration case: filter is already wrapped but listener has not been rebound yet.
-    fake2 = _FakeRecorder()
-
-    def allow_all(_entity_id: str) -> bool:
-        return True
-
-    fake2.entity_filter = _wrap_activity_filter(allow_all)
-    _refresh_recorder_entity_filter(fake2)
-    assert fake2.stop_calls == 1
-    assert fake2.init_calls == 1
-    assert fake.entity_filter is not None
-
-    # Idempotent once wrapped
-    _refresh_recorder_entity_filter(fake)
-    assert fake.stop_calls == 1
-    assert fake.init_calls == 1
-
-
-def test_logbook_subscribe_wrapper_filters_excluded_entities() -> None:
-    captured: dict[str, object] = {}
-
-    def _base_subscribe(
-        _hass,
-        _subscriptions,
-        target,
-        _event_types,
-        _entities_filter,
-        _entity_ids,
-        _device_ids,
-    ) -> None:
-        captured["target"] = target
-
-    wrapped = _wrap_logbook_subscribe_events(_base_subscribe)
-    assert callable(wrapped)
-    assert _wrap_logbook_subscribe_events(wrapped) is wrapped
-
-    seen: list[str] = []
-
-    def _target(_event) -> None:
-        seen.append("called")
-
-    wrapped(None, [], _target, (), None, None, None)
-    filtered_target = captured["target"]
-
-    # Excluded timer entity should never reach target.
-    filtered_target(  # type: ignore[operator]
-        SimpleNamespace(data={"entity_id": "sensor.f1_session_time_elapsed"})
+def test_integration_does_not_depend_on_recorder_or_logbook() -> None:
+    manifest = json.loads(
+        (Path(__file__).parents[1] / "manifest.json").read_text(encoding="utf-8")
     )
-    assert seen == []
 
-    filtered_target(  # type: ignore[operator]
-        SimpleNamespace(data={"entity_id": "sensor.f1_race_time_to_three_hour_limit"})
-    )
-    assert seen == []
-
-    # Non-excluded entity should pass through.
-    filtered_target(  # type: ignore[operator]
-        SimpleNamespace(data={"entity_id": "sensor.f1_next_race"})
-    )
-    assert seen == ["called"]
+    assert "recorder" not in manifest.get("after_dependencies", [])
+    assert "logbook" not in manifest.get("after_dependencies", [])
 
 
 @pytest.mark.asyncio
@@ -569,7 +493,7 @@ async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:
     assert entry_data["operation_mode"] == OPERATION_MODE_DEVELOPMENT
     assert entry_data["replay_file"] == mock_config_entry.data[CONF_REPLAY_FILE]
     assert entry_data["live_bus"].started is True
-    assert isinstance(mock_config_entry.runtime_data, TrackMapRuntimeData)
+    assert isinstance(mock_config_entry.runtime_data, F1RuntimeData)
     assert isinstance(entry_data["track_map_store"], TrackMapStore)
     assert isinstance(entry_data["track_map_replay_adapter"], TrackMapReplayAdapter)
     assert entry_data["race_weather_coordinator"] is not None
@@ -623,6 +547,110 @@ async def test_setup_unload_reload_flushes_and_recreates_shared_transport(
 
     assert second_client.closed is True
     assert DummyJolpicaClient.instances == 2
+
+
+@pytest.mark.asyncio
+async def test_setup_unload_is_stable_across_fifty_cycles(
+    hass,
+    mock_config_entry,
+) -> None:
+    """Repeated reloads must not leave entry runtime or live transports behind."""
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        for context_manager in _coordinator_patches():
+            stack.enter_context(context_manager)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+        hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+
+        for _cycle in range(50):
+            assert await async_setup_entry(hass, mock_config_entry)
+            bus = hass.data[DOMAIN][mock_config_entry.entry_id]["live_bus"]
+            assert bus.started is True
+            assert await async_unload_entry(hass, mock_config_entry)
+            assert bus.started is False
+            assert mock_config_entry.entry_id not in hass.data[DOMAIN]
+            assert mock_config_entry.runtime_data is None
+
+
+@pytest.mark.asyncio
+async def test_failed_first_refresh_rolls_back_all_started_runtime(
+    hass,
+    mock_config_entry,
+) -> None:
+    """A setup retry must not inherit tasks, transports, or entry data."""
+
+    class _FailingCoordinator(DummyCoordinator):
+        refresh_calls = 0
+
+        async def async_config_entry_first_refresh(self) -> None:
+            type(self).refresh_calls += 1
+            if type(self).refresh_calls == 1:
+                raise ConfigEntryNotReady("injected refresh failure")
+
+    DummyJolpicaClient.created = []
+    FakeLiveBus.last_instance = None
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        for context_manager in _coordinator_patches(
+            f1_data_coordinator_cls=_FailingCoordinator
+        ):
+            stack.enter_context(context_manager)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+        hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+
+        with pytest.raises(ConfigEntryNotReady, match="injected refresh failure"):
+            await async_setup_entry(hass, mock_config_entry)
+        failed_bus = FakeLiveBus.last_instance
+        failed_client = DummyJolpicaClient.created[-1]
+        assert mock_config_entry.entry_id not in hass.data[DOMAIN]
+        assert mock_config_entry.runtime_data is None
+        assert failed_bus is not None
+        assert failed_bus.started is False
+        assert failed_bus.closed is True
+        assert failed_client.closed is True
+
+        assert await async_setup_entry(hass, mock_config_entry)
+        retry_bus = hass.data[DOMAIN][mock_config_entry.entry_id]["live_bus"]
+        assert retry_bus is not failed_bus
+        assert retry_bus.started is True
+        assert isinstance(mock_config_entry.runtime_data, F1RuntimeData)
+        assert await async_unload_entry(hass, mock_config_entry)
 
 
 @pytest.mark.asyncio
@@ -774,6 +802,7 @@ async def test_async_setup_entry_live_mode_wires_event_tracker_fallback(hass) ->
         for cm in _coordinator_patches():
             stack.enter_context(cm)
         hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+        hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
         result = await async_setup_entry(hass, entry)
 
     assert result is True
@@ -835,6 +864,7 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
         for cm in _coordinator_patches():
             stack.enter_context(cm)
         hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+        hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
         result = await async_setup_entry(hass, entry)
 
     assert result is True
@@ -868,6 +898,7 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
         )
         is not None
     )
+    assert await async_unload_entry(hass, entry)
 
 
 @pytest.mark.asyncio
@@ -926,6 +957,7 @@ async def test_async_setup_entry_uses_auth_when_development_ui_disabled(
         for cm in _coordinator_patches():
             stack.enter_context(cm)
         hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+        hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
         result = await async_setup_entry(hass, entry)
 
     assert result is True
@@ -935,6 +967,7 @@ async def test_async_setup_entry_uses_auth_when_development_ui_disabled(
     assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is True
     assert entry_data["f1tv_auth_status"].status == "valid"
     assert entry_data["f1tv_auth_status"].used_for_live_timing is True
+    assert await async_unload_entry(hass, entry)
 
 
 @pytest.mark.asyncio
@@ -1363,7 +1396,7 @@ async def test_async_unload_entry_keeps_runtime_data_on_failed_platform_unload(
 
 
 @pytest.mark.asyncio
-async def test_async_unload_entry_removes_race_control_service_for_last_entry(
+async def test_async_unload_entry_keeps_domain_service_registered(
     hass,
 ) -> None:
     entry = MockConfigEntry(
@@ -1383,4 +1416,44 @@ async def test_async_unload_entry_removes_race_control_service_for_last_entry(
     result = await async_unload_entry(hass, entry)
 
     assert result is True
-    assert not hass.services.has_service(DOMAIN, _RC_LOG_SERVICE)
+    assert hass.services.has_service(DOMAIN, _RC_LOG_SERVICE)
+
+
+@pytest.mark.asyncio
+async def test_legacy_enabled_sensor_migration_is_lossless_and_idempotent(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        data={
+            "sensor_name": "F1",
+            "enabled_sensors": ["next_session", "driver_standings", "retired_key"],
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await async_migrate_entry(hass, entry)
+    first_data = dict(entry.data)
+
+    assert entry.version == 2
+    assert entry.unique_id == DOMAIN
+    assert "next_race" not in entry.data["disabled_sensors"]
+    assert "driver_standings" not in entry.data["disabled_sensors"]
+    assert "team_radio" in entry.data["disabled_sensors"]
+    assert entry.data["enabled_sensors"][-1] == "retired_key"
+
+    assert await async_migrate_entry(hass, entry)
+    assert dict(entry.data) == first_data
+
+
+@pytest.mark.asyncio
+async def test_async_remove_entry_removes_only_entry_owned_storage(hass) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
+    remover = AsyncMock()
+
+    with patch(
+        "custom_components.f1_sensor.async_remove_entry_storage",
+        remover,
+    ):
+        await async_remove_entry(hass, entry)
+
+    remover.assert_awaited_once_with(hass, entry.entry_id)

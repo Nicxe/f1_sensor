@@ -15506,6 +15506,10 @@ class F1LiveSessionCard extends LitElement {
     const remainingRaw = isValid(remainingEntity) ? remainingEntity.state : null;
     const elapsedRaw = isValid(elapsedEntity) ? elapsedEntity.state : null;
     const clockRunning = readClockRunning(remainingEntity, elapsedEntity);
+    const updatedAtMs = [remainingEntity, elapsedEntity]
+      .map((entity) => Date.parse(entity?.last_updated || ''))
+      .filter((value) => Number.isFinite(value) && value <= Date.now())
+      .reduce((latest, value) => Math.max(latest, value), 0);
 
     // Clear stale snapshot when both entities become unavailable (session transition)
     if (!remainingRaw && !elapsedRaw) {
@@ -15524,13 +15528,13 @@ class F1LiveSessionCard extends LitElement {
     }
 
     // Update snapshot whenever HA pushes new state values
-    const snapshotKey = `${remainingRaw}|${elapsedRaw}|${clockRunning}`;
+    const snapshotKey = `${remainingRaw}|${elapsedRaw}|${clockRunning}|${updatedAtMs}`;
     if (snapshotKey !== this._clockSnapshotKey) {
       this._clockSnapshotKey = snapshotKey;
       this._clockSnapshot = {
         remainingS: parseHMS(remainingRaw),
         elapsedS: parseHMS(elapsedRaw),
-        ts: Date.now(),
+        ts: updatedAtMs || Date.now(),
       };
     }
 

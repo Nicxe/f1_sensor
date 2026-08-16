@@ -364,7 +364,7 @@ async def async_setup_entry(
         )
         sensors.append(sensor)
 
-    async_add_entities(sensors, True)
+    async_add_entities(sensors, False)
 
 
 class _F1TvTokenSensorBase(F1AuxEntity, SensorEntity):

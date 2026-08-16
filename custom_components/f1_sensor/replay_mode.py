@@ -2686,6 +2686,12 @@ class ReplayController:
 
         await self._session_manager.async_unload()
 
+    async def async_close(self) -> None:
+        """Stop replay resources without rearming live transport during unload."""
+        self._on_replay_ended = None
+        await self.async_stop()
+        self._listeners.clear()
+
     async def _run_playback(self) -> None:
         """Background task - the LiveBus is already running with our transport."""
         try:

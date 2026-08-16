@@ -111,12 +111,13 @@ def _clock_entities(
     elapsed: str,
     clock_running: bool,
     clock_phase: str,
+    last_updated: str | None = None,
 ) -> dict[str, dict]:
     attrs = {
         "clock_running": clock_running,
         "clock_phase": clock_phase,
     }
-    return {
+    entities = {
         "sensor.f1_session_time_remaining": {
             "state": remaining,
             "attributes": attrs,
@@ -126,6 +127,10 @@ def _clock_entities(
             "attributes": attrs,
         },
     }
+    if last_updated is not None:
+        for entity in entities.values():
+            entity["last_updated"] = last_updated
+    return entities
 
 
 def _run_clock_probe(steps: list[dict]) -> dict:
@@ -201,6 +206,30 @@ def test_live_session_clock_waits_for_full_second_before_advancing() -> None:
     assert result["after_full_second"] == {
         "remaining": "0:59:59",
         "elapsed": "0:00:01",
+    }
+
+
+def test_live_session_clock_uses_ha_update_anchor_when_opened_later() -> None:
+    """A newly mounted card catches up without one-second backend writes."""
+    result = _run_clock_probe(
+        [
+            {
+                "name": "mounted_later",
+                "nowMs": 31_000,
+                "hassStates": _clock_entities(
+                    remaining="1:00:00",
+                    elapsed="0:00:00",
+                    clock_running=True,
+                    clock_phase="running",
+                    last_updated="1970-01-01T00:00:01.000Z",
+                ),
+            }
+        ]
+    )
+
+    assert result["mounted_later"] == {
+        "remaining": "0:59:30",
+        "elapsed": "0:00:30",
     }
 
 

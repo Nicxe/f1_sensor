@@ -10,7 +10,7 @@ from homeassistant.helpers.selector import (
 import voluptuous as vol
 
 from . import const
-from .auth import is_auth_feature_enabled
+from .auth import is_auth_feature_enabled, validate_replacement_auth_header
 from .auth_http import (
     async_create_f1tv_pairing_session,
     async_pop_f1tv_pairing_session_result,
@@ -84,6 +84,7 @@ SENSOR_OPTIONS = {
     "formation_start": "Formation start (replay or live with F1TV access)",
     "race_control": "Race control (live)",
     "top_three": "Top three (leader, live)",
+    "team_radio": "Team radio (F1TV live/replay)",
     "pitstops": "Pit stops (F1TV live/replay)",
     "championship_prediction": "Championship prediction (F1TV live/replay)",
     "driver_positions": "Driver positions (live)",
@@ -108,7 +109,7 @@ def _normalize_auth_header(value: object) -> str:
 
 
 class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
-    VERSION = 1
+    VERSION = 2
     _pending_f1tv_setup_data: dict | None = None
     _completed_f1tv_pairing_session_id: str | None = None
 
@@ -132,17 +133,24 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return DEFAULT_RACE_WEEK_START_DAY
 
     async def async_step_user(self, user_input=None):
+        await self.async_set_unique_id(DOMAIN)
+        self._abort_if_unique_id_configured()
         errors = {}
         current = user_input or {}
         race_week_start = self._normalize_race_week_start(current)
 
         if user_input is not None:
-            auth_header = _normalize_auth_header(
-                user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
-            )
+            auth_header_raw = user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
+            auth_header = _normalize_auth_header(auth_header_raw)
             start_pairing = bool(user_input.pop(CONF_START_F1TV_PAIRING, False))
             if is_auth_feature_enabled() and auth_header:
-                user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
+                validated, error, _status = validate_replacement_auth_header(
+                    auth_header
+                )
+                if error:
+                    errors[CONF_LIVE_TIMING_AUTH_HEADER] = error
+                elif validated:
+                    user_input[CONF_LIVE_TIMING_AUTH_HEADER] = validated
 
             # Resolve and validate operation mode. Development/replay controls stay
             # tied to developer UI even when F1TV auth is public.
@@ -245,16 +253,21 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         race_week_start = self._normalize_race_week_start(current)
 
         if user_input is not None:
-            auth_header = _normalize_auth_header(
-                user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
-            )
+            auth_header_raw = user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
+            auth_header = _normalize_auth_header(auth_header_raw)
             user_input.pop(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, None)
             start_pairing = bool(user_input.pop(CONF_START_F1TV_PAIRING, False))
             if start_pairing and is_auth_feature_enabled():
                 return await self._async_start_f1tv_pairing(entry)
             if auth_header:
                 if is_auth_feature_enabled():
-                    user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
+                    validated, error, _status = validate_replacement_auth_header(
+                        auth_header
+                    )
+                    if error:
+                        errors[CONF_LIVE_TIMING_AUTH_HEADER] = error
+                    elif validated:
+                        user_input[CONF_LIVE_TIMING_AUTH_HEADER] = validated
 
             mode = user_input.get(
                 CONF_OPERATION_MODE,
@@ -398,10 +411,16 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             if start_pairing:
                 return await self._async_start_f1tv_pairing(self._get_reauth_entry())
             if auth_header:
-                return self.async_update_reload_and_abort(
-                    self._get_reauth_entry(),
-                    data_updates={CONF_LIVE_TIMING_AUTH_HEADER: auth_header},
+                validated, error, _status = validate_replacement_auth_header(
+                    auth_header
                 )
+                if error:
+                    errors[CONF_LIVE_TIMING_AUTH_HEADER] = error
+                elif validated:
+                    return self.async_update_reload_and_abort(
+                        self._get_reauth_entry(),
+                        data_updates={CONF_LIVE_TIMING_AUTH_HEADER: validated},
+                    )
             if clear_auth_header:
                 return self.async_update_reload_and_abort(
                     self._get_reauth_entry(),
@@ -474,11 +493,6 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_f1tv_pairing_failed(self, user_input=None):
         """Abort when the helper callback did not complete."""
         return self.async_abort(reason="f1tv_pairing_failed")
-
-    def _get_reconfigure_entry(self):
-        """Return the config entry for this domain."""
-        entries = self.hass.config_entries.async_entries(DOMAIN)
-        return entries[0] if entries else None
 
     async def _validate_replay_file(self, path: str) -> bool:
         """Return True if the provided path points to a readable file."""

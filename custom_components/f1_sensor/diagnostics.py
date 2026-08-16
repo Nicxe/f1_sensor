@@ -93,7 +93,7 @@ def _serialize_signalr_stream_capabilities(
         if values := _sorted_strings(capabilities.get("auth_gated_live_streams")):
             serialized["auth_gated_live_streams"] = values
 
-    for key in ("active_live_streams",):
+    for key in ("requested_streams", "active_live_streams"):
         if values := _sorted_strings(capabilities.get(key)):
             if not include_auth:
                 allowed = set(public_streams) | set(replay_only_streams)
@@ -227,6 +227,12 @@ async def async_get_config_entry_diagnostics(
             with suppress(Exception):
                 jolpica_runtime["cache_entries"] = len(http_cache)
         runtime["jolpica"] = jolpica_runtime
+
+    persistent_cache = entry_runtime.get("http_persistent_cache")
+    cache_diagnostics = getattr(persistent_cache, "diagnostics", None)
+    if callable(cache_diagnostics):
+        with suppress(Exception):
+            runtime["persistent_cache"] = cache_diagnostics()
 
     entry_data = dict(entry.data)
     if not include_auth_transport:

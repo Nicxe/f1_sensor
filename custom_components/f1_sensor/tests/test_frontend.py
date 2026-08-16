@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from homeassistant.components.lovelace.const import LOVELACE_DATA
+from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DATA
 from homeassistant.helpers import issue_registry as ir
 import pytest
 
