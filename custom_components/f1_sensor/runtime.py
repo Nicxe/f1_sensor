@@ -6,8 +6,30 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 
+from .const import (
+    CONF_LIVE_DELAY_REFERENCE,
+    CONF_OPERATION_MODE,
+    CONF_RACE_WEEK_START_DAY,
+    CONF_REPLAY_FILE,
+    CONF_REPLAY_START_REFERENCE,
+)
+from .providers import ProviderRegistry
 from .track_map import TrackMapRuntimeData
+
+OPTION_KEYS = frozenset(
+    {
+        "disabled_sensors",
+        "enable_race_control",
+        "live_delay_seconds",
+        CONF_LIVE_DELAY_REFERENCE,
+        CONF_OPERATION_MODE,
+        CONF_RACE_WEEK_START_DAY,
+        CONF_REPLAY_FILE,
+        CONF_REPLAY_START_REFERENCE,
+    }
+)
 
 
 @dataclass(slots=True)
@@ -56,6 +78,13 @@ class CapabilityState:
 
 
 @dataclass(slots=True)
+class ProviderRuntime:
+    """Provider registry and most recent normalized records."""
+
+    registry: ProviderRegistry
+
+
+@dataclass(slots=True)
 class F1RuntimeData:
     """Single typed owner for all config-entry runtime state.
 
@@ -65,10 +94,11 @@ class F1RuntimeData:
     """
 
     static: StaticRuntime
-    live: LiveRuntime
-    replay: ReplayRuntime
+    live: LiveRuntime | None
+    replay: ReplayRuntime | None
     track_map: TrackMapRuntimeData
     cache: CacheRuntime
+    providers: ProviderRuntime
     capabilities: CapabilityState
     legacy: dict[str, Any]
 
@@ -76,6 +106,34 @@ class F1RuntimeData:
     def track_map_store(self) -> Any:
         """Expose the existing track-map runtime contract during migration."""
         return self.track_map.track_map_store
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Read one compatibility value while platforms migrate by slice."""
+        return self.legacy.get(key, default)
+
+
+def entry_value(entry: ConfigEntry, key: str, default: Any = None) -> Any:
+    """Return an option value with a backward-compatible data fallback."""
+    if key in entry.options:
+        return entry.options[key]
+    return entry.data.get(key, default)
+
+
+def effective_entry_settings(entry: ConfigEntry) -> dict[str, Any]:
+    """Return immutable config data overlaid with user-editable options."""
+    settings = dict(entry.data)
+    settings.update(entry.options)
+    return settings
+
+
+def runtime_from_hass(
+    hass: HomeAssistant,
+    entry_id: str,
+) -> F1RuntimeData | None:
+    """Resolve typed runtime data without reading an untyped domain mapping."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    runtime = getattr(entry, "runtime_data", None) if entry is not None else None
+    return runtime if isinstance(runtime, F1RuntimeData) else None
 
 
 type F1ConfigEntry = ConfigEntry[F1RuntimeData]

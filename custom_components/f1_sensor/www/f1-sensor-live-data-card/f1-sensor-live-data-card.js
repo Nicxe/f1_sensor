@@ -1,5 +1,16 @@
 // Custom F1 Tyres Statistics card for Home Assistant
-import { LitElement, html, css, svg } from './f1-lit-3.3.2.js';
+import { html, css, svg } from './f1-lit-3.3.2.js';
+import { F1BaseElement } from './platform/base-card.js';
+import { handleF1CardActionKeydown as sharedHandleF1CardActionKeydown } from './platform/actions.js';
+import {
+  installF1CardActionAccessibility as sharedInstallF1CardActionAccessibility,
+  installF1EditorTabAccessibility as sharedInstallF1EditorTabAccessibility,
+  installF1GridTableAccessibility as sharedInstallF1GridTableAccessibility,
+} from './platform/accessibility.js';
+import { registerF1CardMetadata } from './platform/card-registry.js';
+import { f1Translate } from './platform/i18n.js';
+
+const LitElement = F1BaseElement;
 
 let f1FontsInjected = false;
 const ensureF1Fonts = () => {
@@ -39,121 +50,6 @@ const ensureF1Fonts = () => {
 const F1_THEME_MODES = ['dark', 'light', 'auto'];
 const DEFAULT_F1_THEME_MODE = 'dark';
 const DEFAULT_FONT_STYLE = 'wide';
-const handleF1CardActionKeydown = (host, event) => {
-  if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return;
-  event.preventDefault();
-  host?._handleCardAction?.();
-};
-
-const installF1EditorTabAccessibility = (EditorClass) => {
-  if (!EditorClass || EditorClass.prototype.__f1TabAccessibilityInstalled) return;
-  EditorClass.prototype.__f1TabAccessibilityInstalled = true;
-  const originalUpdated = EditorClass.prototype.updated;
-  const originalDisconnected = EditorClass.prototype.disconnectedCallback;
-
-  EditorClass.prototype.updated = function (...args) {
-    originalUpdated?.apply(this, args);
-    const tabList = this.renderRoot?.querySelector('.tabs');
-    if (!tabList) return;
-    if (this.__f1TabList !== tabList) {
-      this.__f1TabList?.removeEventListener('keydown', this.__f1TabKeydown);
-      this.__f1TabKeydown = (event) => {
-        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-        const tabs = [...tabList.querySelectorAll('button[role="tab"]')];
-        const current = tabs.indexOf(event.target);
-        if (current < 0 || tabs.length === 0) return;
-        event.preventDefault();
-        let next = current;
-        if (event.key === 'Home') next = 0;
-        if (event.key === 'End') next = tabs.length - 1;
-        if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
-        if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
-        tabs[next].focus();
-        tabs[next].click();
-      };
-      tabList.addEventListener('keydown', this.__f1TabKeydown);
-      this.__f1TabList = tabList;
-    }
-    tabList.setAttribute('role', 'tablist');
-    tabList.querySelectorAll('button').forEach((tab) => {
-      const selected = tab.classList.contains('active');
-      tab.setAttribute('role', 'tab');
-      tab.setAttribute('aria-selected', selected ? 'true' : 'false');
-      tab.tabIndex = selected ? 0 : -1;
-    });
-  };
-
-  EditorClass.prototype.disconnectedCallback = function (...args) {
-    this.__f1TabList?.removeEventListener('keydown', this.__f1TabKeydown);
-    this.__f1TabList = null;
-    if (originalDisconnected) originalDisconnected.apply(this, args);
-    else LitElement.prototype.disconnectedCallback.call(this);
-  };
-};
-
-const installF1CardActionAccessibility = (CardClass) => {
-  if (!CardClass || CardClass.prototype.__f1CardActionAccessibilityInstalled) return;
-  CardClass.prototype.__f1CardActionAccessibilityInstalled = true;
-  const originalUpdated = CardClass.prototype.updated;
-  const originalDisconnected = CardClass.prototype.disconnectedCallback;
-
-  CardClass.prototype.updated = function (...args) {
-    originalUpdated?.apply(this, args);
-    const activeCards = new Set(this.renderRoot?.querySelectorAll('ha-card') || []);
-    for (const card of this.__f1ActionCards || []) {
-      if (!activeCards.has(card)) card.removeEventListener('keydown', card.__f1ActionKeydown);
-    }
-    for (const card of activeCards) {
-      const cardActionEnabled = this.config?.tap_action?.action !== 'none';
-      if (!cardActionEnabled) {
-        card.removeEventListener('keydown', card.__f1ActionKeydown);
-        card.__f1ActionKeydown = null;
-        card.removeAttribute('role');
-        card.removeAttribute('tabindex');
-        card.removeAttribute('aria-label');
-        continue;
-      }
-      const hasDeclarativeKeyboardHandler = card.getAttribute('role') === 'button'
-        && card.hasAttribute('tabindex');
-      if (!card.__f1ActionKeydown && !hasDeclarativeKeyboardHandler) {
-        card.__f1ActionKeydown = (event) => handleF1CardActionKeydown(this, event);
-        card.addEventListener('keydown', card.__f1ActionKeydown);
-      }
-      card.setAttribute('role', 'button');
-      card.setAttribute('tabindex', '0');
-      card.setAttribute('aria-label', `Open details for ${this.config?.title || 'Formula 1 card'}`);
-    }
-    this.__f1ActionCards = activeCards;
-  };
-
-  CardClass.prototype.disconnectedCallback = function (...args) {
-    for (const card of this.__f1ActionCards || []) {
-      card.removeEventListener('keydown', card.__f1ActionKeydown);
-    }
-    this.__f1ActionCards = null;
-    if (originalDisconnected) originalDisconnected.apply(this, args);
-    else LitElement.prototype.disconnectedCallback.call(this);
-  };
-};
-
-const installF1GridTableAccessibility = (CardClass, prefix, label) => {
-  if (!CardClass || CardClass.prototype.__f1GridTableAccessibilityInstalled) return;
-  CardClass.prototype.__f1GridTableAccessibilityInstalled = true;
-  const originalUpdated = CardClass.prototype.updated;
-  CardClass.prototype.updated = function (...args) {
-    originalUpdated?.apply(this, args);
-    this.renderRoot?.querySelectorAll(`.${prefix}-table`).forEach((table) => {
-      table.setAttribute('role', 'table');
-      table.setAttribute('aria-label', label);
-      table.querySelectorAll(`.${prefix}-row`).forEach((row) => {
-        row.setAttribute('role', 'row');
-        row.querySelectorAll(`.${prefix}-cell`).forEach((cell) => {
-          cell.setAttribute('role', row.classList.contains('header') ? 'columnheader' : 'cell');
-        });
-      });
-    });
-  };
-};
 const FONT_STYLE_OPTIONS = [
   {
     value: 'wide',
@@ -2522,7 +2418,7 @@ class F1TyreStatisticsCard extends LitElement {
         tabindex="0"
         aria-label=${`Open details for ${this.config.title || 'Tyres Statistics'}`}
         @click=${this._handleCardAction}
-        @keydown=${(event) => handleF1CardActionKeydown(this, event)}
+        @keydown=${(event) => sharedHandleF1CardActionKeydown(this, event)}
       >
         <div class="ts-card">
           ${this.config.show_header
@@ -3349,7 +3245,7 @@ class F1PitStopOverviewCard extends LitElement {
         tabindex="0"
         aria-label=${`Open details for ${this.config.title || 'Pit Stops & Tyres'}`}
         @click=${this._handleCardAction}
-        @keydown=${(event) => handleF1CardActionKeydown(this, event)}
+        @keydown=${(event) => sharedHandleF1CardActionKeydown(this, event)}
       >
         <div class="ps-card">
           ${this.config.show_header
@@ -31886,6 +31782,9 @@ class F1TrackMapCard extends LitElement {
     this._staleTimer = 0;
     this._subscriptionRetryTimer = 0;
     this._subscriptionRetryAttempt = 0;
+    this._trackMapSequence = null;
+    this._trackMapGeometryRevision = 0;
+    this._resyncPromise = null;
   }
 
   setConfig(config) {
@@ -32055,6 +31954,7 @@ class F1TrackMapCard extends LitElement {
     const message = {
       type: 'f1_sensor/track_map/subscribe',
       throttle_ms: throttleMs,
+      protocol_version: 2,
     };
     if (entryId) message.entry_id = entryId;
 
@@ -32081,7 +31981,11 @@ class F1TrackMapCard extends LitElement {
       this._clearSubscriptionRetry();
     } catch (err) {
       if (token !== this._subscriptionToken) return;
-      this._error = err?.message || 'Track map websocket unavailable';
+      this._error = err?.message || f1Translate(
+        this.hass,
+        'track_map.websocket_unavailable',
+        'Track map websocket unavailable',
+      );
       this._status = 'not_loaded';
       this._scheduleSubscriptionRetry(key, token);
     }
@@ -32098,7 +32002,11 @@ class F1TrackMapCard extends LitElement {
       this._handleTrackMapMessage(response);
     } catch (err) {
       if (token !== this._subscriptionToken) return;
-      this._error = err?.message || 'Track map websocket unavailable';
+      this._error = err?.message || f1Translate(
+        this.hass,
+        'track_map.websocket_unavailable',
+        'Track map websocket unavailable',
+      );
       this._status = 'not_loaded';
     }
   }
@@ -32116,6 +32024,9 @@ class F1TrackMapCard extends LitElement {
     this._snapshotIntervalMs = 0;
     this._driverSampleIntervalMs = 0;
     this._renderClockAt = 0;
+    this._trackMapSequence = null;
+    this._trackMapGeometryRevision = 0;
+    this._resyncPromise = null;
     this._clearStaleTimer();
   }
 
@@ -32150,11 +32061,47 @@ class F1TrackMapCard extends LitElement {
   }
 
   _handleTrackMapMessage(message) {
+    if (message?.protocol_version === 2 && message?.type === 'delta') {
+      const baseSequence = Number(message.base_sequence);
+      if (
+        !this._snapshot
+        || !Number.isInteger(baseSequence)
+        || baseSequence !== this._trackMapSequence
+      ) {
+        this._resyncTrackMap(this._subscriptionToken);
+        return;
+      }
+      const drivers = new Map(
+        (this._snapshot.drivers || []).map((driver) => [String(driver.racing_number), driver]),
+      );
+      Object.entries(message.changes || {}).forEach(([racingNumber, driver]) => {
+        drivers.set(String(racingNumber), driver);
+      });
+      (message.removed || []).forEach((racingNumber) => drivers.delete(String(racingNumber)));
+      const snapshot = {
+        ...this._snapshot,
+        ...(message.patch || {}),
+        drivers: [...drivers.values()],
+      };
+      this._trackMapSequence = Number(message.sequence);
+      this._trackMapGeometryRevision = Number(message.geometry_revision || 0);
+      this._applyTrackMapSnapshot(snapshot, message.status);
+      return;
+    }
+
     const snapshot = message?.snapshot || null;
+    if (message?.protocol_version === 2) {
+      this._trackMapSequence = Number(message.sequence);
+      this._trackMapGeometryRevision = Number(message.geometry_revision || 0);
+    }
+    this._applyTrackMapSnapshot(snapshot, message?.status);
+  }
+
+  _applyTrackMapSnapshot(snapshot, status) {
     this._resetVisualStateIfSessionChanged(snapshot);
     this._noteSnapshotArrival(snapshot);
     this._snapshot = snapshot;
-    this._status = message?.status || this._snapshot?.status || 'not_loaded';
+    this._status = status || this._snapshot?.status || 'not_loaded';
     this._error = null;
     this._ingestDriverSamples(snapshot);
     this._scheduleStaleTransition(snapshot);
@@ -32162,22 +32109,52 @@ class F1TrackMapCard extends LitElement {
     this._scheduleDraw();
   }
 
+  _resyncTrackMap(token) {
+    if (this._resyncPromise || token !== this._subscriptionToken) return;
+    const entryId = this.config?.entry_id && this.config.entry_id !== 'auto'
+      ? String(this.config.entry_id)
+      : null;
+    const message = {
+      type: 'f1_sensor/track_map/resync',
+      protocol_version: 2,
+    };
+    if (entryId) message.entry_id = entryId;
+    const request = typeof this.hass?.callWS === 'function'
+      ? this.hass.callWS(message)
+      : this.hass?.connection?.sendMessagePromise?.(message);
+    this._resyncPromise = Promise.resolve(request)
+      .then((response) => {
+        if (token === this._subscriptionToken) this._handleTrackMapMessage(response);
+      })
+      .catch((err) => {
+        if (token !== this._subscriptionToken) return;
+        this._error = err?.message || f1Translate(
+          this.hass,
+          'track_map.websocket_unavailable',
+          'Track map websocket unavailable',
+        );
+      })
+      .finally(() => {
+        this._resyncPromise = null;
+      });
+  }
+
   _statusLabel() {
     const replayState = String(this._snapshot?.replay_state || '').toLowerCase();
-    if (this._replaySnapshotIsStale()) return 'No position data';
-    if (replayState === 'paused') return 'Paused';
-    if (replayState === 'seeking') return 'Seeking';
-    if (replayState === 'playing') return 'Replay';
-    if (this._liveSnapshotIsStale()) return 'No session';
+    if (this._replaySnapshotIsStale()) return f1Translate(this.hass, 'track_map.no_position_data', 'No position data');
+    if (replayState === 'paused') return f1Translate(this.hass, 'track_map.paused', 'Paused');
+    if (replayState === 'seeking') return f1Translate(this.hass, 'track_map.seeking', 'Seeking');
+    if (replayState === 'playing') return f1Translate(this.hass, 'track_map.replay', 'Replay');
+    if (this._liveSnapshotIsStale()) return f1Translate(this.hass, 'track_map.no_session', 'No session');
     const sourceLabel = this._sourceLabel(this._snapshot);
     const labels = {
       active: sourceLabel,
-      no_geometry: 'No geometry',
-      stale: 'Stale',
-      no_position_data: 'Waiting',
-      no_session: 'No session',
-      not_loaded: 'Not loaded',
-      closed: 'Closed',
+      no_geometry: f1Translate(this.hass, 'track_map.no_geometry', 'No geometry'),
+      stale: f1Translate(this.hass, 'track_map.stale', 'Stale'),
+      no_position_data: f1Translate(this.hass, 'track_map.waiting', 'Waiting'),
+      no_session: f1Translate(this.hass, 'track_map.no_session', 'No session'),
+      not_loaded: f1Translate(this.hass, 'track_map.not_loaded', 'Not loaded'),
+      closed: f1Translate(this.hass, 'track_map.closed', 'Closed'),
     };
     return labels[this._status] || String(this._status || 'Unknown').replaceAll('_', ' ');
   }
@@ -33561,7 +33538,7 @@ F1_FONT_STYLE_CARD_CLASSES.forEach(installFontStyleSupport);
   F1LapPositionProgressionCard,
   F1LastRaceResultsCard,
   F1StartingGridCard,
-].forEach(installF1CardActionAccessibility);
+].forEach(sharedInstallF1CardActionAccessibility);
 
 [
   F1TyreStatisticsCardEditor,
@@ -33586,7 +33563,7 @@ F1_FONT_STYLE_CARD_CLASSES.forEach(installFontStyleSupport);
   F1RaceLapCardEditor,
   F1StartingGridCardEditor,
   F1TrackMapCardEditor,
-].forEach(installF1EditorTabAccessibility);
+].forEach(sharedInstallF1EditorTabAccessibility);
 
 [
   [F1QualifyingTimingCard, 'qt', 'Qualifying timing'],
@@ -33594,7 +33571,7 @@ F1_FONT_STYLE_CARD_CLASSES.forEach(installFontStyleSupport);
   [F1RaceLapCard, 'rl', 'Race timing'],
   [F1StartingGridCard, 'sg', 'Starting grid'],
 ].forEach(([CardClass, prefix, label]) => {
-  installF1GridTableAccessibility(CardClass, prefix, label);
+  sharedInstallF1GridTableAccessibility(CardClass, prefix, label);
 });
 
 const F1_NO_SPOILER_CARD_CLASSES = [
@@ -33795,179 +33772,4 @@ if (!customElements.get('f1-starting-grid-card-editor')) {
   customElements.define('f1-starting-grid-card-editor', F1StartingGridCardEditor);
 }
 
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: 'f1-sensor-live-data-card',
-  name: 'F1 Tyres Statistics',
-  description: 'F1-style tyres statistics with top times and deltas',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-pitstop-overview-card',
-  name: 'F1 Pit Stops & Tyres',
-  description: 'Pit stop overview with tyre and stop timing columns. Pit stop data works in Replay Mode or live with F1TV access.',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-driver-lap-times-card',
-  name: 'F1 Driver Lap Times',
-  description: 'Driver lap table with latest, best, and configurable lap history',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-championship-prediction-drivers-card',
-  name: 'F1 Championship Standings Drivers',
-  description: 'Current driver championship standings with race projection overlay for Replay Mode or live with F1TV access',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-championship-prediction-teams-card',
-  name: 'F1 Championship Standings Teams',
-  description: 'Current constructor championship standings with race projection overlay for Replay Mode or live with F1TV access',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-season-progression-card',
-  name: 'F1 Season Progression',
-  description: 'Native season progression chart for driver or constructor championship points',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-last-race-results-card',
-  name: 'F1 Last Race Results',
-  description: 'Last race results table with finishing position, grid, position delta, points, and status',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-lap-position-progression-card',
-  name: 'F1 Lap Position Progression',
-  description: 'Native post-race lap position chart for completed races with sprint sessions marked unavailable when lap data is not exposed',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-replay-control-card',
-  name: 'F1 Replay Control',
-  description: 'Replay Mode control panel with session selectors, playback controls, and progress',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-track-map-card',
-  name: 'F1 Track Map',
-  description: 'Live and replay track map with car positions, lap progress, and track status context',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-investigations-card',
-  name: 'F1 Investigations & Penalties',
-  description: 'Investigation and penalty tracker grouped by driver',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-track-limits-card',
-  name: 'F1 Track Limits',
-  description: 'Track limits violations with deletions, warnings, and penalties',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-next-race-card',
-  name: 'F1 Next Race Overview',
-  description: 'Next race overview with countdown, track map, weekend schedule, weather, and history',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-weather-card',
-  name: 'F1 Race Weather',
-  description: 'Current circuit conditions and the weather forecast for race start',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-season-calendar-card',
-  name: 'F1 Season Calendar',
-  description: 'Full season calendar with one row per grand prix and sprint weekend markers',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-live-session-card',
-  name: 'F1 Live Session Status',
-  description: 'Live session status bar with weather, track status, and lap progress',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-race-control-card',
-  name: 'F1 Race Control',
-  description: 'Race control message banner with FIA styling',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-fia-documents-card',
-  name: 'F1 FIA Documents',
-  description: 'FIA race weekend document list with direct PDF links and publication times',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-qualifying-timing-card',
-  name: 'F1 Qualifying Timing',
-  description: 'Live qualifying timing with sector times, tyre data, and best lap per driver',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-practice-timing-card',
-  name: 'F1 Free Practice Timing',
-  description: 'Practice-only timing table with optional live sectors, tyre age, last lap, and fastest lap per driver',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-race-lap-card',
-  name: 'F1 Race Lap',
-  description: 'Race-only timing table with optional live sectors, lap count, tyre age, fastest lap highlights, and pit stops',
-  configurable: true,
-  preview: true,
-});
-
-window.customCards.push({
-  type: 'f1-starting-grid-card',
-  name: 'F1 Starting Grid',
-  description: 'Starting grid for the active Sprint or Race with source and data status badges',
-  configurable: true,
-  preview: true,
-});
+registerF1CardMetadata();

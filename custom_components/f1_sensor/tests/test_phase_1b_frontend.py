@@ -13,6 +13,7 @@ import pytest
 NODE_PIT_ACTION_PROBE = r"""
 const fs = require("node:fs");
 const source = fs.readFileSync(process.env.F1_CARD_PATH, "utf8");
+const actionSource = fs.readFileSync(process.env.F1_ACTION_PATH, "utf8");
 
 function findMatchingBrace(text, openIndex) {
   let depth = 0;
@@ -31,10 +32,10 @@ function extractMethod(className, signature) {
   return source.slice(methodStart, findMatchingBrace(source, braceStart) + 1);
 }
 
-const helperStart = source.indexOf("const handleF1CardActionKeydown =");
-const helperBrace = source.indexOf("{", helperStart);
-const helperEnd = source.indexOf(";", findMatchingBrace(source, helperBrace));
-const helper = source.slice(helperStart, helperEnd + 1);
+const helperStart = actionSource.indexOf("export const handleF1CardActionKeydown =");
+const helperBrace = actionSource.indexOf("{", helperStart);
+const helperEnd = actionSource.indexOf(";", findMatchingBrace(actionSource, helperBrace));
+const helper = actionSource.slice(helperStart, helperEnd + 1).replace("export ", "");
 const pitAction = extractMethod("F1PitStopOverviewCard", "_handleCardAction() {");
 
 const Harness = new Function("CustomEvent", `
@@ -108,6 +109,7 @@ def test_pit_stop_default_action_supports_click_and_keyboard(
         pytest.skip("node is required for frontend interaction tests")
     env = os.environ.copy()
     env["F1_CARD_PATH"] = str(bundled_card_path)
+    env["F1_ACTION_PATH"] = str(bundled_card_path.parent / "platform" / "actions.js")
     completed = subprocess.run(
         [node, "-e", NODE_PIT_ACTION_PROBE],
         check=True,
@@ -161,15 +163,29 @@ def test_phase_1b_accessibility_contract_is_installed(
 ) -> None:
     """Interactive cards, editors and timing grids expose keyboard semantics."""
     source = _source(bundled_card_path)
+    accessibility_source = _source(
+        bundled_card_path.parent / "platform" / "accessibility.js"
+    )
 
-    assert "const installF1CardActionAccessibility = (CardClass) =>" in source
-    assert "const installF1EditorTabAccessibility = (EditorClass) =>" in source
+    assert "installF1CardActionAccessibility" in source
+    assert "installF1EditorTabAccessibility" in source
+    assert (
+        "const installF1CardActionAccessibility = (CardClass) =>"
+        in accessibility_source
+    )
+    assert (
+        "const installF1EditorTabAccessibility = (EditorClass) =>"
+        in accessibility_source
+    )
     assert (
         "const installF1GridTableAccessibility = (CardClass, prefix, label) =>"
-        in source
+        in accessibility_source
     )
-    assert "tabList.setAttribute('role', 'tablist');" in source
-    assert "tab.setAttribute('aria-selected', selected ? 'true' : 'false');" in source
-    assert "['ArrowLeft', 'ArrowRight', 'Home', 'End']" in source
+    assert "tabList.setAttribute('role', 'tablist');" in accessibility_source
+    assert (
+        "tab.setAttribute('aria-selected', selected ? 'true' : 'false');"
+        in accessibility_source
+    )
+    assert "['ArrowLeft', 'ArrowRight', 'Home', 'End']" in accessibility_source
     assert "aria-live=${criticalClass ? 'assertive' : 'polite'}" in source
     assert 'role="table" aria-label="Pit stops and tyres"' in source

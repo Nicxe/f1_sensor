@@ -369,6 +369,7 @@ def _run_card_probe(path: Path) -> dict:
 @pytest.mark.parametrize("card_path", (BUNDLED_CARD_PATH,))
 def test_lap_position_card_source_registration(card_path: Path) -> None:
     source = _read_card(card_path)
+    registry_source = _read_card(card_path.parent / "platform" / "card-registry.js")
 
     assert "class F1LapPositionProgressionCard extends LitElement" in source
     assert "class F1LapPositionProgressionCardEditor extends LitElement" in source
@@ -381,7 +382,7 @@ def test_lap_position_card_source_registration(card_path: Path) -> None:
         "customElements.define('f1-lap-position-progression-card-editor', "
         "F1LapPositionProgressionCardEditor)"
     ) in source
-    assert "type: 'f1-lap-position-progression-card'" in source
+    assert "['f1-lap-position-progression-card'," in registry_source
 
     overlay_start = source.index("const F1_NO_SPOILER_CARD_CLASSES = [")
     overlay_end = source.index("F1_NO_SPOILER_CARD_CLASSES.forEach", overlay_start)

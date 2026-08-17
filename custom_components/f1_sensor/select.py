@@ -6,35 +6,39 @@ from contextlib import suppress
 import logging
 
 from homeassistant.components.select import SelectEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
-    DOMAIN,
     LIVE_DELAY_REFERENCE_LAP_SYNC,
     LIVE_DELAY_REFERENCE_SESSION,
 )
-from .entity import F1AuxEntity, default_object_id, set_default_entity_id
+from .entity import (
+    F1AuxEntity,
+    default_object_id,
+    entry_runtime_registry,
+    set_default_entity_id,
+)
 from .live_delay import LiveDelayReferenceController
 from .replay_entities import (
     F1ReplaySessionSelect,
     F1ReplayStartReferenceSelect,
     F1ReplayYearSelect,
 )
+from .runtime import F1ConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: F1ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up F1 Sensor select entities."""
-    registry = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    registry = entry_runtime_registry(hass, entry.entry_id)
     if not registry:
         return
 

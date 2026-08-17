@@ -16,6 +16,7 @@ from aiohttp import ClientResponseError, ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
 
 from .helpers import normalize_live_timing_auth_header
+from .providers import ProviderRegistry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ AUTH_GATED_LIVE_STREAMS = (
     "PitStopSeries",
 )
 
-REPLAY_ONLY_STREAMS: tuple[str, ...] = ()
+REPLAY_ONLY_STREAMS: tuple[str, ...] = ("LapHistory",)
 
 AUTH_FAILURE_STATUSES = frozenset({401, 403})
 SIGNALR_CONNECT_TIMEOUT = 30.0
@@ -75,22 +76,36 @@ class LiveConnectionState(StrEnum):
 
 
 def build_live_subscribe_streams(
-    *, include_auth_gated: bool = False
+    *,
+    include_auth_gated: bool = False,
+    requested_streams: Iterable[str] | None = None,
 ) -> tuple[str, ...]:
     """Return the SignalR streams that should be subscribed for live mode."""
     streams = list(PUBLIC_LIVE_STREAMS)
     if include_auth_gated:
         streams.extend(AUTH_GATED_LIVE_STREAMS)
+    if requested_streams is not None:
+        requested = frozenset(str(stream) for stream in requested_streams)
+        streams = [stream for stream in streams if stream in requested]
     return tuple(streams)
 
 
-def build_subscribe_message(*, include_auth_gated: bool = False) -> dict[str, Any]:
+def build_subscribe_message(
+    *,
+    include_auth_gated: bool = False,
+    requested_streams: Iterable[str] | None = None,
+) -> dict[str, Any]:
     """Return a SignalR legacy subscribe message for the selected capability set."""
     return {
         "H": "Streaming",
         "M": "Subscribe",
         "A": [
-            list(build_live_subscribe_streams(include_auth_gated=include_auth_gated))
+            list(
+                build_live_subscribe_streams(
+                    include_auth_gated=include_auth_gated,
+                    requested_streams=requested_streams,
+                )
+            )
         ],
         "I": 1,
     }
@@ -112,6 +127,7 @@ class LiveTransport(Protocol):
     async def ensure_connection(self) -> None: ...
     async def messages(self) -> AsyncGenerator[dict]: ...
     async def close(self) -> None: ...
+    async def update_streams(self, streams: Iterable[str]) -> None: ...
 
 
 class SignalRAuthenticationError(Exception):
@@ -210,12 +226,14 @@ class SignalRLegacyClient:
         session: ClientSession,
         *,
         auth_header: str | None = None,
+        streams: Iterable[str] | None = None,
     ) -> None:
         self._hass = hass
         self._session = session
         self._auth_header = _normalize_auth_header(auth_header)
         self._subscribe_msg = build_subscribe_message(
-            include_auth_gated=self._auth_header is not None
+            include_auth_gated=self._auth_header is not None,
+            requested_streams=streams,
         )
         self._ws = None
         self._t0 = dt.datetime.now(dt.UTC)
@@ -353,6 +371,15 @@ class SignalRLegacyClient:
             await self._ws.close()
             self._ws = None
 
+    async def update_streams(self, streams: Iterable[str]) -> None:
+        """Replace the active subscription without opening another connection."""
+        self._subscribe_msg = build_subscribe_message(
+            include_auth_gated=self._auth_header is not None,
+            requested_streams=streams,
+        )
+        if self._ws is not None and not self._ws.closed:
+            await self._ws.send_json(self._subscribe_msg)
+
 
 class SignalRCoreClient:
     """SignalR Core client for Formula 1 live timing (/signalrcore endpoint).
@@ -367,12 +394,14 @@ class SignalRCoreClient:
         session: ClientSession,
         *,
         auth_header: str | None = None,
+        streams: Iterable[str] | None = None,
     ) -> None:
         self._hass = hass
         self._session = session
         self._auth_header = _normalize_auth_header(auth_header)
         self._subscribe_msg = build_subscribe_message(
-            include_auth_gated=self._auth_header is not None
+            include_auth_gated=self._auth_header is not None,
+            requested_streams=streams,
         )
         self._ws = None
         self._cookie: str | None = None
@@ -528,6 +557,28 @@ class SignalRCoreClient:
             await self._ws.close()
             self._ws = None
 
+    async def update_streams(self, streams: Iterable[str]) -> None:
+        """Replace the active Core subscription on the current connection."""
+        self._subscribe_msg = build_subscribe_message(
+            include_auth_gated=self._auth_header is not None,
+            requested_streams=streams,
+        )
+        if self._ws is None or self._ws.closed:
+            return
+        subscribe = {
+            "type": 1,
+            "target": "Subscribe",
+            "arguments": self._subscribe_msg["A"],
+            "invocationId": str(self._monotonic_invocation_id()),
+        }
+        await self._ws.send_str(json.dumps(subscribe) + RECORD_SEP)
+
+    def _monotonic_invocation_id(self) -> int:
+        """Return a connection-local invocation identifier."""
+        value = getattr(self, "_next_invocation_id", 1)
+        self._next_invocation_id = value + 1
+        return value
+
 
 class LiveBus:
     """Single shared SignalR connection with per-stream subscribers.
@@ -543,6 +594,8 @@ class LiveBus:
         transport_factory: Callable[[], LiveTransport] | None = None,
         auth_header: str | None = None,
         auth_failed_callback: Callable[[], None] | None = None,
+        requested_streams: Iterable[str] | None = None,
+        provider_registry: ProviderRegistry | None = None,
         monotonic: Callable[[], float] = time.monotonic,
         jitter_source: Callable[[float, float], float] = random.uniform,
     ) -> None:
@@ -552,6 +605,14 @@ class LiveBus:
         self._auth_header = _normalize_auth_header(auth_header)
         self._auth_enabled = self._auth_header is not None
         self._auth_failed_callback = auth_failed_callback
+        self._requested_streams = (
+            frozenset(requested_streams)
+            if requested_streams is not None
+            else frozenset(
+                build_live_subscribe_streams(include_auth_gated=self._auth_enabled)
+            )
+        )
+        self._provider_registry = provider_registry or ProviderRegistry()
         self._auth_failed_reported = False
         self._monotonic = monotonic
         self._jitter_source = jitter_source
@@ -588,6 +649,26 @@ class LiveBus:
         """Return the current live transport lifecycle state."""
         return self._connection_state
 
+    @property
+    def requested_streams(self) -> frozenset[str]:
+        """Return the declared stream demand for this bus."""
+        return self._requested_streams
+
+    @property
+    def active_streams(self) -> frozenset[str]:
+        """Return streams supported by the current live transport capability."""
+        if self._transport_factory is not None:
+            supported = frozenset(
+                (*PUBLIC_LIVE_STREAMS, *AUTH_GATED_LIVE_STREAMS, *REPLAY_ONLY_STREAMS)
+            )
+            return self._requested_streams & supported
+        return frozenset(
+            build_live_subscribe_streams(
+                include_auth_gated=self._auth_enabled,
+                requested_streams=self._requested_streams,
+            )
+        )
+
     def subscribe(
         self, stream: str, callback: Callable[[StreamPayload], None]
     ) -> Callable[[], None]:
@@ -613,6 +694,9 @@ class LiveBus:
     async def start(self) -> None:
         if self._running:
             _LOGGER.debug("LiveBus start requested but already running")
+            return
+        if not self.active_streams and self._transport_factory is None:
+            _LOGGER.debug("LiveBus start skipped because no streams are requested")
             return
         self._running = True
         self._connection_state = LiveConnectionState.CONNECTING
@@ -750,6 +834,8 @@ class LiveBus:
 
     def _dispatch(self, stream: str, data: StreamPayload) -> None:
         with suppress(Exception):
+            provider = "replay" if self._transport_factory is not None else "f1_live"
+            data = self._provider_registry.normalize(provider, stream, data).payload
             # Update counters
             self._cnt[stream] = self._cnt.get(stream, 0) + 1
             self._stream_frames[stream] = self._stream_frames.get(stream, 0) + 1
@@ -842,12 +928,29 @@ class LiveBus:
                 self._hass,
                 self._session,
                 auth_header=self._auth_header if self._auth_enabled else None,
+                streams=self._requested_streams,
             )
         return SignalRLegacyClient(
             self._hass,
             self._session,
             auth_header=self._auth_header if self._auth_enabled else None,
+            streams=self._requested_streams,
         )
+
+    async def async_update_streams(self, streams: Iterable[str]) -> None:
+        """Apply a changed demand set without creating a second transport."""
+        requested = frozenset(str(stream) for stream in streams if str(stream))
+        if requested == self._requested_streams:
+            return
+        self._requested_streams = requested
+        client = self._client
+        if client is None:
+            return
+        update_streams = getattr(client, "update_streams", None)
+        if callable(update_streams):
+            await update_streams(self._requested_streams)
+            return
+        await client.close()
 
     async def _monitor_heartbeat(self) -> None:
         with suppress(asyncio.CancelledError):

@@ -12,7 +12,6 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
@@ -35,7 +34,6 @@ from .auth import (
 from .const import (
     CONF_OPERATION_MODE,
     DEFAULT_OPERATION_MODE,
-    DOMAIN,
     LATEST_TRACK_STATUS,
     OPERATION_MODE_DEVELOPMENT,
     RACE_SWITCH_GRACE,
@@ -47,6 +45,7 @@ from .entity import (
     F1AuxEntity,
     F1BaseEntity,
     default_object_id,
+    entry_runtime_registry,
     is_auth_gated_stream_active,
     is_no_spoiler_live_state,
     is_replay_only_stream_active,
@@ -64,6 +63,7 @@ from .helpers import (
 )
 from .race_weather import legacy_weather_observation, weather_icon
 from .replay_entities import F1ReplayStatusSensor
+from .runtime import F1ConfigEntry, entry_value
 
 TEAM_RADIO_STATIC_BASE = "https://livetiming.formula1.com/static"
 
@@ -189,12 +189,12 @@ async def _async_setup_points_progression(sensor) -> None:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
+    hass: HomeAssistant, entry: F1ConfigEntry, async_add_entities
 ):
     """Create sensors when integration is added."""
-    data = hass.data[DOMAIN][entry.entry_id]
+    data = entry_runtime_registry(hass, entry.entry_id)
     base = entry.data.get("sensor_name", "F1")
-    disabled: set[str] = set(entry.data.get("disabled_sensors") or [])
+    disabled: set[str] = set(entry_value(entry, "disabled_sensors", []) or [])
     mapping = {
         "next_race": (F1NextRaceSensor, data["race_coordinator"]),
         "track_time": (F1TrackTimeSensor, data["race_coordinator"]),
@@ -393,7 +393,7 @@ class _F1TvTokenSensorBase(F1AuxEntity, SensorEntity):
         )
 
     def _status(self) -> F1TvAuthStatus | None:
-        data = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        data = entry_runtime_registry(self.hass, self._entry_id)
         status = data.get(AUTH_RUNTIME_STATUS)
         return status if isinstance(status, F1TvAuthStatus) else None
 
@@ -501,7 +501,7 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
 
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         live_state = reg.get("live_state")
         if live_state is not None and hasattr(live_state, "add_listener"):
             try:
@@ -522,7 +522,7 @@ class F1LiveTimingModeSensor(F1AuxEntity, SensorEntity):
             self.async_on_remove(unsub)
 
     def _compute(self) -> tuple[str, dict]:
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         operation_mode = reg.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
         live_state = reg.get("live_state")
         live_bus = reg.get("live_bus")
@@ -664,7 +664,7 @@ class _PointsProgressionBase(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _get_sprint_results(self) -> list:
         try:
-            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            reg = entry_runtime_registry(self.hass, self._entry_id)
             sprint_coord = reg.get("sprint_results_coordinator")
             if sprint_coord and isinstance(sprint_coord.data, dict):
                 return (
@@ -689,7 +689,7 @@ class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
         try:
-            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            reg = entry_runtime_registry(self.hass, self._entry_id)
             self._session_info_coordinator = reg.get("session_info_coordinator")
             if self._session_info_coordinator is not None:
                 rem_info = self._session_info_coordinator.async_add_listener(
@@ -812,7 +812,7 @@ class F1NextRaceSensor(_NextRaceMixin, F1BaseEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         self._history_coordinator = reg.get("next_race_history_coordinator")
         if self._history_coordinator is not None:
             removal = self._history_coordinator.async_add_listener(
@@ -1762,7 +1762,7 @@ class F1DriverPointsProgressionSensor(_PointsProgressionBase):
     def _get_full_schedule(self) -> list:
         """Return full season schedule (all planned rounds) from race_coordinator if available."""
         try:
-            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            reg = entry_runtime_registry(self.hass, self._entry_id)
             race_coord = reg.get("race_coordinator")
             if race_coord and isinstance(race_coord.data, dict):
                 return (
@@ -1777,7 +1777,7 @@ class F1DriverPointsProgressionSensor(_PointsProgressionBase):
     def _get_driver_standings(self) -> tuple[dict, int | None]:
         """Return (points_by_code, standings_round) from driver standings coordinator."""
         try:
-            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            reg = entry_runtime_registry(self.hass, self._entry_id)
             coord = reg.get("driver_coordinator")
             points_map: dict[str, float] = {}
             round_num: int | None = None
@@ -2199,7 +2199,7 @@ class F1ConstructorPointsProgressionSensor(_PointsProgressionBase):
     def _get_constructor_standings(self) -> tuple[dict, int | None]:
         """Return (points_by_constructorId, standings_round) from constructor standings coordinator."""
         try:
-            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            reg = entry_runtime_registry(self.hass, self._entry_id)
             coord = reg.get("constructor_coordinator")
             points_map: dict[str, float] = {}
             round_num: int | None = None
@@ -2451,7 +2451,7 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         self._session_status_coordinator = reg.get("session_status_coordinator")
         # Prefer coordinator's latest if present, otherwise restore last state
         raw = self._extract_current()
@@ -3037,7 +3037,7 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self.async_on_remove(removal)
         # Subscribe to SessionInfo for meeting/session metadata
         try:
-            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            reg = entry_runtime_registry(self.hass, self._entry_id)
             self._session_info_coordinator = reg.get("session_info_coordinator")
             if self._session_info_coordinator is not None:
                 rem_info = self._session_info_coordinator.async_add_listener(
@@ -3420,9 +3420,7 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _is_replay_active(self) -> bool:
         """Return True when replay mode is playing or paused."""
-        reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(
-            self._entry_id, {}
-        ) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         replay_controller = reg.get("replay_controller")
         if replay_controller is None:
             return False
@@ -3443,7 +3441,7 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self.async_on_remove(removal)
         # Also listen to SessionStatus so we can clear state when session ends
         try:
-            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            reg = entry_runtime_registry(self.hass, self._entry_id)
             self._status_coordinator = reg.get("session_status_coordinator")
             if self._status_coordinator is not None:
                 rem2 = self._status_coordinator.async_add_listener(
@@ -3542,10 +3540,8 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         # Try detect session part from consolidated drivers coordinator if available
         session_part = None
         try:
-            drivers_data = (
-                self.hass.data.get(DOMAIN, {})
-                .get(self._entry_id, {})
-                .get("drivers_coordinator")
+            drivers_data = entry_runtime_registry(self.hass, self._entry_id).get(
+                "drivers_coordinator"
             )
             if drivers_data and hasattr(drivers_data, "data"):
                 sd = drivers_data.data or {}
@@ -3999,7 +3995,7 @@ class F1TrackLimitsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
 
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         live_state = reg.get("live_state")
         if live_state is not None and hasattr(live_state, "add_listener"):
             try:
@@ -4373,7 +4369,7 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
 
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         live_state = reg.get("live_state")
         if live_state is not None and hasattr(live_state, "add_listener"):
             try:
@@ -4910,7 +4906,7 @@ class F1TeamRadioSensor(
             return f"{static_root.rstrip('/')}/{path.lstrip('/')}"
 
         try:
-            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id)
+            reg = entry_runtime_registry(self.hass, self._entry_id)
             live_supervisor = (
                 reg.get("live_supervisor") if isinstance(reg, dict) else None
             )
@@ -5617,9 +5613,7 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             hass = getattr(self, "hass", None)
             if hass is None:
                 return False
-            reg = (hass.data.get(DOMAIN, {}) or {}).get(self._entry_id)
-            if not isinstance(reg, dict):
-                return False
+            reg = entry_runtime_registry(hass, self._entry_id)
             driver_coord = reg.get("driver_coordinator")
             data = getattr(driver_coord, "data", None) or {}
             standings = (
@@ -6154,7 +6148,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         # Subscribe to session coordinators for accurate gating and Q-part updates.
         try:
-            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            reg = entry_runtime_registry(self.hass, self._entry_id)
             self._session_info_coordinator = reg.get("session_info_coordinator")
             if self._session_info_coordinator is not None:
                 rem_info = self._session_info_coordinator.async_add_listener(
@@ -6305,7 +6299,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def _get_session_from_replay(self) -> tuple[str | None, str | None]:
         """Fallback to replay session metadata when replay is active."""
         try:
-            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            reg = entry_runtime_registry(self.hass, self._entry_id)
             replay_controller = (
                 reg.get("replay_controller") if isinstance(reg, dict) else None
             )
@@ -6328,7 +6322,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     def _get_session_name_from_window(self) -> tuple[str | None, str | None]:
         """Fallback to live window metadata when SessionInfo is unavailable."""
         try:
-            reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+            reg = entry_runtime_registry(self.hass, self._entry_id)
             live_supervisor = (
                 reg.get("live_supervisor") if isinstance(reg, dict) else None
             )
@@ -6614,9 +6608,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _is_replay_active(self) -> bool:
         """Return True when replay mode is playing/paused."""
-        reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(
-            self._entry_id, {}
-        ) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         replay_controller = reg.get("replay_controller")
         if replay_controller is None:
             return False

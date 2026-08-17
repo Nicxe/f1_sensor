@@ -103,6 +103,30 @@
       "auth_token_expiring_soon": "Token går ut för snart. Skapa en ny token och försök igen."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Konfigurera F1-sensorns funktioner",
+        "data": {
+          "enabled_sensors": "Aktiverade sensorer",
+          "enable_race_control": "Aktivera live F1 API",
+          "race_week_start_day": "Första dagen i tävlingsveckan",
+          "operation_mode": "Driftläge",
+          "replay_file": "Sökväg till replay-dump"
+        },
+        "data_description": {
+          "enable_race_control": "Anslut endast till Formula 1 Live Timing när livefunktioner är aktiverade.",
+          "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
+          "operation_mode": "Välj Live eller lokalt utvecklingsläge med replay.",
+          "replay_file": "Absolut sökväg till en replay-dump som endast används i utvecklingsläge."
+        }
+      }
+    },
+    "error": {
+      "replay_required": "Välj en replay-dumpfil när utvecklingsläge är aktiverat.",
+      "replay_missing": "Replay-dumpfilen hittades inte eller är oläsbar."
+    }
+  },
   "issues": {
     "f1tv_token_attention_required": {
       "fix_flow": {

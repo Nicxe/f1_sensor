@@ -6,7 +6,6 @@ from contextlib import suppress
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .auth import (
@@ -19,8 +18,9 @@ from .auth import (
 from .const import (
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
-    DOMAIN,
 )
+from .entity import entry_runtime_registry
+from .runtime import F1ConfigEntry, entry_value
 
 TO_REDACT = {
     CONF_LIVE_TIMING_AUTH_HEADER,
@@ -101,6 +101,13 @@ def _serialize_signalr_stream_capabilities(
                 if not values:
                     continue
             serialized[key] = values
+    reasons = capabilities.get("stream_reasons")
+    if isinstance(reasons, dict):
+        serialized["stream_reasons"] = {
+            str(stream): sorted(str(reason) for reason in stream_reasons)
+            for stream, stream_reasons in sorted(reasons.items())
+            if isinstance(stream_reasons, (set, frozenset, tuple, list))
+        }
     return serialized
 
 
@@ -174,10 +181,11 @@ def _serialize_jolpica_runtime(client: object) -> dict[str, Any]:
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: F1ConfigEntry,
 ) -> dict[str, Any]:
     """Return diagnostics for one config entry."""
-    entry_runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id, {}) or {}
+    runtime_data = getattr(entry, "runtime_data", None)
+    entry_runtime = entry_runtime_registry(hass, entry.entry_id)
     runtime_auth_status = entry_runtime.get(AUTH_RUNTIME_STATUS)
     include_auth_transport = is_auth_transport_enabled()
     auth_status = (
@@ -194,7 +202,7 @@ async def async_get_config_entry_diagnostics(
     )
     runtime: dict[str, Any] = {
         "operation_mode": entry_runtime.get(
-            "operation_mode", entry.data.get(CONF_OPERATION_MODE)
+            "operation_mode", entry_value(entry, CONF_OPERATION_MODE)
         ),
         "signalr_stream_capabilities": capabilities,
     }
@@ -233,6 +241,9 @@ async def async_get_config_entry_diagnostics(
     if callable(cache_diagnostics):
         with suppress(Exception):
             runtime["persistent_cache"] = cache_diagnostics()
+
+    if runtime_data is not None:
+        runtime["providers"] = runtime_data.providers.registry.diagnostics()
 
     entry_data = dict(entry.data)
     if not include_auth_transport:

@@ -68,10 +68,16 @@ class FakeLiveBus:
         transport_factory=None,
         auth_header=None,
         auth_failed_callback=None,
+        requested_streams=None,
+        provider_registry=None,
     ) -> None:
         self._transport_factory = transport_factory
         self.auth_header = auth_header
         self.auth_failed_callback = auth_failed_callback
+        self.requested_streams = frozenset(requested_streams or ())
+        self.active_streams = self.requested_streams
+        self.provider_registry = provider_registry
+        self.stream_updates: list[frozenset[str]] = []
         self.started = False
         self.closed = False
         FakeLiveBus.last_instance = self
@@ -87,6 +93,11 @@ class FakeLiveBus:
     async def async_close(self) -> None:
         self.started = False
         self.closed = True
+
+    async def async_update_streams(self, streams) -> None:
+        self.requested_streams = frozenset(streams)
+        self.active_streams = self.requested_streams
+        self.stream_updates.append(self.requested_streams)
 
     def subscribe(self, _stream, _callback):
         return lambda: None
@@ -227,6 +238,28 @@ def _coordinator_patches(
         patch(
             "custom_components.f1_sensor.FiaDocumentsCoordinator",
             fia_documents_coordinator_cls,
+        ),
+        patch("custom_components.f1_sensor.TrackStatusCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.SessionStatusCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.SessionInfoCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.RaceControlCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.WeatherDataCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.LapCountCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.IncidentCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.LiveModeCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.SessionClockCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.LiveDriversCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.TopThreeCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.TeamRadioCoordinator", DummyCoordinator),
+        patch("custom_components.f1_sensor.PitStopCoordinator", DummyCoordinator),
+        patch(
+            "custom_components.f1_sensor.ChampionshipPredictionCoordinator",
+            DummyCoordinator,
+        ),
+        patch("custom_components.f1_sensor.StartingGridCoordinator", DummyCoordinator),
+        patch(
+            "custom_components.f1_sensor.RaceControlLogStore",
+            DummyRaceControlLogStore,
         ),
     )
 
@@ -640,14 +673,12 @@ async def test_failed_first_refresh_rolls_back_all_started_runtime(
         failed_client = DummyJolpicaClient.created[-1]
         assert mock_config_entry.entry_id not in hass.data[DOMAIN]
         assert mock_config_entry.runtime_data is None
-        assert failed_bus is not None
-        assert failed_bus.started is False
-        assert failed_bus.closed is True
+        assert failed_bus is None
         assert failed_client.closed is True
 
         assert await async_setup_entry(hass, mock_config_entry)
         retry_bus = hass.data[DOMAIN][mock_config_entry.entry_id]["live_bus"]
-        assert retry_bus is not failed_bus
+        assert retry_bus is not None
         assert retry_bus.started is True
         assert isinstance(mock_config_entry.runtime_data, F1RuntimeData)
         assert await async_unload_entry(hass, mock_config_entry)
@@ -662,14 +693,15 @@ async def test_async_setup_entry_creates_lap_position_dependencies_when_enabled(
         data={
             "sensor_name": "F1",
             "enable_race_control": False,
-            CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
-            CONF_REPLAY_FILE: replay_file,
+            CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+            CONF_REPLAY_FILE: "",
             "disabled_sensors": sorted(
                 SUPPORTED_SENSOR_KEYS - {"lap_position_progression"}
             ),
         },
     )
     entry.add_to_hass(hass)
+    FakeLiveBus.last_instance = None
 
     with ExitStack() as stack:
         stack.enter_context(
@@ -714,12 +746,13 @@ async def test_async_setup_entry_skips_lap_position_coordinator_when_disabled(
         data={
             "sensor_name": "F1",
             "enable_race_control": False,
-            CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
-            CONF_REPLAY_FILE: replay_file,
+            CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+            CONF_REPLAY_FILE: "",
             "disabled_sensors": sorted(SUPPORTED_SENSOR_KEYS),
         },
     )
     entry.add_to_hass(hass)
+    FakeLiveBus.last_instance = None
 
     with ExitStack() as stack:
         stack.enter_context(
@@ -751,6 +784,9 @@ async def test_async_setup_entry_skips_lap_position_coordinator_when_disabled(
     entry_data = hass.data[DOMAIN][entry.entry_id]
     assert entry_data["lap_position_progression_coordinator"] is None
     assert entry_data["race_weather_coordinator"] is None
+    assert entry_data["live_bus"] is None
+    assert entry.runtime_data.live is None
+    assert FakeLiveBus.last_instance is None
 
 
 @pytest.mark.asyncio
@@ -759,7 +795,7 @@ async def test_async_setup_entry_live_mode_wires_event_tracker_fallback(hass) ->
         domain=DOMAIN,
         data={
             "sensor_name": "F1",
-            "enable_race_control": False,
+            "enable_race_control": True,
             CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
             CONF_REPLAY_FILE: "",
         },
@@ -820,7 +856,7 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
         domain=DOMAIN,
         data={
             "sensor_name": "F1",
-            "enable_race_control": False,
+            "enable_race_control": True,
             CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
             CONF_REPLAY_FILE: "",
             CONF_LIVE_TIMING_AUTH_HEADER: f"Authorization: Bearer {token}",
@@ -873,14 +909,14 @@ async def test_async_setup_entry_live_mode_exposes_auth_capability(
     entry_data = hass.data[DOMAIN][entry.entry_id]
     assert entry_data["signalr_stream_capabilities"]["auth_enabled"] is True
     assert (
-        "Position.z"
+        "CarData.z"
         in entry_data["signalr_stream_capabilities"]["auth_gated_live_streams"]
     )
     assert (
-        "Position.z" in entry_data["signalr_stream_capabilities"]["active_live_streams"]
+        "CarData.z" in entry_data["signalr_stream_capabilities"]["active_live_streams"]
     )
     assert (
-        "Position.z"
+        "CarData.z"
         not in entry_data["signalr_stream_capabilities"]["public_live_streams"]
     )
     assert entry_data["f1tv_auth_status"].status == "valid"
@@ -913,7 +949,7 @@ async def test_async_setup_entry_uses_auth_when_development_ui_disabled(
         domain=DOMAIN,
         data={
             "sensor_name": "F1",
-            "enable_race_control": False,
+            "enable_race_control": True,
             CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
             CONF_REPLAY_FILE: "",
             CONF_LIVE_TIMING_AUTH_HEADER: f"Bearer {token}",
@@ -980,7 +1016,7 @@ async def test_async_setup_entry_creates_repair_for_expired_auth_and_keeps_publi
         domain=DOMAIN,
         data={
             "sensor_name": "F1",
-            "enable_race_control": False,
+            "enable_race_control": True,
             CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
             CONF_REPLAY_FILE: "",
             CONF_LIVE_TIMING_AUTH_HEADER: f"Bearer {token}",
@@ -1052,7 +1088,7 @@ async def test_async_setup_entry_suppresses_expired_auth_when_gate_disabled(
         domain=DOMAIN,
         data={
             "sensor_name": "F1",
-            "enable_race_control": False,
+            "enable_race_control": True,
             CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
             CONF_REPLAY_FILE: "",
             CONF_LIVE_TIMING_AUTH_HEADER: f"Bearer {token}",
@@ -1434,11 +1470,12 @@ async def test_legacy_enabled_sensor_migration_is_lossless_and_idempotent(hass) 
     assert await async_migrate_entry(hass, entry)
     first_data = dict(entry.data)
 
-    assert entry.version == 2
+    assert entry.version == 3
     assert entry.unique_id == DOMAIN
-    assert "next_race" not in entry.data["disabled_sensors"]
-    assert "driver_standings" not in entry.data["disabled_sensors"]
-    assert "team_radio" in entry.data["disabled_sensors"]
+    assert "disabled_sensors" not in entry.data
+    assert "next_race" not in entry.options["disabled_sensors"]
+    assert "driver_standings" not in entry.options["disabled_sensors"]
+    assert "team_radio" in entry.options["disabled_sensors"]
     assert entry.data["enabled_sensors"][-1] == "retired_key"
 
     assert await async_migrate_entry(hass, entry)
