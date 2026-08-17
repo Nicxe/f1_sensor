@@ -39,6 +39,121 @@ const ensureF1Fonts = () => {
 const F1_THEME_MODES = ['dark', 'light', 'auto'];
 const DEFAULT_F1_THEME_MODE = 'dark';
 const DEFAULT_FONT_STYLE = 'wide';
+const handleF1CardActionKeydown = (host, event) => {
+  if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return;
+  event.preventDefault();
+  host?._handleCardAction?.();
+};
+
+const installF1EditorTabAccessibility = (EditorClass) => {
+  if (!EditorClass || EditorClass.prototype.__f1TabAccessibilityInstalled) return;
+  EditorClass.prototype.__f1TabAccessibilityInstalled = true;
+  const originalUpdated = EditorClass.prototype.updated;
+  const originalDisconnected = EditorClass.prototype.disconnectedCallback;
+
+  EditorClass.prototype.updated = function (...args) {
+    originalUpdated?.apply(this, args);
+    const tabList = this.renderRoot?.querySelector('.tabs');
+    if (!tabList) return;
+    if (this.__f1TabList !== tabList) {
+      this.__f1TabList?.removeEventListener('keydown', this.__f1TabKeydown);
+      this.__f1TabKeydown = (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        const tabs = [...tabList.querySelectorAll('button[role="tab"]')];
+        const current = tabs.indexOf(event.target);
+        if (current < 0 || tabs.length === 0) return;
+        event.preventDefault();
+        let next = current;
+        if (event.key === 'Home') next = 0;
+        if (event.key === 'End') next = tabs.length - 1;
+        if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
+        if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
+        tabs[next].focus();
+        tabs[next].click();
+      };
+      tabList.addEventListener('keydown', this.__f1TabKeydown);
+      this.__f1TabList = tabList;
+    }
+    tabList.setAttribute('role', 'tablist');
+    tabList.querySelectorAll('button').forEach((tab) => {
+      const selected = tab.classList.contains('active');
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+      tab.tabIndex = selected ? 0 : -1;
+    });
+  };
+
+  EditorClass.prototype.disconnectedCallback = function (...args) {
+    this.__f1TabList?.removeEventListener('keydown', this.__f1TabKeydown);
+    this.__f1TabList = null;
+    if (originalDisconnected) originalDisconnected.apply(this, args);
+    else LitElement.prototype.disconnectedCallback.call(this);
+  };
+};
+
+const installF1CardActionAccessibility = (CardClass) => {
+  if (!CardClass || CardClass.prototype.__f1CardActionAccessibilityInstalled) return;
+  CardClass.prototype.__f1CardActionAccessibilityInstalled = true;
+  const originalUpdated = CardClass.prototype.updated;
+  const originalDisconnected = CardClass.prototype.disconnectedCallback;
+
+  CardClass.prototype.updated = function (...args) {
+    originalUpdated?.apply(this, args);
+    const activeCards = new Set(this.renderRoot?.querySelectorAll('ha-card') || []);
+    for (const card of this.__f1ActionCards || []) {
+      if (!activeCards.has(card)) card.removeEventListener('keydown', card.__f1ActionKeydown);
+    }
+    for (const card of activeCards) {
+      const cardActionEnabled = this.config?.tap_action?.action !== 'none';
+      if (!cardActionEnabled) {
+        card.removeEventListener('keydown', card.__f1ActionKeydown);
+        card.__f1ActionKeydown = null;
+        card.removeAttribute('role');
+        card.removeAttribute('tabindex');
+        card.removeAttribute('aria-label');
+        continue;
+      }
+      const hasDeclarativeKeyboardHandler = card.getAttribute('role') === 'button'
+        && card.hasAttribute('tabindex');
+      if (!card.__f1ActionKeydown && !hasDeclarativeKeyboardHandler) {
+        card.__f1ActionKeydown = (event) => handleF1CardActionKeydown(this, event);
+        card.addEventListener('keydown', card.__f1ActionKeydown);
+      }
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('aria-label', `Open details for ${this.config?.title || 'Formula 1 card'}`);
+    }
+    this.__f1ActionCards = activeCards;
+  };
+
+  CardClass.prototype.disconnectedCallback = function (...args) {
+    for (const card of this.__f1ActionCards || []) {
+      card.removeEventListener('keydown', card.__f1ActionKeydown);
+    }
+    this.__f1ActionCards = null;
+    if (originalDisconnected) originalDisconnected.apply(this, args);
+    else LitElement.prototype.disconnectedCallback.call(this);
+  };
+};
+
+const installF1GridTableAccessibility = (CardClass, prefix, label) => {
+  if (!CardClass || CardClass.prototype.__f1GridTableAccessibilityInstalled) return;
+  CardClass.prototype.__f1GridTableAccessibilityInstalled = true;
+  const originalUpdated = CardClass.prototype.updated;
+  CardClass.prototype.updated = function (...args) {
+    originalUpdated?.apply(this, args);
+    this.renderRoot?.querySelectorAll(`.${prefix}-table`).forEach((table) => {
+      table.setAttribute('role', 'table');
+      table.setAttribute('aria-label', label);
+      table.querySelectorAll(`.${prefix}-row`).forEach((row) => {
+        row.setAttribute('role', 'row');
+        row.querySelectorAll(`.${prefix}-cell`).forEach((cell) => {
+          cell.setAttribute('role', row.classList.contains('header') ? 'columnheader' : 'cell');
+        });
+      });
+    });
+  };
+};
 const FONT_STYLE_OPTIONS = [
   {
     value: 'wide',
@@ -192,6 +307,18 @@ function convertF1Speed(value, fromUnit, toUnit) {
 }
 
 const F1_THEME_STYLES = css`
+  .f1-visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+
   :host {
     --f1-card-bg: #0b0b0d;
     --f1-card-bg-soft: #131315;
@@ -2390,7 +2517,13 @@ class F1TyreStatisticsCard extends LitElement {
     const compounds = this._resolveCompounds(compoundsRaw, deltas, fastestCompound, startCompounds);
 
     return html`
-      <ha-card @click=${this._handleCardAction}>
+      <ha-card
+        role="button"
+        tabindex="0"
+        aria-label=${`Open details for ${this.config.title || 'Tyres Statistics'}`}
+        @click=${this._handleCardAction}
+        @keydown=${(event) => handleF1CardActionKeydown(this, event)}
+      >
         <div class="ts-card">
           ${this.config.show_header
             ? html`<div class="ts-header">${this.config.title || 'Tyres Statistics'}</div>`
@@ -3211,13 +3344,19 @@ class F1PitStopOverviewCard extends LitElement {
     }
 
     return html`
-      <ha-card @click=${this._handleCardAction}>
+      <ha-card
+        role="button"
+        tabindex="0"
+        aria-label=${`Open details for ${this.config.title || 'Pit Stops & Tyres'}`}
+        @click=${this._handleCardAction}
+        @keydown=${(event) => handleF1CardActionKeydown(this, event)}
+      >
         <div class="ps-card">
           ${this.config.show_header
             ? html`<div class="ps-header">${this.config.title || 'Pit Stops & Tyres'}</div>`
             : null}
           ${renderF1AvailabilityNotice(pitAvailabilityNotice, 'ps-replay-note')}
-          <div class="ps-table" data-layout=${layoutMode} style="--ps-columns: ${gridColumns};">
+          <div class="ps-table" role="table" aria-label="Pit stops and tyres" data-layout=${layoutMode} style="--ps-columns: ${gridColumns};">
             ${this.config.show_table_header ? this._renderHeader(columns) : null}
             ${rows.map((row) => this._renderRow(row, columns))}
           </div>
@@ -3319,9 +3458,9 @@ class F1PitStopOverviewCard extends LitElement {
 
   _renderHeader(columns) {
     return html`
-      <div class="ps-row header">
+      <div class="ps-row header" role="row">
         ${columns.map((col) => html`
-          <div class="ps-cell ${col.numeric ? 'numeric' : ''} ${col.key === 'tyre' ? 'tyre-col' : ''} ${col.groupStart ? 'group-start' : ''}" data-col-key=${col.key}>
+          <div role="columnheader" class="ps-cell ${col.numeric ? 'numeric' : ''} ${col.key === 'tyre' ? 'tyre-col' : ''} ${col.groupStart ? 'group-start' : ''}" data-col-key=${col.key}>
             ${col.label}
           </div>
         `)}
@@ -3333,7 +3472,7 @@ class F1PitStopOverviewCard extends LitElement {
     const pitClass = row.status_key === 'pit-in' ? 'pit-active' :
                      row.status_key === 'pit-out' ? 'pit-out-active' : '';
     return html`
-      <div class="ps-row ${row.retired ? 'retired' : ''} ${pitClass}">
+      <div class="ps-row ${row.retired ? 'retired' : ''} ${pitClass}" role="row">
         ${columns.map((col) => this._renderCell(row, col))}
       </div>
     `;
@@ -3368,7 +3507,7 @@ class F1PitStopOverviewCard extends LitElement {
       const lapsNum = parseInt(laps, 10);
       const tyreAgeClass = lapsNum > 20 ? 'old-tyre' : '';
       return html`
-        <div class="${classes.join(' ')}" style="${style}" data-col-key=${col.key}>
+        <div class="${classes.join(' ')}" role="cell" style="${style}" data-col-key=${col.key}>
           <div class="ps-tyre-badge ${tyreAgeClass}">
             <div class="ps-tyre-circle">${letter}</div>
             <div class="ps-tyre-laps">${laps || '-'}</div>
@@ -3393,7 +3532,7 @@ class F1PitStopOverviewCard extends LitElement {
         `
         : null;
       return html`
-        <div class="${classes.join(' ')}" style="${style}">
+        <div class="${classes.join(' ')}" role="cell" style="${style}">
           <span class="ps-tla-wrap">${logo}${value}</span>
           <span class="${statusClasses.join(' ')}">- ${row.status}</span>
         </div>
@@ -3414,13 +3553,13 @@ class F1PitStopOverviewCard extends LitElement {
         `
         : null;
       return html`
-        <div class="${classes.join(' ')}" style="${style}">
+        <div class="${classes.join(' ')}" role="cell" style="${style}">
           <span class="ps-tla-wrap">${logo}${value}</span>
         </div>
       `;
     }
 
-    return html`<div class="${classes.join(' ')}" style="${style}">${value}</div>`;
+    return html`<div class="${classes.join(' ')}" role="cell" style="${style}">${value}</div>`;
   }
 
   _buildRows(drivers, tyres, pitCars, positions) {
@@ -3637,13 +3776,14 @@ class F1PitStopOverviewCard extends LitElement {
 
   _handleCardAction() {
     const action = this.config?.tap_action || { action: 'more-info' };
-    if (!this.config?.entity) return;
     if (action.action === 'none') return;
+    const entityId = this.config?.drivers_entity || this.config?.entity;
+    if (!entityId) return;
     if (action.action === 'more-info') {
       this.dispatchEvent(new CustomEvent('hass-more-info', {
         bubbles: true,
         composed: true,
-        detail: { entityId: this.config.drivers_entity },
+        detail: { entityId },
       }));
     }
   }
@@ -8417,12 +8557,18 @@ class F1SeasonProgressionCard extends LitElement {
                   cy=${point.y}
                   r="4"
                   tabindex="0"
-                  role="graphics-symbol"
+                  role="button"
                   aria-label=${`${series.name}, ${point.round?.longLabel || `R${point.index + 1}`}, ${this._formatPoints(point.value)} points`}
                   @pointerenter=${() => this._setHoverPoint(series, point, width, height)}
                   @pointermove=${() => this._setHoverPoint(series, point, width, height)}
                   @focus=${() => this._setHoverPoint(series, point, width, height)}
                   @click=${(ev) => {
+                    ev.stopPropagation();
+                    this._setHoverPoint(series, point, width, height);
+                  }}
+                  @keydown=${(ev) => {
+                    if (!['Enter', ' '].includes(ev.key)) return;
+                    ev.preventDefault();
                     ev.stopPropagation();
                     this._setHoverPoint(series, point, width, height);
                   }}
@@ -10128,12 +10274,18 @@ class F1LapPositionProgressionCard extends LitElement {
                   cy=${point.y}
                   r="4"
                   tabindex="0"
-                  role="graphics-symbol"
+                  role="button"
                   aria-label=${`${series.name}, ${point.label}, position ${point.value}`}
                   @pointerenter=${() => this._setHoverPoint(series, point, model.session, width, height)}
                   @pointermove=${() => this._setHoverPoint(series, point, model.session, width, height)}
                   @focus=${() => this._setHoverPoint(series, point, model.session, width, height)}
                   @click=${(ev) => {
+                    ev.stopPropagation();
+                    this._setHoverPoint(series, point, model.session, width, height);
+                  }}
+                  @keydown=${(ev) => {
+                    if (!['Enter', ' '].includes(ev.key)) return;
+                    ev.preventDefault();
                     ev.stopPropagation();
                     this._setHoverPoint(series, point, model.session, width, height);
                   }}
@@ -23174,6 +23326,9 @@ class F1RaceControlCard extends LitElement {
     this._listEventUnsub = null;
     this._listResetUnsub = null;
     this._listLoadToken = 0;
+    this._listGeneration = 0;
+    this._listRetryTimer = null;
+    this._listRetryAttempt = 0;
   }
 
   connectedCallback() {
@@ -23271,7 +23426,7 @@ class F1RaceControlCard extends LitElement {
       this._listMessages = [];
       this._listLoading = true;
       this._listError = null;
-      this._subscribeListEvents(entityId, contextKey);
+      this._subscribeListEvents(entityId, contextKey, this._listGeneration);
       await this._loadRaceControlLog(entity, entityId, contextKey);
     }
 
@@ -23288,10 +23443,40 @@ class F1RaceControlCard extends LitElement {
   }
 
   _unsubscribeListEvents() {
+    this._listGeneration += 1;
+    this._listLoadToken += 1;
+    this._clearListRetry();
+    this._listContextKey = null;
     this._callUnsubscribe(this._listEventUnsub);
     this._callUnsubscribe(this._listResetUnsub);
     this._listEventUnsub = null;
     this._listResetUnsub = null;
+  }
+
+  _clearListRetry() {
+    if (this._listRetryTimer) {
+      clearTimeout(this._listRetryTimer);
+      this._listRetryTimer = null;
+    }
+  }
+
+  _isListContextActive(contextKey, generation) {
+    return this.isConnected
+      && this._listContextKey === contextKey
+      && this._listGeneration === generation;
+  }
+
+  _scheduleListSubscriptionRetry(contextKey, generation) {
+    if (!this._isListContextActive(contextKey, generation) || this._listRetryTimer) return;
+    const delay = Math.min(30000, 1000 * (2 ** this._listRetryAttempt));
+    this._listRetryAttempt = Math.min(this._listRetryAttempt + 1, 5);
+    this._listRetryTimer = setTimeout(() => {
+      this._listRetryTimer = null;
+      if (!this._isListContextActive(contextKey, generation)) return;
+      this._listContextKey = null;
+      const syncResult = this._syncRaceControlState();
+      syncResult?.catch?.(() => {});
+    }, delay);
   }
 
   _callUnsubscribe(unsub) {
@@ -23306,7 +23491,7 @@ class F1RaceControlCard extends LitElement {
     }
   }
 
-  async _subscribeListEvents(entityId, contextKey) {
+  async _subscribeListEvents(entityId, contextKey, generation) {
     const connection = this.hass?.connection;
     if (!connection || typeof connection.subscribeEvents !== 'function') {
       return;
@@ -23315,35 +23500,43 @@ class F1RaceControlCard extends LitElement {
     try {
       const eventUnsub = await connection.subscribeEvents(
         (event) => {
-          if (this._listContextKey !== contextKey) return;
+          if (!this._isListContextActive(contextKey, generation)) return;
           this._handleRaceControlListEvent(event, entityId);
         },
         'f1_sensor_race_control_event'
       );
-      if (this._listContextKey !== contextKey) {
+      if (!this._isListContextActive(contextKey, generation)) {
         this._callUnsubscribe(eventUnsub);
+        return;
       } else {
         this._listEventUnsub = eventUnsub;
       }
-    } catch (_err) {
-      // Websocket subscription is optional; list mode still works with the initial load.
+    } catch (err) {
+      if (!this._isListContextActive(contextKey, generation)) return;
+      this._listError = err?.message || 'Live race control updates are unavailable';
+      this._scheduleListSubscriptionRetry(contextKey, generation);
+      return;
     }
 
     try {
       const resetUnsub = await connection.subscribeEvents(
         (event) => {
-          if (this._listContextKey !== contextKey) return;
+          if (!this._isListContextActive(contextKey, generation)) return;
           this._handleRaceControlResetEvent(event, entityId);
         },
         'f1_sensor_race_control_log_reset_event'
       );
-      if (this._listContextKey !== contextKey) {
+      if (!this._isListContextActive(contextKey, generation)) {
         this._callUnsubscribe(resetUnsub);
       } else {
         this._listResetUnsub = resetUnsub;
+        this._listRetryAttempt = 0;
+        this._clearListRetry();
       }
-    } catch (_err) {
-      // Ignore missing reset subscription support and rely on optimistic UI updates.
+    } catch (err) {
+      if (!this._isListContextActive(contextKey, generation)) return;
+      this._listError = err?.message || 'Live race control updates are unavailable';
+      this._scheduleListSubscriptionRetry(contextKey, generation);
     }
   }
 
@@ -23419,9 +23612,10 @@ class F1RaceControlCard extends LitElement {
 
   _syncCurrentEntityIntoList(entity) {
     if (!entity || entity.state === 'unavailable' || entity.state === 'unknown') {
-      this._listMessages = [];
       this._listLoading = false;
-      this._listError = null;
+      this._listError = this._listMessages.length > 0
+        ? 'Live feed unavailable; showing saved messages'
+        : 'Live race control feed is unavailable';
       return;
     }
 
@@ -23864,7 +24058,12 @@ class F1RaceControlCard extends LitElement {
           ` : null}
 
           <div class="rc-content">
-            <div class="rc-message ${messageClass}">${formattedMessage}</div>
+            <div
+              class="rc-message ${messageClass}"
+              role="status"
+              aria-live=${criticalClass ? 'assertive' : 'polite'}
+              aria-atomic="true"
+            >${formattedMessage}</div>
             ${queueCount > 0 ? html`
               <span class="rc-queue-indicator">+${queueCount}</span>
             ` : null}
@@ -23909,7 +24108,7 @@ class F1RaceControlCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="rc-list-shell">
+        <div class="rc-list-shell" role="log" aria-live="polite" aria-relevant="additions text">
           <div class="rc-list-topbar">
             <div class="rc-list-brand">
               ${showLogo ? html`<img class="rc-fia-logo" src="https://www.fia.com/sites/all/themes/penceo_theme/images/fia-footer-logo.png" alt="FIA" />` : null}
@@ -31685,6 +31884,8 @@ class F1TrackMapCard extends LitElement {
     this._driverSampleIntervalMs = 0;
     this._renderClockAt = 0;
     this._staleTimer = 0;
+    this._subscriptionRetryTimer = 0;
+    this._subscriptionRetryAttempt = 0;
   }
 
   setConfig(config) {
@@ -31711,6 +31912,9 @@ class F1TrackMapCard extends LitElement {
     super.connectedCallback();
     ensureF1Fonts();
     this._ensureSubscription();
+    this.updateComplete.then(() => {
+      if (this.isConnected) this._ensureResizeObserver();
+    });
   }
 
   disconnectedCallback() {
@@ -31728,12 +31932,17 @@ class F1TrackMapCard extends LitElement {
   }
 
   firstUpdated() {
+    this._ensureResizeObserver();
+    this._scheduleDraw();
+  }
+
+  _ensureResizeObserver() {
+    if (this._resizeObserver) return;
     const frame = this.renderRoot?.querySelector('.tm-canvas-frame');
     if (frame && typeof ResizeObserver !== 'undefined') {
       this._resizeObserver = new ResizeObserver(() => this._scheduleDraw());
       this._resizeObserver.observe(frame);
     }
-    this._scheduleDraw();
   }
 
   updated(changed) {
@@ -31857,7 +32066,10 @@ class F1TrackMapCard extends LitElement {
 
     try {
       const unsubscribe = await connection.subscribeMessage(
-        (event) => this._handleTrackMapMessage(event),
+        (event) => {
+          if (!this.isConnected || token !== this._subscriptionToken) return;
+          this._handleTrackMapMessage(event);
+        },
         message
       );
       if (!this.isConnected || token !== this._subscriptionToken) {
@@ -31865,10 +32077,13 @@ class F1TrackMapCard extends LitElement {
         return;
       }
       this._unsubscribeTrackMap = unsubscribe;
+      this._subscriptionRetryAttempt = 0;
+      this._clearSubscriptionRetry();
     } catch (err) {
       if (token !== this._subscriptionToken) return;
       this._error = err?.message || 'Track map websocket unavailable';
       this._status = 'not_loaded';
+      this._scheduleSubscriptionRetry(key, token);
     }
   }
 
@@ -31891,6 +32106,7 @@ class F1TrackMapCard extends LitElement {
   _teardownSubscription() {
     this._subscriptionToken += 1;
     this._subscriptionKey = null;
+    this._clearSubscriptionRetry();
     this._callUnsubscribe(this._unsubscribeTrackMap);
     this._unsubscribeTrackMap = null;
     this._driverSamples.clear();
@@ -31901,6 +32117,24 @@ class F1TrackMapCard extends LitElement {
     this._driverSampleIntervalMs = 0;
     this._renderClockAt = 0;
     this._clearStaleTimer();
+  }
+
+  _scheduleSubscriptionRetry(key, token) {
+    if (!this.isConnected || token !== this._subscriptionToken || this._subscriptionRetryTimer) return;
+    const delay = Math.min(30000, 1000 * (2 ** this._subscriptionRetryAttempt));
+    this._subscriptionRetryAttempt = Math.min(this._subscriptionRetryAttempt + 1, 5);
+    this._subscriptionRetryTimer = window.setTimeout(() => {
+      this._subscriptionRetryTimer = 0;
+      if (!this.isConnected || token !== this._subscriptionToken || this._subscriptionKey !== key) return;
+      this._subscriptionKey = null;
+      this._ensureSubscription();
+    }, delay);
+  }
+
+  _clearSubscriptionRetry() {
+    if (!this._subscriptionRetryTimer) return;
+    window.clearTimeout(this._subscriptionRetryTimer);
+    this._subscriptionRetryTimer = 0;
   }
 
   _callUnsubscribe(unsubscribe) {
@@ -32035,6 +32269,13 @@ class F1TrackMapCard extends LitElement {
     const driverCountText = this.config.show_driver_count !== false
       ? `${drivers.length} ${drivers.length === 1 ? 'car' : 'cars'}`
       : null;
+    const textAlternative = this._trackMapTextAlternative(
+      snapshot,
+      drivers,
+      sessionText,
+      trackStatus,
+      lapData,
+    );
 
     return html`
       <ha-card>
@@ -32066,7 +32307,8 @@ class F1TrackMapCard extends LitElement {
             </div>
           ` : null}
           <div class="tm-canvas-frame">
-            <canvas></canvas>
+            <canvas role="img" aria-label=${textAlternative}></canvas>
+            <div class="f1-visually-hidden">${textAlternative}</div>
             ${empty ? html`
               <div class="tm-empty">
                 <div class="tm-empty-title">${empty.title}</div>
@@ -32111,6 +32353,54 @@ class F1TrackMapCard extends LitElement {
     if (snapshot?.stream_timestamp) parts.push(`Updated ${this._formatShortTime(snapshot.stream_timestamp)}`);
     parts.push(`${driverCount} ${driverCount === 1 ? 'car' : 'cars'}`);
     return parts.join(' / ');
+  }
+
+  _trackMapTextAlternative(snapshot, drivers, sessionText, trackStatus, lapData) {
+    const status = [this._statusLabel(), trackStatus?.label, lapData ? this._lapLabel(lapData) : null]
+      .filter(Boolean)
+      .join(', ');
+    const positionEntity = this._entityFromConfig('driver_positions_entity', [
+      'sensor.f1_drivers_f1_driver_positions',
+      'sensor.f1_driver_positions',
+      'sensor.f1_session_f1_driver_positions',
+      'sensor.f1_session_driver_positions',
+    ]);
+    const rawPositions = positionEntity?.attributes?.drivers;
+    const positions = Array.isArray(rawPositions)
+      ? rawPositions
+      : (rawPositions && typeof rawPositions === 'object' ? Object.values(rawPositions) : []);
+    const contextFor = (driver) => positions.find((item) => {
+      const numberMatches = String(item?.racing_number || item?.driver_number || '')
+        === String(driver?.racing_number || '');
+      const tlaMatches = String(item?.tla || '').toUpperCase()
+        === String(driver?.tla || '').toUpperCase();
+      return numberMatches || (item?.tla && driver?.tla && tlaMatches);
+    }) || {};
+    const ordered = drivers.map((driver) => {
+      const context = contextFor(driver);
+      const position = Number(context?.position ?? context?.current_position);
+      const gap = context?.gap_to_leader ?? context?.gap ?? context?.interval ?? null;
+      return {
+        driver,
+        position: Number.isFinite(position) && position > 0 ? position : null,
+        gap,
+      };
+    }).sort((a, b) => {
+      if (a.position !== null && b.position !== null) return a.position - b.position;
+      if (a.position !== null) return -1;
+      if (b.position !== null) return 1;
+      return Number(a.driver?.racing_number) - Number(b.driver?.racing_number);
+    });
+    const driverText = ordered.map(({ driver, position, gap }) => {
+      const label = driver?.tla || driver?.name || `car ${driver?.racing_number || ''}`;
+      const prefix = position !== null ? `P${position} ` : '';
+      const gapText = gap !== null && gap !== '' ? `, gap ${gap}` : '';
+      return `${prefix}${label}${gapText}`;
+    }).join('; ');
+    const source = this._sourceLabel(snapshot);
+    return [`${this.config?.title || 'F1 Track Map'}.`, `${sessionText}.`, `${source}, ${status}.`, driverText]
+      .filter(Boolean)
+      .join(' ');
   }
 
   _formatShortTime(value) {
@@ -33260,6 +33550,52 @@ const F1_FONT_STYLE_CARD_CLASSES = [
 ];
 
 F1_FONT_STYLE_CARD_CLASSES.forEach(installFontStyleSupport);
+
+[
+  F1TyreStatisticsCard,
+  F1PitStopOverviewCard,
+  F1DriverLapTimesCard,
+  F1ChampionshipPredictionDriversCard,
+  F1ChampionshipPredictionTeamsCard,
+  F1SeasonProgressionCard,
+  F1LapPositionProgressionCard,
+  F1LastRaceResultsCard,
+  F1StartingGridCard,
+].forEach(installF1CardActionAccessibility);
+
+[
+  F1TyreStatisticsCardEditor,
+  F1PitStopOverviewCardEditor,
+  F1DriverLapTimesCardEditor,
+  F1SeasonProgressionCardEditor,
+  F1LapPositionProgressionCardEditor,
+  F1ChampionshipPredictionDriversCardEditor,
+  F1ChampionshipPredictionTeamsCardEditor,
+  F1LastRaceResultsCardEditor,
+  F1InvestigationsCardEditor,
+  F1TrackLimitsCardEditor,
+  F1LiveSessionCardEditor,
+  F1ReplayControlCardEditor,
+  F1NextRaceCardEditor,
+  F1WeatherCardEditor,
+  F1SeasonCalendarCardEditor,
+  F1RaceControlCardEditor,
+  F1FiaDocumentsCardEditor,
+  F1QualifyingTimingCardEditor,
+  F1PracticeTimingCardEditor,
+  F1RaceLapCardEditor,
+  F1StartingGridCardEditor,
+  F1TrackMapCardEditor,
+].forEach(installF1EditorTabAccessibility);
+
+[
+  [F1QualifyingTimingCard, 'qt', 'Qualifying timing'],
+  [F1PracticeTimingCard, 'pt', 'Practice timing'],
+  [F1RaceLapCard, 'rl', 'Race timing'],
+  [F1StartingGridCard, 'sg', 'Starting grid'],
+].forEach(([CardClass, prefix, label]) => {
+  installF1GridTableAccessibility(CardClass, prefix, label);
+});
 
 const F1_NO_SPOILER_CARD_CLASSES = [
   F1TyreStatisticsCard,

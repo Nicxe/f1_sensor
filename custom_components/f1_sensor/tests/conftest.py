@@ -9,6 +9,13 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 ROOT = Path(__file__).resolve().parents[3]
 CUSTOM_COMPONENTS = ROOT / "custom_components"
+BUNDLED_CARD_PATH = (
+    CUSTOM_COMPONENTS
+    / "f1_sensor"
+    / "www"
+    / "f1-sensor-live-data-card"
+    / "f1-sensor-live-data-card.js"
+)
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -19,6 +26,19 @@ if "custom_components" not in sys.modules:
     namespace = types.ModuleType("custom_components")
     namespace.__path__ = [str(CUSTOM_COMPONENTS)]
     sys.modules["custom_components"] = namespace
+
+
+@pytest.fixture(scope="session")
+def bundled_card_path() -> Path:
+    """Return the release card fixture used by frontend regression tests."""
+    return BUNDLED_CARD_PATH
+
+
+@pytest.fixture(scope="session", autouse=True)
+def require_bundled_frontend_release_copy(bundled_card_path: Path) -> None:
+    """Fail the suite when the card shipped by the integration is missing."""
+    if not bundled_card_path.is_file():
+        pytest.fail(f"Bundled frontend release copy is missing: {bundled_card_path}")
 
 
 @pytest.fixture(autouse=True)

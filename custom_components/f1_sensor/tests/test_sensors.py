@@ -67,7 +67,14 @@ from custom_components.f1_sensor.signalr import LiveBus
 _LOGGER = logging.getLogger(__name__)
 MAX_STATE_ATTRS_BYTES = 16384
 ROOT = Path(__file__).resolve().parents[3]
-CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+CARD_PATH = (
+    ROOT
+    / "custom_components"
+    / "f1_sensor"
+    / "www"
+    / "f1-sensor-live-data-card"
+    / "f1-sensor-live-data-card.js"
+)
 
 FIA_DOCUMENTS_CARD_PROBE_SCRIPT = r"""
 const fs = require("node:fs");
@@ -252,7 +259,7 @@ def _recorder_shared_attrs(state) -> tuple[dict, int]:
 
 def _run_fia_documents_card_probe(payload: dict) -> dict | list | int | None:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for FIA documents card regression tests")
@@ -2110,15 +2117,9 @@ async def test_driver_positions_sensor_excludes_drivers_from_recorder(hass) -> N
 
 
 @pytest.mark.asyncio
-async def test_live_bus_stream_diagnostics_track_frames_and_keys(
-    hass, monkeypatch, caplog
-) -> None:
+async def test_live_bus_stream_diagnostics_track_frames_and_keys(hass, caplog) -> None:
     clock = {"now": 100.0}
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.signalr.time.time",
-        lambda: clock["now"],
-    )
-    bus = LiveBus(hass, MagicMock())
+    bus = LiveBus(hass, MagicMock(), monotonic=lambda: clock["now"])
 
     caplog.set_level(logging.DEBUG, logger="custom_components.f1_sensor.signalr")
 

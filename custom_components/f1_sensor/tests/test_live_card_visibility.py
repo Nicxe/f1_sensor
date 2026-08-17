@@ -12,7 +12,14 @@ import subprocess
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+CARD_PATH = (
+    ROOT
+    / "custom_components"
+    / "f1_sensor"
+    / "www"
+    / "f1-sensor-live-data-card"
+    / "f1-sensor-live-data-card.js"
+)
 
 NODE_PROBE_SCRIPT = r"""
 const fs = require("node:fs");
@@ -229,7 +236,7 @@ def _run_visibility_probe(
 ) -> bool:
     """Execute live card session gating directly from the JS source."""
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for live card visibility regression tests")
@@ -462,7 +469,7 @@ def test_card_does_not_retain_without_last_label() -> None:
 def test_timing_snapshot_helpers_clone_and_clear_by_session() -> None:
     """Post-session snapshots should be immutable and scoped to one session."""
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for live card snapshot regression tests")

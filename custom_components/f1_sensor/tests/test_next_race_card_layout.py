@@ -10,7 +10,14 @@ import subprocess
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+CARD_PATH = (
+    ROOT
+    / "custom_components"
+    / "f1_sensor"
+    / "www"
+    / "f1-sensor-live-data-card"
+    / "f1-sensor-live-data-card.js"
+)
 
 NODE_PROBE_SCRIPT = r"""
 const fs = require("node:fs");
@@ -189,7 +196,7 @@ process.stdout.write(JSON.stringify(result));
 
 def _run_probe(payload: dict) -> dict:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for next race layout regression tests")
@@ -531,7 +538,7 @@ def test_next_race_card_narrow_schedule_uses_full_width_rows() -> None:
 
 def test_next_race_card_extra_narrow_schedule_keeps_status_in_top_row() -> None:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     source = CARD_PATH.read_text()
     schedule_css_start = source.index(".nr-schedule-head-spacer")
     css_start = source.index("@container (max-width: 360px)", schedule_css_start)

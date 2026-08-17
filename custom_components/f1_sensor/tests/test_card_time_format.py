@@ -10,7 +10,14 @@ import subprocess
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+CARD_PATH = (
+    ROOT
+    / "custom_components"
+    / "f1_sensor"
+    / "www"
+    / "f1-sensor-live-data-card"
+    / "f1-sensor-live-data-card.js"
+)
 
 NODE_PROBE_SCRIPT = r"""
 const fs = require("node:fs");
@@ -142,7 +149,7 @@ def _hass(time_format: str, language: str = "en-US") -> dict:
 
 def _run_probe(payload: dict) -> str:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for card time formatting tests")

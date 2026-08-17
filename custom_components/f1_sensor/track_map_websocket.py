@@ -17,6 +17,7 @@ TRACK_MAP_WS_GET_TYPE = f"{DOMAIN}/track_map/get"
 TRACK_MAP_WS_SUBSCRIBE_TYPE = f"{DOMAIN}/track_map/subscribe"
 TRACK_MAP_API_STATUS_NOT_LOADED = "not_loaded"
 TRACK_MAP_API_STATUS_NO_GEOMETRY = "no_geometry"
+TRACK_MAP_WS_ERROR_NOT_LOADED = "not_loaded"
 DEFAULT_TRACK_MAP_THROTTLE_MS = 500
 
 _ENTRY_ID_SCHEMA = vol.Optional("entry_id")
@@ -71,9 +72,10 @@ def _ws_subscribe_track_map_snapshot(
     """Subscribe to track map snapshot updates."""
     store = _resolve_track_map_store(hass, msg.get("entry_id"))
     if store is None:
-        connection.send_result(
+        connection.send_error(
             msg["id"],
-            _not_loaded_payload(msg.get("entry_id")),
+            TRACK_MAP_WS_ERROR_NOT_LOADED,
+            "Track map data is not loaded yet; retry the subscription",
         )
         return
 

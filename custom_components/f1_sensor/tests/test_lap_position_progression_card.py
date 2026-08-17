@@ -19,7 +19,6 @@ BUNDLED_CARD_PATH = (
     / "f1-sensor-live-data-card"
     / "f1-sensor-live-data-card.js"
 )
-RUNTIME_CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
 
 NODE_CARD_PROBE = r"""
 const fs = require("node:fs");
@@ -344,13 +343,13 @@ main().catch((err) => {
 
 def _read_card(path: Path) -> str:
     if not path.exists():
-        pytest.skip(f"card JS not found at {path}")
+        pytest.fail(f"Bundled card JS not found at {path}")
     return path.read_text(encoding="utf-8")
 
 
 def _run_card_probe(path: Path) -> dict:
     if not path.exists():
-        pytest.skip(f"card JS not found at {path}")
+        pytest.fail(f"Bundled card JS not found at {path}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for lap position card regression tests")
@@ -367,7 +366,7 @@ def _run_card_probe(path: Path) -> dict:
     return json.loads(completed.stdout)
 
 
-@pytest.mark.parametrize("card_path", (BUNDLED_CARD_PATH, RUNTIME_CARD_PATH))
+@pytest.mark.parametrize("card_path", (BUNDLED_CARD_PATH,))
 def test_lap_position_card_source_registration(card_path: Path) -> None:
     source = _read_card(card_path)
 
@@ -389,7 +388,7 @@ def test_lap_position_card_source_registration(card_path: Path) -> None:
     assert "F1LapPositionProgressionCard" in source[overlay_start:overlay_end]
 
 
-@pytest.mark.parametrize("card_path", (BUNDLED_CARD_PATH, RUNTIME_CARD_PATH))
+@pytest.mark.parametrize("card_path", (BUNDLED_CARD_PATH,))
 def test_lap_position_card_model_and_interactions(card_path: Path) -> None:
     result = _run_card_probe(card_path)
 

@@ -15,6 +15,7 @@ from custom_components.f1_sensor.track_map import (
 from custom_components.f1_sensor.track_map_websocket import (
     TRACK_MAP_API_STATUS_NO_GEOMETRY,
     TRACK_MAP_API_STATUS_NOT_LOADED,
+    TRACK_MAP_WS_ERROR_NOT_LOADED,
     TRACK_MAP_WS_GET_TYPE,
     TRACK_MAP_WS_MARKER,
     TRACK_MAP_WS_SUBSCRIBE_TYPE,
@@ -154,7 +155,9 @@ def test_track_map_websocket_exposes_live_position_source_and_z(hass) -> None:
     assert payload["snapshot"]["drivers"][0]["z"] == 0
 
 
-def test_track_map_subscribe_returns_not_loaded_when_store_is_missing(hass) -> None:
+def test_track_map_subscribe_returns_retryable_error_when_store_is_missing(
+    hass,
+) -> None:
     connection = FakeConnection()
 
     _ws_subscribe_track_map_snapshot(
@@ -168,14 +171,12 @@ def test_track_map_subscribe_returns_not_loaded_when_store_is_missing(hass) -> N
         },
     )
 
-    assert connection.results == [
+    assert connection.results == []
+    assert connection.errors == [
         (
             8,
-            {
-                "entry_id": "missing",
-                "status": TRACK_MAP_API_STATUS_NOT_LOADED,
-                "snapshot": None,
-            },
+            TRACK_MAP_WS_ERROR_NOT_LOADED,
+            "Track map data is not loaded yet; retry the subscription",
         )
     ]
     assert connection.events == []

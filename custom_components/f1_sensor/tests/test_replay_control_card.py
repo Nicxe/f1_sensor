@@ -229,7 +229,7 @@ import(`file://${process.argv[1]}/f1-sensor-live-data-card.js`)
 
 def _run_probe(action: str) -> dict:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for replay control card tests")
@@ -249,7 +249,7 @@ def _run_probe(action: str) -> dict:
 
 def test_replay_control_card_uses_bundled_lit_module() -> None:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
 
     source = CARD_PATH.read_text(encoding="utf-8")
 
@@ -260,7 +260,7 @@ def test_replay_control_card_uses_bundled_lit_module() -> None:
 
 def test_replay_control_card_module_loads_with_bundled_lit(tmp_path: Path) -> None:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for replay control card tests")
