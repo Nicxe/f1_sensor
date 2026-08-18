@@ -5,7 +5,7 @@ export const F1_CARD_DEFINITIONS = [
   ['f1-championship-prediction-drivers-card', 'F1 Championship Standings Drivers', 'Driver championship standings with race projection overlay'],
   ['f1-championship-prediction-teams-card', 'F1 Championship Standings Teams', 'Constructor championship standings with race projection overlay'],
   ['f1-season-progression-card', 'F1 Season Progression', 'Season progression chart for driver or constructor points'],
-  ['f1-last-race-results-card', 'F1 Last Race Results', 'Last race results with grid, position delta, points, and status'],
+  ['f1-last-race-results-card', 'F1 Results', 'Current-season and on-demand historical race, Sprint, and qualifying results'],
   ['f1-lap-position-progression-card', 'F1 Lap Position Progression', 'Post-race lap position chart for completed races'],
   ['f1-replay-control-card', 'F1 Replay Control', 'Replay session selectors, playback controls, and progress'],
   ['f1-track-map-card', 'F1 Track Map', 'Live and replay track map with car positions and track status'],

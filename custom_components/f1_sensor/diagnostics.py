@@ -179,6 +179,18 @@ def _serialize_jolpica_runtime(client: object) -> dict[str, Any]:
     }
 
 
+def _safe_diagnostics(source: object) -> dict[str, Any]:
+    """Return one component's already-bounded diagnostics mapping."""
+    diagnostics = getattr(source, "diagnostics", None)
+    if not callable(diagnostics):
+        return {}
+    with suppress(Exception):
+        payload = diagnostics()
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
     entry: F1ConfigEntry,
@@ -244,6 +256,20 @@ async def async_get_config_entry_diagnostics(
 
     if runtime_data is not None:
         runtime["providers"] = runtime_data.providers.registry.diagnostics()
+        history_runtime = getattr(runtime_data, "history", None)
+        history_service = getattr(history_runtime, "service", None)
+        history_diagnostics = _safe_diagnostics(history_service)
+        lap_analysis = getattr(history_runtime, "lap_analysis", None)
+        if lap_analysis is not None:
+            history_diagnostics["live_replay_laps"] = _safe_diagnostics(lap_analysis)
+        if history_diagnostics:
+            runtime["history"] = history_diagnostics
+        replay_runtime = getattr(runtime_data, "replay", None)
+        replay_controller = getattr(replay_runtime, "controller", None)
+        replay_manager = getattr(replay_controller, "session_manager", None)
+        replay_cache = getattr(replay_manager, "cache_diagnostics", None)
+        if isinstance(replay_cache, dict):
+            runtime["replay_cache"] = replay_cache
 
     entry_data = dict(entry.data)
     if not include_auth_transport:

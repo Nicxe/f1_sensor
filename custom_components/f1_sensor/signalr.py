@@ -305,10 +305,11 @@ class SignalRLegacyClient:
             raise
 
     async def messages(self) -> AsyncGenerator[dict]:
-        if not self._ws:
+        websocket = self._ws
+        if websocket is None:
             return
         index = 0
-        async for msg in self._ws:
+        async for msg in websocket:
             if msg.type == WSMsgType.TEXT:
                 payload = None
                 try:
@@ -495,17 +496,18 @@ class SignalRCoreClient:
             raise
 
     async def messages(self) -> AsyncGenerator[dict]:
-        if not self._ws:
+        websocket = self._ws
+        if websocket is None:
             return
         for payload in self._pending_records:
             if payload.get("type") == 7:
                 self._raise_for_close_record(payload)
                 return
-            translated = await self._translate_record(payload)
+            translated = await self._translate_record(payload, websocket=websocket)
             if translated is not None:
                 yield translated
         self._pending_records.clear()
-        async for msg in self._ws:
+        async for msg in websocket:
             if msg.type == WSMsgType.TEXT:
                 try:
                     records = _decode_core_records(msg.data)
@@ -515,13 +517,17 @@ class SignalRCoreClient:
                     if payload.get("type") == 7:
                         self._raise_for_close_record(payload)
                         return
-                    translated = await self._translate_record(payload)
+                    translated = await self._translate_record(
+                        payload, websocket=websocket
+                    )
                     if translated is not None:
                         yield translated
             elif msg.type in (WSMsgType.CLOSED, WSMsgType.ERROR):
                 break
 
-    async def _translate_record(self, payload: dict[str, Any]) -> dict | None:
+    async def _translate_record(
+        self, payload: dict[str, Any], *, websocket: Any | None = None
+    ) -> dict | None:
         """Translate one Core protocol record to the legacy bus format."""
         msg_type = payload.get("type")
         if msg_type == 1:
@@ -538,7 +544,9 @@ class SignalRCoreClient:
             result = payload.get("result")
             return {"R": result} if isinstance(result, dict) else None
         if msg_type == 6:
-            await self._ws.send_str(json.dumps({"type": 6}) + RECORD_SEP)
+            active_websocket = websocket or self._ws
+            if active_websocket is not None and not active_websocket.closed:
+                await active_websocket.send_str(json.dumps({"type": 6}) + RECORD_SEP)
             return None
         return None
 
@@ -716,12 +724,13 @@ class LiveBus:
             while self._running:
                 retry_reason = "connection closed"
                 self._connection_state = LiveConnectionState.CONNECTING
+                client = self._create_client()
+                self._client = client
                 try:
-                    self._client = self._create_client()
                     if self._expect_heartbeat:
                         self._last_heartbeat_at = self._monotonic()
-                    await self._client.ensure_connection()
-                    async for payload in self._client.messages():
+                    await client.ensure_connection()
+                    async for payload in client.messages():
                         if self._process_payload(payload):
                             self._mark_connection_live()
                 except SignalRAuthenticationError:
@@ -740,13 +749,12 @@ class LiveBus:
                 except Exception as err:  # noqa: BLE001
                     retry_reason = self._retry_reason(err)
                 finally:
-                    client = self._client
-                    self._client = None
-                    if client is not None:
-                        try:
-                            await client.close()
-                        except Exception as err:  # noqa: BLE001
-                            retry_reason = f"cleanup failed: {type(err).__name__}"
+                    if self._client is client:
+                        self._client = None
+                    try:
+                        await client.close()
+                    except Exception as err:  # noqa: BLE001
+                        retry_reason = f"cleanup failed: {type(err).__name__}"
 
                 self._maybe_log_summary()
                 if self._running:
@@ -807,7 +815,12 @@ class LiveBus:
             self._retry_delay * (1 - SIGNALR_BACKOFF_JITTER),
             self._retry_delay * (1 + SIGNALR_BACKOFF_JITTER),
         )
-        if not self._outage_logged:
+        if reason == "connection closed":
+            _LOGGER.debug(
+                "Live timing connection closed cleanly; reconnecting in %.1f seconds",
+                delay,
+            )
+        elif not self._outage_logged:
             _LOGGER.warning(
                 "Live timing connection unavailable (%s); retrying in %.1f seconds",
                 reason,
@@ -977,14 +990,16 @@ class LiveBus:
                     f"{hb_age:.1f}s" if hb_age is not None else "n/a",
                     f"{activity_age:.1f}s" if activity_age is not None else "n/a",
                 )
-                if self._client:
+                client = self._client
+                if client:
                     try:
-                        await self._client.close()
+                        await client.close()
                     except Exception as err:  # noqa: BLE001
                         _LOGGER.debug(
                             "Live timing cleanup failed after inactivity: %s", err
                         )
-                    self._client = None
+                    if self._client is client:
+                        self._client = None
 
     def set_heartbeat_expectation(self, enabled: bool) -> None:
         self._expect_heartbeat = bool(enabled)

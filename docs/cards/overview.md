@@ -33,7 +33,7 @@ Public live timing works without F1TV Auth. Cards that show live Track Map, Pit 
 | [F1 Practice Timing](#f1-practice-timing-card) | `custom:f1-practice-timing-card` | Practice order, tyre age, optional sectors, lap times, and timing indicators |
 | [F1 Race Lap](#f1-race-lap-card) | `custom:f1-race-lap-card` | Race or sprint order with gaps, optional sectors, tyres, pit stops, and lap times |
 | [F1 Starting Grid](#f1-starting-grid-card) | `custom:f1-starting-grid-card` | Provisional or confirmed Sprint and Race starting grid |
-| [F1 Last Race Results](#f1-last-race-results-card) | `custom:f1-last-race-results-card` | Race and sprint classifications with grid, delta, points, and status |
+| [F1 Results](#f1-results-card) | `custom:f1-last-race-results-card` | Current-season and on-demand historical race, Sprint, and qualifying results |
 | [F1 Lap Position Progression](#f1-lap-position-progression-card) | `custom:f1-lap-position-progression-card` | Post-race lap-by-lap position chart for completed main races |
 | [F1 Tyre Statistics](#f1-tyre-statistics-card) | `custom:f1-sensor-live-data-card` | Tyre compounds, stint history, and best lap times per driver |
 | [F1 Pit Stop Overview](#f1-pit-stop-overview-card) | `custom:f1-pitstop-overview-card` | Pit stop timeline with tyre changes and pit times |
@@ -459,11 +459,17 @@ Shows the currently relevant starting grid for the weekend. Sprint weekends use 
 
 ---
 
-### F1 Last Race Results Card
+### F1 Results Card
 
 `custom:f1-last-race-results-card`
 
-Shows the latest race result, season race results, or sprint results with a session selector. It supports grid position, position delta, points, status, team logos, and No Spoiler Mode.
+Shows current-season race and Sprint classifications with a session selector. The table includes starting position, position change, completed laps, time or gap, points, status, driver images, and No Spoiler Mode.
+
+Select **Archive** in the card to browse historical race, Sprint, and qualifying classifications by season and Grand Prix. Historical data loads only after you open Archive, so the default current-season view does not create archive requests. Race and Sprint tables show race-specific fields, while qualifying tables show only position, driver, Q1, Q2, and Q3.
+
+:::info[Existing Session Archive cards]
+Existing dashboards that use `custom:f1-session-archive-card` continue to work and open the unified Results card in Archive mode. The separate Session Archive card is no longer offered in the card picker.
+:::
 
 ![Placeholder - F1 Last Race Results card screenshot](/img/placeholder_card_last_race_results.png)
 
@@ -486,8 +492,13 @@ Shows the latest race result, season race results, or sprint results with a sess
 | `driver_image_type` | `team_logo` | Driver image source used by the card |
 | `team_logo_style` | `color` | Logo appearance |
 | `show_delta` | `true` | Show movement from grid to finish |
+| `show_laps` | `true` | Show completed laps for race and Sprint classifications |
+| `show_time_gap` | `true` | Show the total time or gap supplied by Jolpica |
 | `show_points` | `true` | Show awarded points |
 | `show_status` | `true` | Show finish status |
+| `show_archive` | `true` | Allow switching to the on-demand results archive |
+| `history_year` | Current season | Initial season when Archive is opened |
+| `history_entry_id` | `auto` | F1 Sensor config entry used for archive requests. Keep `auto` unless you have multiple entries |
 | `top_limit` | `0` | Limit rows to top N. `0` shows all |
 
 ---

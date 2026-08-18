@@ -15,6 +15,7 @@ from custom_components.f1_sensor.runtime import (
     CacheRuntime,
     CapabilityState,
     F1RuntimeData,
+    HistoryRuntime,
     LiveRuntime,
     ProviderRuntime,
     StaticRuntime,
@@ -385,6 +386,7 @@ async def test_track_map_subscription_adds_and_removes_transient_stream_demand(
         track_map=TrackMapRuntimeData(store),
         cache=CacheRuntime(object(), {}, {}, {}),
         providers=ProviderRuntime(ProviderRegistry()),
+        history=HistoryRuntime(service=object()),
         capabilities=CapabilityState(
             frozenset(),
             frozenset({"Heartbeat"}),

@@ -18,8 +18,10 @@ PLATFORMS: list[Platform] = [
 # Replay Mode
 REPLAY_CACHE_DIR = "f1_replay_cache"
 REPLAY_CACHE_RETENTION_DAYS = (
-    1  # Short retention - cache is deleted on stop, this is just backup
+    7  # Bounded Replay v2 LRU cache; runtime data never ships in releases
 )
+REPLAY_CACHE_MAX_BYTES = 512 * 1024 * 1024
+REPLAY_CACHE_MAX_SESSIONS = 3
 
 CONF_OPERATION_MODE = "operation_mode"
 CONF_REPLAY_FILE = "replay_file"

@@ -1222,6 +1222,8 @@ class F1LastRaceSensor(F1BaseEntity, SensorEntity):
                 "number": r.get("number"),
                 "position": r.get("position"),
                 "grid": r.get("grid"),
+                "laps": r.get("laps"),
+                "time": (r.get("Time") or {}).get("time"),
                 "points": r.get("points"),
                 "status": r.get("status"),
                 "driver": {
@@ -1299,6 +1301,8 @@ class F1SeasonResultsSensor(F1BaseEntity, SensorEntity):
                 "number": r.get("number"),
                 "position": r.get("position"),
                 "grid": r.get("grid"),
+                "laps": r.get("laps"),
+                "time": (r.get("Time") or {}).get("time"),
                 "points": r.get("points"),
                 "status": r.get("status"),
                 "driver": {
@@ -1351,6 +1355,8 @@ class F1SprintResultsSensor(F1BaseEntity, SensorEntity):
             "number": result.get("number"),
             "position": result.get("position"),
             "grid": result.get("grid"),
+            "laps": result.get("laps"),
+            "time": (result.get("Time") or {}).get("time"),
             "points": result.get("points"),
             "status": result.get("status"),
             "driver": {

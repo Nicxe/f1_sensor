@@ -22,6 +22,7 @@ from custom_components.f1_sensor.runtime import (
     CacheRuntime,
     CapabilityState,
     F1RuntimeData,
+    HistoryRuntime,
     ProviderRuntime,
     StaticRuntime,
 )
@@ -51,6 +52,8 @@ EXPECTED_CARD_TYPES = {
     "f1-race-lap-card",
     "f1-starting-grid-card",
 }
+
+DEPRECATED_CARD_TYPES = {"f1-session-archive-card"}
 
 
 def test_feature_plan_static_only_has_zero_live_demand() -> None:
@@ -152,6 +155,7 @@ def test_platform_runtime_prefers_typed_config_entry_data(hass) -> None:
         track_map=TrackMapRuntimeData(TrackMapStore(entry.entry_id)),
         cache=CacheRuntime(object(), {}, {}, {}),
         providers=ProviderRuntime(ProviderRegistry()),
+        history=HistoryRuntime(service=object()),
         capabilities=CapabilityState(frozenset(), frozenset(), frozenset()),
         legacy=typed_registry,
     )
@@ -231,8 +235,17 @@ def test_frontend_loader_preserves_all_card_tags_and_eagerly_loads_bundle(
     assert metadata_cards == EXPECTED_CARD_TYPES
     assert EXPECTED_CARD_TYPES <= registered_cards
     assert {f"{card}-editor" for card in EXPECTED_CARD_TYPES} <= registered_cards
-    assert "import('./f1-sensor-live-data-card.js')" in loader_source
-    assert loader_source.rstrip().endswith("import('./f1-sensor-live-data-card.js');")
+    assert DEPRECATED_CARD_TYPES <= registered_cards
+    assert {f"{card}-editor" for card in DEPRECATED_CARD_TYPES}.isdisjoint(
+        registered_cards
+    )
+    assert (
+        "await import(`./f1-sensor-live-data-card.js${cacheSuffix}`)" in loader_source
+    )
+    assert "await import(`./platform/card-registry.js${cacheSuffix}`)" in loader_source
+    assert loader_source.rstrip().endswith(
+        "await import(`./f1-sensor-live-data-card.js${cacheSuffix}`);"
+    )
     assert "MutationObserver" not in loader_source
     assert "import './f1-sensor-live-data-card.js'" not in loader_source
     assert "const LitElement = F1BaseElement;" in main_source

@@ -964,7 +964,49 @@ async def test_live_bus_backoff_log_once_and_recovery(caplog):
     assert delays == [4.0, 8.0]
     assert all(transport.close_calls == 1 for transport in transports)
     assert caplog.text.count("Live timing connection unavailable") == 1
+    assert "Live timing connection unavailable (connection closed)" not in caplog.text
+    assert "Live timing connection unavailable (ConnectionError)" in caplog.text
     assert caplog.text.count("Live timing connection recovered") == 1
+    assert bus.connection_state is LiveConnectionState.STOPPED
+
+
+@pytest.mark.asyncio
+async def test_live_bus_run_owns_transport_reference_during_external_close():
+    """A lifecycle callback cannot clear the active run's transport reference."""
+
+    class Transport:
+        def __init__(self, bus: LiveBus) -> None:
+            self._bus = bus
+            self.close_calls = 0
+
+        async def ensure_connection(self) -> None:
+            self._bus._client = None
+            self._bus._running = False
+
+        async def messages(self):
+            yield {"R": {"TrackStatus": {"Status": "1"}}}
+
+        async def close(self) -> None:
+            self.close_calls += 1
+
+    hass = MagicMock()
+    hass.loop = asyncio.get_running_loop()
+    bus: LiveBus
+    transport: Transport | None = None
+
+    def factory() -> Transport:
+        nonlocal transport
+        transport = Transport(bus)
+        return transport
+
+    bus = LiveBus(hass, MagicMock(), transport_factory=factory)
+    bus._running = True
+
+    await bus._run()
+
+    assert bus.get_last_payload("TrackStatus") == {"Status": "1"}
+    assert transport is not None
+    assert transport.close_calls == 1
     assert bus.connection_state is LiveConnectionState.STOPPED
 
 

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from functools import partial
+import heapq
 from inspect import isawaitable
 import json
 import logging
@@ -27,6 +28,8 @@ from .const import (
     DEFAULT_REPLAY_START_REFERENCE,
     DOMAIN,
     REPLAY_CACHE_DIR,
+    REPLAY_CACHE_MAX_BYTES,
+    REPLAY_CACHE_MAX_SESSIONS,
     REPLAY_CACHE_RETENTION_DAYS,
     REPLAY_START_REFERENCE_FORMATION,
 )
@@ -63,18 +66,29 @@ REPLAY_STREAMS = [
     "DriverRaceInfo",
     TRACK_MAP_POSITION_STREAM,
 ]
+REPLAY_CORE_STREAMS = frozenset(
+    {
+        "DriverList",
+        "ExtrapolatedClock",
+        "Heartbeat",
+        "SessionData",
+        "SessionInfo",
+        "SessionStatus",
+    }
+)
 
 STATIC_BASE = "https://livetiming.formula1.com/static"
 MAX_SESSIONS_TO_SHOW = 150  # ~24 race weekends * 5 sessions + testing
-# Keep year options tight but future-proof (current year +/- 1).
-REPLAY_YEAR_BACK = 1
+# The official archive is useful from 2018 onward. Years are discovered only
+# after the user selects one; merely exposing the range performs no network I/O.
+REPLAY_EARLIEST_YEAR = 2018
 # Index fetch status for UI feedback.
 INDEX_STATUS_OK = "ok"
 INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when replay index contents change in a way that
 # requires re-downloading cached sessions.
-CACHE_VERSION = 13
+CACHE_VERSION = 14
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 SEEK_INDEX_INTERVAL_MS = 5_000
@@ -237,6 +251,10 @@ class ReplaySessionManager:
         hass: HomeAssistant,
         entry_id: str,
         http_session: ClientSession,
+        *,
+        requested_streams: set[str] | frozenset[str] | None = None,
+        cache_max_bytes: int = REPLAY_CACHE_MAX_BYTES,
+        cache_max_sessions: int = REPLAY_CACHE_MAX_SESSIONS,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
@@ -254,6 +272,24 @@ class ReplaySessionManager:
         self._download_progress: float = 0.0
         self._download_error: str | None = None
         self._fetch_task: asyncio.Task | None = None
+        planned_streams = (
+            set(REPLAY_STREAMS)
+            if requested_streams is None
+            else set(requested_streams) | set(REPLAY_CORE_STREAMS)
+        )
+        self._download_streams = tuple(
+            stream for stream in REPLAY_STREAMS if stream in planned_streams
+        )
+        self._cache_max_bytes = max(1, int(cache_max_bytes))
+        self._cache_max_sessions = max(1, int(cache_max_sessions))
+        self._cache_diagnostics: dict[str, int | bool] = {
+            "sessions": 0,
+            "bytes": 0,
+            "max_sessions": self._cache_max_sessions,
+            "max_bytes": self._cache_max_bytes,
+            "pruned_sessions": 0,
+            "over_budget": False,
+        }
 
     @property
     def state(self) -> ReplayState:
@@ -279,14 +315,20 @@ class ReplaySessionManager:
     def year_options(self) -> list[int]:
         """Return the year options for the replay selector."""
         current_year = dt_util.utcnow().year
-        years = [current_year, current_year - REPLAY_YEAR_BACK]
-        options: list[int] = []
-        for year in years:
-            if year > 0 and year not in options:
-                options.append(year)
+        options = list(range(current_year, REPLAY_EARLIEST_YEAR - 1, -1))
         if self._selected_year not in options:
             options.append(self._selected_year)
         return options
+
+    @property
+    def download_streams(self) -> tuple[str, ...]:
+        """Streams selected by the entry's active feature plan."""
+        return self._download_streams
+
+    @property
+    def cache_diagnostics(self) -> dict[str, int | bool]:
+        """Return bounded Replay v2 cache metrics."""
+        return dict(self._cache_diagnostics)
 
     @property
     def index_status(self) -> str | None:
@@ -314,15 +356,9 @@ class ReplaySessionManager:
         return self._download_error
 
     async def async_initialize(self) -> None:
-        """Initialize the manager, create cache dir and cleanup old files."""
+        """Initialize local cache only; session discovery stays user-driven."""
         await self._hass.async_add_executor_job(self._ensure_cache_dir)
-        await self._cleanup_old_cache()
-        # Fetch sessions at startup so the list is populated immediately
-        # Run in background to avoid blocking integration startup
-        if self._fetch_task is None or self._fetch_task.done():
-            self._fetch_task = self._hass.async_create_task(
-                self._fetch_sessions_background()
-            )
+        await self._prune_cache()
 
     def _ensure_cache_dir(self) -> None:
         """Create cache directory if it doesn't exist (called via executor)."""
@@ -541,21 +577,18 @@ class ReplaySessionManager:
             self._notify_listeners()
 
     async def async_unload(self) -> None:
-        """Return to idle state and clean up session cache."""
+        """Return to idle while retaining the bounded persistent LRU cache."""
         if self._fetch_task and not self._fetch_task.done():
             self._fetch_task.cancel()
             with suppress(asyncio.CancelledError):
                 await self._fetch_task
         self._fetch_task = None
-        # Delete the session cache to save disk space (replay is typically one-time use)
-        if self._loaded_index is not None:
-            await self._delete_session_cache(self._loaded_index.session_id)
-
         self._state = ReplayState.IDLE
         self._selected_session = None
         self._loaded_index = None
         self._download_progress = 0.0
         self._download_error = None
+        await self._prune_cache()
         self._notify_listeners()
 
     async def _delete_session_cache(self, session_id: str) -> None:
@@ -621,7 +654,9 @@ class ReplaySessionManager:
         session_dir = self._safe_session_cache_dir(session.unique_id)
         if session_dir is None:
             raise RuntimeError("Invalid replay session cache identifier")
-        session_dir.mkdir(parents=True, exist_ok=True)
+        await self._hass.async_add_executor_job(
+            partial(session_dir.mkdir, parents=True, exist_ok=True),
+        )
 
         frames_file = session_dir / "frames.jsonl"
         index_file = session_dir / "index.json"
@@ -639,6 +674,8 @@ class ReplaySessionManager:
                         session.unique_id,
                         cached_version,
                     )
+                    await self._hass.async_add_executor_job(index_file.touch)
+                    await self._prune_cache(session.unique_id)
                     return ReplayIndex(
                         session_id=session.unique_id,
                         total_frames=index_data["total_frames"],
@@ -659,166 +696,137 @@ class ReplaySessionManager:
                         seek_index=index_data.get("seek_index"),
                         seek_checkpoints=index_data.get("seek_checkpoints"),
                     )
-                if cached_version >= 11 and not index_data.get("seek_checkpoints"):
+                if cached_version >= 11:
                     _LOGGER.info(
-                        "Upgrading cached replay index for %s with seek checkpoints",
+                        "Upgrading cached replay index for %s with streaming scan",
                         session.unique_id,
                     )
-                    frames = await self._hass.async_add_executor_job(
-                        self._read_frames_file_sync,
+                    formation_start_utc = _parse_optional_utc(
+                        index_data.get("formation_start_utc")
+                    )
+                    scan = await self._hass.async_add_executor_job(
+                        self._scan_merged_frames_sync,
                         frames_file,
+                        formation_start_utc,
                     )
-                    seek_checkpoints = await self._hass.async_add_executor_job(
-                        self._build_seek_state_checkpoints,
-                        frames,
-                    )
+                    index_data.update(scan)
                     index_data["cache_version"] = CACHE_VERSION
-                    index_data["seek_checkpoints"] = seek_checkpoints
+                    index_data["formation_start_utc"] = (
+                        formation_start_utc.isoformat()
+                        if formation_start_utc is not None
+                        else None
+                    )
                     await self._hass.async_add_executor_job(
                         self._write_json_file,
                         index_file,
                         index_data,
                     )
+                    await self._hass.async_add_executor_job(index_file.touch)
+                    await self._prune_cache(session.unique_id)
                     return ReplayIndex(
                         session_id=session.unique_id,
-                        total_frames=index_data["total_frames"],
-                        duration_ms=index_data["duration_ms"],
-                        session_started_at_ms=index_data["session_started_at_ms"],
-                        formation_started_at_ms=index_data.get(
-                            "formation_started_at_ms"
-                        ),
-                        formation_start_utc=_parse_optional_utc(
-                            index_data.get("formation_start_utc")
-                        ),
+                        total_frames=scan["total_frames"],
+                        duration_ms=scan["duration_ms"],
+                        session_started_at_ms=scan["session_started_at_ms"],
+                        formation_started_at_ms=scan["formation_started_at_ms"],
+                        formation_start_utc=formation_start_utc,
                         frames_file=frames_file,
                         index_file=index_file,
-                        initial_state=index_data.get("initial_state"),
-                        formation_initial_state=index_data.get(
-                            "formation_initial_state"
-                        ),
-                        seek_index=index_data.get("seek_index"),
-                        seek_checkpoints=seek_checkpoints,
+                        initial_state=scan["initial_state"],
+                        formation_initial_state=scan["formation_initial_state"],
+                        seek_index=scan["seek_index"],
+                        seek_checkpoints=scan["seek_checkpoints"],
                     )
-                else:
-                    _LOGGER.info(
-                        "Cache version mismatch for %s (cached=%d, current=%d), re-downloading",
-                        session.unique_id,
-                        cached_version,
-                        CACHE_VERSION,
-                    )
+                _LOGGER.info(
+                    "Cache version mismatch for %s (cached=%d, current=%d), re-downloading",
+                    session.unique_id,
+                    cached_version,
+                    CACHE_VERSION,
+                )
             except Exception as err:
                 _LOGGER.warning("Failed to load cached index, re-downloading: %s", err)
 
-        # Download all streams
-        all_frames: list[ReplayFrame] = []
-        total_streams = len(REPLAY_STREAMS)
+        streams_dir = session_dir / "streams"
+        await self._hass.async_add_executor_job(
+            partial(streams_dir.mkdir, parents=True, exist_ok=True),
+        )
+        semaphore = asyncio.Semaphore(3)
 
-        for i, stream in enumerate(REPLAY_STREAMS):
-            self._download_progress = (i / total_streams) * 0.9
-            self._notify_listeners()
+        async def _download_planned_stream(stream: str) -> tuple[Path, int]:
+            async with semaphore:
+                stream_url = f"{STATIC_BASE}/{session.path}/{stream}.jsonStream"
+                destination = streams_dir / f"{stream.replace('.', '_')}.jsonl"
+                count = await self._download_stream_to_file(
+                    stream_url,
+                    stream,
+                    destination,
+                )
+                return destination, count
 
-            stream_url = f"{STATIC_BASE}/{session.path}/{stream}.jsonStream"
-            frames = await self._download_stream(stream_url, stream)
-            all_frames.extend(frames)
+        tasks = [
+            asyncio.create_task(_download_planned_stream(stream))
+            for stream in self._download_streams
+        ]
+        stream_files: list[Path] = []
+        total_frames = 0
+        total_streams = max(1, len(tasks))
+        try:
+            try:
+                for completed, task in enumerate(asyncio.as_completed(tasks), start=1):
+                    destination, count = await task
+                    if count:
+                        stream_files.append(destination)
+                        total_frames += count
+                    self._download_progress = (completed / total_streams) * 0.85
+                    self._notify_listeners()
+            finally:
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+        except BaseException:
+            await self._hass.async_add_executor_job(shutil.rmtree, streams_dir, True)
+            raise
 
-        if not all_frames:
+        if not stream_files or not total_frames:
+            await self._hass.async_add_executor_job(shutil.rmtree, streams_dir, True)
             raise RuntimeError(
                 "No frames downloaded - session data may not be available yet"
             )
-
-        # Sort by timestamp
-        all_frames.sort(key=lambda f: f.timestamp_ms)
-
-        # Find SessionStatus:Started
-        session_started_at_ms = 0
-        for frame in all_frames:
-            if frame.stream == "SessionStatus":
-                status = frame.payload.get("Status", "")
-                if status == "Started":
-                    session_started_at_ms = frame.timestamp_ms
-                    break
-
-        # Build initial state snapshot - last value of each stream at session start
-        # This ensures sensors have their correct initial values when replay starts
-        initial_state = self._build_initial_state(all_frames, session_started_at_ms)
-
-        _LOGGER.debug(
-            "Built initial state snapshot with %d streams: %s",
-            len(initial_state),
-            list(initial_state.keys()),
-        )
-
-        formation_started_at_ms: int | None = None
         formation_start_utc: datetime | None = None
-        formation_initial_state: dict[str, Any] | None = None
-
         if self._is_race_or_sprint_session(session):
             formation_start_utc = await self._find_formation_start_utc(session)
-            if formation_start_utc is not None:
-                formation_started_at_ms = self._find_closest_frame_ms(
-                    all_frames, formation_start_utc
-                )
-                if formation_started_at_ms is not None:
-                    formation_initial_state = self._build_initial_state(
-                        all_frames, formation_started_at_ms
-                    )
-                    _LOGGER.debug(
-                        "Built formation initial state snapshot with %d streams",
-                        len(formation_initial_state),
-                    )
-                else:
-                    _LOGGER.debug(
-                        "No replay frame matched formation start UTC for %s",
-                        session.unique_id,
-                    )
-            else:
-                _LOGGER.debug(
-                    "Formation start marker unavailable for %s", session.unique_id
-                )
 
-        # Write frames file
+        await self._hass.async_add_executor_job(
+            self._merge_stream_files_sync,
+            stream_files,
+            frames_file,
+        )
+        scan = await self._hass.async_add_executor_job(
+            self._scan_merged_frames_sync,
+            frames_file,
+            formation_start_utc,
+        )
+        await self._hass.async_add_executor_job(shutil.rmtree, streams_dir, True)
         self._download_progress = 0.95
         self._notify_listeners()
 
-        # Prepare frames data for writing
-        frames_lines = []
-        for frame in all_frames:
-            line = json.dumps(
-                {
-                    "t": frame.timestamp_ms,
-                    "s": frame.stream,
-                    "p": frame.payload,
-                },
-                separators=(",", ":"),
-            )
-            frames_lines.append(line)
-
-        seek_index = self._build_seek_index(frames_lines)
-        seek_checkpoints = await self._hass.async_add_executor_job(
-            self._build_seek_state_checkpoints,
-            all_frames,
-        )
-
-        await self._hass.async_add_executor_job(
-            self._write_lines_file, frames_file, frames_lines
-        )
-
-        # Write index
-        duration_ms = all_frames[-1].timestamp_ms if all_frames else 0
         index_data = {
             "cache_version": CACHE_VERSION,
             "session_id": session.unique_id,
-            "total_frames": len(all_frames),
-            "duration_ms": duration_ms,
-            "session_started_at_ms": session_started_at_ms,
-            "formation_started_at_ms": formation_started_at_ms,
+            "total_frames": scan["total_frames"],
+            "duration_ms": scan["duration_ms"],
+            "session_started_at_ms": scan["session_started_at_ms"],
+            "formation_started_at_ms": scan["formation_started_at_ms"],
             "formation_start_utc": formation_start_utc.isoformat()
             if formation_start_utc is not None
             else None,
-            "initial_state": initial_state,
-            "formation_initial_state": formation_initial_state,
-            "seek_index": seek_index,
-            "seek_checkpoints": seek_checkpoints,
+            "initial_state": scan["initial_state"],
+            "formation_initial_state": scan["formation_initial_state"],
+            "seek_index": scan["seek_index"],
+            "seek_checkpoints": scan["seek_checkpoints"],
+            "streams": list(self._download_streams),
             "created_at": dt_util.utcnow().isoformat(),
         }
 
@@ -828,21 +836,313 @@ class ReplaySessionManager:
 
         self._download_progress = 1.0
         self._notify_listeners()
+        await self._prune_cache(session.unique_id)
 
         return ReplayIndex(
             session_id=session.unique_id,
-            total_frames=len(all_frames),
-            duration_ms=duration_ms,
-            session_started_at_ms=session_started_at_ms,
-            formation_started_at_ms=formation_started_at_ms,
+            total_frames=scan["total_frames"],
+            duration_ms=scan["duration_ms"],
+            session_started_at_ms=scan["session_started_at_ms"],
+            formation_started_at_ms=scan["formation_started_at_ms"],
             formation_start_utc=formation_start_utc,
             frames_file=frames_file,
             index_file=index_file,
-            initial_state=initial_state,
-            formation_initial_state=formation_initial_state,
-            seek_index=seek_index,
-            seek_checkpoints=seek_checkpoints,
+            initial_state=scan["initial_state"],
+            formation_initial_state=scan["formation_initial_state"],
+            seek_index=scan["seek_index"],
+            seek_checkpoints=scan["seek_checkpoints"],
         )
+
+    async def _download_stream_to_file(
+        self,
+        url: str,
+        stream_name: str,
+        destination: Path,
+    ) -> int:
+        """Incrementally parse one response into a bounded per-stream file."""
+        partial = destination.with_suffix(destination.suffix + ".part")
+        await self._hass.async_add_executor_job(self._unlink_if_exists, partial)
+        count = 0
+        batch: list[str] = []
+        try:
+            async with asyncio.timeout(300):
+                async with self._http.get(url) as resp:
+                    if resp.status == 404:
+                        return 0
+                    if resp.status != 200:
+                        _LOGGER.debug("Stream %s returned %s", stream_name, resp.status)
+                        return 0
+
+                    content = getattr(resp, "content", None)
+                    readline = getattr(content, "readline", None)
+                    if callable(readline):
+                        while raw_line := await readline():
+                            normalized = self._normalize_replay_stream_line(
+                                raw_line,
+                                stream_name,
+                                url,
+                            )
+                            if normalized is None:
+                                continue
+                            batch.append(normalized)
+                            count += 1
+                            if len(batch) >= 250:
+                                await self._hass.async_add_executor_job(
+                                    self._append_lines_file,
+                                    partial,
+                                    batch,
+                                )
+                                batch = []
+                    else:
+                        # Compatibility for small mocked responses. Production
+                        # aiohttp responses always take the streaming branch.
+                        text = await resp.text()
+                        for line in text.splitlines():
+                            normalized = self._normalize_replay_stream_line(
+                                line.encode(),
+                                stream_name,
+                                url,
+                            )
+                            if normalized is not None:
+                                batch.append(normalized)
+                                count += 1
+            if batch:
+                await self._hass.async_add_executor_job(
+                    self._append_lines_file,
+                    partial,
+                    batch,
+                )
+            if count:
+                await self._hass.async_add_executor_job(partial.replace, destination)
+            else:
+                await self._hass.async_add_executor_job(self._unlink_if_exists, partial)
+        except TimeoutError:
+            _LOGGER.debug("Timeout downloading %s", stream_name)
+            await self._hass.async_add_executor_job(self._unlink_if_exists, partial)
+            return 0
+        except Exception as err:
+            _LOGGER.debug("Error downloading %s: %s", stream_name, err)
+            await self._hass.async_add_executor_job(self._unlink_if_exists, partial)
+            return 0
+        return count
+
+    def _normalize_replay_stream_line(
+        self,
+        raw_line: bytes,
+        stream_name: str,
+        url: str,
+    ) -> str | None:
+        if len(raw_line) > 16 * 1024 * 1024:
+            return None
+        try:
+            line = raw_line.decode("utf-8-sig").strip()
+        except UnicodeDecodeError:
+            return None
+        if not line:
+            return None
+        try:
+            if stream_name == TRACK_MAP_POSITION_STREAM:
+                timestamp_str, payload_line = self._split_position_z_line(line)
+                timestamp_ms = self._parse_timestamp_to_ms(timestamp_str)
+                positions = parse_position_z_line(payload_line)
+                if not positions:
+                    return None
+                payload: Any = track_map_positions_to_payload(positions)
+            else:
+                json_start = line.find("{")
+                if json_start == -1:
+                    return None
+                timestamp_ms = self._parse_timestamp_to_ms(line[:json_start].strip())
+                payload = json.loads(line[json_start:])
+                if stream_name == "TeamRadio" and isinstance(payload, dict):
+                    payload = dict(payload)
+                    payload["_static_root"] = url.rstrip("/").rsplit("/", 1)[0]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None
+        return json.dumps(
+            {"t": timestamp_ms, "s": stream_name, "p": payload},
+            separators=(",", ":"),
+        )
+
+    @staticmethod
+    def _unlink_if_exists(path: Path) -> None:
+        with suppress(FileNotFoundError):
+            path.unlink()
+
+    @staticmethod
+    def _append_lines_file(path: Path, lines: list[str]) -> None:
+        with open(path, "a", encoding="utf-8") as file_handle:
+            for line in lines:
+                file_handle.write(line)
+                file_handle.write("\n")
+
+    @staticmethod
+    def _merge_stream_files_sync(stream_files: list[Path], output: Path) -> int:
+        """Heap-merge already sorted per-stream files without loading them."""
+        handles: list[Any] = []
+        heap: list[tuple[int, int, str]] = []
+        merged = 0
+        partial = output.with_suffix(output.suffix + ".part")
+        with suppress(FileNotFoundError):
+            partial.unlink()
+        try:
+            for path in stream_files:
+                handle = open(path, encoding="utf-8")
+                handles.append(handle)
+                line = handle.readline()
+                if not line:
+                    continue
+                try:
+                    timestamp_ms = int(json.loads(line)["t"])
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                    continue
+                heapq.heappush(heap, (timestamp_ms, len(handles) - 1, line))
+
+            with open(partial, "w", encoding="utf-8") as target:
+                while heap:
+                    _timestamp, handle_index, line = heapq.heappop(heap)
+                    target.write(line.rstrip("\n"))
+                    target.write("\n")
+                    merged += 1
+                    next_line = handles[handle_index].readline()
+                    if not next_line:
+                        continue
+                    try:
+                        next_timestamp = int(json.loads(next_line)["t"])
+                    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                        continue
+                    heapq.heappush(
+                        heap,
+                        (next_timestamp, handle_index, next_line),
+                    )
+            partial.replace(output)
+        finally:
+            for handle in handles:
+                handle.close()
+            with suppress(FileNotFoundError):
+                partial.unlink()
+        return merged
+
+    def _scan_merged_frames_sync(
+        self,
+        frames_file: Path,
+        formation_start_utc: datetime | None,
+    ) -> dict[str, Any]:
+        """Build indices and snapshots in one bounded sequential file pass."""
+        seek_index: list[dict[str, int]] = [{"t": 0, "offset": 0}]
+        next_seek_ms = SEEK_INDEX_INTERVAL_MS
+        next_state_ms = SEEK_STATE_CHECKPOINT_INTERVAL_MS
+        checkpoints: list[dict[str, Any]] = []
+        accumulator = self._new_seek_checkpoint_accumulator()
+        initial_state: dict[str, Any] | None = None
+        formation_initial_state: dict[str, Any] | None = None
+        first_payloads: dict[str, Any] = {}
+        session_started_at_ms = 0
+        formation_started_at_ms: int | None = None
+        formation_best_delta: float | None = None
+        total_frames = 0
+        duration_ms = 0
+        offset = 0
+        current_group_ms: int | None = None
+        group: list[ReplayFrame] = []
+
+        def _flush_group() -> None:
+            nonlocal initial_state
+            nonlocal session_started_at_ms
+            nonlocal formation_initial_state
+            nonlocal formation_started_at_ms
+            nonlocal formation_best_delta
+            nonlocal next_state_ms
+            if not group:
+                return
+            group_ms = group[0].timestamp_ms
+            started_here = False
+            for frame in group:
+                first_payloads.setdefault(frame.stream, deepcopy(frame.payload))
+                self._accumulate_seek_checkpoint_frame(accumulator, frame)
+                if (
+                    frame.stream == "SessionStatus"
+                    and isinstance(frame.payload, dict)
+                    and frame.payload.get("Status") == "Started"
+                    and initial_state is None
+                ):
+                    started_here = True
+                if formation_start_utc is not None:
+                    frame_utc = self._extract_frame_utc(frame.payload)
+                    if frame_utc is not None:
+                        delta = abs((frame_utc - formation_start_utc).total_seconds())
+                        if formation_best_delta is None or delta < formation_best_delta:
+                            formation_best_delta = delta
+                            formation_started_at_ms = frame.timestamp_ms
+                            formation_initial_state = self._seek_checkpoint_state(
+                                accumulator
+                            )
+            if started_here and initial_state is None:
+                session_started_at_ms = group_ms
+                initial_state = self._seek_checkpoint_state(accumulator)
+            if group_ms >= next_state_ms:
+                checkpoints.append(
+                    {"t": group_ms, "state": self._seek_checkpoint_state(accumulator)}
+                )
+                while next_state_ms <= group_ms:
+                    next_state_ms += SEEK_STATE_CHECKPOINT_INTERVAL_MS
+
+        with open(frames_file, "rb") as file_handle:
+            for raw_line in file_handle:
+                line_offset = offset
+                offset += len(raw_line)
+                try:
+                    decoded = json.loads(raw_line)
+                    frame = ReplayFrame(
+                        timestamp_ms=int(decoded["t"]),
+                        stream=str(decoded["s"]),
+                        payload=decoded["p"],
+                    )
+                except (
+                    UnicodeDecodeError,
+                    json.JSONDecodeError,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ):
+                    continue
+                if frame.timestamp_ms >= next_seek_ms:
+                    seek_index.append({"t": frame.timestamp_ms, "offset": line_offset})
+                    while next_seek_ms <= frame.timestamp_ms:
+                        next_seek_ms += SEEK_INDEX_INTERVAL_MS
+                if (
+                    current_group_ms is not None
+                    and frame.timestamp_ms != current_group_ms
+                ):
+                    _flush_group()
+                    group = []
+                current_group_ms = frame.timestamp_ms
+                group.append(frame)
+                total_frames += 1
+                duration_ms = max(duration_ms, frame.timestamp_ms)
+            _flush_group()
+
+        if initial_state is None:
+            initial_state = {}
+        for stream, payload in first_payloads.items():
+            if stream != "PitStopSeries":
+                initial_state.setdefault(stream, payload)
+        if (
+            formation_best_delta is not None
+            and formation_best_delta > FORMATION_SEARCH_WINDOW.total_seconds()
+        ):
+            formation_started_at_ms = None
+            formation_initial_state = None
+        return {
+            "total_frames": total_frames,
+            "duration_ms": duration_ms,
+            "session_started_at_ms": session_started_at_ms,
+            "formation_started_at_ms": formation_started_at_ms,
+            "initial_state": initial_state,
+            "formation_initial_state": formation_initial_state,
+            "seek_index": seek_index,
+            "seek_checkpoints": checkpoints,
+        }
 
     async def _download_stream(self, url: str, stream_name: str) -> list[ReplayFrame]:
         """Download a single .jsonStream file and parse into frames."""
@@ -1754,22 +2054,48 @@ class ReplaySessionManager:
             session.available = False
 
     async def _cleanup_old_cache(self) -> None:
-        """Remove cache entries older than retention period."""
-        cleaned = await self._hass.async_add_executor_job(self._cleanup_old_cache_sync)
-        if cleaned > 0:
-            _LOGGER.info("Cleaned %d old replay cache entries", cleaned)
+        """Compatibility wrapper for the bounded Replay v2 cache pruner."""
+        await self._prune_cache()
 
     def _cleanup_old_cache_sync(self) -> int:
-        """Synchronous cache cleanup (called via executor)."""
+        """Compatibility wrapper returning the number of pruned sessions."""
+        cleaned, _diagnostics = self._prune_cache_sync(None)
+        return cleaned
+
+    async def _prune_cache(self, active_session_id: str | None = None) -> int:
+        """Enforce retention, session count, and byte limits outside the loop."""
+        cleaned, diagnostics = await self._hass.async_add_executor_job(
+            self._prune_cache_sync,
+            active_session_id,
+        )
+        previous_pruned = int(self._cache_diagnostics.get("pruned_sessions", 0))
+        diagnostics["pruned_sessions"] = previous_pruned + cleaned
+        self._cache_diagnostics = diagnostics
+        if cleaned:
+            _LOGGER.info("Pruned %d replay cache sessions", cleaned)
+        return cleaned
+
+    def _prune_cache_sync(
+        self,
+        active_session_id: str | None,
+    ) -> tuple[int, dict[str, int | bool]]:
+        """Prune replay session directories by age and least-recent access."""
         if not self._cache_dir.exists():
-            return 0
+            return 0, {
+                "sessions": 0,
+                "bytes": 0,
+                "max_sessions": self._cache_max_sessions,
+                "max_bytes": self._cache_max_bytes,
+                "pruned_sessions": 0,
+                "over_budget": False,
+            }
 
         cutoff = time.time() - (REPLAY_CACHE_RETENTION_DAYS * 24 * 3600)
         cleaned = 0
         cache_root = self._cache_dir.resolve()
-
-        for session_dir in self._cache_dir.iterdir():
-            if not session_dir.is_dir():
+        entries: list[tuple[float, int, Path]] = []
+        for session_dir in tuple(self._cache_dir.iterdir()):
+            if not session_dir.is_dir() or session_dir.is_symlink():
                 continue
             try:
                 session_dir.resolve().relative_to(cache_root)
@@ -1779,15 +2105,64 @@ class ReplaySessionManager:
 
             index_file = session_dir / "index.json"
             if not index_file.exists():
+                if session_dir.name != active_session_id:
+                    with suppress(OSError):
+                        shutil.rmtree(session_dir)
+                        cleaned += 1
                 continue
-
-            with suppress(Exception):
-                stat = index_file.stat()
-                if stat.st_mtime < cutoff:
+            try:
+                last_access = index_file.stat().st_mtime
+                size = sum(
+                    path.stat().st_size
+                    for path in session_dir.rglob("*")
+                    if path.is_file() and not path.is_symlink()
+                )
+            except OSError:
+                continue
+            if session_dir.name != active_session_id and last_access < cutoff:
+                with suppress(OSError):
                     shutil.rmtree(session_dir)
                     cleaned += 1
-                    _LOGGER.debug("Cleaned old replay cache: %s", session_dir.name)
-        return cleaned
+                continue
+            entries.append((last_access, size, session_dir))
+
+        total_bytes = sum(size for _, size, _ in entries)
+        entries.sort(key=lambda item: item[0])
+        while (
+            len(entries) > self._cache_max_sessions
+            or total_bytes > self._cache_max_bytes
+        ):
+            removable_index = next(
+                (
+                    index
+                    for index, (_, _, path) in enumerate(entries)
+                    if path.name != active_session_id
+                ),
+                None,
+            )
+            if removable_index is None:
+                break
+            _, size, session_dir = entries.pop(removable_index)
+            try:
+                shutil.rmtree(session_dir)
+            except OSError:
+                entries.insert(removable_index, (time.time(), size, session_dir))
+                break
+            total_bytes -= size
+            cleaned += 1
+
+        diagnostics: dict[str, int | bool] = {
+            "sessions": len(entries),
+            "bytes": max(0, total_bytes),
+            "max_sessions": self._cache_max_sessions,
+            "max_bytes": self._cache_max_bytes,
+            "pruned_sessions": cleaned,
+            "over_budget": (
+                len(entries) > self._cache_max_sessions
+                or total_bytes > self._cache_max_bytes
+            ),
+        }
+        return cleaned, diagnostics
 
     def _safe_session_cache_dir(self, session_id: str) -> Path | None:
         """Return a cache directory path only when it stays inside replay cache."""
@@ -2173,13 +2548,19 @@ class ReplayController:
         start_reference_controller: ReplayStartReferenceController | None = None,
         formation_tracker: FormationStartTracker | None = None,
         on_replay_ended: Callable[[], None] | None = None,
+        requested_streams: set[str] | frozenset[str] | None = None,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
         self._http_session = http_session
         self._live_bus = live_bus
         self._live_state = live_state  # LiveAvailabilityTracker to signal coordinators
-        self._session_manager = ReplaySessionManager(hass, entry_id, http_session)
+        self._session_manager = ReplaySessionManager(
+            hass,
+            entry_id,
+            http_session,
+            requested_streams=requested_streams,
+        )
         self._start_reference_controller = start_reference_controller
         self._formation_tracker = formation_tracker
         self._on_replay_ended = on_replay_ended

@@ -85,6 +85,14 @@ class ProviderRuntime:
 
 
 @dataclass(slots=True)
+class HistoryRuntime:
+    """On-demand historical archive and optional live/replay lap analytics."""
+
+    service: Any
+    lap_analysis: Any | None = None
+
+
+@dataclass(slots=True)
 class F1RuntimeData:
     """Single typed owner for all config-entry runtime state.
 
@@ -99,6 +107,7 @@ class F1RuntimeData:
     track_map: TrackMapRuntimeData
     cache: CacheRuntime
     providers: ProviderRuntime
+    history: HistoryRuntime
     capabilities: CapabilityState
     legacy: dict[str, Any]
 

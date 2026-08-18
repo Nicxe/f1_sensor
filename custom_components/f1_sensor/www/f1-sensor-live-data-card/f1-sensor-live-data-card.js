@@ -8277,6 +8277,7 @@ class F1SeasonProgressionCard extends LitElement {
       top_limit: Math.max(0, Math.floor(Number(config?.top_limit) || 0)),
     };
     applyF1ThemeMode(this, this.config, this.hass);
+    this.requestUpdate();
   }
 
   connectedCallback() {
@@ -10010,7 +10011,10 @@ class F1LapPositionProgressionCard extends LitElement {
           @change=${this._sessionSelectionChanged}
         >
           ${list.map((session) => html`
-            <option value=${session.key}>${this._sessionOptionLabel(session)}</option>
+            <option
+              value=${session.key}
+              ?selected=${session.key === selectedSession?.key}
+            >${this._sessionOptionLabel(session)}</option>
           `)}
         </select>
       </div>
@@ -10637,7 +10641,10 @@ class F1LapPositionProgressionCard extends LitElement {
   }
 
   _sessionTypeLabel(session) {
-    return session?.type === 'sprint' ? 'SPRINT' : 'RACE';
+    const type = session?.kind || session?.type;
+    if (type === 'qualifying') return 'QUALIFYING';
+    if (type === 'sprint') return 'SPRINT';
+    return 'RACE';
   }
 
   _getDriverList() {
@@ -11861,8 +11868,13 @@ class F1LastRaceResultsCardEditor extends LitElement {
       driver_image_type: 'team_logo',
       team_logo_style: 'color',
       show_delta: true,
+      show_laps: true,
+      show_time_gap: true,
       show_points: true,
       show_status: true,
+      show_archive: true,
+      history_year: new Date().getFullYear(),
+      history_entry_id: 'auto',
       top_limit: 0,
       ...config,
     };
@@ -11990,8 +12002,32 @@ class F1LastRaceResultsCardEditor extends LitElement {
           'Show position delta',
           'Shows delta between starting grid and finishing position when grid column is visible'
         )}
+        ${this._renderSwitch('show_laps', 'Show completed laps')}
+        ${this._renderSwitch('show_time_gap', 'Show time or gap')}
         ${this._renderSwitch('show_points', 'Show points')}
         ${this._renderSwitch('show_status', 'Show status')}
+        ${this._renderSwitch(
+          'show_archive',
+          'Enable results archive',
+          'Adds an on-demand archive mode without loading historical data in the default current-season view'
+        )}
+
+        ${this._config.show_archive !== false ? html`
+          <ha-textfield
+            .label=${'Archive start season'}
+            .value=${String(this._config.history_year || new Date().getFullYear())}
+            type="number"
+            min="1950"
+            max=${String(new Date().getFullYear())}
+            @input=${(e) => this._valueChanged('history_year', Number.parseInt(e.target.value, 10) || new Date().getFullYear())}
+          ></ha-textfield>
+          <ha-textfield
+            .label=${'Archive config entry id'}
+            .value=${this._config.history_entry_id || 'auto'}
+            @input=${(e) => this._valueChanged('history_entry_id', e.target.value || 'auto')}
+          ></ha-textfield>
+          <div class="helper">Keep “auto” unless more than one F1 Sensor entry is configured</div>
+        ` : null}
 
         <ha-textfield
           .label=${'Top entries to show'}
@@ -12089,6 +12125,14 @@ class F1LastRaceResultsCard extends LitElement {
     hass: {},
     config: {},
     _selectedSessionKey: { state: true },
+    _resultScope: { state: true },
+    _archiveCatalog: { state: true },
+    _archiveResults: { state: true },
+    _archiveMeetingKey: { state: true },
+    _archiveSessionKey: { state: true },
+    _archiveYear: { state: true },
+    _archiveStatus: { state: true },
+    _archiveError: { state: true },
   };
 
   static styles = [F1_THEME_STYLES, css`
@@ -12460,6 +12504,146 @@ class F1LastRaceResultsCard extends LitElement {
       box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 28%, transparent);
     }
 
+    .cpd-scope-switch {
+      display: inline-grid;
+      grid-template-columns: repeat(2, minmax(112px, 1fr));
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--f1-card-divider-strong);
+      border-radius: 10px;
+      background: var(--f1-card-chip);
+    }
+
+    .cpd-scope-switch button,
+    .cpd-archive-toolbar button,
+    .cpd-year-control button {
+      min-height: 32px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--ts-muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .cpd-scope-switch button[aria-pressed='true'] {
+      border-color: var(--f1-card-divider-strong);
+      background: var(--f1-card-panel);
+      color: var(--ts-text);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+    }
+
+    .cpd-scope-switch button:focus-visible,
+    .cpd-archive-toolbar button:focus-visible,
+    .cpd-year-control button:focus-visible,
+    .cpd-archive-toolbar select:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 1px;
+    }
+
+    .cpd-archive-toolbar {
+      display: grid;
+      grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.5fr) minmax(140px, 1fr) auto;
+      align-items: end;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .cpd-archive-toolbar label {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 0;
+      color: var(--ts-muted);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .cpd-archive-toolbar select {
+      width: 100%;
+      min-height: 34px;
+      border: 1px solid var(--f1-card-divider-strong);
+      border-radius: 8px;
+      background: var(--f1-card-chip);
+      color: var(--ts-text);
+      padding: 6px 28px 6px 9px;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .cpd-year-control {
+      display: grid;
+      grid-template-columns: 32px minmax(54px, 1fr) 32px;
+      align-items: center;
+      min-height: 34px;
+      border: 1px solid var(--f1-card-divider-strong);
+      border-radius: 8px;
+      background: var(--f1-card-chip);
+    }
+
+    .cpd-year-control strong {
+      text-align: center;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cpd-table-scroll {
+      width: 100%;
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      scrollbar-width: thin;
+    }
+
+    .cpd-table.archive-race {
+      min-width: 650px;
+    }
+
+    .cpd-table.archive-qualifying {
+      min-width: 440px;
+    }
+
+    .cpd-attribution {
+      margin: 10px 2px 0;
+      color: var(--ts-muted);
+      font-size: 10px;
+      line-height: 1.4;
+      text-align: right;
+    }
+
+    .cpd-archive-message {
+      display: grid;
+      min-height: 128px;
+      place-items: center;
+      padding: 18px;
+      border: 1px dashed var(--f1-card-divider-strong);
+      border-radius: 10px;
+      background: var(--f1-card-chip);
+      color: var(--ts-muted);
+      text-align: center;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .cpd-archive-message button {
+      display: block;
+      margin: 10px auto 0;
+      min-height: 32px;
+      border: 1px solid var(--f1-card-divider-strong);
+      border-radius: 8px;
+      background: var(--f1-card-panel);
+      color: var(--ts-text);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+    }
+
     @media (max-width: 720px) {
       .cpd-card {
         padding: 12px 10px 12px;
@@ -12483,10 +12667,36 @@ class F1LastRaceResultsCard extends LitElement {
         font-size: 9px;
         padding: 5px 6px;
       }
+
+      .cpd-scope-switch {
+        width: min(100%, 300px);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .cpd-archive-toolbar {
+        grid-template-columns: 1fr;
+      }
     }
   `];
 
+  constructor() {
+    super();
+    this._resultScope = 'current';
+    this._archiveCatalog = null;
+    this._archiveResults = null;
+    this._archiveMeetingKey = null;
+    this._archiveSessionKey = null;
+    this._archiveYear = new Date().getFullYear();
+    this._archiveStatus = 'idle';
+    this._archiveError = null;
+    this._archiveRequestGeneration = 0;
+    this._archiveCatalogSignature = null;
+  }
+
   setConfig(config) {
+    const currentYear = new Date().getFullYear();
+    const historyYear = Number(config?.history_year ?? config?.year);
+    const defaultScope = config?.default_scope === 'archive' ? 'archive' : 'current';
     this.config = {
       theme_mode: DEFAULT_F1_THEME_MODE,
       entity: 'sensor.f1_last_race_results',
@@ -12506,17 +12716,53 @@ class F1LastRaceResultsCard extends LitElement {
       driver_image_type: 'team_logo',
       team_logo_style: 'color',
       show_delta: true,
+      show_laps: true,
+      show_time_gap: true,
       show_points: true,
       show_status: true,
+      show_archive: true,
+      history_year: Number.isInteger(historyYear)
+        ? Math.min(currentYear, Math.max(1950, historyYear))
+        : currentYear,
+      history_entry_id: String(config?.history_entry_id ?? config?.entry_id ?? 'auto').trim() || 'auto',
+      default_scope: defaultScope,
       top_limit: 0,
       ...config,
     };
+    this.config.history_year = Number.isInteger(historyYear)
+      ? Math.min(currentYear, Math.max(1950, historyYear))
+      : currentYear;
+    this.config.history_entry_id = String(
+      config?.history_entry_id ?? config?.entry_id ?? 'auto',
+    ).trim() || 'auto';
+    if (this._archiveStatus === 'idle') {
+      this._archiveYear = this.config.history_year;
+      this._resultScope = defaultScope;
+    }
     applyF1ThemeMode(this, this.config);
   }
 
   connectedCallback() {
     super.connectedCallback();
     ensureF1Fonts();
+    if (this._resultScope === 'archive') {
+      queueMicrotask(() => {
+        if (this.isConnected) this._ensureArchiveCatalog();
+      });
+    }
+  }
+
+  updated(changedProperties) {
+    super.updated?.(changedProperties);
+    if (changedProperties.has('config') || changedProperties.has('hass')) {
+      applyF1ThemeMode(this, this.config, this.hass);
+    }
+    if (
+      this._resultScope === 'archive'
+      && (changedProperties.has('config') || changedProperties.has('hass'))
+    ) {
+      this._ensureArchiveCatalog();
+    }
   }
 
   getCardSize() {
@@ -12547,6 +12793,9 @@ class F1LastRaceResultsCard extends LitElement {
       sprint_results_entity: 'sensor.f1_sprint_results',
       drivers_entity: 'sensor.f1_driver_list',
       no_spoiler_entity: 'switch.f1_no_spoiler_mode',
+      show_archive: true,
+      history_year: new Date().getFullYear(),
+      history_entry_id: 'auto',
     };
   }
 
@@ -12556,10 +12805,6 @@ class F1LastRaceResultsCard extends LitElement {
 
   render() {
     if (!this.hass || !this.config) return html``;
-
-    if (!this.config.entity && !this.config.season_results_entity && !this.config.sprint_results_entity) {
-      return this._renderEmpty('Select result entities in the editor');
-    }
 
     const lastRace = this.config.entity
       ? getEntityStateWithFallback(this.hass, this.config.entity)
@@ -12578,6 +12823,15 @@ class F1LastRaceResultsCard extends LitElement {
       : null;
     const driverList = asEntityList(driverListState?.attributes?.drivers);
     const driverMap = this._buildDriverMap(driverList);
+    const spoilerBlocked = isNoSpoilerModeActive(noSpoilerState);
+
+    if (this._resultScope === 'archive' && this.config.show_archive !== false) {
+      return this._renderArchiveCard(driverMap, spoilerBlocked);
+    }
+
+    if (!this.config.entity && !this.config.season_results_entity && !this.config.sprint_results_entity) {
+      return this._renderEmpty('Select result entities in the editor');
+    }
 
     const sessions = this._buildResultSessions(lastRace, seasonResults, sprintResults);
     const selectedSession = this._resolveSelectedSession(sessions);
@@ -12585,7 +12839,6 @@ class F1LastRaceResultsCard extends LitElement {
       return this._renderEmpty('No previous race data available');
     }
     const results = asEntityList(selectedSession.results);
-    const spoilerBlocked = isNoSpoilerModeActive(noSpoilerState);
     const layoutMode = getResponsiveLayoutMode(this);
     const rows = this._applyTopLimit(
       this._buildCurrentRows(
@@ -12611,13 +12864,17 @@ class F1LastRaceResultsCard extends LitElement {
               <div class="cpd-header-row">
                 <div class="cpd-header">${this.config.title || this._sessionDisplayTitle(selectedSession)}</div>
                 ${this._renderHeaderBadges(selectedSession, spoilerBlocked)}
+                ${this._renderScopeSelector()}
                 ${this._renderSessionSelector(sessions, selectedSession)}
               </div>
             `
             : null}
-          <div class="cpd-table" style="--cpd-columns: ${gridColumns};">
-            ${this.config.show_table_header ? this._renderHeader(columns) : null}
-            ${rows.map((row) => this._renderRow(row, columns))}
+          ${this.config.show_header === false ? this._renderScopeSelector() : null}
+          <div class="cpd-table-scroll">
+            <div class="cpd-table ${columns.length > 7 ? 'archive-race' : ''}" style="--cpd-columns: ${gridColumns};">
+              ${this.config.show_table_header ? this._renderHeader(columns) : null}
+              ${rows.map((row) => this._renderRow(row, columns))}
+            </div>
           </div>
         </div>
       </ha-card>
@@ -12633,10 +12890,12 @@ class F1LastRaceResultsCard extends LitElement {
               <div class="cpd-header-row">
                 <div class="cpd-header">${this.config.title || this._sessionDisplayTitle(selectedSession)}</div>
                 ${selectedSession ? this._renderHeaderBadges(selectedSession, false) : null}
+                ${this._renderScopeSelector()}
                 ${selectedSession ? this._renderSessionSelector(sessions, selectedSession) : null}
               </div>
             `
             : null}
+          ${this.config.show_header === false ? this._renderScopeSelector() : null}
           <div class="cpd-empty">${message}</div>
         </div>
       </ha-card>
@@ -12723,6 +12982,9 @@ class F1LastRaceResultsCard extends LitElement {
     if (this.config.show_session_type_badge === false && !spoilerBlocked) return null;
     return html`
       <div class="cpd-header-badges">
+        ${session?.archive
+          ? html`<div class="cpd-mode-pill live-current">ARCHIVE</div>`
+          : null}
         ${this.config.show_session_type_badge !== false
           ? html`<div class="cpd-mode-pill ${session?.type === 'sprint' ? 'legacy' : 'current'}">${this._sessionTypeLabel(session)}</div>`
           : null}
@@ -12756,6 +13018,368 @@ class F1LastRaceResultsCard extends LitElement {
     this._selectedSessionKey = ev.target.value;
   }
 
+  _renderScopeSelector() {
+    if (this.config.show_archive === false) return null;
+    return html`
+      <div class="cpd-scope-switch" role="group" aria-label="Results scope" @click=${(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          aria-pressed=${this._resultScope !== 'archive' ? 'true' : 'false'}
+          @click=${() => this._switchResultScope('current')}
+        >Current season</button>
+        <button
+          type="button"
+          aria-pressed=${this._resultScope === 'archive' ? 'true' : 'false'}
+          @click=${() => this._switchResultScope('archive')}
+        >Archive</button>
+      </div>
+    `;
+  }
+
+  _switchResultScope(scope) {
+    const nextScope = scope === 'archive' && this.config.show_archive !== false
+      ? 'archive'
+      : 'current';
+    if (nextScope === this._resultScope) {
+      return nextScope === 'archive' ? this._ensureArchiveCatalog() : undefined;
+    }
+    this._resultScope = nextScope;
+    this.requestUpdate();
+    return nextScope === 'archive' ? this._ensureArchiveCatalog() : undefined;
+  }
+
+  _archiveWsMessage(type, extra = {}) {
+    const message = { type, ...extra };
+    if (this.config.history_entry_id !== 'auto') {
+      message.entry_id = this.config.history_entry_id;
+    }
+    return message;
+  }
+
+  _ensureArchiveCatalog(forceRefresh = false) {
+    if (
+      this._resultScope !== 'archive'
+      || !this.hass?.callWS
+      || !this.config
+    ) {
+      return undefined;
+    }
+    const signature = `${this._archiveYear}:${this.config.history_entry_id}`;
+    if (!forceRefresh && signature === this._archiveCatalogSignature) return undefined;
+    this._archiveCatalogSignature = signature;
+    return this._loadArchiveCatalog(forceRefresh);
+  }
+
+  async _loadArchiveCatalog(forceRefresh = false) {
+    const generation = ++this._archiveRequestGeneration;
+    this._archiveStatus = 'loading_catalog';
+    this._archiveError = null;
+    this._archiveCatalog = null;
+    this._archiveResults = null;
+    this.requestUpdate();
+    try {
+      const catalog = await this.hass.callWS(this._archiveWsMessage(
+        'f1_sensor/history/catalog',
+        {
+          year: this._archiveYear,
+          force_refresh: forceRefresh,
+        },
+      ));
+      if (generation !== this._archiveRequestGeneration) return;
+      this._archiveCatalog = catalog;
+      const meetings = asEntityList(catalog?.meetings);
+      const selectedMeeting = [...meetings].reverse().find(
+        (meeting) => this._archiveSessions(meeting).some((session) => session.final),
+      ) || meetings.find((meeting) => this._archiveSessions(meeting).length > 0);
+      this._archiveMeetingKey = selectedMeeting
+        ? String(selectedMeeting.meeting_key)
+        : null;
+      const sessions = this._archiveSessions(selectedMeeting);
+      const selectedSession = [...sessions].reverse().find((session) => session.final)
+        || sessions[0];
+      this._archiveSessionKey = selectedSession
+        ? String(selectedSession.session_key)
+        : null;
+      if (selectedSession) {
+        await this._loadArchiveSession(generation);
+      } else {
+        this._archiveStatus = 'empty';
+        this.requestUpdate();
+      }
+    } catch (error) {
+      if (generation !== this._archiveRequestGeneration) return;
+      this._archiveStatus = 'error';
+      this._archiveError = error?.message || 'Historical results are unavailable';
+      this.requestUpdate();
+    }
+  }
+
+  _selectedArchiveMeeting() {
+    return asEntityList(this._archiveCatalog?.meetings).find(
+      (meeting) => String(meeting.meeting_key) === String(this._archiveMeetingKey),
+    ) || null;
+  }
+
+  _archiveSessions(meeting = this._selectedArchiveMeeting()) {
+    return asEntityList(meeting?.sessions).filter((session) => (
+      ['race', 'sprint', 'qualifying'].includes(session?.kind)
+      && session?.coverage?.results === 'available'
+    ));
+  }
+
+  _selectedArchiveSession() {
+    return this._archiveSessions().find(
+      (session) => String(session.session_key) === String(this._archiveSessionKey),
+    ) || null;
+  }
+
+  async _loadArchiveSession(existingGeneration = null) {
+    const generation = existingGeneration ?? ++this._archiveRequestGeneration;
+    const meeting = this._selectedArchiveMeeting();
+    const session = this._selectedArchiveSession();
+    if (!meeting || !session) return;
+    this._archiveStatus = 'loading_session';
+    this._archiveError = null;
+    this._archiveResults = null;
+    this.requestUpdate();
+    try {
+      const results = await this.hass.callWS(this._archiveWsMessage(
+        'f1_sensor/history/results',
+        {
+          year: this._archiveYear,
+          session_key: session.session_key,
+          round: meeting.round,
+          session_type: session.name,
+        },
+      ));
+      if (generation !== this._archiveRequestGeneration) return;
+      this._archiveResults = results;
+      this._archiveStatus = 'ready';
+      this.requestUpdate();
+    } catch (error) {
+      if (generation !== this._archiveRequestGeneration) return;
+      this._archiveStatus = 'error';
+      this._archiveError = error?.message || 'Session results are unavailable';
+      this.requestUpdate();
+    }
+  }
+
+  _changeArchiveYear(delta) {
+    const currentYear = new Date().getFullYear();
+    const year = Math.min(currentYear, Math.max(1950, this._archiveYear + delta));
+    if (year === this._archiveYear) return undefined;
+    this._archiveYear = year;
+    this._archiveCatalogSignature = null;
+    this.requestUpdate();
+    return this._ensureArchiveCatalog();
+  }
+
+  _selectArchiveMeeting(event) {
+    this._archiveMeetingKey = event.target.value;
+    const sessions = this._archiveSessions();
+    const selected = [...sessions].reverse().find((session) => session.final)
+      || sessions[0];
+    this._archiveSessionKey = selected ? String(selected.session_key) : null;
+    ++this._archiveRequestGeneration;
+    return selected ? this._loadArchiveSession() : undefined;
+  }
+
+  _selectArchiveSession(event) {
+    this._archiveSessionKey = event.target.value;
+    ++this._archiveRequestGeneration;
+    return this._loadArchiveSession();
+  }
+
+  _renderArchiveCard(driverMap, spoilerBlocked) {
+    const layoutMode = getResponsiveLayoutMode(this);
+    const meeting = this._selectedArchiveMeeting();
+    const session = this._selectedArchiveSession();
+    const meetings = asEntityList(this._archiveCatalog?.meetings).filter(
+      (item) => this._archiveSessions(item).length > 0,
+    );
+    const sessions = this._archiveSessions(meeting);
+    const rows = this._applyTopLimit(this._buildArchiveRows(
+      asEntityList(this._archiveResults?.results),
+      driverMap,
+      spoilerBlocked,
+    ));
+    const columns = this._archiveColumns(layoutMode, session);
+    const gridColumns = columns.map((column) => column.width).join(' ');
+    const attribution = this._archiveResults?.attribution || this._archiveCatalog?.attribution;
+    const sessionClass = session?.kind === 'qualifying'
+      ? 'archive-qualifying'
+      : 'archive-race';
+
+    return html`
+      <ha-card>
+        <div class="cpd-card" data-layout=${layoutMode}>
+          <div class="cpd-header-row">
+            ${this.config.show_header !== false ? html`
+              <div class="cpd-header">${this.config.title || this._sessionDisplayTitle({ race_name: meeting?.name })}</div>
+              ${session ? this._renderHeaderBadges({ ...session, archive: true }, spoilerBlocked) : null}
+            ` : null}
+            ${this._renderScopeSelector()}
+            ${this._renderArchiveControls(meetings, sessions)}
+          </div>
+
+          ${this._archiveStatus === 'loading_catalog' || this._archiveStatus === 'loading_session'
+            ? html`<div class="cpd-archive-message">Loading ${this._archiveStatus === 'loading_catalog' ? 'season archive' : 'classification'}…</div>`
+            : this._archiveStatus === 'error'
+              ? html`
+                <div class="cpd-archive-message">
+                  <div>${this._archiveError}<button type="button" @click=${() => this._ensureArchiveCatalog(true)}>Try again</button></div>
+                </div>
+              `
+              : this._archiveStatus === 'empty'
+                ? html`<div class="cpd-archive-message">No race, sprint, or qualifying results are available for this season.</div>`
+                : rows.length === 0
+                  ? html`<div class="cpd-archive-message">No classification is available for this session.</div>`
+                  : html`
+                    <div class="cpd-table-scroll">
+                      <div
+                        class="cpd-table ${sessionClass}"
+                        style="--cpd-columns: ${gridColumns};"
+                        role="table"
+                        aria-label=${`${meeting?.name || ''} ${session?.name || ''} classification`}
+                      >
+                        ${this.config.show_table_header ? this._renderHeader(columns) : null}
+                        ${rows.map((row) => this._renderRow(row, columns))}
+                      </div>
+                    </div>
+                  `}
+
+          ${attribution ? html`<p class="cpd-attribution">${attribution}</p>` : null}
+        </div>
+      </ha-card>
+    `;
+  }
+
+  _renderArchiveControls(meetings, sessions) {
+    return html`
+      <div class="cpd-archive-toolbar" @click=${(event) => event.stopPropagation()}>
+        <label>Season
+          <span class="cpd-year-control">
+            <button type="button" aria-label="Previous season" @click=${() => this._changeArchiveYear(-1)}>‹</button>
+            <strong>${this._archiveYear}</strong>
+            <button
+              type="button"
+              aria-label="Next season"
+              ?disabled=${this._archiveYear >= new Date().getFullYear()}
+              @click=${() => this._changeArchiveYear(1)}
+            >›</button>
+          </span>
+        </label>
+        <label>Grand Prix
+          <select .value=${String(this._archiveMeetingKey || '')} @change=${this._selectArchiveMeeting}>
+            ${meetings.map((meeting) => html`
+              <option
+                value=${String(meeting.meeting_key)}
+                ?selected=${String(meeting.meeting_key) === String(this._archiveMeetingKey)}
+              >R${meeting.round} · ${meeting.name}</option>
+            `)}
+          </select>
+        </label>
+        <label>Session
+          <select .value=${String(this._archiveSessionKey || '')} @change=${this._selectArchiveSession}>
+            ${sessions.map((session) => html`
+              <option
+                value=${String(session.session_key)}
+                ?selected=${String(session.session_key) === String(this._archiveSessionKey)}
+              >${session.name}</option>
+            `)}
+          </select>
+        </label>
+        <button type="button" aria-label="Refresh archive results" @click=${() => this._ensureArchiveCatalog(true)}>Refresh</button>
+      </div>
+    `;
+  }
+
+  _archiveColumns(layoutMode = 'wide', session = null) {
+    const compactLayout = layoutMode !== 'wide';
+    const columns = [];
+    if (this.config.show_position !== false) {
+      columns.push({ key: 'position', label: 'POS', width: 'minmax(30px, 0.18fr)', numeric: true });
+    }
+    columns.push({
+      key: 'tla',
+      label: 'DRIVER',
+      width: compactLayout ? 'minmax(110px, 1fr)' : this._driverColumnWidth(),
+    });
+    if (session?.kind === 'qualifying') {
+      for (const segment of ['q1', 'q2', 'q3']) {
+        columns.push({
+          key: segment,
+          label: segment.toUpperCase(),
+          width: 'minmax(76px, 0.72fr)',
+          numeric: true,
+        });
+      }
+      return columns;
+    }
+    if (this.config.show_grid !== false) {
+      columns.push({ key: 'grid', label: 'GRD', width: 'minmax(30px, 0.18fr)', numeric: true });
+    }
+    if (this.config.show_grid !== false && this.config.show_delta !== false) {
+      columns.push({ key: 'delta', label: 'Δ', width: 'minmax(54px, 0.58fr)', numeric: true });
+    }
+    if (this.config.show_laps !== false) {
+      columns.push({ key: 'laps', label: 'LAPS', width: 'minmax(34px, 0.25fr)', numeric: true });
+    }
+    if (this.config.show_time_gap !== false) {
+      columns.push({ key: 'time_gap', label: 'TIME / GAP', width: 'minmax(82px, 0.78fr)', numeric: true });
+    }
+    if (this.config.show_points !== false) {
+      columns.push({ key: 'points', label: 'PTS', width: 'minmax(36px, 0.28fr)', numeric: true });
+    }
+    if (this.config.show_status !== false) {
+      columns.push({ key: 'status', label: 'STATUS', width: 'minmax(74px, 0.7fr)', align: true });
+    }
+    return columns;
+  }
+
+  _buildArchiveRows(results, driverMap, spoilerBlocked) {
+    const rows = [];
+    for (const result of results) {
+      if (!result || typeof result !== 'object') continue;
+      const rn = String(result.driver_number ?? '').trim();
+      const tla = this._normalizeTla(result.driver_acronym);
+      const identity = (rn && driverMap.get(rn))
+        || (tla ? this._findDriverByTla(driverMap, tla) : null)
+        || {};
+      const position = this._toNumber(result.position);
+      const grid = this._toNumber(result.grid);
+      const points = this._toNumber(result.points);
+      const delta = Number.isFinite(position) && Number.isFinite(grid)
+        ? grid - position
+        : null;
+      const displayTla = tla || this._normalizeTla(identity.tla) || (rn ? `#${rn}` : '--');
+      const fullName = this._normalizeDriverName(result.driver_name, identity.name, displayTla);
+      const useFullName = this.config.show_full_name === true && fullName !== displayTla;
+      rows.push({
+        rn,
+        position,
+        grid,
+        display_driver: useFullName ? fullName : displayTla,
+        identity_sort: fullName || displayTla,
+        use_full_name: useFullName,
+        team_color: this._normalizeColor(identity.team_color),
+        laps: this._toNumber(result.laps),
+        time_gap: this._formatResultTime(result.duration ?? result.gap_to_leader),
+        points,
+        points_display: this._formatPoints(points),
+        delta,
+        delta_display: this._formatDelta(delta),
+        status: result.status_detail || String(result.status || '').replaceAll('_', ' ') || '--',
+        q1: this._formatResultTime(result.q1),
+        q2: this._formatResultTime(result.q2),
+        q3: this._formatResultTime(result.q3),
+        spoiler_blocked: spoilerBlocked,
+        spoiler_placeholder: this._spoilerPlaceholder(),
+      });
+    }
+    return this._sortDriverRows(rows, { spoilerBlocked });
+  }
+
   _sessionDisplayTitle(session) {
     const raceName = String(session?.race_name || '').trim();
     if (!raceName) return 'Race Results';
@@ -12770,7 +13394,10 @@ class F1LastRaceResultsCard extends LitElement {
   }
 
   _sessionTypeLabel(session) {
-    return session?.type === 'sprint' ? 'SPRINT' : 'RACE';
+    const kind = String(session?.kind || session?.type || '').toLowerCase();
+    if (kind === 'qualifying') return 'QUALIFYING';
+    if (kind === 'sprint') return 'SPRINT';
+    return 'RACE';
   }
 
   _columns(layoutMode = 'wide') {
@@ -12794,6 +13421,17 @@ class F1LastRaceResultsCard extends LitElement {
     }
     if (this.config.show_grid !== false && this.config.show_delta !== false) {
       cols.push({ key: 'delta', label: 'Δ', width: 'minmax(54px, 0.58fr)', numeric: true });
+    }
+    if (this.config.show_laps !== false) {
+      cols.push({ key: 'laps', label: 'LAPS', width: 'minmax(34px, 0.25fr)', numeric: true });
+    }
+    if (this.config.show_time_gap !== false) {
+      cols.push({
+        key: 'time_gap',
+        label: 'TIME / GAP',
+        width: compactLayout ? 'minmax(68px, 0.64fr)' : 'minmax(82px, 0.78fr)',
+        numeric: true,
+      });
     }
     if (this.config.show_points !== false) {
       cols.push({
@@ -12844,7 +13482,7 @@ class F1LastRaceResultsCard extends LitElement {
 
     if (
       row.spoiler_blocked
-      && ['position', 'grid', 'delta', 'points', 'status'].includes(col.key)
+      && ['position', 'grid', 'delta', 'laps', 'time_gap', 'points', 'status'].includes(col.key)
     ) {
       return html`<div class="${classes.join(' ')}">${row.spoiler_placeholder}</div>`;
     }
@@ -12896,6 +13534,11 @@ class F1LastRaceResultsCard extends LitElement {
     let value = '--';
     if (col.key === 'position') value = row.position ?? '--';
     if (col.key === 'grid') value = row.grid ?? '--';
+    if (col.key === 'laps') value = row.laps ?? '--';
+    if (col.key === 'time_gap') value = row.time_gap ?? '--';
+    if (col.key === 'q1') value = row.q1 ?? '--';
+    if (col.key === 'q2') value = row.q2 ?? '--';
+    if (col.key === 'q3') value = row.q3 ?? '--';
     if (col.key === 'points') value = row.points_display;
     if (col.key === 'status') value = row.status ?? '--';
     return html`<div class="${classes.join(' ')}">${value}</div>`;
@@ -12913,6 +13556,7 @@ class F1LastRaceResultsCard extends LitElement {
       const position = this._toNumber(result?.position);
       const grid = this._toNumber(result?.grid);
       const points = this._toNumber(result?.points);
+      const laps = this._toNumber(result?.laps);
       const delta = Number.isFinite(position) && Number.isFinite(grid)
         ? grid - position
         : null;
@@ -12942,6 +13586,10 @@ class F1LastRaceResultsCard extends LitElement {
         team_color: teamColor,
         points: points,
         points_display: this._formatPoints(points),
+        laps: laps,
+        time_gap: this._formatResultTime(
+          result?.time ?? result?.Time?.time ?? result?.duration ?? result?.gap_to_leader,
+        ),
         delta: delta,
         delta_display: this._formatDelta(delta),
         status: status,
@@ -13080,6 +13728,14 @@ class F1LastRaceResultsCard extends LitElement {
       return String(Math.round(value));
     }
     return Number(value).toFixed(1);
+  }
+
+  _formatResultTime(value) {
+    if (value === null || value === undefined || value === '') return '--';
+    if (typeof value !== 'number') return String(value);
+    if (!Number.isFinite(value)) return '--';
+    const minutes = Math.floor(value / 60);
+    return `${minutes}:${(value - minutes * 60).toFixed(3).padStart(6, '0')}`;
   }
 
   _formatDelta(value) {
@@ -33354,6 +34010,22 @@ class F1TrackMapCardEditor extends LitElement {
   }
 }
 
+class F1SessionArchiveCardCompatibility extends F1LastRaceResultsCard {
+  setConfig(config) {
+    const configuredTitle = String(config?.title || '').trim();
+    super.setConfig({
+      ...config,
+      title: configuredTitle && configuredTitle !== 'F1 Session Archive'
+        ? configuredTitle
+        : undefined,
+      show_archive: true,
+      history_year: config?.history_year ?? config?.year,
+      history_entry_id: config?.history_entry_id ?? config?.entry_id ?? 'auto',
+      default_scope: 'archive',
+    });
+  }
+}
+
 installSectionsAutoHeight(F1TyreStatisticsCard, {
   columns: 12,
   min_columns: 4,
@@ -33770,6 +34442,10 @@ if (!customElements.get('f1-starting-grid-card')) {
 
 if (!customElements.get('f1-starting-grid-card-editor')) {
   customElements.define('f1-starting-grid-card-editor', F1StartingGridCardEditor);
+}
+
+if (!customElements.get('f1-session-archive-card')) {
+  customElements.define('f1-session-archive-card', F1SessionArchiveCardCompatibility);
 }
 
 registerF1CardMetadata();

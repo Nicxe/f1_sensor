@@ -282,6 +282,8 @@ def _build_result_entry(idx: int) -> dict:
         "number": str(idx),
         "position": str(idx),
         "grid": str(idx + 1),
+        "laps": "57",
+        "Time": {"time": f"+{idx - 1}.000" if idx > 1 else "1:30:00.000"},
         "points": str(max(0, 26 - idx)),
         "status": "Finished",
         "Driver": {
@@ -320,7 +322,7 @@ def _build_season_results_data(
 
 
 @pytest.mark.asyncio
-async def test_last_race_results_sensor_exposes_grid_position(hass) -> None:
+async def test_last_race_results_sensor_exposes_classification_details(hass) -> None:
     coordinator = _build_coordinator(
         hass,
         {
@@ -337,6 +339,8 @@ async def test_last_race_results_sensor_exposes_grid_position(hass) -> None:
                                     "position": "1",
                                     "positionText": "1",
                                     "grid": "2",
+                                    "laps": "57",
+                                    "Time": {"time": "1:31:42.123"},
                                     "points": "25",
                                     "status": "Finished",
                                     "Driver": {
@@ -368,6 +372,8 @@ async def test_last_race_results_sensor_exposes_grid_position(hass) -> None:
 
     assert state.state == "Norris"
     assert state.attributes["results"][0]["grid"] == "2"
+    assert state.attributes["results"][0]["laps"] == "57"
+    assert state.attributes["results"][0]["time"] == "1:31:42.123"
 
 
 @pytest.mark.asyncio
@@ -1698,6 +1704,8 @@ async def test_season_results_sensor_excludes_races_from_recorder(hass) -> None:
 
     assert "races" in state.attributes
     assert state.attributes["races"][0]["results"][0]["grid"] == "2"
+    assert state.attributes["races"][0]["results"][0]["laps"] == "57"
+    assert state.attributes["races"][0]["results"][0]["time"] == "1:30:00.000"
     assert state.state_info is not None
     assert "races" in state.state_info["unrecorded_attributes"]
 
@@ -1792,6 +1800,8 @@ async def test_sprint_results_sensor_excludes_races_from_recorder(hass) -> None:
 
     assert "races" in state.attributes
     assert state.attributes["races"][0]["results"][0]["grid"] == "2"
+    assert state.attributes["races"][0]["results"][0]["laps"] == "57"
+    assert state.attributes["races"][0]["results"][0]["time"] == "1:30:00.000"
     assert state.state_info is not None
     assert "races" in state.state_info["unrecorded_attributes"]
 

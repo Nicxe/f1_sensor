@@ -484,7 +484,7 @@ Verstappen
 | race_start_utc | string | Race start (UTC ISO‑8601) |
 | race_start | string | Race start in Home Assistant local time |
 | race_start_local | string | Race start in circuit local time |
-| results | list | Cleaned results array: `{number, grid, position, points, status, driver{permanentNumber, code, givenName, familyName}, constructor{constructorId, name}}` |
+| results | list | Cleaned results array: `{number, grid, position, laps, time, points, status, driver{permanentNumber, code, givenName, familyName}, constructor{constructorId, name}}`. `time` contains the total time or gap supplied by Jolpica |
 
 
 ---
@@ -984,6 +984,8 @@ Each entry in `results` contains:
 | number | string | Car number |
 | grid | string | Sprint starting grid position |
 | position | string | Final position |
+| laps | string | Completed laps |
+| time | string | Total time or gap supplied by Jolpica |
 | points | string | Points awarded |
 | status | string | Finish status |
 | driver | object | `{ permanentNumber, code, givenName, familyName }` |

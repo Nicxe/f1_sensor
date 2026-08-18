@@ -99,6 +99,8 @@ from .helpers import (
     get_next_race,
     parse_fia_documents,
 )
+from .history import LAP_ANALYSIS_STREAMS, HistoryService, LapAnalysisStore
+from .history_websocket import HISTORY_WS_MARKER, async_register_history_websocket
 from .incident_detection import (
     CONFIDENCE_ORDER,
     DATA_QUALITY_BOOTSTRAP,
@@ -147,6 +149,7 @@ from .runtime import (
     CapabilityState,
     F1ConfigEntry,
     F1RuntimeData,
+    HistoryRuntime,
     LiveRuntime,
     ProviderRuntime,
     ReplayRuntime,
@@ -231,6 +234,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         AUTH_HTTP_VIEW_REGISTERED,
         AUTH_PAIRING_SESSIONS,
         LAP_POSITION_WS_MARKER,
+        HISTORY_WS_MARKER,
         TRACK_MAP_WS_MARKER,
     }
 )
@@ -1627,6 +1631,15 @@ async def _async_setup_entry(
     transaction.track(persisted)
     persisted_map = await persisted.load()
     provider_registry = ProviderRegistry()
+    history_service = HistoryService(
+        hass,
+        http_session,
+        cache=http_cache,
+        inflight=http_inflight,
+        persisted=persisted_map,
+        persist_save=persisted.schedule_save,
+        registry=provider_registry,
+    )
 
     # Seed in-memory cache from persisted content with conservative startup TTLs
     with suppress(Exception):
@@ -1994,6 +2007,7 @@ async def _async_setup_entry(
             "http_cache": http_cache,
             "http_inflight": http_inflight,
             "http_persist": persisted_map,
+            "history_service": history_service,
             "race_coordinator": race_coordinator,
             "next_race_history_coordinator": next_race_history_coordinator,
             "race_weather_coordinator": race_weather_coordinator,
@@ -2053,6 +2067,7 @@ async def _async_setup_entry(
                 persisted=persisted_map,
             ),
             providers=ProviderRuntime(registry=provider_registry),
+            history=HistoryRuntime(service=history_service),
             capabilities=CapabilityState(
                 requested_features=feature_plan.requested_features,
                 requested_streams=frozenset(),
@@ -2063,6 +2078,7 @@ async def _async_setup_entry(
         )
         if lap_position_progression_coordinator is not None:
             async_register_lap_position_websocket(hass)
+        async_register_history_websocket(hass)
         async_register_track_map_websocket(hass)
         no_spoiler_mgr: NoSpoilerModeManager | None = hass.data.get(DOMAIN, {}).get(
             _NO_SPOILER_MANAGER_KEY
@@ -2268,9 +2284,33 @@ async def _async_setup_entry(
         start_reference_controller=replay_start_reference_controller,
         formation_tracker=formation_tracker,
         on_replay_ended=live_supervisor.wake if live_supervisor else None,
+        requested_streams=(
+            feature_plan.requested_streams | LAP_ANALYSIS_STREAMS | {"Position.z"}
+        ),
     )
     transaction.track(replay_controller)
     await replay_controller.async_initialize()
+
+    def _lap_analysis_provider() -> str:
+        replay_active = bool(getattr(replay_controller, "_replay_active", False))
+        return "replay" if replay_active else "f1_live"
+
+    def _lap_analysis_session_type() -> str | None:
+        data = getattr(session_coordinator, "data", None)
+        if not isinstance(data, dict):
+            return None
+        for key in ("session_type", "type", "session_name", "name"):
+            value = data.get(key)
+            if value:
+                return str(value)
+        return None
+
+    lap_analysis_store = LapAnalysisStore(
+        live_bus,
+        source_provider=_lap_analysis_provider,
+        session_type=_lap_analysis_session_type,
+    )
+    transaction.track(lap_analysis_store)
 
     calibration_manager = LiveDelayCalibrationManager(
         hass,
@@ -2590,6 +2630,8 @@ async def _async_setup_entry(
         "calibration_manager": calibration_manager,
         "formation_start_tracker": formation_tracker,
         "replay_controller": replay_controller,
+        "history_service": history_service,
+        "lap_analysis_store": lap_analysis_store,
         "replay_reset_callbacks": _build_replay_reset_callbacks(
             track_status_coordinator,
             session_status_coordinator,
@@ -2670,6 +2712,10 @@ async def _async_setup_entry(
             persisted=persisted_map,
         ),
         providers=ProviderRuntime(registry=provider_registry),
+        history=HistoryRuntime(
+            service=history_service,
+            lap_analysis=lap_analysis_store,
+        ),
         capabilities=CapabilityState(
             requested_features=feature_plan.requested_features,
             requested_streams=feature_plan.requested_streams,
@@ -2681,6 +2727,7 @@ async def _async_setup_entry(
 
     if lap_position_progression_coordinator is not None:
         async_register_lap_position_websocket(hass)
+    async_register_history_websocket(hass)
     async_register_track_map_websocket(hass)
 
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
