@@ -214,7 +214,7 @@ async def test_options_migration_preserves_identity_and_connection_data(hass) ->
     assert entry.options[CONF_OPERATION_MODE] == OPERATION_MODE_LIVE
 
 
-def test_frontend_loader_preserves_all_card_tags_and_uses_shared_modules(
+def test_frontend_loader_preserves_all_card_tags_and_eagerly_loads_bundle(
     bundled_card_path: Path,
 ) -> None:
     root = bundled_card_path.parent
@@ -232,6 +232,8 @@ def test_frontend_loader_preserves_all_card_tags_and_uses_shared_modules(
     assert EXPECTED_CARD_TYPES <= registered_cards
     assert {f"{card}-editor" for card in EXPECTED_CARD_TYPES} <= registered_cards
     assert "import('./f1-sensor-live-data-card.js')" in loader_source
+    assert loader_source.rstrip().endswith("import('./f1-sensor-live-data-card.js');")
+    assert "MutationObserver" not in loader_source
     assert "import './f1-sensor-live-data-card.js'" not in loader_source
     assert "const LitElement = F1BaseElement;" in main_source
     for module in ("base-card", "actions", "accessibility", "i18n"):
