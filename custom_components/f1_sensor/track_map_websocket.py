@@ -284,7 +284,7 @@ class _TrackMapBroadcastHub:
         async def _async_apply_demand() -> None:
             await update_streams(requested)
             availability = live.availability if live is not None else None
-            should_run = active or bool(getattr(availability, "is_live", False))
+            should_run = bool(getattr(availability, "is_live", False))
             if requested and should_run:
                 await bus.start()
             else:

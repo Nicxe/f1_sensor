@@ -338,12 +338,13 @@ async def test_track_map_v2_resync_returns_latest_full_snapshot(hass) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("availability_is_live", "expected_closed"),
-    [(False, True), (True, False)],
+    ("availability_is_live", "expected_started", "expected_closed"),
+    [(False, False, True), (True, True, False)],
 )
 async def test_track_map_subscription_adds_and_removes_transient_stream_demand(
     hass,
     availability_is_live: bool,
+    expected_started: bool,
     expected_closed: bool,
 ) -> None:
     class DemandBus:
@@ -410,7 +411,7 @@ async def test_track_map_subscription_adds_and_removes_transient_stream_demand(
     )
     await hass.async_block_till_done()
 
-    assert bus.started is True
+    assert bus.started is expected_started
     assert bus.requested_streams == TRACK_MAP_STREAMS | {"Heartbeat"}
     assert entry.runtime_data.capabilities.stream_reasons["Position.z"] == (
         "track_map_card",
