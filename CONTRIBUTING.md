@@ -14,6 +14,10 @@ For changes to the integration itself — sensors, binary sensors, configuration
 - `beta` — pre-release testing. Promoted from `dev` by the maintainer.
 - `main` — stable production releases. Promoted from `beta` by the maintainer.
 
+Promotions to `beta` and `main` must use a merge commit. Squash or rebase
+merges remove the individual conventional commits that semantic-release uses
+to determine the version and generate complete release notes.
+
 The `beta` and `main` branches are managed exclusively by the maintainer. PRs targeting those branches are closed automatically.
 
 ### Documentation and blueprint changes

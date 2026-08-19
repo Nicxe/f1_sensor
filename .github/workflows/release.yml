@@ -3,14 +3,6 @@ name: Release
 on:
   push:
     branches: [beta, main]
-    paths:
-      - ".github/workflows/release.yml"
-      - "custom_components/**"
-      - "hacs.json"
-      - "package-lock.json"
-      - "package.json"
-      - "patches/**"
-      - "release.config.cjs"
 
 permissions:
   contents: write
