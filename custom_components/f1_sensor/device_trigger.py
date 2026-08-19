@@ -44,7 +44,7 @@ _TRIGGER_MAP: dict[str, tuple[str, str, str | None]] = {
     "formation_start_ready": ("formation_start", "binary_sensor", "on"),
     "overtake_mode_enabled": ("overtake_mode", "binary_sensor", "on"),
     "overtake_mode_disabled": ("overtake_mode", "binary_sensor", "off"),
-    "session_live": ("session_status", "sensor", None),
+    "session_live": ("session_status", "sensor", "live"),
     "track_status_clear": ("track_status", "sensor", "CLEAR"),
     "track_status_yellow": ("track_status", "sensor", "YELLOW"),
     "track_status_safety_car": ("track_status", "sensor", "SC"),

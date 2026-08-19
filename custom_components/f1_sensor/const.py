@@ -18,8 +18,10 @@ PLATFORMS: list[Platform] = [
 # Replay Mode
 REPLAY_CACHE_DIR = "f1_replay_cache"
 REPLAY_CACHE_RETENTION_DAYS = (
-    1  # Short retention - cache is deleted on stop, this is just backup
+    7  # Bounded Replay v2 LRU cache; runtime data never ships in releases
 )
+REPLAY_CACHE_MAX_BYTES = 512 * 1024 * 1024
+REPLAY_CACHE_MAX_SESSIONS = 3
 
 CONF_OPERATION_MODE = "operation_mode"
 CONF_REPLAY_FILE = "replay_file"
@@ -178,7 +180,6 @@ FIA_DOCUMENTS_BASE_URL = (
     "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14"
 )
 FIA_SEASON_LIST_URL = f"{FIA_DOCUMENTS_BASE_URL}/season"
-FIA_SEASON_FALLBACK_URL = f"{FIA_DOCUMENTS_BASE_URL}/season/season-2025-2071"
 FIA_DOCS_POLL_INTERVAL = 900  # seconds
 FIA_DOCS_FETCH_TIMEOUT = 15
 

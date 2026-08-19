@@ -31,5 +31,5 @@ jobs:
             echo "Request failed ($http_code): $body"
             exit 1
           done
-          echo "Context7 still busy after 3 attempts, giving up."
-          exit 1
+          echo "Context7 is already processing an indexing job; no new refresh is needed."
+          exit 0

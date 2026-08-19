@@ -202,7 +202,7 @@ def _run_card_probe(
 ) -> dict:
     """Execute the practice-card logic from the actual JS source."""
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for practice card regression tests")

@@ -28,7 +28,12 @@ from .const import (
     CONF_LIVE_TIMING_AUTH_HEADER,
     DOMAIN,
 )
-from .entity import F1AuxEntity, default_object_id, set_default_entity_id
+from .entity import (
+    F1AuxEntity,
+    default_object_id,
+    entry_runtime_registry,
+    set_default_entity_id,
+)
 from .replay_entities import (
     F1ReplayBackButton,
     F1ReplayForwardButton,
@@ -38,14 +43,15 @@ from .replay_entities import (
     F1ReplayRefreshButton,
     F1ReplayStopButton,
 )
+from .runtime import F1ConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
+    hass: HomeAssistant, entry: F1ConfigEntry, async_add_entities
 ) -> None:
-    registry = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    registry = entry_runtime_registry(hass, entry.entry_id)
     if not registry:
         return
     name = entry.data.get("sensor_name", "F1")
@@ -294,7 +300,7 @@ class F1JolpicaUserAgentTestButton(F1AuxEntity, ButtonEntity):
         self._entry_id = entry_id
 
     async def async_press(self) -> None:
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         client = reg.get("jolpica_client")
         if client is None:
             msg = "No Jolpica API client found; reload the integration."

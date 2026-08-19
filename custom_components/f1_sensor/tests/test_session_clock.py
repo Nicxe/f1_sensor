@@ -11,6 +11,7 @@ import pytest
 
 from custom_components.f1_sensor.__init__ import (
     SessionClockCoordinator,
+    _reset_replay_sensitive_coordinator_state,
     _wrap_delayed_handler,
 )
 from custom_components.f1_sensor.const import (
@@ -18,6 +19,7 @@ from custom_components.f1_sensor.const import (
     DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
 )
+from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.replay_mode import ReplayState
 from custom_components.f1_sensor.sensor import (
     F1RaceTimeToThreeHourLimitSensor,
@@ -910,7 +912,7 @@ async def test_session_clock_replay_pause_triggers_immediate_deliver(
 ) -> None:
     """When replay pauses, the clock coordinator should immediately update
     clock_running=False and clock_phase='paused' without waiting for the
-    next stream message or tick."""
+    next stream message."""
     fake_rc = _FakeReplayController()
     coordinator = SessionClockCoordinator(
         hass, session_coord=object(), replay_controller=fake_rc
@@ -959,7 +961,7 @@ async def test_session_clock_replay_resume_triggers_immediate_deliver(
     hass, monkeypatch
 ) -> None:
     """When replay resumes from paused, the clock coordinator should
-    immediately update clock_running=True and restart the tick."""
+    immediately update clock_running=True."""
     fake_rc = _FakeReplayController()
     coordinator = SessionClockCoordinator(
         hass, session_coord=object(), replay_controller=fake_rc
@@ -1254,10 +1256,10 @@ async def test_session_clock_replay_full_lifecycle(hass, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_session_clock_should_tick_stops_during_seeking(
+async def test_session_clock_suppresses_secondly_updates_but_publishes_corrections(
     hass, monkeypatch
 ) -> None:
-    """_should_tick should return False during SEEKING state, not just PAUSED."""
+    """Derived seconds stay local while meaningful timing corrections reach HA."""
     coordinator = SessionClockCoordinator(hass, session_coord=object())
     coordinator._session_info = {"Type": "Race", "Name": "Race"}
     coordinator._session_status = {"Status": "Started"}
@@ -1268,33 +1270,79 @@ async def test_session_clock_should_tick_stops_during_seeking(
     coordinator._last_heartbeat_utc = _utc("2026-03-08T13:00:06Z")
     coordinator._last_heartbeat_mono = time.monotonic()
 
-    now_utc = _utc("2026-03-08T13:00:11Z")
-    monkeypatch.setattr(coordinator, "_server_now_utc", lambda: now_utc)
+    current = _utc("2026-03-08T13:00:11Z")
+    monkeypatch.setattr(coordinator, "_server_now_utc", lambda: current)
+    updates: list[dict] = []
+    coordinator.async_add_listener(lambda: updates.append(dict(coordinator.data)))
 
-    # Running — should tick
-    monkeypatch.setattr(
-        coordinator, "_replay_controller_state", lambda: ReplayState.PLAYING
-    )
-    state = coordinator._build_state()
-    assert coordinator._should_tick(state) is True
+    coordinator._deliver()
+    assert len(updates) == 1
 
-    # Paused — should not tick
-    monkeypatch.setattr(
-        coordinator, "_replay_controller_state", lambda: ReplayState.PAUSED
-    )
-    state = coordinator._build_state()
-    assert coordinator._should_tick(state) is False
+    current = _utc("2026-03-08T13:00:12Z")
+    coordinator._deliver()
+    assert len(updates) == 1
 
-    # Seeking — should not tick
-    monkeypatch.setattr(
-        coordinator, "_replay_controller_state", lambda: ReplayState.SEEKING
+    coordinator._on_extrapolated_clock(
+        {
+            "Utc": "2026-03-08T13:00:12Z",
+            "Remaining": "01:56:20",
+            "Extrapolating": True,
+        }
     )
-    state = coordinator._build_state()
-    assert coordinator._should_tick(state) is False
+    assert len(updates) == 2
+    assert updates[-1]["clock_remaining_s"] == 6980
 
-    # Back to playing — should tick again
-    monkeypatch.setattr(
-        coordinator, "_replay_controller_state", lambda: ReplayState.PLAYING
+
+@pytest.mark.asyncio
+async def test_session_clock_live_to_idle_resets_runtime_state(hass) -> None:
+    """Leaving the live window clears the clock without a retired tick timer."""
+    live_state = LiveAvailabilityTracker()
+    coordinator = SessionClockCoordinator(
+        hass,
+        session_coord=object(),
+        live_state=live_state,
     )
-    state = coordinator._build_state()
-    assert coordinator._should_tick(state) is True
+    try:
+        live_state.set_state(True, "session-live")
+        coordinator._session_info = {"Type": "Race", "Name": "Race"}
+        coordinator._clock_anchor_utc = _utc("2026-03-08T13:00:01Z")
+        coordinator._clock_anchor_remaining_s = 7000
+        coordinator._state = coordinator._build_state()
+        coordinator.data_list = [coordinator._state]
+
+        live_state.set_state(False, "session-ended")
+
+        assert coordinator.available is False
+        assert coordinator._clock_anchor_utc is None
+        assert coordinator.data == coordinator._empty_state()
+        assert coordinator.data_list == [coordinator._empty_state()]
+    finally:
+        await coordinator.async_close()
+
+
+@pytest.mark.asyncio
+async def test_session_clock_no_spoiler_transition_has_no_tick_cleanup(hass) -> None:
+    """No-spoiler can suspend delivery after the backend tick was removed."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+
+    coordinator._handle_live_state(False, "no-spoiler")
+
+    assert coordinator.available is True
+    await coordinator.async_close()
+
+
+@pytest.mark.asyncio
+async def test_session_clock_replay_reset_has_no_tick_cleanup(hass) -> None:
+    """Replay rewind resets clock state after the backend tick was removed."""
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    coordinator._clock_anchor_utc = _utc("2026-03-08T13:00:01Z")
+    coordinator._clock_anchor_remaining_s = 7000
+    coordinator._state = coordinator._build_state()
+    coordinator.data_list = [coordinator._state]
+
+    _reset_replay_sensitive_coordinator_state(coordinator)
+
+    assert coordinator._clock_anchor_utc is None
+    assert coordinator.data == coordinator._empty_state()
+    assert coordinator.data_list == [coordinator._empty_state()]
+    await coordinator.async_close()

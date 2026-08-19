@@ -376,7 +376,9 @@ async def test_weather_entity_name_uses_location_fallbacks(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_weather_entity_exposes_native_state_and_forecast_service(hass) -> None:
+async def test_weather_entity_exposes_native_state_and_forecast_service(
+    hass, cleanup_test_entity_components
+) -> None:
     session = _Session(_payload())
     entry, _, coordinator = _coordinators(hass, session)
     await coordinator.async_refresh()
@@ -394,6 +396,7 @@ async def test_weather_entity_exposes_native_state_and_forecast_service(hass) ->
 
     assert await async_setup_component(hass, "weather", {})
     component = hass.data[DATA_COMPONENT]
+    hass.data.setdefault("_f1_sensor_test_entity_components", []).append(component)
     await component.async_add_entities([entity])
     await hass.async_block_till_done()
 
@@ -463,7 +466,9 @@ async def test_weather_entity_exposes_native_state_and_forecast_service(hass) ->
 
 
 @pytest.mark.asyncio
-async def test_weather_entity_converts_native_values_to_us_units(hass) -> None:
+async def test_weather_entity_converts_native_values_to_us_units(
+    hass, cleanup_test_entity_components
+) -> None:
     hass.config.units = US_CUSTOMARY_SYSTEM
     session = _Session(_payload())
     entry, _, coordinator = _coordinators(hass, session)
@@ -481,6 +486,7 @@ async def test_weather_entity_converts_native_values_to_us_units(hass) -> None:
 
     assert await async_setup_component(hass, "weather", {})
     component = hass.data[DATA_COMPONENT]
+    hass.data.setdefault("_f1_sensor_test_entity_components", []).append(component)
     await component.async_add_entities([entity])
     await hass.async_block_till_done()
 

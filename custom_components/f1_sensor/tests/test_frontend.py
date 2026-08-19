@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from homeassistant.components.lovelace.const import LOVELACE_DATA
+from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DATA
 from homeassistant.helpers import issue_registry as ir
 import pytest
 
@@ -64,6 +64,7 @@ def _write_bundled_assets(source_dir: Path, js_source: str) -> None:
     source_dir.mkdir(parents=True)
     for filename in frontend.LIVE_DATA_CARD_ASSET_FILENAMES:
         path = source_dir / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
         if filename.endswith(".js"):
             path.write_text(js_source, encoding="utf-8")
         else:
@@ -115,7 +116,7 @@ async def test_lovelace_resource_creation_is_idempotent(hass) -> None:
         {
             "id": "resource-1",
             "type": "module",
-            "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=abc123",
+            "url": "/local/f1-sensor-live-data-card/register.js?v=abc123",
         }
     ]
     assert _stale_resource_issue(hass) is None
@@ -128,7 +129,7 @@ async def test_managed_lovelace_resource_does_not_create_repair_issue(hass) -> N
             {
                 "id": "managed",
                 "type": "module",
-                "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=abc123",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=abc123",
             }
         ]
     )
@@ -162,7 +163,7 @@ async def test_lovelace_resource_updates_existing_old_hacs_resource(hass) -> Non
         {
             "id": "old-resource",
             "type": "module",
-            "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=newkey",
+            "url": "/local/f1-sensor-live-data-card/register.js?v=newkey",
         }
     ]
     assert _stale_resource_issue(hass) is None
@@ -175,7 +176,7 @@ async def test_managed_resource_with_old_resource_creates_repair_issue(hass) -> 
             {
                 "id": "managed",
                 "type": "module",
-                "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=oldkey",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=oldkey",
             },
             {
                 "id": "old-hacs",
@@ -227,7 +228,7 @@ async def test_lovelace_resource_leaves_extra_old_resources_for_cleanup(hass) ->
     assert resources.items[0] == {
         "id": "old-hacs",
         "type": "module",
-        "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=cachekey",
+        "url": "/local/f1-sensor-live-data-card/register.js?v=cachekey",
     }
     assert resources.items[1] == {
         "id": "old-local",
@@ -246,7 +247,7 @@ async def test_stale_resource_repair_issue_clears_after_cleanup(hass) -> None:
             {
                 "id": "managed",
                 "type": "module",
-                "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=cachekey",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=cachekey",
             },
             {
                 "id": "old-local",
@@ -313,7 +314,7 @@ async def test_lovelace_resource_updates_when_cache_key_changes(hass) -> None:
             {
                 "id": "managed",
                 "type": "module",
-                "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=oldkey",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=oldkey",
             }
         ]
     )

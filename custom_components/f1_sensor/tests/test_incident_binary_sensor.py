@@ -36,6 +36,7 @@ def _coordinator(hass, data: dict[str, Any]) -> DataUpdateCoordinator:
 
 async def _add_entity_and_get_state(hass, entity: F1OnTrackIncidentBinarySensor):
     component = EntityComponent(_LOGGER, "binary_sensor", hass)
+    hass.data.setdefault("_f1_sensor_test_entity_components", []).append(component)
     await component.async_add_entities([entity])
     await hass.async_block_till_done()
     state = hass.states.get(entity.entity_id)
@@ -166,7 +167,7 @@ async def test_possible_on_track_incident_setup_entry_uses_incident_coordinator(
 
 @pytest.mark.asyncio
 async def test_on_track_incident_state_and_attributes_follow_confirmed_incidents(
-    hass,
+    hass, cleanup_test_entity_components
 ) -> None:
     coordinator = _coordinator(hass, _coordinator_data([]))
     entity = F1OnTrackIncidentBinarySensor(
@@ -232,7 +233,9 @@ async def test_on_track_incident_state_and_attributes_follow_confirmed_incidents
 
 
 @pytest.mark.asyncio
-async def test_on_track_incident_ignores_active_candidates(hass) -> None:
+async def test_on_track_incident_ignores_active_candidates(
+    hass, cleanup_test_entity_components
+) -> None:
     coordinator = _coordinator(
         hass,
         _coordinator_data([_incident(phase="candidate", confidence="high")]),
@@ -252,7 +255,9 @@ async def test_on_track_incident_ignores_active_candidates(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_possible_on_track_incident_turns_on_for_active_candidates(hass) -> None:
+async def test_possible_on_track_incident_turns_on_for_active_candidates(
+    hass, cleanup_test_entity_components
+) -> None:
     coordinator = _coordinator(
         hass,
         _coordinator_data(
@@ -287,7 +292,7 @@ async def test_possible_on_track_incident_turns_on_for_active_candidates(hass) -
 
 @pytest.mark.asyncio
 async def test_on_track_incident_unavailable_without_available_coordinator(
-    hass,
+    hass, cleanup_test_entity_components
 ) -> None:
     missing = F1OnTrackIncidentBinarySensor(
         None,
@@ -312,7 +317,7 @@ async def test_on_track_incident_unavailable_without_available_coordinator(
 
 @pytest.mark.asyncio
 async def test_on_track_incident_does_not_expose_active_list_to_recorder(
-    hass,
+    hass, cleanup_test_entity_components
 ) -> None:
     coordinator = _coordinator(
         hass,

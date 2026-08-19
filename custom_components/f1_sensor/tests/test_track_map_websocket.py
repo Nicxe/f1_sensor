@@ -1,25 +1,44 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor.const import DOMAIN
+from custom_components.f1_sensor.feature_plan import TRACK_MAP_STREAMS
+from custom_components.f1_sensor.providers import ProviderRegistry
+from custom_components.f1_sensor.runtime import (
+    CacheRuntime,
+    CapabilityState,
+    F1RuntimeData,
+    HistoryRuntime,
+    LiveRuntime,
+    ProviderRuntime,
+    StaticRuntime,
+)
 from custom_components.f1_sensor.track_map import (
     TRACK_MAP_STATUS_NO_POSITION_DATA,
     TRACK_MAP_STATUS_NO_SESSION,
     TrackMapPosition,
+    TrackMapRuntimeData,
     TrackMapStore,
 )
 from custom_components.f1_sensor.track_map_websocket import (
     TRACK_MAP_API_STATUS_NO_GEOMETRY,
     TRACK_MAP_API_STATUS_NOT_LOADED,
+    TRACK_MAP_PROTOCOL_V2,
+    TRACK_MAP_WS_ERROR_NOT_LOADED,
     TRACK_MAP_WS_GET_TYPE,
     TRACK_MAP_WS_MARKER,
+    TRACK_MAP_WS_RESYNC_TYPE,
     TRACK_MAP_WS_SUBSCRIBE_TYPE,
     _track_map_payload,
     _ws_get_track_map_snapshot,
+    _ws_resync_track_map_snapshot,
     _ws_subscribe_track_map_snapshot,
     async_register_track_map_websocket,
 )
@@ -154,7 +173,9 @@ def test_track_map_websocket_exposes_live_position_source_and_z(hass) -> None:
     assert payload["snapshot"]["drivers"][0]["z"] == 0
 
 
-def test_track_map_subscribe_returns_not_loaded_when_store_is_missing(hass) -> None:
+def test_track_map_subscribe_returns_retryable_error_when_store_is_missing(
+    hass,
+) -> None:
     connection = FakeConnection()
 
     _ws_subscribe_track_map_snapshot(
@@ -168,14 +189,12 @@ def test_track_map_subscribe_returns_not_loaded_when_store_is_missing(hass) -> N
         },
     )
 
-    assert connection.results == [
+    assert connection.results == []
+    assert connection.errors == [
         (
             8,
-            {
-                "entry_id": "missing",
-                "status": TRACK_MAP_API_STATUS_NOT_LOADED,
-                "snapshot": None,
-            },
+            TRACK_MAP_WS_ERROR_NOT_LOADED,
+            "Track map data is not loaded yet; retry the subscription",
         )
     ]
     assert connection.events == []
@@ -196,5 +215,211 @@ def test_track_map_websocket_registration_is_idempotent(hass, monkeypatch) -> No
     async_register_track_map_websocket(hass)
     async_register_track_map_websocket(hass)
 
-    assert len(registered) == 2
+    assert len(registered) == 3
     assert hass.data[DOMAIN][TRACK_MAP_WS_MARKER] is True
+
+
+def test_track_map_v2_sends_snapshot_then_small_sequenced_delta(hass) -> None:
+    store = _store(hass)
+    store.update_session_info(_session_payload())
+    store.update_positions([_position(str(number)) for number in range(1, 21)])
+    connection = FakeConnection()
+
+    _ws_subscribe_track_map_snapshot(
+        hass,
+        connection,
+        {
+            "id": 20,
+            "type": TRACK_MAP_WS_SUBSCRIBE_TYPE,
+            "entry_id": "entry-1",
+            "protocol_version": TRACK_MAP_PROTOCOL_V2,
+            "throttle_ms": 0,
+        },
+    )
+
+    initial = connection.events[-1][1]
+    assert initial["type"] == "snapshot"
+    assert initial["sequence"] == 0
+    store.update_positions(
+        [
+            TrackMapPosition(
+                racing_number="1",
+                timestamp=BASE_TIME + timedelta(seconds=1),
+                x=101,
+                y=201,
+                z=0,
+                status="OnTrack",
+            )
+        ]
+    )
+    delta = connection.events[-1][1]
+
+    assert delta["type"] == "delta"
+    assert delta["base_sequence"] == 0
+    assert delta["sequence"] == 1
+    assert set(delta["changes"]) == {"1"}
+    assert len(json.dumps(delta)) < len(json.dumps(initial)) * 0.3
+    connection.subscriptions.pop(20)()
+
+
+def test_track_map_v1_and_v2_clients_share_one_store_broadcast(hass) -> None:
+    store = _store(hass)
+    first = FakeConnection()
+    second = FakeConnection()
+
+    _ws_subscribe_track_map_snapshot(
+        hass,
+        first,
+        {
+            "id": 30,
+            "type": TRACK_MAP_WS_SUBSCRIBE_TYPE,
+            "entry_id": "entry-1",
+            "protocol_version": 1,
+            "throttle_ms": 0,
+        },
+    )
+    _ws_subscribe_track_map_snapshot(
+        hass,
+        second,
+        {
+            "id": 31,
+            "type": TRACK_MAP_WS_SUBSCRIBE_TYPE,
+            "entry_id": "entry-1",
+            "protocol_version": 2,
+            "throttle_ms": 0,
+        },
+    )
+
+    assert len(store._listeners) == 1
+    store.update_session_info(_session_payload())
+    assert first.events[-1][1]["snapshot"]["session"]["session_key"] == "101"
+    assert second.events[-1][1]["type"] == "delta"
+    first.subscriptions.pop(30)()
+    assert len(store._listeners) == 1
+    second.subscriptions.pop(31)()
+    assert len(store._listeners) == 0
+
+
+@pytest.mark.asyncio
+async def test_track_map_v2_resync_returns_latest_full_snapshot(hass) -> None:
+    store = _store(hass)
+    connection = FakeConnection()
+    _ws_subscribe_track_map_snapshot(
+        hass,
+        connection,
+        {
+            "id": 40,
+            "type": TRACK_MAP_WS_SUBSCRIBE_TYPE,
+            "entry_id": "entry-1",
+            "protocol_version": 2,
+            "throttle_ms": 0,
+        },
+    )
+    store.update_session_info(_session_payload())
+
+    _ws_resync_track_map_snapshot(
+        hass,
+        connection,
+        {
+            "id": 41,
+            "type": TRACK_MAP_WS_RESYNC_TYPE,
+            "entry_id": "entry-1",
+            "protocol_version": 2,
+        },
+    )
+    await hass.async_block_till_done()
+
+    resync = connection.results[-1]
+    assert resync[0] == 41
+    assert resync[1]["type"] == "snapshot"
+    assert resync[1]["sequence"] == 1
+    connection.subscriptions.pop(40)()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("availability_is_live", "expected_started", "expected_closed"),
+    [(False, False, True), (True, True, False)],
+)
+async def test_track_map_subscription_adds_and_removes_transient_stream_demand(
+    hass,
+    availability_is_live: bool,
+    expected_started: bool,
+    expected_closed: bool,
+) -> None:
+    class DemandBus:
+        def __init__(self) -> None:
+            self.requested_streams = frozenset({"Heartbeat"})
+            self.started = False
+            self.closed = False
+
+        @property
+        def active_streams(self) -> frozenset[str]:
+            return self.requested_streams
+
+        async def async_update_streams(self, streams) -> None:
+            self.requested_streams = frozenset(streams)
+
+        async def start(self) -> None:
+            self.started = True
+            self.closed = False
+
+        async def async_close(self) -> None:
+            self.started = False
+            self.closed = True
+
+    entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
+    entry.add_to_hass(hass)
+    store = TrackMapStore(entry.entry_id)
+    bus = DemandBus()
+    legacy_capabilities = {
+        "requested_streams": frozenset({"Heartbeat"}),
+        "active_live_streams": frozenset({"Heartbeat"}),
+        "stream_reasons": {"Heartbeat": ("live_transport_health",)},
+    }
+    entry.runtime_data = F1RuntimeData(
+        static=StaticRuntime(),
+        live=LiveRuntime(
+            bus=bus,
+            availability=SimpleNamespace(is_live=availability_is_live),
+        ),
+        replay=None,
+        track_map=TrackMapRuntimeData(store),
+        cache=CacheRuntime(object(), {}, {}, {}),
+        providers=ProviderRuntime(ProviderRegistry()),
+        history=HistoryRuntime(service=object()),
+        capabilities=CapabilityState(
+            frozenset(),
+            frozenset({"Heartbeat"}),
+            frozenset({"Heartbeat"}),
+            {"Heartbeat": ("live_transport_health",)},
+        ),
+        legacy={"signalr_stream_capabilities": legacy_capabilities},
+    )
+    connection = FakeConnection()
+
+    _ws_subscribe_track_map_snapshot(
+        hass,
+        connection,
+        {
+            "id": 50,
+            "type": TRACK_MAP_WS_SUBSCRIBE_TYPE,
+            "entry_id": entry.entry_id,
+            "protocol_version": 2,
+            "throttle_ms": 0,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert bus.started is expected_started
+    assert bus.requested_streams == TRACK_MAP_STREAMS | {"Heartbeat"}
+    assert entry.runtime_data.capabilities.stream_reasons["Position.z"] == (
+        "track_map_card",
+    )
+
+    connection.subscriptions.pop(50)()
+    await hass.async_block_till_done()
+
+    assert bus.requested_streams == frozenset({"Heartbeat"})
+    assert bus.closed is expected_closed
+    assert "Position.z" not in entry.runtime_data.capabilities.stream_reasons

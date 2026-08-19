@@ -19,7 +19,7 @@ CARD_PATH = (
 
 def _race_control_source() -> str:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     source = CARD_PATH.read_text()
     start = source.index("class F1RaceControlCard extends LitElement")
     end = source.index("class F1RaceControlCardEditor", start)
@@ -28,7 +28,7 @@ def _race_control_source() -> str:
 
 def _card_source() -> str:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     return CARD_PATH.read_text()
 
 

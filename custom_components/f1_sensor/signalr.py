@@ -4,8 +4,11 @@ import asyncio
 from collections.abc import AsyncGenerator, Callable, Iterable
 from contextlib import suppress
 import datetime as dt
+from enum import StrEnum
+from http.cookies import SimpleCookie
 import json
 import logging
+import random
 import time
 from typing import Any, Protocol
 
@@ -13,6 +16,7 @@ from aiohttp import ClientResponseError, ClientSession, WSMsgType
 from homeassistant.core import HomeAssistant
 
 from .helpers import normalize_live_timing_auth_header
+from .providers import ProviderRegistry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,28 +58,54 @@ AUTH_GATED_LIVE_STREAMS = (
     "PitStopSeries",
 )
 
-REPLAY_ONLY_STREAMS: tuple[str, ...] = ()
+REPLAY_ONLY_STREAMS: tuple[str, ...] = ("LapHistory",)
 
 AUTH_FAILURE_STATUSES = frozenset({401, 403})
+SIGNALR_CONNECT_TIMEOUT = 30.0
+SIGNALR_BACKOFF_JITTER = 0.2
+
+
+class LiveConnectionState(StrEnum):
+    """Lifecycle states for the shared live timing transport."""
+
+    STOPPED = "stopped"
+    CONNECTING = "connecting"
+    LIVE = "live"
+    RETRYING = "retrying"
+    AUTH_LIMITED = "auth_limited"
 
 
 def build_live_subscribe_streams(
-    *, include_auth_gated: bool = False
+    *,
+    include_auth_gated: bool = False,
+    requested_streams: Iterable[str] | None = None,
 ) -> tuple[str, ...]:
     """Return the SignalR streams that should be subscribed for live mode."""
     streams = list(PUBLIC_LIVE_STREAMS)
     if include_auth_gated:
         streams.extend(AUTH_GATED_LIVE_STREAMS)
+    if requested_streams is not None:
+        requested = frozenset(str(stream) for stream in requested_streams)
+        streams = [stream for stream in streams if stream in requested]
     return tuple(streams)
 
 
-def build_subscribe_message(*, include_auth_gated: bool = False) -> dict[str, Any]:
+def build_subscribe_message(
+    *,
+    include_auth_gated: bool = False,
+    requested_streams: Iterable[str] | None = None,
+) -> dict[str, Any]:
     """Return a SignalR legacy subscribe message for the selected capability set."""
     return {
         "H": "Streaming",
         "M": "Subscribe",
         "A": [
-            list(build_live_subscribe_streams(include_auth_gated=include_auth_gated))
+            list(
+                build_live_subscribe_streams(
+                    include_auth_gated=include_auth_gated,
+                    requested_streams=requested_streams,
+                )
+            )
         ],
         "I": 1,
     }
@@ -97,6 +127,7 @@ class LiveTransport(Protocol):
     async def ensure_connection(self) -> None: ...
     async def messages(self) -> AsyncGenerator[dict]: ...
     async def close(self) -> None: ...
+    async def update_streams(self, streams: Iterable[str]) -> None: ...
 
 
 class SignalRAuthenticationError(Exception):
@@ -146,6 +177,46 @@ def _is_authentication_close_error(error: object) -> bool:
     )
 
 
+def _response_cookie_value(response: Any, name: str) -> str | None:
+    """Return one response cookie without forwarding Set-Cookie attributes."""
+    cookies = getattr(response, "cookies", None)
+    if cookies:
+        with suppress(KeyError, TypeError):
+            value = cookies[name].value
+            if isinstance(value, str) and value:
+                return value
+
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    values: list[str] = []
+    getall = getattr(headers, "getall", None)
+    if callable(getall):
+        values.extend(getall("Set-Cookie", []))
+    elif raw_header := headers.get("Set-Cookie"):
+        values.append(raw_header)
+    for raw_header in values:
+        parsed = SimpleCookie()
+        with suppress(Exception):
+            parsed.load(raw_header)
+            if name in parsed and parsed[name].value:
+                return str(parsed[name].value)
+    return None
+
+
+def _decode_core_records(raw: str) -> list[dict[str, Any]]:
+    """Decode independent SignalR Core records from one websocket frame."""
+    records: list[dict[str, Any]] = []
+    for segment in raw.split(RECORD_SEP):
+        segment = segment.strip()
+        if not segment:
+            continue
+        payload = json.loads(segment)
+        if isinstance(payload, dict):
+            records.append(payload)
+    return records
+
+
 class SignalRLegacyClient:
     """Minimal legacy SignalR client for Formula 1 live timing."""
 
@@ -155,12 +226,14 @@ class SignalRLegacyClient:
         session: ClientSession,
         *,
         auth_header: str | None = None,
+        streams: Iterable[str] | None = None,
     ) -> None:
         self._hass = hass
         self._session = session
         self._auth_header = _normalize_auth_header(auth_header)
         self._subscribe_msg = build_subscribe_message(
-            include_auth_gated=self._auth_header is not None
+            include_auth_gated=self._auth_header is not None,
+            requested_streams=streams,
         )
         self._ws = None
         self._t0 = dt.datetime.now(dt.UTC)
@@ -178,14 +251,17 @@ class SignalRLegacyClient:
             resp.raise_for_status()
             data = await resp.json()
             token = data.get("ConnectionToken")
-            cookie = resp.headers.get("Set-Cookie")
+            cookie = _response_cookie_value(resp, "ARRAffinity")
+
+        if not token:
+            raise ConnectionError("F1 SignalR negotiation returned no connection token")
 
         headers = {
             "User-Agent": "BestHTTP",
             "Accept-Encoding": "gzip,identity",
         }
         if cookie:
-            headers["Cookie"] = cookie
+            headers["Cookie"] = f"ARRAffinity={cookie}"
         headers.update(_authorization_headers(self._auth_header))
 
         params = {
@@ -211,34 +287,29 @@ class SignalRLegacyClient:
         )
 
     async def ensure_connection(self) -> None:
-        """Try to (re)connect using exponential back-off."""
-        import asyncio
+        """Make one bounded connection attempt.
 
-        from .const import BACK_OFF_FACTOR, FAST_RETRY_SEC, MAX_RETRY_SEC
-
-        delay = FAST_RETRY_SEC
-        while True:
-            try:
+        LiveBus owns retry policy so normal closes, handshakes and transport
+        errors all use the same state machine.
+        """
+        try:
+            async with asyncio.timeout(SIGNALR_CONNECT_TIMEOUT):
                 await self.connect()
-                return
-            except SignalRAuthenticationError:
-                raise
-            except Exception as err:  # noqa: BLE001
-                if self._auth_header and _is_authentication_error(err):
-                    raise SignalRAuthenticationError(
-                        "F1 SignalR authorization was rejected"
-                    ) from err
-                _LOGGER.warning(
-                    "SignalR reconnect failed (%s). Retrying in %s s …", err, delay
-                )
-                await asyncio.sleep(delay)
-                delay = min(delay * BACK_OFF_FACTOR, MAX_RETRY_SEC)
+        except SignalRAuthenticationError:
+            raise
+        except Exception as err:
+            if self._auth_header and _is_authentication_error(err):
+                raise SignalRAuthenticationError(
+                    "F1 SignalR authorization was rejected"
+                ) from err
+            raise
 
     async def messages(self) -> AsyncGenerator[dict]:
-        if not self._ws:
+        websocket = self._ws
+        if websocket is None:
             return
         index = 0
-        async for msg in self._ws:
+        async for msg in websocket:
             if msg.type == WSMsgType.TEXT:
                 payload = None
                 try:
@@ -292,11 +363,23 @@ class SignalRLegacyClient:
 
     async def close(self) -> None:
         if self._heartbeat_task:
-            self._heartbeat_task.cancel()
+            task = self._heartbeat_task
             self._heartbeat_task = None
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
         if self._ws is not None:
             await self._ws.close()
             self._ws = None
+
+    async def update_streams(self, streams: Iterable[str]) -> None:
+        """Replace the active subscription without opening another connection."""
+        self._subscribe_msg = build_subscribe_message(
+            include_auth_gated=self._auth_header is not None,
+            requested_streams=streams,
+        )
+        if self._ws is not None and not self._ws.closed:
+            await self._ws.send_json(self._subscribe_msg)
 
 
 class SignalRCoreClient:
@@ -312,15 +395,18 @@ class SignalRCoreClient:
         session: ClientSession,
         *,
         auth_header: str | None = None,
+        streams: Iterable[str] | None = None,
     ) -> None:
         self._hass = hass
         self._session = session
         self._auth_header = _normalize_auth_header(auth_header)
         self._subscribe_msg = build_subscribe_message(
-            include_auth_gated=self._auth_header is not None
+            include_auth_gated=self._auth_header is not None,
+            requested_streams=streams,
         )
         self._ws = None
         self._cookie: str | None = None
+        self._pending_records: list[dict[str, Any]] = []
 
     async def connect(self) -> None:
         _LOGGER.debug("Connecting to F1 SignalR Core service")
@@ -333,12 +419,7 @@ class SignalRCoreClient:
                 params=negotiate_params,
                 headers=_authorization_headers(self._auth_header),
             ) as resp:
-                cookie_header = resp.headers.get("Set-Cookie", "")
-                for part in cookie_header.split(","):
-                    part = part.strip()
-                    if "AWSALBCORS=" in part:
-                        self._cookie = part.split("AWSALBCORS=")[1].split(";")[0]
-                        break
+                self._cookie = _response_cookie_value(resp, "AWSALBCORS")
         except Exception:  # noqa: BLE001
             _LOGGER.debug("OPTIONS request failed, continuing without cookie")
 
@@ -352,6 +433,11 @@ class SignalRCoreClient:
             resp.raise_for_status()
             data = await resp.json()
             token = data.get("connectionToken") or data.get("ConnectionToken", "")
+
+        if not token:
+            raise ConnectionError(
+                "F1 SignalR Core negotiation returned no connection token"
+            )
 
         # Step 3: WebSocket connect
         ws_headers = _authorization_headers(self._auth_header)
@@ -367,19 +453,20 @@ class SignalRCoreClient:
         )
         hs_msg = await self._ws.receive()
         if hs_msg.type == WSMsgType.TEXT:
-            hs_data = hs_msg.data.replace(RECORD_SEP, "").strip()
-            if hs_data:
-                hs_json = json.loads(hs_data)
-                if "error" in hs_json:
+            records = _decode_core_records(hs_msg.data)
+            if records:
+                handshake = records[0]
+                if "error" in handshake:
                     if self._auth_header and _is_authentication_close_error(
-                        hs_json["error"]
+                        handshake["error"]
                     ):
                         raise SignalRAuthenticationError(
                             "F1 SignalR Core authorization was rejected"
                         )
                     raise ConnectionError(
-                        f"SignalR Core handshake error: {hs_json['error']}"
+                        f"SignalR Core handshake error: {handshake['error']}"
                     )
+                self._pending_records.extend(records[1:])
         elif hs_msg.type in (WSMsgType.CLOSED, WSMsgType.ERROR):
             raise ConnectionError("WebSocket closed during handshake")
 
@@ -395,79 +482,110 @@ class SignalRCoreClient:
         _LOGGER.debug("SignalR Core connection established and subscribed")
 
     async def ensure_connection(self) -> None:
-        """Try to (re)connect using exponential back-off."""
-        from .const import BACK_OFF_FACTOR, FAST_RETRY_SEC, MAX_RETRY_SEC
-
-        delay = FAST_RETRY_SEC
-        while True:
-            try:
+        """Make one bounded connection attempt."""
+        try:
+            async with asyncio.timeout(SIGNALR_CONNECT_TIMEOUT):
                 await self.connect()
-                return
-            except SignalRAuthenticationError:
-                raise
-            except Exception as err:  # noqa: BLE001
-                if self._auth_header and _is_authentication_error(err):
-                    raise SignalRAuthenticationError(
-                        "F1 SignalR Core authorization was rejected"
-                    ) from err
-                _LOGGER.warning(
-                    "SignalR Core reconnect failed (%s). Retrying in %s s …",
-                    err,
-                    delay,
-                )
-                await asyncio.sleep(delay)
-                delay = min(delay * BACK_OFF_FACTOR, MAX_RETRY_SEC)
+        except SignalRAuthenticationError:
+            raise
+        except Exception as err:
+            if self._auth_header and _is_authentication_error(err):
+                raise SignalRAuthenticationError(
+                    "F1 SignalR Core authorization was rejected"
+                ) from err
+            raise
 
     async def messages(self) -> AsyncGenerator[dict]:
-        if not self._ws:
+        websocket = self._ws
+        if websocket is None:
             return
-        async for msg in self._ws:
+        for payload in self._pending_records:
+            if payload.get("type") == 7:
+                self._raise_for_close_record(payload)
+                return
+            translated = await self._translate_record(payload, websocket=websocket)
+            if translated is not None:
+                yield translated
+        self._pending_records.clear()
+        async for msg in websocket:
             if msg.type == WSMsgType.TEXT:
-                for segment in msg.data.split(RECORD_SEP):
-                    segment = segment.strip()
-                    if not segment:
-                        continue
-                    try:
-                        payload = json.loads(segment)
-                    except json.JSONDecodeError:
-                        continue
-                    msg_type = payload.get("type")
-                    if msg_type == 1:
-                        # Invocation (feed) → translate to legacy M-format
-                        target = payload.get("target", "")
-                        arguments = payload.get("arguments", [])
-                        yield {"M": [{"H": "Streaming", "M": target, "A": arguments}]}
-                    elif msg_type == 3:
-                        # Completion (initial state) → translate to legacy R-format
-                        result = payload.get("result")
-                        if isinstance(result, dict):
-                            yield {"R": result}
-                    elif msg_type == 6:
-                        # Ping → respond with pong
-                        try:
-                            await self._ws.send_str(
-                                json.dumps({"type": 6}) + RECORD_SEP
-                            )
-                        except Exception:  # noqa: BLE001
-                            break
-                    elif msg_type == 7:
-                        # Close
-                        error = payload.get("error", "")
-                        if self._auth_header and _is_authentication_close_error(error):
-                            raise SignalRAuthenticationError(
-                                "F1 SignalR Core authorization was rejected"
-                            )
-                        _LOGGER.warning(
-                            "SignalR Core server closed connection: %s", error
-                        )
+                try:
+                    records = _decode_core_records(msg.data)
+                except json.JSONDecodeError:
+                    continue
+                for payload in records:
+                    if payload.get("type") == 7:
+                        self._raise_for_close_record(payload)
                         return
+                    translated = await self._translate_record(
+                        payload, websocket=websocket
+                    )
+                    if translated is not None:
+                        yield translated
             elif msg.type in (WSMsgType.CLOSED, WSMsgType.ERROR):
                 break
+
+    async def _translate_record(
+        self, payload: dict[str, Any], *, websocket: Any | None = None
+    ) -> dict | None:
+        """Translate one Core protocol record to the legacy bus format."""
+        msg_type = payload.get("type")
+        if msg_type == 1:
+            return {
+                "M": [
+                    {
+                        "H": "Streaming",
+                        "M": payload.get("target", ""),
+                        "A": payload.get("arguments", []),
+                    }
+                ]
+            }
+        if msg_type == 3:
+            result = payload.get("result")
+            return {"R": result} if isinstance(result, dict) else None
+        if msg_type == 6:
+            active_websocket = websocket or self._ws
+            if active_websocket is not None and not active_websocket.closed:
+                await active_websocket.send_str(json.dumps({"type": 6}) + RECORD_SEP)
+            return None
+        return None
+
+    def _raise_for_close_record(self, payload: dict[str, Any]) -> None:
+        """Raise for an errored close while allowing a clean close to return."""
+        error = payload.get("error", "")
+        if self._auth_header and _is_authentication_close_error(error):
+            raise SignalRAuthenticationError(
+                "F1 SignalR Core authorization was rejected"
+            )
+        if error:
+            raise ConnectionError(f"SignalR Core server closed connection: {error}")
 
     async def close(self) -> None:
         if self._ws is not None:
             await self._ws.close()
             self._ws = None
+
+    async def update_streams(self, streams: Iterable[str]) -> None:
+        """Replace the active Core subscription on the current connection."""
+        self._subscribe_msg = build_subscribe_message(
+            include_auth_gated=self._auth_header is not None,
+            requested_streams=streams,
+        )
+        if self._ws is None or self._ws.closed:
+            return
+        subscribe = {
+            "type": 1,
+            "target": "Subscribe",
+            "arguments": self._subscribe_msg["A"],
+            "invocationId": str(self._monotonic_invocation_id()),
+        }
+        await self._ws.send_str(json.dumps(subscribe) + RECORD_SEP)
+
+    def _monotonic_invocation_id(self) -> int:
+        """Return a connection-local invocation identifier."""
+        value = getattr(self, "_next_invocation_id", 1)
+        self._next_invocation_id = value + 1
+        return value
 
 
 class LiveBus:
@@ -484,6 +602,10 @@ class LiveBus:
         transport_factory: Callable[[], LiveTransport] | None = None,
         auth_header: str | None = None,
         auth_failed_callback: Callable[[], None] | None = None,
+        requested_streams: Iterable[str] | None = None,
+        provider_registry: ProviderRegistry | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
+        jitter_source: Callable[[float, float], float] = random.uniform,
     ) -> None:
         self._hass = hass
         self._session = session
@@ -491,7 +613,17 @@ class LiveBus:
         self._auth_header = _normalize_auth_header(auth_header)
         self._auth_enabled = self._auth_header is not None
         self._auth_failed_callback = auth_failed_callback
+        self._requested_streams = (
+            frozenset(requested_streams)
+            if requested_streams is not None
+            else frozenset(
+                build_live_subscribe_streams(include_auth_gated=self._auth_enabled)
+            )
+        )
+        self._provider_registry = provider_registry or ProviderRegistry()
         self._auth_failed_reported = False
+        self._monotonic = monotonic
+        self._jitter_source = jitter_source
         self._client: LiveTransport | None = None
         self._task: asyncio.Task | None = None
         self._subs: dict[str, list[Callable[[StreamPayload], None]]] = {}
@@ -501,7 +633,7 @@ class LiveBus:
         self._stream_frames: dict[str, int] = {}
         self._stream_last_keys: dict[str, list[str] | None] = {}
         self._last_ts: dict[str, float] = {}
-        self._last_logged: float = time.time()
+        self._last_logged: float = self._monotonic()
         self._log_interval: float = 10.0  # seconds
         # Cache last payload per stream so new subscribers receive latest snapshot immediately
         self._last_payload: dict[str, StreamPayload] = {}
@@ -510,11 +642,40 @@ class LiveBus:
         self._heartbeat_guard: asyncio.Task | None = None
         self._heartbeat_timeout = 45.0
         self._heartbeat_check_interval = 5.0
+        self._connection_state = LiveConnectionState.STOPPED
+        self._retry_delay: float = 0
+        self._outage_logged = False
+        self._reset_retry_delay()
 
     @property
     def auth_enabled(self) -> bool:
         """Return whether the live connection is currently using auth."""
         return self._auth_enabled
+
+    @property
+    def connection_state(self) -> LiveConnectionState:
+        """Return the current live transport lifecycle state."""
+        return self._connection_state
+
+    @property
+    def requested_streams(self) -> frozenset[str]:
+        """Return the declared stream demand for this bus."""
+        return self._requested_streams
+
+    @property
+    def active_streams(self) -> frozenset[str]:
+        """Return streams supported by the current live transport capability."""
+        if self._transport_factory is not None:
+            supported = frozenset(
+                (*PUBLIC_LIVE_STREAMS, *AUTH_GATED_LIVE_STREAMS, *REPLAY_ONLY_STREAMS)
+            )
+            return self._requested_streams & supported
+        return frozenset(
+            build_live_subscribe_streams(
+                include_auth_gated=self._auth_enabled,
+                requested_streams=self._requested_streams,
+            )
+        )
 
     def subscribe(
         self, stream: str, callback: Callable[[StreamPayload], None]
@@ -542,12 +703,16 @@ class LiveBus:
         if self._running:
             _LOGGER.debug("LiveBus start requested but already running")
             return
+        if not self.active_streams and self._transport_factory is None:
+            _LOGGER.debug("LiveBus start skipped because no streams are requested")
+            return
         self._running = True
+        self._connection_state = LiveConnectionState.CONNECTING
+        self._reset_retry_delay()
         _LOGGER.info(
             "LiveBus starting (transport=%s)",
             "custom" if self._transport_factory else "native",
         )
-        self._client = self._create_client()
         self._task = self._hass.loop.create_task(self._run())
         if self._heartbeat_guard is None or self._heartbeat_guard.done():
             self._heartbeat_guard = self._hass.loop.create_task(
@@ -555,94 +720,144 @@ class LiveBus:
             )
 
     async def _run(self) -> None:
-        with suppress(asyncio.CancelledError):
+        try:
             while self._running:
+                retry_reason = "connection closed"
+                self._connection_state = LiveConnectionState.CONNECTING
+                client = self._create_client()
+                self._client = client
                 try:
-                    if self._client is None:
-                        self._client = self._create_client()
-                    # Reset heartbeat timestamp *before* connecting so the
-                    # heartbeat monitor does not close the new client while
-                    # ensure_connection() is in progress (the monitor checks
-                    # every 5 s and would kill the client if the stale age
-                    # from the previous connection exceeds 45 s).
-                    self._last_heartbeat_at = time.time()
-                    await self._client.ensure_connection()
-                    _LOGGER.info("LiveBus connected to SignalR")
-                    async for payload in self._client.messages():
-                        # Dispatch feed messages by stream name
-                        with suppress(Exception):
-                            if isinstance(payload, dict):
-                                # Live feed frames under "M" with hub messages
-                                msgs = payload.get("M")
-                                if isinstance(msgs, list):
-                                    for hub_msg in msgs:
-                                        with suppress(Exception):
-                                            if hub_msg.get("M") == "feed":
-                                                args = hub_msg.get("A", [])
-                                                if len(args) >= 2:
-                                                    stream = args[0]
-                                                    data = args[1]
-                                                    # Cache latest even if no subscribers yet
-                                                    if data is not None:
-                                                        self._last_payload[stream] = (
-                                                            data
-                                                        )
-                                                    # Always dispatch so heartbeat/activity bookkeeping
-                                                    # works even when there are no explicit subscribers
-                                                    self._dispatch(stream, data)
-                                # RPC results under "R" (rare)
-                                result = payload.get("R")
-                                if isinstance(result, dict):
-                                    for key, value in result.items():
-                                        # Cache last payload for key
-                                        if value is not None:
-                                            self._last_payload[key] = value
-                                        # Dispatch if there are subscribers now
-                                        if key in self._subs:
-                                            self._dispatch(key, value)
+                    if self._expect_heartbeat:
+                        self._last_heartbeat_at = self._monotonic()
+                    await client.ensure_connection()
+                    async for payload in client.messages():
+                        if self._process_payload(payload):
+                            self._mark_connection_live()
                 except SignalRAuthenticationError:
+                    retry_reason = "authorization was rejected"
                     if self._auth_enabled:
                         self._auth_enabled = False
-                        _LOGGER.warning(
-                            "Live timing authorization was rejected; falling back to public live timing"
-                        )
+                        self._connection_state = LiveConnectionState.AUTH_LIMITED
                         if (
                             self._auth_failed_callback is not None
                             and not self._auth_failed_reported
                         ):
                             self._auth_failed_reported = True
                             self._auth_failed_callback()
-                        continue
-                    _LOGGER.warning("LiveBus authorization error")
-                    if self._running:
-                        await asyncio.sleep(2)
-                except Exception as err:  # pragma: no cover - network errors
-                    # Log replay-related errors at DEBUG since they're expected during replay stop
-                    err_str = str(err)
-                    if "Replay" in err_str or "replay" in err_str:
-                        _LOGGER.debug("LiveBus replay transport closed: %s", err)
-                    else:
-                        _LOGGER.warning("LiveBus websocket error: %s", err)
-                    # Add delay before reconnect to prevent tight loops
-                    if self._running:
-                        await asyncio.sleep(2)
+                except TimeoutError:
+                    retry_reason = "connection attempt timed out"
+                except Exception as err:  # noqa: BLE001
+                    retry_reason = self._retry_reason(err)
                 finally:
-                    if self._client:
-                        await self._client.close()
+                    if self._client is client:
                         self._client = None
-                # Periodic compact DEBUG summary
+                    try:
+                        await client.close()
+                    except Exception as err:  # noqa: BLE001
+                        retry_reason = f"cleanup failed: {type(err).__name__}"
+
                 self._maybe_log_summary()
+                if self._running:
+                    await self._wait_before_retry(retry_reason)
+        except asyncio.CancelledError:
+            raise
+        finally:
+            self._connection_state = LiveConnectionState.STOPPED
+
+    def _process_payload(self, payload: Any) -> bool:
+        """Dispatch one transport payload and report meaningful activity."""
+        if not isinstance(payload, dict):
+            return False
+        meaningful = False
+        msgs = payload.get("M")
+        if isinstance(msgs, list):
+            for hub_msg in msgs:
+                if not isinstance(hub_msg, dict) or hub_msg.get("M") != "feed":
+                    continue
+                args = hub_msg.get("A", [])
+                if not isinstance(args, list) or len(args) < 2:
+                    continue
+                stream, data = args[0], args[1]
+                if not isinstance(stream, str) or data is None:
+                    continue
+                self._dispatch(stream, data)
+                meaningful = True
+        result = payload.get("R")
+        if isinstance(result, dict):
+            for stream, data in result.items():
+                if not isinstance(stream, str) or data is None:
+                    continue
+                self._dispatch(stream, data)
+                meaningful = True
+        return meaningful
+
+    def _mark_connection_live(self) -> None:
+        """Mark a connection healthy only after receiving usable stream data."""
+        if self._connection_state is LiveConnectionState.LIVE:
+            return
+        self._connection_state = LiveConnectionState.LIVE
+        self._reset_retry_delay()
+        if self._outage_logged:
+            _LOGGER.info("Live timing connection recovered")
+            self._outage_logged = False
+
+    def _reset_retry_delay(self) -> None:
+        from .const import FAST_RETRY_SEC
+
+        self._retry_delay = float(FAST_RETRY_SEC)
+
+    async def _wait_before_retry(self, reason: str) -> None:
+        """Apply capped exponential backoff with bounded jitter."""
+        from .const import BACK_OFF_FACTOR, MAX_RETRY_SEC
+
+        self._connection_state = LiveConnectionState.RETRYING
+        delay = self._jitter_source(
+            self._retry_delay * (1 - SIGNALR_BACKOFF_JITTER),
+            self._retry_delay * (1 + SIGNALR_BACKOFF_JITTER),
+        )
+        if reason == "connection closed":
+            _LOGGER.debug(
+                "Live timing connection closed cleanly; reconnecting in %.1f seconds",
+                delay,
+            )
+        elif not self._outage_logged:
+            _LOGGER.warning(
+                "Live timing connection unavailable (%s); retrying in %.1f seconds",
+                reason,
+                delay,
+            )
+            self._outage_logged = True
+        else:
+            _LOGGER.debug(
+                "Live timing reconnect still pending (%s); retrying in %.1f seconds",
+                reason,
+                delay,
+            )
+        self._retry_delay = min(
+            self._retry_delay * BACK_OFF_FACTOR, float(MAX_RETRY_SEC)
+        )
+        await asyncio.sleep(delay)
+
+    @staticmethod
+    def _retry_reason(err: Exception) -> str:
+        """Return a stable non-sensitive reconnect reason."""
+        if "replay" in str(err).lower():
+            return "replay transport closed"
+        return type(err).__name__
 
     def _dispatch(self, stream: str, data: StreamPayload) -> None:
         with suppress(Exception):
+            provider = "replay" if self._transport_factory is not None else "f1_live"
+            data = self._provider_registry.normalize(provider, stream, data).payload
             # Update counters
             self._cnt[stream] = self._cnt.get(stream, 0) + 1
             self._stream_frames[stream] = self._stream_frames.get(stream, 0) + 1
-            self._last_ts[stream] = time.time()
+            now = self._monotonic()
+            self._last_ts[stream] = now
             if isinstance(data, dict):
                 self._stream_last_keys[stream] = list(data.keys())[:10]
             if stream == "Heartbeat":
-                self._last_heartbeat_at = time.time()
+                self._last_heartbeat_at = now
             # Cache last payload for new subscribers
             if data is not None:
                 self._last_payload[stream] = data
@@ -661,7 +876,7 @@ class LiveBus:
     def _maybe_log_summary(self) -> None:
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return
-        now = time.time()
+        now = self._monotonic()
         if (now - self._last_logged) < self._log_interval:
             return
         self._last_logged = now
@@ -697,6 +912,7 @@ class LiveBus:
 
     async def async_close(self) -> None:
         self._running = False
+        self._connection_state = LiveConnectionState.STOPPED
         _LOGGER.info("LiveBus shutting down")
         if self._task:
             self._task.cancel()
@@ -709,7 +925,10 @@ class LiveBus:
                 await self._heartbeat_guard
             self._heartbeat_guard = None
         if self._client:
-            await self._client.close()
+            try:
+                await self._client.close()
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Live timing cleanup failed during shutdown: %s", err)
             self._client = None
 
     def _create_client(self) -> LiveTransport:
@@ -722,12 +941,29 @@ class LiveBus:
                 self._hass,
                 self._session,
                 auth_header=self._auth_header if self._auth_enabled else None,
+                streams=self._requested_streams,
             )
         return SignalRLegacyClient(
             self._hass,
             self._session,
             auth_header=self._auth_header if self._auth_enabled else None,
+            streams=self._requested_streams,
         )
+
+    async def async_update_streams(self, streams: Iterable[str]) -> None:
+        """Apply a changed demand set without creating a second transport."""
+        requested = frozenset(str(stream) for stream in streams if str(stream))
+        if requested == self._requested_streams:
+            return
+        self._requested_streams = requested
+        client = self._client
+        if client is None:
+            return
+        update_streams = getattr(client, "update_streams", None)
+        if callable(update_streams):
+            await update_streams(self._requested_streams)
+            return
+        await client.close()
 
     async def _monitor_heartbeat(self) -> None:
         with suppress(asyncio.CancelledError):
@@ -742,7 +978,8 @@ class LiveBus:
                 # SignalR "Heartbeat" frames; this better matches how F1
                 # actually behaves in practice.
                 activity_age = self.last_stream_activity_age()
-                effective_age = hb_age if hb_age is not None else activity_age
+                ages = [age for age in (hb_age, activity_age) if age is not None]
+                effective_age = min(ages) if ages else None
                 if effective_age is None or effective_age < self._heartbeat_timeout:
                     continue
                 # Treat this as a soft reconnect signal, not a hard warning –
@@ -753,15 +990,22 @@ class LiveBus:
                     f"{hb_age:.1f}s" if hb_age is not None else "n/a",
                     f"{activity_age:.1f}s" if activity_age is not None else "n/a",
                 )
-                if self._client:
-                    await self._client.close()
-                    self._client = None
+                client = self._client
+                if client:
+                    try:
+                        await client.close()
+                    except Exception as err:  # noqa: BLE001
+                        _LOGGER.debug(
+                            "Live timing cleanup failed after inactivity: %s", err
+                        )
+                    if self._client is client:
+                        self._client = None
 
     def set_heartbeat_expectation(self, enabled: bool) -> None:
         self._expect_heartbeat = bool(enabled)
         if enabled:
             if self._last_heartbeat_at is None:
-                self._last_heartbeat_at = time.time()
+                self._last_heartbeat_at = self._monotonic()
             _LOGGER.info("Heartbeat guard ENABLED")
         else:
             self._last_heartbeat_at = None
@@ -770,7 +1014,7 @@ class LiveBus:
     def last_heartbeat_age(self) -> float | None:
         if self._last_heartbeat_at is None:
             return None
-        return time.time() - self._last_heartbeat_at
+        return self._monotonic() - self._last_heartbeat_at
 
     def last_stream_activity_age(
         self, streams: Iterable[str] | None = None
@@ -778,7 +1022,7 @@ class LiveBus:
         """Return age in seconds for the most recent payload among given streams."""
         if not self._last_ts:
             return None
-        now = time.time()
+        now = self._monotonic()
         if streams:
             ages: list[float] = []
             for stream in streams:
@@ -806,7 +1050,7 @@ class LiveBus:
             if streams is not None
             else sorted(set(self._stream_frames) | set(self._last_ts))
         )
-        now = time.time()
+        now = self._monotonic()
         return {
             stream: {
                 "frame_count": self._stream_frames.get(stream, 0),

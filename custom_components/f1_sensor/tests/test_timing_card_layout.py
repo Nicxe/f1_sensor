@@ -508,7 +508,7 @@ process.stdout.write(JSON.stringify(result));
 def _run_probe(payload: dict) -> dict | list | str | int | None:
     """Execute a small Node probe against the actual card source."""
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for timing card layout regression tests")

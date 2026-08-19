@@ -19,7 +19,6 @@ BUNDLED_CARD_PATH = (
     / "f1-sensor-live-data-card"
     / "f1-sensor-live-data-card.js"
 )
-RUNTIME_CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
 
 SPOILER_CARD_CLASSES = (
     "F1TyreStatisticsCard",
@@ -124,7 +123,7 @@ process.stdout.write(JSON.stringify({
 
 def _read_card(path: Path) -> str:
     if not path.exists():
-        pytest.skip(f"card JS not found at {path}")
+        pytest.fail(f"Bundled card JS not found at {path}")
     return path.read_text(encoding="utf-8")
 
 
@@ -136,7 +135,7 @@ def _overlay_install_block(source: str) -> str:
 
 def _run_overlay_probe(path: Path) -> dict:
     if not path.exists():
-        pytest.skip(f"card JS not found at {path}")
+        pytest.fail(f"Bundled card JS not found at {path}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for card overlay regression tests")
@@ -153,7 +152,7 @@ def _run_overlay_probe(path: Path) -> dict:
     return json.loads(completed.stdout)
 
 
-@pytest.mark.parametrize("card_path", (BUNDLED_CARD_PATH, RUNTIME_CARD_PATH))
+@pytest.mark.parametrize("card_path", (BUNDLED_CARD_PATH,))
 def test_no_spoiler_overlay_renders_only_when_switch_is_on(card_path: Path) -> None:
     result = _run_overlay_probe(card_path)
 
@@ -166,7 +165,7 @@ def test_no_spoiler_overlay_renders_only_when_switch_is_on(card_path: Path) -> N
     }
 
 
-@pytest.mark.parametrize("card_path", (BUNDLED_CARD_PATH, RUNTIME_CARD_PATH))
+@pytest.mark.parametrize("card_path", (BUNDLED_CARD_PATH,))
 def test_no_spoiler_overlay_installs_only_on_spoiler_cards(card_path: Path) -> None:
     source = _read_card(card_path)
     block = _overlay_install_block(source)

@@ -103,6 +103,30 @@
       "auth_token_expiring_soon": "The token expires too soon. Generate a new token and try again."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure F1 Sensor features",
+        "data": {
+          "enabled_sensors": "Enabled sensors",
+          "enable_race_control": "Enable live F1 API",
+          "race_week_start_day": "First day of race week",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
+        },
+        "data_description": {
+          "enable_race_control": "Connect to Formula 1 Live Timing only when live features are enabled.",
+          "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
+          "operation_mode": "Choose Live or local replay Development mode.",
+          "replay_file": "Absolute path to a replay dump used only in Development mode."
+        }
+      }
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
+    }
+  },
   "issues": {
     "stale_live_data_card_resources": {
       "description": "F1 Sensor now bundles and manages the live data cards. Home Assistant still has stale Lovelace resource entries for the old standalone card ({stale_resource_count} detected), which can cause duplicate or outdated card behavior. Confirm that the bundled card works, then remove the old standalone HACS dashboard repository and the stale Lovelace resource entries. Restart Home Assistant or reload Lovelace resources and hard refresh the browser if stale card UI remains.",

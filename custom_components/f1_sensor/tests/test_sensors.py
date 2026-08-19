@@ -67,7 +67,14 @@ from custom_components.f1_sensor.signalr import LiveBus
 _LOGGER = logging.getLogger(__name__)
 MAX_STATE_ATTRS_BYTES = 16384
 ROOT = Path(__file__).resolve().parents[3]
-CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+CARD_PATH = (
+    ROOT
+    / "custom_components"
+    / "f1_sensor"
+    / "www"
+    / "f1-sensor-live-data-card"
+    / "f1-sensor-live-data-card.js"
+)
 
 FIA_DOCUMENTS_CARD_PROBE_SCRIPT = r"""
 const fs = require("node:fs");
@@ -226,6 +233,7 @@ def _set_entry_context(hass, entry_id: str, *, stream_active: bool = False) -> N
 
 async def _add_sensor_and_get_state(hass, sensor):
     component = EntityComponent(_LOGGER, "sensor", hass)
+    hass.data.setdefault("_f1_sensor_test_entity_components", []).append(component)
     await component.async_add_entities([sensor])
     await hass.async_block_till_done()
     state = hass.states.get(sensor.entity_id)
@@ -251,7 +259,7 @@ def _recorder_shared_attrs(state) -> tuple[dict, int]:
 
 def _run_fia_documents_card_probe(payload: dict) -> dict | list | int | None:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for FIA documents card regression tests")
@@ -274,6 +282,8 @@ def _build_result_entry(idx: int) -> dict:
         "number": str(idx),
         "position": str(idx),
         "grid": str(idx + 1),
+        "laps": "57",
+        "Time": {"time": f"+{idx - 1}.000" if idx > 1 else "1:30:00.000"},
         "points": str(max(0, 26 - idx)),
         "status": "Finished",
         "Driver": {
@@ -312,7 +322,7 @@ def _build_season_results_data(
 
 
 @pytest.mark.asyncio
-async def test_last_race_results_sensor_exposes_grid_position(hass) -> None:
+async def test_last_race_results_sensor_exposes_classification_details(hass) -> None:
     coordinator = _build_coordinator(
         hass,
         {
@@ -329,6 +339,8 @@ async def test_last_race_results_sensor_exposes_grid_position(hass) -> None:
                                     "position": "1",
                                     "positionText": "1",
                                     "grid": "2",
+                                    "laps": "57",
+                                    "Time": {"time": "1:31:42.123"},
                                     "points": "25",
                                     "status": "Finished",
                                     "Driver": {
@@ -360,6 +372,8 @@ async def test_last_race_results_sensor_exposes_grid_position(hass) -> None:
 
     assert state.state == "Norris"
     assert state.attributes["results"][0]["grid"] == "2"
+    assert state.attributes["results"][0]["laps"] == "57"
+    assert state.attributes["results"][0]["time"] == "1:31:42.123"
 
 
 @pytest.mark.asyncio
@@ -1410,7 +1424,7 @@ async def test_next_race_sensor_caches_state_attributes(hass, monkeypatch) -> No
 
 @pytest.mark.asyncio
 async def test_track_time_sensor_exposes_machine_readable_datetimes(
-    hass, monkeypatch
+    hass, monkeypatch, cleanup_test_entity_components
 ) -> None:
     fixed_utc = datetime(2026, 3, 8, 4, 15, 30, tzinfo=UTC)
 
@@ -1453,7 +1467,7 @@ async def test_track_time_sensor_exposes_machine_readable_datetimes(
 
 @pytest.mark.asyncio
 async def test_next_race_sensor_exposes_circuit_history_attrs(
-    hass, monkeypatch
+    hass, monkeypatch, cleanup_test_entity_components
 ) -> None:
     monkeypatch.setattr(
         "custom_components.f1_sensor.helpers.dt_util.utcnow",
@@ -1690,6 +1704,8 @@ async def test_season_results_sensor_excludes_races_from_recorder(hass) -> None:
 
     assert "races" in state.attributes
     assert state.attributes["races"][0]["results"][0]["grid"] == "2"
+    assert state.attributes["races"][0]["results"][0]["laps"] == "57"
+    assert state.attributes["races"][0]["results"][0]["time"] == "1:30:00.000"
     assert state.state_info is not None
     assert "races" in state.state_info["unrecorded_attributes"]
 
@@ -1784,6 +1800,8 @@ async def test_sprint_results_sensor_excludes_races_from_recorder(hass) -> None:
 
     assert "races" in state.attributes
     assert state.attributes["races"][0]["results"][0]["grid"] == "2"
+    assert state.attributes["races"][0]["results"][0]["laps"] == "57"
+    assert state.attributes["races"][0]["results"][0]["time"] == "1:30:00.000"
     assert state.state_info is not None
     assert "races" in state.state_info["unrecorded_attributes"]
 
@@ -2109,15 +2127,9 @@ async def test_driver_positions_sensor_excludes_drivers_from_recorder(hass) -> N
 
 
 @pytest.mark.asyncio
-async def test_live_bus_stream_diagnostics_track_frames_and_keys(
-    hass, monkeypatch, caplog
-) -> None:
+async def test_live_bus_stream_diagnostics_track_frames_and_keys(hass, caplog) -> None:
     clock = {"now": 100.0}
-    monkeypatch.setattr(
-        "custom_components.f1_sensor.signalr.time.time",
-        lambda: clock["now"],
-    )
-    bus = LiveBus(hass, MagicMock())
+    bus = LiveBus(hass, MagicMock(), monotonic=lambda: clock["now"])
 
     caplog.set_level(logging.DEBUG, logger="custom_components.f1_sensor.signalr")
 
@@ -2154,7 +2166,9 @@ async def test_live_bus_stream_diagnostics_track_frames_and_keys(
 
 
 @pytest.mark.asyncio
-async def test_live_timing_mode_sensor_exposes_stream_diagnostics(hass) -> None:
+async def test_live_timing_mode_sensor_exposes_stream_diagnostics(
+    hass, cleanup_test_entity_components
+) -> None:
     entry_id = "test_entry_live_diagnostics"
     _set_entry_context(hass, entry_id, stream_active=True)
 
@@ -2234,7 +2248,9 @@ async def test_live_timing_mode_sensor_exposes_stream_diagnostics(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_f1tv_token_status_sensor_exposes_safe_metadata(hass) -> None:
+async def test_f1tv_token_status_sensor_exposes_safe_metadata(
+    hass, cleanup_test_entity_components
+) -> None:
     entry_id = "test_entry_f1tv_token_status"
     expires_at = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
     _set_entry_context(hass, entry_id, stream_active=False)
@@ -2255,7 +2271,9 @@ async def test_f1tv_token_status_sensor_exposes_safe_metadata(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_f1tv_token_expires_at_sensor_exposes_timestamp(hass) -> None:
+async def test_f1tv_token_expires_at_sensor_exposes_timestamp(
+    hass, cleanup_test_entity_components
+) -> None:
     entry_id = "test_entry_f1tv_token_expires_at"
     expires_at = (datetime.now(UTC) + timedelta(hours=2)).replace(microsecond=0)
     _set_entry_context(hass, entry_id, stream_active=False)
