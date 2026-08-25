@@ -5844,6 +5844,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 self._tyre_first_compound_logged = True
             return
 
+        if self._tyre_first_compound_logged:
+            return
         if self._tyre_missing_warning_logged:
             return
         if elapsed < self._TYRE_DATA_WARNING_THRESHOLD_S:
