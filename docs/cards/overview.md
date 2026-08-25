@@ -23,6 +23,7 @@ Public live timing works without F1TV Auth. Cards that show live Track Map, Pit 
 
 | Card | Custom element | What it shows |
 | --- | --- | --- |
+| [F1 Weekend Hub](#f1-weekend-hub-card) | `custom:f1-weekend-hub-card` | Synchronized session overview, timeline, strategy, replay telemetry, and battles |
 | [F1 Live Session](#f1-live-session-card) | `custom:f1-live-session-card` | Session status, track condition, weather, and lap counter |
 | [F1 Next Race](#f1-next-race-card) | `custom:f1-next-race-card` | Next race countdown, schedule, circuit map, weather, and track time |
 | [F1 Race Weather](#f1-race-weather-card) | `custom:f1-weather-card` | Current circuit conditions and the forecast for race start |
@@ -152,6 +153,54 @@ Setting `show_availability_notice: false` hides informational availability notic
 ---
 
 ## Card Reference
+
+### F1 Weekend Hub Card
+
+`custom:f1-weekend-hub-card`
+
+Weekend Hub brings the main race-weekend experience into one card. It changes from a pre-session overview to live analysis and then to a post-session review as session data becomes available.
+
+The context bar lets you choose a focus driver, gap reference, and spoiler protection. These choices are shared with supported F1 Sensor cards, so the Driver Lap Times card follows the selected gap reference and highlights the same driver without requiring changes to existing dashboard YAML.
+
+The card includes five views:
+
+- **Overview** shows session status, analysis readiness, active battles, and recent events.
+- **Timeline** combines session, Race Control, lap, weather, pit, radio, and analysis events.
+- **Strategy** compares clean-lap pace, degradation, compounds, teammate pace, and pit-cycle outcomes with visible confidence.
+- **Telemetry** compares up to four explicitly selected replay laps for speed, throttle, brake, gear, and time delta.
+- **Battles** separates likely on-track overtakes from neutral position exchanges when pit, penalty, lapping, or track-status context is present.
+
+```yaml
+type: custom:f1-weekend-hub-card
+title: Weekend Hub
+entry_id: auto
+theme_mode: auto
+font_style: balanced
+default_view: overview
+show_context: true
+no_spoiler_entity: input_boolean.f1_no_spoiler_mode
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `entry_id` | `auto` | F1 Sensor config entry. Keep `auto` when one entry is loaded. |
+| `title` | `Weekend Hub` | Card title |
+| `theme_mode` | `dark` | Card theme |
+| `font_style` | `wide` | Typography style |
+| `default_view` | `overview` | Initial view: `overview`, `timeline`, `strategy`, `telemetry`, or `battles` |
+| `show_context` | `true` | Show the synchronized driver, gap, and spoiler controls |
+| `no_spoiler_entity` | `input_boolean.f1_no_spoiler_mode` | Optional helper used to hide results and analysis |
+| `throttle_ms` | `500` | Minimum interval between Weekend Hub updates, from 100 to 5000 ms |
+
+:::info[Capability-aware views]
+Weekend Hub waits for the signals required by each view. Missing live authorization, an unloaded replay, or insufficient clean laps produces a specific empty state instead of estimated or invented data.
+:::
+
+:::info[Replay telemetry limits]
+Telemetry comparison works only for explicitly selected laps from the loaded replay. F1 Sensor keeps the result bounded and does not add raw telemetry to Home Assistant states or Recorder. Circuit corner annotations are unavailable until a suitable licensed source exists.
+:::
+
+---
 
 ### F1 Live Session Card
 

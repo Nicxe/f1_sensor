@@ -28,6 +28,11 @@ from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
 from . import const
+from .analysis import Phase4AnalysisStore
+from .analysis_websocket import (
+    ANALYSIS_WS_MARKER,
+    async_register_analysis_websocket,
+)
 from .auth import (
     AUTH_REPAIR_STATUSES,
     AUTH_RUNTIME_STATUS,
@@ -143,8 +148,10 @@ from .race_weather import F1RaceWeatherCoordinator
 from .replay import ReplaySignalRClient
 from .replay_mode import ReplayController, ReplayState
 from .replay_start import ReplayStartReferenceController
+from .replay_telemetry import ReplayTelemetryService
 from .runtime import (
     OPTION_KEYS,
+    AnalysisRuntime,
     CacheRuntime,
     CapabilityState,
     F1ConfigEntry,
@@ -235,6 +242,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         AUTH_PAIRING_SESSIONS,
         LAP_POSITION_WS_MARKER,
         HISTORY_WS_MARKER,
+        ANALYSIS_WS_MARKER,
         TRACK_MAP_WS_MARKER,
     }
 )
@@ -2079,6 +2087,7 @@ async def _async_setup_entry(
         if lap_position_progression_coordinator is not None:
             async_register_lap_position_websocket(hass)
         async_register_history_websocket(hass)
+        async_register_analysis_websocket(hass)
         async_register_track_map_websocket(hass)
         no_spoiler_mgr: NoSpoilerModeManager | None = hass.data.get(DOMAIN, {}).get(
             _NO_SPOILER_MANAGER_KEY
@@ -2311,6 +2320,17 @@ async def _async_setup_entry(
         session_type=_lap_analysis_session_type,
     )
     transaction.track(lap_analysis_store)
+    phase4_analysis_store = Phase4AnalysisStore(
+        live_bus,
+        lap_analysis_store,
+        source_provider=_lap_analysis_provider,
+    )
+    replay_telemetry_service = ReplayTelemetryService(
+        hass,
+        http_session,
+        getattr(replay_controller, "session_manager", None),
+    )
+    transaction.track(phase4_analysis_store, replay_telemetry_service)
 
     calibration_manager = LiveDelayCalibrationManager(
         hass,
@@ -2632,6 +2652,8 @@ async def _async_setup_entry(
         "replay_controller": replay_controller,
         "history_service": history_service,
         "lap_analysis_store": lap_analysis_store,
+        "phase4_analysis_store": phase4_analysis_store,
+        "replay_telemetry_service": replay_telemetry_service,
         "replay_reset_callbacks": _build_replay_reset_callbacks(
             track_status_coordinator,
             session_status_coordinator,
@@ -2723,11 +2745,16 @@ async def _async_setup_entry(
             stream_reasons=feature_plan.stream_reasons,
         ),
         legacy=entry_data,
+        analysis=AnalysisRuntime(
+            store=phase4_analysis_store,
+            telemetry=replay_telemetry_service,
+        ),
     )
 
     if lap_position_progression_coordinator is not None:
         async_register_lap_position_websocket(hass)
     async_register_history_websocket(hass)
+    async_register_analysis_websocket(hass)
     async_register_track_map_websocket(hass)
 
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)

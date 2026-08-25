@@ -1,4 +1,5 @@
 export const F1_CARD_DEFINITIONS = [
+  ['f1-weekend-hub-card', 'F1 Weekend Hub', 'One synchronized home for live, replay, and post-session analysis'],
   ['f1-sensor-live-data-card', 'F1 Tyres Statistics', 'F1-style tyres statistics with top times and deltas'],
   ['f1-pitstop-overview-card', 'F1 Pit Stops & Tyres', 'Pit stop overview with tyre and stop timing columns'],
   ['f1-driver-lap-times-card', 'F1 Driver Lap Times', 'Driver lap table with latest, best, and configurable lap history'],

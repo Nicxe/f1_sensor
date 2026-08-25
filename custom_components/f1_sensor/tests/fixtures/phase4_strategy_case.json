@@ -1,0 +1,23 @@
+{
+  "drivers": {
+    "4": {"name": "Lando Norris", "team": "McLaren"},
+    "81": {"name": "Oscar Piastri", "team": "McLaren"}
+  },
+  "laps": [
+    {"driver_number": 4, "lap_number": 1, "lap_duration": 90.0, "stint_index": 0, "compound": "HARD", "quality": {"clean": true, "confidence": 1.0}},
+    {"driver_number": 4, "lap_number": 2, "lap_duration": 91.0, "stint_index": 0, "compound": "HARD", "quality": {"clean": true, "confidence": 1.0}},
+    {"driver_number": 4, "lap_number": 3, "lap_duration": 92.0, "stint_index": 0, "compound": "HARD", "quality": {"clean": true, "confidence": 1.0}},
+    {"driver_number": 81, "lap_number": 1, "lap_duration": 90.5, "stint_index": 0, "compound": "HARD", "quality": {"clean": true, "confidence": 1.0}},
+    {"driver_number": 81, "lap_number": 2, "lap_duration": 91.5, "stint_index": 0, "compound": "HARD", "quality": {"clean": true, "confidence": 1.0}},
+    {"driver_number": 81, "lap_number": 3, "lap_duration": 92.5, "stint_index": 0, "compound": "HARD", "quality": {"clean": true, "confidence": 1.0}}
+  ],
+  "expected": {
+    "driver_4_median": 91.0,
+    "driver_4_slope": 1.0,
+    "driver_4_confidence": 0.6,
+    "compound_median": 91.25,
+    "compound_samples": 6,
+    "teammate_delta": 0.5,
+    "faster_driver": 4
+  }
+}

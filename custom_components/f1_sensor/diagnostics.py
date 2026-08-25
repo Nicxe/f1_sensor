@@ -264,6 +264,18 @@ async def async_get_config_entry_diagnostics(
             history_diagnostics["live_replay_laps"] = _safe_diagnostics(lap_analysis)
         if history_diagnostics:
             runtime["history"] = history_diagnostics
+        analysis_runtime = getattr(runtime_data, "analysis", None)
+        if analysis_runtime is not None:
+            analysis_diagnostics = _safe_diagnostics(
+                getattr(analysis_runtime, "store", None)
+            )
+            telemetry_diagnostics = _safe_diagnostics(
+                getattr(analysis_runtime, "telemetry", None)
+            )
+            if telemetry_diagnostics:
+                analysis_diagnostics["replay_telemetry"] = telemetry_diagnostics
+            if analysis_diagnostics:
+                runtime["analysis"] = analysis_diagnostics
         replay_runtime = getattr(runtime_data, "replay", None)
         replay_controller = getattr(replay_runtime, "controller", None)
         replay_manager = getattr(replay_controller, "session_manager", None)

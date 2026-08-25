@@ -29,6 +29,7 @@ from custom_components.f1_sensor.runtime import (
 from custom_components.f1_sensor.track_map import TrackMapRuntimeData, TrackMapStore
 
 EXPECTED_CARD_TYPES = {
+    "f1-weekend-hub-card",
     "f1-sensor-live-data-card",
     "f1-pitstop-overview-card",
     "f1-driver-lap-times-card",
