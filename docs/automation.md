@@ -43,7 +43,7 @@ Triggers are organized per sub-device. Only triggers whose backing entity is ena
 | Formation start ready | Formation start procedure is ready |
 | Overtake mode enabled | Track-wide overtake mode is enabled (2026 regulation) |
 | Overtake mode disabled | Track-wide overtake mode is disabled (2026 regulation) |
-| Session live | Session status changes (any state transition) |
+| Session live | Session status changes to `live` |
 | Track status: CLEAR | Track status becomes CLEAR |
 | Track status: YELLOW | Track status becomes YELLOW |
 | Track status: Safety Car | Track status becomes SC |
@@ -61,6 +61,12 @@ Triggers are organized per sub-device. Only triggers whose backing entity is ena
 | New race control message | A new race control message is received |
 | New FIA document | A new FIA document is published |
 | Investigation changed | An investigation or penalty status changes |
+
+### Drivers device
+
+| Trigger | Fires when |
+| --- | --- |
+| New team radio message | A new Team Radio clip is published |
 
 ### System device
 
