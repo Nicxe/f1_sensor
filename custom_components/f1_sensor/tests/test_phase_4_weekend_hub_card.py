@@ -200,6 +200,7 @@ def test_weekend_hub_registers_full_phase4_experience() -> None:
     assert "customElements.define('f1-weekend-hub-card', F1WeekendHubCard)" in source
     assert "'f1-weekend-hub-card'" in registry
     assert "platform/dashboard-context.js" in source
+    assert "installF1EntityAutoBinding(F1WeekendHubCard, {})" in source
     assert "setInterval(" not in source[source.index("class F1WeekendHubCard") :]
     for method in (
         "_renderOverview",

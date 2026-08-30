@@ -12,6 +12,7 @@ import {
   installF1DashboardContext,
   updateF1DashboardContext,
 } from './platform/dashboard-context.js';
+import { installF1EntityAutoBinding } from './platform/entity-resolver.js';
 import {
   f1Translate,
   installF1FrontendLocalization,
@@ -35193,6 +35194,143 @@ class F1SessionArchiveCardCompatibility extends F1LastRaceResultsCard {
     });
   }
 }
+
+installF1EntityAutoBinding(F1TyreStatisticsCard, {
+  drivers_entity: 'driver_list',
+  entity: 'tyre_statistics',
+});
+installF1EntityAutoBinding(F1PitStopOverviewCard, {
+  drivers_entity: 'driver_list',
+  tyres_entity: 'current_tyres',
+  pitstops_entity: 'pitstops',
+  positions_entity: 'driver_positions',
+});
+installF1EntityAutoBinding(F1DriverLapTimesCard, {
+  drivers_entity: 'driver_list',
+  positions_entity: 'driver_positions',
+});
+installF1EntityAutoBinding(F1ChampionshipPredictionDriversCard, {
+  current_entity: 'driver_standings',
+  entity: 'championship_prediction_drivers',
+  drivers_entity: 'driver_list',
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+  no_spoiler_entity: 'no_spoiler_mode',
+});
+installF1EntityAutoBinding(F1ChampionshipPredictionTeamsCard, {
+  current_entity: 'constructor_standings',
+  entity: 'championship_prediction_teams',
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+  no_spoiler_entity: 'no_spoiler_mode',
+});
+installF1EntityAutoBinding(F1SeasonProgressionCard, {
+  entity: (config) => config?.mode === 'constructors'
+    ? 'constructor_points_progression'
+    : 'driver_points_progression',
+  calendar_entity: 'current_season',
+  driver_list_entity: 'driver_list',
+});
+installF1EntityAutoBinding(F1LapPositionProgressionCard, {
+  entity: 'lap_position_progression',
+  drivers_entity: 'driver_list',
+  no_spoiler_entity: 'no_spoiler_mode',
+});
+installF1EntityAutoBinding(F1LastRaceResultsCard, {
+  entity: 'last_race_results',
+  season_results_entity: 'season_results',
+  sprint_results_entity: 'sprint_results',
+  drivers_entity: 'driver_list',
+  no_spoiler_entity: 'no_spoiler_mode',
+});
+installF1EntityAutoBinding(F1InvestigationsCard, {
+  investigations_entity: 'investigations',
+  drivers_entity: 'driver_list',
+  positions_entity: 'driver_positions',
+});
+installF1EntityAutoBinding(F1TrackLimitsCard, {
+  track_limits_entity: 'track_limits',
+  drivers_entity: 'driver_list',
+  positions_entity: 'driver_positions',
+});
+installF1EntityAutoBinding(F1LiveSessionCard, {
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+  formation_start_entity: 'formation_start',
+  lap_count_entity: 'race_lap_count',
+  track_status_entity: 'track_status',
+  weather_entity: 'track_weather',
+  next_race_entity: 'next_race',
+  session_time_remaining_entity: 'session_time_remaining',
+  session_time_elapsed_entity: 'session_time_elapsed',
+  overtake_mode_entity: 'overtake_mode',
+  straight_mode_entity: 'straight_mode',
+});
+installF1EntityAutoBinding(F1ReplayControlCard, {
+  status_entity: 'replay_status',
+  year_entity: 'replay_year_select',
+  session_entity: 'replay_session_select',
+  start_reference_entity: 'replay_start_reference',
+  load_button_entity: 'replay_load',
+  play_button_entity: 'replay_play',
+  pause_button_entity: 'replay_pause',
+  back_button_entity: 'replay_back_30',
+  forward_button_entity: 'replay_forward_30',
+  stop_button_entity: 'replay_stop',
+  refresh_button_entity: 'replay_refresh',
+  player_entity: 'replay_player',
+});
+installF1EntityAutoBinding(F1NextRaceCard, {
+  next_race_entity: 'next_race',
+  weather_entity: 'weather',
+  track_weather_entity: 'track_weather',
+  current_session_entity: 'current_session',
+  session_status_entity: 'session_status',
+});
+installF1EntityAutoBinding(F1WeatherCard, {
+  weather_entity: 'weather',
+  track_weather_entity: 'track_weather',
+  next_race_entity: 'next_race',
+  session_status_entity: 'session_status',
+});
+installF1EntityAutoBinding(F1SeasonCalendarCard, {
+  current_season_entity: 'current_season',
+});
+installF1EntityAutoBinding(F1RaceControlCard, { entity: 'race_control' });
+installF1EntityAutoBinding(F1FiaDocumentsCard, {
+  entity: 'fia_documents',
+  last_race_entity: 'last_race_results',
+});
+installF1EntityAutoBinding(F1QualifyingTimingCard, {
+  positions_entity: 'driver_positions',
+  tyres_entity: 'current_tyres',
+  drivers_entity: 'driver_list',
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+});
+installF1EntityAutoBinding(F1PracticeTimingCard, {
+  positions_entity: 'driver_positions',
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+  drivers_entity: 'driver_list',
+  tyres_entity: 'current_tyres',
+});
+installF1EntityAutoBinding(F1RaceLapCard, {
+  positions_entity: 'driver_positions',
+  lap_count_entity: 'race_lap_count',
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+  drivers_entity: 'driver_list',
+  tyres_entity: 'current_tyres',
+  pitstops_entity: 'pitstops',
+});
+installF1EntityAutoBinding(F1StartingGridCard, { entity: 'starting_grid' });
+installF1EntityAutoBinding(F1TrackMapCard, {
+  lap_count_entity: 'race_lap_count',
+  driver_positions_entity: 'driver_positions',
+  track_status_entity: 'track_status',
+});
+installF1EntityAutoBinding(F1WeekendHubCard, {});
 
 installSectionsAutoHeight(F1WeekendHubCard, {
   columns: 12,

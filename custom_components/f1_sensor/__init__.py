@@ -93,6 +93,10 @@ from .entity import (
     register_entry_name_settings,
     unregister_entry_name_settings,
 )
+from .entity_map_websocket import (
+    ENTITY_MAP_WS_MARKER,
+    async_register_entity_map_websocket,
+)
 from .feature_plan import FeaturePlan, build_feature_plan
 from .formation_start import FormationStartTracker
 from .frontend import async_ensure_live_data_card_frontend
@@ -244,6 +248,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         HISTORY_WS_MARKER,
         ANALYSIS_WS_MARKER,
         TRACK_MAP_WS_MARKER,
+        ENTITY_MAP_WS_MARKER,
     }
 )
 _FINISHING_PLUS_LAPS_RE = re.compile(r"^\+\d+\s+Laps?$", re.IGNORECASE)
@@ -2089,6 +2094,7 @@ async def _async_setup_entry(
         async_register_history_websocket(hass)
         async_register_analysis_websocket(hass)
         async_register_track_map_websocket(hass)
+        async_register_entity_map_websocket(hass)
         no_spoiler_mgr: NoSpoilerModeManager | None = hass.data.get(DOMAIN, {}).get(
             _NO_SPOILER_MANAGER_KEY
         )
@@ -2758,6 +2764,7 @@ async def _async_setup_entry(
     async_register_history_websocket(hass)
     async_register_analysis_websocket(hass)
     async_register_track_map_websocket(hass)
+    async_register_entity_map_websocket(hass)
 
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
     if isinstance(hass_data, dict):
