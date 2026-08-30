@@ -23,7 +23,12 @@
       "investigation_changed": "Stato investigazione cambiato",
       "new_team_radio": "Nuovo team radio",
       "live_timing_online": "Telemetria online",
-      "live_timing_offline": "Telemetria offline"
+      "live_timing_offline": "Telemetria offline",
+      "favorite_driver_position_gained": "Favorite driver gained a position",
+      "favorite_driver_position_lost": "Favorite driver lost a position",
+      "favorite_driver_entered_pits": "Favorite driver entered the pits",
+      "favorite_driver_exited_pits": "Favorite driver exited the pits",
+      "favorite_driver_retired": "Favorite driver retired"
     }
   },
   "config": {
@@ -274,6 +279,9 @@
       },
       "starting_grid": {
         "name": "Starting grid"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "weather": {
@@ -346,6 +354,9 @@
       },
       "replay_start_reference": {
         "name": "Riferimento avvio sessione"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "binary_sensor": {

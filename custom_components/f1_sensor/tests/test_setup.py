@@ -1470,12 +1470,13 @@ async def test_legacy_enabled_sensor_migration_is_lossless_and_idempotent(hass) 
     assert await async_migrate_entry(hass, entry)
     first_data = dict(entry.data)
 
-    assert entry.version == 3
+    assert entry.version == 4
     assert entry.unique_id == DOMAIN
     assert "disabled_sensors" not in entry.data
     assert "next_race" not in entry.options["disabled_sensors"]
     assert "driver_standings" not in entry.options["disabled_sensors"]
     assert "team_radio" in entry.options["disabled_sensors"]
+    assert "favorite_driver" in entry.options["disabled_sensors"]
     assert entry.data["enabled_sensors"][-1] == "retired_key"
 
     assert await async_migrate_entry(hass, entry)

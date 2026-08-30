@@ -21,6 +21,7 @@ def test_entry_storage_keys_are_narrowly_scoped() -> None:
         "f1_sensor_entry-123_live_delay_reference_v1",
         "f1_sensor_entry-123_replay_start_reference_v1",
         "f1_sensor_entry-123_race_control_log_v1",
+        "f1_sensor_entry-123_favorite_driver_v1",
     )
 
 

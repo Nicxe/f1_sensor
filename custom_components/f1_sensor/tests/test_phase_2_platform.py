@@ -205,7 +205,7 @@ async def test_options_migration_preserves_identity_and_connection_data(hass) ->
 
     assert await async_migrate_entry(hass, entry)
 
-    assert entry.version == 3
+    assert entry.version == 4
     assert entry.entry_id == original_entry_id
     assert entry.unique_id == DOMAIN
     assert entry.data == {
@@ -214,7 +214,7 @@ async def test_options_migration_preserves_identity_and_connection_data(hass) ->
         "entity_name_mode": "localized",
     }
     assert entry.options["enable_race_control"] is True
-    assert entry.options["disabled_sensors"] == ["team_radio"]
+    assert entry.options["disabled_sensors"] == ["favorite_driver", "team_radio"]
     assert entry.options["live_delay_seconds"] == 15
     assert entry.options[CONF_OPERATION_MODE] == OPERATION_MODE_LIVE
 

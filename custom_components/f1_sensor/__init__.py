@@ -74,6 +74,7 @@ from .const import (
     LIVETIMING_INDEX_URL,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
+    OPT_IN_SENSOR_KEYS,
     PLATFORMS,
     RACE_SWITCH_GRACE,
     RCM_OVERTAKE_DISABLED,
@@ -97,6 +98,7 @@ from .entity_map_websocket import (
     ENTITY_MAP_WS_MARKER,
     async_register_entity_map_websocket,
 )
+from .favorite_driver import FavoriteDriverController
 from .feature_plan import FeaturePlan, build_feature_plan
 from .formation_start import FormationStartTracker
 from .frontend import async_ensure_live_data_card_frontend
@@ -1391,7 +1393,7 @@ async def _async_close_shared_client_if_unused(hass: HomeAssistant) -> None:
 
 async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
     """Migrate legacy sensor allowlists and establish single-instance identity."""
-    if entry.version > 3:
+    if entry.version > 4:
         _LOGGER.error("Cannot migrate config entry from version %s", entry.version)
         return False
 
@@ -1419,6 +1421,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
                 data.pop(key)
                 changed = True
 
+    if entry.version < 4:
+        disabled = set(options.get("disabled_sensors") or [])
+        disabled.update(OPT_IN_SENSOR_KEYS)
+        options["disabled_sensors"] = sorted(disabled)
+        changed = True
+
     unique_id = entry.unique_id
     if unique_id is None:
         conflicting = any(
@@ -1429,13 +1437,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
             unique_id = DOMAIN
             changed = True
 
-    if changed or entry.version != 3:
+    if changed or entry.version != 4:
         hass.config_entries.async_update_entry(
             entry,
             data=data,
             options=options,
             unique_id=unique_id,
-            version=3,
+            version=4,
         )
     return True
 
@@ -1551,7 +1559,8 @@ async def _async_setup_entry(
     await async_prepare_translation_names(hass, entry.entry_id)
     # Build the effective set of enabled sensors.
     # ``disabled_sensors`` stores the keys the user explicitly unchecked.
-    # Everything else (including new keys added in future versions) is enabled.
+    # Everything else is enabled; migrations add explicitly opt-in keys to the
+    # disabled set until the user chooses them in integration options.
     raw_disabled = settings.get("disabled_sensors") or []
     disabled: set[str] = {k for k in raw_disabled if k in SUPPORTED_SENSOR_KEYS}
     enabled = SUPPORTED_SENSOR_KEYS - disabled
@@ -2521,6 +2530,20 @@ async def _async_setup_entry(
         transaction.track(drivers_coordinator)
         await drivers_coordinator.async_config_entry_first_refresh()
 
+    favorite_driver_controller = None
+    if (
+        drivers_coordinator is not None
+        and "favorite_driver" in feature_plan.active_live_features
+    ):
+        favorite_driver_controller = FavoriteDriverController(
+            hass,
+            entry.entry_id,
+            drivers_coordinator,
+        )
+        await favorite_driver_controller.async_load()
+        favorite_driver_controller.start()
+        transaction.track(favorite_driver_controller)
+
     if feature_plan.needs("top_three"):
         top_three_coordinator = TopThreeCoordinator(
             hass,
@@ -2630,6 +2653,7 @@ async def _async_setup_entry(
         "pitstop_coordinator": pitstop_coordinator,
         "championship_prediction_coordinator": championship_prediction_coordinator,
         "drivers_coordinator": drivers_coordinator,
+        "favorite_driver_controller": favorite_driver_controller,
         "fia_documents_coordinator": fia_documents_coordinator,
         "track_map_store": track_map_store,
         "track_map_replay_adapter": track_map_replay_adapter,
