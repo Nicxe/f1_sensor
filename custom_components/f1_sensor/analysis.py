@@ -29,12 +29,14 @@ PHASE4_ANALYSIS_STREAMS = frozenset(
     }
 )
 MAX_TIMELINE_EVENTS = 500
-MAX_STRATEGY_LAPS = 600
+MAX_STRATEGY_LAPS = 2200
 MAX_EXCHANGES = 120
 MAX_BATTLES = 60
 BATTLE_GAP_SECONDS = 1.0
+OVERTAKE_GAP_SECONDS = 2.0
 BATTLE_START_FRAMES = 3
 BATTLE_END_FRAMES = 2
+POSITION_EXCHANGE_CONFIRM_FRAMES = 2
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -62,6 +64,12 @@ def _text(value: object) -> str | None:
     return text or None
 
 
+def _value_text(value: object) -> str | None:
+    if isinstance(value, Mapping):
+        value = value.get("Value")
+    return _text(value)
+
+
 def _as_int(value: object) -> int | None:
     if isinstance(value, bool) or value is None:
         return None
@@ -70,6 +78,12 @@ def _as_int(value: object) -> int | None:
     with suppress(TypeError, ValueError):
         return int(str(value).strip())
     return None
+
+
+def _as_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _as_float(value: object) -> float | None:
@@ -425,6 +439,8 @@ def analyze_strategy(
     driver_adjusted: dict[int, list[float]] = {}
     compound_times: dict[str, list[float]] = {}
     compound_age_samples: dict[str, list[tuple[float, float]]] = {}
+    observed_compounds: set[str] = set()
+    excluded_reason_counts: dict[str, int] = {}
     for (driver, stint_index), stint_laps in sorted(grouped.items()):
         ordered = sorted(
             stint_laps, key=lambda item: _as_int(item.get("lap_number")) or 0
@@ -436,6 +452,7 @@ def analyze_strategy(
         ]
         clean_samples: list[tuple[int, float]] = []
         quality_confidence: list[float] = []
+        stint_excluded_reason_counts: dict[str, int] = {}
         for item in ordered:
             quality = _mapping(item.get("quality"))
             duration = _as_float(item.get("lap_duration"))
@@ -445,11 +462,27 @@ def analyze_strategy(
                 or duration is None
                 or lap_number is None
             ):
+                reasons = quality.get("reasons")
+                normalized_reasons = (
+                    [str(reason) for reason in reasons if _text(reason)]
+                    if isinstance(reasons, Sequence)
+                    and not isinstance(reasons, (str, bytes))
+                    else ["quality_not_clean"]
+                )
+                for reason in normalized_reasons or ["quality_not_clean"]:
+                    stint_excluded_reason_counts[reason] = (
+                        stint_excluded_reason_counts.get(reason, 0) + 1
+                    )
+                    excluded_reason_counts[reason] = (
+                        excluded_reason_counts.get(reason, 0) + 1
+                    )
                 continue
             clean_samples.append((lap_number, duration))
             quality_confidence.append(_as_float(quality.get("confidence")) or 0.0)
         adjusted = [item[1] for item in clean_samples]
         compound = (_text(ordered[-1].get("compound")) or "UNKNOWN").upper()
+        if compound != "UNKNOWN":
+            observed_compounds.add(compound)
         sample_factor = min(1.0, len(adjusted) / 5)
         quality_factor = (
             sum(quality_confidence) / len(quality_confidence)
@@ -490,6 +523,9 @@ def analyze_strategy(
                 "confidence": confidence,
                 "confidence_label": _confidence_label(confidence),
                 "excluded_laps": max(0, len(raw_samples) - len(adjusted)),
+                "excluded_reason_counts": dict(
+                    sorted(stint_excluded_reason_counts.items())
+                ),
             }
         )
 
@@ -567,9 +603,18 @@ def analyze_strategy(
             }
         )
 
+    raw_lap_count = sum(item["raw_sample_count"] for item in stints)
+    clean_lap_count = sum(item["sample_count"] for item in stints)
     return {
-        "status": "ready" if stints else "waiting_for_clean_laps",
+        "status": "ready" if clean_lap_count else "waiting_for_clean_laps",
         "analysis_type": "local_estimate",
+        "coverage": {
+            "raw_laps": raw_lap_count,
+            "clean_laps": clean_lap_count,
+            "excluded_laps": max(0, raw_lap_count - clean_lap_count),
+            "observed_compounds": sorted(observed_compounds),
+            "excluded_reason_counts": dict(sorted(excluded_reason_counts.items())),
+        },
         "stints": stints,
         "compound_comparison": compound_comparison,
         "compound_crossover_indications": _compound_crossover_indications(
@@ -609,13 +654,16 @@ class Phase4AnalysisStore:
             OrderedDict()
         )
         self._previous_positions: dict[int, int] = {}
+        self._position_candidate: dict[int, int] = {}
+        self._position_candidate_frames = 0
         self._exchange_history: list[dict[str, Any]] = []
+        self._exchange_total = 0
         self._battle_counts: dict[tuple[int, int], int] = {}
         self._battle_end_counts: dict[tuple[int, int], int] = {}
         self._active_battles: dict[tuple[int, int], dict[str, Any]] = {}
         self._battle_history: list[dict[str, Any]] = []
-        self._pit_context: set[int] = set()
-        self._penalty_context: set[int] = set()
+        self._pit_context: dict[int, set[int]] = {}
+        self._penalty_context: dict[int, set[int]] = {}
         self._observed_streams: set[str] = set()
         self._listeners: list[Callable[[], None]] = []
         self._unsubs: list[Callable[[], None]] = []
@@ -713,17 +761,30 @@ class Phase4AnalysisStore:
 
     def _reset_session(self) -> None:
         self._timeline.clear()
+        self._session_status = None
+        self._track_status = None
+        self._drivers.clear()
         self._timing.clear()
         self._timing_app.clear()
         self._strategy_laps.clear()
         self._previous_positions.clear()
+        self._position_candidate.clear()
+        self._position_candidate_frames = 0
         self._exchange_history.clear()
+        self._exchange_total = 0
         self._battle_counts.clear()
         self._battle_end_counts.clear()
         self._active_battles.clear()
         self._battle_history.clear()
         self._pit_context.clear()
         self._penalty_context.clear()
+        self._observed_streams.clear()
+
+    def reset_for_replay(self) -> None:
+        """Reset all accumulated state before replay playback is rebuilt."""
+        self._reset_session()
+        self._session_id = None
+        self._session_name = None
 
     def _on_session_info(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):
@@ -737,9 +798,21 @@ class Phase4AnalysisStore:
             _text(payload.get("Name")),
         )
         session_id = ":".join(part for part in parts if part)
+        restarting_same_replay = (
+            self._provider() == "replay"
+            and session_id
+            and session_id == self._session_id
+            and _text(payload.get("SessionStatus")) == "Inactive"
+            and self._session_status is not None
+        )
+        if restarting_same_replay:
+            self._reset_session()
+            self._lap_analysis.reset_session()
+            self._observed_streams.add("SessionInfo")
         if session_id and session_id != self._session_id:
             if self._session_id is not None:
                 self._reset_session()
+                self._observed_streams.add("SessionInfo")
             self._session_id = session_id
         self._session_name = _text(payload.get("Name") or payload.get("Type"))
         if self._session_id:
@@ -769,6 +842,8 @@ class Phase4AnalysisStore:
             severity="success" if status in {"Started", "Green"} else "info",
             final=final,
         )
+        if final:
+            self._close_active_battles_for_session_end()
 
     def _on_track_status(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):
@@ -795,8 +870,17 @@ class Phase4AnalysisStore:
             driver = _as_int(item.get("RacingNumber") or key)
             if driver is None:
                 continue
-            self._drivers[str(driver)] = {
-                "driver_number": driver,
+            target = self._drivers.setdefault(
+                str(driver),
+                {
+                    "driver_number": driver,
+                    "name": None,
+                    "tla": None,
+                    "team": None,
+                    "team_color": None,
+                },
+            )
+            updates = {
                 "name": _text(
                     item.get("FullName") or item.get("BroadcastName") or item.get("Tla")
                 ),
@@ -804,6 +888,9 @@ class Phase4AnalysisStore:
                 "team": _text(item.get("TeamName")),
                 "team_color": _text(item.get("TeamColour")),
             }
+            for name, value in updates.items():
+                if value is not None:
+                    target[name] = value
 
     def _on_timing_app(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):
@@ -815,10 +902,13 @@ class Phase4AnalysisStore:
     def _on_timing_data(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):
             return
+        updated_drivers: list[int] = []
         for key, item in _items(payload.get("Lines")):
             target = self._timing.setdefault(key, {})
             _deep_merge(target, item)
-        self._capture_strategy_laps()
+            if (driver := _as_int(key)) is not None:
+                updated_drivers.append(driver)
+        self._capture_strategy_laps(updated_drivers)
         self._detect_position_exchanges()
         self._detect_battles()
 
@@ -830,25 +920,48 @@ class Phase4AnalysisStore:
         key, stint = stints[-1]
         return _as_int(key) or 0, stint
 
-    def _capture_strategy_laps(self) -> None:
-        snapshot = self._lap_analysis.snapshot()
-        for lap in snapshot.get("laps", []):
+    def _capture_strategy_laps(self, drivers: Sequence[int] | None = None) -> None:
+        if drivers is None:
+            laps = self._lap_analysis.snapshot().get("laps", [])
+        else:
+            laps = []
+            for driver in set(drivers):
+                timing = self._timing.get(str(driver), {})
+                lap_number = _as_int(timing.get("NumberOfLaps"))
+                if lap_number is None:
+                    continue
+                lap = self._lap_analysis.get_lap(driver, lap_number)
+                if lap is not None:
+                    laps.append(lap)
+        for lap in laps:
             if not isinstance(lap, Mapping):
                 continue
             driver = _as_int(lap.get("driver_number"))
             lap_number = _as_int(lap.get("lap_number"))
             if driver is None or lap_number is None:
                 continue
-            stint_index, stint = self._current_stint(driver)
             timing = self._timing.get(str(driver), {})
-            record = {
-                **dict(lap),
-                "stint_index": stint_index,
-                "compound": _text(stint.get("Compound")),
-                "tyre_age_at_start": _as_int(stint.get("StartLaps")),
-                "position": _as_int(timing.get("Position")),
-            }
             key = (driver, lap_number)
+            existing = self._strategy_laps.get(key)
+            if existing is None:
+                stint_index, stint = self._current_stint(driver)
+                compound = _text(stint.get("Compound"))
+                tyre_age_at_start = _as_int(stint.get("StartLaps"))
+                position = _as_int(timing.get("Position"))
+            else:
+                stint_index = _as_int(existing.get("stint_index")) or 0
+                compound = _text(existing.get("compound"))
+                tyre_age_at_start = _as_int(existing.get("tyre_age_at_start"))
+                position = _as_int(existing.get("position"))
+            lap_contract = dict(lap)
+            lap_contract.pop("source_payload", None)
+            record = {
+                **lap_contract,
+                "stint_index": stint_index,
+                "compound": compound,
+                "tyre_age_at_start": tyre_age_at_start,
+                "position": position,
+            }
             is_new = key not in self._strategy_laps
             self._strategy_laps[key] = record
             self._strategy_laps.move_to_end(key)
@@ -878,7 +991,8 @@ class Phase4AnalysisStore:
             for item_key, item in _items(driver_entries):
                 pit = _mapping(item.get("PitStop")) or item
                 lap = _as_int(pit.get("Lap") or item.get("Lap"))
-                self._pit_context.add(driver)
+                if lap is not None:
+                    self._pit_context.setdefault(driver, set()).add(lap)
                 self._event(
                     identity=f"pit:{driver}:{lap}:{item_key}",
                     category="pit",
@@ -914,7 +1028,10 @@ class Phase4AnalysisStore:
                 )
             )[:4]
             if any(word in upper for word in ("PENALTY", "INVESTIGATION", "NOTED")):
-                self._penalty_context.update(drivers)
+                lap = _as_int(item.get("Lap"))
+                if lap is not None:
+                    for driver in drivers:
+                        self._penalty_context.setdefault(driver, set()).add(lap)
             if "DELETED" in upper:
                 kind = "lap_deleted"
                 category = "lap_control"
@@ -942,6 +1059,7 @@ class Phase4AnalysisStore:
                 severity=severity,
                 signals=("RaceControlMessages",),
             )
+        self._capture_strategy_laps()
 
     def _on_weather(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):
@@ -988,14 +1106,39 @@ class Phase4AnalysisStore:
                 positions[driver] = position
         return positions
 
+    @staticmethod
+    def _has_lap_context(
+        context: Mapping[int, set[int]], driver: int, lap_number: int | None
+    ) -> bool:
+        if lap_number is None:
+            return False
+        return any(
+            abs(context_lap - lap_number) <= 1
+            for context_lap in context.get(driver, ())
+        )
+
     def _detect_position_exchanges(self) -> None:
         current = self._position_snapshot()
-        previous = self._previous_positions
         if len(set(current.values())) != len(current):
             return
-        if len(current) < 2 or len(previous) < 2:
+        if len(current) < 2:
+            return
+        if len(self._previous_positions) < 2:
             self._previous_positions = current
             return
+        if current == self._previous_positions:
+            self._position_candidate.clear()
+            self._position_candidate_frames = 0
+            return
+        if current == self._position_candidate:
+            self._position_candidate_frames += 1
+        else:
+            self._position_candidate = dict(current)
+            self._position_candidate_frames = 1
+        if self._position_candidate_frames < POSITION_EXCHANGE_CONFIRM_FRAMES:
+            return
+
+        previous = self._previous_positions
         drivers = sorted(set(current) & set(previous))
         for index, first in enumerate(drivers):
             for second in drivers[index + 1 :]:
@@ -1003,31 +1146,54 @@ class Phase4AnalysisStore:
                 after = current[first] - current[second]
                 if before == 0 or after == 0 or before * after >= 0:
                     continue
-                changed = (
-                    first
-                    if abs(current[first] - previous[first])
-                    >= abs(current[second] - previous[second])
-                    else second
-                )
-                context_drivers = {first, second}
-                pit = bool(context_drivers & self._pit_context)
-                penalty = bool(context_drivers & self._penalty_context)
+                changed = first if before > 0 and after < 0 else second
                 first_laps = _as_int(
                     self._timing.get(str(first), {}).get("NumberOfLaps")
                 )
                 second_laps = _as_int(
                     self._timing.get(str(second), {}).get("NumberOfLaps")
                 )
+                if (
+                    first_laps is None
+                    or first_laps <= 0
+                    or second_laps is None
+                    or second_laps <= 0
+                ):
+                    continue
+                first_state = self._timing.get(str(first), {})
+                second_state = self._timing.get(str(second), {})
+                pit = self._has_lap_context(
+                    self._pit_context, first, first_laps
+                ) or self._has_lap_context(self._pit_context, second, second_laps)
+                pit_state = any(
+                    _as_bool(state.get("InPit")) or _as_bool(state.get("PitOut"))
+                    for state in (first_state, second_state)
+                )
+                penalty = self._has_lap_context(
+                    self._penalty_context, first, first_laps
+                ) or self._has_lap_context(self._penalty_context, second, second_laps)
                 lapping = (
                     first_laps is not None
                     and second_laps is not None
                     and first_laps != second_laps
                 )
                 disrupted = self._track_status in {"2", "4", "5", "6", "7"}
-                on_track = not any((pit, penalty, lapping, disrupted))
+                behind = first if current[first] > current[second] else second
+                exchange_gap = self._gap_to_ahead(behind)
+                close_gap = (
+                    exchange_gap is not None
+                    and 0 <= exchange_gap <= OVERTAKE_GAP_SECONDS
+                )
+                on_track = close_gap and not any(
+                    (pit, pit_state, penalty, lapping, disrupted)
+                )
                 signals = ["TimingData"]
+                if close_gap:
+                    signals.append("close_gap")
                 if pit:
                     signals.append("pit_context")
+                if pit_state:
+                    signals.append("pit_state")
                 if penalty:
                     signals.append("penalty_context")
                 if lapping:
@@ -1049,6 +1215,7 @@ class Phase4AnalysisStore:
                     else "position_exchange",
                     "driver_numbers": [first, second],
                     "gaining_driver": changed,
+                    "gap_seconds": exchange_gap,
                     "positions_before": {
                         str(first): previous[first],
                         str(second): previous[second],
@@ -1060,6 +1227,7 @@ class Phase4AnalysisStore:
                     "confidence": 0.85 if on_track else 0.55,
                     "supporting_signals": signals,
                 }
+                self._exchange_total += 1
                 self._exchange_history.append(exchange)
                 self._exchange_history = self._exchange_history[-MAX_EXCHANGES:]
                 self._event(
@@ -1072,15 +1240,38 @@ class Phase4AnalysisStore:
                     signals=tuple(signals),
                 )
         self._previous_positions = current
-        self._pit_context.clear()
-        self._penalty_context.clear()
+        self._position_candidate.clear()
+        self._position_candidate_frames = 0
 
     def _gap_to_ahead(self, driver: int) -> float | None:
         state = self._timing.get(str(driver), {})
-        return _as_float(
-            state.get("IntervalToPositionAhead")
-            or state.get("Interval")
-            or state.get("GapToLeader")
+        return _as_float(state.get("IntervalToPositionAhead") or state.get("Interval"))
+
+    def _timing_snapshot(self) -> list[dict[str, Any]]:
+        timing: list[dict[str, Any]] = []
+        for driver_key, state in self._timing.items():
+            driver = _as_int(driver_key)
+            if driver is None:
+                continue
+            timing.append(
+                {
+                    "driver_number": driver,
+                    "position": _as_int(state.get("Position")),
+                    "laps_completed": _as_int(state.get("NumberOfLaps")),
+                    "gap_to_leader": _value_text(state.get("GapToLeader")),
+                    "interval_to_ahead": _value_text(
+                        state.get("IntervalToPositionAhead") or state.get("Interval")
+                    ),
+                    "last_lap": _value_text(state.get("LastLapTime")),
+                }
+            )
+        return sorted(
+            timing,
+            key=lambda item: (
+                item["position"] is None,
+                item["position"] or 999,
+                item["driver_number"],
+            ),
         )
 
     def _detect_battles(self) -> None:
@@ -1098,16 +1289,26 @@ class Phase4AnalysisStore:
                 None,
             )
             gap = self._gap_to_ahead(behind)
-            if ahead is None or gap is None or gap > BATTLE_GAP_SECONDS:
+            behind_laps = _as_int(self._timing.get(str(behind), {}).get("NumberOfLaps"))
+            ahead_laps = _as_int(self._timing.get(str(ahead), {}).get("NumberOfLaps"))
+            if (
+                ahead is None
+                or behind_laps is None
+                or behind_laps <= 0
+                or ahead_laps is None
+                or ahead_laps != behind_laps
+                or gap is None
+                or gap > BATTLE_GAP_SECONDS
+            ):
                 continue
             pair = (ahead, behind)
             close_pairs.add(pair)
             self._battle_counts[pair] = self._battle_counts.get(pair, 0) + 1
             self._battle_end_counts[pair] = 0
-            if (
-                self._battle_counts[pair] < BATTLE_START_FRAMES
-                or pair in self._active_battles
-            ):
+            if self._battle_counts[pair] < BATTLE_START_FRAMES:
+                continue
+            if pair in self._active_battles:
+                self._active_battles[pair]["gap_seconds"] = gap
                 continue
             battle = {
                 "battle_id": _stable_id(
@@ -1160,6 +1361,31 @@ class Phase4AnalysisStore:
             self._battle_counts.pop(pair, None)
             self._battle_end_counts.pop(pair, None)
 
+    def _close_active_battles_for_session_end(self) -> None:
+        for pair, battle in tuple(self._active_battles.items()):
+            ended = {
+                **battle,
+                "kind": "battle_ended",
+                "active": False,
+                "confidence": 0.75,
+                "supporting_signals": ["SessionStatus", "session_finished"],
+            }
+            self._battle_history.append(ended)
+            self._battle_history = self._battle_history[-MAX_BATTLES:]
+            self._event(
+                identity=f"{battle['battle_id']}:session-ended",
+                category="battle",
+                kind="battle_ended",
+                title=f"Battle ended: car {pair[0]} vs {pair[1]}",
+                drivers=pair,
+                confidence=0.75,
+                signals=("SessionStatus", "session_finished"),
+                final=True,
+            )
+        self._active_battles.clear()
+        self._battle_counts.clear()
+        self._battle_end_counts.clear()
+
     def _phase(self) -> str:
         if self._session_status in {"Started", "Green", "GreenFlag"}:
             return "live"
@@ -1179,12 +1405,15 @@ class Phase4AnalysisStore:
             "session_status": self._session_status,
             "phase": self._phase(),
             "drivers": list(self._drivers.values()),
+            "timing": self._timing_snapshot(),
             "timeline": {
                 "events": self._timeline.snapshot(),
                 "count": len(self._timeline.snapshot()),
             },
             "strategy": strategy,
             "position_exchanges": list(self._exchange_history),
+            "position_exchange_count": self._exchange_total,
+            "position_exchange_retained_count": len(self._exchange_history),
             "battles": {
                 "active": active_battles,
                 "history": list(self._battle_history),
@@ -1215,6 +1444,7 @@ class Phase4AnalysisStore:
             "timeline_events": len(self._timeline.snapshot()),
             "strategy_laps": len(self._strategy_laps),
             "position_exchanges": len(self._exchange_history),
+            "position_exchanges_total": self._exchange_total,
             "active_battles": len(self._active_battles),
             "observed_streams": sorted(self._observed_streams),
         }

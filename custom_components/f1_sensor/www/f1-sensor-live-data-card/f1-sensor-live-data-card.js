@@ -18310,7 +18310,7 @@ class F1ReplayControlCard extends LitElement {
             @change=${(ev) => this._selectOption(entityId, ev.target.value)}
           >
             ${disabled ? html`<option value="">Unavailable</option>` : options.map((option) => html`
-              <option value=${option}>${option}</option>
+              <option value=${option} ?selected=${option === currentValue}>${option}</option>
             `)}
           </select>
         </span>
@@ -34248,6 +34248,23 @@ class F1WeekendHubCard extends LitElement {
       color: var(--f1-marker-red-text);
     }
 
+    .wh-gap-readout {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 18px;
+      color: var(--f1-card-muted);
+      font-size: 9px;
+      line-height: 1.3;
+    }
+
+    .wh-gap-readout strong {
+      color: var(--f1-card-text);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
     .wh-tabs {
       display: flex;
       gap: 2px;
@@ -34659,6 +34676,9 @@ class F1WeekendHubCard extends LitElement {
 
   _phaseCopy() {
     const phase = this._snapshot?.phase || 'before';
+    if (this._snapshot?.provider === 'replay' && phase === 'live') {
+      return ['Replay running', 'Timing, strategy and race events update from replay'];
+    }
     if (phase === 'live') return ['Live session', 'Timing, strategy and race events update together'];
     if (phase === 'after') return ['Session review', 'Explore the completed session without losing context'];
     return ['Weekend ready', 'Analysis fills in as official session signals arrive'];
@@ -34712,6 +34732,7 @@ class F1WeekendHubCard extends LitElement {
   _renderShell(content) {
     const [kicker, subtitle] = this._phaseCopy();
     const live = this._snapshot?.phase === 'live';
+    const replay = this._snapshot?.provider === 'replay';
     const views = [
       ['overview', 'Overview'],
       ['timeline', 'Timeline'],
@@ -34729,7 +34750,7 @@ class F1WeekendHubCard extends LitElement {
               <div class="wh-subtitle">${this._snapshot?.session_name || subtitle}</div>
             </div>
             <div class="wh-live-badge ${live ? 'live' : ''}">
-              <span class="wh-live-dot"></span>${live ? 'Live' : (this._snapshot?.phase || 'Ready')}
+              <span class="wh-live-dot"></span>${replay ? 'Replay' : (live ? 'Live' : (this._snapshot?.phase || 'Ready'))}
             </div>
           </header>
           ${this.config?.show_context !== false && this._snapshot ? this._renderContext() : null}
@@ -34750,13 +34771,16 @@ class F1WeekendHubCard extends LitElement {
     const drivers = Array.isArray(this._snapshot?.drivers) ? this._snapshot.drivers : [];
     const driver = this._f1DashboardContext?.driver_number;
     const gap = this._f1DashboardContext?.gap_mode || 'ahead';
+    const focusedTiming = this._focusedTiming();
+    const gapValue = this._gapReferenceValue(focusedTiming);
+    const gapLabel = !driver ? 'Select a focus driver' : gap === 'leader' ? 'to leader' : gap === 'ahead' ? 'to car ahead' : 'gap hidden';
     return html`
       <div class="wh-context">
         <label class="wh-control">
           <span class="wh-control-label">Focus driver</span>
           <select class="wh-select" .value=${driver ? String(driver) : ''} @change=${(ev) => this._setContext({ driver_number: ev.target.value || null })}>
-            <option value="">All drivers</option>
-            ${drivers.map((item) => html`<option value=${item.driver_number}>${item.tla || item.name || `Car ${item.driver_number}`} · ${item.driver_number}</option>`)}
+            <option value="" ?selected=${!driver}>All drivers</option>
+            ${drivers.map((item) => html`<option value=${item.driver_number} ?selected=${String(item.driver_number) === String(driver)}>${item.tla || item.name || `Car ${item.driver_number}`} · ${item.driver_number}</option>`)}
           </select>
         </label>
         <div class="wh-control">
@@ -34766,6 +34790,7 @@ class F1WeekendHubCard extends LitElement {
               <button type="button" class=${gap === key ? 'active' : ''} @click=${() => this._setContext({ gap_mode: key })}>${label}</button>
             `)}
           </div>
+          <div class="wh-gap-readout"><strong>${gapValue}</strong><span>${gapLabel}${focusedTiming?.position ? ` · P${focusedTiming.position}` : ''}</span></div>
         </div>
         <div class="wh-control">
           <span class="wh-control-label">Spoiler protection</span>
@@ -34773,6 +34798,21 @@ class F1WeekendHubCard extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  _focusedTiming() {
+    const driver = Number(this._f1DashboardContext?.driver_number);
+    const timing = Array.isArray(this._snapshot?.timing) ? this._snapshot.timing : [];
+    return driver ? timing.find((item) => Number(item.driver_number) === driver) || null : null;
+  }
+
+  _gapReferenceValue(timing) {
+    const mode = this._f1DashboardContext?.gap_mode || 'ahead';
+    if (mode === 'off') return 'Hidden';
+    if (!timing) return '--';
+    if (Number(timing.position) === 1) return 'Leader';
+    const value = mode === 'leader' ? timing.gap_to_leader : timing.interval_to_ahead;
+    return normalizeF1GapValue(value) || '--';
   }
 
   _renderActiveView() {
@@ -34787,8 +34827,11 @@ class F1WeekendHubCard extends LitElement {
     const capabilities = this._snapshot?.capabilities || {};
     const events = this._filteredEvents();
     const strategy = this._snapshot?.strategy || {};
+    const strategyCoverage = strategy.coverage || {};
     const activeBattles = this._snapshot?.battles?.active || [];
     const streams = capabilities.observed_streams || [];
+    const exchangeCount = Number(this._snapshot?.position_exchange_count ?? this._snapshot?.position_exchanges?.length ?? 0);
+    const retainedExchangeCount = Number(this._snapshot?.position_exchange_retained_count ?? this._snapshot?.position_exchanges?.length ?? 0);
     return html`
       <div class="wh-grid">
         <article class="wh-panel third">
@@ -34804,12 +34847,12 @@ class F1WeekendHubCard extends LitElement {
         <article class="wh-panel third">
           <div class="wh-section-kicker">Race picture</div>
           <div class="wh-metric">${activeBattles.length}</div>
-          <div class="wh-small wh-muted">active battles · ${this._snapshot?.position_exchanges?.length || 0} exchanges</div>
+          <div class="wh-small wh-muted">active battles · ${exchangeCount} confirmed exchanges${retainedExchangeCount < exchangeCount ? ` · latest ${retainedExchangeCount} retained` : ''}</div>
         </article>
         <article class="wh-panel">
           <div class="wh-section-kicker">Strategy readiness</div>
           <div class="wh-panel-title">${String(strategy.status || 'waiting').replaceAll('_', ' ')}</div>
-          <div class="wh-small wh-muted">${strategy.stints?.length || 0} stints · ${strategy.compound_comparison?.length || 0} compounds · local estimates only</div>
+          <div class="wh-small wh-muted">${strategy.stints?.length || 0} stints · ${strategyCoverage.clean_laps || 0}/${strategyCoverage.raw_laps || 0} clean laps · ${strategyCoverage.observed_compounds?.length || 0} observed compounds</div>
         </article>
         <article class="wh-panel">
           <div class="wh-section-kicker">Signal coverage</div>
@@ -34862,11 +34905,23 @@ class F1WeekendHubCard extends LitElement {
 
   _renderStrategy() {
     const strategy = this._snapshot?.strategy || {};
+    const coverage = strategy.coverage || {};
     const focus = Number(this._f1DashboardContext?.driver_number);
     const stints = (strategy.stints || []).filter((item) => !focus || item.driver_number === focus);
     if (!stints.length) return html`<div class="wh-empty">Strategy analysis is waiting for clean completed laps${focus ? ' for the selected driver' : ''}.</div>`;
+    const exclusionSummary = Object.entries(coverage.excluded_reason_counts || {})
+      .sort((first, second) => second[1] - first[1])
+      .map(([reason, count]) => `${String(reason).replaceAll('_', ' ')}: ${count}`)
+      .join(' · ');
     return html`
       <div class="wh-grid">
+        ${strategy.status !== 'ready' ? html`
+          <article class="wh-panel full">
+            <div class="wh-section-kicker">Waiting for representative pace</div>
+            <div class="wh-panel-title">${coverage.clean_laps || 0} clean of ${coverage.raw_laps || 0} observed laps</div>
+            <div class="wh-small wh-muted">${exclusionSummary || 'Completed laps have not yet passed the clean-lap quality model.'}</div>
+          </article>
+        ` : null}
         <article class="wh-panel full">
           <div class="wh-section-kicker">Clean-lap model</div>
           <div class="wh-panel-title">Stint analysis</div>
@@ -34876,7 +34931,7 @@ class F1WeekendHubCard extends LitElement {
                 <span class="wh-compound">${stint.compound}</span>
                 <div>
                   <div class="wh-event-title">${stint.driver_name || `Car ${stint.driver_number}`} · laps ${stint.first_lap}–${stint.last_lap}</div>
-                  <div class="wh-meta">median ${stint.adjusted_median_clean_pace ?? '--'}s · degradation ${stint.degradation_seconds_per_lap ?? '--'}s/lap · ${stint.sample_count} clean</div>
+                  <div class="wh-meta">median ${stint.adjusted_median_clean_pace ?? '--'}s · degradation ${stint.degradation_seconds_per_lap ?? '--'}s/lap · ${stint.sample_count}/${stint.raw_sample_count} clean${stint.excluded_laps ? ` · ${stint.excluded_laps} excluded` : ''}</div>
                 </div>
                 <span class="wh-confidence">${stint.confidence_label}</span>
               </div>
@@ -34886,11 +34941,11 @@ class F1WeekendHubCard extends LitElement {
         <article class="wh-panel">
           <div class="wh-section-kicker">Compounds</div>
           <div class="wh-panel-title">Pace comparison</div>
-          <div class="wh-list">
-            ${(strategy.compound_comparison || []).map((item) => html`
+          ${(strategy.compound_comparison || []).length ? html`<div class="wh-list">
+            ${strategy.compound_comparison.map((item) => html`
               <div class="wh-small"><strong>${item.compound}</strong> · ${item.median_clean_pace}s <span class="wh-muted">+${item.delta_to_fastest}s · ${item.sample_count} laps</span></div>
             `)}
-          </div>
+          </div>` : html`<div class="wh-small wh-muted">Observed ${(coverage.observed_compounds || []).join(' / ') || 'no compound'}; pace comparison waits for clean laps.</div>`}
         </article>
         <article class="wh-panel">
           <div class="wh-section-kicker">Pit cycle</div>
@@ -34922,7 +34977,7 @@ class F1WeekendHubCard extends LitElement {
         <label class="wh-control">
           <span class="wh-control-label">Driver</span>
           <select class="wh-select" .value=${String(selectedDriver)} @change=${(ev) => this._setContext({ driver_number: ev.target.value })}>
-            ${drivers.map((item) => html`<option value=${item.driver_number}>${item.tla || item.name || `Car ${item.driver_number}`}</option>`)}
+            ${drivers.map((item) => html`<option value=${item.driver_number} ?selected=${String(item.driver_number) === String(selectedDriver)}>${item.tla || item.name || `Car ${item.driver_number}`}</option>`)}
           </select>
         </label>
         <label class="wh-control">
@@ -35041,10 +35096,19 @@ class F1WeekendHubCard extends LitElement {
 
   _renderBattle(item) {
     const kind = String(item.kind || 'position_exchange').replaceAll('_', ' ');
+    const gap = Number(item.gap_seconds);
+    const details = [
+      Number.isFinite(gap) ? `gap ${gap.toFixed(3)}s` : null,
+      item.gaining_driver ? `car ${item.gaining_driver} gained the position` : null,
+      item.positions_before && item.positions_after
+        ? `P${Object.values(item.positions_before).join('/P')} → P${Object.values(item.positions_after).join('/P')}`
+        : null,
+    ].filter(Boolean).join(' · ');
+    const signals = (item.supporting_signals || []).join(' · ');
     return html`
       <div class="wh-battle">
         <span class="wh-compound">${(item.driver_numbers || []).join(' / ')}</span>
-        <div><div class="wh-event-title">${kind}</div><div class="wh-meta">${(item.supporting_signals || []).join(' · ')}</div></div>
+        <div><div class="wh-event-title">${kind}${details ? ` · ${details}` : ''}</div><div class="wh-meta">${signals}</div></div>
         <span class="wh-confidence">${Math.round(Number(item.confidence || 0) * 100)}%</span>
       </div>
     `;

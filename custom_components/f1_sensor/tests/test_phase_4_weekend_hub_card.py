@@ -65,6 +65,7 @@ class LitElement {
   requestUpdate() {}
 }
 const normalizeThemeMode = (value) => ["dark", "light", "auto"].includes(value) ? value : "dark";
+const normalizeF1GapValue = (value) => value == null ? null : String(value).trim() || null;
 const applyF1ThemeMode = () => {};
 const ensureF1Fonts = () => {};
 const updateF1DashboardContext = () => {};
@@ -93,6 +94,30 @@ async function run() {
   };
   card.connectedCallback();
   await new Promise((resolve) => setImmediate(resolve));
+  card._snapshot = {
+    provider: "replay",
+    phase: "live",
+    drivers: [
+      { driver_number: 12, tla: "ANT" },
+      { driver_number: 30, tla: "LAW" },
+    ],
+    timing: [
+      { driver_number: 12, position: 6, gap_to_leader: "+64.900", interval_to_ahead: "+0.700" },
+      { driver_number: 30, position: 7, gap_to_leader: "+65.598", interval_to_ahead: "+0.698" },
+    ],
+    capabilities: { telemetry_compare: "ready" },
+    timeline: { events: [] },
+  };
+  card._f1DashboardContext = { driver_number: 30, gap_mode: "leader" };
+  const focusedTiming = card._focusedTiming();
+  const leaderGap = card._gapReferenceValue(focusedTiming);
+  card._f1DashboardContext = { driver_number: 30, gap_mode: "ahead" };
+  const aheadGap = card._gapReferenceValue(focusedTiming);
+  card._f1DashboardContext = { driver_number: 30, gap_mode: "off" };
+  const offGap = card._gapReferenceValue(focusedTiming);
+  card._f1DashboardContext = { driver_number: 30, gap_mode: "leader" };
+  const telemetryMarkup = card._renderTelemetry();
+  const phaseCopy = card._phaseCopy();
   card._telemetrySelections = [{ driver_number: 4, lap_number: 12 }];
   await card._compareTelemetry();
   card.disconnectedCallback();
@@ -101,6 +126,11 @@ async function run() {
     activeView: card._activeView,
     status: card._status,
     unsubscribeCalls,
+    leaderGap,
+    aheadGap,
+    offGap,
+    telemetryMarkup,
+    phaseCopy,
   };
 }
 
@@ -207,6 +237,14 @@ def test_weekend_hub_uses_subscription_and_selected_telemetry_contracts() -> Non
         "selections": [{"driver_number": 4, "lap_number": 12}],
         "entry_id": "entry-4",
     }
+    assert result["leaderGap"] == "+65.598"
+    assert result["aheadGap"] == "+0.698"
+    assert result["offGap"] == "Hidden"
+    assert "value=30 ?selected=true" in result["telemetryMarkup"]
+    assert result["phaseCopy"] == [
+        "Replay running",
+        "Timing, strategy and race events update from replay",
+    ]
 
 
 def test_dashboard_context_synchronizes_cards_and_unsubscribes(tmp_path: Path) -> None:

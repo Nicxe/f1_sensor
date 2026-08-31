@@ -139,6 +139,13 @@ async function main() {
       hasSeekInput: rendered.includes('class="rc-seek-input"'),
       hasProgress: rendered.includes('class="rc-progress"'),
     };
+  } else if (payload.action === "render_session_selection") {
+    const { card } = buildCard(2);
+    const entity = card.hass.states["select.f1_replay_session"];
+    const rendered = card._renderSelect("session_entity", "Replay", entity, true);
+    result = {
+      currentOptionExplicitlySelected: rendered.includes("value=Test GP - Race ?selected=true"),
+    };
   } else if (payload.action === "drag_behavior") {
     const { card, calls } = buildCard(2);
     const playerEntity = card.hass.states["media_player.f1_replay_player"];
@@ -299,6 +306,12 @@ def test_replay_control_card_hides_progress_when_configured() -> None:
     result = _run_probe("show_progress_false")
 
     assert result == {"hasSeekInput": False, "hasProgress": False}
+
+
+def test_replay_control_card_explicitly_selects_the_current_session() -> None:
+    result = _run_probe("render_session_selection")
+
+    assert result == {"currentOptionExplicitlySelected": True}
 
 
 def test_replay_control_card_seeks_only_on_release() -> None:

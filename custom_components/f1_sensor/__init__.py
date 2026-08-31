@@ -2670,6 +2670,8 @@ async def _async_setup_entry(
             championship_prediction_coordinator,
             drivers_coordinator,
             track_map_replay_adapter,
+            lap_analysis_store,
+            phase4_analysis_store,
         ),
         "activity_filter_unsub": None,
         "no_spoiler_unsub": None,
