@@ -187,7 +187,9 @@ for (const matrix of [
     await page.setViewportSize({ width: matrix.width, height: 900 });
     await openFixture(page);
     await page.evaluate((options) => window.mountF1Gallery(options), matrix);
-    await expect(page).toHaveScreenshot(`${matrix.name}.png`, { fullPage: true });
+    await expect(page).toHaveScreenshot(`${matrix.name}-${process.platform}.png`, {
+      fullPage: true,
+    });
   });
 }
 
