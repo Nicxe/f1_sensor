@@ -16,6 +16,10 @@ jobs:
     name: Check for merge conflicts
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
       - uses: actions/github-script@v8
         with:
           script: |
@@ -41,13 +45,16 @@ jobs:
               });
             }
 
-            async function pullWithMergeableState(number) {
+            async function pullWithMergeableState(candidate) {
+              let latest = candidate;
+
               for (let attempt = 0; attempt < 10; attempt += 1) {
                 const { data: pull } = await github.rest.pulls.get({
                   owner,
                   repo,
-                  pull_number: number,
+                  pull_number: candidate.number,
                 });
+                latest = pull;
 
                 if (pull.mergeable !== null && pull.mergeable_state !== "unknown") {
                   return pull;
@@ -56,12 +63,47 @@ jobs:
                 await new Promise((resolve) => setTimeout(resolve, 3000));
               }
 
-              core.warning(`Mergeability is still unknown for PR #${number}`);
-              return null;
+              const headRef = `refs/remotes/pull/${candidate.number}/head`;
+              const fetchResult = await exec.getExecOutput(
+                "git",
+                [
+                  "fetch",
+                  "--force",
+                  "--no-tags",
+                  "origin",
+                  `pull/${candidate.number}/head:${headRef}`,
+                ],
+                { ignoreReturnCode: true, silent: true },
+              );
+
+              if (fetchResult.exitCode !== 0) {
+                core.warning(
+                  `Could not fetch PR #${candidate.number} for local conflict detection`,
+                );
+                return null;
+              }
+
+              const mergeResult = await exec.getExecOutput(
+                "git",
+                ["merge-tree", "--write-tree", latest.base.sha, headRef],
+                { ignoreReturnCode: true, silent: true },
+              );
+
+              if (mergeResult.exitCode > 1) {
+                core.warning(
+                  `Could not determine mergeability for PR #${candidate.number}`,
+                );
+                return null;
+              }
+
+              return {
+                ...latest,
+                mergeable_state: mergeResult.exitCode === 1 ? "dirty" : "clean",
+              };
             }
 
             async function updateConflictLabel(pull) {
-              const current = await pullWithMergeableState(pull.number);
+              const current = await pullWithMergeableState(pull);
               if (current === null) {
                 return;
               }
