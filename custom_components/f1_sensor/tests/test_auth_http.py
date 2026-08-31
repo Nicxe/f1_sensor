@@ -4,13 +4,14 @@ import base64
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor.auth_http import (
     AUTH_CALLBACK_MAX_BODY_BYTES,
     async_create_f1tv_pairing_session,
+    async_get_f1tv_callback_url,
     async_pop_f1tv_pairing_session_result,
     async_process_f1tv_pairing_callback,
 )
@@ -30,6 +31,23 @@ def _jwt(exp: datetime) -> str:
             "signature",
         )
     )
+
+
+async def test_callback_url_uses_browser_visible_frontend_base(hass):
+    """Use the frontend origin instead of a container-only backend address."""
+    hass.config.api = Mock(
+        use_ssl=False,
+        local_ip="172.18.0.2",
+        port=8123,
+    )
+    request = Mock(headers={"HA-Frontend-Base": "https://ha.example.com/"})
+
+    with patch("homeassistant.helpers.http.current_request") as current_request:
+        current_request.get.return_value = request
+
+        assert async_get_f1tv_callback_url(hass) == (
+            "https://ha.example.com/api/f1_sensor/auth/f1tv/callback"
+        )
 
 
 async def test_pairing_session_is_not_created_when_gate_closed(hass, monkeypatch):

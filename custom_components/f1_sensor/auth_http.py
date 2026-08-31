@@ -17,7 +17,8 @@ from homeassistant.components.http import KEY_HASS, HomeAssistantView
 from homeassistant.components.repairs import repairs_flow_manager
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers import http, issue_registry as ir
+from homeassistant.helpers.config_entry_oauth2_flow import HEADER_FRONTEND_BASE
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .auth import (
@@ -104,6 +105,11 @@ def _build_helper_url(
 
 def async_get_f1tv_callback_url(hass: HomeAssistant) -> str:
     """Return the absolute callback URL for the current Home Assistant instance."""
+    if (request := http.current_request.get()) is not None and (
+        frontend_base := request.headers.get(HEADER_FRONTEND_BASE)
+    ):
+        return f"{frontend_base.rstrip('/')}{AUTH_CALLBACK_PATH}"
+
     try:
         base_url = get_url(
             hass,
