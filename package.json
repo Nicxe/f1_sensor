@@ -2,6 +2,7 @@
   "name": "f1-sensor",
   "version": "5.2",
   "private": true,
+  "packageManager": "npm@10.9.8",
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",

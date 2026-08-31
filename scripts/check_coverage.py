@@ -35,7 +35,7 @@ def main() -> int:
     total = float(report["totals"]["percent_covered"])
     floor = float(config["global_floor"])
     if total + 0.001 < floor:
-        failures.append(f"global coverage {total:.3f}% is below {floor:.1f}%")
+        failures.append(f"global coverage {total:.3f}% is below {floor:.3f}%")
 
     for module, module_floor in config["module_floors"].items():
         measured = _file_percent(report["files"], module)
