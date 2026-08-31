@@ -38,7 +38,8 @@
           "enable_race_control": "Attiva API F1 (Direzione gara/Pista/Sessione)",
           "race_week_start_day": "Primo giorno della settimana di gara",
           "live_timing_auth_header": "Backup manuale: valore di autorizzazione F1TV",
-          "start_f1tv_pairing": "Consigliato: collega accesso F1TV con Token Helper"
+          "start_f1tv_pairing": "Consigliato: collega accesso F1TV con Token Helper",
+          "clear_live_timing_auth_header": "Clear F1TV authorization value"
         },
         "data_description": {
           "operation_mode": "Scegli Live per connetterti a F1 SignalR, o Sviluppo per avviare il replay di un file locale.",
@@ -112,18 +113,28 @@
           "confirm": {
             "data": {
               "live_timing_auth_header": "Valore di autorizzazione F1TV",
-              "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV"
+              "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV",
+              "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
             },
             "data_description": {
               "live_timing_auth_header": "Incolla un nuovo token Bearer da F1TV Token Helper per l’accesso F1TV.",
-              "clear_live_timing_auth_header": "Rimuovi il token F1TV salvato e continua solo con la telemetria pubblica."
+              "clear_live_timing_auth_header": "Rimuovi il token F1TV salvato e continua solo con la telemetria pubblica.",
+              "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually."
             },
             "description": "Il token F1TV salvato per {name} ha bisogno di attenzione. La telemetria pubblica continua a funzionare, ma i dati live F1TV non saranno usati finché il token non verrà sostituito.",
             "title": "Aggiorna il token F1TV"
+          },
+          "f1tv_pairing": {
+            "title": "Connect F1TV access",
+            "description": "Use the F1TV Token Helper to send your token to Home Assistant. F1TV access is optional, and this pairing expires at {expires_at}."
           }
         }
       },
       "title": "Il token F1TV ha bisogno di attenzione"
+    },
+    "stale_live_data_card_resources": {
+      "description": "F1 Sensor now bundles and manages the live data cards. Home Assistant still has stale Lovelace resource entries for the old standalone card ({stale_resource_count} detected), which can cause duplicate or outdated card behavior. Confirm that the bundled card works, then remove the old standalone HACS dashboard repository and the stale Lovelace resource entries. Restart Home Assistant or reload Lovelace resources and hard refresh the browser if stale card UI remains.",
+      "title": "Old standalone F1 live data card resources detected"
     }
   },
   "entity": {
@@ -260,6 +271,9 @@
       },
       "replay_status": {
         "name": "Stato replay"
+      },
+      "starting_grid": {
+        "name": "Starting grid"
       }
     },
     "weather": {
@@ -297,6 +311,9 @@
       },
       "clear_f1tv_access": {
         "name": "Rimuovi accesso F1TV"
+      },
+      "refresh_f1tv_access": {
+        "name": "Refresh F1TV access"
       }
     },
     "switch": {
@@ -358,6 +375,30 @@
       "season_calendar": {
         "name": "Calendario stagione"
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure F1 Sensor features",
+        "data": {
+          "enabled_sensors": "Enabled sensors",
+          "enable_race_control": "Enable live F1 API",
+          "race_week_start_day": "First day of race week",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
+        },
+        "data_description": {
+          "enable_race_control": "Connect to Formula 1 Live Timing only when live features are enabled.",
+          "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
+          "operation_mode": "Choose Live or local replay Development mode.",
+          "replay_file": "Absolute path to a replay dump used only in Development mode."
+        }
+      }
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
     }
   }
 }

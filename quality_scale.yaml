@@ -1,0 +1,35 @@
+rules:
+  action-setup:
+    status: done
+    comment: Entity actions use Home Assistant service and event contracts
+  appropriate-polling:
+    status: done
+    comment: Polling intervals are integration controlled
+  config-flow:
+    status: done
+  entity-unique-id:
+    status: done
+  has-entity-name:
+    status: done
+  runtime-data:
+    status: done
+  test-before-setup:
+    status: done
+  test-before-configure:
+    status: done
+  unique-config-entry:
+    status: done
+  config-entry-unloading:
+    status: done
+  entity-unavailable:
+    status: done
+  reauthentication-flow:
+    status: done
+  parallel-updates:
+    status: done
+  test-coverage:
+    status: todo
+    comment: Coverage is 71.937 percent; the ratchet targets 75, 85, then over 95 percent
+  strict-typing:
+    status: todo
+    comment: Strict typing is not yet enforced across every integration module

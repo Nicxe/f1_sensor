@@ -10,15 +10,14 @@ permissions:
 jobs:
   sync-beta:
     if: ${{ github.event.release.prerelease == false && github.event.release.target_commitish == 'main' }}
-    uses: nicxe/.github/.github/workflows/resusable-sync-main-back-to-beta.yml@main
-    secrets: inherit
+    uses: nicxe/.github/.github/workflows/resusable-sync-main-back-to-beta.yml@af7822ccdd4d8e2f6bf6ea3d46e58988f6d6275d
 
   sync-content:
     if: ${{ github.event.release.prerelease == false && github.event.release.target_commitish == 'main' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: main
           fetch-depth: 0

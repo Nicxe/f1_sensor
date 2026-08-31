@@ -18,10 +18,10 @@ jobs:
     name: Validate bundled card assets
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
 
@@ -31,8 +31,14 @@ jobs:
           custom_components/f1_sensor/www/f1-sensor-live-data-card/f1-sensor-live-data-card.js
 
   validate:
-    uses: nicxe/.github/.github/workflows/reusable-validate-integration.yml@main
-    with:
-      hacs_category: "integration"
-      run_hassfest: true
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: hassfest
+        uses: home-assistant/actions/hassfest@a7c616ce81ccda50150bf1595786c71b1883fabb
+
+      - name: HACS validation
+        uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa
+        with:
+          category: integration

@@ -12,7 +12,10 @@ import {
   installF1DashboardContext,
   updateF1DashboardContext,
 } from './platform/dashboard-context.js';
-import { f1Translate } from './platform/i18n.js';
+import {
+  f1Translate,
+  installF1FrontendLocalization,
+} from './platform/i18n.js';
 
 const LitElement = F1BaseElement;
 
@@ -112,6 +115,8 @@ const isEffectiveLightTheme = (hass, config) => {
 const formatHassDateTime = (hass, date, options = {}, fallback = '') => {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return fallback;
   const formatOptions = { ...options };
+  const timeZone = hass?.locale?.time_zone || hass?.config?.time_zone;
+  if (timeZone && !formatOptions.timeZone) formatOptions.timeZone = timeZone;
   const hasTime = ['hour', 'minute', 'second'].some((field) => field in formatOptions);
   if (hasTime) {
     const timeFormat = hass?.locale?.time_format;
@@ -35373,17 +35378,9 @@ F1_FONT_STYLE_CARD_CLASSES.forEach(installFontStyleSupport);
 
 F1_FONT_STYLE_CARD_CLASSES.forEach(installF1DashboardContext);
 
-[
-  F1TyreStatisticsCard,
-  F1PitStopOverviewCard,
-  F1DriverLapTimesCard,
-  F1ChampionshipPredictionDriversCard,
-  F1ChampionshipPredictionTeamsCard,
-  F1SeasonProgressionCard,
-  F1LapPositionProgressionCard,
-  F1LastRaceResultsCard,
-  F1StartingGridCard,
-].forEach(sharedInstallF1CardActionAccessibility);
+F1_FONT_STYLE_CARD_CLASSES.forEach(sharedInstallF1CardActionAccessibility);
+
+F1_FONT_STYLE_CARD_CLASSES.forEach(installF1FrontendLocalization);
 
 [
   F1TyreStatisticsCardEditor,
@@ -35410,6 +35407,32 @@ F1_FONT_STYLE_CARD_CLASSES.forEach(installF1DashboardContext);
   F1TrackMapCardEditor,
   F1WeekendHubCardEditor,
 ].forEach(sharedInstallF1EditorTabAccessibility);
+
+[
+  F1TyreStatisticsCardEditor,
+  F1PitStopOverviewCardEditor,
+  F1DriverLapTimesCardEditor,
+  F1SeasonProgressionCardEditor,
+  F1LapPositionProgressionCardEditor,
+  F1ChampionshipPredictionDriversCardEditor,
+  F1ChampionshipPredictionTeamsCardEditor,
+  F1LastRaceResultsCardEditor,
+  F1InvestigationsCardEditor,
+  F1TrackLimitsCardEditor,
+  F1LiveSessionCardEditor,
+  F1ReplayControlCardEditor,
+  F1NextRaceCardEditor,
+  F1WeatherCardEditor,
+  F1SeasonCalendarCardEditor,
+  F1RaceControlCardEditor,
+  F1FiaDocumentsCardEditor,
+  F1QualifyingTimingCardEditor,
+  F1PracticeTimingCardEditor,
+  F1RaceLapCardEditor,
+  F1StartingGridCardEditor,
+  F1TrackMapCardEditor,
+  F1WeekendHubCardEditor,
+].forEach(installF1FrontendLocalization);
 
 [
   [F1QualifyingTimingCard, 'qt', 'Qualifying timing'],

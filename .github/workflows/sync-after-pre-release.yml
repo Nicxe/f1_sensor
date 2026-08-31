@@ -10,10 +10,4 @@ permissions:
 jobs:
   sync:
     if: ${{ github.event.release.prerelease == true && github.event.release.target_commitish == 'beta' }}
-    uses: nicxe/.github/.github/workflows/reusable-sync-beta-to-dev.yml@main
-    secrets: inherit
-
-
-    
-
-    
+    uses: nicxe/.github/.github/workflows/reusable-sync-beta-to-dev.yml@af7822ccdd4d8e2f6bf6ea3d46e58988f6d6275d

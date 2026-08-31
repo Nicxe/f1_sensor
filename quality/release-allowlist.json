@@ -1,0 +1,14 @@
+{
+  "component": "custom_components/f1_sensor",
+  "allowed_extensions": [".json", ".py", ".yaml", ".js", ".png", ".woff2"],
+  "allowed_directories": ["models", "providers", "translations", "www"],
+  "excluded_directories": ["tests", "__pycache__"],
+  "excluded_files": [
+    "AGENTS.md",
+    "debugging_tyres.md",
+    "track_map_static_geometry_builder.py",
+    "track_map_static_geometry_calibrator.py",
+    "track_map_static_geometry_maintenance.py",
+    "track_map_static_geometry_qa.py"
+  ]
+}

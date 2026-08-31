@@ -14,5 +14,4 @@ concurrency:
 
 jobs:
   automerge:
-    uses: nicxe/.github/.github/workflows/reusable-dependabot-automerge.yml@main
-    secrets: inherit
+    uses: nicxe/.github/.github/workflows/reusable-dependabot-automerge.yml@af7822ccdd4d8e2f6bf6ea3d46e58988f6d6275d

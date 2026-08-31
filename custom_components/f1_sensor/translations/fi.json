@@ -38,7 +38,8 @@
           "enable_race_control": "Ota käyttöön live F1 API (Race Control/Track/Session)",
           "race_week_start_day": "Kilpailuviikon ensimmäinen päivä",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
+          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
+          "clear_live_timing_auth_header": "Clear F1TV authorization value"
         },
         "data_description": {
           "operation_mode": "Valitse Live yhdistääksesi Formula 1 SignalR:ään tai Development toistaaksesi tallennetun tiedoston paikallisesti.",
@@ -59,7 +60,8 @@
           "enable_race_control": "Ota käyttöön live F1 API",
           "race_week_start_day": "Kilpailuviikon ensimmäinen päivä",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
+          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
+          "clear_live_timing_auth_header": "Clear F1TV authorization value"
         },
         "data_description": {
           "operation_mode": "Valitse Live yhdistääksesi Formula 1 SignalR:ään tai Development toistaaksesi tallennetun tiedoston paikallisesti.",
@@ -67,7 +69,8 @@
           "enable_race_control": "Yhdistää Formula 1 Live Timingiin live-päivitysten vastaanottamiseksi. Jos tämä on pois käytöstä, näitä live-antureita ei luoda.",
           "race_week_start_day": "Valitse alkaako kilpailuviikko lauantaina, sunnuntaina vai maanantaina.",
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
-          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it."
+          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
+          "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing only."
         }
       },
       "reauth_confirm": {
@@ -237,6 +240,9 @@
       },
       "f1tv_token_expires_at": {
         "name": "F1TV token expires at"
+      },
+      "starting_grid": {
+        "name": "Starting grid"
       }
     },
     "weather": {
@@ -274,6 +280,9 @@
       },
       "clear_f1tv_access": {
         "name": "Clear F1TV access"
+      },
+      "refresh_f1tv_access": {
+        "name": "Refresh F1TV access"
       }
     },
     "switch": {
@@ -345,17 +354,51 @@
           "confirm": {
             "data": {
               "live_timing_auth_header": "F1TV authorization value",
-              "clear_live_timing_auth_header": "Clear F1TV authorization value"
+              "clear_live_timing_auth_header": "Clear F1TV authorization value",
+              "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
             },
             "data_description": {
               "live_timing_auth_header": "Paste a new Bearer token value from the F1TV Token Helper for F1TV access.",
-              "clear_live_timing_auth_header": "Remove the saved F1TV token and continue with public live timing only."
+              "clear_live_timing_auth_header": "Remove the saved F1TV token and continue with public live timing only.",
+              "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually."
             },
             "description": "The saved F1TV token for {name} needs attention. Public live timing continues to work, but F1TV live data will not be used until the token is replaced.",
             "title": "Update F1TV live timing token"
+          },
+          "f1tv_pairing": {
+            "title": "Connect F1TV access",
+            "description": "Use the F1TV Token Helper to send your token to Home Assistant. F1TV access is optional, and this pairing expires at {expires_at}."
           }
         }
       }
+    },
+    "stale_live_data_card_resources": {
+      "description": "F1 Sensor now bundles and manages the live data cards. Home Assistant still has stale Lovelace resource entries for the old standalone card ({stale_resource_count} detected), which can cause duplicate or outdated card behavior. Confirm that the bundled card works, then remove the old standalone HACS dashboard repository and the stale Lovelace resource entries. Restart Home Assistant or reload Lovelace resources and hard refresh the browser if stale card UI remains.",
+      "title": "Old standalone F1 live data card resources detected"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure F1 Sensor features",
+        "data": {
+          "enabled_sensors": "Enabled sensors",
+          "enable_race_control": "Enable live F1 API",
+          "race_week_start_day": "First day of race week",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
+        },
+        "data_description": {
+          "enable_race_control": "Connect to Formula 1 Live Timing only when live features are enabled.",
+          "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
+          "operation_mode": "Choose Live or local replay Development mode.",
+          "replay_file": "Absolute path to a replay dump used only in Development mode."
+        }
+      }
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
     }
   }
 }
