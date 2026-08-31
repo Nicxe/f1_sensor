@@ -125,7 +125,9 @@ font_style: balanced
 ```
 
 :::info[Entity IDs]
-The defaults use the standard F1 Sensor entity IDs, such as `sensor.f1_driver_positions`. Older installations may have existing registry IDs from earlier releases. Select the correct entities in the visual editor if your IDs differ.
+Bundled cards discover the entity IDs created by F1 Sensor, including renamed IDs and the `_2` suffixes Home Assistant assigns when needed. With one F1 Sensor configuration entry, empty and standard default data sources are connected automatically.
+
+With multiple F1 Sensor entries, selecting one entity in the visual editor identifies the entry and the card connects its other standard data sources to that same entry. Explicit custom entity selections are preserved. If a new card is ambiguous because no source has been selected, choose any one of its F1 entities in **Data Sources**.
 :::
 
 ---
