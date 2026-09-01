@@ -261,8 +261,8 @@ def test_replay_control_card_uses_bundled_lit_module() -> None:
     source = CARD_PATH.read_text(encoding="utf-8")
 
     assert LIT_MODULE_PATH.is_file()
-    assert "import { html, css, svg } from './f1-lit-3.3.2.js';" in source
-    assert "import { F1BaseElement } from './platform/base-card.js';" in source
+    assert "cacheBustedImport('./f1-lit-3.3.2.js')" in source
+    assert "cacheBustedImport('./platform/base-card.js')" in source
     assert "Home Assistant Lit globals are unavailable" not in source
 
 

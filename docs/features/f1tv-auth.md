@@ -31,7 +31,7 @@ Public live timing covers the normal live features most dashboards and automatio
 
 ## What F1TV Auth can add during live sessions
 
-F1TV Auth can support live features such as Track Map, Pit Stops, Team Radio, Championship Prediction, formation start refinement, and earlier incident candidate signals. These features still depend on what Formula 1 publishes for each session, so a valid token does not guarantee that every extra feature is available every time.
+F1TV Auth can support live features such as Track Map, Pit Stops, Team Radio, Championship Prediction, formation start refinement, and earlier incident candidate signals. These features still depend on what Formula 1 publishes for each session, so an accepted token does not guarantee that every extra feature is available every time.
 
 ## Subscription requirement
 
@@ -65,11 +65,15 @@ The recommended way to connect F1TV Auth is the [F1TV Token Helper](/help/f1tv-t
 
 Home Assistant does not ask for your Formula 1 password. Tokens are short-lived, so expect to renew access when `sensor.f1_f1tv_token_status` reports `expiring_soon`, `expired`, `invalid`, or `rejected`.
 
+The integration can check locally that a JWT is well-formed and unexpired. This does not prove that the token is authentic. F1TV access is confirmed only after Formula 1 accepts it during an upstream request.
+
 For the practical setup workflow, see [F1TV Auth Setup](/help/f1tv-auth-setup).
 
 ## Privacy and safety
 
 F1 Sensor stores only the authorization value needed for live timing. Diagnostics and public issue reports should never include tokens, full `Authorization` headers, cookies, callback URLs, nonce values, or browser session data.
+
+The saved authorization value is part of the Home Assistant config entry and normally follows that entry into Home Assistant backups. Before sharing a backup, treat it as containing credentials. Use `button.f1_clear_f1tv_access` to remove the saved value and revoke the Formula 1 browser session if you suspect exposure.
 
 Downloaded diagnostics can include redacted token health and live timing activity. They should not include secrets or high-frequency telemetry.
 

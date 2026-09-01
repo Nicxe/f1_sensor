@@ -11,6 +11,8 @@ import pytest
 from custom_components.f1_sensor.history import HistoryService, LapAnalysisStore
 from custom_components.f1_sensor.models.history import (
     LapQuality,
+    _as_float,
+    _as_int,
     assess_lap_quality,
     normalize_lap_record,
 )
@@ -42,6 +44,12 @@ def test_lap_quality_matches_local_contract_cases() -> None:
         assert quality.clean is case["expected"]["clean"], case["name"]
         assert quality.confidence == case["expected"]["confidence"], case["name"]
         assert list(quality.reasons) == case["expected"]["reasons"], case["name"]
+
+
+def test_history_scalar_parsers_reject_malformed_values() -> None:
+    assert _as_float("bad:time") is None
+    assert _as_float(object()) is None
+    assert _as_int("bad") is None
 
 
 @pytest.mark.asyncio

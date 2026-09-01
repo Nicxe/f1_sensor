@@ -28,8 +28,8 @@ rules:
   parallel-updates:
     status: done
   test-coverage:
-    status: todo
-    comment: Coverage is 71.937 percent; the ratchet targets 75, 85, then over 95 percent
+    status: done
+    comment: Coverage is 96.170 percent and CI enforces a strict floor above 95 percent globally and for every integration module
   strict-typing:
     status: todo
-    comment: Strict typing is not yet enforced across every integration module
+    comment: Platinum-only rule; F1ConfigEntry exists, but full mypy strict enforcement remains future work and is not a Silver requirement

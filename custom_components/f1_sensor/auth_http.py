@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
+import ipaddress
 import json
 import logging
 import secrets
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from aiohttp import web
 from homeassistant.components.http import KEY_HASS, HomeAssistantView
@@ -37,8 +38,12 @@ AUTH_CALLBACK_PATH = "/api/f1_sensor/auth/f1tv/callback"
 AUTH_CALLBACK_NAME = "api:f1_sensor:f1tv_auth_callback"
 AUTH_PAIRING_SESSIONS = "f1tv_auth_pairing_sessions"
 AUTH_HTTP_VIEW_REGISTERED = "f1tv_auth_http_view_registered"
+AUTH_CALLBACK_ATTEMPTS = "f1tv_auth_callback_attempts"
+AUTH_CALLBACK_METRICS = "f1tv_auth_callback_metrics"
 AUTH_PAIRING_TTL = timedelta(minutes=5)
 AUTH_CALLBACK_MAX_BODY_BYTES = 16 * 1024
+AUTH_CALLBACK_RATE_LIMIT = 12
+AUTH_CALLBACK_RATE_WINDOW = timedelta(minutes=1)
 F1TV_HELPER_PAIRING_URL = "https://nicxe.github.io/f1_sensor/help/f1tv-token-helper"
 
 
@@ -46,17 +51,17 @@ F1TV_HELPER_PAIRING_URL = "https://nicxe.github.io/f1_sensor/help/f1tv-token-hel
 class F1TvPairingSession:
     """Short-lived runtime pairing session."""
 
-    session_id: str
-    nonce: str
+    session_id: str = field(repr=False, compare=False)
+    nonce: str = field(repr=False, compare=False)
     entry_id: str | None
-    callback_url: str
-    helper_url: str
+    callback_url: str = field(repr=False, compare=False)
+    helper_url: str = field(repr=False, compare=False)
     created_at: datetime
     expires_at: datetime
     flow_id: str | None = None
     flow_manager: str | None = None
     used: bool = False
-    auth_header: str | None = None
+    auth_header: str | None = field(default=None, repr=False, compare=False)
     auth_status: F1TvAuthStatus | None = None
 
     @property
@@ -73,6 +78,73 @@ def _pairing_sessions(hass: HomeAssistant) -> dict[str, F1TvPairingSession]:
     root = hass.data.setdefault(DOMAIN, {})
     sessions = root.setdefault(AUTH_PAIRING_SESSIONS, {})
     return sessions if isinstance(sessions, dict) else {}
+
+
+def _is_local_callback_host(hostname: str) -> bool:
+    """Return whether an HTTP callback host is local to the HA installation."""
+    normalized = hostname.rstrip(".").lower()
+    if normalized == "localhost" or normalized.endswith(".local"):
+        return True
+    with suppress(ValueError):
+        address = ipaddress.ip_address(normalized)
+        return address.is_loopback or address.is_private or address.is_link_local
+    return False
+
+
+def _is_safe_callback_url(value: str) -> bool:
+    """Allow HTTPS callbacks and explicitly configured local HTTP callbacks."""
+    if value == AUTH_CALLBACK_PATH:
+        return True
+    parsed = urlsplit(value)
+    if (
+        parsed.path != AUTH_CALLBACK_PATH
+        or parsed.query
+        or parsed.fragment
+        or parsed.username
+        or parsed.password
+        or not parsed.hostname
+    ):
+        return False
+    if parsed.scheme == "https":
+        return True
+    return parsed.scheme == "http" and _is_local_callback_host(parsed.hostname)
+
+
+def _callback_rate_limited(hass: HomeAssistant, client_id: str) -> bool:
+    """Apply a bounded per-client sliding-window callback limit."""
+    root = hass.data.setdefault(DOMAIN, {})
+    state = root.setdefault(AUTH_CALLBACK_ATTEMPTS, {})
+    if not isinstance(state, dict):
+        state = {}
+        root[AUTH_CALLBACK_ATTEMPTS] = state
+    now = _utcnow().timestamp()
+    cutoff = now - AUTH_CALLBACK_RATE_WINDOW.total_seconds()
+    attempts = [
+        timestamp
+        for timestamp in state.get(client_id, [])
+        if isinstance(timestamp, (int, float)) and timestamp > cutoff
+    ]
+    if len(attempts) >= AUTH_CALLBACK_RATE_LIMIT:
+        state[client_id] = attempts
+        return True
+    attempts.append(now)
+    state[client_id] = attempts
+    return False
+
+
+def _record_callback_failure(hass: HomeAssistant, code: str) -> None:
+    """Record aggregate failure telemetry without client or token details."""
+    root = hass.data.setdefault(DOMAIN, {})
+    metrics = root.setdefault(
+        AUTH_CALLBACK_METRICS,
+        {"failures_total": 0, "failure_codes": {}},
+    )
+    if not isinstance(metrics, dict):
+        return
+    metrics["failures_total"] = int(metrics.get("failures_total", 0)) + 1
+    failure_codes = metrics.setdefault("failure_codes", {})
+    if isinstance(failure_codes, dict):
+        failure_codes[code] = int(failure_codes.get(code, 0)) + 1
 
 
 @callback
@@ -108,7 +180,10 @@ def async_get_f1tv_callback_url(hass: HomeAssistant) -> str:
     if (request := http.current_request.get()) is not None and (
         frontend_base := request.headers.get(HEADER_FRONTEND_BASE)
     ):
-        return f"{frontend_base.rstrip('/')}{AUTH_CALLBACK_PATH}"
+        candidate = f"{frontend_base.rstrip('/')}{AUTH_CALLBACK_PATH}"
+        if _is_safe_callback_url(candidate):
+            return candidate
+        _LOGGER.warning("Ignored unsafe browser-visible F1TV callback URL")
 
     try:
         base_url = get_url(
@@ -124,7 +199,11 @@ def async_get_f1tv_callback_url(hass: HomeAssistant) -> str:
 
     if not base_url:
         return AUTH_CALLBACK_PATH
-    return f"{base_url.rstrip('/')}{AUTH_CALLBACK_PATH}"
+    candidate = f"{base_url.rstrip('/')}{AUTH_CALLBACK_PATH}"
+    if _is_safe_callback_url(candidate):
+        return candidate
+    _LOGGER.warning("Ignored unsafe configured F1TV callback URL")
+    return AUTH_CALLBACK_PATH
 
 
 @callback
@@ -146,6 +225,9 @@ def async_create_f1tv_pairing_session(
     nonce = secrets.token_urlsafe(32)
     expires_at = now + AUTH_PAIRING_TTL
     callback = callback_url or async_get_f1tv_callback_url(hass)
+    if not _is_safe_callback_url(callback):
+        _LOGGER.warning("Refused to create F1TV pairing with an unsafe callback URL")
+        return None
     helper_url = _build_helper_url(
         callback_url=callback,
         session_id=session_id,
@@ -293,37 +375,63 @@ class F1TvAuthCallbackView(HomeAssistantView):
     requires_auth = False
     cors_allowed = False
 
+    def _json_response(
+        self,
+        hass: HomeAssistant,
+        payload: dict[str, Any],
+        status: HTTPStatus,
+    ) -> web.Response:
+        """Return a non-cacheable response and record only aggregate failures."""
+        response = self.json(payload, status_code=status)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        if status >= HTTPStatus.BAD_REQUEST:
+            _record_callback_failure(hass, str(payload.get("code") or "unknown"))
+        return response
+
     async def post(self, request: web.Request) -> web.Response:
         """Receive a token from the browser extension."""
         hass = request.app[KEY_HASS]
+        client_id = request.remote or "unknown"
+        if _callback_rate_limited(hass, client_id):
+            status, response = _error_response(
+                "rate_limited", HTTPStatus.TOO_MANY_REQUESTS
+            )
+            result = self._json_response(hass, response, status)
+            result.headers["Retry-After"] = str(
+                int(AUTH_CALLBACK_RATE_WINDOW.total_seconds())
+            )
+            return result
         content_length = request.content_length
         if content_length is not None and content_length > AUTH_CALLBACK_MAX_BODY_BYTES:
             status, response = _error_response(
                 "body_too_large", HTTPStatus.REQUEST_ENTITY_TOO_LARGE
             )
-            return self.json(response, status_code=status)
+            return self._json_response(hass, response, status)
 
         try:
             body = await request.read()
         except Exception:  # noqa: BLE001
             status, response = _error_response("invalid_body", HTTPStatus.BAD_REQUEST)
-            return self.json(response, status_code=status)
+            return self._json_response(hass, response, status)
 
         if len(body) > AUTH_CALLBACK_MAX_BODY_BYTES:
             status, response = _error_response(
                 "body_too_large", HTTPStatus.REQUEST_ENTITY_TOO_LARGE
             )
-            return self.json(response, status_code=status)
+            return self._json_response(hass, response, status)
 
         try:
             payload = json.loads(body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             status, response = _error_response("invalid_json", HTTPStatus.BAD_REQUEST)
-            return self.json(response, status_code=status)
+            return self._json_response(hass, response, status)
 
         if not isinstance(payload, dict):
             status, response = _error_response("invalid_json", HTTPStatus.BAD_REQUEST)
-            return self.json(response, status_code=status)
+            return self._json_response(hass, response, status)
 
         status, response = await async_process_f1tv_pairing_callback(
             hass,
@@ -331,7 +439,7 @@ class F1TvAuthCallbackView(HomeAssistantView):
             query=dict(request.query.items()),
             body_size=len(body),
         )
-        return self.json(response, status_code=status)
+        return self._json_response(hass, response, status)
 
 
 @callback

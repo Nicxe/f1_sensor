@@ -4587,6 +4587,7 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             for kw in [
                 "NOTED",
                 "INVESTIGATION",
+                "INVESTIGATED",
                 "PENALTY",
                 "REPRIMAND",
                 "NO FURTHER",

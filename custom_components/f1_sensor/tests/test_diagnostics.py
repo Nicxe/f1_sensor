@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -11,9 +12,11 @@ from custom_components.f1_sensor.auth import (
     AUTH_RUNTIME_STATUS,
     evaluate_f1tv_auth_header,
 )
+from custom_components.f1_sensor.auth_http import AUTH_CALLBACK_METRICS
 from custom_components.f1_sensor.const import (
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
+    CONF_REPLAY_FILE,
     DOMAIN,
     OPERATION_MODE_LIVE,
 )
@@ -276,3 +279,122 @@ async def test_diagnostics_exposes_only_safe_jolpica_runtime_scalars(hass) -> No
     assert "api.jolpi.ca" not in str(payload)
     assert "must-not-be-exposed" not in str(payload)
     assert "sensitive-request-key" not in str(payload)
+
+
+async def test_diagnostics_redacts_generic_secrets_and_replay_directory(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="F1",
+        data={
+            CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+            CONF_REPLAY_FILE: "/private/replays/secret-session.jsonStream",
+            "future": {
+                "token": "token-secret",
+                "subscription_token": "subscription-secret",
+                "session_id": "session-secret",
+                "callback_url": "https://ha.example/callback-secret",
+                "helper_url": "https://helper.example/helper-secret",
+                "api_key": "api-secret",
+            },
+        },
+    )
+    entry.add_to_hass(hass)
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "operation_mode": OPERATION_MODE_LIVE,
+    }
+    hass.data[DOMAIN][AUTH_CALLBACK_METRICS] = {
+        "failures_total": 3,
+        "failure_codes": {"invalid_nonce": 2, "rate_limited": 1},
+    }
+
+    payload = await diagnostics_module.async_get_config_entry_diagnostics(hass, entry)
+
+    assert payload["entry"]["data"][CONF_REPLAY_FILE] == "secret-session.jsonStream"
+    assert payload["runtime"]["auth_pairing"] == {
+        "failures_total": 3,
+        "failure_codes": {"invalid_nonce": 2, "rate_limited": 1},
+    }
+    serialized = str(payload)
+    assert "/private/replays" not in serialized
+    for secret in (
+        "token-secret",
+        "subscription-secret",
+        "session-secret",
+        "callback-secret",
+        "helper-secret",
+        "api-secret",
+    ):
+        assert secret not in serialized
+
+
+async def test_diagnostics_serializes_full_runtime_service_tree(hass) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, title="F1", data={}, options={"x": 1})
+    entry.add_to_hass(hass)
+
+    def _diagnostics(value):
+        return SimpleNamespace(diagnostics=lambda: value)
+
+    entry.runtime_data = SimpleNamespace(
+        providers=SimpleNamespace(
+            registry=SimpleNamespace(diagnostics=lambda: {"provider": "jolpica"})
+        ),
+        history=SimpleNamespace(
+            service=_diagnostics({"requests": 2}),
+            lap_analysis=_diagnostics({"live_replay_laps": 3}),
+        ),
+        analysis=SimpleNamespace(
+            store=_diagnostics({"incidents": 1}),
+            telemetry=_diagnostics({"comparisons": 2}),
+        ),
+        replay=SimpleNamespace(
+            controller=SimpleNamespace(
+                session_manager=SimpleNamespace(cache_diagnostics={"entries": 4})
+            )
+        ),
+    )
+    persistent = _diagnostics({"entries": 5, "bytes": 100})
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "http_persistent_cache": persistent,
+        "signalr_stream_capabilities": {
+            "public_live_streams": ["SessionStatus"],
+            "replay_only_streams": ["CarData.z"],
+            "requested_streams": ["SessionStatus", "CarData.z"],
+            "stream_reasons": {
+                "SessionStatus": {"sensor"},
+                "bad": "ignored",
+            },
+        },
+    }
+
+    payload = await diagnostics_module.async_get_config_entry_diagnostics(hass, entry)
+    runtime = payload["runtime"]
+    assert runtime["providers"] == {"provider": "jolpica"}
+    assert runtime["persistent_cache"] == {"entries": 5, "bytes": 100}
+    assert runtime["history"] == {
+        "requests": 2,
+        "live_replay_laps": {"live_replay_laps": 3},
+    }
+    assert runtime["analysis"] == {
+        "incidents": 1,
+        "replay_telemetry": {"comparisons": 2},
+    }
+    assert runtime["replay_cache"] == {"entries": 4}
+    assert runtime["signalr_stream_capabilities"]["stream_reasons"] == {
+        "SessionStatus": ["sensor"]
+    }
+
+
+def test_diagnostic_serializers_fail_closed() -> None:
+    assert diagnostics_module._serialize_incident_runtime(object()) == {}
+    assert diagnostics_module._serialize_track_map_runtime(object()) == {}
+    assert diagnostics_module._serialize_jolpica_runtime(object()) == {}
+    assert diagnostics_module._safe_diagnostics(object()) == {}
+
+    broken = SimpleNamespace(diagnostics=lambda: (_ for _ in ()).throw(RuntimeError()))
+    assert diagnostics_module._serialize_track_map_runtime(broken) == {}
+    assert diagnostics_module._serialize_jolpica_runtime(broken) == {}
+    assert diagnostics_module._safe_diagnostics(broken) == {}
+
+    non_mapping = SimpleNamespace(diagnostics=lambda: ["bad"])
+    assert diagnostics_module._serialize_track_map_runtime(non_mapping) == {}
+    assert diagnostics_module._serialize_jolpica_runtime(non_mapping) == {}

@@ -14,4 +14,22 @@ concurrency:
 
 jobs:
   automerge:
-    uses: nicxe/.github/.github/workflows/reusable-dependabot-automerge.yml@af7822ccdd4d8e2f6bf6ea3d46e58988f6d6275d
+    if: >-
+      github.actor == 'dependabot[bot]' ||
+      github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch verified Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Enable auto-merge after required checks and approval
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          steps.metadata.outputs.update-type == 'security-update'
+        run: gh pr merge --auto --squash "${{ github.event.pull_request.html_url }}"
+        env:
+          GH_TOKEN: ${{ github.token }}

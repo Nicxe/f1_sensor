@@ -1,10 +1,10 @@
 name: Ruff
 
 on:
+  push:
+    branches: [dev, beta, main]
   pull_request:
-    paths:
-      - "custom_components/**/*.py"
-      - "pyproject.toml"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,11 +23,11 @@ jobs:
       - name: Ruff lint
         uses: astral-sh/ruff-action@4919ec5cf1f49eff0871dbcea0da843445b837e6 # v3
         with:
-          version: "0.15.2"
+          version: "0.15.4"
           args: "check custom_components"
 
       - name: Ruff format check
         uses: astral-sh/ruff-action@4919ec5cf1f49eff0871dbcea0da843445b837e6 # v3
         with:
-          version: "0.15.2"
+          version: "0.15.4"
           args: "format --check custom_components"

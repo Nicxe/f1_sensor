@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DATA
 from homeassistant.helpers import issue_registry as ir
@@ -360,3 +361,49 @@ async def test_frontend_setup_continues_when_resource_manager_fails(
 
     runtime_dir = Path(hass.config.path("www", "f1-sensor-live-data-card"))
     assert (runtime_dir / "f1-sensor-live-data-card.js").is_file()
+
+
+async def test_frontend_sync_and_read_only_error_paths(
+    hass, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        hass,
+        "async_add_executor_job",
+        AsyncMock(side_effect=RuntimeError("filesystem")),
+    )
+    await frontend.async_ensure_live_data_card_frontend(hass)
+
+    missing = tmp_path / "missing"
+    monkeypatch.setattr(frontend, "BUNDLED_LIVE_DATA_CARD_DIR", missing)
+    with pytest.raises(FileNotFoundError, match="directory"):
+        frontend._sync_bundled_live_data_card_assets(tmp_path / "runtime")
+
+    source = tmp_path / "source"
+    source.mkdir()
+    monkeypatch.setattr(frontend, "BUNDLED_LIVE_DATA_CARD_DIR", source)
+    with pytest.raises(FileNotFoundError, match="asset"):
+        frontend._sync_bundled_live_data_card_assets(tmp_path / "runtime")
+
+    class LoadedReadOnly:
+        @property
+        def loaded(self):
+            return False
+
+        @loaded.setter
+        def loaded(self, _value):
+            raise AttributeError("read only")
+
+        async def async_load(self):
+            return None
+
+    hass.data[LOVELACE_DATA] = {"resources": LoadedReadOnly()}
+    await frontend._async_ensure_lovelace_resource(hass, "key")
+    assert frontend._get_lovelace_resources(hass) is not None
+
+    hass.data[LOVELACE_DATA] = {"resources": SimpleNamespace(async_items=lambda: [])}
+    await frontend._async_ensure_lovelace_resource(hass, "key")
+
+    hass.data[LOVELACE_DATA] = object()
+    assert frontend._get_lovelace_resources(hass) is None
+    assert frontend._normalize_resource_path("") == ""
+    assert frontend._normalize_resource_path("local/card.js?v=1") == "/local/card.js"

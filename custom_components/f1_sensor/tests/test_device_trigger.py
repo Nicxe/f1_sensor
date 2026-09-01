@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 from homeassistant.helpers import entity_registry as er
 import pytest
@@ -163,3 +165,86 @@ async def test_favorite_driver_device_trigger_is_event_and_entry_scoped(hass) ->
         remove()
 
     assert [call["event_type"] for call in calls] == ["position_gained"]
+
+
+def test_find_entity_matches_domain_and_unique_id_suffix(monkeypatch) -> None:
+    entries = [
+        SimpleNamespace(domain="sensor", unique_id="entry_track_status", id="one"),
+        SimpleNamespace(
+            domain="binary_sensor", unique_id="entry_track_status", id="two"
+        ),
+    ]
+    monkeypatch.setattr(
+        device_trigger.er,
+        "async_entries_for_device",
+        lambda _registry, _device: entries,
+    )
+    assert (
+        device_trigger._find_entity(object(), "device", "track_status", "sensor")
+        == (entries[0])
+    )
+    assert device_trigger._find_entity(object(), "device", "missing", "sensor") is None
+
+
+async def test_trigger_discovery_capabilities_and_state_attachment(
+    hass, monkeypatch
+) -> None:
+    backing = SimpleNamespace(id="binary_sensor.safety_car")
+    monkeypatch.setattr(device_trigger.er, "async_get", lambda _hass: object())
+    monkeypatch.setattr(
+        device_trigger,
+        "_find_entity",
+        lambda _registry, _device, suffix, _domain: (
+            backing if suffix == "safety_car" else None
+        ),
+    )
+    triggers = await device_trigger.async_get_triggers(hass, "device")
+    assert {trigger["type"] for trigger in triggers} == {
+        "safety_car_deployed",
+        "safety_car_cleared",
+    }
+
+    event_caps = await device_trigger.async_get_trigger_capabilities(
+        hass, {"type": "on_track_incident_detected"}
+    )
+    state_caps = await device_trigger.async_get_trigger_capabilities(
+        hass, {"type": "safety_car_deployed"}
+    )
+    assert event_caps["extra_fields"]({}) == {}
+    assert state_caps["extra_fields"]({"for": {"seconds": 2}})
+
+    validate = AsyncMock(
+        side_effect=lambda _hass, config: {**config, "validated": True}
+    )
+    remove = object()
+    attach = AsyncMock(return_value=remove)
+    monkeypatch.setattr(
+        device_trigger.state_trigger, "async_validate_trigger_config", validate
+    )
+    monkeypatch.setattr(device_trigger.state_trigger, "async_attach_trigger", attach)
+    action = AsyncMock()
+    result = await device_trigger.async_attach_trigger(
+        hass,
+        {
+            "type": "safety_car_deployed",
+            "entity_id": "binary_sensor.safety_car",
+            "for": {"seconds": 2},
+        },
+        action,
+        _trigger_info(),
+    )
+    assert result is remove
+    state_config = validate.await_args.args[1]
+    assert state_config["to"] == "on"
+    assert state_config["for"] == {"seconds": 2}
+
+    await device_trigger.async_attach_trigger(
+        hass,
+        {
+            "type": "new_team_radio",
+            "entity_id": "sensor.team_radio",
+        },
+        action,
+        _trigger_info(),
+    )
+    assert "to" not in validate.await_args.args[1]

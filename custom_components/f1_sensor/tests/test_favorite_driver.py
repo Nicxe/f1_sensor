@@ -5,7 +5,12 @@ from typing import Any
 
 import pytest
 
-from custom_components.f1_sensor.favorite_driver import FavoriteDriverController
+from custom_components.f1_sensor.favorite_driver import (
+    FAVORITE_DRIVER_EVENT,
+    FAVORITE_DRIVER_NONE,
+    FavoriteDriverController,
+    _position,
+)
 from custom_components.f1_sensor.select import F1FavoriteDriverSelect
 from custom_components.f1_sensor.sensor import F1FavoriteDriverSensor
 
@@ -163,3 +168,33 @@ async def test_favorite_driver_sensor_and_select_project_controller_state(hass) 
     assert select.current_option == "No driver"
     assert sensor.available is False
     assert sensor.native_value is None
+
+
+async def test_favorite_driver_exact_scalar_listener_and_bus_paths(hass) -> None:
+    assert _position({"timing": {"position": {"Value": "3"}}}) == 3
+    assert _position({"timing": {"position": "bad"}}) is None
+    coordinator = _Coordinator("bad")  # type: ignore[arg-type]
+    controller = FavoriteDriverController(hass, "entry-exact", coordinator)
+    assert controller._drivers() == []
+    calls = []
+    remove = controller.add_listener(lambda: calls.append(True))
+    controller._notify_listeners()
+    assert calls == [True]
+    remove()
+    remove()
+    await controller.async_set_driver("VER")
+    await controller.async_set_driver(FAVORITE_DRIVER_NONE)
+    assert controller.selected_tla is None
+
+    events = []
+    remove_event = hass.bus.async_listen(
+        FAVORITE_DRIVER_EVENT, lambda event: events.append(event.data)
+    )
+    controller._fire(
+        "position_gained",
+        {"position": 2},
+        {"position": 1, "tla": "VER"},
+    )
+    await hass.async_block_till_done()
+    assert events[0]["event_type"] == "position_gained"
+    remove_event()

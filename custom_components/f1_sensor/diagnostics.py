@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -15,9 +16,12 @@ from .auth import (
     is_auth_health_visible,
     is_auth_transport_enabled,
 )
+from .auth_http import AUTH_CALLBACK_METRICS
 from .const import (
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
+    CONF_REPLAY_FILE,
+    DOMAIN,
 )
 from .entity import entry_runtime_registry
 from .runtime import F1ConfigEntry, entry_value
@@ -30,6 +34,13 @@ TO_REDACT = {
     "cookies",
     "login-session",
     "nonce",
+    "token",
+    "subscription_token",
+    "session_id",
+    "callback_url",
+    "helper_url",
+    "api_key",
+    "apiKey",
     "callback_body",
 }
 _TRACKED_STREAMS = (
@@ -224,6 +235,19 @@ async def async_get_config_entry_diagnostics(
         runtime["f1tv_token"] = auth_status.as_safe_dict()
     if include_auth_transport:
         runtime["auth_enabled"] = bool(capabilities.get("auth_enabled"))
+    auth_callback_metrics = hass.data.get(DOMAIN, {}).get(AUTH_CALLBACK_METRICS)
+    if isinstance(auth_callback_metrics, dict):
+        failure_codes = auth_callback_metrics.get("failure_codes")
+        runtime["auth_pairing"] = {
+            "failures_total": int(auth_callback_metrics.get("failures_total", 0)),
+            "failure_codes": {
+                str(code): int(count)
+                for code, count in sorted(failure_codes.items())
+                if isinstance(count, int)
+            }
+            if isinstance(failure_codes, dict)
+            else {},
+        }
 
     live_bus = entry_runtime.get("live_bus")
     if live_bus is not None:
@@ -284,6 +308,8 @@ async def async_get_config_entry_diagnostics(
             runtime["replay_cache"] = replay_cache
 
     entry_data = dict(entry.data)
+    if replay_file := str(entry_data.get(CONF_REPLAY_FILE, "") or "").strip():
+        entry_data[CONF_REPLAY_FILE] = Path(replay_file).name
     if not include_auth_transport:
         entry_data.pop(CONF_LIVE_TIMING_AUTH_HEADER, None)
 

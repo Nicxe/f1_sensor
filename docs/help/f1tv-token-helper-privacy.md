@@ -31,6 +31,7 @@ The helper does not ask for, collect, or store your Formula 1 username or passwo
 
 The helper sends the F1TV live timing token only to the Home Assistant callback URL in the active pairing session.
 It does not send the token to a project server, analytics service, telemetry service, or third-party backend controlled by F1 Sensor.
+Public callback URLs must use HTTPS. Plain HTTP is accepted only for local Home Assistant hosts, and the callback must use the exact F1 Sensor pairing path without embedded credentials, query parameters, or fragments.
 
 The helper sends:
 

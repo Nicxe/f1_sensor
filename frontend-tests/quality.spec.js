@@ -178,6 +178,41 @@ test('Home Assistant timezone wins when the browser timezone differs', async ({ 
   expect(text).toContain('15:00');
 });
 
+test('Race Control clear always requires a second explicit click', async ({ page }) => {
+  const errors = await openFixture(page);
+  await page.evaluate(async () => {
+    await window.mountF1Element({ type: 'f1-race-control-card' });
+    const element = document.querySelector('f1-race-control-card');
+    element.setConfig({
+      ...element.config,
+      display_mode: 'list',
+      entity: 'sensor.f1_current_session',
+      show_clear_button: true,
+    });
+    element.hass = { ...element.hass, callService: undefined };
+    await element.updateComplete;
+  });
+
+  const card = page.locator('f1-race-control-card');
+  await card.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(card.getByRole('button', { name: 'Confirm clear', exact: true })).toBeVisible();
+
+  await page.evaluate(async () => {
+    window.__f1ServiceCalls = [];
+    const element = document.querySelector('f1-race-control-card');
+    element.hass = {
+      ...element.hass,
+      callService: async (...args) => window.__f1ServiceCalls.push(args),
+    };
+    await element.updateComplete;
+  });
+  await card.getByRole('button', { name: 'Confirm clear', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__f1ServiceCalls)).toEqual([
+    ['f1_sensor', 'clear_race_control_log', { entity_id: 'sensor.f1_current_session' }],
+  ]);
+  expect(errors).toEqual([]);
+});
+
 for (const matrix of [
   { name: 'mobile-dark-sv', width: 360, theme: 'dark', language: 'sv-SE' },
   { name: 'tablet-light-en', width: 700, theme: 'light', language: 'en-GB' },

@@ -1,22 +1,36 @@
 // Custom F1 Tyres Statistics card for Home Assistant
-import { html, css, svg } from './f1-lit-3.3.2.js';
-import { F1BaseElement } from './platform/base-card.js';
-import { handleF1CardActionKeydown as sharedHandleF1CardActionKeydown } from './platform/actions.js';
-import {
-  installF1CardActionAccessibility as sharedInstallF1CardActionAccessibility,
-  installF1EditorTabAccessibility as sharedInstallF1EditorTabAccessibility,
-  installF1GridTableAccessibility as sharedInstallF1GridTableAccessibility,
-} from './platform/accessibility.js';
-import { registerF1CardMetadata } from './platform/card-registry.js';
-import {
-  installF1DashboardContext,
-  updateF1DashboardContext,
-} from './platform/dashboard-context.js';
-import { installF1EntityAutoBinding } from './platform/entity-resolver.js';
-import {
-  f1Translate,
-  installF1FrontendLocalization,
-} from './platform/i18n.js';
+const cacheKey = new URL(import.meta.url).searchParams.get('v');
+const cacheSuffix = cacheKey ? `?v=${encodeURIComponent(cacheKey)}` : '';
+const cacheBustedImport = (path) => import(`${path}${cacheSuffix}`);
+const cacheBustedAssetUrl = (path) => {
+  const url = new URL(path, import.meta.url);
+  if (cacheKey) url.searchParams.set('v', cacheKey);
+  return url.href;
+};
+
+const [
+  { html, css, svg },
+  { F1BaseElement },
+  { handleF1CardActionKeydown: sharedHandleF1CardActionKeydown },
+  {
+    installF1CardActionAccessibility: sharedInstallF1CardActionAccessibility,
+    installF1EditorTabAccessibility: sharedInstallF1EditorTabAccessibility,
+    installF1GridTableAccessibility: sharedInstallF1GridTableAccessibility,
+  },
+  { registerF1CardMetadata },
+  { installF1DashboardContext, updateF1DashboardContext },
+  { installF1EntityAutoBinding },
+  { f1Translate, installF1FrontendLocalization },
+] = await Promise.all([
+  cacheBustedImport('./f1-lit-3.3.2.js'),
+  cacheBustedImport('./platform/base-card.js'),
+  cacheBustedImport('./platform/actions.js'),
+  cacheBustedImport('./platform/accessibility.js'),
+  cacheBustedImport('./platform/card-registry.js'),
+  cacheBustedImport('./platform/dashboard-context.js'),
+  cacheBustedImport('./platform/entity-resolver.js'),
+  cacheBustedImport('./platform/i18n.js'),
+]);
 
 const LitElement = F1BaseElement;
 
@@ -820,11 +834,11 @@ const COMPOUND_LIGHT_DISPLAY = {
   WET: '#0a84ff',
 };
 const COMPOUND_IMAGES = {
-  HARD: new URL('./hard_tyre.png', import.meta.url).href,
-  SOFT: new URL('./soft_tyre.png', import.meta.url).href,
-  MEDIUM: new URL('./medium_tyre.png', import.meta.url).href,
-  INTERMEDIATE: new URL('./intermediate_tyre.png', import.meta.url).href,
-  WET: new URL('./wet_tyre.png', import.meta.url).href,
+  HARD: cacheBustedAssetUrl('./hard_tyre.png'),
+  SOFT: cacheBustedAssetUrl('./soft_tyre.png'),
+  MEDIUM: cacheBustedAssetUrl('./medium_tyre.png'),
+  INTERMEDIATE: cacheBustedAssetUrl('./intermediate_tyre.png'),
+  WET: cacheBustedAssetUrl('./wet_tyre.png'),
 };
 
 const TEAM_LOGO_URLS = {
@@ -23465,6 +23479,7 @@ class F1RaceControlCard extends LitElement {
     _listLoading: { state: true },
     _listError: { state: true },
     _isClearing: { state: true },
+    _clearConfirmationPending: { state: true },
   };
 
   static styles = [F1_THEME_STYLES, css`
@@ -23918,6 +23933,8 @@ class F1RaceControlCard extends LitElement {
     this._listLoading = false;
     this._listError = null;
     this._isClearing = false;
+    this._clearConfirmationPending = false;
+    this._clearConfirmationTimer = null;
     this._historyQueue = [];
     this._historyIndex = 0;
     this._lastEventId = null;
@@ -23944,6 +23961,7 @@ class F1RaceControlCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._clearDisplayTimer();
+    this._resetClearConfirmation();
     this._unsubscribeListEvents();
   }
 
@@ -23977,6 +23995,7 @@ class F1RaceControlCard extends LitElement {
     this._listLoading = false;
     this._listError = null;
     this._isClearing = false;
+    this._resetClearConfirmation();
     this._listContextKey = null;
   }
 
@@ -24317,12 +24336,12 @@ class F1RaceControlCard extends LitElement {
       ? String(value)
       : `${String(value)}Z`);
     if (Number.isNaN(parsed)) return '--:--:--';
-    const date = new Date(parsed);
-    return [
-      date.getHours(),
-      date.getMinutes(),
-      date.getSeconds(),
-    ].map((part) => String(part).padStart(2, '0')).join(':');
+    return formatHassDateTime(
+      this.hass,
+      new Date(parsed),
+      { hour: '2-digit', minute: '2-digit', second: '2-digit' },
+      '--:--:--'
+    );
   }
 
   _getListToneClass(item) {
@@ -24344,11 +24363,38 @@ class F1RaceControlCard extends LitElement {
     return 'Race Control';
   }
 
+  _resetClearConfirmation() {
+    if (this._clearConfirmationTimer) {
+      clearTimeout(this._clearConfirmationTimer);
+      this._clearConfirmationTimer = null;
+    }
+    this._clearConfirmationPending = false;
+  }
+
+  _requestClearConfirmation() {
+    this._resetClearConfirmation();
+    this._clearConfirmationPending = true;
+    this._clearConfirmationTimer = setTimeout(() => {
+      this._clearConfirmationTimer = null;
+      this._clearConfirmationPending = false;
+    }, 5000);
+  }
+
   async _handleClearList(ev) {
     ev?.stopPropagation?.();
     if (this._isClearing) return;
+
+    if (!this._clearConfirmationPending) {
+      this._requestClearConfirmation();
+      return;
+    }
+
+    this._resetClearConfirmation();
     const entityId = resolveEntityIdWithFallback(this.hass, this.config?.entity);
-    if (!entityId || typeof this.hass?.callService !== 'function') return;
+    if (!entityId || typeof this.hass?.callService !== 'function') {
+      this._listError = 'Could not clear saved messages';
+      return;
+    }
 
     this._isClearing = true;
     try {
@@ -24722,11 +24768,18 @@ class F1RaceControlCard extends LitElement {
               <span class="rc-live-pill ${live ? '' : 'saved'}">${statusLabel}</span>
               ${this.config.show_clear_button !== false ? html`
                 <button
-                  class="rc-clear-button"
+                  class="rc-clear-button ${this._clearConfirmationPending ? 'confirm' : ''}"
                   ?disabled=${this._isClearing}
                   @click=${this._handleClearList}
+                  aria-label=${this._clearConfirmationPending
+                    ? f1Translate(this.hass, 'race_control.confirm_clear', 'Confirm clear')
+                    : f1Translate(this.hass, 'race_control.clear', 'Clear')}
                 >
-                  ${this._isClearing ? 'Clearing' : 'Clear'}
+                  ${this._isClearing
+                    ? f1Translate(this.hass, 'race_control.clearing', 'Clearing')
+                    : this._clearConfirmationPending
+                      ? f1Translate(this.hass, 'race_control.confirm_clear', 'Confirm clear')
+                      : f1Translate(this.hass, 'race_control.clear', 'Clear')}
                 </button>
               ` : null}
             </div>

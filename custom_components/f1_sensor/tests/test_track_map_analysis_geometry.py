@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 import json
 import math
 from math import isfinite
+from types import SimpleNamespace
 import zlib
 
+import pytest
+
+from custom_components.f1_sensor import (
+    track_map_static_geometry_calibrator as calibrator,
+    track_map_static_geometry_maintenance as maintenance,
+    track_map_static_geometry_qa as geometry_qa,
+)
 from custom_components.f1_sensor.helpers import (
     get_circuit_map_url,
     get_circuit_outline_url,
@@ -177,6 +186,17 @@ def _qa_test_image_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def _outline_test_image_bytes() -> bytes:
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGBA", (40, 30), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.line([(2, 20), (20, 2), (37, 20)], fill="white", width=3)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def _write_dump_session(
     root,
     *,
@@ -269,6 +289,108 @@ def test_analyze_position_z_lines_returns_compact_metrics() -> None:
         max_y=40,
         min_z=0,
         max_z=5,
+    )
+
+
+def test_static_geometry_image_extractors_calibration_and_rotation_helpers(
+    monkeypatch,
+) -> None:
+    outline = _outline_test_image_bytes()
+    points = calibrator.extract_track_points_from_image_bytes(outline, max_points=5)
+    assert 2 <= len(points) <= 5
+    detailed = extract_track_points_from_detailed_map_bytes(
+        _qa_test_image_bytes(), max_dimension=50, max_points=10
+    )
+    assert 2 <= len(detailed) <= 10
+
+    from PIL import Image
+
+    empty = BytesIO()
+    Image.new("RGBA", (5, 5), (0, 0, 0, 0)).save(empty, format="PNG")
+    with pytest.raises(ValueError, match="enough visible"):
+        calibrator.extract_track_points_from_image_bytes(empty.getvalue())
+    with pytest.raises(ValueError, match="enough circuit"):
+        extract_track_points_from_detailed_map_bytes(empty.getvalue())
+
+    monkeypatch.setattr(calibrator, "get_circuit_map_url", lambda *_: "map-url")
+    monkeypatch.setattr(
+        calibrator, "_download_image", lambda *_args, **_kwargs: _qa_test_image_bytes()
+    )
+    result = calibrator.calibrate_static_track_geometry_from_f1_image("151")
+    assert result.image_url == "map-url"
+
+    monkeypatch.setattr(calibrator, "get_circuit_map_url", lambda *_: None)
+    monkeypatch.setattr(calibrator, "get_circuit_outline_url", lambda *_: "outline-url")
+    monkeypatch.setattr(
+        calibrator, "_download_image", lambda *_args, **_kwargs: outline
+    )
+    result = calibrator.calibrate_static_track_geometry_from_f1_image("151")
+    assert result.image_url == "outline-url"
+    monkeypatch.setattr(calibrator, "get_circuit_outline_url", lambda *_: None)
+    with pytest.raises(ValueError, match="No F1 circuit image"):
+        calibrator.calibrate_static_track_geometry_from_f1_image("151")
+
+    assert calibrator._normalize_shape_rotation(370, reference_rotation=5) == 10
+    assert calibrator._normalize_equivalent_rotation(180, reference_rotation=None) == 0
+    assert calibrator._normalize_equivalent_rotation(0.01, reference_rotation=0) == 0
+
+
+def test_static_geometry_maintenance_and_qa_cli_paths(tmp_path, monkeypatch) -> None:
+    maintenance_report = SimpleNamespace(
+        cataloged_count=20,
+        candidate_count=1,
+        missing_position_z_count=1,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "build_static_track_geometry_maintenance_report",
+        lambda **_kwargs: maintenance_report,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "write_static_track_geometry_maintenance_artifacts",
+        lambda *_args, **_kwargs: {"json": tmp_path / "maintenance.json"},
+    )
+    assert maintenance.main(["--output-dir", str(tmp_path)]) == 0
+    assert maintenance.main(["--output-dir", str(tmp_path), "--strict"]) == 1
+    assert maintenance._normalize_degrees(360) == 0
+    assert maintenance._normalize_degrees(-360) == 0
+    assert maintenance._text_or_none(" ") is None
+    assert maintenance._json_payload_from_stream_line("URL: ignored") is None
+    assert maintenance._json_payload_from_stream_line("prefix {bad") is None
+    info = tmp_path / "SessionInfo.txt"
+    info.write_text('00:00:00.000{"Meeting":{"Name":"Test"}}')
+    assert maintenance._read_session_info_file(info)["Meeting"]["Name"] == "Test"
+    assert maintenance._read_session_info_file(tmp_path / "missing") == {}
+
+    qa_report = SimpleNamespace(
+        covered_count=20,
+        expected_count=21,
+        missing_circuit_ids=("madring",),
+        unexpected_circuit_ids=(),
+        entries=(),
+    )
+    monkeypatch.setattr(
+        geometry_qa,
+        "build_static_track_geometry_qa_report",
+        lambda **_kwargs: qa_report,
+    )
+    monkeypatch.setattr(
+        geometry_qa,
+        "write_static_track_geometry_qa_artifacts",
+        lambda *_args, **_kwargs: {"json": tmp_path / "qa.json"},
+    )
+    assert geometry_qa.main(["--output-dir", str(tmp_path), "--no-render"]) == 0
+    assert (
+        geometry_qa.main(["--output-dir", str(tmp_path), "--no-render", "--strict"])
+        == 1
+    )
+    assert geometry_qa._normalize_points(()) == ()
+    assert (
+        geometry_qa._qa_font(
+            SimpleNamespace(truetype=lambda *_: (_ for _ in ()).throw(RuntimeError()))
+        )
+        is None
     )
 
 
@@ -847,6 +969,267 @@ def test_static_track_geometry_builder_closes_near_loop_candidate() -> None:
     assert result.driver_count == 1
     assert result.sample_count == len(points)
     assert result.points[0] == result.points[-1]
+
+
+def test_static_geometry_maintenance_edge_helpers(tmp_path, monkeypatch) -> None:
+    """Offline catalog maintenance handles incomplete dumps without crashing."""
+    dump = maintenance.StaticTrackGeometryDumpSession(
+        root_path=str(tmp_path),
+        position_file=str(tmp_path / "missing_Position.z.txt"),
+        session_info_file=None,
+        circuit_key=None,
+        circuit_short_name=None,
+        meeting_name=None,
+        session_name=None,
+        session_type=None,
+        start_date=None,
+        path=None,
+        inferred_circuit_id=None,
+    )
+    assert dump.as_dict()["root_path"] == str(tmp_path)
+    assert scan_position_dump_sessions(tmp_path / "absent") == ()
+
+    practice = tmp_path / "Practice"
+    practice.mkdir()
+    (practice / "sample_Position.z.txt").write_text("", encoding="utf-8")
+    assert (
+        scan_position_dump_sessions(tmp_path, expected_circuit_ids=("madring",)) == ()
+    )
+
+    assert (
+        maintenance._build_candidate_for_dump(
+            "madring", dump, season="2026", image_loader=None, max_points=10
+        )
+        is None
+    )
+    keyed_dump = replace(dump, circuit_key="999")
+    assert (
+        maintenance._build_candidate_for_dump(
+            "madring", keyed_dump, season="2026", image_loader=None, max_points=10
+        )
+        is None
+    )
+
+    empty_position = tmp_path / "empty_Position.z.txt"
+    empty_position.write_text("invalid", encoding="utf-8")
+    empty_dump = replace(keyed_dump, position_file=str(empty_position))
+    assert (
+        maintenance._build_candidate_for_dump(
+            "madring", empty_dump, season="2026", image_loader=None, max_points=10
+        )
+        is None
+    )
+
+    assert maintenance._source_season(dump) is None
+    direct = tmp_path / "sample_Position.z.txt"
+    direct.write_text("", encoding="utf-8")
+    session_info = tmp_path / "sample_SessionInfo.txt"
+    session_info.write_text("URL: ignored\ninvalid\n", encoding="utf-8")
+    assert maintenance._session_info_file_for_position_file(direct) == session_info
+    assert maintenance._read_session_info_file(session_info) == {}
+    assert maintenance._json_payload_from_stream_line("text without json") is None
+    assert maintenance._session_circuit_metadata({"Meeting": {"Circuit": "bad"}}) == (
+        None,
+        None,
+    )
+    assert (
+        maintenance._infer_circuit_id(
+            circuit_key=None,
+            circuit_short_name="Unknown",
+            session_info={},
+            position_file=direct,
+            expected_circuit_ids=("madring",),
+            season="2026",
+        )
+        is None
+    )
+    assert maintenance._best_dump_by_circuit_id((dump,)) == {}
+    assert maintenance._text_or_none(None) is None
+
+    monkeypatch.setattr(maintenance, "get_circuit_map_url", lambda *_: None)
+    monkeypatch.setattr(
+        maintenance,
+        "get_circuit_outline_url",
+        lambda *_: "https://outline.test/map.png",
+    )
+    assert maintenance._image_source_for_circuit("madring", "2026") == (
+        maintenance.F1_OUTLINE_SOURCE,
+        "https://outline.test/map.png",
+    )
+    monkeypatch.setattr(maintenance, "get_circuit_outline_url", lambda *_: None)
+    assert maintenance._image_source_for_circuit("madring", "2026") == (None, None)
+
+    monkeypatch.setattr(
+        maintenance,
+        "extract_track_points_from_image_bytes",
+        lambda _data: ((0.0, 0.0), (1.0, 1.0)),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "presentation_rotation_from_image_points",
+        lambda *_args: 12.34,
+    )
+    assert (
+        maintenance._calibrate_candidate_rotation(
+            ((0, 0), (1, 1)),
+            image_source=maintenance.F1_OUTLINE_SOURCE,
+            image_url="https://outline.test/map.png",
+            image_loader=lambda _url: b"image",
+        )
+        == 12.3
+    )
+
+    class _DownloadResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return bytearray(b"image")
+
+    monkeypatch.setattr(
+        maintenance, "urlopen", lambda *_args, **_kwargs: _DownloadResponse()
+    )
+    assert maintenance._download_image("https://example.test/map.png") == b"image"
+
+
+def test_static_geometry_maintenance_candidate_failure_report(
+    tmp_path, monkeypatch
+) -> None:
+    dump = maintenance.StaticTrackGeometryDumpSession(
+        root_path=str(tmp_path),
+        position_file=str(tmp_path / "sample_Position.z.txt"),
+        session_info_file=None,
+        circuit_key="999",
+        circuit_short_name="Madrid",
+        meeting_name="Madrid Grand Prix",
+        session_name="Race",
+        session_type="Race",
+        start_date="2026-09-13T13:00:00",
+        path="2026/Madrid/Race",
+        inferred_circuit_id="madring",
+    )
+    monkeypatch.setattr(
+        maintenance, "scan_position_dump_sessions", lambda *_args, **_kwargs: (dump,)
+    )
+    monkeypatch.setattr(maintenance, "_catalog_by_circuit_id", lambda: {})
+    monkeypatch.setattr(
+        maintenance, "_build_candidate_for_dump", lambda *_args, **_kwargs: None
+    )
+
+    report = build_static_track_geometry_maintenance_report(
+        dump_root=tmp_path,
+        output_dir=tmp_path / "out",
+        expected_circuit_ids=("madring",),
+    )
+
+    assert report.entries[0].status == maintenance.MAINTENANCE_STATUS_CANDIDATE_ERROR
+
+
+def test_static_geometry_qa_review_and_image_edge_paths(monkeypatch) -> None:
+    entry = {"circuit_key": "test", "rotation": 0, "points": ((0, 0), (1, 1))}
+    image_source_for_circuit = geometry_qa._image_source_for_circuit
+    monkeypatch.setattr(
+        geometry_qa, "_image_source_for_circuit", lambda *_args: (None, None)
+    )
+    review = geometry_qa._qa_entry_for_circuit(
+        "unknown",
+        entry,
+        season="2026",
+        include_image_points=False,
+        image_loader=None,
+    )
+    assert review.status == geometry_qa.STATUS_NEEDS_REVIEW
+    assert len(review.issues) == 3
+
+    monkeypatch.setattr(
+        geometry_qa,
+        "_image_source_for_circuit",
+        lambda *_args: (geometry_qa.F1_OUTLINE_SOURCE, "https://example.test/map.png"),
+    )
+    image_error = geometry_qa._qa_entry_for_circuit(
+        "unknown",
+        entry,
+        season="2026",
+        include_image_points=True,
+        image_loader=lambda _url: (_ for _ in ()).throw(RuntimeError("bad image")),
+    )
+    assert image_error.status == geometry_qa.STATUS_IMAGE_ERROR
+
+    monkeypatch.setattr(
+        geometry_qa, "_image_source_for_circuit", image_source_for_circuit
+    )
+    monkeypatch.setattr(geometry_qa, "get_circuit_map_url", lambda *_args: None)
+    monkeypatch.setattr(
+        geometry_qa,
+        "get_circuit_outline_url",
+        lambda *_args: "https://example.test/outline.png",
+    )
+    assert geometry_qa._image_source_for_circuit("unknown", "2026") == (
+        geometry_qa.F1_OUTLINE_SOURCE,
+        "https://example.test/outline.png",
+    )
+    monkeypatch.setattr(geometry_qa, "get_circuit_outline_url", lambda *_args: None)
+    assert geometry_qa._image_source_for_circuit("unknown", "2026") == (None, None)
+
+    monkeypatch.setattr(
+        geometry_qa,
+        "extract_track_points_from_image_bytes",
+        lambda _data, **_kwargs: ((1.0, 2.0),),
+    )
+    assert geometry_qa._extract_image_points(
+        lambda _url: b"image",
+        "https://example.test/outline.png",
+        geometry_qa.F1_OUTLINE_SOURCE,
+    ) == ((1.0, 2.0),)
+    assert (
+        geometry_qa._load_image_points_for_entry(
+            geometry_qa.StaticTrackGeometryQaEntry("unknown", geometry_qa.STATUS_OK),
+            lambda _url: b"image",
+        )
+        == ()
+    )
+    broken_entry = geometry_qa.StaticTrackGeometryQaEntry(
+        "unknown",
+        geometry_qa.STATUS_OK,
+        image_source=geometry_qa.F1_OUTLINE_SOURCE,
+        image_url="https://example.test/outline.png",
+    )
+    assert (
+        geometry_qa._load_image_points_for_entry(
+            broken_entry,
+            lambda _url: (_ for _ in ()).throw(RuntimeError("bad image")),
+        )
+        == ()
+    )
+
+    class _DownloadResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return bytearray(b"image")
+
+    monkeypatch.setattr(
+        geometry_qa, "urlopen", lambda *_args, **_kwargs: _DownloadResponse()
+    )
+    assert geometry_qa._download_image("https://example.test/map.png") == b"image"
+
+
+def test_static_geometry_builder_rejects_empty_and_unbounded_points(
+    monkeypatch,
+) -> None:
+    from custom_components.f1_sensor import track_map_static_geometry_builder as builder
+
+    assert builder._close_static_track_points(()) is None
+    assert builder._bounds_from_points(()) is None
+    monkeypatch.setattr(builder, "_bounds_from_points", lambda _points: None)
+    assert builder._close_static_track_points(((0, 0), (1, 1))) is None
 
 
 def test_static_track_geometry_builder_rejects_open_candidate() -> None:

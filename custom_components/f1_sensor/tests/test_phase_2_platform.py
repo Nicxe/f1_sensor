@@ -252,3 +252,37 @@ def test_frontend_loader_preserves_all_card_tags_and_eagerly_loads_bundle(
     assert "const LitElement = F1BaseElement;" in main_source
     for module in ("base-card", "actions", "accessibility", "i18n"):
         assert (root / "platform" / f"{module}.js").is_file()
+
+
+def test_frontend_cache_key_reaches_nested_modules_and_local_assets(
+    bundled_card_path: Path,
+) -> None:
+    """Ensure a new managed resource version cannot reuse stale child assets."""
+    root = bundled_card_path.parent
+    main_source = bundled_card_path.read_text(encoding="utf-8")
+    accessibility_source = (root / "platform" / "accessibility.js").read_text(
+        encoding="utf-8"
+    )
+    base_source = (root / "platform" / "base-card.js").read_text(encoding="utf-8")
+    registry_source = (root / "platform" / "card-registry.js").read_text(
+        encoding="utf-8"
+    )
+
+    for source in (main_source, accessibility_source, base_source, registry_source):
+        assert "new URL(import.meta.url).searchParams.get('v')" in source
+        assert "cacheSuffix" in source
+
+    assert "from './platform/" not in main_source
+    assert "from '../f1-lit-3.3.2.js'" not in accessibility_source
+    assert "from './actions.js'" not in accessibility_source
+    assert "from './i18n.js'" not in accessibility_source
+    assert "from '../f1-lit-3.3.2.js'" not in base_source
+    assert "from './i18n.js'" not in registry_source
+    for filename in (
+        "hard_tyre.png",
+        "soft_tyre.png",
+        "medium_tyre.png",
+        "intermediate_tyre.png",
+        "wet_tyre.png",
+    ):
+        assert f"cacheBustedAssetUrl('./{filename}')" in main_source

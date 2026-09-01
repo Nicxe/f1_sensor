@@ -16,7 +16,7 @@
     "test:frontend:update": "playwright test --update-snapshots",
     "test:audit": "sh -c 'npm audit --json > npm-audit.json || true; python3 scripts/check_npm_audit.py npm-audit.json; result=$?; rm -f npm-audit.json; exit $result'",
     "test:release": "python3 scripts/check_release_build.py",
-    "test:quality": "python3 scripts/check_translations.py custom_components/f1_sensor/translations && python3 scripts/check_source_reviews.py quality/data-sources.json && npm run test:audit && npm run test:release && npm run test:frontend",
+    "test:quality": "python3 scripts/check_translations.py custom_components/f1_sensor/translations && python3 scripts/check_source_reviews.py quality/data-sources.json && python3 scripts/check_token_helper_review.py quality/token-helper-review.json && npm run test:audit && npm run test:release && npm run test:frontend",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids"
   },

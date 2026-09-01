@@ -4,6 +4,8 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 import logging
 import time
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -49,6 +51,16 @@ class _Window:
 class _LiveSupervisor:
     def __init__(self, window: _Window | None) -> None:
         self.current_window = window
+
+
+class _BadKey:
+    def __str__(self) -> str:
+        raise RuntimeError("key")
+
+
+class _BadGetDict(dict):
+    def get(self, _key, _default=None):
+        raise RuntimeError("get")
 
 
 def _utc(value: str) -> datetime:
@@ -302,6 +314,327 @@ async def test_session_clock_elapsed_uses_live_window_start_when_total_unknown(
     assert state["clock_remaining_s"] == 1200
     assert state["session_start_utc"] == "2025-12-07T08:00:00+00:00"
     assert state["clock_elapsed_s"] == 2405
+
+
+async def test_session_clock_helper_and_defensive_branch_matrix(
+    hass, monkeypatch
+) -> None:
+    coordinator = SessionClockCoordinator(hass, session_coord=object())
+    now = _utc("2026-09-01T12:00:00Z")
+
+    assert coordinator._parse_utc(None) is None
+    assert coordinator._parse_utc(" ") is None
+    assert coordinator._parse_utc("bad") is None
+    assert coordinator._parse_utc("2026-09-01T12:00:00").tzinfo is UTC
+    assert coordinator._iso(None) is None
+    assert coordinator._parse_remaining(None) is None
+    assert coordinator._parse_remaining("") is None
+    assert coordinator._parse_remaining("1:2") is None
+    assert coordinator._parse_remaining("a:b:c") is None
+    assert coordinator._parse_remaining("00:01:02.9") == 62
+    assert coordinator._iter_series_items([{}, "bad"]) == [{}]
+    assert coordinator._iter_series_items({"2": {"x": 2}, "1": {"x": 1}}) == [
+        {"x": 1},
+        {"x": 2},
+    ]
+    assert coordinator._iter_series_items("bad") == []
+    bad_key = _BadKey()
+    assert coordinator._iter_series_items({bad_key: {"x": 1}}) == [{"x": 1}]
+
+    for callback in (
+        coordinator._on_extrapolated_clock,
+        coordinator._on_heartbeat,
+        coordinator._on_session_status,
+        coordinator._on_session_info,
+        coordinator._on_session_data,
+    ):
+        callback("bad")
+    coordinator._on_heartbeat({"Utc": "bad"})
+    coordinator._ingest_session_data(
+        {
+            "Series": [
+                {"QualifyingPart": None},
+                {"QualifyingPart": "x", "Utc": now.isoformat()},
+                {"QualifyingPart": 1, "Utc": "bad"},
+                {"QualifyingPart": 1, "Utc": now.isoformat()},
+                {"QualifyingPart": 1, "Utc": now.isoformat()},
+            ],
+            "StatusSeries": [
+                {"SessionStatus": ""},
+                {"SessionStatus": "Started", "Utc": "bad"},
+                {"SessionStatus": "Started", "Utc": now.isoformat()},
+                {"SessionStatus": "Started", "Utc": now.isoformat()},
+                {
+                    "SessionStatus": "Finished",
+                    "Utc": (now + timedelta(minutes=1)).isoformat(),
+                },
+            ],
+        }
+    )
+    assert coordinator._resolve_session_part(now) == 1
+    assert coordinator._status_from_events(now - timedelta(hours=1)) == "Finished"
+    assert coordinator._status_from_events(now) == "Started"
+
+    coordinator._session_info = {}
+    coordinator._live_supervisor = _LiveSupervisor(
+        _Window(
+            "Sprint Shootout",
+            datetime(2026, 9, 1, 12),
+            datetime(2026, 9, 1, 12, 30),
+        )
+    )
+    assert coordinator._resolve_session_type_and_name() == (
+        "Qualifying",
+        "Sprint Shootout",
+    )
+    assert coordinator._session_duration_from_live_window() == 1800
+    assert coordinator._session_start_from_live_window().tzinfo is UTC
+    coordinator._live_supervisor.current_window = _Window(
+        "Race", now, now - timedelta(minutes=1)
+    )
+    assert coordinator._session_duration_from_live_window() is None
+    coordinator._live_supervisor.current_window = _Window(
+        "Race", now, now + timedelta(hours=5)
+    )
+    assert coordinator._session_duration_from_live_window() is None
+    coordinator._live_supervisor.current_window = SimpleNamespace(
+        session_name="Race", start_utc="bad", end_utc=None
+    )
+    assert coordinator._session_duration_from_live_window() is None
+    assert coordinator._session_start_from_live_window() is None
+    coordinator._live_supervisor.current_window = None
+    assert coordinator._session_duration_from_live_window() is None
+    assert coordinator._session_start_from_live_window() is None
+    coordinator._live_supervisor.current_window = _Window(
+        "Sprint", now, now + timedelta(minutes=30)
+    )
+    coordinator._session_info = {}
+    assert coordinator._resolve_session_type_and_name() == ("Race", "Sprint")
+    with monkeypatch.context() as context:
+        context.setattr(
+            coordinator,
+            "_current_live_window",
+            Mock(side_effect=RuntimeError("window")),
+        )
+        assert coordinator._resolve_session_type_and_name() == (None, None)
+
+    coordinator._session_info = {
+        "Type": "Practice",
+        "Name": "Practice 1",
+        "StartDate": now.isoformat(),
+        "EndDate": (now + timedelta(hours=1)).isoformat(),
+    }
+    assert coordinator._session_duration_from_info() == 3600
+    assert coordinator._default_clock_total(0) == 3600
+    coordinator._session_info["EndDate"] = (now + timedelta(hours=5)).isoformat()
+    assert coordinator._session_duration_from_info() is None
+    coordinator._session_info["EndDate"] = (now - timedelta(minutes=1)).isoformat()
+    assert coordinator._session_duration_from_info() is None
+    coordinator._session_info = {}
+    coordinator._live_supervisor = None
+    assert coordinator._default_clock_total(0, 3500) == 3600
+
+    coordinator._session_info = {"Type": "Qualifying", "Name": "Qualifying"}
+    assert coordinator._default_clock_total(2) == 900
+    assert coordinator._default_clock_total(9, 700) == 720
+    coordinator._session_info = {
+        "Type": "Qualifying",
+        "Name": "Sprint Qualifying",
+    }
+    assert coordinator._default_clock_total(1) == 720
+    assert coordinator._status_is_terminal("Finished") is False
+    coordinator._session_info = {"Type": "Race", "Name": "Race"}
+    assert coordinator._status_is_terminal("Finished") is True
+    assert coordinator._status_is_terminal(None) is False
+    assert coordinator._status_is_terminal("Finalised") is True
+
+    coordinator._clock_totals.clear()
+    coordinator._set_clock_total_floor(0, None)
+    coordinator._set_clock_total_floor(0, 0)
+    coordinator._set_clock_total_floor(0, 100)
+    coordinator._set_clock_total_floor(0, 90)
+    assert coordinator._clock_totals[0] == 100
+    coordinator._update_clock_total(0, None)
+    coordinator._update_clock_total(0, 0)
+    coordinator._clock_anchor_remaining_s = None
+    assert coordinator._clock_remaining_seconds(now) is None
+
+    coordinator._session_info = {"Type": "Race", "Name": "Sprint"}
+    assert coordinator._infer_race_start_from_clock() is None
+    coordinator._session_info = {"Type": "Race", "Name": "Race"}
+    coordinator._clock_anchor_extrapolating = False
+    assert coordinator._infer_race_start_from_clock() is None
+    coordinator._clock_anchor_extrapolating = True
+    coordinator._clock_anchor_utc = None
+    assert coordinator._infer_race_start_from_clock() is None
+    coordinator._clock_anchor_utc = now
+    coordinator._clock_anchor_remaining_s = None
+    assert coordinator._infer_race_start_from_clock() is None
+    coordinator._clock_anchor_remaining_s = 7000
+    assert coordinator._infer_race_start_from_clock() is None
+
+    coordinator._session_part_events = [(now, 2)]
+    assert coordinator._resolve_session_part(now - timedelta(seconds=1)) == 2
+    coordinator._segment_start_utc.clear()
+    coordinator._session_start_utc = now
+    assert coordinator._segment_start(0) == now
+
+    coordinator._session_info = {"Type": "Race", "Name": "Race"}
+    coordinator._segment_start_utc.clear()
+    coordinator._session_start_utc = None
+    coordinator._race_start_utc = now
+    assert coordinator._resolve_race_start() == now
+    coordinator._race_start_utc = None
+    coordinator._session_status_events = [
+        (now - timedelta(seconds=1), "Inactive"),
+        (now, "Started"),
+    ]
+    assert coordinator._resolve_race_start() == now
+
+    coordinator._segment_start_utc.clear()
+    coordinator._session_start_utc = None
+    coordinator._session_info = {"StartDate": now.isoformat()}
+    assert coordinator._resolve_session_start(0, None, None) == (
+        now,
+        "sessioninfo",
+    )
+    assert coordinator._source_quality(False, False, True) == "sessiondata_fallback"
+
+    coordinator._session_info = {"Type": "Qualifying", "Name": "Qualifying"}
+    coordinator._session_part_events = [(now, 2)]
+    coordinator._clock_totals = {0: 900}
+    coordinator._clock_anchor_remaining_s = None
+    with monkeypatch.context() as context:
+        context.setattr(coordinator, "_server_now_utc", lambda: now)
+        state_with_fallback_total = coordinator._build_state()
+    assert state_with_fallback_total["clock_total_s"] == 900
+
+    coordinator._replay_controller_state = Mock(return_value=ReplayState.PAUSED)
+    assert coordinator._is_replay_paused() is True
+    coordinator._replay_frozen_now_utc = None
+    coordinator._last_heartbeat_utc = None
+    coordinator._clock_anchor_utc = now
+    assert coordinator._server_now_utc() == now
+
+    coordinator._session_info = {"Type": "Race", "Name": "Race"}
+    coordinator._session_status = {"Message": "Started"}
+    assert coordinator._current_status(now) == "Started"
+    coordinator._session_status = {}
+    coordinator._session_start_utc = now
+    assert coordinator._segment_start(0) == now
+    assert coordinator._segment_start(9) is None
+    coordinator._record_segment_terminal(now)
+    coordinator._record_segment_start(now + timedelta(minutes=2))
+    assert coordinator._segment_terminal(0) is None
+
+    previous = coordinator._empty_state()
+    coordinator._last_published_state = previous
+    assert coordinator._should_publish_state(dict(previous)) is False
+    changed = dict(previous, clock_phase="running")
+    assert coordinator._should_publish_state(changed) is True
+    coordinator._last_published_state = None
+    assert coordinator._should_publish_state(previous) is True
+    previous = coordinator._empty_state()
+    current = dict(previous)
+    previous["session_start_utc"] = None
+    current["session_start_utc"] = now.isoformat()
+    coordinator._last_published_state = previous
+    assert coordinator._should_publish_state(current) is True
+    previous["session_start_utc"] = now.isoformat()
+    current["session_start_utc"] = (now + timedelta(seconds=3)).isoformat()
+    coordinator._last_published_state = previous
+    assert coordinator._should_publish_state(current) is True
+
+    monkeypatch.setattr(
+        "custom_components.f1_sensor._is_no_spoiler_blocked", lambda _coord: True
+    )
+    coordinator._deliver()
+    coordinator.set_delay(2)
+
+    monkeypatch.setattr(coordinator, "_deliver", Mock())
+    coordinator._on_replay_state_change({"state": "bad"})
+    coordinator._on_replay_state_change({"state": ReplayState.PAUSED.value})
+    assert coordinator._replay_frozen_now_utc is not None
+    coordinator._on_replay_state_change({"state": ReplayState.PLAYING.value})
+    assert coordinator._replay_frozen_now_utc is None
+
+
+@pytest.mark.asyncio
+async def test_session_clock_first_refresh_empty_and_failed_bus_matrix(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        DataUpdateCoordinator,
+        "async_config_entry_first_refresh",
+        AsyncMock(),
+    )
+    failed_lookup = SessionClockCoordinator(hass, session_coord=object())
+    failed_lookup._bus = None
+    failed_lookup.hass = SimpleNamespace(data=_BadGetDict())
+    await failed_lookup.async_config_entry_first_refresh()
+    assert failed_lookup._unsub is None
+
+    failed_subscribe = SessionClockCoordinator(hass, session_coord=object())
+    failed_subscribe._bus = SimpleNamespace(
+        subscribe=Mock(side_effect=RuntimeError("subscribe"))
+    )
+    await failed_subscribe.async_config_entry_first_refresh()
+    assert failed_subscribe._unsub is None
+
+
+async def test_session_clock_subscription_replay_listener_and_close(
+    hass, monkeypatch
+) -> None:
+    class Bus:
+        def __init__(self) -> None:
+            self.callbacks = {}
+            self.removers = []
+
+        def subscribe(self, stream, callback):
+            self.callbacks[stream] = callback
+            remover = Mock()
+            self.removers.append(remover)
+            return remover
+
+    bus = Bus()
+    replay_remove = Mock()
+    replay = SimpleNamespace(
+        session_manager=SimpleNamespace(add_listener=Mock(return_value=replay_remove))
+    )
+    coordinator = SessionClockCoordinator(
+        hass,
+        session_coord=object(),
+        bus=bus,
+        replay_controller=replay,
+    )
+    monkeypatch.setattr(
+        DataUpdateCoordinator,
+        "async_config_entry_first_refresh",
+        AsyncMock(),
+    )
+    await coordinator.async_config_entry_first_refresh()
+    assert set(bus.callbacks) == {
+        "ExtrapolatedClock",
+        "Heartbeat",
+        "SessionStatus",
+        "SessionInfo",
+        "SessionData",
+    }
+    assert coordinator._replay_state_unsub is replay_remove
+    coordinator._unsub()
+    assert all(remover.called for remover in bus.removers)
+    await coordinator.async_close()
+    replay_remove.assert_called_once()
+
+    no_bus = SessionClockCoordinator(hass, session_coord=object())
+    hass.data.pop(DOMAIN, None)
+    await no_bus.async_config_entry_first_refresh()
+    assert no_bus._unsub is None
+    no_bus._handle_live_state(True, "init")
+    no_bus._handle_live_state(True, "replay")
+    no_bus._handle_live_state(True, "no-spoiler")
+    no_bus._handle_live_state(False, "window-ended")
+    assert no_bus.available is False
 
 
 @pytest.mark.asyncio

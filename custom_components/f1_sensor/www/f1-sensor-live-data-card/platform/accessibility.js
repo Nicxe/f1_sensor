@@ -1,11 +1,17 @@
-import { LitElement } from '../f1-lit-3.3.2.js';
-import {
+const cacheKey = new URL(import.meta.url).searchParams.get('v');
+const cacheSuffix = cacheKey ? `?v=${encodeURIComponent(cacheKey)}` : '';
+const [{ LitElement }, actionsModule, i18nModule] = await Promise.all([
+  import(`../f1-lit-3.3.2.js${cacheSuffix}`),
+  import(`./actions.js${cacheSuffix}`),
+  import(`./i18n.js${cacheSuffix}`),
+]);
+const {
   dispatchF1CardAction,
   handleF1CardActionKeydown,
   hasF1Action,
   isF1InteractiveTarget,
-} from './actions.js';
-import { f1Translate, f1TranslateText } from './i18n.js';
+} = actionsModule;
+const { f1Translate, f1TranslateText } = i18nModule;
 
 export const installF1EditorTabAccessibility = (EditorClass) => {
   if (!EditorClass || EditorClass.prototype.__f1TabAccessibilityInstalled) return;

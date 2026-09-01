@@ -5604,7 +5604,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 personal_best.get(idx), best.get(idx)
             )
             if best.get(idx) is None and personal_best[idx].get("time") is not None:
-                best[idx] = personal_best[idx]["time"]
+                restored_time = personal_best[idx]["time"]
+                parsed_time = cls._parse_laptime_secs(str(restored_time))
+                best[idx] = parsed_time if parsed_time is not None else restored_time
 
         sectors.setdefault("current_lap", None)
         sectors.setdefault("last_completed_sector", None)

@@ -1,4 +1,6 @@
-import { f1Translate } from './i18n.js';
+const cacheKey = new URL(import.meta.url).searchParams.get('v');
+const cacheSuffix = cacheKey ? `?v=${encodeURIComponent(cacheKey)}` : '';
+const { f1Translate } = await import(`./i18n.js${cacheSuffix}`);
 
 export const F1_CARD_DEFINITIONS = [
   ['f1-weekend-hub-card', 'F1 Weekend Hub', 'One synchronized home for live, replay, and post-session analysis', 'weekend_hub'],

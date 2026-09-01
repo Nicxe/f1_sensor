@@ -67,6 +67,7 @@ jobs:
         run: |
           python scripts/check_translations.py custom_components/f1_sensor/translations
           python scripts/check_source_reviews.py quality/data-sources.json
+          python scripts/check_token_helper_review.py quality/token-helper-review.json
 
       - name: Check dependency policy
         run: npm run test:audit

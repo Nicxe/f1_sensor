@@ -76,6 +76,98 @@ process.stdout.write(JSON.stringify({
 }));
 """
 
+NODE_RACE_CONTROL_SAFETY_PROBE = r"""
+const fs = require("node:fs");
+const source = fs.readFileSync(process.env.F1_CARD_PATH, "utf8");
+
+function findMatchingBrace(text, openIndex) {
+  let depth = 0;
+  for (let index = openIndex; index < text.length; index += 1) {
+    if (text[index] === "{") depth += 1;
+    if (text[index] === "}") depth -= 1;
+    if (depth === 0) return index;
+  }
+  throw new Error("Unbalanced source block");
+}
+
+function extractMethod(signature) {
+  const classStart = source.indexOf("class F1RaceControlCard extends LitElement");
+  const methodStart = source.indexOf(signature, classStart);
+  const braceStart = source.indexOf("{", methodStart);
+  return source.slice(methodStart, findMatchingBrace(source, braceStart) + 1);
+}
+
+const formatMethod = extractMethod("_formatListTime(value) {");
+const resetMethod = extractMethod("_resetClearConfirmation() {");
+const requestMethod = extractMethod("_requestClearConfirmation() {");
+const clearMethod = extractMethod("async _handleClearList(ev) {");
+
+const formatHassDateTime = (hass, date, options, fallback) => {
+  try {
+    return new Intl.DateTimeFormat(hass.locale.language, {
+      ...options,
+      timeZone: hass.config.time_zone,
+      hour12: false,
+    }).format(date);
+  } catch (_err) {
+    return fallback;
+  }
+};
+const resolveEntityIdWithFallback = (_hass, entity) => entity;
+
+const Harness = new Function(
+  "formatHassDateTime",
+  "resolveEntityIdWithFallback",
+  `return class Harness {
+    constructor() {
+      this.hass = {
+        locale: { language: "en", time_format: "24" },
+        config: { time_zone: "Europe/Stockholm" },
+        calls: [],
+        async callService(domain, service, data) {
+          this.calls.push({ domain, service, data });
+        },
+      };
+      this.config = { entity: "sensor.f1_race_control" };
+      this._listMessages = [{ sequence: 1 }];
+      this._listError = "old";
+      this._isClearing = false;
+      this._clearConfirmationPending = false;
+      this._clearConfirmationTimer = null;
+    }
+    ${formatMethod}
+    ${resetMethod}
+    ${requestMethod}
+    ${clearMethod}
+  }`,
+)(formatHassDateTime, resolveEntityIdWithFallback);
+
+(async () => {
+  const host = new Harness();
+  const firstEvent = { stopped: false, stopPropagation() { this.stopped = true; } };
+  await host._handleClearList(firstEvent);
+  const afterFirst = {
+    stopped: firstEvent.stopped,
+    pending: host._clearConfirmationPending,
+    calls: host.hass.calls.length,
+  };
+  await host._handleClearList({ stopPropagation() {} });
+  process.stdout.write(JSON.stringify({
+    formatted: host._formatListTime("2026-01-01T00:00:00Z"),
+    afterFirst,
+    afterSecond: {
+      pending: host._clearConfirmationPending,
+      calls: host.hass.calls,
+      messages: host._listMessages,
+      error: host._listError,
+    },
+  }));
+})().catch((err) => {
+  process.stderr.write(String(err));
+  process.exit(1);
+});
+"""
+
 
 def _source(card_path: Path) -> str:
     return card_path.read_text(encoding="utf-8")
@@ -138,6 +230,40 @@ def test_race_control_teardown_rejects_late_callbacks(
     assert "this._callUnsubscribe(eventUnsub);" in block
     assert "this._scheduleListSubscriptionRetry(contextKey, generation);" in block
     assert "Live feed unavailable; showing saved messages" in block
+
+
+def test_race_control_uses_ha_timezone_and_confirms_before_clear(
+    bundled_card_path: Path,
+) -> None:
+    """Race Control follows HA time and requires a deliberate second clear click."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for frontend interaction tests")
+    env = os.environ.copy()
+    env["F1_CARD_PATH"] = str(bundled_card_path)
+    completed = subprocess.run(
+        [node, "-e", NODE_RACE_CONTROL_SAFETY_PROBE],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["formatted"] == "01:00:00"
+    assert payload["afterFirst"] == {"stopped": True, "pending": True, "calls": 0}
+    assert payload["afterSecond"] == {
+        "pending": False,
+        "calls": [
+            {
+                "domain": "f1_sensor",
+                "service": "clear_race_control_log",
+                "data": {"entity_id": "sensor.f1_race_control"},
+            }
+        ],
+        "messages": [],
+        "error": None,
+    }
 
 
 def test_track_map_subscription_retries_and_survives_remount(
