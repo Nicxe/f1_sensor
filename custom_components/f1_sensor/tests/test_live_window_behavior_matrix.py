@@ -299,6 +299,16 @@ async def test_supervisor_state_selection_and_session_activity(
     finished = _window(now=now - timedelta(hours=4), path="")
     assert await supervisor._select_window([finished], source="index") is None
 
+    ended_but_active = _window(now=now - timedelta(hours=4))
+    extension_supervisor = _supervisor(hass)
+    extension_supervisor._session_active = AsyncMock(return_value=True)
+    extended = await extension_supervisor._select_window(
+        [ended_but_active], source="index"
+    )
+    assert extended is not None
+    assert extended.disconnect_at > now
+    assert extended.connect_at <= now - timedelta(minutes=5)
+
     active = _window(now=now)
     supervisor._fetch_json = AsyncMock(side_effect=RuntimeError("temporary"))
     assert await supervisor._session_active(active) is True
