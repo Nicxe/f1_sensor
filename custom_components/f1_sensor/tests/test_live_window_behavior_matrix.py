@@ -231,6 +231,24 @@ async def test_event_tracker_dynamic_config_cache_and_disabled_paths() -> None:
     assert source._api_key == "key"
     await source._refresh_dynamic_config()
 
+    source._meeting_endpoint_prefix = "/meeting"
+    assert source._meeting_endpoint(8) == "/meeting/8"
+
+    no_env = EventTrackerScheduleSource(_Http(), endpoint="", env_source_url="")
+    await no_env._refresh_dynamic_config(force=True)
+    assert no_env._endpoint == "/"
+
+    unavailable_env = EventTrackerScheduleSource(
+        _Http([_response(503)]), env_source_url="https://example.test/env"
+    )
+    await unavailable_env._refresh_dynamic_config(force=True)
+
+    failed_env = EventTrackerScheduleSource(
+        _Http(error=RuntimeError("offline")),
+        env_source_url="https://example.test/env",
+    )
+    await failed_env._refresh_dynamic_config(force=True)
+
     disabled = EventTrackerScheduleSource(_Http(), fallback_enabled=False)
     result = await disabled.async_fetch_windows(
         pre_window=timedelta(), post_window=timedelta()

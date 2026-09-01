@@ -16,5 +16,5 @@
   },
   "silver_target": 95.0,
   "measured_on": "2026-09-01",
-  "measurement": "1324 passed; 96.182% globally with every integration module above 95%"
+  "measurement": "1324 passed; 96.193% on macOS with every integration module above 95%; Linux CI independently enforces the same floors"
 }
