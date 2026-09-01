@@ -51,6 +51,7 @@ from .entity import (
     is_replay_only_stream_active,
     set_default_entity_id,
 )
+from .favorite_driver import FavoriteDriverController
 from .helpers import (
     get_circuit_map_url,
     get_circuit_outline_url,
@@ -247,6 +248,7 @@ async def async_setup_entry(
         "current_tyres": (F1CurrentTyresSensor, data.get("drivers_coordinator")),
         "tyre_statistics": (F1TyreStatisticsSensor, data.get("drivers_coordinator")),
         "driver_positions": (F1DriverPositionsSensor, data.get("drivers_coordinator")),
+        "favorite_driver": (None, None),
         "starting_grid": (F1StartingGridSensor, data.get("starting_grid_coordinator")),
         "fia_documents": (F1FiaDocumentsSensor, data.get("fia_documents_coordinator")),
         "race_control": (F1RaceControlSensor, data.get("race_control_coordinator")),
@@ -312,6 +314,22 @@ async def async_setup_entry(
                 default_object_id("championship_prediction_teams"),
             )
             sensors.append(teams_sensor)
+        elif key == "favorite_driver":
+            controller = data.get("favorite_driver_controller")
+            if not isinstance(controller, FavoriteDriverController):
+                continue
+            sensor = F1FavoriteDriverSensor(
+                controller,
+                f"{entry.entry_id}_favorite_driver",
+                entry.entry_id,
+                base,
+            )
+            set_default_entity_id(
+                sensor,
+                Platform.SENSOR,
+                default_object_id("favorite_driver"),
+            )
+            sensors.append(sensor)
         elif key == "live_timing_diagnostics":
             # Dev-only diagnostic sensor; hide it fully unless dev UI is enabled.
             if const.ENABLE_DEVELOPMENT_MODE_UI:
@@ -365,6 +383,54 @@ async def async_setup_entry(
         sensors.append(sensor)
 
     async_add_entities(sensors, False)
+
+
+class F1FavoriteDriverSensor(F1AuxEntity, SensorEntity):
+    """Live position and automation attributes for the selected driver."""
+
+    _device_category = "drivers"
+    _attr_icon = "mdi:account-star"
+    _attr_translation_key = "favorite_driver"
+
+    def __init__(
+        self,
+        controller: FavoriteDriverController,
+        unique_id: str,
+        entry_id: str,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
+        SensorEntity.__init__(self)
+        self._controller = controller
+        self._unsub = None
+
+    async def async_added_to_hass(self) -> None:
+        if self._unsub is None:
+            self._unsub = self._controller.add_listener(self._handle_update)
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub is not None:
+            self._unsub()
+            self._unsub = None
+
+    @property
+    def available(self) -> bool:
+        return self._controller.available
+
+    @property
+    def native_value(self) -> int | None:
+        snapshot = self._controller.snapshot
+        return snapshot.get("position") if snapshot else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        snapshot = self._controller.snapshot or {}
+        return {"selected": self._controller.selected_tla, **snapshot}
+
+    @callback
+    def _handle_update(self) -> None:
+        if self.hass is not None:
+            self.async_write_ha_state()
 
 
 class _F1TvTokenSensorBase(F1AuxEntity, SensorEntity):

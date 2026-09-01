@@ -23,7 +23,12 @@
       "investigation_changed": "Tutkinnan tila muuttui",
       "new_team_radio": "Uusi tiimiradioviesti",
       "live_timing_online": "Live-ajoitus yhdistetty",
-      "live_timing_offline": "Live-ajoitus katkaistu"
+      "live_timing_offline": "Live-ajoitus katkaistu",
+      "favorite_driver_position_gained": "Favorite driver gained a position",
+      "favorite_driver_position_lost": "Favorite driver lost a position",
+      "favorite_driver_entered_pits": "Favorite driver entered the pits",
+      "favorite_driver_exited_pits": "Favorite driver exited the pits",
+      "favorite_driver_retired": "Favorite driver retired"
     }
   },
   "config": {
@@ -243,6 +248,9 @@
       },
       "starting_grid": {
         "name": "Starting grid"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "weather": {
@@ -315,6 +323,9 @@
       },
       "replay_start_reference": {
         "name": "Replay start reference"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "binary_sensor": {

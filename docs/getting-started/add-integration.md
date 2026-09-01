@@ -57,7 +57,7 @@ The integration organizes all entities across **six dedicated sub-devices**, whi
 | **Race** | Next race info, track time, race week indicator, season calendar |
 | **Championship** | Driver and constructor standings, points progression, championship predictions* |
 | **Session** | Session status, track status, safety car, weather, timing sensors, starting grid, formation start*, overtake mode, straight mode |
-| **Drivers** | Driver list, tyres, tyre statistics, driver positions, pit stops*, team radio* |
+| **Drivers** | Driver list, tyres, tyre statistics, driver positions, favorite driver, pit stops*, team radio* |
 | **Officials** | Race control messages, FIA documents, track limits, investigations |
 | **System** | Live delay, calibration controls, replay controls, live timing connectivity, F1TV token status and controls |
 

@@ -55,6 +55,7 @@ FEATURE_DEPENDENCIES: dict[str, FeatureDependency] = {
     "current_tyres": _dependency(*_DRIVER_STREAMS, coordinators=("drivers",)),
     "tyre_statistics": _dependency(*_DRIVER_STREAMS, coordinators=("drivers",)),
     "driver_positions": _dependency(*_DRIVER_STREAMS, coordinators=("drivers",)),
+    "favorite_driver": _dependency(*_DRIVER_STREAMS, coordinators=("drivers",)),
     "track_status": _dependency("TrackStatus", coordinators=("track_status",)),
     "safety_car": _dependency("TrackStatus", coordinators=("track_status",)),
     "session_status": _dependency(

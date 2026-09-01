@@ -216,6 +216,9 @@
       },
       "replay_status": {
         "name": "Replay status"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "media_player": {
@@ -235,6 +238,9 @@
       },
       "replay_start_reference": {
         "name": "Replay start reference"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "binary_sensor": {
@@ -374,7 +380,12 @@
       "investigation_changed": "Investigation status changed",
       "new_team_radio": "New team radio message",
       "live_timing_online": "Live timing came online",
-      "live_timing_offline": "Live timing went offline"
+      "live_timing_offline": "Live timing went offline",
+      "favorite_driver_position_gained": "Favorite driver gained a position",
+      "favorite_driver_position_lost": "Favorite driver lost a position",
+      "favorite_driver_entered_pits": "Favorite driver entered the pits",
+      "favorite_driver_exited_pits": "Favorite driver exited the pits",
+      "favorite_driver_retired": "Favorite driver retired"
     }
   },
   "options": {

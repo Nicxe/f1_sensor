@@ -23,7 +23,12 @@
       "investigation_changed": "Utredningsstatus ändrad",
       "new_team_radio": "Nytt teamradio-meddelande",
       "live_timing_online": "Live timing online",
-      "live_timing_offline": "Live timing offline"
+      "live_timing_offline": "Live timing offline",
+      "favorite_driver_position_gained": "Favorite driver gained a position",
+      "favorite_driver_position_lost": "Favorite driver lost a position",
+      "favorite_driver_entered_pits": "Favorite driver entered the pits",
+      "favorite_driver_exited_pits": "Favorite driver exited the pits",
+      "favorite_driver_retired": "Favorite driver retired"
     }
   },
   "config": {
@@ -298,6 +303,9 @@
       },
       "replay_status": {
         "name": "Replay-status"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "weather": {
@@ -370,6 +378,9 @@
       },
       "replay_start_reference": {
         "name": "Replay-startreferens"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "binary_sensor": {

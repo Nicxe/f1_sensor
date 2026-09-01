@@ -151,6 +151,7 @@ Use this section to understand the possible values for enum-type states and attr
 | [sensor.f1_current_tyres](#current-tyres)             | Current tyre compound per driver |
 | [sensor.f1_tyre_statistics](#tyre-statistics)         | Aggregated tyre statistics per compound |
 | [sensor.f1_driver_positions](#driver-positions)       | Driver positions and lap times |
+| [sensor.f1_favorite_driver](#favorite-driver)         | Live position and timing details for a driver selected in `select.f1_favorite_driver` |
 | [sensor.f1_starting_grid](#starting-grid)             | Provisional or confirmed Sprint/Race starting grid |
 | [sensor.f1_top_three_p1](#top-three)                  | Dedicated sensors for current P1, P2 and P3 |
 | [sensor.f1_race_control](#race-control)               | Race Control messages feed (flags, incidents, key updates) |
@@ -1068,6 +1069,18 @@ Fastest compound: {{ states('sensor.f1_tyre_statistics') }}
 :::tip[Compound Colors]
 Use the `compound_color` field to style your dashboard elements. The colors match the official Pirelli tyre colors: SOFT (red), MEDIUM (yellow), HARD (white), INTERMEDIATE (green), WET (blue).
 :::
+
+---
+
+## Favorite Driver
+
+`select.f1_favorite_driver` lets you choose a driver by their three-letter abbreviation. The selection is saved for this F1 Sensor configuration entry and is restored after Home Assistant restarts.
+
+Enable **Favorite driver** in the integration options first. It is disabled by default for both new and existing configurations.
+
+`sensor.f1_favorite_driver` exposes that driver's current position as its state. Its attributes include the driver name, team color in hex and RGB formats, racing number, grid position, gap, interval, lap times, pit state, retirement state, and tyre information. The sensor is unavailable until the selected driver appears in live timing. The RGB value can be passed directly to compatible Home Assistant lights.
+
+The Drivers device also provides triggers for the selected driver gaining or losing a position, entering or exiting the pits, and retiring. These triggers respect the integration's configured [Live Delay](/features/live-delay).
 
 ---
 

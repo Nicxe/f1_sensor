@@ -24,6 +24,16 @@ def _register_incident_entity(hass, entry, suffix: str) -> er.RegistryEntry:
     )
 
 
+def _register_sensor_entity(hass, entry, suffix: str) -> er.RegistryEntry:
+    registry = er.async_get(hass)
+    return registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        f"{entry.entry_id}_{suffix}",
+        config_entry=entry,
+    )
+
+
 @pytest.mark.asyncio
 async def test_possible_incident_device_trigger_fires_for_each_new_candidate(
     hass,
@@ -112,3 +122,44 @@ async def test_confirmed_incident_device_trigger_fires_for_each_confirmation(
         remove()
 
     assert [call["incident_id"] for call in calls] == ["one", "two"]
+
+
+@pytest.mark.asyncio
+async def test_favorite_driver_device_trigger_is_event_and_entry_scoped(hass) -> None:
+    entry = MockConfigEntry(domain=DOMAIN)
+    entry.add_to_hass(hass)
+    entity = _register_sensor_entity(hass, entry, "favorite_driver")
+    calls: list[dict[str, Any]] = []
+
+    async def action(variables, _context=None) -> None:
+        calls.append(variables["trigger"]["event"].data)
+
+    remove = await device_trigger.async_attach_trigger(
+        hass,
+        {
+            "platform": "device",
+            "domain": DOMAIN,
+            "type": "favorite_driver_position_gained",
+            "entity_id": entity.id,
+        },
+        action,
+        _trigger_info(),
+    )
+    try:
+        hass.bus.async_fire(
+            "f1_sensor_favorite_driver_event",
+            {"entry_id": entry.entry_id, "event_type": "position_gained"},
+        )
+        hass.bus.async_fire(
+            "f1_sensor_favorite_driver_event",
+            {"entry_id": entry.entry_id, "event_type": "position_lost"},
+        )
+        hass.bus.async_fire(
+            "f1_sensor_favorite_driver_event",
+            {"entry_id": "other-entry", "event_type": "position_gained"},
+        )
+        await hass.async_block_till_done()
+    finally:
+        remove()
+
+    assert [call["event_type"] for call in calls] == ["position_gained"]

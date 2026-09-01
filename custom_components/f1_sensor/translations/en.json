@@ -22,6 +22,11 @@
       "new_fia_document": "New FIA document published",
       "investigation_changed": "Investigation status changed",
       "new_team_radio": "New team radio message",
+      "favorite_driver_position_gained": "Favorite driver gained a position",
+      "favorite_driver_position_lost": "Favorite driver lost a position",
+      "favorite_driver_entered_pits": "Favorite driver entered the pits",
+      "favorite_driver_exited_pits": "Favorite driver exited the pits",
+      "favorite_driver_retired": "Favorite driver retired",
       "live_timing_online": "Live timing came online",
       "live_timing_offline": "Live timing went offline"
     }
@@ -243,6 +248,9 @@
       "driver_positions": {
         "name": "Driver positions"
       },
+      "favorite_driver": {
+        "name": "Favorite driver"
+      },
       "starting_grid": {
         "name": "Starting grid"
       },
@@ -359,6 +367,9 @@
       }
     },
     "select": {
+      "favorite_driver": {
+        "name": "Favorite driver"
+      },
       "live_delay_reference": {
         "name": "Live delay reference"
       },

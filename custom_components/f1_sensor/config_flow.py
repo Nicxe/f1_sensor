@@ -34,6 +34,7 @@ from .const import (
     ENTITY_NAME_MODE_LOCALIZED,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
+    OPT_IN_SENSOR_KEYS,
     RACE_WEEK_START_MONDAY,
     RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
@@ -90,6 +91,7 @@ SENSOR_OPTIONS = {
     "pitstops": "Pit stops (F1TV live/replay)",
     "championship_prediction": "Championship prediction (F1TV live/replay)",
     "driver_positions": "Driver positions (live)",
+    "favorite_driver": "Favorite driver (live)",
     "starting_grid": "Starting grid (live)",
     "track_limits": "Track limits (live)",
     "investigations": "Investigations & penalties (live)",
@@ -105,13 +107,18 @@ def _build_sensor_options() -> dict:
     return options
 
 
+def _default_enabled_sensor_keys(sensor_options: dict) -> list[str]:
+    """Return defaults while leaving explicitly opt-in features unchecked."""
+    return [key for key in sensor_options if key not in OPT_IN_SENSOR_KEYS]
+
+
 def _normalize_auth_header(value: object) -> str:
     """Return a normalized live timing authorization header."""
     return normalize_live_timing_auth_header(value)
 
 
 class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
-    VERSION = 3
+    VERSION = 4
     _pending_f1tv_setup_data: dict | None = None
     _pending_f1tv_setup_options: dict | None = None
     _completed_f1tv_pairing_session_id: str | None = None
@@ -181,8 +188,13 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 # Store disabled_sensors (what the user unchecked) instead of
                 # enabled_sensors so that new sensors added in future versions
                 # are automatically enabled.
-                all_keys = set(_build_sensor_options().keys())
-                checked = set(user_input.pop("enabled_sensors", all_keys))
+                sensor_options = _build_sensor_options()
+                all_keys = set(sensor_options)
+                checked = set(
+                    user_input.pop(
+                        "enabled_sensors", _default_enabled_sensor_keys(sensor_options)
+                    )
+                )
                 user_input["disabled_sensors"] = sorted(all_keys - checked)
                 user_input[CONF_ENTITY_NAME_MODE] = ENTITY_NAME_MODE_LOCALIZED
                 user_input[CONF_ENTITY_NAME_LANGUAGE] = self._current_backend_language()
@@ -196,7 +208,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
         sensor_options = _build_sensor_options()
-        all_sensor_keys = list(sensor_options.keys())
+        default_sensor_keys = _default_enabled_sensor_keys(sensor_options)
 
         # Build base schema
         schema_fields: dict = {
@@ -205,7 +217,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             ): cv.string,
             vol.Required(
                 "enabled_sensors",
-                default=current.get("enabled_sensors", all_sensor_keys),
+                default=current.get("enabled_sensors", default_sensor_keys),
             ): cv.multi_select(sensor_options),
             vol.Optional("enable_race_control", default=False): cv.boolean,
             vol.Optional(
@@ -298,8 +310,13 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input[CONF_REPLAY_FILE] = ""
 
             if not errors:
-                all_keys = set(_build_sensor_options().keys())
-                checked = set(user_input.pop("enabled_sensors", all_keys))
+                sensor_options = _build_sensor_options()
+                all_keys = set(sensor_options)
+                checked = set(
+                    user_input.pop(
+                        "enabled_sensors", _default_enabled_sensor_keys(sensor_options)
+                    )
+                )
                 user_input["disabled_sensors"] = sorted(all_keys - checked)
                 data_updates, option_updates = _split_entry_payload(user_input)
                 return self.async_update_reload_and_abort(
@@ -333,11 +350,11 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     normalized.append(key)
                     seen.add(key)
             for key in sensor_options:
-                if key not in seen:
+                if key not in seen and key not in OPT_IN_SENSOR_KEYS:
                     normalized.append(key)
             default_enabled = normalized
         else:
-            default_enabled = list(sensor_options.keys())
+            default_enabled = _default_enabled_sensor_keys(sensor_options)
 
         schema_fields: dict = {
             vol.Required(
@@ -560,12 +577,20 @@ class F1OptionsFlow(config_entries.OptionsFlow):
                 user_input[CONF_REPLAY_FILE] = ""
 
             if not errors:
-                checked = set(user_input.pop("enabled_sensors", all_sensor_keys))
+                checked = set(
+                    user_input.pop(
+                        "enabled_sensors", _default_enabled_sensor_keys(sensor_options)
+                    )
+                )
                 user_input["disabled_sensors"] = sorted(all_sensor_keys - checked)
                 return self.async_create_entry(title="", data=user_input)
 
         raw_disabled = current.get("disabled_sensors")
-        disabled = set(raw_disabled or []) & all_sensor_keys
+        disabled = (
+            set(raw_disabled or [])
+            if raw_disabled is not None
+            else set(OPT_IN_SENSOR_KEYS)
+        ) & all_sensor_keys
         default_enabled = [key for key in sensor_options if key not in disabled]
         race_week_start = _normalize_race_week_start_value(current)
         schema_fields: dict = {
