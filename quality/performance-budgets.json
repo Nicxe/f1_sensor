@@ -1,0 +1,12 @@
+{
+  "browser": {
+    "gallery_render_ms": 2500,
+    "long_task_ms": 50
+  },
+  "realtime": {
+    "simulated_clients": 10,
+    "updates_per_client": 100,
+    "total_runtime_ms": 2500
+  },
+  "reviewed_on": "2026-08-31"
+}

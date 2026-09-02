@@ -15,6 +15,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor import (
+    _JOLPICA_STATS_KEY,
     _NO_SPOILER_MANAGER_KEY,
     _RC_LOG_RESET_EVENT,
     _RC_LOG_SERVICE,
@@ -25,6 +26,7 @@ from custom_components.f1_sensor import (
     RaceControlCoordinator,
     RaceControlLogStore,
     _async_get_shared_jolpica_client,
+    _ensure_jolpica_stats_reporting,
     async_migrate_entry,
     async_remove_entry,
     async_setup_entry,
@@ -56,6 +58,41 @@ def test_config_schema_marks_integration_config_entry_only(caplog) -> None:
     assert CONFIG_SCHEMA({}) == {}
     assert CONFIG_SCHEMA({DOMAIN: {}}) == {DOMAIN: {}}
     assert "does not support YAML setup" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_dev_jolpica_stats_reporting_logs_resets_and_deduplicates(
+    hass, monkeypatch
+) -> None:
+    scheduled = None
+    unsubscribe = MagicMock()
+
+    def _track(_hass, callback, interval):
+        nonlocal scheduled
+        assert interval == timedelta(days=1)
+        scheduled = callback
+        return unsubscribe
+
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
+    monkeypatch.setattr("custom_components.f1_sensor.async_track_time_interval", _track)
+    _ensure_jolpica_stats_reporting(hass)
+    assert scheduled is not None
+    stats = hass.data[DOMAIN][_JOLPICA_STATS_KEY]
+    assert stats["unsub"] is unsubscribe
+
+    _ensure_jolpica_stats_reporting(hass)
+    assert stats["unsub"] is unsubscribe
+
+    await scheduled(None)
+    assert "since" in stats
+    stats["counts"] = {"race": 3, "drivers": 1}
+    await scheduled(None)
+    assert stats["counts"] == {}
+    stats["counts"] = {"bad": "not-a-number"}
+    await scheduled(None)
+    assert stats["counts"] == {}
 
 
 class FakeLiveBus:
@@ -533,6 +570,100 @@ async def test_async_setup_entry_minimal(hass, mock_config_entry) -> None:
     assert (
         entry_data["track_map_store"] is mock_config_entry.runtime_data.track_map_store
     )
+
+
+@pytest.mark.asyncio
+async def test_setup_seeds_persistent_cache_with_endpoint_specific_ttls(
+    hass, mock_config_entry
+) -> None:
+    persisted_map = {
+        "https://api.jolpi.ca/ergast/f1/current.json": {
+            "data": {"kind": "schedule"},
+            "ttl_seconds": "bad",
+        },
+        "https://api.jolpi.ca/ergast/f1/current/driverstandings.json": {
+            "data": {"kind": "drivers"},
+            "ttl_seconds": None,
+        },
+        "https://api.jolpi.ca/ergast/f1/current/last/results.json": {
+            "data": {"kind": "last"},
+            "ttl_seconds": {},
+        },
+        "https://api.jolpi.ca/ergast/f1/current/sprint.json": {
+            "data": {"kind": "sprint"},
+        },
+        "https://api.jolpi.ca/ergast/f1/2026/1/laps.json": {
+            "data": {"kind": "laps"},
+        },
+        "https://api.jolpi.ca/ergast/f1/current/results.json?offset=350": {
+            "data": {"kind": "latest"},
+        },
+        "https://api.jolpi.ca/ergast/f1/current/results.json?offset=150": {
+            "data": {"kind": "recent"},
+        },
+        "https://api.jolpi.ca/ergast/f1/current/results.json?offset=bad": {
+            "data": {"kind": "stable"},
+        },
+        "https://api.jolpi.ca/ergast/f1/circuits/monza/races.json": {
+            "data": {"kind": "history"},
+        },
+        "https://api.jolpi.ca/ergast/f1/2025/2/qualifying.json": {
+            "data": {"kind": "round"},
+        },
+        "https://api.jolpi.ca/ergast/f1/status.json": {
+            "data": {"kind": "default"},
+            "ttl_seconds": 60,
+            "saved_at": "bad",
+        },
+        "skip": {"data": None},
+    }
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.PersistentCache.load",
+                AsyncMock(return_value=persisted_map),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator",
+                DummyCoordinator,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.ReplayController",
+                FakeReplayController,
+            )
+        )
+        for context_manager in _coordinator_patches():
+            stack.enter_context(context_manager)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+
+        assert await async_setup_entry(hass, mock_config_entry)
+
+    cache = hass.data[DOMAIN][mock_config_entry.entry_id]["http_cache"]
+    assert set(cache) == set(persisted_map) - {"skip"}
+    assert {value[1]["kind"] for value in cache.values()} == {
+        "schedule",
+        "drivers",
+        "last",
+        "sprint",
+        "laps",
+        "latest",
+        "recent",
+        "stable",
+        "history",
+        "round",
+        "default",
+    }
 
 
 @pytest.mark.asyncio
@@ -1470,12 +1601,13 @@ async def test_legacy_enabled_sensor_migration_is_lossless_and_idempotent(hass) 
     assert await async_migrate_entry(hass, entry)
     first_data = dict(entry.data)
 
-    assert entry.version == 3
+    assert entry.version == 4
     assert entry.unique_id == DOMAIN
     assert "disabled_sensors" not in entry.data
     assert "next_race" not in entry.options["disabled_sensors"]
     assert "driver_standings" not in entry.options["disabled_sensors"]
     assert "team_radio" in entry.options["disabled_sensors"]
+    assert "favorite_driver" in entry.options["disabled_sensors"]
     assert entry.data["enabled_sensors"][-1] == "retired_key"
 
     assert await async_migrate_entry(hass, entry)

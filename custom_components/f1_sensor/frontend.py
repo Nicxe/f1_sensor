@@ -35,6 +35,8 @@ LIVE_DATA_CARD_ASSET_FILENAMES = (
     "platform/actions.js",
     "platform/base-card.js",
     "platform/card-registry.js",
+    "platform/dashboard-context.js",
+    "platform/entity-resolver.js",
     "platform/i18n.js",
     "hard_tyre.png",
     "intermediate_tyre.png",

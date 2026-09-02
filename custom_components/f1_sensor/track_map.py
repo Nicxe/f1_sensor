@@ -376,13 +376,13 @@ class TrackMapReplayAdapter:
         loop = getattr(self._hass, "loop", None)
         call_later = getattr(loop, "call_later", None)
         if not callable(call_later):
-            self._drain_delay_queue()
+            self._drain_delay_queue(force=True)
             return
         received_at = self._delay_queue[0][0]
         wait = max(0.0, received_at + self._delay - time.monotonic())
         self._delay_queue_handle = call_later(wait, self._drain_delay_queue)
 
-    def _drain_delay_queue(self) -> None:
+    def _drain_delay_queue(self, *, force: bool = False) -> None:
         self._delay_queue_handle = None
         if self._closed:
             self._delay_queue.clear()
@@ -392,7 +392,11 @@ class TrackMapReplayAdapter:
             return
         while self._delay_queue:
             received_at, callback, payload = self._delay_queue[0]
-            if self._delay > 0 and received_at + self._delay > time.monotonic() + 0.001:
+            if (
+                not force
+                and self._delay > 0
+                and received_at + self._delay > time.monotonic() + 0.001
+            ):
                 break
             self._delay_queue.popleft()
             try:

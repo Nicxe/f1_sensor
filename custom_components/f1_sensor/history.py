@@ -27,6 +27,7 @@ JOLPICA_ATTRIBUTION = "Data provided by Jolpica (jolpi.ca)"
 LAP_ANALYSIS_STREAMS = frozenset(
     {"RaceControlMessages", "SessionInfo", "TimingData", "TrackStatus"}
 )
+DISRUPTED_TRACK_STATUSES = frozenset({"4", "5", "6", "7"})
 
 
 def _as_int(value: object) -> int | None:
@@ -578,6 +579,11 @@ class LapAnalysisStore:
         self._order: list[tuple[int, int]] = []
         self._track_status: str | None = None
         self._previous_track_status: str | None = None
+        self._post_disruption_baselines: dict[int, int | None] = {}
+        self._post_disruption_laps: dict[int, int] = {}
+        self._lap_track_context: dict[
+            tuple[int, int], tuple[str | None, str | None]
+        ] = {}
         self._active_session_id: str | None = None
         self._active_session_type: str | None = None
         self._unsubs: list[Callable[[], None]] = []
@@ -620,6 +626,19 @@ class LapAnalysisStore:
         self._order.clear()
         self._track_status = None
         self._previous_track_status = None
+        self._post_disruption_baselines.clear()
+        self._post_disruption_laps.clear()
+        self._lap_track_context.clear()
+
+    def reset_session(self) -> None:
+        """Reset replay lap state when the same session starts again."""
+        self._reset_session()
+
+    def reset_for_replay(self) -> None:
+        """Reset all accumulated state before replay playback is rebuilt."""
+        self._reset_session()
+        self._active_session_id = None
+        self._active_session_type = None
 
     def _effective_session_type(self) -> str | None:
         return self._active_session_type or self._session_type()
@@ -630,8 +649,37 @@ class LapAnalysisStore:
         status = _text(payload.get("Status") or payload.get("status"))
         if status is None or status == self._track_status:
             return
-        self._previous_track_status = self._track_status
+        previous = self._track_status
+        self._previous_track_status = previous
         self._track_status = status
+        self._post_disruption_baselines.clear()
+        self._post_disruption_laps.clear()
+        if (
+            previous in DISRUPTED_TRACK_STATUSES
+            and status not in DISRUPTED_TRACK_STATUSES
+        ):
+            self._post_disruption_baselines = {
+                driver: _as_int(state.get("NumberOfLaps"))
+                for driver_key, state in self._driver_state.items()
+                if (driver := _as_int(driver_key)) is not None
+            }
+
+    def _previous_status_for_lap(self, driver: int, lap_number: int) -> str | None:
+        if (
+            self._previous_track_status not in DISRUPTED_TRACK_STATUSES
+            or self._track_status in DISRUPTED_TRACK_STATUSES
+        ):
+            return None
+        first_post_disruption_lap = self._post_disruption_laps.get(driver)
+        if first_post_disruption_lap is None:
+            baseline = self._post_disruption_baselines.get(driver)
+            if baseline is not None and lap_number <= baseline:
+                return None
+            first_post_disruption_lap = lap_number
+            self._post_disruption_laps[driver] = lap_number
+        if lap_number == first_post_disruption_lap:
+            return self._previous_track_status
+        return None
 
     def _on_timing_data(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):
@@ -651,23 +699,51 @@ class LapAnalysisStore:
             lap_time = state.get("LastLapTime")
             if lap_number is None or lap_number <= 0 or lap_time is None:
                 continue
+            key = (driver, lap_number)
+            if key not in self._lap_track_context:
+                self._lap_track_context[key] = (
+                    self._track_status,
+                    self._previous_status_for_lap(driver, lap_number),
+                )
+            track_status, previous_track_status = self._lap_track_context[key]
             normalized_payload = deepcopy(state)
             normalized_payload["RacingNumber"] = str(driver)
-            normalized_payload["TrackStatus"] = self._track_status
+            normalized_payload["TrackStatus"] = track_status
             lap = normalize_lap_record(
                 normalized_payload,
                 provider=self._source_provider(),
                 session_type=self._effective_session_type(),
-                previous_track_status=self._previous_track_status,
+                previous_track_status=previous_track_status,
             )
-            key = (driver, lap_number)
-            if self._laps.get(key) == lap:
+            current_lap = self._laps.get(key)
+            if current_lap is not None and not self._prefer_lap_candidate(
+                current_lap, lap
+            ):
+                continue
+            if current_lap == lap:
                 continue
             if key not in self._laps:
                 self._order.append(key)
             self._laps[key] = lap
             self._updates += 1
             self._prune()
+
+    @staticmethod
+    def _prefer_lap_candidate(current: LapRecord, candidate: LapRecord) -> bool:
+        """Keep the most complete revision when the next lap clears sectors."""
+        if current.quality.deleted is not candidate.quality.deleted:
+            return candidate.quality.deleted is True
+
+        def _completeness(lap: LapRecord) -> tuple[int, int, int, float, int]:
+            return (
+                sum(value is not None for value in lap.sector_durations),
+                sum(value is not None for value in lap.speed_traps.as_dict().values()),
+                len(lap.minisectors),
+                lap.quality.confidence,
+                -len(lap.quality.reasons),
+            )
+
+        return _completeness(candidate) >= _completeness(current)
 
     def _on_race_control(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):
@@ -701,12 +777,17 @@ class LapAnalysisStore:
             else:
                 source["deleted"] = True
                 source["deletion_reason"] = deleted.group("reason") or "Lap deleted"
+            key = (driver, target.lap_number or 0)
+            track_status, previous_track_status = self._lap_track_context.get(
+                key, (source.get("TrackStatus"), None)
+            )
+            source["TrackStatus"] = track_status
             updated = normalize_lap_record(
                 source,
                 provider=target.provider,
                 session_type=self._effective_session_type(),
+                previous_track_status=previous_track_status,
             )
-            key = (driver, target.lap_number or 0)
             self._laps[key] = updated
             self._updates += 1
 
@@ -740,7 +821,14 @@ class LapAnalysisStore:
 
     def _prune(self) -> None:
         while len(self._order) > self._max_laps:
-            self._laps.pop(self._order.pop(0), None)
+            key = self._order.pop(0)
+            self._laps.pop(key, None)
+            self._lap_track_context.pop(key, None)
+
+    def get_lap(self, driver: int, lap_number: int) -> dict[str, Any] | None:
+        """Return one normalized lap without materializing the full lap store."""
+        lap = self._laps.get((driver, lap_number))
+        return lap.as_dict() if lap is not None else None
 
     def snapshot(self) -> dict[str, Any]:
         """Return bounded live/replay lap analytics for a WebSocket consumer."""

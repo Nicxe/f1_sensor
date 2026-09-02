@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.f1_sensor import track_map_websocket
 from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor.feature_plan import TRACK_MAP_STREAMS
 from custom_components.f1_sensor.providers import ProviderRegistry
@@ -23,6 +24,8 @@ from custom_components.f1_sensor.runtime import (
 from custom_components.f1_sensor.track_map import (
     TRACK_MAP_STATUS_NO_POSITION_DATA,
     TRACK_MAP_STATUS_NO_SESSION,
+    TrackGeometry,
+    TrackMapBounds,
     TrackMapPosition,
     TrackMapRuntimeData,
     TrackMapStore,
@@ -36,6 +39,7 @@ from custom_components.f1_sensor.track_map_websocket import (
     TRACK_MAP_WS_MARKER,
     TRACK_MAP_WS_RESYNC_TYPE,
     TRACK_MAP_WS_SUBSCRIBE_TYPE,
+    _merge_v2_deltas,
     _track_map_payload,
     _ws_get_track_map_snapshot,
     _ws_resync_track_map_snapshot,
@@ -423,3 +427,80 @@ async def test_track_map_subscription_adds_and_removes_transient_stream_demand(
     assert bus.requested_streams == frozenset({"Heartbeat"})
     assert bus.closed is expected_closed
     assert "Position.z" not in entry.runtime_data.capabilities.stream_reasons
+
+
+async def test_track_map_resync_missing_and_hubless_snapshot(hass) -> None:
+    connection = FakeConnection()
+    _ws_resync_track_map_snapshot(
+        hass,
+        connection,
+        {"id": 60, "entry_id": "missing", "protocol_version": 2},
+    )
+    await hass.async_block_till_done()
+    assert connection.errors[0][1] == TRACK_MAP_WS_ERROR_NOT_LOADED
+
+    store = _store(hass, "entry-hubless")
+    store.update_session_info(_session_payload())
+    _ws_resync_track_map_snapshot(
+        hass,
+        connection,
+        {"id": 61, "entry_id": "entry-hubless", "protocol_version": 2},
+    )
+    await hass.async_block_till_done()
+    assert connection.results[-1][1]["type"] == "snapshot"
+    assert connection.results[-1][1]["sequence"] == 0
+
+
+def test_track_map_throttle_geometry_and_delta_coalescing(hass) -> None:
+    store = _store(hass, "entry-throttle")
+    connection = FakeConnection()
+    _ws_subscribe_track_map_snapshot(
+        hass,
+        connection,
+        {
+            "id": 62,
+            "entry_id": "entry-throttle",
+            "protocol_version": 2,
+            "throttle_ms": 1000,
+        },
+    )
+    store.update_session_info(_session_payload())
+    hub = next(
+        hub
+        for linked, hub in list(track_map_websocket._TRACK_MAP_HUBS.items())
+        if linked is store
+    )
+    before = hub._geometry_revision
+    store.set_geometry(
+        TrackGeometry(
+            points=((0, 0), (1, 1)),
+            bounds=TrackMapBounds(0, 1, 0, 1),
+            source="test",
+        )
+    )
+    assert hub._geometry_revision == before + 1
+    store.update_positions([_position("4")])
+    subscription = next(iter(hub._subscribers))
+    assert subscription._pending_handle is not None
+    subscription.unsubscribe()
+    assert subscription._pending_handle is None
+
+    merged = _merge_v2_deltas(
+        {
+            "type": "delta",
+            "base_sequence": 1,
+            "changes": {"4": {"x": 1}, "81": {"x": 2}},
+            "removed": ["16"],
+            "patch": {"status": "old"},
+        },
+        {
+            "type": "delta",
+            "base_sequence": 2,
+            "changes": {"16": {"x": 3}},
+            "removed": ["4"],
+            "patch": {"status": "new"},
+        },
+    )
+    assert merged["base_sequence"] == 1
+    assert set(merged["changes"]) == {"16", "81"}
+    assert merged["removed"] == ["4"]

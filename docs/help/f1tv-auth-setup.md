@@ -18,7 +18,7 @@ The normal pairing flow uses Home Assistant and the F1TV Token Helper:
 3. Start **Connect F1TV access with Token Helper** in Home Assistant.
 4. Open the pairing page from Home Assistant.
 5. Open the helper extension, sign in to Formula 1 if needed, select **Fetch**, then select **Send to Home Assistant**.
-6. Verify that public live timing still works and that F1TV live data is available when the token is valid.
+6. Verify that public live timing still works and that F1TV live data is available after Formula 1 accepts the token.
 
 :::info
 This flow does not ask Home Assistant for your F1TV username or password.
@@ -36,7 +36,7 @@ The token is extracted from your own browser session by the separate helper and 
 | F1TV password | Never entered into Home Assistant |
 | Helper | Separate Chrome or Chromium extension |
 | Auth failure | Downgrades to public live timing |
-| Extra live data | Requires a valid token during live sessions |
+| Extra live data | Requires a token that Formula 1 accepts during live sessions |
 
 F1TV Auth can add live features such as:
 
@@ -50,7 +50,7 @@ Earlier incident candidates
 ```
 
 In **Live Mode**, these features should not be expected to update with public live timing alone.
-They can update during live sessions after you add a valid F1TV token and Formula 1 publishes the required data.
+They can update during live sessions after Formula 1 accepts the F1TV token and publishes the required data.
 
 Some F1TV Auth features also have replay support.
 For example, Championship Prediction, Pit Stops, and Team Radio can use the recorded session archive in **Replay Mode**, but they require F1TV Auth during a real live session.
@@ -129,7 +129,7 @@ sensor.f1_f1tv_token_status
 sensor.f1_f1tv_token_expires_at
 ```
 
-Use `sensor.f1_f1tv_token_status` to see whether the token is valid, expiring soon, expired, invalid, or rejected.
+Use `sensor.f1_f1tv_token_status` to see whether the token is locally well-formed and unexpired, expiring soon, expired, invalid, or rejected. A locally well-formed token is not proven authentic until Formula 1 accepts it during an upstream request.
 Use `sensor.f1_f1tv_token_expires_at` to see when the current token expires.
 
 The integration also exposes two helper buttons when F1TV access is available:
@@ -141,6 +141,8 @@ button.f1_clear_f1tv_access
 
 Use `button.f1_refresh_f1tv_access` to start a new Token Helper pairing from Home Assistant.
 Use `button.f1_clear_f1tv_access` to remove the saved token and return to public live timing only.
+
+The saved token is part of the Home Assistant config entry and normally follows it into Home Assistant backups. Treat shared backups as credentials. If you suspect exposure, clear the saved token and revoke the Formula 1 browser session before pairing again.
 
 When the token expires or is rejected, public live timing should continue to work.
 Only the F1TV-authenticated live data needs a fresh token.
@@ -158,7 +160,7 @@ sensor.f1_race_control
 sensor.f1_driver_positions
 ```
 
-Then confirm that F1TV-only data becomes available after a valid helper pairing.
+Then confirm that F1TV-only data becomes available after Formula 1 accepts the paired token.
 
 ## Troubleshooting
 

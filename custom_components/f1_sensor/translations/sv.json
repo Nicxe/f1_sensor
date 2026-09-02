@@ -23,7 +23,12 @@
       "investigation_changed": "Utredningsstatus ändrad",
       "new_team_radio": "Nytt teamradio-meddelande",
       "live_timing_online": "Live timing online",
-      "live_timing_offline": "Live timing offline"
+      "live_timing_offline": "Live timing offline",
+      "favorite_driver_position_gained": "Favorite driver gained a position",
+      "favorite_driver_position_lost": "Favorite driver lost a position",
+      "favorite_driver_entered_pits": "Favorite driver entered the pits",
+      "favorite_driver_exited_pits": "Favorite driver exited the pits",
+      "favorite_driver_retired": "Favorite driver retired"
     }
   },
   "config": {
@@ -38,7 +43,8 @@
           "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
           "race_week_start_day": "Första dagen i tävlingsveckan",
           "live_timing_auth_header": "Manuell reservväg: F1TV-auktoriseringsvärde",
-          "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst med Token Helper"
+          "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst med Token Helper",
+          "clear_live_timing_auth_header": "Clear F1TV authorization value"
         },
         "data_description": {
           "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
@@ -59,7 +65,8 @@
           "enable_race_control": "Aktivera live F1 API",
           "race_week_start_day": "Första dagen i tävlingsveckan",
           "live_timing_auth_header": "Manuell reservväg: F1TV-auktoriseringsvärde",
-          "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst med Token Helper"
+          "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst med Token Helper",
+          "clear_live_timing_auth_header": "Clear F1TV authorization value"
         },
         "data_description": {
           "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
@@ -67,7 +74,8 @@
           "enable_race_control": "Ansluter till Formula 1 Live Timing för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
           "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra bara in en ny fullständig Bearer-token som avancerad reservväg. Lämna tomt för att behålla nuvarande värde.",
-          "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. F1TV-åtkomst är valfri; publik live timing fortsätter fungera utan den."
+          "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. F1TV-åtkomst är valfri; publik live timing fortsätter fungera utan den.",
+          "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing only."
         }
       },
       "reauth_confirm": {
@@ -152,6 +160,10 @@
         }
       },
       "title": "F1TV live timing-token behöver åtgärdas"
+    },
+    "stale_live_data_card_resources": {
+      "description": "F1 Sensor now bundles and manages the live data cards. Home Assistant still has stale Lovelace resource entries for the old standalone card ({stale_resource_count} detected), which can cause duplicate or outdated card behavior. Confirm that the bundled card works, then remove the old standalone HACS dashboard repository and the stale Lovelace resource entries. Restart Home Assistant or reload Lovelace resources and hard refresh the browser if stale card UI remains.",
+      "title": "Old standalone F1 live data card resources detected"
     }
   },
   "entity": {
@@ -291,6 +303,9 @@
       },
       "replay_status": {
         "name": "Replay-status"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "weather": {
@@ -363,6 +378,9 @@
       },
       "replay_start_reference": {
         "name": "Replay-startreferens"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "binary_sensor": {

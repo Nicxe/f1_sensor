@@ -5,6 +5,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from homeassistant import config_entries
 import pytest
 
 from custom_components.f1_sensor.__init__ import (
@@ -448,3 +449,65 @@ async def test_pitstop_last_reset_is_stable_until_store_reset(
     coordinator._reset_store()
 
     assert coordinator.data["last_reset"] == "2026-06-06T11:30:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_pitstop_first_refresh_wires_sources_and_seeds_delivery(hass) -> None:
+    subscriptions = {}
+
+    class _Bus:
+        def subscribe(self, stream, callback):
+            subscriptions[stream] = callback
+            return MagicMock()
+
+    session_coord = DummyDriversCoordinator(
+        {"Meetings": [{"Key": "meeting"}], "Sessions": [{"Key": "session"}]}
+    )
+    drivers_coord = DummyDriversCoordinator(
+        {
+            "drivers": {
+                "44": {
+                    "identity": {
+                        "tla": "HAM",
+                        "name": "Lewis Hamilton",
+                        "team": "Ferrari",
+                    },
+                    "timing": {"pit_stops": 1},
+                }
+            }
+        }
+    )
+    config_entry = MagicMock()
+    config_entry.state = config_entries.ConfigEntryState.SETUP_IN_PROGRESS
+    coordinator = PitStopCoordinator(
+        hass,
+        session_coord=session_coord,
+        bus=_Bus(),
+        config_entry=config_entry,
+        drivers_coordinator=drivers_coord,
+    )
+    coordinator._schedule_deliver = MagicMock()
+
+    await coordinator.async_config_entry_first_refresh()
+
+    assert set(subscriptions) == {"DriverList", "PitStopSeries"}
+    assert coordinator._session_fingerprint is not None
+    assert coordinator._drivers_unsub is not None
+    assert coordinator._driver_pit_counts == {"44": 1}
+    assert coordinator._driver_map["44"]["tla"] == "HAM"
+    coordinator._schedule_deliver.assert_called_once()
+    await coordinator.async_close()
+
+
+@pytest.mark.asyncio
+async def test_pitstop_delivery_falls_back_when_identity_lookup_fails(hass) -> None:
+    coordinator = PitStopCoordinator(hass, session_coord=MagicMock())
+    coordinator._by_car = {"44": [{"lap": 2, "timestamp": "now", "pit_delta": None}]}
+    coordinator._driver_pit_counts = {"44": 2}
+    coordinator._get_identity = MagicMock(side_effect=RuntimeError("identity"))
+
+    coordinator._deliver()
+
+    assert coordinator.data["total_stops"] == 2
+    assert coordinator.data["cars"]["44"]["count"] == 2
+    assert "tla" not in coordinator.data["cars"]["44"]

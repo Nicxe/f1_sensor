@@ -24,6 +24,15 @@ from custom_components.f1_sensor.race_weather import (
     DAILY_WEATHER_FIELDS,
     WEATHER_FIELDS,
     F1RaceWeatherCoordinator,
+    _aggregate_forecast_period,
+    _as_float,
+    _closest_race_observation,
+    _daily_observations,
+    _hourly_observations,
+    _parse_utc_datetime,
+    _twice_daily_observations,
+    race_key,
+    weather_icon,
     wmo_condition,
 )
 from custom_components.f1_sensor.sensor import F1WeatherSensor
@@ -552,3 +561,124 @@ async def test_race_schedule_without_future_race_does_not_call_weather_api(
     assert coordinator.data["hourly"] == []
     assert coordinator.data["twice_daily"] == []
     assert session.calls == []
+
+
+def test_weather_helpers_reject_invalid_and_incomplete_inputs() -> None:
+    """Weather parsing keeps malformed upstream values out of entity data."""
+    assert _as_float(object()) is None
+    assert _as_float("nan") is None
+    assert _as_float("inf") is None
+    assert _parse_utc_datetime(None) is None
+    assert _parse_utc_datetime("not-a-date") is None
+    assert race_key({"Circuit": {}}) is None
+    assert weather_icon(0, False) == "mdi:weather-night"
+    assert _hourly_observations({"time": "not-a-list"}) == []
+    assert _daily_observations({"time": "not-a-list"}) == []
+    assert (
+        _daily_observations({"time": ["2099-03-20"], "temperature_2m_max": [None]})
+        == []
+    )
+    assert (
+        _aggregate_forecast_period([{"datetime": "2099-03-20T00:00:00Z"}], True) == {}
+    )
+    assert (
+        _twice_daily_observations(
+            [{"datetime": "invalid", "temperature": 20.0, "is_daytime": "yes"}]
+        )
+        == []
+    )
+    assert _closest_race_observation([], None) == {}
+    assert _closest_race_observation([], _parse_utc_datetime("2099-03-20T00:00Z")) == {}
+
+
+@pytest.mark.asyncio
+async def test_weather_coordinator_ignores_duplicate_start_and_unchanged_schedule(
+    hass,
+) -> None:
+    session = _Session(_payload())
+    _, race_coordinator, coordinator = _coordinators(hass, session)
+    coordinator.async_start()
+    coordinator.async_start()
+    race_coordinator.async_set_updated_data(_schedule(_race()))
+    await hass.async_block_till_done()
+
+    assert session.calls == []
+    await coordinator.async_close()
+
+
+@pytest.mark.asyncio
+async def test_weather_coordinator_skips_race_without_coordinates(hass) -> None:
+    race = _race()
+    race["Circuit"]["Location"].pop("lat")
+    session = _Session()
+    _, _, coordinator = _coordinators(hass, session, race)
+
+    await coordinator.async_refresh()
+
+    assert coordinator.last_update_success
+    assert coordinator.data["current"] == {}
+    assert session.calls == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {"current": {}, "hourly": "invalid"},
+        {
+            **_payload(),
+            "utc_offset_seconds": 999999,
+            "current": {**_payload()["current"], "temperature_2m": None},
+        },
+    ],
+)
+@pytest.mark.asyncio
+async def test_weather_coordinator_rejects_invalid_payloads(hass, payload) -> None:
+    session = _Session(payload)
+    _, _, coordinator = _coordinators(hass, session)
+
+    await coordinator.async_refresh()
+
+    assert not coordinator.last_update_success
+
+
+@pytest.mark.asyncio
+async def test_weather_platform_and_forecast_edge_paths(hass) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
+    entry.add_to_hass(hass)
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {}
+    async_add_entities = Mock()
+    await weather_platform.async_setup_entry(hass, entry, async_add_entities)
+    async_add_entities.assert_not_called()
+
+    _, _, coordinator = _coordinators(hass, _Session())
+    entity = F1RaceWeatherEntity(
+        coordinator,
+        "weather-edge",
+        entry.entry_id,
+        "F1",
+    )
+    coordinator.async_set_updated_data(
+        {
+            "race_key": None,
+            "race_start": None,
+            "circuit": {
+                "circuit_name": "Monaco",
+                "circuit_locality": "monaco",
+            },
+            "current": {},
+            "daily": [],
+            "hourly": [],
+            "twice_daily": [],
+            "race": {},
+        }
+    )
+    assert entity.name == "Monaco"
+    assert entity._native_forecast({}) is None
+    assert (
+        entity._native_forecast(
+            {"datetime": "2099-01-01T00:00:00Z", "temperature": 20},
+            include_is_daytime=True,
+        )
+        is None
+    )

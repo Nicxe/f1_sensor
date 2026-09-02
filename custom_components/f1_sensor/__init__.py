@@ -28,6 +28,11 @@ from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
 from . import const
+from .analysis import Phase4AnalysisStore
+from .analysis_websocket import (
+    ANALYSIS_WS_MARKER,
+    async_register_analysis_websocket,
+)
 from .auth import (
     AUTH_REPAIR_STATUSES,
     AUTH_RUNTIME_STATUS,
@@ -69,6 +74,7 @@ from .const import (
     LIVETIMING_INDEX_URL,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
+    OPT_IN_SENSOR_KEYS,
     PLATFORMS,
     RACE_SWITCH_GRACE,
     RCM_OVERTAKE_DISABLED,
@@ -88,6 +94,11 @@ from .entity import (
     register_entry_name_settings,
     unregister_entry_name_settings,
 )
+from .entity_map_websocket import (
+    ENTITY_MAP_WS_MARKER,
+    async_register_entity_map_websocket,
+)
+from .favorite_driver import FavoriteDriverController
 from .feature_plan import FeaturePlan, build_feature_plan
 from .formation_start import FormationStartTracker
 from .frontend import async_ensure_live_data_card_frontend
@@ -143,8 +154,10 @@ from .race_weather import F1RaceWeatherCoordinator
 from .replay import ReplaySignalRClient
 from .replay_mode import ReplayController, ReplayState
 from .replay_start import ReplayStartReferenceController
+from .replay_telemetry import ReplayTelemetryService
 from .runtime import (
     OPTION_KEYS,
+    AnalysisRuntime,
     CacheRuntime,
     CapabilityState,
     F1ConfigEntry,
@@ -235,7 +248,9 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         AUTH_PAIRING_SESSIONS,
         LAP_POSITION_WS_MARKER,
         HISTORY_WS_MARKER,
+        ANALYSIS_WS_MARKER,
         TRACK_MAP_WS_MARKER,
+        ENTITY_MAP_WS_MARKER,
     }
 )
 _FINISHING_PLUS_LAPS_RE = re.compile(r"^\+\d+\s+Laps?$", re.IGNORECASE)
@@ -1378,7 +1393,7 @@ async def _async_close_shared_client_if_unused(hass: HomeAssistant) -> None:
 
 async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
     """Migrate legacy sensor allowlists and establish single-instance identity."""
-    if entry.version > 3:
+    if entry.version > 4:
         _LOGGER.error("Cannot migrate config entry from version %s", entry.version)
         return False
 
@@ -1406,6 +1421,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
                 data.pop(key)
                 changed = True
 
+    if entry.version < 4:
+        disabled = set(options.get("disabled_sensors") or [])
+        disabled.update(OPT_IN_SENSOR_KEYS)
+        options["disabled_sensors"] = sorted(disabled)
+        changed = True
+
     unique_id = entry.unique_id
     if unique_id is None:
         conflicting = any(
@@ -1416,13 +1437,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
             unique_id = DOMAIN
             changed = True
 
-    if changed or entry.version != 3:
+    if changed or entry.version != 4:
         hass.config_entries.async_update_entry(
             entry,
             data=data,
             options=options,
             unique_id=unique_id,
-            version=3,
+            version=4,
         )
     return True
 
@@ -1538,7 +1559,8 @@ async def _async_setup_entry(
     await async_prepare_translation_names(hass, entry.entry_id)
     # Build the effective set of enabled sensors.
     # ``disabled_sensors`` stores the keys the user explicitly unchecked.
-    # Everything else (including new keys added in future versions) is enabled.
+    # Everything else is enabled; migrations add explicitly opt-in keys to the
+    # disabled set until the user chooses them in integration options.
     raw_disabled = settings.get("disabled_sensors") or []
     disabled: set[str] = {k for k in raw_disabled if k in SUPPORTED_SENSOR_KEYS}
     enabled = SUPPORTED_SENSOR_KEYS - disabled
@@ -2079,7 +2101,9 @@ async def _async_setup_entry(
         if lap_position_progression_coordinator is not None:
             async_register_lap_position_websocket(hass)
         async_register_history_websocket(hass)
+        async_register_analysis_websocket(hass)
         async_register_track_map_websocket(hass)
+        async_register_entity_map_websocket(hass)
         no_spoiler_mgr: NoSpoilerModeManager | None = hass.data.get(DOMAIN, {}).get(
             _NO_SPOILER_MANAGER_KEY
         )
@@ -2311,6 +2335,17 @@ async def _async_setup_entry(
         session_type=_lap_analysis_session_type,
     )
     transaction.track(lap_analysis_store)
+    phase4_analysis_store = Phase4AnalysisStore(
+        live_bus,
+        lap_analysis_store,
+        source_provider=_lap_analysis_provider,
+    )
+    replay_telemetry_service = ReplayTelemetryService(
+        hass,
+        http_session,
+        getattr(replay_controller, "session_manager", None),
+    )
+    transaction.track(phase4_analysis_store, replay_telemetry_service)
 
     calibration_manager = LiveDelayCalibrationManager(
         hass,
@@ -2495,6 +2530,20 @@ async def _async_setup_entry(
         transaction.track(drivers_coordinator)
         await drivers_coordinator.async_config_entry_first_refresh()
 
+    favorite_driver_controller = None
+    if (
+        drivers_coordinator is not None
+        and "favorite_driver" in feature_plan.active_live_features
+    ):
+        favorite_driver_controller = FavoriteDriverController(
+            hass,
+            entry.entry_id,
+            drivers_coordinator,
+        )
+        await favorite_driver_controller.async_load()
+        favorite_driver_controller.start()
+        transaction.track(favorite_driver_controller)
+
     if feature_plan.needs("top_three"):
         top_three_coordinator = TopThreeCoordinator(
             hass,
@@ -2604,6 +2653,7 @@ async def _async_setup_entry(
         "pitstop_coordinator": pitstop_coordinator,
         "championship_prediction_coordinator": championship_prediction_coordinator,
         "drivers_coordinator": drivers_coordinator,
+        "favorite_driver_controller": favorite_driver_controller,
         "fia_documents_coordinator": fia_documents_coordinator,
         "track_map_store": track_map_store,
         "track_map_replay_adapter": track_map_replay_adapter,
@@ -2632,6 +2682,8 @@ async def _async_setup_entry(
         "replay_controller": replay_controller,
         "history_service": history_service,
         "lap_analysis_store": lap_analysis_store,
+        "phase4_analysis_store": phase4_analysis_store,
+        "replay_telemetry_service": replay_telemetry_service,
         "replay_reset_callbacks": _build_replay_reset_callbacks(
             track_status_coordinator,
             session_status_coordinator,
@@ -2648,6 +2700,8 @@ async def _async_setup_entry(
             championship_prediction_coordinator,
             drivers_coordinator,
             track_map_replay_adapter,
+            lap_analysis_store,
+            phase4_analysis_store,
         ),
         "activity_filter_unsub": None,
         "no_spoiler_unsub": None,
@@ -2723,12 +2777,18 @@ async def _async_setup_entry(
             stream_reasons=feature_plan.stream_reasons,
         ),
         legacy=entry_data,
+        analysis=AnalysisRuntime(
+            store=phase4_analysis_store,
+            telemetry=replay_telemetry_service,
+        ),
     )
 
     if lap_position_progression_coordinator is not None:
         async_register_lap_position_websocket(hass)
     async_register_history_websocket(hass)
+    async_register_analysis_websocket(hass)
     async_register_track_map_websocket(hass)
+    async_register_entity_map_websocket(hass)
 
     hass_data = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id)
     if isinstance(hass_data, dict):
@@ -5544,7 +5604,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 personal_best.get(idx), best.get(idx)
             )
             if best.get(idx) is None and personal_best[idx].get("time") is not None:
-                best[idx] = personal_best[idx]["time"]
+                restored_time = personal_best[idx]["time"]
+                parsed_time = cls._parse_laptime_secs(str(restored_time))
+                best[idx] = parsed_time if parsed_time is not None else restored_time
 
         sectors.setdefault("current_lap", None)
         sectors.setdefault("last_completed_sector", None)
@@ -5844,6 +5906,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 self._tyre_first_compound_logged = True
             return
 
+        if self._tyre_first_compound_logged:
+            return
         if self._tyre_missing_warning_logged:
             return
         if elapsed < self._TYRE_DATA_WARNING_THRESHOLD_S:

@@ -2,6 +2,7 @@
   "name": "f1-sensor",
   "version": "5.2",
   "private": true,
+  "packageManager": "npm@10.9.8",
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
@@ -11,6 +12,11 @@
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
     "postinstall": "patch-package",
+    "test:frontend": "playwright test",
+    "test:frontend:update": "playwright test --update-snapshots",
+    "test:audit": "sh -c 'npm audit --json > npm-audit.json || true; python3 scripts/check_npm_audit.py npm-audit.json; result=$?; rm -f npm-audit.json; exit $result'",
+    "test:release": "python3 scripts/check_release_build.py",
+    "test:quality": "python3 scripts/check_translations.py custom_components/f1_sensor/translations && python3 scripts/check_source_reviews.py quality/data-sources.json && python3 scripts/check_token_helper_review.py quality/token-helper-review.json && npm run test:audit && npm run test:release && npm run test:frontend",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids"
   },
@@ -26,10 +32,12 @@
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@docusaurus/faster": "3.10.1",
     "@docusaurus/module-type-aliases": "3.10.1",
     "@docusaurus/types": "3.10.1",
     "@nicxe/semantic-release-config": "^1.2.3",
+    "@playwright/test": "^1.62.1",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/github": "^12.0.9",

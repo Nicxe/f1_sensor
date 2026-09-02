@@ -11,6 +11,7 @@ import logging
 import re
 import time
 from typing import TYPE_CHECKING, Any, Protocol
+from urllib.parse import urlsplit
 
 from aiohttp import ClientSession
 from homeassistant.util import dt as dt_util
@@ -510,7 +511,12 @@ class EventTrackerScheduleSource:
     ) -> None:
         self._http = http_session
         self._enabled = bool(fallback_enabled)
-        self._base_url = str(base_url).rstrip("/")
+        candidate_base_url = str(base_url).rstrip("/")
+        self._base_url = (
+            candidate_base_url
+            if self._is_allowed_base_url(candidate_base_url)
+            else EVENT_TRACKER_API_BASE_URL.rstrip("/")
+        )
         self._endpoint = self._normalize_endpoint(endpoint)
         self._meeting_endpoint_prefix = self._normalize_endpoint(
             meeting_endpoint_prefix
@@ -541,6 +547,20 @@ class EventTrackerScheduleSource:
         if not text.startswith("/"):
             text = f"/{text}"
         return text
+
+    @staticmethod
+    def _is_allowed_base_url(value: str) -> bool:
+        """Allow API keys only on HTTPS Formula 1 hosts."""
+        parsed = urlsplit(value)
+        hostname = (parsed.hostname or "").rstrip(".").lower()
+        return (
+            parsed.scheme == "https"
+            and parsed.username is None
+            and parsed.password is None
+            and not parsed.query
+            and not parsed.fragment
+            and (hostname == "formula1.com" or hostname.endswith(".formula1.com"))
+        )
 
     @staticmethod
     def _extract_env_value(raw_text: str, key: str) -> str | None:
@@ -581,7 +601,11 @@ class EventTrackerScheduleSource:
         )
         api_key = self._extract_env_value(text, "PUBLIC_GLOBAL_EVENTTRACKER_APIKEY")
         if base_url:
-            self._base_url = base_url.rstrip("/")
+            candidate_base_url = base_url.rstrip("/")
+            if not self._is_allowed_base_url(candidate_base_url):
+                _LOGGER.warning("Ignored unsafe event-tracker API base URL")
+                return
+            self._base_url = candidate_base_url
             updated = True
         if endpoint:
             self._endpoint = self._normalize_endpoint(endpoint)

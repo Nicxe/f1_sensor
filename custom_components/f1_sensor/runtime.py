@@ -93,6 +93,14 @@ class HistoryRuntime:
 
 
 @dataclass(slots=True)
+class AnalysisRuntime:
+    """Phase 4 timeline, strategy, battles, and selected replay telemetry."""
+
+    store: Any
+    telemetry: Any
+
+
+@dataclass(slots=True)
 class F1RuntimeData:
     """Single typed owner for all config-entry runtime state.
 
@@ -110,6 +118,7 @@ class F1RuntimeData:
     history: HistoryRuntime
     capabilities: CapabilityState
     legacy: dict[str, Any]
+    analysis: AnalysisRuntime | None = None
 
     @property
     def track_map_store(self) -> Any:

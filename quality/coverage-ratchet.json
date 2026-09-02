@@ -1,0 +1,20 @@
+{
+  "global_floor": 95.0,
+  "require_above_global_floor": true,
+  "all_module_floor": 95.0,
+  "require_above_all_module_floor": true,
+  "next_global_target": null,
+  "target_sequence": [75.0, 85.0, 95.0],
+  "module_floors": {
+    "analysis.py": 85.0,
+    "analysis_websocket.py": 96.0,
+    "auth.py": 88.0,
+    "auth_http.py": 86.0,
+    "replay.py": 98.0,
+    "replay_mode.py": 83.0,
+    "signalr.py": 94.0
+  },
+  "silver_target": 95.0,
+  "measured_on": "2026-09-01",
+  "measurement": "1324 passed; 96.193% on macOS with every integration module above 95%; Linux CI independently enforces the same floors"
+}

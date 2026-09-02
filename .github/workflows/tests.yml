@@ -10,6 +10,8 @@ on:
       - "custom_components/**/manifest.json"
       - "custom_components/**/*.js"
       - "custom_components/**/tests/**"
+      - "quality/coverage-ratchet.json"
+      - "scripts/check_coverage.py"
   pull_request:
 
 permissions:
@@ -28,6 +30,8 @@ jobs:
       matrix:
         include:
           - name: Minimum HA 2024.11
+            coverage-gate: false
+            coverage-package: pytest-cov==5.0.0
             python-version: "3.12"
             test-package: pytest-homeassistant-custom-component==0.13.181
             compatibility-pins: '"josepy<2" "pycares==4.4.0"'
@@ -42,15 +46,17 @@ jobs:
               custom_components/f1_sensor/tests/test_frontend.py
               custom_components/f1_sensor/tests/test_session_clock.py
           - name: Current HA
+            coverage-gate: true
+            coverage-package: pytest-cov==7.0.0
             python-version: "3.14"
-            test-package: pytest-homeassistant-custom-component
+            test-package: pytest-homeassistant-custom-component==0.13.307
             compatibility-pins: ""
             test-paths: custom_components/f1_sensor/tests/
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -59,7 +65,7 @@ jobs:
           pip install
           "${{ matrix.test-package }}"
           ${{ matrix.compatibility-pins }}
-          pytest-cov
+          "${{ matrix.coverage-package }}"
 
       - name: Run tests
         run: >
@@ -67,4 +73,9 @@ jobs:
           ${{ matrix.test-paths }}
           --cov=custom_components.f1_sensor
           --cov-report=term-missing
+          --cov-report=json:coverage.json
           -q
+
+      - name: Enforce coverage ratchet
+        if: ${{ matrix.coverage-gate }}
+        run: python scripts/check_coverage.py coverage.json

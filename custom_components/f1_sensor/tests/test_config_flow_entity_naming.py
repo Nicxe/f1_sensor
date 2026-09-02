@@ -55,6 +55,12 @@ def _schema_required_key_names(result: dict) -> set[str]:
     }
 
 
+def _schema_default(result: dict, name: str):
+    """Return the evaluated default for one config flow form field."""
+    marker = next(key for key in result["data_schema"].schema if key.schema == name)
+    return marker.default()
+
+
 def _part(value: dict) -> str:
     raw = json.dumps(value, separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
@@ -131,6 +137,7 @@ async def test_user_flow_shows_auth_but_hides_development_fields_when_developmen
         CONF_LIVE_TIMING_AUTH_HEADER
     )
     assert CONF_LIVE_TIMING_AUTH_HEADER not in _schema_required_key_names(result)
+    assert "favorite_driver" not in _schema_default(result, "enabled_sensors")
 
 
 async def test_user_flow_shows_f1tv_pairing_when_development_ui_enabled(

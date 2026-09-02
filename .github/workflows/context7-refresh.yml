@@ -5,6 +5,9 @@ on:
     workflows: ["Deploy Docusaurus to GitHub Pages"]
     types: [completed]
 
+permissions:
+  contents: read
+
 jobs:
   refresh:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}

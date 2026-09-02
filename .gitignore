@@ -17,6 +17,7 @@ __pycache__/
 .ruff_cache/
 .coverage
 coverage.xml
+coverage.json
 htmlcov/
 
 # macOS
@@ -24,12 +25,15 @@ htmlcov/
 
 # Local release artifacts
 f1_sensor.zip
+f1_sensor.zip.sha256
+f1_sensor.zip.spdx.json
+playwright-report/
+test-results/
 /F1 Live Timing API - Dumps/
 releasenote.md
 custom_components/f1_sensor/v3-ReleaseNote.MD
 
 # Local agent/editor metadata (not part of integration runtime)
-/scripts/
 custom_components/f1_sensor/.claude/
 custom_components/f1_sensor/skills/
 custom_components/f1_sensor/AGENTS.md

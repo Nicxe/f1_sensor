@@ -1,14 +1,36 @@
 // Custom F1 Tyres Statistics card for Home Assistant
-import { html, css, svg } from './f1-lit-3.3.2.js';
-import { F1BaseElement } from './platform/base-card.js';
-import { handleF1CardActionKeydown as sharedHandleF1CardActionKeydown } from './platform/actions.js';
-import {
-  installF1CardActionAccessibility as sharedInstallF1CardActionAccessibility,
-  installF1EditorTabAccessibility as sharedInstallF1EditorTabAccessibility,
-  installF1GridTableAccessibility as sharedInstallF1GridTableAccessibility,
-} from './platform/accessibility.js';
-import { registerF1CardMetadata } from './platform/card-registry.js';
-import { f1Translate } from './platform/i18n.js';
+const cacheKey = new URL(import.meta.url).searchParams.get('v');
+const cacheSuffix = cacheKey ? `?v=${encodeURIComponent(cacheKey)}` : '';
+const cacheBustedImport = (path) => import(`${path}${cacheSuffix}`);
+const cacheBustedAssetUrl = (path) => {
+  const url = new URL(path, import.meta.url);
+  if (cacheKey) url.searchParams.set('v', cacheKey);
+  return url.href;
+};
+
+const [
+  { html, css, svg },
+  { F1BaseElement },
+  { handleF1CardActionKeydown: sharedHandleF1CardActionKeydown },
+  {
+    installF1CardActionAccessibility: sharedInstallF1CardActionAccessibility,
+    installF1EditorTabAccessibility: sharedInstallF1EditorTabAccessibility,
+    installF1GridTableAccessibility: sharedInstallF1GridTableAccessibility,
+  },
+  { registerF1CardMetadata },
+  { installF1DashboardContext, updateF1DashboardContext },
+  { installF1EntityAutoBinding },
+  { f1Translate, installF1FrontendLocalization },
+] = await Promise.all([
+  cacheBustedImport('./f1-lit-3.3.2.js'),
+  cacheBustedImport('./platform/base-card.js'),
+  cacheBustedImport('./platform/actions.js'),
+  cacheBustedImport('./platform/accessibility.js'),
+  cacheBustedImport('./platform/card-registry.js'),
+  cacheBustedImport('./platform/dashboard-context.js'),
+  cacheBustedImport('./platform/entity-resolver.js'),
+  cacheBustedImport('./platform/i18n.js'),
+]);
 
 const LitElement = F1BaseElement;
 
@@ -108,6 +130,8 @@ const isEffectiveLightTheme = (hass, config) => {
 const formatHassDateTime = (hass, date, options = {}, fallback = '') => {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return fallback;
   const formatOptions = { ...options };
+  const timeZone = hass?.locale?.time_zone || hass?.config?.time_zone;
+  if (timeZone && !formatOptions.timeZone) formatOptions.timeZone = timeZone;
   const hasTime = ['hour', 'minute', 'second'].some((field) => field in formatOptions);
   if (hasTime) {
     const timeFormat = hass?.locale?.time_format;
@@ -810,11 +834,11 @@ const COMPOUND_LIGHT_DISPLAY = {
   WET: '#0a84ff',
 };
 const COMPOUND_IMAGES = {
-  HARD: new URL('./hard_tyre.png', import.meta.url).href,
-  SOFT: new URL('./soft_tyre.png', import.meta.url).href,
-  MEDIUM: new URL('./medium_tyre.png', import.meta.url).href,
-  INTERMEDIATE: new URL('./intermediate_tyre.png', import.meta.url).href,
-  WET: new URL('./wet_tyre.png', import.meta.url).href,
+  HARD: cacheBustedAssetUrl('./hard_tyre.png'),
+  SOFT: cacheBustedAssetUrl('./soft_tyre.png'),
+  MEDIUM: cacheBustedAssetUrl('./medium_tyre.png'),
+  INTERMEDIATE: cacheBustedAssetUrl('./intermediate_tyre.png'),
+  WET: cacheBustedAssetUrl('./wet_tyre.png'),
 };
 
 const TEAM_LOGO_URLS = {
@@ -1782,7 +1806,8 @@ const installNoSpoilerOverlay = (CardClass) => {
     const content = originalRender.call(this, ...args);
     return renderWithNoSpoilerOverlay(
       content,
-      isNoSpoilerModeActiveForCard(this.hass, this.config),
+      isNoSpoilerModeActiveForCard(this.hass, this.config)
+        || this._f1DashboardContext?.spoiler_mode === true,
     );
   };
 
@@ -4362,6 +4387,11 @@ class F1DriverLapTimesCard extends LitElement {
       border-left: 2px solid #8b5cf6;
     }
 
+    .dl-row.context-selected {
+      background: linear-gradient(90deg, rgba(255, 59, 48, 0.18), var(--ts-chip));
+      border-left: 2px solid var(--f1-marker-red);
+    }
+
     .dl-row.retired {
       color: var(--f1-card-muted);
     }
@@ -4803,6 +4833,9 @@ class F1DriverLapTimesCard extends LitElement {
     const rowClasses = ['dl-row'];
     if (row.is_fastest) rowClasses.push('fastest-lap');
     if (row.retired) rowClasses.push('retired');
+    if (Number(row.rn) === Number(this._f1DashboardContext?.driver_number)) {
+      rowClasses.push('context-selected');
+    }
     return html`
       <div class="${rowClasses.join(' ')}">
         ${columns.map((col) => this._renderCell(row, col))}
@@ -4957,13 +4990,17 @@ class F1DriverLapTimesCard extends LitElement {
 
   _currentGapMode() {
     if (this.config.show_gap === false) return 'off';
-    return normalizeF1GapMode(this._activeGapMode || this.config.gap_mode, 'ahead');
+    return normalizeF1GapMode(
+      this._f1DashboardContext?.gap_mode || this._activeGapMode || this.config.gap_mode,
+      'ahead',
+    );
   }
 
   _setGapMode(mode, ev) {
     ev?.stopPropagation?.();
     ev?.preventDefault?.();
     this._activeGapMode = normalizeF1GapMode(mode, 'ahead');
+    updateF1DashboardContext({ gap_mode: this._activeGapMode }, 'driver-lap-times');
   }
 
   _renderGapModeToggle(activeMode) {
@@ -10342,13 +10379,25 @@ class F1LapPositionProgressionCard extends LitElement {
   _resolveSelectedSession(sessions) {
     const list = Array.isArray(sessions) ? sessions : [];
     if (!list.length) return null;
-    const selected = this._selectedSessionKey
-      ? list.find((session) => session.key === this._selectedSessionKey)
+    const selectedKey = this._selectedSessionKey || this._f1DashboardContext?.session_id;
+    const selected = selectedKey
+      ? list.find((session) => this._sessionContextMatches(session.key, selectedKey))
       : null;
     if (selected) return selected;
     return list.find((session) => session.type === 'race' && session.status === 'available')
       || list.find((session) => session.status === 'available')
       || list[0];
+  }
+
+  _sessionContextMatches(candidate, selected) {
+    const normalize = (value) => {
+      const text = String(value || '').trim();
+      const lower = text.toLowerCase();
+      const kind = lower.includes('sprint') ? 'sprint' : lower.includes('race') ? 'race' : null;
+      const numbers = text.match(/\d+/g) || [];
+      return kind && numbers.length ? `${kind}:${numbers.at(-1)}` : text;
+    };
+    return normalize(candidate) === normalize(selected);
   }
 
   _buildChartModel(session) {
@@ -10619,6 +10668,7 @@ class F1LapPositionProgressionCard extends LitElement {
   _sessionSelectionChanged(ev) {
     ev.stopPropagation();
     this._selectedSessionKey = ev.target.value;
+    updateF1DashboardContext({ session_id: this._selectedSessionKey }, 'lap-position-progression');
     this._sessionData = this._sessionDataCache.get(this._selectedSessionKey) || null;
     this._sessionError = null;
     this._clearHoverPoint();
@@ -12969,13 +13019,25 @@ class F1LastRaceResultsCard extends LitElement {
   _resolveSelectedSession(sessions) {
     const list = Array.isArray(sessions) ? sessions : [];
     if (list.length === 0) return null;
-    const selected = this._selectedSessionKey
-      ? list.find((session) => session.key === this._selectedSessionKey)
+    const selectedKey = this._selectedSessionKey || this._f1DashboardContext?.session_id;
+    const selected = selectedKey
+      ? list.find((session) => this._sessionContextMatches(session.key, selectedKey))
       : null;
     if (selected) return selected;
     return list.find((session) => session.latest)
       || list.find((session) => session.type === 'race')
       || list[0];
+  }
+
+  _sessionContextMatches(candidate, selected) {
+    const normalize = (value) => {
+      const text = String(value || '').trim();
+      const lower = text.toLowerCase();
+      const kind = lower.includes('sprint') ? 'sprint' : lower.includes('race') ? 'race' : null;
+      const numbers = text.match(/\d+/g) || [];
+      return kind && numbers.length ? `${kind}:${numbers.at(-1)}` : text;
+    };
+    return normalize(candidate) === normalize(selected);
   }
 
   _renderHeaderBadges(session, spoilerBlocked) {
@@ -13016,6 +13078,7 @@ class F1LastRaceResultsCard extends LitElement {
   _sessionSelectionChanged(ev) {
     ev.stopPropagation();
     this._selectedSessionKey = ev.target.value;
+    updateF1DashboardContext({ session_id: this._selectedSessionKey }, 'results');
   }
 
   _renderScopeSelector() {
@@ -18267,7 +18330,7 @@ class F1ReplayControlCard extends LitElement {
             @change=${(ev) => this._selectOption(entityId, ev.target.value)}
           >
             ${disabled ? html`<option value="">Unavailable</option>` : options.map((option) => html`
-              <option value=${option}>${option}</option>
+              <option value=${option} ?selected=${option === currentValue}>${option}</option>
             `)}
           </select>
         </span>
@@ -23416,6 +23479,7 @@ class F1RaceControlCard extends LitElement {
     _listLoading: { state: true },
     _listError: { state: true },
     _isClearing: { state: true },
+    _clearConfirmationPending: { state: true },
   };
 
   static styles = [F1_THEME_STYLES, css`
@@ -23869,6 +23933,8 @@ class F1RaceControlCard extends LitElement {
     this._listLoading = false;
     this._listError = null;
     this._isClearing = false;
+    this._clearConfirmationPending = false;
+    this._clearConfirmationTimer = null;
     this._historyQueue = [];
     this._historyIndex = 0;
     this._lastEventId = null;
@@ -23895,6 +23961,7 @@ class F1RaceControlCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._clearDisplayTimer();
+    this._resetClearConfirmation();
     this._unsubscribeListEvents();
   }
 
@@ -23928,6 +23995,7 @@ class F1RaceControlCard extends LitElement {
     this._listLoading = false;
     this._listError = null;
     this._isClearing = false;
+    this._resetClearConfirmation();
     this._listContextKey = null;
   }
 
@@ -24268,12 +24336,12 @@ class F1RaceControlCard extends LitElement {
       ? String(value)
       : `${String(value)}Z`);
     if (Number.isNaN(parsed)) return '--:--:--';
-    const date = new Date(parsed);
-    return [
-      date.getHours(),
-      date.getMinutes(),
-      date.getSeconds(),
-    ].map((part) => String(part).padStart(2, '0')).join(':');
+    return formatHassDateTime(
+      this.hass,
+      new Date(parsed),
+      { hour: '2-digit', minute: '2-digit', second: '2-digit' },
+      '--:--:--'
+    );
   }
 
   _getListToneClass(item) {
@@ -24295,11 +24363,38 @@ class F1RaceControlCard extends LitElement {
     return 'Race Control';
   }
 
+  _resetClearConfirmation() {
+    if (this._clearConfirmationTimer) {
+      clearTimeout(this._clearConfirmationTimer);
+      this._clearConfirmationTimer = null;
+    }
+    this._clearConfirmationPending = false;
+  }
+
+  _requestClearConfirmation() {
+    this._resetClearConfirmation();
+    this._clearConfirmationPending = true;
+    this._clearConfirmationTimer = setTimeout(() => {
+      this._clearConfirmationTimer = null;
+      this._clearConfirmationPending = false;
+    }, 5000);
+  }
+
   async _handleClearList(ev) {
     ev?.stopPropagation?.();
     if (this._isClearing) return;
+
+    if (!this._clearConfirmationPending) {
+      this._requestClearConfirmation();
+      return;
+    }
+
+    this._resetClearConfirmation();
     const entityId = resolveEntityIdWithFallback(this.hass, this.config?.entity);
-    if (!entityId || typeof this.hass?.callService !== 'function') return;
+    if (!entityId || typeof this.hass?.callService !== 'function') {
+      this._listError = 'Could not clear saved messages';
+      return;
+    }
 
     this._isClearing = true;
     try {
@@ -24673,11 +24768,18 @@ class F1RaceControlCard extends LitElement {
               <span class="rc-live-pill ${live ? '' : 'saved'}">${statusLabel}</span>
               ${this.config.show_clear_button !== false ? html`
                 <button
-                  class="rc-clear-button"
+                  class="rc-clear-button ${this._clearConfirmationPending ? 'confirm' : ''}"
                   ?disabled=${this._isClearing}
                   @click=${this._handleClearList}
+                  aria-label=${this._clearConfirmationPending
+                    ? f1Translate(this.hass, 'race_control.confirm_clear', 'Confirm clear')
+                    : f1Translate(this.hass, 'race_control.clear', 'Clear')}
                 >
-                  ${this._isClearing ? 'Clearing' : 'Clear'}
+                  ${this._isClearing
+                    ? f1Translate(this.hass, 'race_control.clearing', 'Clearing')
+                    : this._clearConfirmationPending
+                      ? f1Translate(this.hass, 'race_control.confirm_clear', 'Confirm clear')
+                      : f1Translate(this.hass, 'race_control.clear', 'Clear')}
                 </button>
               ` : null}
             </div>
@@ -34010,6 +34112,1126 @@ class F1TrackMapCardEditor extends LitElement {
   }
 }
 
+class F1WeekendHubCard extends LitElement {
+  static properties = {
+    hass: { attribute: false },
+    config: { attribute: false },
+    _snapshot: { state: true },
+    _status: { state: true },
+    _error: { state: true },
+    _activeView: { state: true },
+    _telemetry: { state: true },
+    _telemetryError: { state: true },
+    _telemetryLoading: { state: true },
+    _telemetrySelections: { state: true },
+    _telemetryLap: { state: true },
+    _telemetryMetric: { state: true },
+  };
+
+  static styles = [F1_THEME_STYLES, css`
+    :host {
+      display: block;
+      font-family: var(--f1-card-body-font-family, 'Formula1 Display', sans-serif);
+    }
+
+    ha-card {
+      padding: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+    }
+
+    .wh-shell {
+      position: relative;
+      min-height: 520px;
+      overflow: hidden;
+      border: 1px solid var(--f1-card-border);
+      border-radius: var(--ha-card-border-radius, 12px);
+      background:
+        linear-gradient(110deg, transparent 0 47%, var(--f1-card-panel-soft) 47% 48%, transparent 48% 100%),
+        radial-gradient(circle at 93% -8%, rgba(255, 59, 48, 0.22), transparent 38%),
+        linear-gradient(155deg, var(--f1-card-bg) 0%, var(--f1-card-bg-soft) 68%, var(--f1-card-bg-end) 100%);
+      box-shadow: var(--f1-card-shadow);
+      color: var(--f1-card-text);
+      container-type: inline-size;
+    }
+
+    .wh-shell::before {
+      content: '';
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 4px;
+      background: var(--f1-marker-red);
+    }
+
+    .wh-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 16px;
+      padding: clamp(18px, 3vw, 28px) clamp(18px, 3.5vw, 32px) 16px;
+      border-bottom: 1px solid var(--f1-card-divider);
+    }
+
+    .wh-kicker,
+    .wh-section-kicker {
+      color: var(--f1-marker-red);
+      font-family: var(--f1-card-label-font-family, inherit);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    .wh-title {
+      margin: 5px 0 2px;
+      font-family: var(--f1-card-display-font-family, 'Formula1 Display', sans-serif);
+      font-size: clamp(22px, 4vw, 38px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .wh-subtitle {
+      color: var(--f1-card-muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .wh-live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 26px;
+      padding: 0 10px;
+      border: 1px solid var(--f1-card-divider-strong);
+      border-radius: 999px;
+      background: var(--f1-card-chip);
+      color: var(--f1-card-muted);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .wh-live-badge.live {
+      border-color: var(--f1-status-success-border);
+      background: var(--f1-status-success-bg);
+      color: var(--f1-status-success-text);
+    }
+
+    .wh-live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .wh-context {
+      display: grid;
+      grid-template-columns: minmax(140px, 1.4fr) repeat(2, minmax(120px, 1fr));
+      gap: 10px;
+      padding: 12px clamp(18px, 3.5vw, 32px);
+      border-bottom: 1px solid var(--f1-card-divider);
+      background: var(--f1-card-panel-soft);
+    }
+
+    .wh-control {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .wh-control-label {
+      color: var(--f1-card-soft);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .wh-select,
+    .wh-input {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--f1-card-divider-strong);
+      border-radius: 7px;
+      background: var(--f1-card-chip);
+      color: var(--f1-card-text);
+      color-scheme: var(--f1-select-color-scheme);
+      font: inherit;
+      font-size: 11px;
+      outline: none;
+    }
+
+    .wh-segmented {
+      display: flex;
+      min-height: 34px;
+      padding: 2px;
+      border: 1px solid var(--f1-card-divider-strong);
+      border-radius: 7px;
+      background: var(--f1-card-chip);
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .wh-segmented button,
+    .wh-tab,
+    .wh-button,
+    .wh-selection {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--f1-card-muted);
+      cursor: pointer;
+    }
+
+    .wh-segmented button {
+      flex: 1;
+      border-radius: 5px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .wh-segmented button.active {
+      background: var(--f1-marker-red);
+      color: var(--f1-marker-red-text);
+    }
+
+    .wh-gap-readout {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 18px;
+      color: var(--f1-card-muted);
+      font-size: 9px;
+      line-height: 1.3;
+    }
+
+    .wh-gap-readout strong {
+      color: var(--f1-card-text);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .wh-tabs {
+      display: flex;
+      gap: 2px;
+      padding: 10px clamp(14px, 3vw, 28px) 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .wh-tab {
+      flex: 0 0 auto;
+      padding: 9px 12px;
+      border-bottom: 2px solid transparent;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+
+    .wh-tab.active {
+      border-bottom-color: var(--f1-marker-red);
+      color: var(--f1-card-text);
+    }
+
+    .wh-content {
+      padding: clamp(16px, 3vw, 26px) clamp(18px, 3.5vw, 32px) clamp(22px, 4vw, 34px);
+    }
+
+    .wh-grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .wh-panel {
+      grid-column: span 6;
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid var(--f1-card-divider);
+      border-radius: 10px;
+      background: var(--f1-card-panel);
+    }
+
+    .wh-panel.full { grid-column: 1 / -1; }
+    .wh-panel.third { grid-column: span 4; }
+
+    .wh-panel-title {
+      margin: 5px 0 10px;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.25;
+      text-transform: uppercase;
+    }
+
+    .wh-metric {
+      font-family: var(--f1-card-display-font-family, inherit);
+      font-size: clamp(22px, 4vw, 34px);
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .wh-muted { color: var(--f1-card-muted); }
+    .wh-small { font-size: 10px; line-height: 1.45; }
+
+    .wh-list {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .wh-event,
+    .wh-stint,
+    .wh-battle {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 10px;
+      border: 1px solid var(--f1-card-divider);
+      border-radius: 8px;
+      background: var(--f1-card-panel-soft);
+    }
+
+    .wh-event-mark {
+      width: 4px;
+      height: 30px;
+      border-radius: 999px;
+      background: var(--f1-status-info);
+    }
+
+    .wh-event[data-severity='warning'] .wh-event-mark { background: var(--f1-status-warning); }
+    .wh-event[data-severity='success'] .wh-event-mark { background: var(--f1-status-success); }
+    .wh-event[data-severity='danger'] .wh-event-mark { background: var(--f1-status-danger); }
+
+    .wh-event-title {
+      overflow: hidden;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+    }
+
+    .wh-meta {
+      color: var(--f1-card-soft);
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .wh-confidence {
+      padding: 3px 6px;
+      border: 1px solid var(--f1-card-divider);
+      border-radius: 999px;
+      color: var(--f1-card-muted);
+      font-size: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .wh-compounds,
+    .wh-selections,
+    .wh-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      align-items: center;
+    }
+
+    .wh-compound,
+    .wh-selection {
+      min-height: 25px;
+      padding: 0 8px;
+      border: 1px solid var(--f1-card-divider-strong);
+      border-radius: 999px;
+      background: var(--f1-card-chip);
+      color: var(--f1-card-text);
+      font-size: 9px;
+      font-weight: 700;
+    }
+
+    .wh-button {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--f1-card-divider-strong);
+      border-radius: 7px;
+      background: var(--f1-card-chip);
+      color: var(--f1-card-text);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .wh-button.primary {
+      border-color: var(--f1-marker-red-border);
+      background: var(--f1-marker-red);
+      color: var(--f1-marker-red-text);
+    }
+
+    .wh-button:disabled { cursor: wait; opacity: 0.55; }
+
+    .wh-telemetry-form {
+      display: grid;
+      grid-template-columns: minmax(130px, 1fr) 100px auto;
+      gap: 8px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+
+    .wh-chart {
+      width: 100%;
+      min-height: 220px;
+      border: 1px solid var(--f1-card-divider);
+      border-radius: 9px;
+      background:
+        linear-gradient(var(--f1-card-divider) 1px, transparent 1px),
+        linear-gradient(90deg, var(--f1-card-divider) 1px, transparent 1px),
+        var(--f1-card-panel-soft);
+      background-size: 20% 25%;
+    }
+
+    .wh-chart path {
+      fill: none;
+      stroke-width: 3;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .wh-empty,
+    .wh-error {
+      display: grid;
+      place-items: center;
+      min-height: 180px;
+      padding: 24px;
+      border: 1px dashed var(--f1-card-divider-strong);
+      border-radius: 10px;
+      color: var(--f1-card-muted);
+      font-size: 11px;
+      line-height: 1.55;
+      text-align: center;
+    }
+
+    .wh-error {
+      border-color: var(--f1-status-danger-border);
+      color: var(--f1-status-danger-text);
+    }
+
+    .wh-spoiler {
+      display: grid;
+      place-items: center;
+      min-height: 280px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .wh-spoiler-lock {
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 12px;
+      border: 1px solid var(--f1-status-warning-border);
+      border-radius: 50%;
+      background: var(--f1-status-warning-bg);
+      color: var(--f1-status-warning-text);
+      font-size: 21px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; }
+    }
+
+    @container (max-width: 680px) {
+      .wh-header { grid-template-columns: 1fr; }
+      .wh-live-badge { justify-self: start; }
+      .wh-context { grid-template-columns: 1fr; }
+      .wh-panel, .wh-panel.third { grid-column: 1 / -1; }
+      .wh-telemetry-form { grid-template-columns: 1fr 90px; }
+      .wh-telemetry-form .wh-button { grid-column: 1 / -1; }
+      .wh-event { grid-template-columns: auto minmax(0, 1fr); }
+      .wh-event .wh-confidence { display: none; }
+    }
+  `];
+
+  constructor() {
+    super();
+    this.config = {};
+    this._snapshot = null;
+    this._status = 'loading';
+    this._error = null;
+    this._activeView = 'overview';
+    this._telemetry = null;
+    this._telemetryError = null;
+    this._telemetryLoading = false;
+    this._telemetrySelections = [];
+    this._telemetryLap = 1;
+    this._telemetryMetric = 'speed';
+    this._unsubscribeAnalysis = null;
+    this._subscriptionKey = null;
+    this._subscriptionToken = 0;
+  }
+
+  setConfig(config) {
+    this.config = {
+      theme_mode: DEFAULT_F1_THEME_MODE,
+      font_style: DEFAULT_FONT_STYLE,
+      title: 'Weekend Hub',
+      entry_id: 'auto',
+      default_view: 'overview',
+      show_context: true,
+      no_spoiler_entity: 'input_boolean.f1_no_spoiler_mode',
+      throttle_ms: 500,
+      ...config,
+    };
+    this.config.theme_mode = normalizeThemeMode(this.config.theme_mode);
+    this.config.default_view = ['overview', 'timeline', 'strategy', 'telemetry', 'battles']
+      .includes(this.config.default_view) ? this.config.default_view : 'overview';
+    if (!this._snapshot) this._activeView = this.config.default_view;
+    applyF1ThemeMode(this, this.config, this.hass);
+  }
+
+  static getStubConfig() {
+    return {
+      type: 'custom:f1-weekend-hub-card',
+      title: 'Weekend Hub',
+      entry_id: 'auto',
+    };
+  }
+
+  static getConfigElement() {
+    return document.createElement('f1-weekend-hub-card-editor');
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    ensureF1Fonts();
+    this._ensureSubscription();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._teardownSubscription();
+  }
+
+  updated(changed) {
+    if (changed.has('hass') || changed.has('config')) {
+      applyF1ThemeMode(this, this.config, this.hass);
+      this._ensureSubscription();
+    }
+  }
+
+  getCardSize() { return 8; }
+
+  getGridOptions() {
+    return { columns: 12, min_columns: 6, max_columns: 12, min_rows: 6 };
+  }
+
+  _entryId() {
+    const value = String(this.config?.entry_id || 'auto').trim();
+    return value && value !== 'auto' ? value : null;
+  }
+
+  async _ensureSubscription() {
+    if (!this.hass || !this.isConnected) return;
+    const entryId = this._entryId();
+    const throttle = Math.min(5000, Math.max(100, Number(this.config?.throttle_ms) || 500));
+    const key = `${entryId || 'auto'}:${throttle}`;
+    if (key === this._subscriptionKey && this._unsubscribeAnalysis) return;
+    this._teardownSubscription();
+    this._subscriptionKey = key;
+    const token = ++this._subscriptionToken;
+    const message = {
+      type: 'f1_sensor/analysis/subscribe',
+      protocol_version: 1,
+      throttle_ms: throttle,
+    };
+    if (entryId) message.entry_id = entryId;
+    try {
+      const connection = this.hass?.connection;
+      if (!connection || typeof connection.subscribeMessage !== 'function') {
+        await this._loadSnapshotOnce(entryId, token);
+        return;
+      }
+      const unsubscribe = await connection.subscribeMessage(
+        (payload) => {
+          if (this.isConnected && token === this._subscriptionToken) {
+            this._receiveSnapshot(payload);
+          }
+        },
+        message,
+      );
+      if (!this.isConnected || token !== this._subscriptionToken) {
+        this._callUnsubscribe(unsubscribe);
+        return;
+      }
+      this._unsubscribeAnalysis = unsubscribe;
+    } catch (err) {
+      if (token !== this._subscriptionToken) return;
+      this._status = 'error';
+      this._error = err?.message || 'Weekend Hub websocket unavailable';
+    }
+  }
+
+  async _loadSnapshotOnce(entryId, token) {
+    const message = { type: 'f1_sensor/analysis/get' };
+    if (entryId) message.entry_id = entryId;
+    try {
+      const payload = typeof this.hass?.callWS === 'function'
+        ? await this.hass.callWS(message)
+        : await this.hass?.connection?.sendMessagePromise?.(message);
+      if (token === this._subscriptionToken) this._receiveSnapshot(payload);
+    } catch (err) {
+      if (token !== this._subscriptionToken) return;
+      this._status = 'error';
+      this._error = err?.message || 'Weekend Hub data is unavailable';
+    }
+  }
+
+  _receiveSnapshot(payload) {
+    if (!payload || payload.status === 'not_loaded') {
+      this._status = 'not_loaded';
+      this._snapshot = payload || null;
+      return;
+    }
+    this._snapshot = payload;
+    this._status = 'ready';
+    this._error = null;
+    const contextPatch = { entry_id: this._entryId() };
+    if (!this._f1DashboardContext?.session_id && payload.session_id) {
+      contextPatch.session_id = payload.session_id;
+    }
+    updateF1DashboardContext(contextPatch, 'weekend-hub');
+  }
+
+  _teardownSubscription() {
+    this._subscriptionToken += 1;
+    this._subscriptionKey = null;
+    this._callUnsubscribe(this._unsubscribeAnalysis);
+    this._unsubscribeAnalysis = null;
+  }
+
+  _callUnsubscribe(unsubscribe) {
+    if (typeof unsubscribe !== 'function') return;
+    try {
+      const result = unsubscribe();
+      result?.catch?.(() => {});
+    } catch (_err) {
+      // Home Assistant can close the connection before the card disconnects.
+    }
+  }
+
+  _phaseCopy() {
+    const phase = this._snapshot?.phase || 'before';
+    if (this._snapshot?.provider === 'replay' && phase === 'live') {
+      return ['Replay running', 'Timing, strategy and race events update from replay'];
+    }
+    if (phase === 'live') return ['Live session', 'Timing, strategy and race events update together'];
+    if (phase === 'after') return ['Session review', 'Explore the completed session without losing context'];
+    return ['Weekend ready', 'Analysis fills in as official session signals arrive'];
+  }
+
+  _spoilerActive() {
+    const entityId = String(this.config?.no_spoiler_entity || '').trim();
+    const state = entityId ? this.hass?.states?.[entityId]?.state : null;
+    return ['on', 'true', 'home'].includes(String(state || '').toLowerCase())
+      || this._f1DashboardContext?.spoiler_mode === true;
+  }
+
+  async _toggleSpoiler() {
+    const active = this._spoilerActive();
+    updateF1DashboardContext({ spoiler_mode: !active }, 'weekend-hub');
+    const entityId = String(this.config?.no_spoiler_entity || '').trim();
+    if (!entityId || typeof this.hass?.callService !== 'function') return;
+    const [domain] = entityId.split('.', 1);
+    if (domain === 'input_boolean') {
+      await this.hass.callService(domain, active ? 'turn_off' : 'turn_on', { entity_id: entityId });
+    }
+  }
+
+  _setContext(patch) {
+    updateF1DashboardContext(patch, 'weekend-hub');
+  }
+
+  render() {
+    if (this._error) return this._renderShell(html`<div class="wh-error">${this._error}</div>`);
+    if (this._status === 'loading' || !this._snapshot) {
+      return this._renderShell(html`<div class="wh-empty">Connecting Weekend Hub to F1 Sensor analysis…</div>`);
+    }
+    if (this._status === 'not_loaded') {
+      return this._renderShell(html`<div class="wh-empty">F1 analysis is not loaded for this config entry.</div>`);
+    }
+    if (this._spoilerActive()) {
+      return this._renderShell(html`
+        <div class="wh-spoiler">
+          <div>
+            <div class="wh-spoiler-lock">◼</div>
+            <div class="wh-panel-title">No Spoiler Mode</div>
+            <div class="wh-small wh-muted">Session results and analysis stay hidden until you choose to reveal them.</div>
+            <button class="wh-button" type="button" style="margin-top:14px" @click=${this._toggleSpoiler}>Reveal analysis</button>
+          </div>
+        </div>
+      `);
+    }
+    return this._renderShell(this._renderActiveView());
+  }
+
+  _renderShell(content) {
+    const [kicker, subtitle] = this._phaseCopy();
+    const live = this._snapshot?.phase === 'live';
+    const replay = this._snapshot?.provider === 'replay';
+    const views = [
+      ['overview', 'Overview'],
+      ['timeline', 'Timeline'],
+      ['strategy', 'Strategy'],
+      ['telemetry', 'Telemetry'],
+      ['battles', 'Battles'],
+    ];
+    return html`
+      <ha-card>
+        <section class="wh-shell">
+          <header class="wh-header">
+            <div>
+              <div class="wh-kicker">${kicker}</div>
+              <h2 class="wh-title">${this.config?.title || 'Weekend Hub'}</h2>
+              <div class="wh-subtitle">${this._snapshot?.session_name || subtitle}</div>
+            </div>
+            <div class="wh-live-badge ${live ? 'live' : ''}">
+              <span class="wh-live-dot"></span>${replay ? 'Replay' : (live ? 'Live' : (this._snapshot?.phase || 'Ready'))}
+            </div>
+          </header>
+          ${this.config?.show_context !== false && this._snapshot ? this._renderContext() : null}
+          ${this._snapshot ? html`
+            <nav class="wh-tabs" aria-label="Weekend Hub views">
+              ${views.map(([key, label]) => html`
+                <button class="wh-tab ${this._activeView === key ? 'active' : ''}" type="button" @click=${() => { this._activeView = key; }}>${label}</button>
+              `)}
+            </nav>
+          ` : null}
+          <div class="wh-content">${content}</div>
+        </section>
+      </ha-card>
+    `;
+  }
+
+  _renderContext() {
+    const drivers = Array.isArray(this._snapshot?.drivers) ? this._snapshot.drivers : [];
+    const driver = this._f1DashboardContext?.driver_number;
+    const gap = this._f1DashboardContext?.gap_mode || 'ahead';
+    const focusedTiming = this._focusedTiming();
+    const gapValue = this._gapReferenceValue(focusedTiming);
+    const gapLabel = !driver ? 'Select a focus driver' : gap === 'leader' ? 'to leader' : gap === 'ahead' ? 'to car ahead' : 'gap hidden';
+    return html`
+      <div class="wh-context">
+        <label class="wh-control">
+          <span class="wh-control-label">Focus driver</span>
+          <select class="wh-select" .value=${driver ? String(driver) : ''} @change=${(ev) => this._setContext({ driver_number: ev.target.value || null })}>
+            <option value="" ?selected=${!driver}>All drivers</option>
+            ${drivers.map((item) => html`<option value=${item.driver_number} ?selected=${String(item.driver_number) === String(driver)}>${item.tla || item.name || `Car ${item.driver_number}`} · ${item.driver_number}</option>`)}
+          </select>
+        </label>
+        <div class="wh-control">
+          <span class="wh-control-label">Gap reference</span>
+          <div class="wh-segmented">
+            ${[['ahead', 'Ahead'], ['leader', 'Leader'], ['off', 'Off']].map(([key, label]) => html`
+              <button type="button" class=${gap === key ? 'active' : ''} @click=${() => this._setContext({ gap_mode: key })}>${label}</button>
+            `)}
+          </div>
+          <div class="wh-gap-readout"><strong>${gapValue}</strong><span>${gapLabel}${focusedTiming?.position ? ` · P${focusedTiming.position}` : ''}</span></div>
+        </div>
+        <div class="wh-control">
+          <span class="wh-control-label">Spoiler protection</span>
+          <button class="wh-button" type="button" @click=${this._toggleSpoiler}>Hide analysis</button>
+        </div>
+      </div>
+    `;
+  }
+
+  _focusedTiming() {
+    const driver = Number(this._f1DashboardContext?.driver_number);
+    const timing = Array.isArray(this._snapshot?.timing) ? this._snapshot.timing : [];
+    return driver ? timing.find((item) => Number(item.driver_number) === driver) || null : null;
+  }
+
+  _gapReferenceValue(timing) {
+    const mode = this._f1DashboardContext?.gap_mode || 'ahead';
+    if (mode === 'off') return 'Hidden';
+    if (!timing) return '--';
+    if (Number(timing.position) === 1) return 'Leader';
+    const value = mode === 'leader' ? timing.gap_to_leader : timing.interval_to_ahead;
+    return normalizeF1GapValue(value) || '--';
+  }
+
+  _renderActiveView() {
+    if (this._activeView === 'timeline') return this._renderTimeline();
+    if (this._activeView === 'strategy') return this._renderStrategy();
+    if (this._activeView === 'telemetry') return this._renderTelemetry();
+    if (this._activeView === 'battles') return this._renderBattles();
+    return this._renderOverview();
+  }
+
+  _renderOverview() {
+    const capabilities = this._snapshot?.capabilities || {};
+    const events = this._filteredEvents();
+    const strategy = this._snapshot?.strategy || {};
+    const strategyCoverage = strategy.coverage || {};
+    const activeBattles = this._snapshot?.battles?.active || [];
+    const streams = capabilities.observed_streams || [];
+    const exchangeCount = Number(this._snapshot?.position_exchange_count ?? this._snapshot?.position_exchanges?.length ?? 0);
+    const retainedExchangeCount = Number(this._snapshot?.position_exchange_retained_count ?? this._snapshot?.position_exchanges?.length ?? 0);
+    return html`
+      <div class="wh-grid">
+        <article class="wh-panel third">
+          <div class="wh-section-kicker">Session</div>
+          <div class="wh-panel-title">${this._snapshot?.session_status || 'Waiting for start'}</div>
+          <div class="wh-small wh-muted">${this._snapshot?.provider || 'provider pending'} · ${this._snapshot?.session_id || 'session not announced'}</div>
+        </article>
+        <article class="wh-panel third">
+          <div class="wh-section-kicker">Timeline</div>
+          <div class="wh-metric">${events.length}</div>
+          <div class="wh-small wh-muted">bounded session events</div>
+        </article>
+        <article class="wh-panel third">
+          <div class="wh-section-kicker">Race picture</div>
+          <div class="wh-metric">${activeBattles.length}</div>
+          <div class="wh-small wh-muted">active battles · ${exchangeCount} confirmed exchanges${retainedExchangeCount < exchangeCount ? ` · latest ${retainedExchangeCount} retained` : ''}</div>
+        </article>
+        <article class="wh-panel">
+          <div class="wh-section-kicker">Strategy readiness</div>
+          <div class="wh-panel-title">${String(strategy.status || 'waiting').replaceAll('_', ' ')}</div>
+          <div class="wh-small wh-muted">${strategy.stints?.length || 0} stints · ${strategyCoverage.clean_laps || 0}/${strategyCoverage.raw_laps || 0} clean laps · ${strategyCoverage.observed_compounds?.length || 0} observed compounds</div>
+        </article>
+        <article class="wh-panel">
+          <div class="wh-section-kicker">Signal coverage</div>
+          <div class="wh-panel-title">${streams.length} observed streams</div>
+          <div class="wh-compounds">${streams.slice(0, 8).map((stream) => html`<span class="wh-compound">${stream}</span>`)}</div>
+        </article>
+        ${events.length ? html`
+          <article class="wh-panel full">
+            <div class="wh-section-kicker">Latest</div>
+            <div class="wh-panel-title">Session timeline</div>
+            <div class="wh-list">${events.slice(-4).reverse().map((event) => this._renderEvent(event))}</div>
+          </article>
+        ` : html`<div class="wh-panel full wh-empty">Weekend Hub is ready. Timeline, strategy and battle analysis appear only when the required session signals arrive.</div>`}
+      </div>
+    `;
+  }
+
+  _filteredEvents() {
+    const events = Array.isArray(this._snapshot?.timeline?.events) ? this._snapshot.timeline.events : [];
+    const driver = Number(this._f1DashboardContext?.driver_number);
+    return driver
+      ? events.filter((event) => !event.driver_numbers?.length || event.driver_numbers.includes(driver))
+      : events;
+  }
+
+  _renderEvent(event) {
+    const meta = [event.category, event.lap_number ? `lap ${event.lap_number}` : null]
+      .filter(Boolean).join(' · ');
+    return html`
+      <div class="wh-event" data-severity=${event.severity || 'info'}>
+        <span class="wh-event-mark"></span>
+        <div>
+          <div class="wh-event-title">${event.title}</div>
+          <div class="wh-meta">${meta}</div>
+        </div>
+        <span class="wh-confidence">${Math.round(Number(event.confidence || 0) * 100)}%</span>
+      </div>
+    `;
+  }
+
+  _renderTimeline() {
+    const events = this._filteredEvents();
+    if (!events.length) return html`<div class="wh-empty">No timeline events match the current driver and session context yet.</div>`;
+    return html`
+      <div class="wh-section-kicker">Unified contract · ${this._snapshot.provider}</div>
+      <div class="wh-panel-title">Session timeline</div>
+      <div class="wh-list">${events.slice(-40).reverse().map((event) => this._renderEvent(event))}</div>
+    `;
+  }
+
+  _renderStrategy() {
+    const strategy = this._snapshot?.strategy || {};
+    const coverage = strategy.coverage || {};
+    const focus = Number(this._f1DashboardContext?.driver_number);
+    const stints = (strategy.stints || []).filter((item) => !focus || item.driver_number === focus);
+    if (!stints.length) return html`<div class="wh-empty">Strategy analysis is waiting for clean completed laps${focus ? ' for the selected driver' : ''}.</div>`;
+    const exclusionSummary = Object.entries(coverage.excluded_reason_counts || {})
+      .sort((first, second) => second[1] - first[1])
+      .map(([reason, count]) => `${String(reason).replaceAll('_', ' ')}: ${count}`)
+      .join(' · ');
+    return html`
+      <div class="wh-grid">
+        ${strategy.status !== 'ready' ? html`
+          <article class="wh-panel full">
+            <div class="wh-section-kicker">Waiting for representative pace</div>
+            <div class="wh-panel-title">${coverage.clean_laps || 0} clean of ${coverage.raw_laps || 0} observed laps</div>
+            <div class="wh-small wh-muted">${exclusionSummary || 'Completed laps have not yet passed the clean-lap quality model.'}</div>
+          </article>
+        ` : null}
+        <article class="wh-panel full">
+          <div class="wh-section-kicker">Clean-lap model</div>
+          <div class="wh-panel-title">Stint analysis</div>
+          <div class="wh-list">
+            ${stints.map((stint) => html`
+              <div class="wh-stint">
+                <span class="wh-compound">${stint.compound}</span>
+                <div>
+                  <div class="wh-event-title">${stint.driver_name || `Car ${stint.driver_number}`} · laps ${stint.first_lap}–${stint.last_lap}</div>
+                  <div class="wh-meta">median ${stint.adjusted_median_clean_pace ?? '--'}s · degradation ${stint.degradation_seconds_per_lap ?? '--'}s/lap · ${stint.sample_count}/${stint.raw_sample_count} clean${stint.excluded_laps ? ` · ${stint.excluded_laps} excluded` : ''}</div>
+                </div>
+                <span class="wh-confidence">${stint.confidence_label}</span>
+              </div>
+            `)}
+          </div>
+        </article>
+        <article class="wh-panel">
+          <div class="wh-section-kicker">Compounds</div>
+          <div class="wh-panel-title">Pace comparison</div>
+          ${(strategy.compound_comparison || []).length ? html`<div class="wh-list">
+            ${strategy.compound_comparison.map((item) => html`
+              <div class="wh-small"><strong>${item.compound}</strong> · ${item.median_clean_pace}s <span class="wh-muted">+${item.delta_to_fastest}s · ${item.sample_count} laps</span></div>
+            `)}
+          </div>` : html`<div class="wh-small wh-muted">Observed ${(coverage.observed_compounds || []).join(' / ') || 'no compound'}; pace comparison waits for clean laps.</div>`}
+        </article>
+        <article class="wh-panel">
+          <div class="wh-section-kicker">Pit cycle</div>
+          <div class="wh-panel-title">Undercut / overcut</div>
+          ${(strategy.undercut_overcut_outcomes || []).length
+            ? html`<div class="wh-list">${strategy.undercut_overcut_outcomes.map((item) => html`<div class="wh-small"><strong>${String(item.result).replaceAll('_', ' ')}</strong><br><span class="wh-muted">Cars ${item.drivers.join(' / ')} · stops L${Object.values(item.stop_laps).join(' / L')}</span></div>`)}</div>`
+            : html`<div class="wh-small wh-muted">No position-changing teammate pit cycle has enough evidence yet.</div>`}
+        </article>
+        <article class="wh-panel full">
+          <div class="wh-section-kicker">Crossover</div>
+          <div class="wh-panel-title">Compound crossover indications</div>
+          ${(strategy.compound_crossover_indications || []).length
+            ? html`<div class="wh-compounds">${strategy.compound_crossover_indications.map((item) => html`<span class="wh-compound">${item.compounds.join(' / ')} · age ${item.estimated_tyre_age_laps} · ${Math.round(item.confidence * 100)}%</span>`)}</div>`
+            : html`<div class="wh-small wh-muted">Shown only when both compound models cross inside the tyre-age range actually observed.</div>`}
+        </article>
+      </div>
+    `;
+  }
+
+  _renderTelemetry() {
+    const capability = this._snapshot?.capabilities?.telemetry_compare;
+    const drivers = Array.isArray(this._snapshot?.drivers) ? this._snapshot.drivers : [];
+    const selectedDriver = this._f1DashboardContext?.driver_number || drivers[0]?.driver_number || '';
+    if (capability !== 'ready') {
+      return html`<div class="wh-empty">Load a replay session to compare selected laps. Live raw telemetry is never exposed as Home Assistant states.</div>`;
+    }
+    return html`
+      <div class="wh-telemetry-form">
+        <label class="wh-control">
+          <span class="wh-control-label">Driver</span>
+          <select class="wh-select" .value=${String(selectedDriver)} @change=${(ev) => this._setContext({ driver_number: ev.target.value })}>
+            ${drivers.map((item) => html`<option value=${item.driver_number} ?selected=${String(item.driver_number) === String(selectedDriver)}>${item.tla || item.name || `Car ${item.driver_number}`}</option>`)}
+          </select>
+        </label>
+        <label class="wh-control">
+          <span class="wh-control-label">Lap</span>
+          <input class="wh-input" type="number" min="1" max="500" .value=${String(this._telemetryLap)} @input=${(ev) => { this._telemetryLap = Number(ev.target.value) || 1; }} />
+        </label>
+        <button class="wh-button" type="button" @click=${() => this._addTelemetrySelection(selectedDriver)}>Add lap</button>
+      </div>
+      <div class="wh-selections">
+        ${this._telemetrySelections.map((item) => html`<button class="wh-selection" type="button" title="Remove" @click=${() => this._removeTelemetrySelection(item)}>Car ${item.driver_number} · L${item.lap_number} ×</button>`)}
+      </div>
+      <div class="wh-actions" style="margin:12px 0">
+        <button class="wh-button primary" type="button" ?disabled=${this._telemetryLoading || !this._telemetrySelections.length} @click=${this._compareTelemetry}>${this._telemetryLoading ? 'Loading…' : 'Compare selected laps'}</button>
+        <select class="wh-select" style="width:auto" .value=${this._telemetryMetric} @change=${(ev) => { this._telemetryMetric = ev.target.value; }}>
+          <option value="speed">Speed</option><option value="throttle">Throttle</option><option value="brake">Brake</option><option value="gear">Gear</option><option value="delta_s">Time delta</option>
+        </select>
+      </div>
+      ${this._telemetryError ? html`<div class="wh-error">${this._telemetryError}</div>` : null}
+      ${this._telemetry ? this._renderTelemetryChart() : html`<div class="wh-empty">Choose up to four driver/lap combinations. Only those bounded replay windows are fetched and retained.</div>`}
+    `;
+  }
+
+  _addTelemetrySelection(driver) {
+    const normalized = { driver_number: Number(driver), lap_number: Number(this._telemetryLap) };
+    if (!normalized.driver_number || !normalized.lap_number) return;
+    const exists = this._telemetrySelections.some((item) => item.driver_number === normalized.driver_number && item.lap_number === normalized.lap_number);
+    if (!exists) this._telemetrySelections = [...this._telemetrySelections, normalized].slice(-4);
+  }
+
+  _removeTelemetrySelection(selection) {
+    this._telemetrySelections = this._telemetrySelections.filter((item) => item !== selection);
+  }
+
+  async _compareTelemetry() {
+    if (!this._telemetrySelections.length || this._telemetryLoading) return;
+    this._telemetryLoading = true;
+    this._telemetryError = null;
+    const message = { type: 'f1_sensor/analysis/telemetry_compare', selections: this._telemetrySelections };
+    if (this._entryId()) message.entry_id = this._entryId();
+    try {
+      this._telemetry = typeof this.hass?.callWS === 'function'
+        ? await this.hass.callWS(message)
+        : await this.hass?.connection?.sendMessagePromise?.(message);
+    } catch (err) {
+      this._telemetryError = err?.message || 'Replay telemetry is unavailable';
+    } finally {
+      this._telemetryLoading = false;
+    }
+  }
+
+  _telemetryPath(series, metric, allSeries) {
+    const samples = Array.isArray(series?.samples) ? series.samples : [];
+    if (!samples.length) return '';
+    const maxDistance = Math.max(1, ...allSeries.flatMap((item) => (item.samples || []).map((sample) => Number(sample.distance) || 0)));
+    const values = allSeries.flatMap((item) => (item.samples || []).map((sample) => Number(sample[metric])).filter(Number.isFinite));
+    let minValue = metric === 'delta_s' ? Math.min(0, ...values) : 0;
+    let maxValue = metric === 'speed' ? 360 : metric === 'gear' ? 8 : metric === 'delta_s' ? Math.max(0, ...values) : 100;
+    if (maxValue <= minValue) maxValue = minValue + 1;
+    return samples.map((sample, index) => {
+      const value = Number(sample[metric]);
+      if (!Number.isFinite(value)) return '';
+      const x = 20 + ((Number(sample.distance) || 0) / maxDistance) * 760;
+      const y = 205 - ((value - minValue) / (maxValue - minValue)) * 180;
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    }).filter(Boolean).join(' ');
+  }
+
+  _renderTelemetryChart() {
+    const series = this._telemetry?.series || [];
+    const colors = ['#ff3b30', '#38bdf8', '#ffd60a', '#34c759'];
+    return html`
+      <div class="wh-grid">
+        <article class="wh-panel full">
+          <div class="wh-section-kicker">Replay · selected windows only</div>
+          <div class="wh-panel-title">${this._telemetryMetric.replace('_', ' ')}</div>
+          <svg class="wh-chart" viewBox="0 0 800 225" role="img" aria-label="Selected lap telemetry comparison">
+            ${series.map((item, index) => svg`<path d=${this._telemetryPath(item, this._telemetryMetric, series)} stroke=${colors[index % colors.length]}></path>`)}
+          </svg>
+          <div class="wh-compounds" style="margin-top:10px">
+            ${series.map((item, index) => html`<span class="wh-compound" style="border-color:${colors[index % colors.length]}">Car ${item.driver_number} · L${item.lap_number} · ${item.summary?.top_speed ?? '--'} km/h · ${item.sample_count} points</span>`)}
+          </div>
+          <div class="wh-small wh-muted" style="margin-top:9px">Distance and time delta are derived. Corner annotations remain unavailable until a licensed circuit source exists.</div>
+        </article>
+      </div>
+    `;
+  }
+
+  _renderBattles() {
+    const focus = Number(this._f1DashboardContext?.driver_number);
+    const exchanges = (this._snapshot?.position_exchanges || []).filter((item) => !focus || item.driver_numbers?.includes(focus));
+    const active = (this._snapshot?.battles?.active || []).filter((item) => !focus || item.driver_numbers?.includes(focus));
+    const history = (this._snapshot?.battles?.history || []).filter((item) => !focus || item.driver_numbers?.includes(focus));
+    if (!active.length && !exchanges.length && !history.length) {
+      return html`<div class="wh-empty">Battle and position-exchange analysis is waiting for consecutive race gaps and stable positions.</div>`;
+    }
+    return html`
+      <div class="wh-grid">
+        <article class="wh-panel">
+          <div class="wh-section-kicker">Live window</div>
+          <div class="wh-panel-title">Active battles</div>
+          <div class="wh-list">${active.length ? active.map((item) => this._renderBattle(item)) : html`<div class="wh-small wh-muted">No active sub-one-second battle.</div>`}</div>
+        </article>
+        <article class="wh-panel">
+          <div class="wh-section-kicker">Classification neutral</div>
+          <div class="wh-panel-title">Position exchanges</div>
+          <div class="wh-list">${exchanges.slice(-12).reverse().map((item) => this._renderBattle(item))}</div>
+        </article>
+        <article class="wh-panel full">
+          <div class="wh-section-kicker">Evidence trail</div>
+          <div class="wh-panel-title">Battle history</div>
+          <div class="wh-list">${history.slice(-12).reverse().map((item) => this._renderBattle(item))}</div>
+        </article>
+      </div>
+    `;
+  }
+
+  _renderBattle(item) {
+    const kind = String(item.kind || 'position_exchange').replaceAll('_', ' ');
+    const gap = Number(item.gap_seconds);
+    const details = [
+      Number.isFinite(gap) ? `gap ${gap.toFixed(3)}s` : null,
+      item.gaining_driver ? `car ${item.gaining_driver} gained the position` : null,
+      item.positions_before && item.positions_after
+        ? `P${Object.values(item.positions_before).join('/P')} → P${Object.values(item.positions_after).join('/P')}`
+        : null,
+    ].filter(Boolean).join(' · ');
+    const signals = (item.supporting_signals || []).join(' · ');
+    return html`
+      <div class="wh-battle">
+        <span class="wh-compound">${(item.driver_numbers || []).join(' / ')}</span>
+        <div><div class="wh-event-title">${kind}${details ? ` · ${details}` : ''}</div><div class="wh-meta">${signals}</div></div>
+        <span class="wh-confidence">${Math.round(Number(item.confidence || 0) * 100)}%</span>
+      </div>
+    `;
+  }
+}
+
+class F1WeekendHubCardEditor extends LitElement {
+  static properties = { hass: {}, _config: {} };
+
+  static styles = css`
+    .wh-editor { display: flex; flex-direction: column; gap: 14px; }
+    .wh-editor-title { margin-top: 8px; color: var(--secondary-text-color); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .helper { margin: -8px 16px 0; color: var(--secondary-text-color); font-size: 12px; line-height: 1.4; }
+    ha-form { width: 100%; }
+  `;
+
+  setConfig(config) {
+    this._config = {
+      theme_mode: DEFAULT_F1_THEME_MODE,
+      title: 'Weekend Hub',
+      entry_id: 'auto',
+      default_view: 'overview',
+      show_context: true,
+      no_spoiler_entity: 'input_boolean.f1_no_spoiler_mode',
+      throttle_ms: 500,
+      ...config,
+    };
+  }
+
+  render() {
+    if (!this.hass || !this._config) return html``;
+    return html`
+      <div class="wh-editor">
+        <div class="wh-editor-title">Data</div>
+        ${this._field('entry_id', 'Config entry id', { text: {} }, 'Use auto when one F1 Sensor entry is loaded.')}
+        ${this._field('no_spoiler_entity', 'No Spoiler entity', { entity: { domain: 'input_boolean' } })}
+        ${this._field('throttle_ms', 'Websocket throttle (ms)', { number: { min: 100, max: 5000, step: 100, mode: 'box' } })}
+        <div class="wh-editor-title">Display</div>
+        ${renderThemeModeSelect(this)}
+        ${this._field('title', 'Title', { text: {} })}
+        ${this._field('default_view', 'Default view', { select: { options: [
+          { value: 'overview', label: 'Overview' }, { value: 'timeline', label: 'Timeline' },
+          { value: 'strategy', label: 'Strategy' }, { value: 'telemetry', label: 'Telemetry' },
+          { value: 'battles', label: 'Battles' },
+        ] } })}
+        ${this._field('show_context', 'Show synchronized context bar', { boolean: {} })}
+      </div>
+    `;
+  }
+
+  _field(name, label, selector, helper = null) {
+    const schema = [{ name, label, selector }];
+    return html`
+      <ha-form .hass=${this.hass} .data=${this._config} .schema=${schema} .computeLabel=${() => label} @value-changed=${this._changed}></ha-form>
+      ${helper ? html`<div class="helper">${helper}</div>` : null}
+    `;
+  }
+
+  _changed(ev) {
+    this._config = { ...this._config, ...(ev.detail?.value || {}) };
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
+  }
+}
+
 class F1SessionArchiveCardCompatibility extends F1LastRaceResultsCard {
   setConfig(config) {
     const configuredTitle = String(config?.title || '').trim();
@@ -34025,6 +35247,150 @@ class F1SessionArchiveCardCompatibility extends F1LastRaceResultsCard {
     });
   }
 }
+
+installF1EntityAutoBinding(F1TyreStatisticsCard, {
+  drivers_entity: 'driver_list',
+  entity: 'tyre_statistics',
+});
+installF1EntityAutoBinding(F1PitStopOverviewCard, {
+  drivers_entity: 'driver_list',
+  tyres_entity: 'current_tyres',
+  pitstops_entity: 'pitstops',
+  positions_entity: 'driver_positions',
+});
+installF1EntityAutoBinding(F1DriverLapTimesCard, {
+  drivers_entity: 'driver_list',
+  positions_entity: 'driver_positions',
+});
+installF1EntityAutoBinding(F1ChampionshipPredictionDriversCard, {
+  current_entity: 'driver_standings',
+  entity: 'championship_prediction_drivers',
+  drivers_entity: 'driver_list',
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+  no_spoiler_entity: 'no_spoiler_mode',
+});
+installF1EntityAutoBinding(F1ChampionshipPredictionTeamsCard, {
+  current_entity: 'constructor_standings',
+  entity: 'championship_prediction_teams',
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+  no_spoiler_entity: 'no_spoiler_mode',
+});
+installF1EntityAutoBinding(F1SeasonProgressionCard, {
+  entity: (config) => config?.mode === 'constructors'
+    ? 'constructor_points_progression'
+    : 'driver_points_progression',
+  calendar_entity: 'current_season',
+  driver_list_entity: 'driver_list',
+});
+installF1EntityAutoBinding(F1LapPositionProgressionCard, {
+  entity: 'lap_position_progression',
+  drivers_entity: 'driver_list',
+  no_spoiler_entity: 'no_spoiler_mode',
+});
+installF1EntityAutoBinding(F1LastRaceResultsCard, {
+  entity: 'last_race_results',
+  season_results_entity: 'season_results',
+  sprint_results_entity: 'sprint_results',
+  drivers_entity: 'driver_list',
+  no_spoiler_entity: 'no_spoiler_mode',
+});
+installF1EntityAutoBinding(F1InvestigationsCard, {
+  investigations_entity: 'investigations',
+  drivers_entity: 'driver_list',
+  positions_entity: 'driver_positions',
+});
+installF1EntityAutoBinding(F1TrackLimitsCard, {
+  track_limits_entity: 'track_limits',
+  drivers_entity: 'driver_list',
+  positions_entity: 'driver_positions',
+});
+installF1EntityAutoBinding(F1LiveSessionCard, {
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+  formation_start_entity: 'formation_start',
+  lap_count_entity: 'race_lap_count',
+  track_status_entity: 'track_status',
+  weather_entity: 'track_weather',
+  next_race_entity: 'next_race',
+  session_time_remaining_entity: 'session_time_remaining',
+  session_time_elapsed_entity: 'session_time_elapsed',
+  overtake_mode_entity: 'overtake_mode',
+  straight_mode_entity: 'straight_mode',
+});
+installF1EntityAutoBinding(F1ReplayControlCard, {
+  status_entity: 'replay_status',
+  year_entity: 'replay_year_select',
+  session_entity: 'replay_session_select',
+  start_reference_entity: 'replay_start_reference',
+  load_button_entity: 'replay_load',
+  play_button_entity: 'replay_play',
+  pause_button_entity: 'replay_pause',
+  back_button_entity: 'replay_back_30',
+  forward_button_entity: 'replay_forward_30',
+  stop_button_entity: 'replay_stop',
+  refresh_button_entity: 'replay_refresh',
+  player_entity: 'replay_player',
+});
+installF1EntityAutoBinding(F1NextRaceCard, {
+  next_race_entity: 'next_race',
+  weather_entity: 'weather',
+  track_weather_entity: 'track_weather',
+  current_session_entity: 'current_session',
+  session_status_entity: 'session_status',
+});
+installF1EntityAutoBinding(F1WeatherCard, {
+  weather_entity: 'weather',
+  track_weather_entity: 'track_weather',
+  next_race_entity: 'next_race',
+  session_status_entity: 'session_status',
+});
+installF1EntityAutoBinding(F1SeasonCalendarCard, {
+  current_season_entity: 'current_season',
+});
+installF1EntityAutoBinding(F1RaceControlCard, { entity: 'race_control' });
+installF1EntityAutoBinding(F1FiaDocumentsCard, {
+  entity: 'fia_documents',
+  last_race_entity: 'last_race_results',
+});
+installF1EntityAutoBinding(F1QualifyingTimingCard, {
+  positions_entity: 'driver_positions',
+  tyres_entity: 'current_tyres',
+  drivers_entity: 'driver_list',
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+});
+installF1EntityAutoBinding(F1PracticeTimingCard, {
+  positions_entity: 'driver_positions',
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+  drivers_entity: 'driver_list',
+  tyres_entity: 'current_tyres',
+});
+installF1EntityAutoBinding(F1RaceLapCard, {
+  positions_entity: 'driver_positions',
+  lap_count_entity: 'race_lap_count',
+  session_entity: 'current_session',
+  session_status_entity: 'session_status',
+  drivers_entity: 'driver_list',
+  tyres_entity: 'current_tyres',
+  pitstops_entity: 'pitstops',
+});
+installF1EntityAutoBinding(F1StartingGridCard, { entity: 'starting_grid' });
+installF1EntityAutoBinding(F1TrackMapCard, {
+  lap_count_entity: 'race_lap_count',
+  driver_positions_entity: 'driver_positions',
+  track_status_entity: 'track_status',
+});
+installF1EntityAutoBinding(F1WeekendHubCard, {});
+
+installSectionsAutoHeight(F1WeekendHubCard, {
+  columns: 12,
+  min_columns: 6,
+  max_columns: 12,
+  min_rows: 6,
+});
 
 installSectionsAutoHeight(F1TyreStatisticsCard, {
   columns: 12,
@@ -34174,6 +35540,7 @@ installSectionsAutoHeight(F1TrackMapCard, {
 });
 
 const F1_FONT_STYLE_CARD_CLASSES = [
+  F1WeekendHubCard,
   F1TyreStatisticsCard,
   F1PitStopOverviewCard,
   F1DriverLapTimesCard,
@@ -34200,17 +35567,11 @@ const F1_FONT_STYLE_CARD_CLASSES = [
 
 F1_FONT_STYLE_CARD_CLASSES.forEach(installFontStyleSupport);
 
-[
-  F1TyreStatisticsCard,
-  F1PitStopOverviewCard,
-  F1DriverLapTimesCard,
-  F1ChampionshipPredictionDriversCard,
-  F1ChampionshipPredictionTeamsCard,
-  F1SeasonProgressionCard,
-  F1LapPositionProgressionCard,
-  F1LastRaceResultsCard,
-  F1StartingGridCard,
-].forEach(sharedInstallF1CardActionAccessibility);
+F1_FONT_STYLE_CARD_CLASSES.forEach(installF1DashboardContext);
+
+F1_FONT_STYLE_CARD_CLASSES.forEach(sharedInstallF1CardActionAccessibility);
+
+F1_FONT_STYLE_CARD_CLASSES.forEach(installF1FrontendLocalization);
 
 [
   F1TyreStatisticsCardEditor,
@@ -34235,7 +35596,34 @@ F1_FONT_STYLE_CARD_CLASSES.forEach(installFontStyleSupport);
   F1RaceLapCardEditor,
   F1StartingGridCardEditor,
   F1TrackMapCardEditor,
+  F1WeekendHubCardEditor,
 ].forEach(sharedInstallF1EditorTabAccessibility);
+
+[
+  F1TyreStatisticsCardEditor,
+  F1PitStopOverviewCardEditor,
+  F1DriverLapTimesCardEditor,
+  F1SeasonProgressionCardEditor,
+  F1LapPositionProgressionCardEditor,
+  F1ChampionshipPredictionDriversCardEditor,
+  F1ChampionshipPredictionTeamsCardEditor,
+  F1LastRaceResultsCardEditor,
+  F1InvestigationsCardEditor,
+  F1TrackLimitsCardEditor,
+  F1LiveSessionCardEditor,
+  F1ReplayControlCardEditor,
+  F1NextRaceCardEditor,
+  F1WeatherCardEditor,
+  F1SeasonCalendarCardEditor,
+  F1RaceControlCardEditor,
+  F1FiaDocumentsCardEditor,
+  F1QualifyingTimingCardEditor,
+  F1PracticeTimingCardEditor,
+  F1RaceLapCardEditor,
+  F1StartingGridCardEditor,
+  F1TrackMapCardEditor,
+  F1WeekendHubCardEditor,
+].forEach(installF1FrontendLocalization);
 
 [
   [F1QualifyingTimingCard, 'qt', 'Qualifying timing'],
@@ -34267,6 +35655,14 @@ const F1_NO_SPOILER_CARD_CLASSES = [
 ];
 
 F1_NO_SPOILER_CARD_CLASSES.forEach(installNoSpoilerOverlay);
+
+if (!customElements.get('f1-weekend-hub-card')) {
+  customElements.define('f1-weekend-hub-card', F1WeekendHubCard);
+}
+
+if (!customElements.get('f1-weekend-hub-card-editor')) {
+  customElements.define('f1-weekend-hub-card-editor', F1WeekendHubCardEditor);
+}
 
 if (!customElements.get('f1-sensor-live-data-card')) {
   customElements.define('f1-sensor-live-data-card', F1TyreStatisticsCard);

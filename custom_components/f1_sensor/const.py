@@ -75,6 +75,10 @@ ENABLE_F1TV_AUTH = True
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 
+# Features that require an explicit user choice instead of being enabled when
+# their sensor key first appears in an integration update.
+OPT_IN_SENSOR_KEYS = frozenset({"favorite_driver"})
+
 # All supported sensor keys (used for normalization and config entry filtering).
 SUPPORTED_SENSOR_KEYS = frozenset(
     {
@@ -114,6 +118,7 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "live_timing_diagnostics",
         "tyre_statistics",
         "driver_positions",
+        "favorite_driver",
         "starting_grid",
         "track_limits",
         "investigations",
