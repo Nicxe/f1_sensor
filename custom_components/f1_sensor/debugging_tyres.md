@@ -1,8 +1,4 @@
-# Tyre data investigation: 2026 Chinese Grand Prix
-
-This maintainer note records an investigation into missing tyre compounds during the 2026 Chinese Grand Prix. The observations below are historical evidence; they do not establish the state of a later live session. No follow-up race result is recorded in this note.
-
-For user-facing behavior and attributes, see the [Current Tyres reference](https://nicxe.github.io/f1_sensor/entities/current-tyres).
+# Tyre Data Live Debugging
 
 ## Background
 
@@ -49,11 +45,11 @@ This lets us quickly distinguish between:
 - a live stream that is active but still empty for tyre compounds
 - a stream that eventually starts sending usable tyre data
 
-## Follow-up verification procedure
+## How To Verify After The Next Race
 
-When a maintainer investigates a similar live session:
+During the next live race session:
 
-1. If requested by the maintainer, use a build with live timing diagnostics enabled. Keep the timing source in Live mode when investigating a live feed; Developer mode with a replay dump is a separate workflow.
+1. Enable development mode so the existing live timing diagnostic sensor is available in Home Assistant
 2. Watch the tyre sensor and the live timing diagnostic attributes during the live race window
 3. Capture the relevant integration debug logs around the first laps of the race
 
@@ -64,7 +60,7 @@ Expected interpretations:
 - If the diagnostic stream telemetry shows `TimingAppData` is not arriving at all, the problem shifts toward stream delivery rather than payload content
 - If tyre compounds arrive in the stream telemetry but the sensor still stays empty, we need to revisit coordinator merge logic
 
-Useful evidence to capture after the session:
+Useful things to capture after the session:
 
 - the live timing diagnostic sensor attributes
 - the first new tyre observability log lines
@@ -73,9 +69,9 @@ Useful evidence to capture after the session:
 
 ## Temporary Changes And Cleanup
 
-The tyre observability logs were introduced as investigation support. Their first-compound and delayed-compound checks are still present in the code at this documentation review; that code check does not substitute for a new live-session observation.
+The new tyre observability logs are temporary investigation support.
 
-Use follow-up live evidence to decide whether to keep or remove them:
+After one or more upcoming race weekends, we should decide whether to keep or remove them:
 
 - Keep them if they continue to help separate upstream live feed delays from integration bugs
 - Remove or reduce them if the issue proves isolated and the extra logging no longer adds support value
