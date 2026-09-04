@@ -1589,10 +1589,10 @@ async def test_session_clock_replay_full_lifecycle(hass, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_session_clock_suppresses_secondly_updates_but_publishes_corrections(
+async def test_session_clock_publishes_changed_seconds_and_corrections(
     hass, monkeypatch
 ) -> None:
-    """Derived seconds stay local while meaningful timing corrections reach HA."""
+    """Both advancing seconds and official corrections reach HA entities."""
     coordinator = SessionClockCoordinator(hass, session_coord=object())
     coordinator._session_info = {"Type": "Race", "Name": "Race"}
     coordinator._session_status = {"Status": "Started"}
@@ -1613,7 +1613,10 @@ async def test_session_clock_suppresses_secondly_updates_but_publishes_correctio
 
     current = _utc("2026-03-08T13:00:12Z")
     coordinator._deliver()
-    assert len(updates) == 1
+    assert len(updates) == 2
+
+    coordinator._deliver()
+    assert len(updates) == 2
 
     coordinator._on_extrapolated_clock(
         {
@@ -1622,7 +1625,7 @@ async def test_session_clock_suppresses_secondly_updates_but_publishes_correctio
             "Extrapolating": True,
         }
     )
-    assert len(updates) == 2
+    assert len(updates) == 3
     assert updates[-1]["clock_remaining_s"] == 6980
 
 

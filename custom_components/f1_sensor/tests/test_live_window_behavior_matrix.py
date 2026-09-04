@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -387,6 +388,31 @@ async def test_supervisor_activate_cleanup_and_no_spoiler_monitor(hass) -> None:
     )
     reason = await monitor._monitor_window(_window(), source="index")
     assert reason == "no-spoiler-activated"
+
+
+@pytest.mark.parametrize("error", [asyncio.CancelledError, RuntimeError])
+async def test_supervisor_interrupted_window_preserves_error_and_cleans_up(hass, error):
+    """Cancellation/errors cannot leave an active window or mask the cause."""
+    supervisor = _supervisor(hass)
+    supervisor._monitor_window = AsyncMock(side_effect=error)
+    with pytest.raises(error):
+        await supervisor._activate_window(_window(), source="index")
+    supervisor._bus.async_close.assert_awaited_once()
+    supervisor._bus.set_heartbeat_expectation.assert_called_with(False)
+    assert supervisor.availability.is_live is False
+    assert supervisor.current_window is None
+    assert supervisor._current_window_source == "none"
+
+
+async def test_supervisor_close_failure_still_clears_availability(hass):
+    supervisor = _supervisor(hass)
+    supervisor._monitor_window = AsyncMock(return_value="disconnect-window-expired")
+    supervisor._bus.async_close = AsyncMock(side_effect=RuntimeError("close failed"))
+    with pytest.raises(RuntimeError, match="close failed"):
+        await supervisor._activate_window(_window(), source="index")
+    assert supervisor.availability.is_live is False
+    assert supervisor.current_window is None
+    assert supervisor._current_window_source == "none"
 
 
 @pytest.mark.asyncio

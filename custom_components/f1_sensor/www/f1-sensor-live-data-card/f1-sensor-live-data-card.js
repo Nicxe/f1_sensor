@@ -130,7 +130,13 @@ const isEffectiveLightTheme = (hass, config) => {
 const formatHassDateTime = (hass, date, options = {}, fallback = '') => {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return fallback;
   const formatOptions = { ...options };
-  const timeZone = hass?.locale?.time_zone || hass?.config?.time_zone;
+  // Home Assistant stores a local/server preference, not an IANA zone name.
+  const timeZonePreference = hass?.locale?.time_zone;
+  const timeZone = timeZonePreference === 'local'
+    ? undefined
+    : timeZonePreference && timeZonePreference !== 'server'
+      ? timeZonePreference
+      : hass?.config?.time_zone;
   if (timeZone && !formatOptions.timeZone) formatOptions.timeZone = timeZone;
   const hasTime = ['hour', 'minute', 'second'].some((field) => field in formatOptions);
   if (hasTime) {
@@ -139,6 +145,10 @@ const formatHassDateTime = (hass, date, options = {}, fallback = '') => {
       formatOptions.hour12 = true;
     } else if (timeFormat === '24') {
       formatOptions.hour12 = false;
+    } else if (timeFormat === 'system') {
+      // Match HA's system preference independently of the interface language.
+      formatOptions.hour12 = new Intl.DateTimeFormat(undefined, { hour: 'numeric' })
+        .resolvedOptions().hour12;
     }
   }
   const locale = hass?.locale?.language || undefined;
