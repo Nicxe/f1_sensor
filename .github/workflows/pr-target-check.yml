@@ -1,9 +1,11 @@
-name: PR branch guidance
+name: PR metadata
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, edited]
 permissions:
   contents: read
+  actions: write
+  checks: write
   issues: write
   pull-requests: write
 concurrency:
@@ -21,4 +23,33 @@ jobs:
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
-            await require('./.github/scripts/pr-metadata.cjs').routing({github, context, core});
+            const metadata = require('./.github/scripts/pr-metadata.cjs');
+            await metadata.routing({github, context, core});
+            await metadata.conflicts({github, context, core});
+      - name: Apply component labels
+        if: github.event.pull_request.base.ref == 'dev' || github.event.pull_request.base.ref == 'content'
+        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7
+        with:
+          repo-token: ${{ github.token }}
+          configuration-path: .github/labeler.yml
+          sync-labels: true
+      - name: Verify a changed target branch
+        if: github.event.action == 'edited' && github.event.changes.base
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const pr = (await github.rest.pulls.get({...context.repo, pull_number:context.payload.pull_request.number})).data;
+            const entry = (await github.rest.repos.getContent({...context.repo, path:'.github/workflows/ci.yml', ref:pr.base.sha})).data;
+            if (Buffer.from(entry.content, 'base64').toString().includes('# Migration bootstrap')) {
+              core.info('This target retains legacy CI until normal code promotion.');
+              return;
+            }
+            const externalId = `f1-pr:${pr.number}:${pr.base.sha}:${pr.head.sha}`;
+            const checks = await github.paginate(github.rest.checks.listForRef, {...context.repo, ref:pr.head.sha, check_name:'CI required', per_page:100});
+            const existing = checks.find(check => check.external_id === externalId && check.app?.id === 15368);
+            const pending = {...context.repo, name:'CI required', status:'in_progress',
+              output:{title:'Verifying changed target',summary:'Fresh verification of this PR against its new target is required.'}};
+            if (existing) await github.rest.checks.update({...pending, check_run_id:existing.id});
+            else await github.rest.checks.create({...pending, head_sha:pr.head.sha, external_id:externalId});
+            await github.rest.actions.createWorkflowDispatch({...context.repo,
+              workflow_id:'ci.yml', ref:pr.base.ref, inputs:{pull_request:String(pr.number),release:'false'}});

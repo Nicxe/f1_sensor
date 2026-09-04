@@ -1,0 +1,20 @@
+# Migration bootstrap: normal code promotion brings full release verification.
+# Register the manual entry point now so it can select the beta implementation.
+name: Release verification
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Create or recover a draft after complete verification
+        type: boolean
+        default: true
+permissions:
+  contents: read
+jobs:
+  migration:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo 'Select beta to verify and create or recover a beta release draft.'
+          echo 'Main retains its existing release pipeline until normal code promotion.'
+          exit 1
