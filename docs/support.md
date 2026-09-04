@@ -1,38 +1,34 @@
 ---
 id: support
 title: Support the project
-description: Learn how to contribute to the project, and support the development of the F1 Sensor for Home Assistant
+description: Support F1 Sensor through sponsorship, documentation, testing and helping other Home Assistant users.
 ---
 
-# Supporting `F1 Sensor`
+<span id="supporting-f1-sensor" />
 
-If you enjoy using the `F1 Sensor` and want to support its continued development, there are several ways to help:
+F1 Sensor grows through useful bug reports, shared dashboards and contributions from its users. Here are a few ways to help.
 
-### 1. Financial Support
+<span id="1-financial-support" />
 
-Feel like I've helped you out? You can buy me a coffee or become a sponsor!
+## Sponsor development
 
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_a_Coffee-fdd734?&logo=buy-me-a-coffee&logoColor=black&style=for-the-badge)](https://www.buymeacoffee.com/NiklasV) [![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-30363d?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sponsors/Nicxe)
+If F1 Sensor adds something to your race weekends, you can [buy Niklas a coffee](https://www.buymeacoffee.com/NiklasV) or [become a GitHub sponsor](https://github.com/sponsors/Nicxe).
 
-### 2. Contributing
+<span id="2-contributing" />
 
-Help improve the project by:
+## Improve the integration or documentation
 
-- [Submit pull requests](https://github.com/Nicxe/f1_sensor/pulls)
-- [Report bugs](https://github.com/Nicxe/f1_sensor/issues)
-- [Suggest features](https://github.com/Nicxe/f1_sensor/discussions/categories/ideas)
-- Improve documentation
-- [Share examples](https://github.com/Nicxe/f1_sensor/discussions/categories/show-and-tell)
+- [Report a problem](/help/contact) with enough detail to reproduce it.
+- [Suggest a feature](https://github.com/Nicxe/f1_sensor/discussions/categories/ideas) and explain what it would help you do.
+- Follow the [contribution guide](https://github.com/Nicxe/f1_sensor/blob/dev/CONTRIBUTING.md) for code or documentation changes.
+- [Test preview releases](/help/beta-tester) and share specific feedback.
 
-### 3. Community Support
+<span id="3-community-support" />
 
-Help grow the community:
+## Help another user
 
-- Share your experience
-- Help others in the forums
-- Create tutorials or guides
-- Showcase your setup
+Answer a question in [GitHub Discussions](https://github.com/Nicxe/f1_sensor/discussions) or the [Home Assistant forum](https://community.home-assistant.io/t/formula-1-racing-sensor/880842), or [share your setup](https://github.com/Nicxe/f1_sensor/discussions/categories/show-and-tell).
 
-## Thank You! 
+## Thank You!
 
-Your support means a lot and helps keep the project alive and growing. Whether you contribute through financial support, code contributions, or community involvement, every bit helps make the `F1 Sensor` better for everyone.
+Whether you contribute time, ideas or financial support, thank you for helping keep F1 Sensor useful and reliable.

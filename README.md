@@ -1,60 +1,38 @@
 # F1 Sensor for Home Assistant
 
-[![Buy me a Coffee](https://img.shields.io/badge/Support-Buy%20me%20a%20coffee-fdd734?logo=buy-me-a-coffee)](https://www.buymeacoffee.com/NiklasV) [![Last commit](https://img.shields.io/github/last-commit/Nicxe/f1_sensor)](#) [![Version](https://img.shields.io/github/v/release/Nicxe/f1_sensor)](#) [![HA Community forum](https://img.shields.io/badge/Home%20Assistant-Community%20Forum-319fee?logo=home-assistant)](https://community.home-assistant.io/t/formula-1-racing-sensor/880842)<br>
-![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/nicxe/f1_sensor/latest/total)
-<br>
-<img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/f1_sensor">
+Bring Formula 1 into your home with race schedules, live timing, dashboard cards and automations. Follow a session live, align updates with your TV broadcast, or play archived timing data alongside a replay.
 
+[Documentation](https://nicxe.github.io/f1_sensor/) · [Installation](https://nicxe.github.io/f1_sensor/getting-started/installation) · [Dashboard cards](https://nicxe.github.io/f1_sensor/cards/cards-overview) · [Releases](https://github.com/Nicxe/f1_sensor/releases)
 
-## Your home, in sync with Formula 1
+![F1 Sensor dashboard cards showing timing, race control and championship information](static/img/placeholder_cards_overview.png)
 
-**Meet **`F1 Sensor`**. A custom [Home Assistant](https://www.home-assistant.io/) integration that brings the full world of Formula 1 into your smart home.**
+## Start with your next race
 
-F1 Sensor combines live race data with static season information, giving you everything from real-time track status, weather, and race control updates to schedules, standings, and historical results.
+1. [Install with HACS](https://nicxe.github.io/f1_sensor/getting-started/installation) and restart Home Assistant.
+2. [Add and configure F1 Sensor](https://nicxe.github.io/f1_sensor/getting-started/add-integration).
+3. [Build your first dashboard](https://nicxe.github.io/f1_sensor/getting-started/first-dashboard) with the Next Race card. No active session is needed.
 
+Dashboard card resources are bundled and registered automatically. Live information appears when the relevant session streams are available; schedules, standings and results have their own update cycles.
 
+## Make race day your own
 
-Whether you want your lights to react to a safety car or build dashboards that visualize driver progress through the season, `F1 Sensor` keeps your home perfectly in sync with Formula 1.
+| I want to… | Start here |
+| --- | --- |
+| Choose a dashboard card | [Visual card catalogue](https://nicxe.github.io/f1_sensor/cards/cards-overview) |
+| Match updates to my TV | [Live Delay](https://nicxe.github.io/f1_sensor/features/live-delay) |
+| Watch a completed session | [Replay Mode](https://nicxe.github.io/f1_sensor/features/replay-mode) |
+| Make my lights react to flags | [Track Status Light blueprint](https://nicxe.github.io/f1_sensor/blueprints/track-status-light) |
+| Understand a sensor or event | [Entity and event reference](https://nicxe.github.io/f1_sensor/reference/overview) |
+| Work out why data is missing | [Help and troubleshooting](https://nicxe.github.io/f1_sensor/help/overview) |
 
+Core schedule and public timing features work without F1TV authentication. Some detailed live streams need [F1TV Auth](https://nicxe.github.io/f1_sensor/features/f1tv-auth); requirements are listed on each card and entity page. Availability depends on the selected mode, enabled features and upstream data.
 
-![F1SensorFlag-ezgif com-video-to-gif-converter (5)](https://github.com/user-attachments/assets/18a74679-76e2-4d10-8a0d-d3f111c42593)
+## Community and contributions
 
-<br/>
+Find [community dashboards](https://nicxe.github.io/f1_sensor/example/overview), ask in [GitHub Discussions](https://github.com/Nicxe/f1_sensor/discussions), or [report a reproducible problem](https://github.com/Nicxe/f1_sensor/issues). To contribute code or documentation, start with [CONTRIBUTING](CONTRIBUTING.md).
 
----
+The `dev` branch can include features awaiting stable release. Use the release linked by the documentation version label when matching instructions to your installation.
 
-### 🃏 Live Data Cards
+You can also [support development](https://nicxe.github.io/f1_sensor/support) through sponsorship, documentation improvements and helping other users.
 
-F1 Sensor includes custom Lovelace cards for displaying live session data directly on your dashboards — tyre strategy, pit stops, lap times, investigations, race control, and more.
-
-<img alt="F1 Sensor Live Data Cards" src="https://github.com/user-attachments/assets/9ec7b6c0-9584-4647-baac-03407d73ef99" />
-
-The card assets are bundled with the integration and registered automatically in Home Assistant. Existing dashboard card types stay the same, so you can keep your current dashboard configuration after updating.
-
----
-
-<br/>
-
-### 🚀 Quick Start
-
-Curious about live F1 data in Home Assistant? Start by following the [**installation guide**](https://nicxe.github.io/f1_sensor/getting-started/installation), then head over to the [**integration setup**](https://nicxe.github.io/f1_sensor/getting-started/add-integration) to get your F1 Sensor up and running in minutes.
-
-
-### 📊 Entities & Options
-
-All configuration options are detailed in the [**wiki**](https://nicxe.github.io/f1_sensor/).
-
-### 📚 Examples & Inspiration
-
-Explore what’s possible with F1 Sensor. From dashboards to automations, check out the [**example showcase**](https://nicxe.github.io/f1_sensor/) and [**automation page**](https://nicxe.github.io/f1_sensor/automation).
-
-### 🍻 Support the Project
-
-If you enjoy using `F1 Sensor`, you can find ways to [**Support the project here**](https://nicxe.github.io/f1_sensor/support) and help keep the data flowing.
-<br>
-<br>
-<br>
-<br>
-
-> [!NOTE]
 > F1 Sensor is an unofficial project and is not associated in any way with the Formula 1 companies. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD CHAMPIONSHIP, GRAND PRIX and related marks are trade marks of Formula One Licensing B.V.

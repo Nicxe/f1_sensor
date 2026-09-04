@@ -1,11 +1,12 @@
 ---
 id: replay-sync
-title: F1 Replay Sync
+title: Follow your TV’s play and pause
+description: Use the Replay Sync blueprint to pause and resume F1 timing with a compatible media player.
 ---
 
-# F1 Replay Sync
+<span id="f1-replay-sync" />
 
-Keep your F1 replay in perfect sync with your TV. When you pause your main TV, the replay pauses automatically. When you resume, the replay resumes. No need to manually pause and unpause the replay every time you take a break.
+Let F1 replay follow your TV’s play and pause states after you align the session manually. When you pause your main TV, the replay pauses automatically. When you resume, the replay resumes. No need to manually pause and unpause the replay every time you take a break.
 
 The blueprint works with any media player entity — Apple TV, a smart TV, or any other player that reports play and pause states.
 :::info[Replay Mode required]
@@ -20,7 +21,7 @@ This blueprint requires [Replay Mode](/features/replay-mode) to be set up and a 
 
 Or go to **Settings > Automations & Scenes > Blueprints** and import manually using the URL:
 
-```
+```text
 https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_replay_sync.yaml
 ```
 
@@ -57,7 +58,9 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_replay_sync
 
 The blueprint watches your main TV for state changes. When the TV pauses and the F1 replay is currently playing, the replay is paused. When the TV resumes and the replay is currently paused, the replay resumes.
 
-Both directions include a condition check so the blueprint only acts when the replay is actually in the expected opposite state. This avoids unintended interactions — for example, if the replay is already paused for another reason, resuming the TV will not double-trigger.
+Each action checks the current F1 replay state: TV pause affects a playing replay; TV play resumes a paused replay. This also means that resuming the TV can resume an F1 replay you paused manually. Disable the automation when you want independent playback.
+
+This blueprint does not load sessions, match playback positions, or follow a seek on the TV. Use the [Replay controls](/features/replay-mode#replay-seek-controls) to align positions again after seeking.
 
 ---
 

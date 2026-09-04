@@ -1,6 +1,7 @@
 ---
 id: incident-notifications
-title: Incident Notifications
+title: Incident notifications
+description: Set up filtered Home Assistant notifications for likely stopped cars and confirmed incident updates.
 ---
 
 Get notifications for likely stopped cars and on-track incidents without writing YAML. The blueprint listens to `f1_sensor_incident` events and uses conservative defaults so normal practice running and early candidate signals do not create noisy alerts.
@@ -92,6 +93,10 @@ Activation conditions are optional. Leave them empty if incident notifications s
 | **Activation Condition** | Empty | Extra Home Assistant conditions that must pass before a notification is sent |
 
 Use activation conditions when you only want incident alerts while someone is home, while a Formula 1 screen is active, or outside quiet hours.
+
+## Check your automation
+
+Save the automation, confirm it is enabled, and review its trace after a matching incident event. A quiet notification target is normal while no event passes the confidence and session filters. You can check the [incident event payload](/entities/events#on-track-incident) independently of the notification action.
 
 ## Notification wording
 

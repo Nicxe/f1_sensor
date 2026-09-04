@@ -1,0 +1,577 @@
+{
+  "source_commit": "9c697b2e4b97fdc5fdaccf95ee9a5c093939a995",
+  "routes": [
+    {
+      "path": "/automation",
+      "anchors": [
+        "dashboard-trigger-for-active-incidents",
+        "device-automation-triggers",
+        "notify-when-race-week-begins",
+        "officials-device",
+        "optional-candidate-incident-notification",
+        "possible-on-track-incident-notification",
+        "race-about-to-start--formation-lap",
+        "race-control-event-notifications",
+        "race-device",
+        "reminder-before-a-session-starts",
+        "safety-car-deployed",
+        "session-device",
+        "session-goes-live",
+        "system-device",
+        "theme-svg-external-link",
+        "yaml-examples"
+      ]
+    },
+    {
+      "path": "/blueprints/incident-notifications",
+      "anchors": [
+        "import-the-blueprint",
+        "notification-wording",
+        "related",
+        "requirements",
+        "step-1---create-an-automation-from-the-blueprint",
+        "step-2---choose-notification-targets",
+        "step-3---review-filters",
+        "step-4---add-activation-conditions",
+        "step-by-step-setup",
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/blueprints/race-control-notifications",
+      "anchors": [
+        "example-configurations",
+        "exclude-administrative-messages",
+        "import-the-blueprint",
+        "notify-only-during-the-race",
+        "notify-only-for-safety-car-and-red-flag",
+        "related",
+        "requirements",
+        "silence-blue-flag-spam",
+        "step-1--create-an-automation-from-the-blueprint",
+        "step-2--configure-source",
+        "step-3--session-scope-optional",
+        "step-4--configure-filters-optional",
+        "step-5--configure-notifications",
+        "step-6--add-a-notification-action",
+        "step-by-step-setup",
+        "template-variables",
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/blueprints/replay-sync",
+      "anchors": [
+        "behavior",
+        "import-the-blueprint",
+        "related",
+        "requirements",
+        "setup",
+        "step-1--create-an-automation-from-the-blueprint",
+        "step-2--configure-inputs",
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/blueprints/track-status-light",
+      "anchors": [
+        "behavior",
+        "import-the-blueprint",
+        "per-state-playlists-and-presets",
+        "related",
+        "requirements",
+        "sc-and-vsc",
+        "step-1--create-an-automation-from-the-blueprint",
+        "step-10--session-end-behavior-optional",
+        "step-11--notifications-optional",
+        "step-2--data-sources",
+        "step-3--session-scope-optional",
+        "step-4--light-behavior",
+        "step-5--wled-advanced-optional",
+        "step-6--flag-colors",
+        "step-7--alert-behavior",
+        "step-8--clear-behavior",
+        "step-9--activation-conditions-optional",
+        "step-by-step-setup",
+        "testing",
+        "theme-svg-external-link",
+        "yellow-and-red"
+      ]
+    },
+    {
+      "path": "/cards/cards-overview",
+      "anchors": [
+        "adding-cards",
+        "available-cards",
+        "bundled-installation",
+        "card-reference",
+        "f1-championship-prediction-drivers-card",
+        "f1-championship-prediction-teams-card",
+        "f1-driver-lap-times-card",
+        "f1-fia-documents-card",
+        "f1-investigations-card",
+        "f1-lap-position-progression-card",
+        "f1-live-session-card",
+        "f1-next-race-card",
+        "f1-pit-stop-overview-card",
+        "f1-practice-timing-card",
+        "f1-qualifying-timing-card",
+        "f1-race-control-card",
+        "f1-race-lap-card",
+        "f1-race-weather-card",
+        "f1-replay-control-card",
+        "f1-results-card",
+        "f1-season-calendar-card",
+        "f1-season-progression-card",
+        "f1-starting-grid-card",
+        "f1-track-limits-card",
+        "f1-track-map-card",
+        "f1-tyre-statistics-card",
+        "f1-weekend-hub-card",
+        "installation",
+        "migrating-from-the-old-standalone-card",
+        "related",
+        "shared-options",
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/entities/diagnostics",
+      "anchors": [
+        "entities-summary",
+        "f1tv-token-expires-at",
+        "f1tv-token-status",
+        "incident-detection-diagnostics",
+        "live-timing-mode",
+        "live-timing-online",
+        "replay-status",
+        "theme-svg-external-link",
+        "track-map-diagnostics"
+      ]
+    },
+    {
+      "path": "/entities/events",
+      "anchors": [
+        "event-streams",
+        "event-vs-sensor",
+        "example-payload",
+        "example-payloads",
+        "future-event-streams",
+        "home-assistant-events",
+        "on-track-incident",
+        "race-control",
+        "race-control-vs-incident-events",
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/entities/live-data",
+      "anchors": [
+        "availability-model",
+        "championship-prediction-drivers",
+        "championship-prediction-teams",
+        "current-session",
+        "current-tyres",
+        "driver-list",
+        "driver-positions",
+        "entities-summary",
+        "favorite-driver",
+        "formation-start",
+        "grid-context-and-source",
+        "investigations",
+        "on-track-incident",
+        "overtake-mode",
+        "pit-stops",
+        "possible-on-track-incident",
+        "race-control",
+        "race-lap",
+        "race-three-hour-limit",
+        "reference-enum-values",
+        "safety-car",
+        "session-status",
+        "session-time-elapsed",
+        "session-time-remaining",
+        "starting-grid",
+        "straight-mode",
+        "team-radio",
+        "theme-svg-external-link",
+        "top-three",
+        "track-limits",
+        "track-status",
+        "track-weather",
+        "tyre-statistics",
+        "weekend-flow"
+      ]
+    },
+    {
+      "path": "/entities/static-data",
+      "anchors": [
+        "constructor-points-progression",
+        "constructor-standings",
+        "current-season",
+        "driver-points-progression",
+        "driver-standings",
+        "entities-summary",
+        "fia-decision-documents",
+        "lap-position-progression",
+        "last-race-results",
+        "next-race",
+        "next-race-weather",
+        "race-week",
+        "season-calendar",
+        "season-results",
+        "sprint-results",
+        "theme-svg-external-link",
+        "track-time",
+        "weather-summary"
+      ]
+    },
+    {
+      "path": "/example/custom-card-by",
+      "anchors": [
+        "constructors-standings-card",
+        "create-a-template-helper-for-the-missing-info",
+        "drivers-standings-card",
+        "examples",
+        "install-f1-font-to-use",
+        "prerequisites",
+        "steps",
+        "the-cards",
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/example/custom-card",
+      "anchors": [
+        "custom-f1-card-by-the-community",
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/example/e-ink",
+      "anchors": [
+        "getting-started",
+        "related",
+        "theme-svg-external-link",
+        "what-it-shows",
+        "what-you-need"
+      ]
+    },
+    {
+      "path": "/features/context7",
+      "anchors": [
+        "direct-library-id",
+        "how-to-use-it",
+        "theme-svg-external-link",
+        "what-the-ai-gets-access-to",
+        "why-this-matters",
+        "with-claude-code-or-any-mcp-compatible-agent",
+        "with-cursor-or-other-ai-editors"
+      ]
+    },
+    {
+      "path": "/features/f1tv-auth",
+      "anchors": [
+        "availability-matrix",
+        "how-f1tv-auth-changes-live-timing",
+        "limitations",
+        "privacy-and-safety",
+        "related-pages",
+        "subscription-requirement",
+        "theme-svg-external-link",
+        "token-helper-and-renewal",
+        "what-f1tv-auth-can-add-during-live-sessions",
+        "what-works-without-f1tv-auth"
+      ]
+    },
+    {
+      "path": "/features/incident-detection",
+      "anchors": [
+        "confidence-and-phases",
+        "entities-and-events",
+        "good-automation-wording",
+        "improvements-with-f1tv-auth",
+        "limitations",
+        "notification-blueprint",
+        "public-live-behavior-without-f1tv-auth",
+        "related-pages",
+        "theme-svg-external-link",
+        "track-map-location-context",
+        "what-it-detects",
+        "what-it-does-not-detect"
+      ]
+    },
+    {
+      "path": "/features/live-delay",
+      "anchors": [
+        "choose-the-calibration-reference",
+        "entity-reference",
+        "incident-alerts-and-notifications",
+        "option-1---manual-delay-adjustment",
+        "option-2---guided-calibration",
+        "step-1---arm-the-calibration",
+        "step-2---match-the-tv-broadcast",
+        "theme-svg-external-link",
+        "typical-broadcast-delays"
+      ]
+    },
+    {
+      "path": "/features/no-spoiler-mode",
+      "anchors": [
+        "example-activate-automatically-at-session-time",
+        "limitations",
+        "the-complete-workflow",
+        "the-switch-entity",
+        "theme-svg-external-link",
+        "using-replay-mode-while-blocked",
+        "what-is-blocked",
+        "what-to-expect"
+      ]
+    },
+    {
+      "path": "/features/replay-mode",
+      "anchors": [
+        "additional-entities-in-replay-mode",
+        "best-way-to-use-it",
+        "configuration-entities",
+        "dashboard-card",
+        "dragging-the-playbar",
+        "entities",
+        "example-sync-with-apple-tv",
+        "how-the-30-second-buttons-work",
+        "limitations",
+        "media-player",
+        "media-player-entity",
+        "replay-mode-vs-developer-mode",
+        "replay-mode-vs-live-f1tv-auth",
+        "replay-seek-controls",
+        "replay-status-sensor",
+        "status-sensor",
+        "step-1---select-a-session",
+        "step-2---choose-the-start-reference",
+        "step-3---load-the-session",
+        "step-4---sync-with-your-broadcast",
+        "step-5---control-playback",
+        "theme-svg-external-link",
+        "using-replay-mode",
+        "what-replay-mode-can-replay",
+        "what-to-expect",
+        "what-to-expect-1"
+      ]
+    },
+    {
+      "path": "/features/track-map",
+      "anchors": [
+        "add-the-track-map-card",
+        "availability",
+        "card-options",
+        "cars-do-not-show-during-a-live-session",
+        "incident-location-context",
+        "limitations",
+        "related-pages",
+        "replay-shows-a-map-but-live-does-not",
+        "status-messages",
+        "the-card-says-no-geometry",
+        "the-card-says-stale",
+        "theme-svg-external-link",
+        "troubleshooting",
+        "what-to-expect"
+      ]
+    },
+    {
+      "path": "/getting-started/add-integration",
+      "anchors": [
+        "configuration-choices",
+        "device-structure",
+        "live-data-setup",
+        "manual-configuration",
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/getting-started/installation",
+      "anchors": [
+        "done",
+        "how-it-works",
+        "option-a-my-home-assistant",
+        "option-b-directly-in-hacs",
+        "recommended-install-via-hacs",
+        "step-1---install-the-integration",
+        "step-2---add-the-integration-to-home-assistant",
+        "step-3---select-which-sensors-to-create",
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/getting-started/release-channels",
+      "anchors": [
+        "beta-channel",
+        "channel-overview",
+        "dev-channel",
+        "reporting-issues",
+        "stable-channel",
+        "switch-back-to-stable",
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/getting-started/replay-mode",
+      "anchors": [
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/help/beta-tester",
+      "anchors": [
+        "beta-vs-dev",
+        "developer-mode-testing",
+        "enable-debug-logging",
+        "install-a-beta-version",
+        "report-issues-and-feedback",
+        "test-incident-detection",
+        "theme-svg-external-link",
+        "what-it-means-to-be-a-beta-tester",
+        "what-to-test",
+        "write-a-useful-issue"
+      ]
+    },
+    {
+      "path": "/help/contact",
+      "anchors": [
+        "found-a-bug",
+        "have-a-feature-request",
+        "have-a-question",
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/help/debug-logging",
+      "anchors": [
+        "disable-debug-logging",
+        "enable-debug-logging",
+        "enable-debug-logging-with-yaml",
+        "find-raw-logs",
+        "incident-detection-reports",
+        "reproduce-the-problem",
+        "theme-svg-external-link",
+        "what-to-include-in-an-issue"
+      ]
+    },
+    {
+      "path": "/help/developer-mode",
+      "anchors": [
+        "benefits-for-development",
+        "developer-mode-vs-replay-mode",
+        "enable-developer-mode",
+        "limitations",
+        "related-pages",
+        "replay-dump-requirements",
+        "return-to-live-mode",
+        "step-1---confirm-the-controls-are-available",
+        "step-2---select-the-replay-dump",
+        "step-3---verify-the-data-source",
+        "theme-svg-external-link",
+        "when-to-use-developer-mode"
+      ]
+    },
+    {
+      "path": "/help/f1tv-auth-setup",
+      "anchors": [
+        "availability",
+        "home-assistant-rejects-the-pairing",
+        "how-it-works",
+        "incident-detection-and-f1tv-auth",
+        "prerequisites",
+        "public-live-timing-stops-working",
+        "step-1---start-pairing-from-home-assistant",
+        "step-2---send-f1tv-access-to-home-assistant",
+        "step-3---understand-token-lifetime",
+        "step-4---verify-public-fallback-first",
+        "the-helper-does-not-show-home-assistant-pairing",
+        "the-helper-opens-but-only-manual-export-is-available",
+        "theme-svg-external-link",
+        "troubleshooting"
+      ]
+    },
+    {
+      "path": "/help/f1tv-token-helper-privacy",
+      "anchors": [
+        "contact",
+        "data-the-helper-can-access",
+        "data-the-helper-sends",
+        "data-the-helper-stores",
+        "permissions",
+        "removing-access",
+        "summary",
+        "theme-svg-external-link",
+        "what-the-helper-does-not-do"
+      ]
+    },
+    {
+      "path": "/help/f1tv-token-helper",
+      "anchors": [
+        "privacy",
+        "step-1---keep-this-tab-open",
+        "step-2---sign-in-if-needed",
+        "step-3---send-to-home-assistant",
+        "step-by-step",
+        "theme-svg-external-link",
+        "troubleshooting",
+        "what-this-does"
+      ]
+    },
+    {
+      "path": "/help/faq",
+      "anchors": [
+        "cant-find-the-answer-youre-looking-for",
+        "general-questions",
+        "live-data-questions",
+        "theme-svg-external-link",
+        "troubleshooting"
+      ]
+    },
+    {
+      "path": "/help/issues",
+      "anchors": [
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/",
+      "anchors": [
+        "blueprints",
+        "dashboards-and-automations",
+        "features",
+        "getting-started",
+        "support",
+        "theme-svg-external-link",
+        "timing-modes",
+        "version-54",
+        "your-home-in-sync-with-formula-1"
+      ]
+    },
+    {
+      "path": "/maintainers/dependency-and-source-policy",
+      "anchors": [
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/search",
+      "anchors": [
+        "theme-svg-external-link"
+      ]
+    },
+    {
+      "path": "/support",
+      "anchors": [
+        "1-financial-support",
+        "2-contributing",
+        "3-community-support",
+        "thank-you",
+        "theme-svg-external-link"
+      ]
+    }
+  ],
+  "helperPrivacyBodySha256": "c6c4bae85cf023c2333191f373ab64c25740b69ce57c92c3472ebb6c980f91ef"
+}

@@ -34,12 +34,41 @@ Use `docs:` or `chore:` commits for standalone content so semantic-release does 
 |---|---|
 | Integration code, sensors, fixes, features | `dev` |
 | Bundled Live Data Card code in `custom_components/f1_sensor/www/**` | `dev` |
+| Docusaurus components, CSS, configuration, build scripts, or documentation tests | `dev` |
 | Tests only | `dev` |
 | Documentation for an upcoming code change | `dev` (keep docs with the code) |
 | Standalone documentation fix or update | `content` |
 | New or updated blueprint (standalone) | `content` |
 
-If your PR mixes code changes with documentation changes, target `dev`. The docs will be published when the code ships.
+If your PR mixes code changes with documentation changes, target `dev`. A site redesign that changes Docusaurus components, styles, configuration, or build behavior also follows the `dev` path. Keep documentation for unreleased integration features with the corresponding code; do not publish it as stable before that release ships.
+
+## Documentation workflow
+
+Read [the documentation style guide](doc-style-guide.md) before adding or restructuring a page. Public text stays in English. Use stable IDs, a descriptive title and description, exact entity names, and examples checked against the release you are documenting.
+
+1. Start from `content` for an independent documentation correction, or `dev` for a site/code change or documentation of an upcoming feature.
+2. Make the focused change and update the sidebar and relevant overview if you add a page.
+3. Preserve existing public routes and important heading anchors when splitting content. The old page can link readers to the new focused reference.
+4. Run the documentation checks from the repository root:
+
+```bash
+npm ci
+npm run test:docs
+```
+
+For a development preview, run `npm start`. The production documentation check is still required because search indexing and generated routes can behave differently from the development server.
+
+To refresh reproducible card screenshots:
+
+```bash
+npm run capture:docs-cards
+```
+
+Review the resulting images before committing them. Use meaningful alt text and captions, identify demonstration or replay data, and keep the image source/provenance alongside the capture workflow. Do not include credentials or private Home Assistant details.
+
+Check a representative guide, reference table, and card page at mobile and desktop widths, in light and dark modes. Verify search, keyboard navigation, and the old links affected by the change. The Token Helper pairing page and privacy policy have stable public URLs; preserve query and fragment behavior during site changes.
+
+Include the changed user journey, validation performed, and any limitations in the pull request. Integration or card behavior changes also require their normal Python, frontend, and Home Assistant checks; documentation checks do not replace them.
 
 ## How to submit a pull request
 

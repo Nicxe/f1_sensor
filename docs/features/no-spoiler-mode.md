@@ -1,106 +1,76 @@
 ---
 id: no-spoiler-mode
 title: No Spoiler Mode
+description: Freeze spoiler-sensitive information before a session, watch with Replay Mode, and choose when to reveal results.
 ---
 
-Can't watch the race live? Turn on No Spoiler Mode before the session starts, watch it later with [Replay Mode](/features/replay-mode), and your dashboard will behave exactly as if you were there in real time — without anything spoiling the result first.
-
-When No Spoiler Mode is active, all race results, live timing, and session data are frozen. Your entities stay visible and your automations keep running, but nothing gives away what happened on track.
-
----
+Turn on No Spoiler Mode **before the session starts** when you plan to watch later. It holds spoiler-sensitive information in F1 Sensor while schedule information remains useful.
 
 ## The complete workflow
 
-1. **Before the session** — Turn on No Spoiler Mode. The integration stops delivering spoiler-sensitive data immediately.
-2. **During the session** — Your dashboard stays frozen. The integration still fetches and caches everything in the background so nothing is lost.
-3. **When you are ready to watch** — Open [Replay Mode](/features/replay-mode), load the session, and press play at the right moment. Your automations and live entities respond to the replay exactly as they would during a live broadcast.
-4. **When you are done** — Turn No Spoiler Mode off. Everything updates at once with the full picture of what happened.
-
-You never miss any data. FIA documents, race control messages, and results all arrive the moment you turn the mode off.
-
----
+1. **Before watching:** turn on `switch.f1_no_spoiler_mode` and check that it is on.
+2. **During the live session:** F1 Sensor holds spoiler-sensitive updates and stops the live connection. This is not a recording of the session.
+3. **When you are ready:** load the completed session in [Replay Mode](/features/replay-mode). Archived data can drive your dashboard and automations while you watch.
+4. **After watching:** turn No Spoiler Mode off when you are ready for current results and standings.
 
 ## What to expect
 
-When No Spoiler Mode is turned on, the integration stops showing new data for spoiler-sensitive entities. When you turn the mode off, everything updates immediately.
+The setting survives Home Assistant restarts. It prevents new spoiler-sensitive updates; it does not erase information you already saw or hide results in unrelated apps and integrations.
 
-Live sessions are handled cleanly too. If a session is in progress when you activate the mode, the live connection is dropped straight away. When you deactivate, blocked data is refreshed at once and the live connection re-establishes if a session is still running.
-
-The setting is remembered across Home Assistant restarts. If you activate No Spoiler Mode before you go to bed and restart Home Assistant in the morning, the mode will still be on when you wake up.
-
----
+Turning it off requests fresh data. Availability and update time depend on the source; not every message missed during the live session can be recovered. The live connection can resume if a session is still active.
 
 ## What is blocked
 
-Not all data is blocked. Schedule and calendar data is always kept up to date so you can still see when the next session is.
+| Data | While No Spoiler Mode is on |
+| --- | --- |
+| Next race, season schedule and calendar | Continues to provide schedule information |
+| Race weekend weather | Remains available |
+| Live session timing and activity | Live delivery is stopped |
+| Results, standings and championship predictions | New spoiler-sensitive information is held |
+| FIA documents and Race Control | New spoiler-sensitive information is held |
+| Live incident alerts | New alerts are blocked and are not later replayed as missed live notifications |
 
-**Always updates:**
-- Next race details
-- Season schedule and race calendar
-- Race weekend weather
-
-**Frozen while mode is active:**
-- Live timing and session activity
-- Race and qualifying results
-- Driver and constructor standings
-- Championship predictions
-- FIA documents and race control messages
-- Pit stop data
-- On-track incident detection and incident notifications while the mode is active
-
-When you deactivate the mode, all frozen data is refreshed immediately and delivered to your entities at once. If any FIA documents were published during the blackout, they all appear at the same time.
-
-Incident alerts are treated as spoiler-sensitive. While No Spoiler Mode is active, new live incident events are blocked from dashboards and notification automations. They are not sent later as push notifications from the live session; use [Replay Mode](/features/replay-mode) when you are ready to watch the session with incident alerts.
-
----
+Use Replay Mode for historical timing and incident alerts. Its coverage depends on what is available in the archive.
 
 ## The switch entity
 
-No Spoiler Mode is controlled by a single global switch:
-
 | Entity | Purpose |
 | --- | --- |
-| `switch.f1_no_spoiler_mode` | Turn No Spoiler Mode on or off |
+| `switch.f1_no_spoiler_mode` | Enable or disable spoiler protection |
 
-The switch is available under the F1 system device, alongside the live delay calibration switch. It controls the mode for all your F1 Sensor entries at once.
-:::info[One switch for everything]
-If you have multiple F1 Sensor config entries, there is still only one No Spoiler Mode switch. Activating it blocks spoiler data across all entries simultaneously.
-:::
-
----
+Find it under the F1 **System** device. It is a global setting: if you have several F1 Sensor entries, the same switch controls them all.
 
 ## Using Replay Mode while blocked
 
-No Spoiler Mode and Replay Mode work independently. When you start a replay, data flows through normally regardless of whether No Spoiler Mode is on. Your automations and dashboards respond to the replay exactly as they would during a live session.
+Replay can deliver archived timing while No Spoiler Mode remains on. This lets you follow the loaded session without reopening live data. Stopping a replay does not turn off spoiler protection.
 
-Finishing a replay does not turn off No Spoiler Mode. You stay protected until you turn the switch off yourself.
-
-See [Replay Mode](/features/replay-mode) for full instructions on loading and playing back a session.
-
----
+Some result cards keep a spoiler overlay until you explicitly allow results. Use the replay controls and live timing cards to follow the session; leave the switch on until you are ready to reveal current results.
 
 ## Example: Activate automatically at session time
 
-This automation turns No Spoiler Mode on when a Grand Prix qualifying or race session begins, so you never have to remember to do it manually.
+Schedule protection **before** you expect the session to begin. An automation that waits for Session live may run after the first spoiler-sensitive update has already arrived.
+
+This example turns protection on at a time you choose. Replace `12:00:00` with a time before the session in your Home Assistant timezone, and enable the automation only for the viewing schedule you want.
 
 ```yaml
-automation:
-  - alias: "Activate No Spoiler Mode at session start"
-    trigger:
-      - platform: state
-        entity_id: sensor.f1_session_status
-        to: "live"
-    action:
-      - action: switch.turn_on
-        target:
-          entity_id: switch.f1_no_spoiler_mode
+alias: Protect F1 results before watching later
+triggers:
+  - trigger: time
+    at: "12:00:00"
+actions:
+  - action: switch.turn_on
+    target:
+      entity_id: switch.f1_no_spoiler_mode
+mode: single
 ```
 
-Turn it off manually when you are done watching the replay.
-
----
+This example runs daily while enabled. Check the switch before the session and turn it off manually after watching.
 
 ## Limitations
 
-- No Spoiler Mode blocks data from reaching your entities, but the integration keeps its cache warm throughout the blackout so catch-up is instant when you turn it off.
-- The mode is global and cannot be scoped to individual config entries or specific entities.
+- Protection is global, not per entry or per entity.
+- It is not a recording service and does not guarantee complete catch-up.
+- Replay data depends on the session archive.
+- Rewinding a replay can trigger historical automations and notifications again.
+
+Continue with [Replay Mode](/features/replay-mode) or [troubleshooting](/help/overview).

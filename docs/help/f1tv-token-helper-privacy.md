@@ -1,6 +1,7 @@
 ---
 id: f1tv-token-helper-privacy
 title: F1TV Token Helper Privacy Policy
+description: What the Token Helper reads, stores and sends when pairing F1TV access with Home Assistant.
 ---
 
 F1TV Token Helper is a browser extension for connecting your own Formula 1 browser session to F1 Sensor in Home Assistant.

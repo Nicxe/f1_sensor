@@ -1,6 +1,7 @@
 ---
 id: getting-started-replay-mode
 title: Replay Mode
+description: The Replay Mode guide now lives with the feature guides. Follow the current setup and playback instructions.
 slug: /getting-started/replay-mode
 ---
 
