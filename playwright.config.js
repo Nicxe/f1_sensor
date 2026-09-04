@@ -2,6 +2,7 @@ const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './frontend-tests',
+  grepInvert: process.env.F1_MAINTENANCE ? undefined : /@performance/,
   outputDir: 'test-results/playwright',
   snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{arg}{ext}',
   fullyParallel: false,
@@ -17,7 +18,7 @@ module.exports = defineConfig({
   },
   use: {
     baseURL: 'http://127.0.0.1:4173',
-    browserName: 'chromium',
+    browserName: process.env.F1_BROWSER || 'chromium',
     locale: 'en-GB',
     timezoneId: 'America/Los_Angeles',
     colorScheme: 'dark',

@@ -421,6 +421,9 @@ async def test_binary_listener_failures_and_inactive_formation(hass) -> None:
     online = F1LiveTimingOnlineBinarySensor(hass, "entry", "F1")
     await online.async_added_to_hass()
     assert online._unsub_live_state is None
+    online._call_on_remove_callbacks()
+    await online.async_will_remove_from_hass()
+    await formation.async_will_remove_from_hass()
 
     incident = F1OnTrackIncidentBinarySensor(
         _coordinator("bad"), "incident_bad", "entry", "F1"

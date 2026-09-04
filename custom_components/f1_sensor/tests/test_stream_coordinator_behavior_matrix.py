@@ -211,6 +211,9 @@ async def test_status_coordinators_exact_error_and_subscription_paths(
     monkeypatch.setattr(
         "custom_components.f1_sensor._is_no_spoiler_blocked", lambda _coord: False
     )
+    # The next assertions replace timer handles: cancel the real scheduled work first.
+    for handle in track._deliver_handles:
+        handle.cancel()
     track._deliver_handle = Mock()
     track._deliver_handles = [Mock(), Mock()]
     track._handle_live_state(True, "replay")
@@ -247,6 +250,7 @@ async def test_status_coordinators_exact_error_and_subscription_paths(
     await status.async_config_entry_first_refresh()
     assert status._context_unsubs == []
     cleanup.assert_called_once()
+    await status.async_close()
 
 
 async def test_top_three_exact_defensive_and_refresh_paths(hass, monkeypatch) -> None:

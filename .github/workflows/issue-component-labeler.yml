@@ -1,45 +1,23 @@
-name: Label issues by component
-
+name: Issue component check
 on:
   issues:
-    types: [opened]
-
+    types: [opened, edited, reopened]
 permissions:
+  contents: read
   issues: write
-
+concurrency:
+  group: issue-component-${{ github.event.issue.number }}
+  cancel-in-progress: false
 jobs:
-  label-component:
+  update:
     runs-on: ubuntu-latest
-    if: github.event.issue.pull_request == null
+    timeout-minutes: 5
     steps:
-      - name: Apply component labels
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
         with:
           script: |
-            const body = context.payload.issue.body || '';
-            const issueNumber = context.payload.issue.number;
-
-            const extractField = label => {
-              const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              const pattern = new RegExp(`### ${escaped}\\s*\\n+([^#]+?)(?=\\n### |$)`, 'i');
-              const match = body.match(pattern);
-              return match ? match[1].trim() : '';
-            };
-
-            const component = extractField('Component').toLowerCase();
-            if (!component || component === 'not sure') return;
-
-            const labels = new Set();
-            if (component.includes('integration')) labels.add('integration');
-            if (component.includes('live data card') || component.includes('card')) labels.add('card');
-            if (component.includes('blueprint')) labels.add('blueprint');
-            if (component.includes('documentation') || component.includes('docs')) labels.add('documentation');
-
-            if (labels.size === 0) return;
-
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              labels: [...labels],
-            });
+            await require('./.github/scripts/issue-automation.cjs').updateIssue({github, context}, 'component');

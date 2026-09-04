@@ -28,7 +28,8 @@ if (execPlugin?.[1]) {
     "python3 scripts/build_release.py",
     "--component custom_components/f1_sensor",
     "--output f1_sensor.zip",
-    "--version ${nextRelease.version}"
+    "--version ${nextRelease.version}",
+    "&& python3 scripts/verify_release.py f1_sensor.zip --version ${nextRelease.version}"
   ].join(" ");
 }
 

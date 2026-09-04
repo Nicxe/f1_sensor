@@ -10,6 +10,8 @@ import sys
 from tempfile import TemporaryDirectory
 import zipfile
 
+from verify_release import verify_release
+
 FORBIDDEN = {
     "AGENTS.md",
     "debugging_tyres.md",
@@ -43,6 +45,8 @@ def main() -> int:
         second = root / "second.zip"
         _build(first)
         _build(second)
+        verify_release(first, "0.0.0-phase5")
+        verify_release(second, "0.0.0-phase5")
         first_hash = hashlib.sha256(first.read_bytes()).digest()
         second_hash = hashlib.sha256(second.read_bytes()).digest()
         if first_hash != second_hash:

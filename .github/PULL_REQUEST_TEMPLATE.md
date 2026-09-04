@@ -2,7 +2,7 @@
   Target the correct branch:
   - Docs or blueprint changes (standalone, no code) → `content` branch
   - Code changes (integration, sensors, bundled card code, fixes, features, tests) → `dev` branch
-  - PRs targeting `main` or `beta` are closed automatically.
+  - Code promotion is maintainer-managed: dev → beta → main with merge commits. Incorrect targets receive a comment explaining how to change the base.
   If you are unsure whether your change fits the project direction, open an issue first.
 -->
 

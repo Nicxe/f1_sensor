@@ -4,11 +4,13 @@ registries:
   github-packages:
     type: npm-registry
     url: https://npm.pkg.github.com
+    scope: "@nicxe"
     token: ${{ secrets.DEPENDABOT_GH_PACKAGES_TOKEN }}
 
 updates:
   - package-ecosystem: "npm"
     directory: "/"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
     commit-message:
@@ -43,6 +45,7 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "dev"
     schedule:
       interval: "monthly"
     commit-message:

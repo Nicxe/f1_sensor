@@ -2,7 +2,7 @@ name: Refresh Context7 docs
 
 on:
   workflow_run:
-    workflows: ["Deploy Docusaurus to GitHub Pages"]
+    workflows: ["CI"]
     types: [completed]
 
 permissions:
@@ -10,13 +10,14 @@ permissions:
 
 jobs:
   refresh:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Trigger Context7 re-index
         run: |
           for i in 1 2 3; do
-            response=$(curl -s -w "\n%{http_code}" -X POST https://context7.com/api/v1/refresh \
+            response=$(curl --connect-timeout 10 --max-time 30 -s -w "\n%{http_code}" -X POST https://context7.com/api/v1/refresh \
               -H "Authorization: Bearer ${{ secrets.CONTEXT7_API_KEY }}" \
               -H "Content-Type: application/json" \
               -d '{"libraryName": "/websites/nicxe_github_io_f1_sensor"}')

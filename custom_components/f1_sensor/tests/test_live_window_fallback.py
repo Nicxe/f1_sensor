@@ -1049,6 +1049,7 @@ async def test_switch_back_to_index_when_recovered(monkeypatch, hass) -> None:
         dt.timedelta(seconds=0),
     )
     monkeypatch.setattr(supervisor, "_resolve_primary_window", _primary_window)
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
 
     reason = await supervisor._monitor_window(fallback_window, source="event_tracker")
 

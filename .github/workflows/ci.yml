@@ -1,0 +1,124 @@
+name: CI
+on:
+  push:
+    branches: [dev, beta, main, content]
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Verify this PR merge ref at the dispatched immutable head
+        type: string
+        default: ''
+      release:
+        description: Create or recover a release draft after verification (beta/main only)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/content' }}
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.plan.outputs.selected }}
+      lint: ${{ steps.plan.outputs.lint }}
+      backend: ${{ steps.plan.outputs.backend }}
+      frontend: ${{ steps.plan.outputs.frontend }}
+      documentation: ${{ steps.plan.outputs.documentation }}
+      validation: ${{ steps.plan.outputs.validation }}
+      package: ${{ steps.plan.outputs.package }}
+      audit: ${{ steps.plan.outputs.audit }}
+      blueprints: ${{ steps.plan.outputs.blueprints }}
+      automation: ${{ steps.plan.outputs.automation }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.inputs.pull_request && format('refs/pull/{0}/merge', github.event.inputs.pull_request) || github.sha }}
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci_policy.py plan
+  lint:
+    needs: plan
+    if: needs.plan.outputs.lint == 'true'
+    uses: ./.github/workflows/ruff.yml
+  backend:
+    needs: plan
+    if: needs.plan.outputs.backend == 'true'
+    uses: ./.github/workflows/tests.yml
+  frontend:
+    needs: plan
+    if: needs.plan.outputs.frontend == 'true'
+    uses: ./.github/workflows/frontend.yml
+  documentation:
+    needs: plan
+    if: needs.plan.outputs.documentation == 'true'
+    uses: ./.github/workflows/documentation.yml
+  validation:
+    needs: plan
+    if: needs.plan.outputs.validation == 'true'
+    uses: ./.github/workflows/validate.yml
+  package:
+    needs: plan
+    if: needs.plan.outputs.package == 'true'
+    uses: ./.github/workflows/package.yml
+  audit:
+    needs: plan
+    if: needs.plan.outputs.audit == 'true'
+    uses: ./.github/workflows/audit.yml
+  blueprints:
+    needs: plan
+    if: needs.plan.outputs.blueprints == 'true'
+    uses: ./.github/workflows/tests.yml
+    with:
+      blueprints_only: true
+  automation:
+    needs: plan
+    if: needs.plan.outputs.automation == 'true'
+    uses: ./.github/workflows/automation-tests.yml
+  required:
+    name: CI required
+    needs: [plan, lint, backend, frontend, documentation, validation, package, audit, blueprints, automation]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Verify every applicable result
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci_policy.py gate
+  release:
+    needs: required
+    if: >-
+      needs.required.result == 'success' && vars.CI_ROLLOUT != 'true' &&
+      !github.event.inputs.pull_request &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release)) &&
+      (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main')
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      packages: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release.yml
+  deploy:
+    needs: [required, documentation]
+    if: >-
+      needs.required.result == 'success' && needs.documentation.result == 'success' &&
+      !github.event.inputs.pull_request &&
+      github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
