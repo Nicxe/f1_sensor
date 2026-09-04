@@ -1,168 +1,23 @@
-name: Comment on released issues when release is published
-
+name: Notify issues after publication
 on:
   release:
     types: [published]
-
 permissions:
+  contents: read
   issues: write
-
+concurrency:
+  group: release-issues-${{ github.event.release.id }}
+  cancel-in-progress: false
 jobs:
-  comment-on-issues:
+  notify:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Post comment on released issues
-        uses: actions/github-script@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
-            const body = context.payload.release.body || '';
-            const isPrerelease = context.payload.release.prerelease === true;
-            const releaseUrl = context.payload.release.html_url;
-            const releaseTag = context.payload.release.tag_name;
-            const issueNumbers = [
-              ...new Set([...body.matchAll(/#(\d+)/g)].map(m => parseInt(m[1])))
-            ];
-
-            if (issueNumbers.length === 0) {
-              console.log('No issue references found in release notes');
-              return;
-            }
-
-            const cleanValue = v => {
-              const value = (v || '').trim();
-              return /^_?no response_?$/i.test(value) ? '' : value;
-            };
-            const getIssueLabels = issue =>
-              issue.labels.map(label => (label.name || label || '').toString().toLowerCase());
-            const extractField = (body, label) => {
-              const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              const pattern = new RegExp(`### ${escaped}\\s*\\n+([^#]+?)(?=\\n### |$)`, 'i');
-              const match = (body || '').match(pattern);
-              return match ? cleanValue(match[1]) : '';
-            };
-            const hasTitlePrefix = (issue, prefix) =>
-              new RegExp(`^\\s*\\[${prefix}\\]\\s*:?`, 'i').test(issue.title || '');
-            const getIssueType = issue => {
-              const labels = getIssueLabels(issue);
-              if (hasTitlePrefix(issue, 'feature')) {
-                return 'feature';
-              }
-              if (hasTitlePrefix(issue, 'bug')) {
-                return 'bug';
-              }
-              if (labels.includes('enhancement')) {
-                return 'feature';
-              }
-              if (labels.includes('bug')) {
-                return 'bug';
-              }
-              return 'bug';
-            };
-            const isCardIssue = issue => {
-              const labels = getIssueLabels(issue);
-              const component = extractField(issue.body, 'Component').toLowerCase();
-              return (
-                labels.includes('card') ||
-                component.includes('live data card') ||
-                component.includes('both integration and card')
-              );
-            };
-            const buildReleaseLine = issueType => {
-              if (issueType === 'feature') {
-                return isPrerelease
-                  ? `This feature has been implemented and is available for testing in **[${releaseTag}](${releaseUrl})**, a BETA pre-release of F1 Sensor.`
-                  : `This feature is now available in **[${releaseTag}](${releaseUrl})**, the latest stable release of F1 Sensor.`;
-              }
-
-              return isPrerelease
-                ? `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, a BETA pre-release of F1 Sensor.`
-                : `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, the latest stable release of F1 Sensor.`;
-            };
-            const buildComment = (cardIssue, issueType) => {
-              const cardChangeType = issueType === 'feature' ? 'changes' : 'fixes';
-
-              if (isPrerelease) {
-                const lines = [
-                  buildReleaseLine(issueType),
-                  '',
-                  'To test the beta version, open HACS in Home Assistant, go to **Integrations**, and find **F1 Sensor**. Click the three-dot menu and select **Redownload**. Make sure **Show beta versions** is enabled in the HACS settings for this integration. Alternatively, you can download the release manually from the [Releases page](' + releaseUrl + ').',
-                ];
-
-                if (cardIssue) {
-                  lines.push(
-                    '',
-                    `For live data card ${cardChangeType}, restart Home Assistant after updating and reload your browser so the dashboard loads the latest bundled card assets.`
-                  );
-                }
-
-                lines.push(
-                  '',
-                  'Your feedback on the beta is very welcome \u2014 please report any issues you run into so they can be addressed before the stable release.'
-                );
-                return lines.join('\n');
-              }
-
-              const lines = [
-                buildReleaseLine(issueType),
-                '',
-                'To update via HACS, open Home Assistant, go to **HACS \u2192 Integrations**, find **F1 Sensor**, and click **Update**. If you installed it manually, download the latest release from the [Releases page](' + releaseUrl + ') and replace the existing files.',
-                '',
-                'After updating, restart Home Assistant to apply the changes.',
-              ];
-
-              if (cardIssue) {
-                lines.push(
-                  '',
-                  `For bundled live data card ${cardChangeType}, reload your browser after restarting Home Assistant. If you still have the old standalone HACS dashboard card installed, remove the old card repository and stale dashboard resource only after confirming the bundled card works.`
-                );
-              }
-
-              return lines.join('\n');
-            };
-
-            for (const num of issueNumbers) {
-              try {
-                const { data: issue } = await github.rest.issues.get({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: num,
-                });
-
-                // Skip pull requests
-                if (issue.pull_request) continue;
-
-                const issueType = getIssueType(issue);
-                const comment = buildComment(isCardIssue(issue), issueType);
-                const { data: comments } = await github.rest.issues.listComments({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: num,
-                  per_page: 100,
-                });
-                const alreadyCommented = comments.some(existing => {
-                  const body = existing.body || '';
-                  return (
-                    body.includes(releaseUrl) &&
-                    (
-                      body.includes('A fix for this issue is now available') ||
-                      body.includes('This feature has been implemented') ||
-                      body.includes('This feature is now available')
-                    )
-                  );
-                });
-                if (alreadyCommented) {
-                  console.log(`Release comment already present on ${issueType} issue #${num}`);
-                  continue;
-                }
-
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: num,
-                  body: comment,
-                });
-                console.log(`Commented on ${issueType} issue #${num}`);
-              } catch (e) {
-                console.log(`Skipping #${num}: ${e.message}`);
-              }
-            }
+            await require('./.github/scripts/issue-automation.cjs').releasedIssues({github, context});

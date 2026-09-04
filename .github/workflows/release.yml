@@ -20,10 +20,11 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   release:
+    if: vars.CI_ROLLOUT != 'true'
     uses: nicxe/.github/.github/workflows/reusable-release.yml@main
     with:
       node_version: "22"

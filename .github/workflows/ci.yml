@@ -1,0 +1,25 @@
+# Migration bootstrap: the complete implementation lives on dev and beta.
+# GitHub requires a default-branch entry point before workflow_dispatch can
+# select those branches. Normal code promotion replaces this file with full CI.
+name: CI
+on:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: PR to verify from its trusted dev or beta target branch
+        type: string
+        default: ''
+      release:
+        description: Create or recover a draft after full CI (dev/beta implementation)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  migration:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo 'Full CI is available on dev and beta. Select the PR target branch when dispatching.'
+          echo 'Main/content retain their existing test baseline until the normal code promotion.'
+          exit 1

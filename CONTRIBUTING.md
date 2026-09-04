@@ -14,7 +14,7 @@ For changes to the integration itself — sensors, binary sensors, configuration
 - `beta` — pre-release testing. Promoted from `dev` by the maintainer.
 - `main` — stable production releases. Promoted from `beta` by the maintainer.
 
-The `beta` and `main` branches are managed exclusively by the maintainer. PRs targeting those branches are closed automatically.
+The `beta` and `main` branches are managed exclusively by the maintainer. Incorrectly targeted contributor PRs receive guidance explaining how to edit the base branch. Only maintainer promotions target beta or main.
 
 ### Documentation and blueprint changes
 
@@ -77,3 +77,9 @@ Include the changed user journey, validation performed, and any limitations in t
 ## Questions
 
 If you are unsure whether a change fits the project direction, open an issue before starting work. This prevents effort being spent on contributions that may not be accepted.
+
+## CI migration
+
+Full selective CI, HA 2026.9 compatibility and the 95 percent runtime line-coverage gate are active on `dev` and `beta`. The older `main` and `content` code keeps its existing test baseline until the next normal `dev → beta → main` promotion. No unreleased integration code is copied into stable solely for this migration.
+
+Issue labels and release comments already use tested, trusted scripts. Conflict checks only read PR metadata and update labels; they never execute fork code. Synchronization preserves the exact published commit and later work without force pushes. Its PRs are explicitly verified: full `CI required` for dev/beta, and clearly named `Legacy content verification` for the temporary content baseline. No additional reviewer is required. Full CI replaces this bootstrap during normal code promotion; remove the temporary `sync-legacy.yml` verifier after the full content rollout.

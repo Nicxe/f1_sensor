@@ -1,42 +1,24 @@
-name: Redirect misrouted PRs
-
+name: PR branch guidance
 on:
   pull_request_target:
-    branches: [main, beta]
-    types: [opened]
-
+    types: [opened, synchronize, reopened, edited]
 permissions:
-  pull-requests: write
   contents: read
-
+  issues: write
+  pull-requests: write
+concurrency:
+  group: routing-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
 jobs:
-  redirect:
+  metadata:
     runs-on: ubuntu-latest
-    if: >
-      github.actor != 'Nicxe' &&
-      github.actor != 'dependabot[bot]'
+    timeout-minutes: 10
     steps:
-      - name: Post redirect comment and close PR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
-          REPO: ${{ github.repository }}
-        run: |
-          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Hi @${{ github.actor }}, thank you for your contribution!
-
-          This PR targets the \`$BASE_BRANCH\` branch, which is reserved for internal releases and managed exclusively by the maintainer.
-
-          Please open a new PR targeting the correct branch based on your change:
-          - **Documentation or blueprint** changes (standalone, no code) → \`content\`
-          - **Code changes** (integration logic, sensors, fixes, features, tests) → \`dev\`
-
-          The branch workflow for this project is:
-          - \`content\` — docs and blueprint contributions, merged directly to \`main\`
-          - \`dev\` — code contributions, promoted through \`beta\` to \`main\` by the maintainer
-          - \`beta\` — pre-release testing, managed by the maintainer
-          - \`main\` — stable releases, managed by the maintainer
-
-          You can change the base branch in GitHub's UI when creating the PR. See [CONTRIBUTING.md](../CONTRIBUTING.md) for details. Thank you!"
-
-          gh pr close "$PR_NUMBER" --repo "$REPO"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            await require('./.github/scripts/pr-metadata.cjs').routing({github, context, core});
