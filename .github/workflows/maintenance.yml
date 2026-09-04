@@ -11,6 +11,8 @@ concurrency:
 jobs:
   audit:
     uses: ./.github/workflows/audit.yml
+    with:
+      checkout_ref: dev
   compatibility:
     name: Latest stable HA on dev
     runs-on: ubuntu-latest
@@ -48,6 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: dev
           persist-credentials: false
       - run: python3 scripts/check_source_reviews.py quality/data-sources.json
       - run: python3 scripts/check_token_helper_review.py quality/token-helper-review.json

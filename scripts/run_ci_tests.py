@@ -38,7 +38,8 @@ def main() -> int:
         if not paths:
             raise ValueError("no blueprint tests were found")
     elif profile == "minimum":
-        paths = [ROOT / name for name in MINIMUM if (ROOT / name).is_file()]
+        paths = [ROOT / name for name in MINIMUM]
+        paths.extend(sorted(ROOT.glob("test_*blueprint.py")))
     else:
         paths = [ROOT]
     Path("test-results").mkdir(exist_ok=True)

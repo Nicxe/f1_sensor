@@ -1,6 +1,10 @@
 name: Documentation
 on:
   workflow_call:
+    inputs:
+      publish:
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -20,7 +24,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:docs
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: inputs.publish && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
           path: build
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

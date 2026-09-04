@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       tested_head: ${{ steps.plan.outputs.tested_head }}
+      deploy: ${{ steps.plan.outputs.deploy }}
       selected: ${{ steps.plan.outputs.selected }}
       lint: ${{ steps.plan.outputs.lint }}
       backend: ${{ steps.plan.outputs.backend }}
@@ -62,6 +63,8 @@ jobs:
     needs: plan
     if: needs.plan.outputs.documentation == 'true'
     uses: ./.github/workflows/documentation.yml
+    with:
+      publish: ${{ needs.plan.outputs.deploy == 'true' }}
   validation:
     needs: plan
     if: needs.plan.outputs.validation == 'true'
@@ -139,9 +142,10 @@ jobs:
       attestations: write
     uses: ./.github/workflows/release.yml
   deploy:
-    needs: [required, documentation]
+    needs: [plan, required, documentation]
     if: >-
       needs.required.result == 'success' && needs.documentation.result == 'success' &&
+      needs.plan.outputs.deploy == 'true' &&
       !github.event.inputs.pull_request &&
       github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     permissions:
