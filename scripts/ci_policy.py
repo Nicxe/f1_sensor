@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 from urllib.request import Request, urlopen
 
 JOBS = (
@@ -143,11 +144,11 @@ def select_jobs(
     return selected_checks(selected)
 
 
-def gate_errors(selected: dict, results: dict) -> list[str]:
+def gate_errors(selected: dict, results: dict, reused=()) -> list[str]:
     errors = []
     for job in JOBS:
         actual = results.get(job, {}).get("result", "missing")
-        expected = "success" if selected.get(job) else "skipped"
+        expected = "success" if selected.get(job) and job not in reused else "skipped"
         if actual != expected:
             errors.append(f"{job}: expected {expected}, got {actual}")
     return errors
@@ -181,8 +182,21 @@ def main() -> int:
         if results.get("plan", {}).get("result") != "success":
             print("CI selection/branch policy failed")
             return 1
+        evidence = json.loads(results["plan"]["outputs"].get("reused", "{}"))
+        if evidence:
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).with_name("ci_reuse.py")),
+                    "verify",
+                ],
+                env={**os.environ, "CI_REUSED": json.dumps(evidence)},
+                check=True,
+            )
         errors = gate_errors(
-            json.loads(results["plan"]["outputs"]["selected"]), results
+            json.loads(results["plan"]["outputs"]["selected"]),
+            results,
+            evidence.get("checks", []),
         )
         print("\n".join(errors) if errors else "All applicable checks passed")
         return int(bool(errors))
@@ -207,6 +221,7 @@ def main() -> int:
             raise ValueError("PR merge changed during checkout; run verification again")
         with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
             output.write(f"tested_head={pr['head']['sha']}\n")
+            output.write(f"tested_base={pr['base']['sha']}\n")
         event = {"pull_request": pr}
         name = "pull_request"
     files = changed_files(event, name)

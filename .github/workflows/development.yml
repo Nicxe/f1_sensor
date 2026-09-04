@@ -1,0 +1,31 @@
+name: Development checks
+run-name: Development · ${{ github.ref_name }} · ${{ github.sha }}
+on:
+  push:
+    branches: [dev, content]
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+concurrency:
+  group: development-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  route:
+    name: Choose verification run
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      run_checks: ${{ steps.route.outputs.run_checks }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        id: route
+        with:
+          script: await require('./.github/scripts/ci-routing.cjs').route({github, context, core});
+  checks:
+    needs: route
+    if: needs.route.outputs.run_checks == 'true'
+    uses: ./.github/workflows/ci-checks.yml
