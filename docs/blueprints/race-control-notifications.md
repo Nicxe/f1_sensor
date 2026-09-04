@@ -1,11 +1,12 @@
 ---
 id: race-control-notifications
-title: Race Control Notifications
+title: Receive Race Control notifications
+description: Forward official Race Control messages and filter them by flag, session and notification target.
 ---
 
-# Race Control Notifications
+<span id="race-control-notifications" />
 
-Get instant notifications whenever the race director sends a message — flag changes, safety car deployments, penalties, incident reports, and more.
+Receive published Race Control messages — flag changes, safety car deployments, penalties, incident reports, and more.
 
 This blueprint listens to the [Race Control sensor](/entities/live-data#race-control) and forwards messages to any notification service you choose. All filtering is optional, so you can start simple and refine over time.
 :::tip[Sync with your TV]
@@ -18,13 +19,22 @@ Race Control Notifications forward official messages. For neutral likely stopped
 ---
 
 
+## First working notification
+
+1. Import the blueprint and create an automation.
+2. Select your Race Control sensor.
+3. Configure one supported notification target or action.
+4. Save and review the filters below. Start with only the flags or session types you want to receive.
+
+See [Incident Notifications](/blueprints/incident-notifications) if you want inferred stopped-car alerts rather than official messages.
+
 ## Import the Blueprint
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNicxe%2Ff1_sensor%2Fmain%2Fblueprints%2Ff1_race_control_notifications.yaml)
 
 Or go to **Settings > Automations & Scenes > Blueprints** and import manually using the URL:
 
-```
+```text
 https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_race_control_notifications.yaml
 ```
 ---
@@ -202,7 +212,7 @@ Set **Allowed Flags** to `SC`, `VSC`, and `RED`. Leave all other filters empty.
 
 ### Notify only during the race
 
-Enable **Require Active Session Phase** and set **Active Session Phases** to `live` and `suspended` only.
+Enable **Require Active Session Phase**, select your Session Status sensor, and choose `live` and `suspended`. Also enable **Enable Current Session Filter**, select your Current Session sensor, and set **Allowed Current Sessions** to `Race`. The phase filter alone also matches other session types.
 
 ---
 

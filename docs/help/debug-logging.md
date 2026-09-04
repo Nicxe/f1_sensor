@@ -1,6 +1,7 @@
 ---
 id: debug-logging
-title: Debug Logging and Logs
+title: Collect useful debug logs
+description: Reproduce an F1 Sensor issue, download debug logs, and include the context needed to investigate.
 ---
 
 Debug logging helps you collect useful information when F1 Sensor does not behave as expected.
@@ -29,29 +30,9 @@ When you disable debug logging from the same menu, Home Assistant downloads a de
 Attach that file to the issue after you remove any secrets.
 :::
 
-## Enable debug logging with YAML
-
-Use YAML only if the UI option is not available, if you need debug logging to start during Home Assistant startup, or if you are asked to keep debug logging enabled across a restart.
-
-Add this to your Home Assistant `configuration.yaml`:
-
-```yaml
-logger:
-  default: warning
-  logs:
-    custom_components.f1_sensor: debug
-```
-
-Restart Home Assistant after changing the logger configuration.
-
-:::tip
-Enable debug logging before you reproduce the issue.
-Logs are most useful when they include the full sequence from setup, reload, or the failing action.
-:::
-
 ## Reproduce the problem
 
-After Home Assistant restarts:
+With debug logging enabled:
 
 1. Reproduce the issue you are testing or reporting.
 2. Note the approximate time when it happened.
@@ -78,6 +59,26 @@ For false positive or missing on-track incident reports, include the same basic 
 10. Whether the incident event included `location`, and whether `location.stale` was `true` or `false`.
 
 Do not include F1TV tokens, authorization headers, browser session data, or large telemetry dumps.
+
+## Enable debug logging with YAML
+
+Use YAML only if the UI option is not available, if you need debug logging to start during Home Assistant startup, or if you are asked to keep debug logging enabled across a restart.
+
+Add this to your Home Assistant `configuration.yaml`:
+
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.f1_sensor: debug
+```
+
+Restart Home Assistant after changing the logger configuration.
+
+:::tip
+Enable debug logging before you reproduce the issue.
+Logs are most useful when they include the full sequence from setup, reload, or the failing action.
+:::
 
 ## Find raw logs
 
@@ -107,7 +108,7 @@ When you create a GitHub issue, include:
 9. Track Map status, source, and stale state when relevant.
 10. Relevant debug log output with secrets removed.
 
-Logs are often the key to understanding setup failures, token problems, replay behavior, and unexpected entity updates.
+Download integration diagnostics from the F1 Sensor menu if requested. [Diagnostic entities](/entities/diagnostics) and the downloaded diagnostic file serve different purposes; include the requested one. Use [Get help](/help/contact) to choose where to report.
 
 ## Disable debug logging
 

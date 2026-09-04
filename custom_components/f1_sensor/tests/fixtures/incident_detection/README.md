@@ -1,18 +1,18 @@
 # Incident detection fixture baseline
 
-This directory contains the Fas 0 baseline for stopped/on-track incident detection.
+This directory contains the reduced baseline fixtures for stopped/on-track incident detection. The manifest records their original extraction phase as `Fas 0` and completion date as 2026-05-13.
 
-The goal is to keep a small, reproducible set of local fixture candidates that can drive the pure detector work in Fas 1 without committing full F1 Live Timing raw dumps. The MVP scope is stopped/on-track incident detection, not crash detection. Fixtures must describe what the public live streams show: stopped timing state, track status, Race Control context, pit state, and session metadata.
+The fixtures provide small, reproducible scenarios for detector and replay tests without committing full F1 Live Timing raw dumps. The MVP scope is stopped/on-track incident detection, not crash detection. Fixtures must describe what the public live streams show: stopped timing state, track status, Race Control context, pit state, and session metadata.
 
-## Write scope
+## Fixture location and provenance
 
-All files for this baseline live under `/Volumes/config/custom_components/f1_sensor`. The report also mentions docs under `/Users/niklas/GitHub/f1_sensor/docs`, but that path is outside the write scope for this task and was not changed.
+Fixture files live in this directory inside `custom_components/f1_sensor/tests/fixtures/incident_detection`. The manifest preserves the original extraction provenance, including machine-specific source paths. Those paths describe the historical source; contributors do not need that workstation or its raw dump directories to run the committed reduced scenarios.
 
 ## Fixture policy
 
 Use reduced scenario fixtures, not complete sessions. Each scenario should document:
 
-- source directory under `/Users/niklas/Desktop/import_requests/Streams`
+- source session or extraction location, recorded as provenance without adding private raw dumps
 - session type, session name, and time window
 - driver numbers and names needed for the scenario
 - included streams: `TimingData`, `TrackStatus`, `RaceControlMessages`, `SessionInfo`, and `DriverList`
@@ -21,7 +21,7 @@ Use reduced scenario fixtures, not complete sessions. Each scenario should docum
 
 Do not commit large raw dumps. Keep each scenario small enough to inspect in review, preferably under 100 KB unless a later replay test has a concrete reason to exceed that.
 
-## Fas 0 baseline
+## Baseline scenarios
 
 `fixture_manifest.json` contains four extracted reduced scenarios, one each for race, sprint, qualifying, and practice.
 
@@ -32,16 +32,16 @@ The extracted scenarios are:
 - Chinese GP sprint, `01:07:00-01:10:00`, where yellow and safety car context precede stopped timing state for car 27.
 - Chinese GP practice 1, `00:27:00-00:28:30`, where yellow and VSC context precede stopped timing state for car 41.
 
-The manifest also lists optional future candidates for broader replay validation, but the Fas 0 gate is satisfied by the four reduced public-stream scenarios above.
+The manifest also lists optional future candidates for broader replay validation, while the recorded baseline is the four reduced public-stream scenarios above.
 
-## Fas 2 replay validation
+## Replay validation
 
 `custom_components/f1_sensor/tests/incident_replay.py` replays the reduced manifest cases directly into the pure `IncidentDetector`. It does not use Home Assistant runtime, `LiveBus`, SignalR, replay downloads, auth-gated streams, or real-time sleeps.
 
-Run the manual timeline helper from `/Volumes/config`:
+Run the manual timeline helper from the repository root using the configured Python 3.14 test environment:
 
 ```bash
-/opt/homebrew/bin/python3.14 -m custom_components.f1_sensor.tests.incident_replay
+python3.14 -m custom_components.f1_sensor.tests.incident_replay
 ```
 
 Observed baseline order:

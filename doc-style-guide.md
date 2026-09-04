@@ -1,197 +1,180 @@
 # Documentation Style Guide
 
-Format and structure patterns for F1 Sensor documentation.
+Use this guide when changing the Docusaurus site, examples, or reference pages. Write public documentation in English and organize it around what the reader wants to do.
 
 ## Frontmatter
 
-Every page requires YAML frontmatter:
+Every documentation page needs a stable `id`, a descriptive `title`, and a short `description`:
 
 ```yaml
 ---
-id: feature-name
-title: Feature Title
+id: track-status
+title: Track Status
+description: Use track flags and Safety Car states in F1 dashboards and automations.
 ---
 ```
 
-Use kebab-case for `id`. Title should be user-friendly.
+Use kebab-case IDs. Keep existing routes when reorganizing content. Use `slug` only when the public route needs to differ from the normal file route; the introduction keeps `slug: /`.
 
 ## Page Structure
 
-### Introduction
+Start with one or two sentences explaining the outcome and who the page is for. Use `##` for main sections and `###` for subsections. Keep requirements visible before the user starts; put optional detail after the basic workflow.
 
-Start with 1-2 sentences explaining what the feature does and why a user would use it.
+### Guides
 
-### Sections
+Use this order:
 
-Use `##` for main sections, `###` for subsections.
+1. What the user can achieve.
+2. Prerequisites and data availability.
+3. Numbered setup or usage steps.
+4. What the user should see when it works.
+5. Common problems and recovery.
+6. Useful next steps.
 
-Common section patterns:
+Put complete entity schemas in the reference area. A guide can summarize the controls and link to their reference without repeating every attribute.
 
-- Overview / How it works
-- Step-by-step instructions (numbered)
-- Configuration options
-- Limitations / Notes
+### Card pages
+
+Start with the card’s purpose and an accurate screenshot with a caption. Explain session, entity, and optional authentication requirements. Show the visual editor workflow first, then a minimal YAML example, card-specific options, empty or waiting states, and related references.
+
+Shared options belong in the shared settings page. Do not copy the entire common table onto every card page. Link each card from the catalog and sidebar.
+
+### Blueprint pages
+
+Explain the result, provide the import link, list requirements, and show the smallest working configuration. Put optional filters, presence/media conditions, WLED controls, and advanced notification templates afterwards. Keep actual defaults and guards consistent with the blueprint source.
 
 ## Entity Documentation
 
-For sensors and other entities, use this structure:
+Each focused entity page includes its standard entity ID, purpose, data availability, state, example, and attributes. Use this pattern:
 
-```markdown
-## Entity Name
+````markdown
+## State
 
-Brief description of what this entity does and when it updates.
+`sensor.f1_example` reports a count, or has no value when the required data is missing.
 
-**State**
-- Description of possible state values
+```text
+12
+```
 
-**Example**
-\`\`\`text
-example_value
-\`\`\`
-
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
-| attribute_name | string | What this attribute contains |
-| other_attribute | number | What this represents |
-```
+| example_attribute | number | What the value means and when it can be unknown |
+````
 
-If no attributes: `| (none) | | No extra attributes |`
+If there are no extra attributes, use `| (none) | | No extra attributes |`.
+
+Keep entity IDs, attribute names, enum values, and service/action names exact. Explain that existing installations can have renamed or older entity IDs. Distinguish `unknown`, `unavailable`, a paused replay, and missing upstream data instead of describing them as one failure.
 
 ## Admonitions
 
-Use Docusaurus admonition syntax:
+Use Docusaurus admonitions for information that changes a decision or prevents a common mistake:
 
 ```markdown
-:::info
-Information note
+:::info[Optional F1TV access]
+Public live timing works without a token. Some extra live data requires optional F1TV access.
 :::
-
-:::tip
-Helpful tip
-:::
-
-::::info Title
-Note with custom title
-::::
 ```
 
-Available types: `info`, `tip`, `warning`, `danger`
+Use `tip` for a shortcut, `info` for context, and `warning` for a consequence the user needs to understand before acting. Avoid stacking several notices above the first useful instruction.
 
 ## Links
 
-Internal links use root-relative paths:
+Use root-relative internal links:
 
 ```markdown
-[Link text](/entities/live-data)
-[Installation guide](/getting-started/installation)
+[Installation](/getting-started/installation)
+[Track Status reference](/entities/track-status)
 ```
+
+Link text should describe the destination. Do not use `#` as a placeholder link or send a specific feature link to the site homepage.
+
+When splitting a page, preserve its existing route and heading anchors with short links to the new pages. `quality/docs-legacy-routes.json` records the previous routes. Keep a heading’s generated ID when its wording is unchanged. If a heading must be renamed, use Docusaurus’s explicit MDX heading ID so the old fragment remains part of the table of contents and link validation:
+
+```markdown
+## Formation start ready {/* #race-about-to-start--formation-lap */}
+```
+
+The Token Helper route `/help/f1tv-token-helper` is part of Home Assistant pairing. Preserve its URL and query/fragment behavior. Its privacy policy also keeps a stable URL. Do not introduce a generic redirect or tracking mechanism into pairing.
 
 ## Images
 
+Keep product images in `static/img/` and use descriptive filenames, meaningful alt text, and a short caption when context matters:
+
 ```markdown
-![Alt text](/img/filename.png)
+![Track Map displaying driver markers during replay](/img/track-map-replay.png)
 ```
 
-Images go in `/static/img/`. Use descriptive filenames.
+Screenshots must show the real card or Home Assistant UI. State whether they use replay or demonstration data; do not present fixture data as a live session. Remove secrets and personal account information before adding images.
+
+Use `npm run capture:docs-cards` to regenerate the reproducible card images. Review the output and image provenance before replacing existing assets. Prefer SVG/HTML for explanations and screenshots for product UI. Keep long animations optional, respect reduced motion, and provide the same instructions in text.
 
 ## Code Blocks
 
-For YAML configuration:
+Specify a language: `yaml` for Home Assistant configuration, `json` for JSON payloads, `text` for state values, and `bash` for commands.
 
-```markdown
-\`\`\`yaml
-automation:
-  trigger:
-    - platform: state
-      entity_id: sensor.f1_track_status
-\`\`\`
+````markdown
+```yaml
+action: number.set_value
+target:
+  entity_id: number.f1_live_delay
+data:
+  value: 30
 ```
+````
 
-For state examples:
-
-```markdown
-\`\`\`text
-CLEAR
-\`\`\`
-```
+Say where the user should paste an example. Use placeholders only for values the user must replace, such as their notification target. Validate examples against the intended release’s entity and action contracts. Large complete payloads can be collapsed, but the field reference must stay readable and searchable.
 
 ## Step-by-Step Instructions
 
-Use numbered lists with clear action verbs:
-
-```markdown
-### Step 1 - Install the integration
-
-1. Open **HACS** in Home Assistant
-2. Search for **F1 Sensor**
-3. Click **Download**
-```
-
-Bold UI elements: **Settings**, **Add Integration**, **Download**
+Use numbered lists and bold labels matching the actual UI: **Settings**, **Devices & services**, **Add card**. Do not rely on screenshots alone. State the observable result after a procedure and link to the relevant troubleshooting page.
 
 ## Collapsible Sections
 
-For optional or advanced content:
+Use native details for optional or lengthy material:
 
 ```markdown
 <details>
-  <summary>Advanced configuration</summary>
+<summary>Complete example payload</summary>
 
-Content goes here.
+Optional reference content.
 
 </details>
 ```
 
+Never hide prerequisites, authentication requirements, or a consequence that must be understood before setup.
+
 ## Writing Style
 
-- Use present tense
-- Address the user directly ("you can", "this lets you")
-- Avoid jargon and implementation details
-- Explain what things do, not how they work internally
-- Keep sentences short and scannable
+Use present tense, short paragraphs, and direct instructions. Separate setup guides from exact reference details. Avoid guarantees such as perfect synchronization, complete data capture, or error-free AI-generated configuration.
+
+Treat confirmed incident detection as a timing-based indication, not proof of a crash. Distinguish public live data, optional authenticated data, and archive-dependent replay. Mark unreleased features according to the site’s release/channel information.
 
 ## Limitations Section
 
-When documenting limitations:
-
-```markdown
-:::info
-This sensor is active only during race and sprint sessions.
-:::
-```
-
-Or inline: "Updates approximately every minute during an active session."
+Describe the specific condition and its effect: “Live Track Map requires usable position data during an active session.” Explain the next useful check. Do not turn every normal waiting state into an error.
 
 ## File Organization
 
-| Type | Location |
+| Content | Location |
 | --- | --- |
-| Getting started | `docs/getting-started/` |
-| Entity reference | `docs/entities/` |
-| Examples | `docs/example/` |
-| Help/FAQ | `docs/help/` |
-| Standalone pages | `docs/` |
+| Installation and first-use guides | `docs/getting-started/` |
+| Feature workflows | `docs/features/` |
+| Card catalog and individual cards | `docs/cards/` |
+| Entity references | `docs/entities/` |
+| Controls, state values, and device triggers | `docs/reference/` |
+| Ready-made automations | `docs/blueprints/` |
+| Community examples | `docs/example/` |
+| Troubleshooting and help | `docs/help/` |
+| Maintainer policies | `docs/maintainers/` |
 
 ## Sidebar
 
-New pages must be added to `sidebars.js`:
+Add every new canonical page to `sidebars.js` and to the relevant overview. Group references by user task; avoid a single unstructured list of dozens of entities. Compatibility bridges may remain accessible through their old URLs without competing with canonical pages in the main navigation.
 
-```javascript
-{
-  type: 'category',
-  label: 'Category Name',
-  items: ['folder/page-id'],
-}
-```
+## Verification
 
-Or as standalone:
+Run `npm run test:docs` to build and check documentation routes, links, and browser behavior. Review important pages on mobile and desktop, in light and dark mode, with keyboard navigation. Check search results, screenshots, tables, copyable examples, old fragments, and the Token Helper pairing route.
 
-```javascript
-{
-  type: 'doc',
-  label: 'Page Title',
-  id: 'page-id',
-}
-```
+For changes that also touch integration or card behavior, run the required integration and frontend checks described in the repository instructions. A documentation preview is not evidence of real Home Assistant runtime behavior.
