@@ -13,7 +13,8 @@ const sidebars = {
         "getting-started/installation",
         "getting-started/add-integration",
         "getting-started/first-dashboard",
-        "getting-started/release-channels"
+        "getting-started/release-channels",
+        "features/whats-new"
       ]
     },
     {
@@ -67,6 +68,7 @@ const sidebars = {
           "label": "Results and championship",
           "items": [
             "cards/results",
+            "cards/session-archive",
             "cards/lap-position-progression",
             "cards/championship-drivers",
             "cards/championship-teams",
@@ -99,6 +101,7 @@ const sidebars = {
         "features/track-map",
         "features/favorite-driver",
         "features/weekend-analysis",
+        "features/historical-results",
         "features/incident-detection",
         {
           "type": "category",

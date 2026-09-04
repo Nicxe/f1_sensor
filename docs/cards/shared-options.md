@@ -67,13 +67,27 @@ font_style: balanced
 
 Dates, times and supported measurements follow the relevant Home Assistant locale and unit settings. This is separate from the card’s font or visual theme.
 
+## Language and time preferences
+
+Supported card and editor text follows Home Assistant's selected language. English and Swedish text is supplied; untranslated text falls back to English. Changing `theme_mode` or `font_style` does not change the language.
+
+Dates and times use Home Assistant's locale and timezone where supported. Race Control timestamps also respect the profile's 12/24-hour preference. If a time looks wrong, check the Home Assistant profile and timezone settings before changing card YAML.
+
+## Dashboard context
+
+Weekend Hub shares **Focus driver**, **Gap reference** and the dashboard spoiler selection with supported cards in the browser. Driver Lap Times highlights the selected driver and uses the shared **Ahead**, **Leader** or **Off** gap reference.
+
+These preferences are remembered in that browser. They do not set the integration's Favorite Driver selector or synchronize a television. Selecting a Results Archive event does not start a replay. Use [Favorite Driver](/features/favorite-driver) for persistent driver entities and automations, and [Replay Control](/cards/replay-control) to load historical timing.
+
 ## Spoiler protection
 
 Cards that show spoiler-sensitive live or results data can use `no_spoiler_entity`. The usual default is `switch.f1_no_spoiler_mode`; Weekend Hub’s default helper differs and is listed on its reference page.
 
 When protection is active, supported cards display an overlay or mask sensitive values. Do not hide or bypass that overlay to diagnose missing data. See [No Spoiler Mode](/features/no-spoiler-mode) for the integration’s behavior and the correct viewing workflow.
 
-Weekend Hub also shares a spoiler selection with supported cards. This dashboard context is separate from choosing the integration switch as a card source.
+Weekend Hub also shares a spoiler selection with supported cards. This dashboard context is separate from the integration's No Spoiler switch.
+
+Weekend Hub defaults to `input_boolean.f1_no_spoiler_mode`. If you use that helper, create it in Home Assistant; the card does not create it. **Hide analysis** / **Reveal analysis** can toggle a configured `input_boolean` as well as the browser's shared spoiler setting. To have the card also respect the integration switch, configure `no_spoiler_entity: switch.f1_no_spoiler_mode` instead. A configured switch must be changed in Home Assistant: the card's reveal button does not turn it off. An active source still keeps the card hidden even when the browser setting is cleared.
 
 ## Data availability notices
 

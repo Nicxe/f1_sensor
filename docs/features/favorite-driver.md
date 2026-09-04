@@ -28,6 +28,10 @@ entities:
 
 Use your existing entity IDs if Home Assistant assigned different ones.
 
+## Favorite Driver or Focus driver?
+
+**Favorite Driver** is saved by the integration and drives this sensor and its automation triggers. Weekend Hub's **Focus driver** is a browser dashboard selection used by supported cards. Changing one does not automatically change the other.
+
 ## React to that driver's session
 
 When you create a device automation on the **Drivers** device, choose a Favorite Driver trigger for position gained/lost, entered/exited pits or retired. Start with one trigger and a simple notification, then add your usual presence or TV conditions.
