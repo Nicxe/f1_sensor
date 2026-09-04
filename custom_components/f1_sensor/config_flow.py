@@ -542,26 +542,19 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(
-        config_entry: config_entries.ConfigEntry,
+        _config_entry: config_entries.ConfigEntry,
     ) -> "F1OptionsFlow":
         """Return the native options flow for user-editable preferences."""
-        return F1OptionsFlow(config_entry)
+        return F1OptionsFlow()
 
 
 class F1OptionsFlow(config_entries.OptionsFlow):
     """Manage optional F1 Sensor features without rewriting credentials."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry | None = None) -> None:
-        """Retain the entry for HA versions before OptionsFlow.config_entry."""
-        self._legacy_config_entry = config_entry
-
     async def async_step_init(self, user_input=None):
         """Show and save user-editable feature options."""
         errors: dict[str, str] = {}
-        entry = getattr(self, "config_entry", None) or self._legacy_config_entry
-        if entry is None:
-            entry = self.hass.config_entries.async_get_entry(self.handler)
-        current = effective_entry_settings(entry)
+        current = effective_entry_settings(self.config_entry)
         sensor_options = _build_sensor_options()
         all_sensor_keys = set(sensor_options)
 
