@@ -22,3 +22,17 @@ test('GitHub outage falls back to testing the push',async()=>{
     core:{setOutput:(k,v)=>outputs[k]=v,warning(){}}});
   assert.equal(outputs.run_checks,'true');
 });
+
+test('confirmed PR verification owns the work while unconfirmed registration stays safe',async()=>{
+  for (const available of [[],[run]]) {
+    const outputs={};
+    const summaries=[];
+    const core={setOutput:(k,v)=>outputs[k]=v,warning(){},summary:{
+      addRaw(text){summaries.push(text);return this;},async write(){}}};
+    const github={paginate:async()=>[pr],rest:{pulls:{list(){}},actions:{
+      listWorkflowRunsForRepo:async()=>({data:{workflow_runs:available}})}}};
+    await route({github,core,context:{repo:{owner:'owner',repo:'repo'},ref:'refs/heads/dev',sha:'a'}});
+    assert.equal(outputs.run_checks,available.length?'false':'true');
+    assert.equal(summaries.length,available.length);
+  }
+});
