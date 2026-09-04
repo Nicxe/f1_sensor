@@ -1,11 +1,28 @@
 ---
 id: diagnostics
 title: Diagnostics
+description: Check connection, replay, and F1TV token health, and understand the downloaded diagnostic summary.
 ---
 
-Diagnostic entities are intended for troubleshooting and advanced automations. Some entities are created only when the corresponding feature is enabled during configuration, and some development diagnostics may be hidden in normal releases.
+Use diagnostics to understand why data is waiting, unavailable, or failing to update. Start with the symptom below, then inspect the relevant entity or download the integration’s diagnostic summary.
 
-Downloaded diagnostics from **Settings > Devices & Services > F1 Sensor > Diagnostics** include a compact runtime summary for live timing, F1TV Auth, incident detection, and Track Map. Diagnostics are intended for support and should not include authorization headers, cookies, callback URLs, nonce values, tokens, or detailed car movement data.
+## Start with the symptom
+
+| Symptom | Check first |
+| --- | --- |
+| Live entities are unavailable | Is a session active, and is live data enabled? See [live availability](/entities/live-data#availability-model) |
+| Extra F1TV data stopped | [Token status](#f1tv-token-status), then [F1TV setup](/help/f1tv-auth-setup) |
+| Replay is loading or stalled | [Replay status](#replay-status) and its `download_error` or `index_error` |
+| Track Map has no cars | [Track Map diagnostics](#track-map-diagnostics) and the card’s visible status |
+| An incident alert was unexpected | [Incident diagnostics](#incident-detection-diagnostics), session time, and the relevant event |
+
+## Download diagnostics
+
+Open **Settings > Devices & services > F1 Sensor**, then use the integration entry’s menu to download diagnostics. The file contains a compact runtime summary; it is different from the entity attributes below.
+
+Some diagnostic entities are only created when a feature or development interface is enabled. If an entity is absent, use the downloaded diagnostics and [debug logs](/help/debug-logging).
+
+Diagnostics should exclude tokens, authorization headers, cookies, pairing URLs, nonce values, and detailed car movement data. Check the file before sharing it in an issue.
 
 ## Entities Summary
 
@@ -38,6 +55,7 @@ Downloaded diagnostics from **Settings > Devices & Services > F1 Sensor > Diagno
 | last_schedule_error | string | Error details from the last schedule fetch attempt (best effort) |
 | heartbeat_age_s | number | Seconds since last heartbeat frame (best effort) |
 | activity_age_s | number | Seconds since last live data activity (best effort) |
+
 Normal users usually only need the sensor state, token status, and whether public live timing still works. Maintainers may ask for additional advanced attributes when troubleshooting a specific issue.
 
 ---
@@ -86,7 +104,7 @@ These fields help explain why the [Track Map](/features/track-map) card shows `L
 
 ## Incident Detection Diagnostics
 
-When incident detection is available, the downloaded diagnostics file includes an `incident_detection` runtime summary.
+When incident detection is available, the downloaded diagnostics file includes a `runtime.incident_detection` summary.
 
 **Fields**
 
@@ -113,31 +131,9 @@ Diagnostics intentionally show counts and latest metadata only. Use the [`f1_sen
 
 ## Replay Status
 
-`sensor.f1_replay_status` - Replay Mode status and progress.
+`sensor.f1_replay_status` reports `idle`, `selected`, `loading`, `ready`, `playing`, `paused`, or `seeking`. Inspect `download_error` when a load fails and `index_error` when the session list cannot be loaded.
 
-**State (enum)**
-- One of: `idle`, `selected`, `loading`, `ready`, `playing`, `paused`, `seeking`.
-
-**Attributes**
-
-| Attribute | Type | Description |
-| --- | --- | --- |
-| selected_session | string | Name of the selected session |
-| download_progress | number | Download progress percentage from 0 to 100 |
-| download_error | string | Error message if download failed |
-| playback_position_s | number | Current playback position in seconds, relative to the chosen start reference |
-| playback_position_formatted | string | Current position as `HH:MM:SS` |
-| playback_total_s | number | Total playback duration in seconds, relative to the chosen start reference |
-| playback_total_formatted | string | Total duration as `HH:MM:SS` |
-| session_start_offset_s | number | Start offset in seconds from the session archive (best effort) |
-| paused | boolean | True when playback is paused |
-| sessions_available | number | Number of sessions available for the selected year |
-| selected_year | number | Currently selected year |
-| index_year | number | Year that the session index was loaded from (best effort) |
-| index_status | string | Index status such as `ok`, `no_data`, or `error` (best effort) |
-| index_error | string | Error details when index fetch fails (best effort) |
-
----
+The complete state and attribute table is in [Replay controls](/reference/replay-controls#replay-status-sensor). Playback position and duration are relative to the selected playback start reference.
 
 ## F1TV Token Status
 
@@ -153,11 +149,13 @@ F1TV Auth is optional. Public live timing continues to work without a token. Onl
 | Value | Description |
 | --- | --- |
 | `not_configured` | No F1TV live timing token has been paired |
-| `valid` | A token is saved and can be used for extra live-auth features |
-| `expiring_soon` | The saved token is still usable but should be replaced soon |
+| `valid` | The saved token is locally well-formed and unexpired; upstream acceptance is not yet proven by this state alone |
+| `expiring_soon` | The saved token has not expired but should be replaced soon; upstream access still depends on Formula 1 |
 | `expired` | The saved token has expired |
 | `invalid` | The saved token could not be parsed or validated |
 | `rejected` | Formula 1 rejected the saved token |
+
+The local token check does not verify authenticity. Formula 1 must accept the token during a request before authenticated live data can be used. Public live timing remains available without it.
 
 **Attributes**
 

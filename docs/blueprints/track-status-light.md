@@ -1,9 +1,12 @@
 ---
 id: track-status-light
-title: Track Status Light
+title: Make a light follow track flags
+description: Import the Track Status blueprint, choose an RGB light, and configure session and presence conditions.
 ---
 
-# Track Status Light
+import {FlagLegend} from '@site/src/components/Docs';
+
+<span id="track-status-light" />
 
 Turn any RGB light into a live F1 race status indicator. The light color changes automatically to reflect the current track condition — green for clear racing, yellow for caution, red for a red flag, and distinct colors for Safety Car and Virtual Safety Car.
 
@@ -16,13 +19,24 @@ For the light to change at the same time as you see the flag on screen, configur
 
 ---
 
+<FlagLegend />
+
+## First working setup
+
+1. Import the blueprint below and create an automation from it.
+2. Select your Session Status and Track Status entities.
+3. Choose an RGB light. Keep the default colors and session phases for the first test.
+4. Save, then verify the behavior during a suitable session or controlled replay. Review presence, TV and quiet-hour conditions before adding the automation to your everyday setup.
+
+The remaining sections explain each setting. WLED playlists and presets are optional advanced choices.
+
 ## Import the Blueprint
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNicxe%2Ff1_sensor%2Fmain%2Fblueprints%2Ff1_track_status.yaml)
 
 Or go to **Settings > Automations & Scenes > Blueprints** and import manually using the URL:
 
-```
+```text
 https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_track_status.yaml
 ```
 

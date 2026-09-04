@@ -1,9 +1,26 @@
 ---
 id: f1tv-auth
-title: F1TV Auth
+title: Data availability and optional F1TV access
+description: Compare public live timing, optional authenticated features and Replay Mode before connecting F1TV access.
 ---
 
 F1 Sensor works without F1TV Auth. Optional F1TV Auth can unlock extra live timing features during an active Formula 1 session while public live timing continues to work without a token.
+
+## Availability matrix
+
+| Feature or data | Without F1TV Auth live | With F1TV Auth live | Replay Mode |
+| --- | --- | --- | --- |
+| Track status, Safety Car, Race Control, weather | Works | Works | Works when replayed |
+| Driver positions and timing | Works | Works | Works when replayed |
+| Confirmed incident detection | Works | Works | Works when replayed |
+| Early incident candidates from car movement | Not available | Can improve when live car movement data is available | Works when replay contains the needed data |
+| Track Map | Not available live | Requires F1TV Auth and live car position data | Works when replay contains car position data |
+| Incident location context | Not available from live position | Can improve when Track Map has fresh location data | Works when replay contains car position data |
+| Pit Stops | Not available live | Can work when Formula 1 publishes live pit stop data | Works when replay contains pit stop data |
+| Team Radio | Not available live | Can work when Formula 1 publishes live team radio clips | Works when replay contains team radio clips |
+| Championship Prediction | Not available live | Can work when Formula 1 publishes live prediction data | Works when replay contains prediction data |
+| Formation Start | Not available live | Requires authenticated car data for the formation-start marker | Works when the replay supports the formation-start marker |
+
 
 ## How F1TV Auth changes live timing
 
@@ -31,33 +48,16 @@ Public live timing covers the normal live features most dashboards and automatio
 
 ## What F1TV Auth can add during live sessions
 
-F1TV Auth can support live features such as Track Map, Pit Stops, Team Radio, Championship Prediction, formation start refinement, and earlier incident candidate signals. These features still depend on what Formula 1 publishes for each session, so a valid token does not guarantee that every extra feature is available every time.
+F1TV Auth can support live features such as Track Map, Pit Stops, Team Radio, Championship Prediction, formation start refinement, and earlier incident candidate signals. These features still depend on what Formula 1 publishes for each session, so an accepted token does not guarantee that every extra feature is available every time.
 
 ## Subscription requirement
 
-F1TV Auth requires a signed-in Formula 1 account with an active F1 TV subscription that includes Essential Live Timing. You do not need F1 TV Pro or F1 TV Premium just to pair F1TV Auth; F1 TV Access is enough in regions where Formula 1 offers it.
-
-F1 controls subscription names, availability, and prices. As a rough guide, F1 TV Access has been shown around EUR 3.49 per month and F1 TV Pro around EUR 17.99 per month, but check the F1 TV subscription page for your country before subscribing.
+Use a Formula 1 account with access to the live timing features you need. Subscription names, entitlements and availability differ by country and can change. Check [Formula 1’s current F1 TV plans](https://f1tv.formula1.com/) for your region before subscribing; accepting a token does not guarantee that every data feed is published.
 
 :::info
 F1TV tokens are short-lived, and Formula 1 can vary which extra live data is published from session to session.
 Public live timing continues to work if F1TV access is missing, expired, invalid, or rejected.
 :::
-
-## Availability matrix
-
-| Feature or data | Without F1TV Auth live | With F1TV Auth live | Replay Mode |
-| --- | --- | --- | --- |
-| Track status, Safety Car, Race Control, weather | Works | Works | Works when replayed |
-| Driver positions and timing | Works | Works | Works when replayed |
-| Confirmed incident detection | Works | Works | Works when replayed |
-| Early incident candidates from car movement | Not available | Can improve when live car movement data is available | Works when replay contains the needed data |
-| Track Map | Not available live | Requires F1TV Auth and live car position data | Works when replay contains car position data |
-| Incident location context | Not available from live position | Can improve when Track Map has fresh location data | Works when replay contains car position data |
-| Pit Stops | Not available live | Can work when Formula 1 publishes live pit stop data | Works when replay contains pit stop data |
-| Team Radio | Not available live | Can work when Formula 1 publishes live team radio clips | Works when replay contains team radio clips |
-| Championship Prediction | Not available live | Can work when Formula 1 publishes live prediction data | Works when replay contains prediction data |
-| Formation Start | Public fallback only where available | Can improve when extra live timing data is available | Works in Replay Mode |
 
 ## Token Helper and renewal
 
@@ -65,11 +65,15 @@ The recommended way to connect F1TV Auth is the [F1TV Token Helper](/help/f1tv-t
 
 Home Assistant does not ask for your Formula 1 password. Tokens are short-lived, so expect to renew access when `sensor.f1_f1tv_token_status` reports `expiring_soon`, `expired`, `invalid`, or `rejected`.
 
+The integration can check locally that a JWT is well-formed and unexpired. This does not prove that the token is authentic. F1TV access is confirmed only after Formula 1 accepts it during an upstream request.
+
 For the practical setup workflow, see [F1TV Auth Setup](/help/f1tv-auth-setup).
 
 ## Privacy and safety
 
 F1 Sensor stores only the authorization value needed for live timing. Diagnostics and public issue reports should never include tokens, full `Authorization` headers, cookies, callback URLs, nonce values, or browser session data.
+
+The saved authorization value is part of the Home Assistant config entry and normally follows that entry into Home Assistant backups. Before sharing a backup, treat it as containing credentials. Use `button.f1_clear_f1tv_access` to remove the saved value and revoke the Formula 1 browser session if you suspect exposure.
 
 Downloaded diagnostics can include redacted token health and live timing activity. They should not include secrets or high-frequency telemetry.
 

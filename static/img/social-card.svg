@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
+  <rect width="1200" height="630" fill="#101318"/>
+  <path d="M840 0v630M0 530h1200" stroke="#303741"/>
+  <path d="M80 105h52" stroke="#FF6476" stroke-width="6"/>
+  <text x="150" y="116" font-family="sans-serif" font-size="27" letter-spacing="4" fill="#E9EDF2">F1 SENSOR</text>
+  <text x="80" y="282" font-family="sans-serif" font-weight="700" font-size="86" letter-spacing="-3" fill="#E9EDF2">Your home.</text>
+  <text x="80" y="383" font-family="sans-serif" font-weight="700" font-size="86" letter-spacing="-3" fill="#FF6476">On race time.</text>
+  <text x="80" y="472" font-family="sans-serif" font-size="28" fill="#AAB4C0">Formula 1 for Home Assistant</text>
+  <text x="80" y="582" font-family="sans-serif" font-size="21" fill="#AAB4C0">LIVE TIMING · DASHBOARDS · AUTOMATIONS · REPLAY</text>
+  <rect x="907" y="222" width="208" height="208" rx="38" fill="#BD1831"/>
+  <path d="m944 329 65-59 65 59m-107-13v71h38v-40h30v40h16v-71" stroke="#FFF" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M1025 263h52m-29 24h35" stroke="#FFF" stroke-width="9"/>
+</svg>

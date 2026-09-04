@@ -1,39 +1,30 @@
 ---
 id: custom-card-by
-title: Custom F1 Card by @boredmthfkr
+title: Community cards by Boredmthfkr
+description: Adapt a community dashboard using button-card, custom fonts and a shared asset helper.
 ---
 
 
-I came across this card on the community forum and immediately felt it was a perfect example of what can be created with the data the integration provides. It is always inspiring to see how users build on top of the sensor and turn raw data into something both beautiful and useful.
-A big thank you to Boredmthfkr for sharing his full setup with all of us. If you have questions or want to discuss his solution further, please refer to the [forum thread](https://community.home-assistant.io/t/formula-1-racing-sensor/880842)
+Build a standings dashboard with **custom:button-card**, a shared image helper and your own font. This contributed recipe is by **Boredmthfkr**; the full YAML below preserves the author's design.
 
-//Niklas
+For questions about this setup, use the [original Home Assistant forum discussion](https://community.home-assistant.io/t/formula-1-racing-sensor/880842). Thank you to Boredmthfkr for sharing it.
 
----
-
-
-So, I was asked by Niklas to share my steps with the community, if anyone wants to replicate the cards I used. Here we go\!  
-Let’s start by giving a big “Thank you\!” to Stimo for his work on this integration. Looking at the Roadmap, I imagine more awesome cards with stats and data coming.   
-:::info[**Disclaimer**]
-I am in no way a software developer or possess coding skills, just ideas and I had help from 2 AIs in order to finetune and create the cards (Gemini & Claude). Keep in mind that AIs might not be able to solve a problem. I had many interactions trying to troubleshoot some issues with an AI and had to switch to another to get the desired results. FYI: Claude helped the most, even with the fact that I used the free plan, and with Gemini I used the Pro plan… This is NOT a statement that one is better than the other, just a hint not to rely just on one AI and to persevere and maybe try another if you don’t get to the bottom of it.  
-Also, I am documenting this after the fact and after more than a week, so I might have missed something. Hopefully not…
+:::info[Community recipe]
+This is a third-party dashboard example. Check entity IDs, current image URLs and button-card compatibility in your own setup. For the bundled cards with maintained configuration references, start with the [card catalogue](/cards/cards-overview).
 :::
-
 
 ## Prerequisites:
 
-- Install F1 font or any font of your desire  
-- Create a template helper for the “missing” info, like teams logos and cars pictures  
+- Choose a web font that you have permission to use
+- Create a template helper for the “missing” info, like teams logos and cars pictures
 - Custom:button-card installed ( [https://github.com/custom-cards/button-card](https://github.com/custom-cards/button-card) )
 
 ## Steps
 
 ### Install F1 font to use
 
-Here I had some issues with browser caching, so this step I really try to document on how I remember it, in a simplified form (I had many trials and errors). I followed instructions from this post from **HarryFlatters** (thanks for the detailed instructions). [https://community.home-assistant.io/t/formula-1-racing-sensor/880842/104](https://community.home-assistant.io/t/formula-1-racing-sensor/880842/104)  
-**Tip**: I used Google Chrome and I realized at one point that the problem with the font not showing was because **Ctrl+F5** did not do a good job. There is another way to accomplish a hard reload (works both on Chrome and Edge): call the **Developer tools** (**Ctrl+Shift+I** on all browsers), right click on the **Refresh** Icon and select **Empty Cache and Hard reload**.
+Choose a licensed `.woff2` font and place it in `/config/www/fonts/`. The example calls it `f1regular.woff2`; change the file name and family name to match your font. The font is optional: you can also use a system font in the card styles.
 
-I looked for a font of my liking ( [https://www.onlinewebfonts.com/search?q=Formula1](https://www.onlinewebfonts.com/search?q=Formula1) ) and downloaded the **woff2**, which I placed in my HA’s **www/fonts** folder. You need to create the fonts folder.   
 In the same folder, I created another file, myfont.css, with the following content:
 
 ```css
@@ -49,29 +40,29 @@ I went to **Settings \-\> Dashboards \-\> Resources** (located in the More menu 
 
 ![Resources fonts](/img/dashboard_resources_fonts.png)
 
-At this point, an **Empty Cache and Hard reload** might be required (as I said, I had many trials and errors, involving even restarts of HA, so try the Empty Cache and Hard reload, as it does not hurt).
+Reload your browser after adding the resource. If the old font remains, clear the browser cache for Home Assistant and reload again.
 
 ### Create a template helper for the “missing” info
 
 This helper is used by the cards to get the car pictures and teams logos, that are not provided by the integration. My latest version of the cards gets this data from here. Why? Because I want consistency and to have only one place where I have to make changes before a season. Links to images and logos are taken from the Official F1 website ( [https://www.formula1.com/](https://www.formula1.com/) ). I just went and looked for teams and copied the links to the logos and cars. I noticed for some logos that their colors kind of conflict with the teams color, so they are not displayed properly and a black and white logo is more suitable. Also, I noticed that some logos had “white” in their name, meaning you can “manipulate” the logo by adding “white” before extension .wepb and you get the logo in black and white. There might be some more colors there, but I do not need them, in order to look further. Also, while I am writing this, I also noticed that the cars pictures have “right” in their name. I tried now and if you replace “right” with “left”, you see the picture of the other side of the car. Cool, right? Use this as you please.
 
-#### Examples: 
+#### Examples:
 
-Ferrari car seen from the right: [https://media.formula1.com/image/upload/c\_lfill,w\_3392/q\_auto/v1740000000/common/f1/2025/ferrari/2025ferraricarright.webp](https://media.formula1.com/image/upload/c_lfill,w_3392/q_auto/v1740000000/common/f1/2025/ferrari/2025ferraricarright.webp)  
-Ferrari car seen from the left:   
-[https://media.formula1.com/image/upload/c\_lfill,w\_3392/q\_auto/v1740000000/common/f1/2025/ferrari/2025ferraricarleft.webp](https://media.formula1.com/image/upload/c_lfill,w_3392/q_auto/v1740000000/common/f1/2025/ferrari/2025ferraricarleft.webp)  
-Original Ferrary logo: [https://media.formula1.com/image/upload/c\_fit,h\_64/q\_auto/v1740000000/common/f1/2025/ferrari/2025ferrarilogo.webp](https://media.formula1.com/image/upload/c_fit,h_64/q_auto/v1740000000/common/f1/2025/ferrari/2025ferrarilogo.webp)  
-Black and white Ferrari logo:  
+Ferrari car seen from the right: [https://media.formula1.com/image/upload/c\_lfill,w\_3392/q\_auto/v1740000000/common/f1/2025/ferrari/2025ferraricarright.webp](https://media.formula1.com/image/upload/c_lfill,w_3392/q_auto/v1740000000/common/f1/2025/ferrari/2025ferraricarright.webp)
+Ferrari car seen from the left:
+[https://media.formula1.com/image/upload/c\_lfill,w\_3392/q\_auto/v1740000000/common/f1/2025/ferrari/2025ferraricarleft.webp](https://media.formula1.com/image/upload/c_lfill,w_3392/q_auto/v1740000000/common/f1/2025/ferrari/2025ferraricarleft.webp)
+Original Ferrary logo: [https://media.formula1.com/image/upload/c\_fit,h\_64/q\_auto/v1740000000/common/f1/2025/ferrari/2025ferrarilogo.webp](https://media.formula1.com/image/upload/c_fit,h_64/q_auto/v1740000000/common/f1/2025/ferrari/2025ferrarilogo.webp)
+Black and white Ferrari logo:
 [https://media.formula1.com/image/upload/c\_fit,h\_64/q\_auto/v1740000000/common/f1/2025/ferrari/2025ferrarilogowhite.webp](https://media.formula1.com/image/upload/c_fit,h_64/q_auto/v1740000000/common/f1/2025/ferrari/2025ferrarilogowhite.webp)
 
-For the template sensors, I define them on a separate file, I do not use **configuration.yaml**  
+For the template sensors, I define them on a separate file, I do not use **configuration.yaml**
 In my **configuration.yaml** I have added the following line:
 
 ```yaml
 template: !include templates.yaml
 ```
 
-I have a file **templates.yaml** under the **config** folder in HA.   
+I have a file **templates.yaml** under the **config** folder in HA.
 Here, I added the following lines:
 
 ```yaml
@@ -112,20 +103,23 @@ sensor:
           "Cadillac F1 Team": "https://media.formula1.com/image/upload/c_lfill,w_3392/q_auto/v1740000000/common/f1/2026/cadillac/2026cadillaccarright.webp"
         }
 ```
-:::warning[Important]
-Restart HA before adding the cards
+:::tip[Load the template helper]
+After merging the template configuration, check the configuration and reload template entities. Confirm that `sensor.f1_assets` exists before adding the cards. If your setup requires a restart for the new include, restart Home Assistant after the configuration check.
 :::
 
 ---
 ## The cards
 
-Adjustments can be done as you like. I got to this version of the cards that I like and that is also responsive to mobile/tablet. If there is a team color missing in the sensors, it falls back to grey and for drivers, if the headshot link is not present in the sensor.f1\_driver\_list, also falls back to the icon mdi:racing-helmet  
-Font can be adjusted to your own liking. Just replace all **f1regular** with the mane you used in the css file for the fonts, under **font-family**.  
+Adjustments can be done as you like. I got to this version of the cards that I like and that is also responsive to mobile/tablet. If there is a team color missing in the sensors, it falls back to grey and for drivers, if the headshot link is not present in the sensor.f1\_driver\_list, also falls back to the icon mdi:racing-helmet
+Font can be adjusted to your own liking. Just replace all **f1regular** with the name you used in the css file for the fonts, under **font-family**.
 Here are the codes.
 
 ### Drivers Standings card
 
 ![Drivers standings](/img/Drivers_standings_card.png)
+
+<details>
+<summary>Show asset helper YAML</summary>
 
 ```yaml
 type: custom:button-card
@@ -179,7 +173,7 @@ custom_fields:
     [[[
       const results = entity.attributes?.driver_standings || [];
       const displayResults = results.slice(0, 25);
-      
+
       // Build team color map from driver list
       const getTeamColors = () => {
         const driverList = states['sensor.f1_driver_list']?.attributes?.drivers || [];
@@ -211,21 +205,21 @@ custom_fields:
       // Get team logos from sensor.f1_assets
       const getTeamLogos = () => {
         console.log('=== F1 ASSETS DEBUG ===');
-        
+
         // List all f1-related sensors to help debug
         const allF1Sensors = Object.keys(states).filter(e => e.includes('f1'));
         console.log('All F1 sensors found:', allF1Sensors.join(', '));
-        
+
         const assetsEntity = states['sensor.f1_assets'];
         console.log('Entity exists:', !!assetsEntity);
-        
+
         if (assetsEntity && assetsEntity.attributes && assetsEntity.attributes.team_logos) {
           const rawData = assetsEntity.attributes.team_logos;
           const dataType = typeof rawData;
-          
+
           console.log('Data type:', dataType);
           console.log('Raw data:', JSON.stringify(rawData).substring(0, 200) + '...');
-          
+
           try {
             // Check if it's already an object
             if (dataType === 'object') {
@@ -252,12 +246,12 @@ custom_fields:
       const driverData = getDriverData();
       const FALLBACK_COLOR = '#888';
       const FALLBACK_ICON = 'mdi:racing-helmet';
-      
+
       const FONT_STYLE = "font-family: 'f1regular';";
 
       // Detect mobile screen
       const isMobile = window.innerWidth <= 768;
-      
+
       // Responsive sizing
       const IMG_SIZE = isMobile ? '35px' : '45px';
       const ICON_SIZE = isMobile ? '35px' : '45px';
@@ -273,20 +267,20 @@ custom_fields:
 
       return displayResults.map((r, idx) => {
         const pos = r.position !== undefined ? r.position : (r.positionText || '-');
-        
+
         const code = r.Driver?.code;
         const name = `${r.Driver?.givenName || ''} ${r.Driver?.familyName || ''}`.trim();
-        const team = r.Constructors?.[0]?.name || ''; 
+        const team = r.Constructors?.[0]?.name || '';
         const points = r.points || '0';
 
         const driverSpecificData = driverData[code] || {};
         const color = driverSpecificData.color || teamColors[team] || FALLBACK_COLOR;
-        const teamLogoUrl = teamLogos[team] || ''; 
+        const teamLogoUrl = teamLogos[team] || '';
         const headshotUrl = driverSpecificData.headshot;
         const racingNumber = driverSpecificData.racing_number || '';
 
         const bgColor = color.length === 7 ? color + '1A' : color;
-        const posTextColor = color === FALLBACK_COLOR ? 'white' : color; 
+        const posTextColor = color === FALLBACK_COLOR ? 'white' : color;
 
         let headshotTag;
         if (headshotUrl) {
@@ -301,7 +295,7 @@ custom_fields:
                   color: ${color};
                   font-size: ${BADGE_FONT};
                   font-weight: 900;
-                  text-shadow: 
+                  text-shadow:
                     -1px -1px 0 #000,
                     1px -1px 0 #000,
                     -1px 1px 0 #000,
@@ -314,13 +308,13 @@ custom_fields:
         } else {
           headshotTag = `
             <div style="
-              display: flex; 
-              align-items: center; 
+              display: flex;
+              align-items: center;
               justify-content: center;
-              width: ${IMG_SIZE}; 
-              height: ${IMG_SIZE}; 
-              border-radius: 50%; 
-              background: rgba(255, 255, 255, 0); 
+              width: ${IMG_SIZE};
+              height: ${IMG_SIZE};
+              border-radius: 50%;
+              background: rgba(255, 255, 255, 0);
               line-height: 1;
             ">
               <ha-icon icon="${FALLBACK_ICON}" style="--mdc-icon-size: ${ICON_SIZE}; color: ${posTextColor};"></ha-icon>
@@ -328,38 +322,38 @@ custom_fields:
           `;
         }
 
-        const logoTag = teamLogoUrl 
-            ? `<img src="${teamLogoUrl}" style="width: ${IMG_SIZE}; height: auto; max-height: ${ICON_SIZE};">` 
+        const logoTag = teamLogoUrl
+            ? `<img src="${teamLogoUrl}" style="width: ${IMG_SIZE}; height: auto; max-height: ${ICON_SIZE};">`
             : '';
 
         return `
           <div style="
             display: grid;
-            grid-template-columns: ${POS_WIDTH} 1fr auto; 
-            column-gap: 2px; 
-            align-items: center; 
-            background: ${bgColor}; 
-            padding: ${PADDING}; 
+            grid-template-columns: ${POS_WIDTH} 1fr auto;
+            column-gap: 2px;
+            align-items: center;
+            background: ${bgColor};
+            padding: ${PADDING};
             border-radius: 6px;
             ${FONT_STYLE}
           ">
-            
+
             <div style="
-              font-size: ${POS_FONT}; 
-              font-weight: 900; 
-              color: ${posTextColor}; 
+              font-size: ${POS_FONT};
+              font-weight: 900;
+              color: ${posTextColor};
               text-align: center;
               ${FONT_STYLE}
             ">
-              ${pos} 
+              ${pos}
             </div>
 
             <div style="display: flex; align-items: center; gap: ${GAP};">
-              
+
               <div style="
-                display: flex; 
-                align-items: center; 
-                height: 30px; 
+                display: flex;
+                align-items: center;
+                height: 30px;
                 gap: 2px;
                 padding-right: 2px;
               ">
@@ -375,15 +369,15 @@ custom_fields:
             </div>
 
             <div style="
-              font-size: ${PTS_FONT}; 
-              font-weight: 900; 
+              font-size: ${PTS_FONT};
+              font-weight: 900;
               color: var(--primary-text-color);
               text-align: right;
               ${FONT_STYLE}
             ">
               ${points} <span style="font-size: ${PTS_LABEL_FONT}; font-weight: 600;">PTS</span>
             </div>
-            
+
           </div>
         `;
       }).join('');
@@ -392,9 +386,14 @@ custom_fields:
 
 ```
 
+</details>
+
 ### Constructors Standings card
 
 ![Constructors standings](/img/constructors_standings_card.png)
+
+<details>
+<summary>Show card YAML</summary>
 
 ```yaml
 type: custom:button-card
@@ -448,7 +447,7 @@ custom_fields:
     [[[
       const results = entity.attributes?.constructor_standings || [];
       const displayResults = results.slice(0, 25);
-      
+
       const FALLBACK_COLOR = '#888';
       const FONT_STYLE = "font-family: 'f1regular';";
 
@@ -480,10 +479,10 @@ custom_fields:
       // Get assets from sensor.f1_assets
       const getAssets = () => {
         console.log('=== F1 CONSTRUCTOR ASSETS DEBUG ===');
-        
+
         const assetsEntity = states['sensor.f1_assets'];
         console.log('Entity exists:', !!assetsEntity);
-        
+
         if (!assetsEntity || !assetsEntity.attributes) {
           console.log('✗ sensor.f1_assets not found');
           return { teamLogos: {}, carImages: {} };
@@ -522,7 +521,7 @@ custom_fields:
 
       // Detect mobile screen
       const isMobile = window.innerWidth <= 768;
-      
+
       // Responsive sizing
       const LOGO_SIZE = isMobile ? '35px' : '45px';
       const CAR_IMG_WIDTH = isMobile ? '80px' : '130px';
@@ -537,55 +536,55 @@ custom_fields:
 
       return displayResults.map((r) => {
         const pos = r.position !== undefined ? r.position : (r.positionText || '-');
-        
+
         const apiTeamName = r.Constructor?.name || 'Unknown';
         const normalizedName = normalizeTeamName(apiTeamName);
         const points = r.points || '0';
-        
+
         // Use normalized name for colors, API name for assets
         const color = teamColors[normalizedName] || FALLBACK_COLOR;
         const carImageUrl = carImages[apiTeamName] || '';
         const teamLogoUrl = teamLogos[apiTeamName] || '';
 
         const bgColor = color.length === 7 ? color + '1A' : color;
-        const posTextColor = color === FALLBACK_COLOR ? 'white' : color; 
+        const posTextColor = color === FALLBACK_COLOR ? 'white' : color;
 
         const carImageTag = carImageUrl
             ? `<img src="${carImageUrl}" style="width: ${CAR_IMG_WIDTH}; height: auto; max-height: ${LOGO_SIZE}; object-fit: cover;">`
-            : ''; 
+            : '';
 
-        const logoTag = teamLogoUrl 
-            ? `<img src="${teamLogoUrl}" style="width: ${LOGO_SIZE}; height: auto; max-height: ${LOGO_SIZE};">` 
+        const logoTag = teamLogoUrl
+            ? `<img src="${teamLogoUrl}" style="width: ${LOGO_SIZE}; height: auto; max-height: ${LOGO_SIZE};">`
             : '';
 
         return `
           <div style="
             display: grid;
-            grid-template-columns: ${POS_WIDTH} 1fr auto; 
-            column-gap: 2px; 
-            align-items: center; 
-            background: ${bgColor}; 
-            padding: ${PADDING}; 
+            grid-template-columns: ${POS_WIDTH} 1fr auto;
+            column-gap: 2px;
+            align-items: center;
+            background: ${bgColor};
+            padding: ${PADDING};
             border-radius: 6px;
             ${FONT_STYLE}
           ">
-            
+
             <div style="
-              font-size: ${POS_FONT}; 
-              font-weight: 900; 
-              color: ${posTextColor}; 
+              font-size: ${POS_FONT};
+              font-weight: 900;
+              color: ${posTextColor};
               text-align: center;
               ${FONT_STYLE}
             ">
-              ${pos} 
+              ${pos}
             </div>
 
             <div style="display: flex; align-items: center; gap: ${GAP};">
-              
+
               <div style="
-                display: flex; 
-                align-items: center; 
-                height: 30px; 
+                display: flex;
+                align-items: center;
+                height: 30px;
                 gap: 2px;
                 padding-right: 2px;
               ">
@@ -593,8 +592,8 @@ custom_fields:
               </div>
 
               <div style="
-                display: flex; 
-                flex-direction: column; 
+                display: flex;
+                flex-direction: column;
                 line-height: 1.2;
                 align-items: center;
                 flex-grow: 1;
@@ -610,19 +609,19 @@ custom_fields:
               align-items: center;
               justify-content: flex-end;
               gap: ${GAP};
-              font-size: ${PTS_FONT}; 
-              font-weight: 900; 
+              font-size: ${PTS_FONT};
+              font-weight: 900;
               color: var(--primary-text-color);
               ${FONT_STYLE}
             ">
-              
+
               ${carImageTag}
 
               <div>
                 ${points} <span style="font-size: ${PTS_LABEL_FONT}; font-weight: 600;">PTS</span>
               </div>
             </div>
-            
+
           </div>
         `;
       }).join('');
@@ -631,4 +630,6 @@ custom_fields:
 
 ```
 
-Enjoy\! 
+</details>
+
+Enjoy\!

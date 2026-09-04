@@ -1,6 +1,7 @@
 ---
 id: beta-tester
-title: Beta Testing
+title: Test a beta release
+description: Test a prerelease in a separate Home Assistant setup and report useful results.
 ---
 
 Beta testing lets you try new F1 Sensor behavior before it is part of a stable release.
@@ -28,26 +29,7 @@ You do not need to be a developer, but it helps if you have basic Home Assistant
 
 ## Install a beta version
 
-To test the latest beta version, install it through HACS by redownloading the integration and selecting the beta release.
-
-1. Open **Home Assistant**.
-2. Open **HACS**.
-3. Go to **Integrations**.
-4. Open **F1 Sensor**.
-5. Select the three-dot menu in the top right corner.
-6. Select **Redownload**.
-7. Enable **Show beta versions** if the beta release is not visible.
-8. Choose the latest beta version from the version list.
-9. Confirm and complete the installation.
-10. Restart Home Assistant.
-
-After installation, verify the installed version under the integration details.
-Enable debug logging if you plan to report issues.
-
-:::warning
-Always read the release notes before updating to a beta release.
-Beta releases may include unfinished behavior, temporary limitations, or changes that need extra validation.
-:::
+Follow the [beta installation steps](/getting-started/release-channels#beta-channel), restart Home Assistant, then verify the installed version. Read the release notes to choose what to test and enable debug logging before reproducing an issue.
 
 ## Beta vs dev
 

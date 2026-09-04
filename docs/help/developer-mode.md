@@ -1,6 +1,7 @@
 ---
 id: developer-mode
-title: Developer Mode with Replay Dumps
+title: Developer mode
+description: Reproduce a recorded live timing sequence for development and troubleshooting with a local replay dump.
 ---
 
 Developer mode plays a local recording of live timing data through F1 Sensor. Use it to reproduce and test integration behavior with a known data sequence, not to watch a historical session alongside a broadcast.
@@ -107,12 +108,9 @@ While Developer mode is active, F1 Sensor does not use the normal public or F1TV
 
 ## Return to Live mode
 
-1. Open **Settings**.
-2. Go to **Devices & services**.
-3. Open **F1 Sensor**.
-4. Select **Configure**.
-5. Set **Operation mode** to **Live**.
-6. Submit the form.
+1. Open **Settings → Devices & services → F1 Sensor → Configure**.
+2. Set **Operation mode** to **Live**.
+3. Submit the form.
 
 The integration reloads, clears the configured dump path, and returns to normal live session handling.
 

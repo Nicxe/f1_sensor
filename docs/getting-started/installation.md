@@ -1,109 +1,69 @@
 ---
 id: installation
-title: Installation & Configuration
+title: Install F1 Sensor
+description: Install F1 Sensor with HACS, add it to Home Assistant, and build your first Formula 1 dashboard.
 ---
 
-Get up and running with F1 Sensor in just a few minutes.  
-This guide walks you through installation and configuration in Home Assistant, step by step.
-
-:::info[Choose the right release channel]
-Most users should install the latest stable release. If you want to test a beta release or follow active development builds, read [Release Channels](/getting-started/release-channels) before installing.
-:::
-
-
+Bring Formula 1 schedules, results and live timing into Home Assistant. Start with the stable release; you can build your first dashboard without an F1TV subscription or a live session.
 
 ## How it works
 
-
-
-1. Install the integration  
-2. Add it to Home Assistant  
-3. Select which sensors you want to use  
-
----
+1. **Install** F1 Sensor and restart Home Assistant.
+2. **Configure** the data you want to use.
+3. **Build** your first dashboard with the included cards.
 
 ## Step 1 - Install the integration
 
 ### Recommended, install via HACS
 
-The easiest way to install and keep F1 Sensor up to date.
+Open the repository in HACS:
+
+[![Open F1 Sensor in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Nicxe&repository=f1_sensor&category=integration)
 
 #### Option A, My Home Assistant
 
-Click the button below to automatically add the repository to HACS.
-
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Nicxe&repository=f1_sensor&category=integration)
+Use the button above, choose your Home Assistant instance and download the latest stable version of **F1 Sensor**. **Restart Home Assistant** after the download completes.
 
 #### Option B, Directly in HACS
 
-1. Open **HACS** in Home Assistant  
-2. Search for **F1 Sensor**  
-3. Click **Download**
-:::tip
-When installed through HACS, you will automatically receive update notifications when new releases are available.
-:::
+1. Open **HACS** and search for **F1 Sensor**.
+2. Open the integration and select **Download**.
+3. **Restart Home Assistant** after the download completes.
 
-:::info[Beta releases]
-HACS installs the stable release by default. To test a beta version, open **F1 Sensor** in HACS, use **Redownload**, enable **Show beta versions** if needed, and select the latest beta release.
-
-For the difference between stable, beta, and dev builds, see [Release Channels](/getting-started/release-channels).
-:::
-
+HACS notifies you about future updates. See [release channels](/getting-started/release-channels) if you want to test a beta.
 
 <details>
-  <summary>Manual installation</summary>
+<summary>Manual installation without HACS</summary>
 
-Use this option if you do not use HACS.
-1. Download the latest release  
-   https://github.com/Nicxe/f1_sensor/releases  
-   Download `f1_sensor.zip`
-2. Extract the archive and copy the `f1_sensor` folder to  
-   `config/custom_components/`
-3. Restart Home Assistant
+1. Open [F1 Sensor releases](https://github.com/Nicxe/f1_sensor/releases/latest).
+2. Download the release asset **f1_sensor.zip**.
+3. Extract it so the integration files are in `config/custom_components/f1_sensor/`.
+4. Restart Home Assistant.
 
+Use the release asset rather than a source-code archive; it contains the files needed by Home Assistant.
 
 </details>
 
-
----
-
 ## Step 2 - Add the integration to Home Assistant
 
-Once the installation is complete, the integration must be added.
+After restarting, open **Settings → Devices & services → Add integration** and search for **F1 Sensor**. The [configuration guide](/getting-started/add-integration) explains the choices in the setup form.
 
-[![Open your Home Assistant instance and start configuration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start?domain=f1_sensor)
-
-or
-
-1. Go to **Settings > Devices & Services**  
-2. Click **Add Integration** in the bottom right  
-3. Select **F1 Sensor**  
-4. Follow the on screen instructions
-
----
+[![Start F1 Sensor configuration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start?domain=f1_sensor)
 
 ## Step 3 - Select which sensors to create
 
-During configuration, you choose exactly which data you want to include.
-:::info
-For example, you can choose to only create sensors for the next race and weather, without calendar or standings.
+For a first dashboard, include **Next race** and weather. Enable live data when you want timing, flags or live automations. You can change this selection later through **Settings → Devices & services → F1 Sensor → Reconfigure**.
 
-You can always change this later via  
-**Settings > Devices & Services > F1 Sensor > Reconfigure**
-:::
+![The Reconfigure action for F1 Sensor in Home Assistant](/img/reconfigure.png)
 
-![Resources fonts](/img/reconfigure.png)
+*Use Reconfigure to change enabled features after installation.*
 
----
+F1TV pairing is optional. See [what works with each data mode](/features/f1tv-auth#availability-matrix) before adding access for a particular feature.
 
 ## Done
 
-Once configuration is complete, the sensors are created automatically and are ready to be used in dashboards, automations, and templates.
+Open the integration and check that its devices and selected entities appear. Schedule data should be useful even when no session is running; live entities can wait until the next session.
 
-The Live Data Cards are bundled with F1 Sensor. After Home Assistant restarts, the integration registers the dashboard card resource automatically, so you do not need to install a separate HACS dashboard repository for the cards.
+The dashboard cards are included and registered automatically. Continue with **[Your first dashboard](/getting-started/first-dashboard)**.
 
-If you are testing a beta release, continue with [Beta Testing](/help/beta-tester) so your feedback includes the version, release channel, logs, and affected feature area.
-
----
-
-![Install and configure](/img/install_config.gif)
+If F1 Sensor is missing from Add integration, confirm the download completed, restart Home Assistant and refresh the browser. For further checks, open [troubleshooting](/help/overview).

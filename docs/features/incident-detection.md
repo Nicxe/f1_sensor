@@ -1,6 +1,7 @@
 ---
 id: incident-detection
-title: Incident Detection
+title: Understand incident alerts
+description: Use conservative stopped-car alerts, understand confidence and phases, and choose notification filters.
 ---
 
 Incident Detection identifies likely stopped cars and on-track incidents from live or replayed timing context. It is designed for neutral alerts, dashboard indicators, and automations that should react when a session may have a caution-relevant event.
@@ -8,6 +9,10 @@ Incident Detection identifies likely stopped cars and on-track incidents from li
 :::warning[Not crash detection]
 Incident Detection does not prove that a crash happened. Use neutral wording such as "possible on-track incident" or "driver may have stopped on track" unless Race Control explicitly says more.
 :::
+
+## Start with a notification
+
+Use the [Incident Notifications blueprint](/blueprints/incident-notifications) to set a target and keep its conservative defaults. Public live timing supports confirmed alerts; additional authentication is not required for the basic workflow.
 
 ## What it detects
 
@@ -22,6 +27,12 @@ Incident Detection does not classify crash severity, medical response, damage, b
 Practice sessions naturally include slow running, pit work, installation laps, and test procedures, so practice alerts should stay conservative.
 
 ## Confidence and phases
+
+<div className="alert alert--info">
+<strong>Possible → Confirmed → Cleared</strong><br />
+A candidate is an early signal, confirmation adds evidence, and clearing ends the active alert. An update adds information to an existing incident. These labels describe confidence and lifecycle, not crash severity.
+</div>
+
 
 | Phase | Meaning |
 | --- | --- |

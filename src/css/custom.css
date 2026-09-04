@@ -1,30 +1,144 @@
-/**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well for content-centric websites.
- */
-
-/* You can override the default Infima variables here. */
+/* F1 Sensor: a calm reading surface with the precision of a pit wall. */
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-color-primary: #bd1831;
+  --ifm-color-primary-dark: #aa162c;
+  --ifm-color-primary-darker: #a1142a;
+  --ifm-color-primary-darkest: #841122;
+  --ifm-color-primary-light: #d01a36;
+  --ifm-color-primary-lighter: #da1c38;
+  --ifm-color-primary-lightest: #e6324c;
+  --ifm-background-color: #f7f6f2;
+  --ifm-background-surface-color: #ffffff;
+  --ifm-font-color-base: #182129;
+  --ifm-font-family-base: 'Source Sans 3', sans-serif;
+  --ifm-heading-font-family: 'Barlow Condensed', sans-serif;
+  --ifm-heading-font-weight: 600;
+  --ifm-font-size-base: 18px;
+  --ifm-line-height-base: 1.65;
+  --ifm-code-font-size: 88%;
+  --ifm-code-background: #ebeae5;
+  --ifm-navbar-background-color: #f7f6f2;
+  --ifm-navbar-height: 4rem;
+  --ifm-navbar-shadow: none;
+  --ifm-footer-background-color: #15191e;
+  --ifm-menu-color: #47505a;
+  --ifm-menu-color-background-active: #bd18310b;
+  --ifm-toc-border-color: #dcdedb;
+  --ifm-table-border-color: #dcdedb;
+  --ifm-table-stripe-background: #18212903;
+  --ifm-global-radius: 0.35rem;
+  --docusaurus-highlighted-code-line-bg: #bd18310d;
+  --f1-border: #dcdedb;
+  --f1-muted: #59616a;
+  --f1-panel: #ffffff;
+  --f1-panel-muted: #efeee9;
+  --f1-ink: #182129;
+  --f1-accent-soft: #bd18310b;
 }
-
-/* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  --ifm-color-primary: #ff6476;
+  --ifm-color-primary-dark: #ff4157;
+  --ifm-color-primary-darker: #ff2f48;
+  --ifm-color-primary-darkest: #f9001d;
+  --ifm-color-primary-light: #ff8795;
+  --ifm-color-primary-lighter: #ff99a4;
+  --ifm-color-primary-lightest: #ffced4;
+  --ifm-background-color: #101318;
+  --ifm-background-surface-color: #191e25;
+  --ifm-font-color-base: #e9edf2;
+  --ifm-code-background: #222a34;
+  --ifm-navbar-background-color: #101318;
+  --ifm-menu-color: #b4bdc8;
+  --ifm-menu-color-background-active: #ff647610;
+  --ifm-toc-border-color: #303741;
+  --ifm-table-border-color: #303741;
+  --ifm-table-stripe-background: #ffffff03;
+  --docusaurus-highlighted-code-line-bg: #ff647610;
+  --f1-border: #303741;
+  --f1-muted: #aab4c0;
+  --f1-panel: #191e25;
+  --f1-panel-muted: #1e252e;
+  --f1-ink: #e9edf2;
+  --f1-accent-soft: #ff647610;
+}
+html { scroll-padding-top: 5.5rem; }
+body { -webkit-font-smoothing: antialiased; }
+::selection { background: var(--ifm-color-primary); color: var(--ifm-background-color); }
+a { text-underline-offset: 0.18em; }
+.markdown p a, .markdown li > a, .markdown td a, .markdown dd a { text-decoration: underline; }
+a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid var(--ifm-color-primary); outline-offset: 4px; }
+.navbar { border-bottom: 1px solid var(--f1-border); padding-inline: 1.6rem; }
+.theme-announcement-bar .close { color: inherit; opacity: 1; }
+.navbar__brand { gap: 0.35rem; }
+.navbar__title { font-family: var(--ifm-heading-font-family); font-size: 1.45rem; letter-spacing: 0.035em; }
+.navbar__logo { height: 2rem; }
+.navbar__link { font-size: 0.88rem; font-weight: 600; }
+.navbar-version-chip { font-size: 0.7rem; }
+.theme-doc-sidebar-container { border-right-color: var(--f1-border) !important; }
+.menu { font-size: 0.86rem; padding: 1.2rem 0.8rem !important; }
+.menu__link { padding: 0.45rem 0.65rem; border-radius: 0.2rem; }
+.menu__link--active { font-weight: 600; }
+.menu__list .menu__list { border-left: 1px solid var(--f1-border); margin-left: 0.8rem; }
+.theme-doc-breadcrumbs { margin-bottom: 1.6rem !important; }
+.breadcrumbs__link { font-size: 0.75rem; border-radius: 0.2rem; }
+.markdown { --ifm-h2-vertical-rhythm-top: 2; }
+.markdown h1 { font-size: clamp(2.4rem, 4vw, 3.5rem); line-height: 1.06; letter-spacing: -0.015em; }
+.markdown h2 { font-size: 2rem; line-height: 1.18; padding-top: 0.35rem; }
+.markdown h3 { font-size: 1.5rem; line-height: 1.25; }
+.markdown h4 { font-size: 1.15rem; }
+.markdown > p, .markdown > ul, .markdown > ol { max-width: 76ch; }
+.markdown > p:first-of-type { font-size: 1.08rem; color: var(--f1-muted); }
+.markdown li { padding-left: 0.1rem; }
+.markdown img { border-radius: 0.4rem; height: auto; }
+.markdown hr { background: var(--f1-border); height: 1px; margin: 2.5rem 0; }
+.markdown table { width: 100%; font-size: 0.88rem; line-height: 1.5; border-collapse: collapse; }
+.markdown th { background: var(--f1-panel-muted); text-align: left; font-weight: 600; }
+.markdown th, .markdown td { border-left: 0; border-right: 0; padding: 0.8rem; }
+.markdown td code { overflow-wrap: anywhere; }
+.markdown pre { border: 1px solid var(--f1-border); box-shadow: none; }
+/* Prism's bundled light palette has several token colors below AA contrast.
+   The renderer sets inline colors, so these scoped overrides need priority. */
+[data-theme='light'] .prism-code .token:is(.comment, .prolog, .doctype, .cdata) { color: #626b75 !important; }
+[data-theme='light'] .prism-code .token:is(.atrule, .keyword, .attr-name, .selector) { color: #006b92 !important; }
+[data-theme='light'] .prism-code .token:is(.entity, .url, .symbol, .number, .boolean, .variable, .constant, .property, .regex, .inserted) { color: #116c62 !important; }
+[data-theme='light'] .prism-code .token:is(.string, .attr-value) { color: #b21d5f !important; }
+[data-theme='light'] .prism-code .token:is(.function, .deleted, .tag) { color: #bd1831 !important; }
+[data-theme='light'] .prism-code .token.namespace { opacity: 1 !important; }
+.markdown details { border: 1px solid var(--f1-border); border-radius: 0.35rem; box-shadow: none; }
+.markdown summary { font-weight: 600; }
+.alert { border-width: 1px 1px 1px 3px; border-radius: 0.35rem; box-shadow: none; font-size: 0.92rem; }
+.table-of-contents { font-size: 0.76rem; line-height: 1.5; }
+.table-of-contents__link--active { font-weight: 600; }
+.pagination-nav__link { background: var(--f1-panel); border-color: var(--f1-border); border-radius: 0.35rem; }
+.pagination-nav__label { font-family: var(--ifm-heading-font-family); font-size: 1.3rem; }
+.footer { margin-top: 3rem; padding-block: 3rem; }
+.footer__title { font-family: var(--ifm-heading-font-family); font-size: 1.15rem; letter-spacing: 0.02em; }
+.footer__link-item, .footer__copyright { font-size: 0.85rem; }
+.footer__copyright { color: #b6bdc6; }
+/* The welcome page uses an editorial layout and the native navbar. */
+body:has(.f1-home) .theme-doc-sidebar-container,
+body:has(.f1-home) .theme-doc-breadcrumbs,
+body:has(.f1-home) .theme-doc-footer,
+body:has(.f1-home) .pagination-nav { display: none; }
+body:has(.f1-home) main { width: 100%; max-width: 100%; }
+body:has(.f1-home) main > .container { max-width: 1240px; padding-inline: 2rem; }
+body:has(.f1-home) main > .container > .row > .col { max-width: 100% !important; flex-basis: 100% !important; }
+@media (min-width: 1440px) { .container { max-width: 1320px; } }
+@media (max-width: 996px) {
+  .navbar { padding-inline: 1rem; }
+  .navbar-sidebar__brand { border-bottom: 1px solid var(--f1-border); }
+  .markdown h1 { margin-top: 0.6rem; }
+  .theme-doc-toc-mobile { border: 1px solid var(--f1-border); border-radius: 0.35rem; background: var(--f1-panel); }
+  body:has(.f1-home) main > .container { padding-inline: 1.25rem; }
+}
+@media (max-width: 480px) {
+  :root { --ifm-font-size-base: 17px; }
+  .navbar__title { font-size: 1.2rem; }
+  .navbar-version-chip { display: none; }
+  .markdown table { font-size: 0.8rem; }
+  .markdown th, .markdown td { padding: 0.65rem; }
+  body:has(.f1-home) main > .container { padding-inline: 1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

@@ -1,11 +1,10 @@
 ---
 id: add-integration
-title: Configuration
+title: Configure F1 Sensor
+description: Choose your data, enable live features, and find the entities created by F1 Sensor.
 ---
 
-# Configuration
-
-To add the integration to your Home Assistant instance, use the button below:
+Choose the data you want on your dashboard. Complete [installation and restart](/getting-started/installation) first, then start the setup flow:
 
 [![Open your Home Assistant instance and start configuration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start?domain=f1_sensor)
 
@@ -57,18 +56,14 @@ The integration organizes all entities across **six dedicated sub-devices**, whi
 | **Race** | Next race info, track time, race week indicator, season calendar |
 | **Championship** | Driver and constructor standings, points progression, championship predictions* |
 | **Session** | Session status, track status, safety car, weather, timing sensors, starting grid, formation start*, overtake mode, straight mode |
-| **Drivers** | Driver list, tyres, tyre statistics, driver positions, pit stops*, team radio* |
+| **Drivers** | Driver list, tyres, tyre statistics, driver positions, favorite driver, pit stops*, team radio* |
 | **Officials** | Race control messages, FIA documents, track limits, investigations |
 | **System** | Live delay, calibration controls, replay controls, live timing connectivity, F1TV token status and controls |
 
 *Entities marked with an asterisk depend on either [Replay Mode](/features/replay-mode) or optional [F1TV Auth](/features/f1tv-auth), depending on whether you are using historical replay data or extra live timing data.
 
 Each device exposes its own set of [device automation triggers](/automation#device-automation-triggers), making it straightforward to build automations directly from the UI without writing YAML.
-:::warning[Upgrading from v3 to v4]
-After updating to v4.0.0, the original single F1 Sensor device will appear empty in Home Assistant and should be removed manually from **Settings > Devices & Services > Devices**.
-
-All entity IDs remain unchanged, so automations and dashboard cards that reference entities by their ID will continue to work without modification. However, dashboard views organized by device and any device-based conditions or triggers in automations will need to be updated to reference the new sub-devices.
-:::
+For device changes in older releases, see [upgrading an existing setup](/getting-started/release-channels#upgrading-an-existing-setup).
 
 ---
 
@@ -85,6 +80,11 @@ Optional [F1TV Auth](/features/f1tv-auth) can be paired with the [F1TV Token Hel
 Replay Mode is a separate mode. It can show some data that requires F1TV Auth during live sessions because replay uses Formula 1's public session archive after the session has completed.
 
 For the practical F1TV Auth setup, see [F1TV Auth Setup](/help/f1tv-auth-setup). For incident behavior, see [Incident Detection](/features/incident-detection).
-:::tip[Quick start]
-A typical streaming delay is 30–45 seconds. You can always fine-tune this later using the [Live Delay](/features/live-delay) feature.
-:::
+## Check your setup
+
+1. Open the **Race** device and find the Next race entity.
+2. Check that it has a race name and schedule attributes.
+3. Open **Session** if you enabled live data. An inactive state between sessions is normal.
+4. Add a [first dashboard card](/getting-started/first-dashboard).
+
+Use [Live Delay](/features/live-delay) to measure your own broadcast delay. No universal delay fits every service.

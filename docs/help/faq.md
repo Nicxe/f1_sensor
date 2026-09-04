@@ -1,311 +1,85 @@
 ---
 id: faq
-title: FAQ
+title: Frequently asked questions
+description: Short answers about setup, live data, dashboard cards, replay and optional F1TV access.
 ---
 
-# Frequently Asked Questions
+Find a short answer here, or use [symptom-based troubleshooting](/help/overview) for checks in order.
 
-[![Home Assistant Community Forum](https://img.shields.io/badge/Home%20Assistant-Community%20Forum-319fee?logo=home-assistant)](https://community.home-assistant.io/t/formula-1-racing-sensor/880842) [![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github)](https://github.com/Nicxe/f1_sensor/issues)
+## General Questions
 
-### General Questions
+### Which release channel should I use?
 
-<details>
-<summary>Which release channel should I use?</summary>
+Use stable for everyday use. Beta is for testing the next release; dev is for development or a specific maintainer-led test. See [updates and release channels](/getting-started/release-channels).
 
-Use the stable release for your normal Home Assistant setup. Use beta only when you want to help test the next release on a separate test instance. Use `dev` only for local development or when the maintainer asks you to test a specific unreleased change.
+### Do I need an API key or a separate weather account?
 
-See [Release Channels](/getting-started/release-channels) for the full stable, beta, and dev workflow.
-</details>
+No API key is required for normal setup. F1TV access is optional and only affects additional live features. Start with [installation](/getting-started/installation).
 
+### Can I show the data on an ESPHome display?
 
+Yes, through Home Assistant. F1 Sensor runs in Home Assistant; an ESPHome device can consume the entity states through its Home Assistant connection. The [e-ink example](/example/e-ink) is a separate display project.
 
+### Where are practice and qualifying times?
 
-<details>
-<summary>Do I need to configure any API keys or separate weather API for F1 Sensor?</summary>
+The Next race and calendar data include the weekend schedule. Use the [Next Race card](/cards/next-race), [Season Calendar card](/cards/season-calendar), or the attributes in the [schedule reference](/entities/next-race).
 
-No, the integration does not require any API keys. All data is fetched automatically from the provided APIs. You just install and add the integration, no additional API setup is needed.
-</details>
+## Live Data Questions
 
+### Do I need F1TV Auth or an F1 TV Pro subscription?
 
-<details>
-<summary>Can I use the F1 Sensor data in ESPHome directly (for example, on an ESP32 display)?</summary>
+F1TV Auth is optional. Public live timing supports session status, track flags, Race Control, weather, driver timing, tyres and confirmed incident alerts. Extra live feeds may need an account with the relevant timing access. Read the [availability and subscription guidance](/features/f1tv-auth) before subscribing.
 
-Not directly. F1 Sensor is a Home Assistant integration (running on Home Assistant), not an ESPHome component. This means ESPHome devices can’t retrieve F1 data on their own from this integration. 
+### Why does Track Map work in replay but not live?
 
-The workaround is to have Home Assistant pass the data to the ESPHome device, for instance, by using the Home Assistant API or MQTT to send sensor values to your ESPHome device. 
+Replay can contain archived car-position data. Live positions require optional F1TV access and usable data from the current session. A replay working does not prove that live position access is available. See [Track Map](/features/track-map).
 
+### Why are Pit Stops, Team Radio or Championship Prediction unavailable?
 
-In summary, the F1 sensors live in Home Assistant, you can mirror those entity states to ESPHome, but you cannot import the integration into ESPHome itself.
-</details>
+They depend on extra data published for the session. During live timing they can need F1TV Auth; during replay the archive must contain the data. An accepted token alone does not guarantee all feeds. See the [availability matrix](/features/f1tv-auth#availability-matrix).
 
+### Why do live sensors stop between sessions?
 
-<details>
-<summary>Are practice and qualifying session times available in F1 Sensor?</summary>
+Live entities follow active practice, qualifying, sprint or race sessions. Outside the live window they can be inactive, unchanged or unavailable. Schedules and other non-live data continue to serve different purposes.
 
-The integration does not create separate sensors for each practice or qualifying session by default (only for the race and overall “next race” info). 
+### How do I match updates to the TV?
 
-However, the schedule information for practice sessions and qualifying is included in the data. For example, the `sensor.f1_next_race` (next race info) or the season calendar sensor contains the timings for all sessions of the Grand Prix weekend. 
+Set `number.f1_live_delay` manually or measure the delay with guided calibration. [Live Delay](/features/live-delay) explains both. For recorded sessions, use [Replay Mode](/features/replay-mode) and its playback controls instead.
 
-You can use those attributes in templates or in the calendar to know when FP1, FP2, FP3, Quali, etc., occur. There is currently no dedicated “FP1 sensor” or “qualifying sensor” – this has been requested as a feature, but for now you’ll use the provided schedule data from the existing sensors.
-</details>
+### Can I watch a session later without seeing results first?
 
+Turn on [No Spoiler Mode](/features/no-spoiler-mode) before the session. Later, load the session archive with [Replay Mode](/features/replay-mode). No Spoiler Mode is not a recording service, and archive coverage varies.
 
-### Live Data Questions
+### Replay Mode or Developer mode?
 
-<details>
-<summary>Do I need F1TV Auth to use F1 Sensor?</summary>
+Use Replay Mode for watching completed sessions. [Developer mode](/help/developer-mode) uses a local timing dump for testing; it is a different workflow with different controls.
 
-No. F1 Sensor works without F1TV Auth. Public live timing covers the normal live features such as session status, track status, Safety Car, Race Control, weather, driver timing, tyres, top three, and confirmed incident alerts.
+### How do I find Race Control, flags or the current session?
 
-Optional [F1TV Auth](/features/f1tv-auth) is only needed for extra live timing features during a real live session.
-</details>
+Use [Race Control](/entities/race-control) for messages, [Track Status](/entities/track-status) for flags, and [Current Session](/entities/current-session) for the session name. [Session Status](/entities/session-status) reports the phase, such as `live` or `suspended`. A live phase alone does not identify a Race rather than a practice session.
 
-<details>
-<summary>Do I need F1 TV Pro for F1TV Auth?</summary>
+### Can I display the lap counter and total laps?
 
-No. F1TV Auth needs a Formula 1 account with an active F1 TV subscription that includes Essential Live Timing. F1 TV Access is enough in regions where Formula 1 offers it; F1 TV Pro and F1 TV Premium are not required just to pair auth.
+Use `sensor.f1_race_lap_count` and its `total_laps` attribute when available. The [Race Lap reference](/entities/race-lap) explains the state. Missing total laps can mean the source has not supplied them yet.
 
-F1 controls subscription names, availability, and prices. As a rough guide, F1 TV Access has been shown around EUR 3.49 per month and F1 TV Pro around EUR 17.99 per month, but check the F1 TV subscription page for your country before subscribing.
-</details>
+## Troubleshooting
 
-<details>
-<summary>What does F1TV Auth unlock?</summary>
+### Do I install the cards separately?
 
-F1TV Auth can unlock extra live data when Formula 1 provides it during an active session.
+No. They are bundled with the integration. Restart Home Assistant after installation and refresh your browser. Follow [Your first dashboard](/getting-started/first-dashboard).
 
-This can enable live [Track Map](/features/track-map), Pit Stops, Team Radio, Championship Prediction, formation start improvements, and earlier incident candidates. Replay Mode is separate and can show some of this data later when the replay archive contains it.
-</details>
+### Why do I still see an old card after updating?
 
-<details>
-<summary>Do I still need to install the separate F1 Sensor Live Data Card repository?</summary>
+The browser may have cached an older resource, or a standalone resource may remain configured. Follow [card installation and migration](/cards/installation). Keep existing dashboard configurations and verify the bundled cards before removing old resources.
 
-No. The Live Data Cards are bundled with F1 Sensor. Install or update the integration, restart Home Assistant, and F1 Sensor registers the dashboard card resource automatically.
+### Why does my entity name differ from the documentation?
 
-If you previously installed `f1-sensor-live-data-card` as a separate HACS dashboard repository, keep your dashboard card configuration unchanged. After confirming the bundled card loads correctly, remove the old standalone card repository and any stale dashboard resource entries so Home Assistant does not keep loading an older card file.
+Display names can be translated; older or customized installations can also have different entity IDs. Select the actual entity in the visual editor. Examples use standard IDs; they are not instructions to rename yours.
 
-If Home Assistant Repairs reports **Old standalone F1 live data card resources detected**, it means one or more old standalone resource URLs are still configured. Remove those old resources after confirming the bundled card works.
-</details>
+### Why are newly added sensors missing?
 
-
-<details>
-<summary>Why does a dashboard still show an old card after updating F1 Sensor?</summary>
-
-Home Assistant and your browser can cache dashboard JavaScript. Restart Home Assistant after updating F1 Sensor, then reload the browser tab or clear the Home Assistant frontend cache.
-
-If the old standalone card was installed before, also check **Settings > Dashboards > Resources** and remove stale entries such as `/local/f1-sensor-live-data-card.js` or `/hacsfiles/f1-sensor-live-data-card/...`. Keep the bundled F1 Sensor resource that points to `/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=...`.
-
-The same cleanup clears the Home Assistant Repairs warning for stale standalone live data card resources.
-</details>
-
-
-<details>
-<summary>Why are some entities like Pit Stops, Team Radio, and Championship Prediction unavailable without F1TV Auth?</summary>
-
-These entities depend on data that is not part of public live timing. They can update in [Replay Mode](/features/replay-mode), and they can update during real live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token. Without that token, they remain unavailable while public live timing continues.
-
-The affected entities are:
-- `sensor.f1_pitstops`
-- `sensor.f1_team_radio`
-- `sensor.f1_championship_prediction_drivers`
-- `sensor.f1_championship_prediction_teams`
-- `binary_sensor.f1_formation_start`
-
-All other live entities, such as track status, session status, driver positions, race control messages, and weather, continue to work during live sessions as before.
-</details>
-
-<details>
-<summary>Why does Track Map not show cars during live sessions?</summary>
-
-Live [Track Map](/features/track-map) requires optional F1TV Auth during a real live session. If the token is missing, expired, rejected, or Formula 1 is not publishing usable car position data, the card can show `Waiting`, `Stale`, `No geometry`, or `No session`.
-
-Check `sensor.f1_f1tv_token_status`, the Track Map card status, and `sensor.f1_live_timing_mode` if that diagnostic entity is present.
-</details>
-
-<details>
-<summary>Why does Replay Mode show data that live no-auth does not?</summary>
-
-Replay Mode uses Formula 1's session archive after the session has completed. Some data that requires F1TV Auth during a live session can be available later in the replay archive.
-
-That is why Track Map, Pit Stops, Team Radio, Championship Prediction, or incident location context can appear in Replay Mode even when they were not available from public live timing during the live session.
-</details>
-
-
-
-<details>
-<summary>Why are the live sensors (e.g. track status, session status) not updating outside of race sessions?</summary>
-
-This is expected behavior. The live sensors only update shortly before, during, and just after an active session (practice, qualifying, sprint, or race). Outside of those times, they will not update and may appear static. In other words, you’ll only see changes in those sensors when a Formula 1 session is happening or about to happen.
-</details>
-
-
-<details>
-<summary>Will the live data work if I watch a race replay later (not live)?</summary>
-
-Yes. The integration includes [**Replay Mode**](/features/replay-mode), which lets you play back historical sessions with full Home Assistant integration. When you watch a recorded race from F1 TV or another service, your automations and dashboards can follow the replay much more like a live broadcast.
-
-Replay Mode includes a draggable seek bar and **Back 30 seconds** and **Forward 30 seconds** controls. Use them to line up Home Assistant with your broadcaster if the timing drifts.
-
-Seeking backward can replay historical state changes, so replay-driven automations, notifications, and incident alerts may run again.
-
-If you want to avoid spoilers before watching, turn on [**No Spoiler Mode**](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode and experience everything as if it were live.
-
-See the [Replay Mode documentation](/features/replay-mode) for setup instructions.
-</details>
-
-<details>
-<summary>Should I use Replay Mode or Developer mode with a replay dump?</summary>
-
-Use [Replay Mode](/features/replay-mode) when you want to watch a completed session later. It downloads the session archive and provides normal controls for selecting, loading, playing, pausing, and seeking.
-
-Use [Developer Mode with Replay Dumps](/help/developer-mode) only for integration development or a specific maintainer-led test. It replaces the live timing connection with a local dump, starts automatically after reload, and does not provide pause or seek controls for that dump.
-</details>
-
-
-<details>
-<summary>How do I keep my dashboard spoiler-free until I can watch?</summary>
-
-Turn on [**No Spoiler Mode**](/features/no-spoiler-mode) before the session starts. The integration freezes all spoiler-sensitive entities (results, live timing, standings, race control messages) while keeping schedule and calendar data up to date.
-
-When you are ready, load the session in [**Replay Mode**](/features/replay-mode) and press play when the broadcast starts. When you are done, turn No Spoiler Mode off and everything updates at once.
-
-See the [No Spoiler Mode documentation](/features/no-spoiler-mode) for full details.
-</details>
-
-
-<details>
-<summary>How do I adjust the live update delay to sync with my broadcast? Where is that setting?</summary>
-
-The integration provides multiple ways to adjust the live delay:
-
-1. **Direct adjustment**: Change `number.f1_live_delay` to set the delay in seconds.
-2. **Guided calibration**: Use the built-in calibration workflow with `switch.f1_delay_calibration`.
-
-For detailed instructions including automatic calibration during a live session, see [**Live Delay**](/features/live-delay).
-</details>
-
-
-<details>
-<summary>Why does the documentation say one entity name, but Home Assistant shows another?</summary>
-
-The documentation always uses the standard `entity_id`, for example `sensor.f1_track_status` or `binary_sensor.f1_safety_car`. That is the stable reference used in examples, templates, blueprints, and automations.
-
-The display name shown in Home Assistant can be translated, and older installations may already have a different registry ID. If you cannot find an entity by display name, open the entity list and search for the documented `entity_id` or the `f1_` suffix instead. If you already have a working entity with a different registry ID from an older release, keep using that existing ID.
-</details>
-
-
-
-<details>
-<summary>Where can I find the Race Control messages (like flag notices, safety car deploy messages)?</summary>
-
-Race Control messages are available in two ways:
-
-1. **Sensor**: `sensor.f1_race_control` shows the latest message and maintains a history. See [Race Control](/entities/live-data#race-control) for details.
-
-2. **Events**: Messages are also emitted as `f1_sensor_race_control_event` events for automation triggers. See [Events](/entities/events) for the event format.
-
-For example automations, check the [Automation](/automation) page.
-</details>
-
-
-
-<details>
-<summary>How can I tell which session is currently live (Practice, Qualifying, Race, etc.)?</summary>
-
-The integration provides `sensor.f1_current_session`, which indicates the name of the session that is currently running.
-
-For example, it will show values like “Practice 1”, “Qualifying”, “Sprint Shootout”, or “Race” when those sessions are in progress. This complements the `sensor.f1_session_status` sensor (which shows the state like pre/live/finished) by telling you exactly which session is active. 
-
-This is useful for automations or dashboards that need to behave differently for practice vs. race, etc.
-</details>
-
-
-
-<details>
-<summary>Does the integration include live flag status and safety car information?</summary>
-
-Yes. The F1 Sensor integration has live sensors for track flags and safety car status. The entity `sensor.f1_track_status` reflects the current track flag/status in real time (possible states include CLEAR, YELLOW, VSC, SC, RED, etc.). 
-
-Additionally, `binary_sensor.f1_safety_car` turns on whenever a Safety Car or Virtual Safety Car is active on track. These live sensors let you react to yellow/red flags or safety car deployments in your Home Assistant automations (for example, changing lights to red on a red flag).
-</details>
-
-<details>
-<summary>Is on-track incident detection the same as crash detection?</summary>
-
-No. F1 Sensor detects likely stopped cars and on-track incidents from live timing, track status, and Race Control context. It does not prove that a crash happened.
-
-Use neutral wording in automations, such as "Possible on-track incident" or "Driver may have stopped on track." The same alert can represent a spin, technical failure, stopped car, red flag stop, or another situation.
-</details>
-
-<details>
-<summary>Does on-track incident detection work in qualifying and practice?</summary>
-
-Yes. It is designed for race, sprint, qualifying, and practice sessions.
-
-The default notification behavior is more conservative for practice because practice sessions include more slow running, pit activity, installation laps, and testing. If you enable practice notifications, consider requiring `high` confidence.
-</details>
-
-<details>
-<summary>Why did I receive a possible incident alert without a yellow flag?</summary>
-
-A yellow flag is helpful context, but it is not required in every case. A driver can be marked as stopped before Track Status or Race Control updates arrive.
-
-F1 Sensor uses confidence levels to handle this. A stopped car that is not in the pit lane can create a `medium` confidence alert, while matching yellow flag, Safety Car, red flag, or Race Control context can raise it to `high`.
-</details>
-
-<details>
-<summary>Does incident detection require F1TV Auth or Track Map?</summary>
-
-No. Public live timing can still detect confirmed stopped-car and on-track incident alerts without F1TV Auth.
-
-F1TV Auth can improve early candidate alerts through extra live car data, and Track Map can add optional location context when available. If those features are missing, stale, or rejected by Formula 1, the basic no-auth incident detection flow continues to work.
-</details>
-
-<details>
-<summary>Does F1TV Auth make incident detection faster?</summary>
-
-It can, but only when extra live car data is available and the low-speed signal matches flag, Safety Car, red flag, or Race Control context. Those early signals are published as `candidate` incidents and should be treated as less certain than confirmed alerts.
-
-The default incident notification blueprint stays conservative and does not notify for candidates unless you opt in.
-</details>
-
-
-
-
-
-
-<details>
-<summary>Can F1 Sensor show live driver positions or lap times like a Formula 1 timing tower?</summary>
-
-Yes. The `sensor.f1_driver_positions` sensor provides live driver positions, lap times, sector times, pit status, and more during an active session. There are also dedicated `sensor.f1_top_three_p1`, `sensor.f1_top_three_p2`, and `sensor.f1_top_three_p3` sensors for the current top three positions, and `sensor.f1_current_tyres` for each driver’s current tyre compound. See [Driver Positions](/entities/live-data#driver-positions) for full details.
-</details>
-
-
-<details>
-<summary>How can I display “Lap X of Y” for the current race?</summary>
-
-The integration provides the current lap number as `sensor.f1_race_lap_count` during an active race. To get the total number of laps, use the sensor’s attributes. The `sensor.f1_race_lap_count` sensor has an attribute named `total_laps` that represents the total laps scheduled for the race. 
-
-For example, if the sensor state is `12` and the `total_laps` attribute is `56`, you can construct a template or use a custom card to show “Lap 12 of 56.” 
-
-*(If you see total_laps: unknown, it may mean the race info hasn’t fully synced yet or you’re checking outside of an active race. It should populate once the race session data is live.)*
-</details>
-
-
-### Troubleshooting
-
-<details>
-<summary>I updated F1 Sensor but I don’t see the new sensors (like track status or weather) – where are they?</summary>
-
-You likely need to enable the live data sensors in the integration configuration.
-
-Open the F1 Sensor integration options with **Reconfigure** and make sure **Enable live F1 API** is turned on. Once enabled and saved, live sensors such as session status, track status, Race Control, weather, and timing entities are created.
-:::info
-Live data is opt-in. If **Enable live F1 API** is off, live session entities are not created.
-:::
-</details>
-
----
+Open **F1 Sensor → Reconfigure**, enable live data if needed, and select the feature. Some features, including Favorite Driver, are opt-in. Use the [configuration guide](/getting-started/add-integration).
 
 ## Can't find the answer you're looking for?
 
-If you're still having issues, head over to the [Contact](/help/contact) page.
+Start with [troubleshooting](/help/overview), then [collect logs](/help/debug-logging) and [get help](/help/contact).
