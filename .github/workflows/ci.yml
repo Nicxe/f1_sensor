@@ -16,6 +16,7 @@ on:
         default: false
 permissions:
   contents: read
+  pull-requests: read
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/content' }}
@@ -24,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
+      tested_head: ${{ steps.plan.outputs.tested_head }}
       selected: ${{ steps.plan.outputs.selected }}
       lint: ${{ steps.plan.outputs.lint }}
       backend: ${{ steps.plan.outputs.backend }}
@@ -83,7 +85,7 @@ jobs:
     if: needs.plan.outputs.automation == 'true'
     uses: ./.github/workflows/automation-tests.yml
   required:
-    name: CI required
+    name: ${{ github.event.inputs.pull_request && 'Dispatched CI result' || 'CI required' }}
     needs: [plan, lint, backend, frontend, documentation, validation, package, audit, blueprints, automation]
     if: always()
     runs-on: ubuntu-latest
@@ -96,6 +98,31 @@ jobs:
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
         run: python3 scripts/ci_policy.py gate
+  report-pr:
+    name: Report explicitly verified PR
+    needs: [plan, required]
+    if: always() && github.event.inputs.pull_request && needs.plan.outputs.tested_head
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      checks: write
+      pull-requests: read
+    steps:
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          PR_NUMBER: ${{ github.event.inputs.pull_request }}
+          TESTED_HEAD: ${{ needs.plan.outputs.tested_head }}
+          CI_RESULT: ${{ needs.required.result }}
+        with:
+          script: |
+            const pr = (await github.rest.pulls.get({...context.repo, pull_number:Number(process.env.PR_NUMBER)})).data;
+            if (pr.head.sha !== process.env.TESTED_HEAD || pr.base.ref !== context.ref.replace('refs/heads/','')) {
+              throw new Error('PR changed; dispatch verification again.');
+            }
+            await github.rest.checks.create({...context.repo, name:'CI required', head_sha:process.env.TESTED_HEAD,
+              status:'completed', conclusion:process.env.CI_RESULT==='success'?'success':'failure',
+              details_url:`https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              output:{title:'Verified PR merge result',summary:`All applicable checks ran on this PR merge from its trusted target branch. Result: ${process.env.CI_RESULT}.`}});
   release:
     needs: required
     if: >-
