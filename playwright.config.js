@@ -2,6 +2,7 @@ const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './frontend-tests',
+  testMatch: '**/*.spec.js',
   grepInvert: process.env.F1_MAINTENANCE ? undefined : /@performance/,
   outputDir: 'test-results/playwright',
   snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{arg}{ext}',
