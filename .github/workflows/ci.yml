@@ -18,8 +18,8 @@ permissions:
   contents: read
   pull-requests: read
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/content' }}
+  group: ci-${{ github.event.pull_request.number || github.event.inputs.pull_request || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event.inputs.pull_request != '' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/content' }}
 jobs:
   plan:
     runs-on: ubuntu-latest
