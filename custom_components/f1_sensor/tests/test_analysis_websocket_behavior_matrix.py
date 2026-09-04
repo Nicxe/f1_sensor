@@ -129,6 +129,7 @@ def test_subscription_coalesces_sends_and_cancels_pending(hass) -> None:
     subscription.receive({"value": 1})
     subscription.receive({"value": 2})
     assert subscription._pending_handle is not None
+    subscription._pending_handle.cancel()
     subscription._send_pending()
     assert connection.events[-1] == (5, {"value": 2})
 

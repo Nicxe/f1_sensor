@@ -241,7 +241,7 @@ test('200 percent zoom, reduced motion, forced colors and coarse pointer remain 
   await expect(page).toHaveScreenshot('zoom-forced-colors.png', { fullPage: true });
 });
 
-test('render performance stays inside the Phase 5 browser budget', async ({ page }) => {
+test('render performance stays inside the browser budget @performance', async ({ page }) => {
   await openFixture(page);
   const result = await page.evaluate(async () => {
     const longTasks = [];

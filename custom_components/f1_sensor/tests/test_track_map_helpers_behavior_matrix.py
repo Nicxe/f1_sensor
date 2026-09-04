@@ -340,6 +340,7 @@ async def test_track_map_adapter_replay_prepare_interpolation_and_close(
     adapter._set_interpolation_targets([_position("4", 110, 110)], 10.0)
     assert adapter._driver_sample_interval_seconds == 1.0
     assert adapter._interpolation_duration() > 0
+    adapter._interpolation_handle.cancel()
     adapter._run_interpolation_tick()
 
     adapter._on_replay_state({"state": "paused"})

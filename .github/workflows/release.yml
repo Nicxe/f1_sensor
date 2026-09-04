@@ -1,9 +1,6 @@
 name: Release
-
 on:
-  push:
-    branches: [beta, main]
-
+  workflow_call:
 permissions:
   contents: write
   issues: write
@@ -11,44 +8,41 @@ permissions:
   packages: read
   id-token: write
   attestations: write
-
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   release:
+    if: github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           fetch-tags: true
-
-      - name: Set up Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
           cache: npm
           registry-url: https://npm.pkg.github.com
-          scope: "@nicxe"
-
-      - name: Install dependencies
-        run: npm ci
+          scope: '@nicxe'
+      - run: npm ci --no-audit --no-fund
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
-
-      - name: Verify dependency policy
-        run: npm run test:audit
-
-      - name: Release
-        run: npx semantic-release
+      - name: Verify branch head still matches tested commit
+        env:
+          TESTED_SHA: ${{ github.sha }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
+        run: |
+          actual=$(git ls-remote origin "refs/heads/$RELEASE_BRANCH" | cut -f1)
+          test "$actual" = "$TESTED_SHA" || { echo 'Branch advanced; release must use the new CI run.'; exit 1; }
+      - name: Create or recover the release draft
+        run: node .github/scripts/run-release.cjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
-
       - name: Attest release provenance
-        if: ${{ hashFiles('f1_sensor.zip') != '' }}
+        if: hashFiles('f1_sensor.zip') != ''
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: f1_sensor.zip

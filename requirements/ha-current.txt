@@ -1,0 +1,2 @@
+# Home Assistant 2026.9.0; the plugin pins HA and pytest tooling together.
+pytest-homeassistant-custom-component==0.13.363

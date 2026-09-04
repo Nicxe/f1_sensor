@@ -9,26 +9,41 @@ import json
 from pathlib import Path
 
 
-def _advisories(vulnerability: dict[str, object]) -> set[int]:
-    return {
-        int(item["source"])
-        for item in vulnerability.get("via", [])
-        if isinstance(item, dict) and isinstance(item.get("source"), int)
-    }
+class AuditUnavailable(ValueError):
+    """The registry did not return a complete npm audit report."""
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("audit", type=Path)
-    parser.add_argument(
-        "--allowlist",
-        type=Path,
-        default=Path("quality/npm-audit-allowlist.json"),
-    )
-    parser.add_argument("--today", type=date.fromisoformat, default=date.today())
-    args = parser.parse_args()
-    audit = json.loads(args.audit.read_text(encoding="utf-8"))
-    allowlist = json.loads(args.allowlist.read_text(encoding="utf-8"))
+def evaluate_audit(audit: object, allowlist: dict, today: date) -> list[str]:
+    """Evaluate only successful, structurally valid audit responses."""
+    if (
+        not isinstance(audit, dict)
+        or "error" in audit
+        or audit.get("auditReportVersion") != 2
+        or not isinstance(audit.get("vulnerabilities"), dict)
+        or not isinstance(audit.get("metadata"), dict)
+        or not isinstance(audit.get("metadata", {}).get("vulnerabilities"), dict)
+    ):
+        raise AuditUnavailable(
+            "npm audit could not be completed: invalid or unavailable registry response"
+        )
+    vulnerabilities = audit["vulnerabilities"]
+    if audit["metadata"]["vulnerabilities"].get("total") != len(vulnerabilities):
+        raise AuditUnavailable(
+            "npm audit could not be completed: inconsistent finding count"
+        )
+    for package, vulnerability in vulnerabilities.items():
+        if (
+            not isinstance(vulnerability, dict)
+            or not isinstance(vulnerability.get("via"), list)
+            or not vulnerability["via"]
+        ):
+            raise AuditUnavailable(f"invalid advisory data for {package}")
+        for item in vulnerability["via"]:
+            if isinstance(item, str) and item in vulnerabilities:
+                continue
+            if isinstance(item, dict) and isinstance(item.get("source"), int):
+                continue
+            raise AuditUnavailable(f"unresolved advisory data for {package}")
     allowed: dict[tuple[str, int], date] = {}
     failures: list[str] = []
 
@@ -38,14 +53,16 @@ def main() -> int:
         except (KeyError, TypeError, ValueError):
             failures.append(f"invalid expiry for {entry.get('package', '<unknown>')}")
             continue
-        if expiry < args.today:
+        if expiry < today:
             failures.append(f"expired exception for {entry['package']} on {expiry}")
         for advisory in entry.get("advisory_ids", []):
             allowed[(entry["package"], int(advisory))] = expiry
 
     findings: set[tuple[str, int]] = set()
-    for package, vulnerability in audit.get("vulnerabilities", {}).items():
-        advisories = _advisories(vulnerability)
+    for package, vulnerability in vulnerabilities.items():
+        advisories = {
+            item["source"] for item in vulnerability["via"] if isinstance(item, dict)
+        }
         findings.update((package, advisory) for advisory in advisories)
 
     for finding in sorted(findings):
@@ -57,11 +74,29 @@ def main() -> int:
                 f"stale exception {exception[0]} advisory {exception[1]} is no longer present"
             )
 
+    return failures
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("audit", type=Path)
+    parser.add_argument(
+        "--allowlist", type=Path, default=Path("quality/npm-audit-allowlist.json")
+    )
+    parser.add_argument("--today", type=date.fromisoformat, default=date.today())
+    args = parser.parse_args()
+    try:
+        audit = json.loads(args.audit.read_text(encoding="utf-8"))
+        allowlist = json.loads(args.allowlist.read_text(encoding="utf-8"))
+        failures = evaluate_audit(audit, allowlist, args.today)
+    except (AuditUnavailable, json.JSONDecodeError, OSError) as err:
+        print(f"npm audit unavailable: {err}")
+        return 2
     if failures:
         print("npm audit policy failed:")
         print("\n".join(f"- {failure}" for failure in failures))
         return 1
-    print(f"npm audit policy passed with {len(findings)} reviewed advisory finding(s)")
+    print("npm audit policy passed")
     return 0
 
 

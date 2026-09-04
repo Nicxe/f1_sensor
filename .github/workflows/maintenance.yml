@@ -1,0 +1,82 @@
+name: Weekly maintenance
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: weekly-maintenance
+  cancel-in-progress: false
+jobs:
+  audit:
+    uses: ./.github/workflows/audit.yml
+  compatibility:
+    name: Latest stable HA on dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: dev
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - run: pip install --upgrade pytest-homeassistant-custom-component
+      - name: Record tested versions
+        run: pip show homeassistant pytest-homeassistant-custom-component
+      - run: python scripts/run_ci_tests.py
+      - run: python scripts/test_installed_release.py
+      - name: Measure backend performance
+        if: always()
+        run: python -m pytest -q custom_components/f1_sensor/tests/test_phase_5_quality.py -m performance --durations=0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: weekly-python
+          path: |
+            test-results/python-*.xml
+            coverage.json
+          retention-days: 14
+  reviews:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - run: python3 scripts/check_source_reviews.py quality/data-sources.json
+      - run: python3 scripts/check_token_helper_review.py quality/token-helper-review.json
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: dev
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium webkit
+      - name: Chromium performance
+        env:
+          F1_MAINTENANCE: 'true'
+        run: npx playwright test --grep '@performance'
+      - name: WebKit lifecycle, locale, keyboard and destructive-action smoke
+        if: always()
+        env:
+          F1_BROWSER: webkit
+        run: npx playwright test --grep 'mounts and unmounts|keyboard actions|timezone wins|clear always'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: failure()
+        with:
+          name: weekly-browser
+          path: test-results/playwright
+          retention-days: 14

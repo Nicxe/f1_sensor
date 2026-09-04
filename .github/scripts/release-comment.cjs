@@ -1,0 +1,90 @@
+// Existing public release instructions, shared with the tested issue automation.
+const {extractField} = require('./issue-fields.cjs');
+module.exports = function releaseComment(issue, release) {
+const isPrerelease = release.prerelease === true;
+const releaseUrl = release.html_url;
+const releaseTag = release.tag_name;
+const getIssueLabels = issue =>
+  issue.labels.map(label => (label.name || label || '').toString().toLowerCase());
+const hasTitlePrefix = (issue, prefix) =>
+  new RegExp(`^\\s*\\[${prefix}\\]\\s*:?`, 'i').test(issue.title || '');
+const getIssueType = issue => {
+  const labels = getIssueLabels(issue);
+  if (hasTitlePrefix(issue, 'feature')) {
+    return 'feature';
+  }
+  if (hasTitlePrefix(issue, 'bug')) {
+    return 'bug';
+  }
+  if (labels.includes('enhancement')) {
+    return 'feature';
+  }
+  if (labels.includes('bug')) {
+    return 'bug';
+  }
+  return 'bug';
+};
+const isCardIssue = issue => {
+  const labels = getIssueLabels(issue);
+  const component = extractField(issue.body, 'Component').toLowerCase();
+  return (
+    labels.includes('card') ||
+    component.includes('live data card') ||
+    component.includes('both integration and card')
+  );
+};
+const buildReleaseLine = issueType => {
+  if (issueType === 'feature') {
+    return isPrerelease
+      ? `This feature has been implemented and is available for testing in **[${releaseTag}](${releaseUrl})**, a BETA pre-release of F1 Sensor.`
+      : `This feature is now available in **[${releaseTag}](${releaseUrl})**, the latest stable release of F1 Sensor.`;
+  }
+
+  return isPrerelease
+    ? `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, a BETA pre-release of F1 Sensor.`
+    : `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, the latest stable release of F1 Sensor.`;
+};
+const buildComment = (cardIssue, issueType) => {
+  const cardChangeType = issueType === 'feature' ? 'changes' : 'fixes';
+
+  if (isPrerelease) {
+    const lines = [
+      buildReleaseLine(issueType),
+      '',
+      'To test the beta version, open HACS in Home Assistant, go to **Integrations**, and find **F1 Sensor**. Click the three-dot menu and select **Redownload**. Make sure **Show beta versions** is enabled in the HACS settings for this integration. Alternatively, you can download the release manually from the [Releases page](' + releaseUrl + ').',
+    ];
+
+    if (cardIssue) {
+      lines.push(
+        '',
+        `For live data card ${cardChangeType}, restart Home Assistant after updating and reload your browser so the dashboard loads the latest bundled card assets.`
+      );
+    }
+
+    lines.push(
+      '',
+      'Your feedback on the beta is very welcome \u2014 please report any issues you run into so they can be addressed before the stable release.'
+    );
+    return lines.join('\n');
+  }
+
+  const lines = [
+    buildReleaseLine(issueType),
+    '',
+    'To update via HACS, open Home Assistant, go to **HACS \u2192 Integrations**, find **F1 Sensor**, and click **Update**. If you installed it manually, download the latest release from the [Releases page](' + releaseUrl + ') and replace the existing files.',
+    '',
+    'After updating, restart Home Assistant to apply the changes.',
+  ];
+
+  if (cardIssue) {
+    lines.push(
+      '',
+      `For bundled live data card ${cardChangeType}, reload your browser after restarting Home Assistant. If you still have the old standalone HACS dashboard card installed, remove the old card repository and stale dashboard resource only after confirming the bundled card works.`
+    );
+  }
+
+  return lines.join('\n');
+};
+
+return buildComment(isCardIssue(issue), getIssueType(issue));
+};

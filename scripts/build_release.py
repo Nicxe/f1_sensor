@@ -36,10 +36,12 @@ def _runtime_files(component: Path, policy: dict[str, object]) -> list[Path]:
             continue
         if relative.name in excluded_files:
             continue
+        if path.is_symlink():
+            raise ValueError(f"release cannot contain a symbolic link: {relative}")
         if path.suffix not in allowed_extensions:
-            continue
+            raise ValueError(f"unclassified release file: {relative}")
         if len(relative.parts) > 1 and relative.parts[0] not in allowed_directories:
-            continue
+            raise ValueError(f"runtime file outside release allowlist: {relative}")
         files.append(path)
     return sorted(files, key=lambda item: item.relative_to(component).as_posix())
 
@@ -90,9 +92,13 @@ def main() -> int:
                     "fileName": relative,
                     "checksums": [
                         {
+                            "algorithm": "SHA1",
+                            "checksumValue": hashlib.sha1(content).hexdigest(),
+                        },
+                        {
                             "algorithm": "SHA256",
                             "checksumValue": hashlib.sha256(content).hexdigest(),
-                        }
+                        },
                     ],
                 }
             )
@@ -128,7 +134,10 @@ def main() -> int:
                 "packageVerificationCode": {
                     "packageVerificationCodeValue": hashlib.sha1(
                         "".join(
-                            entry["checksums"][0]["checksumValue"] for entry in entries
+                            sorted(
+                                entry["checksums"][0]["checksumValue"]
+                                for entry in entries
+                            )
                         ).encode()
                     ).hexdigest()
                 },
@@ -144,6 +153,13 @@ def main() -> int:
             for index, entry in enumerate(entries, 1)
         ],
         "relationships": [
+            {
+                "spdxElementId": "SPDXRef-DOCUMENT",
+                "relationshipType": "DESCRIBES",
+                "relatedSpdxElement": "SPDXRef-Package-f1-sensor",
+            }
+        ]
+        + [
             {
                 "spdxElementId": "SPDXRef-Package-f1-sensor",
                 "relationshipType": "CONTAINS",
