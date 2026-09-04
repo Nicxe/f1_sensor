@@ -9754,6 +9754,9 @@ class SessionClockCoordinator(DataUpdateCoordinator):
     _QUALI_TOTALS = {1: 18 * 60, 2: 15 * 60, 3: 12 * 60}
     _SPRINT_QUALI_TOTALS = {1: 12 * 60, 2: 10 * 60, 3: 8 * 60}
     _PUBLISH_FIELDS = (
+        "clock_remaining_s",
+        "clock_elapsed_s",
+        "race_three_hour_remaining_s",
         "clock_total_s",
         "session_part",
         "session_type",
@@ -9797,6 +9800,8 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         self._last_published_state: dict[str, Any] | None = None
         self._replay_controller = replay_controller
         self._replay_state_unsub: Callable[[], None] | None = None
+        self._tick_unsub: Callable[[], None] | None = None
+        self._tick_enabled = False
         self._reset_runtime()
         _init_stream_delay_state(
             self,
@@ -9807,6 +9812,8 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         )
 
     async def async_close(self, *_):
+        self._tick_enabled = False
+        self._stop_tick()
         if self._replay_state_unsub is not None:
             with suppress(Exception):
                 self._replay_state_unsub()
@@ -9839,6 +9846,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         }
 
     def _reset_runtime(self) -> None:
+        self._stop_tick()
         self._session_info: dict[str, Any] = {}
         self._session_status: dict[str, Any] = {}
         self._clock_anchor_utc: datetime | None = None
@@ -9926,10 +9934,11 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             return
         remaining_s = self._parse_remaining(msg.get("Remaining"))
         anchor_utc = self._parse_utc(msg.get("Utc"))
+        if anchor_utc is None and "Extrapolating" in msg:
+            anchor_utc = self._server_now_utc()
         force_publish = False
         if (
-            remaining_s is not None
-            and anchor_utc is not None
+            anchor_utc is not None
             and self._clock_anchor_remaining_s is not None
             and self._clock_anchor_utc is not None
         ):
@@ -9939,7 +9948,12 @@ class SessionClockCoordinator(DataUpdateCoordinator):
                 if self._clock_anchor_extrapolating
                 else self._clock_anchor_remaining_s
             )
-            force_publish = abs(remaining_s - expected) > 2
+            if remaining_s is None:
+                # Sparse pause/resume updates move the anchor without repeating
+                # Remaining. Rebase before applying the new running flag.
+                remaining_s = expected
+            else:
+                force_publish = abs(remaining_s - expected) > 2
         previous_extrapolating = self._clock_anchor_extrapolating
         if remaining_s is not None:
             self._clock_anchor_remaining_s = remaining_s
@@ -9977,6 +9991,13 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         if not isinstance(msg, dict):
             return
         self._session_status = msg
+        status = str(msg.get("Status") or msg.get("Message") or "").strip()
+        if status in self._CLOCK_FREEZE_STATES:
+            # SessionData can arrive later than the status change. Freeze now
+            # and let an earlier official terminal timestamp refine the result.
+            self._record_segment_terminal(
+                self._parse_utc(msg.get("Utc")) or self._server_now_utc()
+            )
         self._schedule_deliver()
 
     def _on_session_info(self, msg: dict) -> None:
@@ -10282,7 +10303,9 @@ class SessionClockCoordinator(DataUpdateCoordinator):
 
     def _record_segment_terminal(self, utc: datetime) -> None:
         segment_id = self._segment_id(self._resolve_session_part_at(utc))
-        self._segment_terminal_utc.setdefault(segment_id, utc)
+        current = self._segment_terminal_utc.get(segment_id)
+        if current is None or utc < current:
+            self._segment_terminal_utc[segment_id] = utc
 
     def _segment_start(self, segment_id: int) -> datetime | None:
         if segment_id in self._segment_start_utc:
@@ -10420,9 +10443,11 @@ class SessionClockCoordinator(DataUpdateCoordinator):
             self._clock_anchor_extrapolating
             and isinstance(self._clock_anchor_utc, datetime)
             and isinstance(clock_total, int)
-            and isinstance(clock_remaining, int)
+            and isinstance(self._clock_anchor_remaining_s, int)
         ):
-            offset = max(0, int(clock_total) - int(clock_remaining))
+            # Use values from the same clock anchor. Subtracting the current
+            # remaining time from the old anchor moves the inferred start.
+            offset = max(0, clock_total - self._clock_anchor_remaining_s)
             return self._clock_anchor_utc - timedelta(seconds=offset), "clock_inferred"
 
         if clock_total is not None:
@@ -10611,18 +10636,57 @@ class SessionClockCoordinator(DataUpdateCoordinator):
                 return True
         return False
 
+    def _stop_tick(self) -> None:
+        """Release the shared local clock timer on pause, reset or unload."""
+        self._tick_unsub = _call_unsub(self._tick_unsub)
+
+    def _update_tick(self) -> None:
+        """Run one local timer only while a published clock can advance."""
+        state = self._state
+        should_tick = (
+            self._tick_enabled
+            and self.available
+            and not _is_no_spoiler_blocked(self)
+            and not self._is_replay_temporarily_frozen()
+            and state.get("session_status") not in self._CLOCK_FREEZE_STATES
+            and (
+                state.get("clock_running")
+                or (state.get("race_three_hour_remaining_s") or 0) > 0
+                or (
+                    state.get("clock_remaining_s") is None
+                    and state.get("clock_elapsed_s") is not None
+                    and state.get("session_status") in {"Started", "Resumed"}
+                )
+            )
+        )
+        if not should_tick:
+            self._stop_tick()
+        elif self._tick_unsub is None:
+            self._tick_unsub = async_track_time_interval(
+                self.hass, self._tick, timedelta(seconds=1)
+            )
+
+    @ha_callback
+    def _tick(self, _now: datetime) -> None:
+        """Advance from the delayed/replay clock anchor without network I/O."""
+        self._deliver()
+
     def _deliver(self, *, force: bool = False) -> None:
         if _is_no_spoiler_blocked(self):
+            self._stop_tick()
             return
         self.available = True
         self._state = self._build_state()
         self.data_list = [self._state]
+        self._update_tick()
         if force or self._should_publish_state(self._state):
             self._last_published_state = dict(self._state)
             self.async_set_updated_data(self._state)
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
+        self._tick_enabled = True
+        self._update_tick()
         if self._replay_controller is not None:
             with suppress(Exception):
                 self._replay_state_unsub = (
@@ -10671,6 +10735,7 @@ class SessionClockCoordinator(DataUpdateCoordinator):
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         if _is_no_spoiler_live_state(reason):
+            self._stop_tick()
             _clear_delayed_ingest_state(self)
             return
         self.available = is_live

@@ -1350,30 +1350,30 @@ class LiveSessionSupervisor:
         await self._bus.start()
         self._bus.set_heartbeat_expectation(True)
         self._availability.set_state(True, f"live-{window.session_name}")
+        reason = "interrupted"
         try:
             reason = await self._monitor_window(window, source=source)
         finally:
             self._bus.set_heartbeat_expectation(False)
-            await self._bus.async_close()
-            availability_reason = (
-                "no-spoiler"
-                if reason == "no-spoiler-activated"
-                else f"finished-{window.session_name}"
-            )
-            self._availability.set_state(False, availability_reason)
-            _LOGGER.info(
-                "Live timing closed for %s (%s)",
-                label,
-                reason if "reason" in locals() else "no-reason",
-            )
-            self._current_window = None
             try:
-                await self._session_coord.async_request_refresh()
-            except Exception:  # noqa: BLE001
-                _LOGGER.debug(
-                    "Session index refresh failed after %s", label, exc_info=True
+                await self._bus.async_close()
+            finally:
+                self._current_window = None
+                self._current_window_source = "none"
+                availability_reason = (
+                    "no-spoiler"
+                    if reason == "no-spoiler-activated"
+                    else f"finished-{window.session_name}"
                 )
-            self._current_window_source = "none"
+                self._availability.set_state(False, availability_reason)
+                _LOGGER.info("Live timing closed for %s (%s)", label, reason)
+            if reason != "interrupted":
+                try:
+                    await self._session_coord.async_request_refresh()
+                except Exception:  # noqa: BLE001
+                    _LOGGER.debug(
+                        "Session index refresh failed after %s", label, exc_info=True
+                    )
 
     async def _monitor_window(self, window: SessionWindow, *, source: str) -> str:
         label = window.label
