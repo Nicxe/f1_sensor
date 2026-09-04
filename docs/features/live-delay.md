@@ -1,21 +1,22 @@
 ---
 id: live-delay
-title: Live Delay, Sync with TV
+title: "Live Delay: sync with your TV"
+description: Measure and set Live Delay so dashboard updates and automations follow your broadcast.
 ---
 
 The live update delay lets you delay delivery of live messages and live Track Map updates so they better align with what you see on TV or streaming services.
 
 This is especially useful for dashboards and automations, for example flashing lights on a red flag or reacting to safety car deployments, so they happen at the same moment you see them on screen.
 
+import {DelayDemo} from '@site/src/components/Docs';
+
 ## Typical broadcast delays
 
-Actual delays vary by provider, but these ranges are common:
+Your provider, device and stream buffering determine how far the picture trails the live timing. Measure the difference on your own broadcast rather than using a fixed provider estimate.
 
-- **Broadcast TV** (satellite, cable, terrestrial): about 5-10 seconds behind
-- **Streaming services**: about 20-45 seconds behind, sometimes more
-- **Sports cable / OTT providers**: about 45-60 seconds or more depending on provider
+<DelayDemo />
 
-By setting the delay accordingly, Home Assistant can react in sync with the live pictures you are watching.
+Choose **manual adjustment** if you already know the delay, or **guided calibration** to measure a shared reference point. For a recorded session, use [Replay Mode](/features/replay-mode) instead.
 :::info[Standard entity IDs]
 This page uses the standard helper entity IDs for new installations: `number.f1_live_delay`, `switch.f1_delay_calibration`, `button.f1_delay_calibration_match`, and `select.f1_live_delay_reference`.
 
@@ -29,15 +30,18 @@ If you upgraded from an older release and already have different registry IDs, k
 
 At its core, Live Delay is a single value, stored in `number.f1_live_delay`.
 
-Changing this value **directly updates** the Live Delay Controller and delays all live messages. This value represents how many seconds live updates should be delayed before they are exposed to sensors.
+1. Open the **System** device under F1 Sensor.
+2. Find `number.f1_live_delay` and enter your delay in seconds.
+3. Compare a track flag or session-clock change with the broadcast.
+4. Adjust the value or use guided calibration if the two remain out of step.
 
-Everything else in the integration builds on top of this number.
+A larger value makes live data arrive later in Home Assistant.
 
 ![Manual Live Delay](/img/live_delay_manual.png)
 
 This method is simple and reliable. The guided calibration below is optional.
 :::tip
-During the broadcast, they always show the moment the race clock flips to the start time, for example 15:00:00. If you look up an [atomic clock online](https://time.is/), you'll have an exact reference. Watch the time when the broadcast clock hits the start. So when the broadcast clock shows 15:00:00 and the race actually starts, the atomic clock reads 15:00:30. Then set a 30-second delay in the configuration.
+Use a reference visible both in the timing and in the broadcast, such as the session start or a completed lap. A broadcaster may show a delayed or edited graphic, so check the result again after calibration.
 :::
 
 ## Incident alerts and notifications
@@ -57,7 +61,7 @@ Replay Mode does not wait for Live Delay. Replay playback and replay Track Map d
 ## Option 2 - Guided calibration
 
 
-The guided workflow helps you measure the delay automatically.
+Guided calibration measures the time until you press the match button. Choose a reference first, arm calibration, then match that same moment on your TV.
 
 It uses these helper entities:
 
@@ -67,37 +71,11 @@ It uses these helper entities:
 | `button.f1_delay_calibration_match` | Press when TV catches up to commit the delay |
 | `select.f1_live_delay_reference` | Choose when the timer starts |
 
-![Manual Live Auto](/img/live_delay_auto.png)
+![Live Delay calibration controls in Home Assistant](/img/live_delay_auto.png)
 
 ### Entity reference
 
-The calibration workflow publishes additional attributes so you can see what it is doing.
-
-The `number.f1_live_delay` entity also exposes:
-
-| Attribute | Type | Description |
-| --- | --- | --- |
-| calibration_mode | string | Calibration mode such as `idle`, `waiting`, or `running` (best effort) |
-| calibration_reference | string | Selected reference used for calibration (best effort) |
-| calibration_waiting_since | string | ISO‑8601 timestamp when calibration started waiting (best effort) |
-| calibration_started_at | string | ISO‑8601 timestamp when the timer started (best effort) |
-| calibration_elapsed | number | Elapsed seconds since start (best effort) |
-| calibration_timeout_at | string | ISO‑8601 timestamp when calibration times out (best effort) |
-| calibration_last_result | number | Most recent saved delay value in seconds (best effort) |
-| calibration_message | string | Human-readable status message (best effort) |
-
-The `switch.f1_delay_calibration` entity exposes:
-
-| Attribute | Type | Description |
-| --- | --- | --- |
-| mode | string | Calibration mode such as `idle`, `waiting`, or `running` (best effort) |
-| reference | string | Selected reference used for calibration (best effort) |
-| message | string | Human-readable status message (best effort) |
-| waiting_since | string | ISO‑8601 timestamp when calibration started waiting (best effort) |
-| started_at | string | ISO‑8601 timestamp when the timer started (best effort) |
-| elapsed | number | Elapsed seconds since start (best effort) |
-| timeout_at | string | ISO‑8601 timestamp when calibration times out (best effort) |
-| recorded_lap | number | Lap number recorded for lap sync calibration, or null if not applicable (best effort) |
+The [Live Delay control reference](/reference/live-delay-controls) lists calibration states, timestamps and attributes for custom dashboards. Follow the steps below for normal calibration.
 
 ### Choose the calibration reference
 
@@ -118,7 +96,7 @@ What happens next depends on the chosen reference:
 **Session live reference:**
 - If the session is not live yet, the integration waits
 - When lights go out (race) or pit exit opens (practice/qualifying), the timer starts automatically
-- If the session is already live, timing starts immediately
+- If the session is already live, timing starts immediately. This does not recover the earlier start time: if you missed that reference, cancel calibration and use **Lap sync (race/sprint)** for a new, visible moment.
 
 **Lap sync reference (race/sprint):**
 - The integration waits for the next lap to complete

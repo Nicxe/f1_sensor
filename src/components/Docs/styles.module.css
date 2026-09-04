@@ -1,0 +1,67 @@
+.catalogue { min-width: 0; }
+.figure { margin: 1.75rem 0 2.25rem; }
+.figure > a { display: block; width: fit-content; max-width: 100%; border-radius: 0.4rem; }
+.figure img { display: block; max-height: 720px; object-fit: contain; object-position: left; border: 1px solid var(--f1-border); }
+.figure figcaption { margin-top: 0.65rem; color: var(--f1-muted); font-size: 0.82rem; max-width: 75ch; }
+.imageHint { display: block; font-size: 0.75rem; margin-top: 0.15rem; }
+.eyebrow { color: var(--ifm-color-primary); font-size: 0.67rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.5rem 0 0.75rem; }
+.filters button { border: 1px solid var(--f1-border); border-radius: 2rem; padding: 0.45rem 0.9rem; font: inherit; font-size: 0.8rem; color: var(--f1-ink); background: var(--f1-panel); cursor: pointer; }
+.filters button:hover { border-color: var(--ifm-color-primary); }
+.filters button[aria-pressed='true'] { color: var(--ifm-background-color); background: var(--ifm-color-primary); border-color: var(--ifm-color-primary); }
+.count { color: var(--f1-muted); font-size: 0.8rem; }
+.gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.15rem; }
+.galleryCard { min-width: 0; background: var(--f1-panel); border: 1px solid var(--f1-border); border-radius: 0.45rem; overflow: hidden; transition: border-color 150ms ease, box-shadow 150ms ease; }
+.galleryCard:hover { border-color: var(--ifm-color-primary); box-shadow: 0 8px 22px #00000008; }
+.preview { display: flex; align-items: center; justify-content: center; height: 220px; padding: 1rem; border-bottom: 1px solid var(--f1-border); background: var(--f1-panel-muted); overflow: hidden; }
+.preview img { width: 100%; height: 100% !important; object-fit: contain; border-radius: 0.2rem; }
+.previewLabel { color: var(--f1-muted); text-align: center; font-family: var(--ifm-heading-font-family); font-size: 1.7rem; line-height: 1.2; }
+.previewLabel span { display: block; font-family: var(--ifm-font-family-base); font-size: 0.75rem; margin-top: 0.7rem; }
+.galleryBody { padding: 1.1rem 1.2rem 1.3rem; }
+.galleryBody h3 { font-size: 1.5rem; margin: 0.35rem 0 0.5rem; }
+.galleryBody h3 a { color: var(--f1-ink); }
+.galleryBody h3 a span { color: var(--ifm-color-primary); font-family: var(--ifm-font-family-base); font-size: 1rem; }
+.galleryBody p { font-size: 0.86rem; line-height: 1.55; color: var(--f1-muted); margin-bottom: 0.85rem; }
+.badges { display: flex; gap: 0.4rem; flex-wrap: wrap; padding: 0 !important; margin: 0 !important; list-style: none; }
+.badges li { padding: 0.15rem 0.5rem !important; font-size: 0.68rem; border: 1px solid var(--f1-border); border-radius: 0.2rem; color: var(--f1-muted); }
+.delay { padding: 1.6rem; border: 1px solid var(--f1-border); border-top: 3px solid var(--ifm-color-primary); background: var(--f1-panel); border-radius: 0.4rem; margin-block: 1.75rem; }
+.delay h3 { margin: 0.4rem 0 0.75rem; font-size: 1.8rem; }
+.delay > p { font-size: 0.9rem; }
+.sliderLabel { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; font-weight: 600; font-size: 0.85rem; margin-top: 1.5rem; }
+.sliderLabel output { color: var(--ifm-color-primary); font-variant-numeric: tabular-nums; }
+.slider { width: 100%; margin: 1rem 0 1.5rem; accent-color: var(--ifm-color-primary); cursor: pointer; }
+.timeline { display: grid; gap: 1rem; margin-block: 0.5rem 1.5rem; }
+.timelineRow { display: grid; grid-template-columns: 110px 1fr 48px; gap: 1rem; align-items: center; font-size: 0.75rem; }
+.timelineRow b { text-align: right; font-variant-numeric: tabular-nums; }
+.track { height: 2px; background: var(--f1-border); position: relative; }
+.event, .homeEvent { display: block; position: absolute; width: 12px; height: 12px; margin-top: -5px; border: 2px solid var(--ifm-color-primary); background: var(--f1-panel); border-radius: 50%; }
+.homeEvent { background: var(--ifm-color-primary); }
+.delayResult { font-weight: 600; border-top: 1px solid var(--f1-border); padding-top: 1rem; }
+.delay .note { color: var(--f1-muted); font-size: 0.76rem; margin-bottom: 0; }
+@media (max-width: 600px) {
+  .gallery { grid-template-columns: 1fr; }
+  .preview { height: 240px; }
+  .delay { padding: 1.1rem; }
+  .timelineRow { grid-template-columns: 80px 1fr 38px; gap: 0.6rem; font-size: 0.68rem; }
+}
+.flowSteps { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; padding: 0 !important; margin: 1.75rem 0 !important; list-style: none; }
+.flowSteps li { padding: 1rem !important; margin: 0; background: var(--f1-panel); border: 1px solid var(--f1-border); border-top: 3px solid var(--ifm-color-primary); border-radius: 0.25rem; }
+.stepNumber { display: inline-block; font-family: var(--ifm-heading-font-family); font-size: 1.6rem; color: var(--ifm-color-primary); line-height: 1; margin-bottom: 0.75rem; }
+.flowSteps strong { display: block; font-size: 0.9rem; }
+.flowSteps p { font-size: 0.8rem; line-height: 1.5; margin: 0.4rem 0 0; color: var(--f1-muted); }
+.flagLegend { margin: 1.75rem 0; padding: 1.35rem; border: 1px solid var(--f1-border); background: var(--f1-panel); border-radius: 0.35rem; }
+.flagLegend > figcaption { font-weight: 600; font-size: 0.9rem; }
+.flagLegend dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1.3rem; margin: 1.2rem 0; }
+.flagLegend dt strong { display: block; font-size: 0.85rem; margin-top: 0.65rem; }
+.flagLegend dd { margin: 0.25rem 0 0; font-size: 0.78rem; line-height: 1.5; color: var(--f1-muted); }
+.flagLegend dd small { display: block; margin-top: 0.4rem; font-size: 0.72rem; }
+.flagSwatch { display: inline-flex; align-items: center; min-height: 32px; padding: 0.2rem 0.65rem; border-radius: 0.2rem; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.03em; }
+.green { color: #101318; background: #48c78e; }
+.yellow { color: #101318; background: #f2c94c; }
+.red { color: #ffffff; background: #bd1831; }
+.flagLegend > p { border-top: 1px solid var(--f1-border); padding-top: 0.8rem; color: var(--f1-muted); font-size: 0.76rem; margin-bottom: 0; }
+@media (max-width: 480px) {
+  .flowSteps { grid-template-columns: 1fr; gap: 0.7rem; }
+  .flowSteps li { display: flex; gap: 1rem; border-top: 1px solid var(--f1-border); border-left: 3px solid var(--ifm-color-primary); }
+  .stepNumber { margin: 0; }
+}

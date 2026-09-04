@@ -1,22 +1,33 @@
 ---
 id: events
 title: Events
+description: Use Race Control, incident, and Favorite Driver events in Home Assistant automations.
 ---
+
+Events are useful when an automation must react to each message or change, including updates that may not change a sensor’s state. Choose a stream below, then use its event type in a Home Assistant event trigger.
 
 ## Home Assistant Events
 
-Home Assistant provides an **Event Bus** that integrations can use to publish real-time information for low-latency automations and triggers.  
-Events are ideal for transient signals and instantaneous state changes that should be reacted to immediately, rather than stored as long-lived sensor states.
+| You need | Use |
+| --- | --- |
+| Each official Race Control message | `f1_sensor_race_control_event` |
+| An incident’s phase, confidence, or update | `f1_sensor_incident` |
+| The selected driver’s position, pit, or retirement changes | `f1_sensor_favorite_driver_event` |
+| A simple active/inactive condition | The corresponding [entity](/reference/overview) |
+| A trigger selected in the visual editor | [Device triggers](/reference/device-triggers) |
 
-For a general introduction to how events work in Home Assistant, see:  
-[Home Assistant Event integration documentation](https://www.home-assistant.io/integrations/event/).
+These are event-bus event types, not `event.*` entity IDs. In **Developer Tools > Events**, listen for an event type during a suitable live or replay session to inspect the payload from your installation.
+
+:::info[Timing and repeated events]
+Live events follow the configured [Live Delay](/features/live-delay). Rewinding [Replay Mode](/features/replay-mode) can emit historical events again, so notifications may repeat. For event types with an `entry_id`, filter that field if you run multiple F1 Sensor entries.
+:::
 
 ## Event Streams
 
 ### On-track Incident
 
 F1 Sensor publishes likely stopped-car and on-track incident changes under the event type `f1_sensor_incident`.
-Use this event for notifications and automations that should react immediately to incident lifecycle changes.
+Use this event for notifications and automations that follow individual incident lifecycle changes.
 
 For the full user-facing behavior, see [Incident Detection](/features/incident-detection).
 
@@ -44,6 +55,18 @@ When Track Map data is available, the event can include useful `location` contex
 | `low` | Weak or early signal, normally not user-facing |
 | `medium` | Reasonable incident candidate, such as a stopped car that is not in pit lane or an auth-based low-speed candidate with flag context |
 | `high` | Strong context, such as stopped timing data combined with yellow flag, Safety Car, red flag, or Race Control context |
+
+#### Event fields
+
+| Field | Type | Use |
+| --- | --- | --- |
+| `entry_id` | string | Scope an automation to one F1 Sensor entry |
+| `incident_id` | string | Correlate updates for the same incident |
+| `phase` | string | Filter candidate, confirmed, updated, or cleared events |
+| `confidence` | string | Filter low, medium, or high confidence |
+| `driver` | object | Driver number, abbreviation, name, and team |
+| `session` | object | Meeting, session name, and lowercase session type |
+| `location` | object | Optional position context; fields can be null or stale |
 
 #### Example payload
 
@@ -102,10 +125,10 @@ Use `f1_sensor_incident` when you want one notification per incident update. Use
 
 ### Race Control
 
-Race Control messages are available both as a **sensor** and as **events** in Home Assistant.  
+Race Control messages are available both as a **sensor** and as **events** in Home Assistant.
 Events are published under the event type `f1_sensor_race_control_event` and act as a real-time complement to the Race Control sensor.
 
-They include flags, steward notes, incident reports, and other live race control communications.  
+They include flags, steward notes, incident reports, and other live race control communications.
 
 
 #### Example payloads
@@ -153,7 +176,30 @@ For example automations using these events, see the [Automation](/automation) pa
 
 Race Control events forward official messages as they arrive. Incident events combine stopped-car and track context into a neutral alert lifecycle with phases and confidence.
 
-## Future Event Streams
+### Favorite Driver
 
-The Event Bus support in F1 Sensor is designed to be extensible.
-Race Control and incident events are currently documented here. This page will be extended as new event types are introduced.
+`f1_sensor_favorite_driver_event` follows the driver selected in `select.f1_favorite_driver`. Enable **Favorite driver** in the integration options and select a driver before using these events. They are scoped to the F1 Sensor configuration entry.
+
+| `event_type` value | Meaning |
+| --- | --- |
+| `position_gained` | The driver’s position number decreases |
+| `position_lost` | The driver’s position number increases |
+| `entered_pits` | The driver changes to being in the pit lane |
+| `exited_pits` | The driver changes to being outside the pit lane |
+| `retired` | The driver changes to retired |
+
+A position change can result from timing corrections or pit activity; it does not establish an on-track overtake. Selecting a different driver does not itself emit these change events.
+
+| Payload field | Type | Description |
+| --- | --- | --- |
+| `entry_id` | string | F1 Sensor configuration entry |
+| `event_type` | string | One of the change types above |
+| `driver` | object | Current normalized driver data |
+| `previous` | object | Driver data before the change |
+| `current` | object | Driver data after the change, also exposed as `driver` |
+
+The driver objects use the fields in the [Favorite Driver reference](/entities/favorite-driver#attributes), without the sensor’s separate `selected` field. Use the [Drivers device triggers](/reference/device-triggers#drivers-device) if you do not need to inspect the raw payload.
+
+## Other event types {/* #future-event-streams */}
+
+The event types documented above are the supported starting points for these automations. Use their exact names and fields; do not infer a new event type from an entity name.

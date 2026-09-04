@@ -18,13 +18,19 @@
     "test:release": "python3 scripts/check_release_build.py",
     "test:quality": "python3 scripts/check_translations.py custom_components/f1_sensor/translations && python3 scripts/check_source_reviews.py quality/data-sources.json && python3 scripts/check_token_helper_review.py quality/token-helper-review.json && npm run test:audit && npm run test:release && npm run test:frontend",
     "write-translations": "docusaurus write-translations",
-    "write-heading-ids": "docusaurus write-heading-ids"
+    "write-heading-ids": "docusaurus write-heading-ids",
+    "test:docs:build": "node --test docs-tests/build.test.cjs",
+    "test:docs:browser": "playwright test --config playwright.docs.config.js",
+    "test:docs": "npm run build && npm run test:docs:build && npm run test:docs:browser",
+    "capture:docs-cards": "node docs-tests/capture-cards.cjs"
   },
   "dependencies": {
     "@docusaurus/core": "^3.10.2",
     "@docusaurus/plugin-content-docs": "^3.10.2",
     "@docusaurus/preset-classic": "^3.10.2",
     "@easyops-cn/docusaurus-search-local": "^0.55.2",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@fontsource/source-sans-3": "^5.3.0",
     "@mdx-js/react": "^3.0.0",
     "clsx": "^2.0.0",
     "prism-react-renderer": "^2.3.0",

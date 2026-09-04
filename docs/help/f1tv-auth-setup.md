@@ -1,6 +1,7 @@
 ---
 id: f1tv-auth-setup
-title: F1TV Auth Setup
+title: Connect optional F1TV access
+description: Pair the Token Helper with Home Assistant, verify access, and renew an expiring live timing token.
 ---
 
 F1TV Auth connects optional Formula 1 live timing access to F1 Sensor through the F1TV Token Helper.
@@ -27,46 +28,11 @@ The token is extracted from your own browser session by the separate helper and 
 
 ## Availability
 
-| Area | Expected behavior |
-| --- | --- |
-| Public live timing | Continues to work without any token |
-| F1TV token | Optional and sent through Home Assistant pairing |
-| Token lifetime | Short-lived and must be replaced when expired |
-| Token renewal | Not automatic |
-| F1TV password | Never entered into Home Assistant |
-| Helper | Separate Chrome or Chromium extension |
-| Auth failure | Downgrades to public live timing |
-| Extra live data | Requires a token that Formula 1 accepts during live sessions |
-
-F1TV Auth can add live features such as:
-
-```text
-Live Track Map
-Pit Stops during live sessions
-Team Radio during live sessions
-Championship Prediction during live sessions
-Formation start improvements
-Earlier incident candidates
-```
-
-In **Live Mode**, these features should not be expected to update with public live timing alone.
-They can update during live sessions after Formula 1 accepts the F1TV token and publishes the required data.
-
-Some F1TV Auth features also have replay support.
-For example, Championship Prediction, Pit Stops, and Team Radio can use the recorded session archive in **Replay Mode**, but they require F1TV Auth during a real live session.
-
-If the token is missing, expired, or rejected, extra live data becomes unavailable or stops receiving F1TV-only updates while public live timing continues.
+Use the [data availability matrix](/features/f1tv-auth#availability-matrix) to check whether your chosen feature needs live authentication. Public live timing works without a token; Replay Mode uses archived data separately.
 
 ## Incident detection and F1TV Auth
 
-Likely on-track incident detection works with public live timing and does not require F1TV Auth.
-
-F1TV Auth can add early-warning `candidate` signals from extra live car data, such as very low speed before a car is officially marked as stopped.
-These signals are correlated with flag or Safety Car context and should be treated as candidates, not proof of a crash.
-Public live timing must continue to work if the token is missing, expired, or rejected.
-
-When Track Map is active, incident events may include a compact `location` summary such as position status, sector, and stale state.
-Location context can improve confidence or suppress obvious pit-lane false positives, but incident detection must still work without F1TV Auth.
+Confirmed alerts work with public live timing. Authenticated car data can improve earlier candidate signals, and Track Map can add location context. See [Incident Detection](/features/incident-detection) before enabling early alerts.
 
 ## Prerequisites
 
@@ -74,13 +40,11 @@ Before you start, make sure you have:
 
 1. F1 Sensor installed in Home Assistant.
 2. Access to Home Assistant logs if you need to troubleshoot.
-3. A Formula 1 account with an active F1 TV subscription that includes Essential Live Timing.
+3. A Formula 1 account with the required live timing access; check [current availability](/features/f1tv-auth#subscription-requirement).
 4. Chrome or another Chromium-based browser.
 5. The [F1TV Token Helper](https://chromewebstore.google.com/detail/f1tv-token-helper-beta/bbpgdcjohdjcechlffloekhpgdbjoafh) extension installed.
 
-:::info
-F1 TV Access is enough for F1TV Auth in regions where Formula 1 offers it. You do not need F1 TV Pro or F1 TV Premium just to pair F1TV Auth, although those plans also work when they include the same live timing access.
-:::
+
 
 Enable debug logging before reporting issues.
 See [Debug Logging and Logs](/help/debug-logging) for the recommended logging setup and log collection steps.
@@ -109,7 +73,7 @@ Use the helper from the same browser where you sign in to Formula 1:
 1. Keep the pairing page as the active tab.
 2. Open the **F1TV Token Helper** extension popup.
 3. If the helper says no token is available, select **Sign in** and sign in to Formula 1.
-4. Return to the helper and select **Fetch**.
+4. Return to the original pairing tab, reopen the helper and select **Fetch**.
 5. When the helper is ready, select **Send to Home Assistant**.
 
 The helper stores only the Home Assistant pairing session temporarily while you sign in.

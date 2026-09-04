@@ -1,6 +1,7 @@
 ---
 id: release-channels
-title: Release Channels
+title: Updates and release channels
+description: Choose stable or beta, update an existing installation, and understand which features are documented.
 ---
 
 F1 Sensor uses separate release channels so you can choose between stable releases, beta testing, and active development builds.
@@ -79,3 +80,19 @@ When you report a problem, always include which release channel you are using.
 For beta and dev testing, include the exact F1 Sensor version, Home Assistant version, whether F1TV Auth is configured, and whether the issue happens during live timing, Replay Mode, or normal static data updates.
 
 See [Debug Logging and Logs](/help/debug-logging) before opening an issue.
+
+## Upgrading an existing setup
+
+Read the release notes before updating. Existing entity IDs are preserved; keep your own IDs in dashboards and automations. Restart Home Assistant after installation and reload your browser to update bundled cards.
+
+:::warning[Upgrading from v3 to v4]
+After updating to v4.0.0, the original single F1 Sensor device will appear empty in Home Assistant and should be removed manually from **Settings > Devices & Services > Devices**.
+
+All entity IDs remain unchanged, so automations and dashboard cards that reference entities by their ID will continue to work without modification. However, dashboard views organized by device and any device-based conditions or triggers in automations will need to be updated to reference the new sub-devices.
+:::
+
+For older standalone dashboard resources, use the [card migration guide](/cards/installation).
+
+## Documentation previews
+
+A preview banner means the documentation includes features from development or a prerelease. Check your installed F1 Sensor version before following a new feature guide. The version link in the navigation opens the release on which the documentation is based.

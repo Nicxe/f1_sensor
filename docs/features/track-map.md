@@ -1,11 +1,14 @@
 ---
 id: track-map
-title: Track Map
+title: Follow cars on Track Map
+description: Understand Track Map availability, add the card, and resolve waiting or stale position data.
 ---
 
 Track Map shows car markers on a circuit map during live or replay sessions. It is designed for dashboards where you want a quick visual view of where cars are on track.
 
-![Track Map card showing car markers on a circuit map](/img/track_map_card.gif)
+![Track Map with circuit outline and driver markers](/img/cards/track-map.png)
+
+*Example dashboard view. Data availability depends on the session and timing mode.*
 
 ## Availability
 
@@ -43,25 +46,7 @@ The card is bundled with F1 Sensor and is registered with the other [Live Data C
 
 ## Card options
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme. Use `dark`, `light`, or `auto` |
-| `title` | `F1 Track Map` | Card title |
-| `entry_id` | `auto` | F1 Sensor config entry to use. `auto` works for most installations |
-| `throttle_ms` | `100` | Minimum time between snapshot updates in milliseconds |
-| `interpolation_ms` | `auto` | Driver marker interpolation timing |
-| `invert_y` | `true` | Invert the Y axis for the map projection |
-| `show_header` | `true` | Show the card header |
-| `show_footer` | `true` | Show source and status details at the bottom |
-| `show_session_info` | `true` | Show meeting and session text |
-| `show_driver_count` | `true` | Show the number of drivers currently displayed |
-| `driver_label_mode` | `tla` | Use `tla`, `number`, or `off` for driver labels |
-| `show_lap_progress` | `true` | Show lap progress when a lap count entity is available |
-| `lap_count_entity` | `auto` | Lap count entity. Empty disables lap progress context |
-| `show_track_status` | `true` | Show track status context when available |
-| `track_status_entity` | `auto` | Track status entity. Empty disables track status context |
-| `track_status_line_mode` | `accent` | Use `accent`, `full`, or `off` for track status line coloring |
-| `layout_mode` | `auto` | Use `auto`, `compact`, or `full` layout |
+Use the [Track Map card reference](/cards/track-map) for the full configuration table. Start with the automatic entry selection and then adjust labels, lap progress and theme in the visual editor.
 
 ## Status messages
 
@@ -108,6 +93,10 @@ The card has car position data but cannot yet draw the map outline. This is more
 - Replay Track Map is best effort and depends on the archived session data.
 - The map outline may be unavailable for unknown circuits until enough replay data exists.
 - Track Map is a dashboard card feature, not a normal Home Assistant entity.
+
+## Optional demonstration
+
+[Open the existing Track Map animation](/img/track_map_card.gif) if you want to see marker movement. The image above and the written instructions cover the setup without animation.
 
 ## Related pages
 

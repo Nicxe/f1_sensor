@@ -1,87 +1,78 @@
 ---
 id: automation
-title: Automation
+title: Automate your race weekend
+description: Start with a ready-made F1 blueprint, choose a device trigger, or copy a focused Home Assistant automation recipe.
 ---
 
-Automate your home based on live F1 data. These examples use [live data sensors](/entities/live-data) and [events](/entities/events) to trigger actions during sessions.
-:::tip[Sync with your TV]
-For automations to match what you see on screen, configure the [Live Delay](/features/live-delay) to match your broadcast delay.
-:::
-:::info[Ready-made blueprints]
-Looking for an easy starting point? The [Blueprints](/blueprints/track-status-light) section has ready-made automations for light control, race control notifications, incident notifications, and replay sync - no YAML required.
-:::
-:::info[Use entity IDs from this page]
-All examples below use the standard `entity_id`, such as `sensor.f1_session_status` and `binary_sensor.f1_safety_car`.
+Make your lights follow track flags, receive Race Control messages, or get a reminder before a session. Start with a blueprint for a complete setup, or use a device trigger when you want to choose the actions yourself.
 
-If your Home Assistant UI shows translated display names, search for the documented `entity_id` or the `f1_` suffix in the entity picker. If you upgraded from an older release and already have a different registry ID, keep using your existing entity.
-:::
+## Choose your starting point
 
----
+| What you want | Recommended starting point |
+| --- | --- |
+| Lights that follow flags | [Track Status Light blueprint](/blueprints/track-status-light) |
+| Official Race Control messages | [Race Control Notifications blueprint](/blueprints/race-control-notifications) |
+| Likely stopped-car alerts | [Incident Notifications blueprint](/blueprints/incident-notifications) |
+| Pause and resume replay with your TV | [Replay Sync blueprint](/blueprints/replay-sync) |
+| Your own actions and conditions | Device automation steps below |
+
+## Build a device automation
+
+1. Open **Settings > Devices & services > Devices** in Home Assistant.
+2. Select the F1 Sensor device that contains the data you need, such as **Session** for flags or **Drivers** for your favorite driver.
+3. Create an automation and add the relevant device trigger.
+4. Add any conditions, such as only running when you are home or watching TV.
+5. Add your action, save, and check the automation trace after the matching event.
+
+Only triggers with a backing entity appear. If a trigger is missing, check the enabled features in [Configuration](/getting-started/add-integration).
+
+:::tip[Match your broadcast]
+Configure [Live Delay](/features/live-delay) before relying on live notifications or lights. When you watch a recording, use [Replay Mode](/features/replay-mode); rewinding can trigger historical notifications again.
+:::
 
 ## Device Automation Triggers
 
-The easiest way to build automations is through the Home Assistant UI using device triggers. Go to **Settings > Devices & Services > Devices**, select any F1 Sensor sub-device, and choose **Automations > Add trigger** to see the available triggers without writing any YAML.
-:::info
-Device triggers are the recommended starting point. They automatically reference the correct entity and are always kept in sync with the integration. YAML examples further down on this page show equivalent manual setups.
-:::
-
-Triggers are organized per sub-device. Only triggers whose backing entity is enabled will appear.
+The [device trigger reference](/reference/device-triggers) lists every trigger and exactly when it fires. Choose a device below to go straight to its triggers.
 
 ### Race device
 
-| Trigger | Fires when |
-| --- | --- |
-| Race week started | The race week indicator turns on |
-| Race week ended | The race week indicator turns off |
+[Race week starts and ends](/reference/device-triggers#race-device).
 
 ### Session device
 
-| Trigger | Fires when |
-| --- | --- |
-| Safety car deployed | Safety car or Virtual Safety Car becomes active |
-| Safety car cleared | Safety car or Virtual Safety Car is cleared |
-| Formation start ready | Formation start procedure is ready |
-| Overtake mode enabled | Track-wide overtake mode is enabled (2026 regulation) |
-| Overtake mode disabled | Track-wide overtake mode is disabled (2026 regulation) |
-| Session live | Session status changes to `live` |
-| Track status: CLEAR | Track status becomes CLEAR |
-| Track status: YELLOW | Track status becomes YELLOW |
-| Track status: Safety Car | Track status becomes SC |
-| Track status: VSC | Track status becomes VSC |
-| Track status: Red Flag | Track status becomes RED |
-| Possible on-track incident detected | A candidate, confirmed, or updated incident becomes active |
-| Possible on-track incident cleared | No possible incident remains active |
-| On-track incident detected | A confirmed incident becomes active |
-| On-track incident cleared | No confirmed incident remains active |
+[Session live, flags, Safety Car, formation start, incidents, and overtake mode](/reference/device-triggers#session-device). **Session live** fires when session status changes to `live`.
 
 ### Officials device
 
-| Trigger | Fires when |
-| --- | --- |
-| New race control message | A new race control message is received |
-| New FIA document | A new FIA document is published |
-| Investigation changed | An investigation or penalty status changes |
+[Race Control, FIA documents, and investigations](/reference/device-triggers#officials-device).
 
 ### Drivers device
 
-| Trigger | Fires when |
-| --- | --- |
-| New team radio message | A new Team Radio clip is published |
+[New team radio message and five Favorite Driver triggers](/reference/device-triggers#drivers-device).
 
 ### System device
 
-| Trigger | Fires when |
-| --- | --- |
-| Live timing online | Live timing connection is established |
-| Live timing offline | Live timing connection is lost |
-
----
+[Live timing connectivity](/reference/device-triggers#system-device).
 
 ## YAML Examples
 
+Open an automation’s YAML editor to use the examples below. Replace `notify.mobile_app_your_phone`, scene names, and entity IDs with those from your installation. Existing entity IDs can differ from the standard IDs in this documentation.
+
+| Recipe | Trigger |
+| --- | --- |
+| [Race week reminder](#notify-when-race-week-begins) | Race week turns on |
+| [Session reminder](#reminder-before-a-session-starts) | Calendar event starts in 30 minutes |
+| [Session is live](#session-goes-live) | Session status becomes `live` |
+| [Formation start](#race-about-to-start--formation-lap) | Formation start becomes ready |
+| [Safety Car](#safety-car-deployed) | Safety Car or VSC becomes active |
+| [Race Control messages](#race-control-event-notifications) | A Race Control event arrives |
+| [Confirmed incidents](#possible-on-track-incident-notification) | A confirmed incident meets confidence and session filters |
+| [Candidate incidents](#optional-candidate-incident-notification) | An earlier, less certain incident signal arrives |
+| [Incident dashboard indicator](#dashboard-trigger-for-active-incidents) | At least one confirmed incident is active |
+
 ### Notify when race week begins
 
-Uses the [Race Week sensor](/entities/static-data#race-week) to send a notification the moment race week starts. Useful for kicking off any weekly routines — changing dashboard views, enabling presence modes, or just a heads-up.
+Uses the [Race Week sensor](/entities/race-week) to send a notification the moment race week starts. Useful for kicking off any weekly routines — changing dashboard views, enabling presence modes, or just a heads-up.
 
 ```yaml
 alias: F1 - Race week started
@@ -105,7 +96,7 @@ mode: single
 
 ### Reminder before a session starts
 
-Uses the [Season Calendar](/entities/static-data#season-calendar) entity to trigger a notification 30 minutes before any session — practice, qualifying, sprint, or race.
+Uses the [Season Calendar](/entities/season-calendar) entity to trigger a notification 30 minutes before any session — practice, qualifying, sprint, or race.
 
 ```yaml
 alias: F1 - Session starting soon
@@ -131,7 +122,7 @@ Change the `offset` value to adjust how far in advance the reminder fires. Use `
 
 ### Session goes live
 
-Triggers the moment a session becomes active, when the [Session Status sensor](/entities/live-data#session-status) changes to `live`. Use this to turn on the TV, switch to an F1 dashboard, or send a notification.
+Triggers the moment a session becomes active, when the [Session Status sensor](/entities/session-status) changes to `live`. Use this to turn on the TV, switch to an F1 dashboard, or send a notification.
 
 ```yaml
 alias: F1 - Session is live
@@ -146,20 +137,20 @@ action:
     data:
       title: "F1 is live"
       message: >
-        {{ state_attr('sensor.f1_session_status', 'session_name') }} at
+        {{ states('sensor.f1_current_session') }} at
         {{ state_attr('sensor.f1_session_status', 'meeting_name') }} has started.
 mode: single
 ```
 
 ---
 
-### Race about to start — formation lap
+### Formation start ready {/* #race-about-to-start--formation-lap */}
 
-The [Formation Start sensor](/entities/live-data#formation-start) turns on the moment the formation lap begins, giving you a precise early warning that the race is seconds away.
+The [Formation Start sensor](/entities/formation-start) turns on when its formation start procedure is ready. It needs suitable replay or authenticated live data. Treat this as a timing marker, not a guarantee that the broadcast has reached a particular frame or that lights out is a fixed number of seconds away.
 
 ```yaml
-alias: F1 - Formation lap started
-description: Notify when the formation lap begins
+alias: F1 - Formation start ready
+description: Notify when the formation start marker is ready
 trigger:
   - platform: state
     entity_id: binary_sensor.f1_formation_start
@@ -168,8 +159,8 @@ condition: []
 action:
   - service: notify.mobile_app_your_phone
     data:
-      title: "Formation lap"
-      message: "The formation lap has started. Lights out soon."
+      title: "Formation start"
+      message: "The F1 formation start marker is ready."
 mode: single
 ```
 
@@ -177,7 +168,7 @@ mode: single
 
 ### Safety car deployed
 
-Triggers when the [Safety Car sensor](/entities/live-data#safety-car) turns on. Combine with the Race Control Notifications blueprint for detailed messages, or use this as a quick standalone trigger.
+Triggers when the [Safety Car sensor](/entities/safety-car) turns on. Combine with the Race Control Notifications blueprint for detailed messages, or use this as a quick standalone trigger.
 
 ```yaml
 alias: F1 - Safety car deployed
@@ -201,7 +192,7 @@ mode: single
 
 Uses [Race Control events](/entities/events) for a low-latency trigger on every race control message — flag changes, incident reports, and steward notes.
 
-You can also use the [Race Control sensor](/entities/live-data#race-control) if you prefer a sensor-state trigger with attribute access and history.
+You can also use the [Race Control sensor](/entities/race-control) if you prefer a sensor-state trigger with attribute access and history.
 
 ```yaml
 alias: F1 - Race Control Notification
@@ -211,7 +202,7 @@ trigger:
     event_type: f1_sensor_race_control_event
 condition: []
 action:
-  - service: notify.persistent_notification
+  - action: persistent_notification.create
     data:
       title: "Race Control"
       message: "{{ trigger.event.data.message.Message }}"
@@ -251,14 +242,14 @@ action:
         {% set location = data.get('location') or {} %}
         {{ trigger.event.data.driver.tla }} may have stopped on track
         during {{ trigger.event.data.session.session_name }}.
-        {% if location.get('description') %}
+        {% if location.get('description') and not location.get('stale', true) %}
         Location: {{ location.get('description') }}
         {% endif %}
 mode: queued
 max: 5
 ```
 
-The wording is intentionally neutral. F1 Sensor detects likely stopped cars and on-track incidents, not guaranteed crashes. Location text only appears when fresh Track Map context is available.
+The wording is intentionally neutral. F1 Sensor detects likely stopped cars and on-track incidents, not guaranteed crashes. The example includes location text only when the event marks that context as fresh.
 
 ---
 
@@ -292,7 +283,7 @@ action:
         {% set location = data.get('location') or {} %}
         {{ data.driver.tla }} may be slow or stopped
         during {{ data.session.session_name }}.
-        {% if location.get('description') %}
+        {% if location.get('description') and not location.get('stale', true) %}
         Location: {{ location.get('description') }}
         {% endif %}
 mode: queued
@@ -303,7 +294,7 @@ max: 5
 
 ### Dashboard trigger for active incidents
 
-Use the [On-track Incident binary sensor](/entities/live-data#on-track-incident) when you only need to know whether any confirmed incident is currently active.
+Use the [On-track Incident binary sensor](/entities/on-track-incident) when you only need to know whether any confirmed incident is currently active.
 
 ```yaml
 alias: F1 - Incident indicator on

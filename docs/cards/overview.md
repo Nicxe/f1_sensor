@@ -1,955 +1,263 @@
 ---
 id: cards-overview
-title: Live Data Cards
+title: Dashboard cards
+description: Choose from 23 bundled F1 Sensor dashboard cards for schedules, timing, race control, results and replay.
+toc_max_heading_level: 2
 ---
 
-# F1 Sensor Live Data Cards
+import {CardGallery} from '@site/src/components/Docs';
 
-A collection of custom Lovelace cards built specifically for the F1 Sensor integration. The cards are bundled with F1 Sensor and follow the entity structure exposed by the integration.
+Choose from 23 bundled cards for your [Home Assistant](https://www.home-assistant.io/) dashboard. [Installation and setup](/cards/installation).
 
-:::info[Bundled with F1 Sensor]
-The live data cards are included with F1 Sensor. Home Assistant registers the bundled dashboard resource automatically when the integration starts.
+Start with [Next Race](/cards/next-race) between sessions, [Live Session](/cards/live-session) and a timing card on race day, or [Replay Control](/cards/replay-control) when watching later.
 
-They require the F1 Sensor integration. Cards that use live-only or F1TV Auth enhanced entities need those entities enabled in the integration.
-:::
+## Available cards
 
-Public live timing works without F1TV Auth. Cards that show live Track Map, Pit Stops, or Championship Prediction can need optional [F1TV Auth](/features/f1tv-auth) during live sessions, while [Replay Mode](/features/replay-mode) can show archived data later when the replay contains it.
+Filter by purpose, then open a card for its preview, setup and options. Public live timing works without F1TV Auth; check each card’s data requirements.
 
-![Placeholder - F1 Sensor dashboard with multiple cards](/img/placeholder_cards_overview.png)
+<CardGallery cards={[
+  {
+    "title": "Weekend Hub",
+    "href": "/cards/weekend-hub",
+    "image": "/img/cards/weekend-hub.png",
+    "description": "Follow a race weekend in one place, from the session overview to strategy, battles and replay telemetry.",
+    "category": "Session overview",
+    "availability": "Live / Replay"
+  },
+  {
+    "title": "Live Session",
+    "href": "/cards/live-session",
+    "image": "/img/cards/live-session.png",
+    "description": "Keep the session name, track condition, weather and lap progress visible above your timing cards.",
+    "category": "Session overview",
+    "availability": "Public live / Replay"
+  },
+  {
+    "title": "Next Race",
+    "href": "/cards/next-race",
+    "image": "/img/cards/next-race.png",
+    "description": "See when the next Grand Prix starts, its weekend schedule and the circuit location at a glance.",
+    "category": "Planning",
+    "availability": "No live session needed"
+  },
+  {
+    "title": "Race Weather",
+    "href": "/cards/race-weather",
+    "image": "/img/cards/race-weather.png",
+    "description": "Compare current circuit conditions with the forecast for race start.",
+    "category": "Planning",
+    "availability": "Forecast / Public live"
+  },
+  {
+    "title": "Season Calendar",
+    "href": "/cards/season-calendar",
+    "image": "/img/cards/season-calendar.png",
+    "description": "Plan the season with a compact list of race weekends.",
+    "category": "Planning",
+    "availability": "No live session needed"
+  },
+  {
+    "title": "Race Control",
+    "href": "/cards/race-control",
+    "image": "/img/cards/race-control.png",
+    "description": "Follow Race Control messages and flags as they arrive.",
+    "category": "Race officials",
+    "availability": "Public live / Replay"
+  },
+  {
+    "title": "FIA Documents",
+    "href": "/cards/fia-documents",
+    "image": "/img/cards/fia-documents.png",
+    "description": "Open official FIA documents for the current race weekend from your dashboard.",
+    "category": "Race officials",
+    "availability": "Published documents"
+  },
+  {
+    "title": "Qualifying Timing",
+    "href": "/cards/qualifying-timing",
+    "image": "/img/cards/qualifying-timing.png",
+    "description": "Follow qualifying order, current sectors and Q1, Q2 and Q3 times in one table.",
+    "category": "Timing",
+    "availability": "Qualifying / Replay"
+  },
+  {
+    "title": "Practice Timing",
+    "href": "/cards/practice-timing",
+    "image": "/img/cards/practice-timing.png",
+    "description": "Compare practice laps with driver order, tyre age, last lap and personal best.",
+    "category": "Timing",
+    "availability": "Practice / Replay"
+  },
+  {
+    "title": "Race Lap",
+    "href": "/cards/race-lap",
+    "image": "/img/cards/race-lap.png",
+    "description": "Follow Race or Sprint order with gaps, tyres, pit counts and lap times.",
+    "category": "Timing",
+    "availability": "Race or Sprint / Replay"
+  },
+  {
+    "title": "Starting Grid",
+    "href": "/cards/starting-grid",
+    "image": "/img/cards/starting-grid.png",
+    "description": "See the provisional or confirmed starting order before a Race or Sprint.",
+    "category": "Results and standings",
+    "availability": "Published grid"
+  },
+  {
+    "title": "Results",
+    "href": "/cards/results",
+    "image": "/img/cards/results.png",
+    "description": "Review Race and Sprint classifications, then open Archive to browse historical results.",
+    "category": "Results and standings",
+    "availability": "Published results"
+  },
+  {
+    "title": "Lap Position Progression",
+    "href": "/cards/lap-position-progression",
+    "image": "/img/cards/lap-position-progression.png",
+    "description": "Trace how each driver moved through the field during a completed main race.",
+    "category": "Results and standings",
+    "availability": "Completed main races"
+  },
+  {
+    "title": "Tyre Statistics",
+    "href": "/cards/tyre-statistics",
+    "image": "/img/cards/tyre-statistics.png",
+    "description": "Compare tyre compounds, stint history and the best lap times set on each compound.",
+    "category": "Timing",
+    "availability": "Public live / Replay"
+  },
+  {
+    "title": "Pit Stops",
+    "href": "/cards/pit-stops",
+    "image": "/img/cards/pit-stops.png",
+    "description": "Review each driver\u2019s stops, fitted tyres and available pit timing.",
+    "category": "Timing",
+    "availability": "F1TV live / Replay"
+  },
+  {
+    "title": "Driver Lap Times",
+    "href": "/cards/driver-lap-times",
+    "image": "/img/cards/driver-lap-times.png",
+    "description": "Follow positions, gaps, last laps and personal bests in a detailed timing table.",
+    "category": "Timing",
+    "availability": "Public live / Replay"
+  },
+  {
+    "title": "Investigations",
+    "href": "/cards/investigations",
+    "image": "/img/cards/investigations.png",
+    "description": "Keep steward investigations and penalties in a focused list.",
+    "category": "Race officials",
+    "availability": "Public live / Replay"
+  },
+  {
+    "title": "Track Limits",
+    "href": "/cards/track-limits",
+    "image": "/img/cards/track-limits.png",
+    "description": "Track deleted laps, black-and-white warnings and track-limit penalties by driver.",
+    "category": "Race officials",
+    "availability": "Public live / Replay"
+  },
+  {
+    "title": "Driver Championship",
+    "href": "/cards/championship-drivers",
+    "image": "/img/cards/championship-drivers.png",
+    "description": "Compare current driver championship points with the prediction supplied during a session.",
+    "category": "Results and standings",
+    "availability": "Standings / F1TV prediction"
+  },
+  {
+    "title": "Constructor Championship",
+    "href": "/cards/championship-teams",
+    "image": "/img/cards/championship-teams.png",
+    "description": "Compare published constructor points with the session\u2019s predicted championship outcome.",
+    "category": "Results and standings",
+    "availability": "Standings / F1TV prediction"
+  },
+  {
+    "title": "Season Progression",
+    "href": "/cards/season-progression",
+    "image": "/img/cards/season-progression.png",
+    "description": "See how championship points accumulated across the season.",
+    "category": "Results and standings",
+    "availability": "Published points"
+  },
+  {
+    "title": "Replay Control",
+    "href": "/cards/replay-control",
+    "image": "/img/cards/replay-control.png",
+    "description": "Load and control an archived session from your dashboard.",
+    "category": "Session overview",
+    "availability": "Replay"
+  },
+  {
+    "title": "Track Map",
+    "href": "/cards/track-map",
+    "image": "/img/cards/track-map.png",
+    "description": "Watch driver markers move around the circuit with lap and track-status context.",
+    "category": "Session overview",
+    "availability": "F1TV live / Replay"
+  }
+]} />
 
----
+## Data availability
 
-## Available Cards
-
-| Card | Custom element | What it shows |
-| --- | --- | --- |
-| [F1 Weekend Hub](#f1-weekend-hub-card) | `custom:f1-weekend-hub-card` | Synchronized session overview, timeline, strategy, replay telemetry, and battles |
-| [F1 Live Session](#f1-live-session-card) | `custom:f1-live-session-card` | Session status, track condition, weather, and lap counter |
-| [F1 Next Race](#f1-next-race-card) | `custom:f1-next-race-card` | Next race countdown, schedule, circuit map, weather, and track time |
-| [F1 Race Weather](#f1-race-weather-card) | `custom:f1-weather-card` | Current circuit conditions and the forecast for race start |
-| [F1 Season Calendar](#f1-season-calendar-card) | `custom:f1-season-calendar-card` | Season schedule with past and upcoming races |
-| [F1 Race Control](#f1-race-control-card) | `custom:f1-race-control-card` | Race Control messages, flags, and optional message filters |
-| [F1 FIA Documents](#f1-fia-documents-card) | `custom:f1-fia-documents-card` | FIA documents and decision PDFs for the current weekend |
-| [F1 Qualifying Timing](#f1-qualifying-timing-card) | `custom:f1-qualifying-timing-card` | Qualifying order, sector timing, and Q1/Q2/Q3 data |
-| [F1 Practice Timing](#f1-practice-timing-card) | `custom:f1-practice-timing-card` | Practice order, tyre age, optional sectors, lap times, and timing indicators |
-| [F1 Race Lap](#f1-race-lap-card) | `custom:f1-race-lap-card` | Race or sprint order with gaps, optional sectors, tyres, pit stops, and lap times |
-| [F1 Starting Grid](#f1-starting-grid-card) | `custom:f1-starting-grid-card` | Provisional or confirmed Sprint and Race starting grid |
-| [F1 Results](#f1-results-card) | `custom:f1-last-race-results-card` | Current-season and on-demand historical race, Sprint, and qualifying results |
-| [F1 Lap Position Progression](#f1-lap-position-progression-card) | `custom:f1-lap-position-progression-card` | Post-race lap-by-lap position chart for completed main races |
-| [F1 Tyre Statistics](#f1-tyre-statistics-card) | `custom:f1-sensor-live-data-card` | Tyre compounds, stint history, and best lap times per driver |
-| [F1 Pit Stop Overview](#f1-pit-stop-overview-card) | `custom:f1-pitstop-overview-card` | Pit stop timeline with tyre changes and pit times |
-| [F1 Driver Lap Times](#f1-driver-lap-times-card) | `custom:f1-driver-lap-times-card` | Live lap times, gaps, positions, and optional lap history |
-| [F1 Investigations](#f1-investigations-card) | `custom:f1-investigations-card` | Steward investigations and penalties |
-| [F1 Track Limits](#f1-track-limits-card) | `custom:f1-track-limits-card` | Track limit deletions, warnings, and penalties per driver |
-| [F1 Championship Prediction Drivers](#f1-championship-prediction-drivers-card) | `custom:f1-championship-prediction-drivers-card` | Driver standings with predicted points |
-| [F1 Championship Prediction Teams](#f1-championship-prediction-teams-card) | `custom:f1-championship-prediction-teams-card` | Constructor standings with predicted points |
-| [F1 Season Progression](#f1-season-progression-card) | `custom:f1-season-progression-card` | Driver and constructor championship point progression across race rounds |
-| [F1 Replay Control](#f1-replay-control-card) | `custom:f1-replay-control-card` | Replay Mode selectors, playback controls, drag-to-seek playbar, and progress |
-| [F1 Track Map](#f1-track-map-card) | `custom:f1-track-map-card` | Live and replay circuit map with car positions |
-
----
+The cards cover planning, live timing, race officials, results and replay. Track Map, pit-stop timing and live championship prediction can need optional authenticated data; replay availability depends on the archive. Each card page explains its requirements and what to expect when data is unavailable.
 
 ## Installation
 
 ### Bundled installation
 
-Install or update [F1 Sensor](/getting-started/installation), then restart Home Assistant. The integration copies the bundled card assets to Home Assistant and registers the Lovelace resource as a JavaScript module.
-
-You do not need to add `f1-sensor-live-data-card` as a separate HACS dashboard repository for the bundled cards.
-
-:::tip
-If you updated from the old standalone card, restart Home Assistant and reload your browser so the dashboard loads the latest bundled card assets.
-:::
+The cards are bundled with F1 Sensor and registered automatically; no separate HACS dashboard download is needed. [Install the bundled cards](/cards/installation#bundled-installation), restart Home Assistant and reload your dashboard. The integration manages the JavaScript resource. See [Card installation](/cards/installation) if the card picker does not show them.
 
 ### Migrating from the old standalone card
 
-Existing dashboard card types do not change. Keep using the same `custom:f1-...` card types in your dashboards.
-
-After you confirm the bundled card loads correctly, you can remove the old standalone HACS dashboard repository:
-
-1. Open **HACS** in Home Assistant.
-2. Find **F1 Sensor Live Data Card** in the dashboard or frontend section.
-3. Remove the standalone card repository.
-4. Restart Home Assistant.
-5. Reload your browser or clear the Home Assistant frontend cache.
-
-If you previously added a manual dashboard resource, open **Settings > Dashboards**, open the three-dot menu, select **Resources**, and remove old standalone entries such as `/local/f1-sensor-live-data-card.js` or `/hacsfiles/f1-sensor-live-data-card/...`.
-
-:::info[Automatic resource registration]
-F1 Sensor manages the bundled resource at `/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=...` with type **JavaScript Module**. If your installation had one old resource entry, F1 Sensor updates it. If it had multiple old entries, remove the extra stale entries manually after confirming the bundled card works.
-:::
-
-:::warning[Stale resource repair]
-Home Assistant Repairs may show **Old standalone F1 live data card resources detected** when old standalone resource URLs are still configured. Confirm the bundled cards work first, then remove the old standalone HACS dashboard repository and stale dashboard resources. Restart Home Assistant or reload Lovelace resources, then hard refresh the browser if the old card UI remains.
-:::
-
-<details>
-<summary>Manual fallback</summary>
-
-Use this only if automatic resource registration is unavailable in your Home Assistant setup.
-
-1. Copy the files from `custom_components/f1_sensor/www/f1-sensor-live-data-card/` to `config/www/f1-sensor-live-data-card/`.
-2. Register the resource in Home Assistant.
-
-**Via the UI**: Go to **Settings > Dashboards**, open the three-dot menu, select **Resources**, then **Add Resource**. Set the URL to `/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js` and the type to **JavaScript Module**.
-
-**Via YAML**:
-
-```yaml
-lovelace:
-  resources:
-    - url: /local/f1-sensor-live-data-card/f1-sensor-live-data-card.js
-      type: module
-```
-
-</details>
-
----
-
-## Adding Cards
-
-1. Open your dashboard and select **Edit Dashboard**.
-2. Select **Add card**.
-3. Search for **F1**.
-4. Select a card and configure it in the visual editor.
-
-Each card has a visual editor with **Data Sources** for entity selection and **Display Options** for columns, theme, labels, logos, and layout.
-
-Example:
-
-```yaml
-type: custom:f1-next-race-card
-entity: sensor.f1_next_race
-theme_mode: auto
-font_style: balanced
-```
-
-:::info[Entity IDs]
-Bundled cards discover the entity IDs created by F1 Sensor, including renamed IDs and the `_2` suffixes Home Assistant assigns when needed. With one F1 Sensor configuration entry, empty and standard default data sources are connected automatically.
-
-With multiple F1 Sensor entries, selecting one entity in the visual editor identifies the entry and the card connects its other standard data sources to that same entry. Explicit custom entity selections are preserved. If a new card is ambiguous because no source has been selected, choose any one of its F1 entities in **Data Sources**.
-:::
-
----
-
-## Shared Options
-
-Many cards expose the same display options.
-
-| Option | Values | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark`, `light`, `auto` | Visual theme. `dark` keeps the original F1 card look, `light` uses a light palette, and `auto` follows the Home Assistant theme. |
-| `font_style` | `wide`, `balanced`, `system` | Typography style. `wide` keeps the original F1 Sensor look, `balanced` keeps an F1-inspired style without the wide font in dense/mobile text, and `system` uses the Home Assistant/system font. |
-| `show_header` | `true`, `false` | Show the card title/header area. |
-| `show_table_header` | `true`, `false` | Show column labels above table-style cards. |
-| `show_full_name` | `true`, `false` | Show full driver names instead of TLA codes where supported. |
-| `show_team_logo` | `true`, `false` | Show team logos where supported. |
-| `team_logo_style` | `color`, `white` | Use colored team logos or white logos. |
-| `auth_status_entity` | entity ID | Optional F1TV token status entity used by cards that display F1TV Auth enhanced data. |
-| `show_availability_notice` | `true`, `false` | Show informational notices when F1TV Auth enhanced data is unavailable or requires Replay Mode. Authentication warnings that require your attention remain visible. |
-
-:::info[F1TV Auth warnings]
-Setting `show_availability_notice: false` hides informational availability notices. It does not hide warnings when configured F1TV access is expired, invalid, or rejected. These warnings remain visible to explain why live enhanced data is hidden and what requires your attention.
-:::
-
----
-
-## Card Reference
-
-### F1 Weekend Hub Card
-
-`custom:f1-weekend-hub-card`
-
-Weekend Hub brings the main race-weekend experience into one card. It changes from a pre-session overview to live analysis and then to a post-session review as session data becomes available.
-
-The context bar lets you choose a focus driver, gap reference, and spoiler protection. These choices are shared with supported F1 Sensor cards, so the Driver Lap Times card follows the selected gap reference and highlights the same driver without requiring changes to existing dashboard YAML.
-
-The card includes five views:
-
-- **Overview** shows session status, analysis readiness, active battles, and recent events.
-- **Timeline** combines session, Race Control, lap, weather, pit, radio, and analysis events.
-- **Strategy** compares clean-lap pace, degradation, compounds, teammate pace, and pit-cycle outcomes with visible confidence.
-- **Telemetry** compares up to four explicitly selected replay laps for speed, throttle, brake, gear, and time delta.
-- **Battles** separates likely on-track overtakes from neutral position exchanges when pit, penalty, lapping, or track-status context is present.
-
-```yaml
-type: custom:f1-weekend-hub-card
-title: Weekend Hub
-entry_id: auto
-theme_mode: auto
-font_style: balanced
-default_view: overview
-show_context: true
-no_spoiler_entity: input_boolean.f1_no_spoiler_mode
-```
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `entry_id` | `auto` | F1 Sensor config entry. Keep `auto` when one entry is loaded. |
-| `title` | `Weekend Hub` | Card title |
-| `theme_mode` | `dark` | Card theme |
-| `font_style` | `wide` | Typography style |
-| `default_view` | `overview` | Initial view: `overview`, `timeline`, `strategy`, `telemetry`, or `battles` |
-| `show_context` | `true` | Show the synchronized driver, gap, and spoiler controls |
-| `no_spoiler_entity` | `input_boolean.f1_no_spoiler_mode` | Optional helper used to hide results and analysis |
-| `throttle_ms` | `500` | Minimum interval between Weekend Hub updates, from 100 to 5000 ms |
-
-:::info[Capability-aware views]
-Weekend Hub waits for the signals required by each view. Missing live authorization, an unloaded replay, or insufficient clean laps produces a specific empty state instead of estimated or invented data.
-:::
-
-:::info[Replay telemetry limits]
-Telemetry comparison works only for explicitly selected laps from the loaded replay. F1 Sensor keeps the result bounded and does not add raw telemetry to Home Assistant states or Recorder. Circuit corner annotations are unavailable until a suitable licensed source exists.
-:::
-
----
-
-### F1 Live Session Card
-
-`custom:f1-live-session-card`
-
-Displays an at-a-glance overview of the current session, including session name, session status, track condition, weather, lap progress, and optional session clocks.
-
-![Placeholder - F1 Live Session card screenshot](/img/placeholder_card_live_session.png)
-
-**Required entities:** `sensor.f1_current_session`, `sensor.f1_session_status`, `sensor.f1_race_lap_count`, `sensor.f1_track_status`, `sensor.f1_track_weather`, `sensor.f1_next_race`
-
-**Optional entities:** `binary_sensor.f1_formation_start`, `sensor.f1_session_time_elapsed`, `sensor.f1_session_time_remaining`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `show_flag` | `true` | Show the track status flag indicator |
-| `show_lap_progress` | `true` | Show the lap progress bar |
-| `show_track_status` | `true` | Show the current track status label |
-| `show_weather` | `true` | Show live track weather |
-| `show_time_remaining` | `false` | Show session time remaining when available |
-| `show_time_elapsed` | `false` | Show session time elapsed when available |
-
----
-
-### F1 Next Race Card
-
-`custom:f1-next-race-card`
-
-Shows the next race, countdown, weekend schedule, circuit map, track time, weather, and optional historical context. It can prefer live track weather during an active session and fall back to the normal next-race weather forecast.
-
-![Placeholder - F1 Next Race card screenshot](/img/placeholder_card_next_race.png)
-
-**Required entity:** `sensor.f1_next_race`
-
-**Optional entities:** `sensor.f1_weather`, `sensor.f1_track_weather`, `sensor.f1_current_session`, `sensor.f1_session_status`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `show_header` | `true` | Show the card header |
-| `show_countdown` | `true` | Show countdown to the race |
-| `show_overview` | `true` | Show the main race overview |
-| `show_schedule` | `true` | Show session schedule |
-| `show_track_time` | `true` | Show local circuit time |
-| `show_map` | `true` | Show circuit image when available |
-| `show_weather` | `true` | Show weather information |
-| `show_history` | `true` | Show race history when available |
-| `prefer_live_weather` | `true` | Prefer `sensor.f1_track_weather` during live sessions |
-
----
-
-### F1 Race Weather Card
-
-`custom:f1-weather-card`
-
-Compares the current conditions at the next race circuit with the forecast for race start. During an active weekend, the card can replace the current forecast with live track measurements while keeping the race-start forecast visible.
-
-**Required entity:** `sensor.f1_weather`
-
-**Optional entities:** `sensor.f1_track_weather`, `sensor.f1_next_race`, `sensor.f1_session_status`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `weather_entity` | `sensor.f1_weather` | Provides current conditions and the race-start forecast |
-| `track_weather_entity` | `sensor.f1_track_weather` | Provides live air temperature, track temperature, rainfall, humidity, pressure, and wind |
-| `next_race_entity` | `sensor.f1_next_race` | Adds the race name, circuit location, and race-start time |
-| `session_status_entity` | `sensor.f1_session_status` | Determines when live track conditions replace the current forecast |
-| `prefer_live_weather` | `true` | Prefer live track conditions during `pre`, `live`, `suspended`, and `break` session states |
-| `show_header` | `true` | Show the race, circuit location, and race-start time |
-| `theme_mode` | `dark` | Card theme |
-
-```yaml
-type: custom:f1-weather-card
-weather_entity: sensor.f1_weather
-track_weather_entity: sensor.f1_track_weather
-next_race_entity: sensor.f1_next_race
-session_status_entity: sensor.f1_session_status
-prefer_live_weather: true
-show_header: true
-theme_mode: auto
-```
-
----
-
-### F1 Season Calendar Card
-
-`custom:f1-season-calendar-card`
-
-Displays the current season schedule as a compact race list. Past races can be dimmed or hidden, and the next race can be highlighted.
-
-![Placeholder - F1 Season Calendar card screenshot](/img/placeholder_card_season_calendar.png)
-
-**Required entity:** `sensor.f1_current_season`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `show_header` | `true` | Show the card header |
-| `show_round` | `true` | Show round number |
-| `show_country_flag` | `true` | Show country flag |
-| `show_circuit_name` | `false` | Show circuit name |
-| `show_location` | `false` | Show locality and country |
-| `highlight_next_race` | `true` | Highlight the next race |
-| `dim_past_races` | `true` | Visually dim completed races |
-| `hide_past_races` | `false` | Hide completed races |
-
----
-
-### F1 Race Control Card
-
-`custom:f1-race-control-card`
-
-Shows Race Control messages with category, flag state, and optional FIA branding. It can display only the latest message or a scrollable message list, and can hide noisy blue flag or track limits notices from the visible card.
-
-![Placeholder - F1 Race Control card screenshot](/img/placeholder_card_race_control.png)
-
-**Required entity:** `sensor.f1_race_control`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `display_mode` | `latest` | Use `latest` for a compact card or `list` for a feed view |
-| `show_fia_logo` | `true` | Show the FIA logo in the header |
-| `hide_blue_flags` | `false` | Hide blue flag messages |
-| `hide_track_limits` | `false` | Hide track limits messages from the banner or list without deleting saved history |
-| `min_display_time` | `0` | Minimum time in milliseconds before rotating to a newer message |
-| `list_max_height` | `600` | Maximum list height in pixels when using list mode |
-| `show_clear_button` | `true` | Show the clear button in list mode |
-
----
-
-### F1 FIA Documents Card
-
-`custom:f1-fia-documents-card`
-
-Lists FIA decision documents and official PDFs for the current race weekend. It can show the latest document only or a full document list with race context.
-
-![Placeholder - F1 FIA Documents card screenshot](/img/placeholder_card_fia_documents.png)
-
-**Required entity:** `sensor.f1_fia_documents`
-
-**Optional entity:** `sensor.f1_last_race_results`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `display_mode` | `list` | Use `list` or `latest` |
-| `sort_order` | `newest` | Sort documents newest first |
-| `show_header` | `true` | Show the card header |
-| `show_fia_logo` | `true` | Show FIA branding |
-| `show_race_context` | `true` | Show race/weekend context |
-| `show_count` | `true` | Show document count |
-| `show_pdf_icon` | `true` | Show PDF icon |
-| `show_document_number` | `true` | Show document number |
-| `show_document_type` | `true` | Show document type styling |
-| `show_document_coloring` | `true` | Use document category coloring |
-| `show_published` | `true` | Show published time |
-| `show_latest_badge` | `true` | Mark the latest document |
-| `visible_rows` | `8` | Number of rows to show before scrolling |
-| `list_max_height` | `0` | Optional fixed list height in pixels. `0` lets the card size itself. |
-| `open_in_new_tab` | `true` | Open PDFs in a new browser tab |
-
----
-
-### F1 Qualifying Timing Card
-
-`custom:f1-qualifying-timing-card`
-
-Shows qualifying performance in a table: position, driver, live sectors, last lap, segment bests, and optional timing color indicators. Drivers eliminated from a segment are visually dimmed.
-
-:::info[Session availability]
-This card is designed for Qualifying and Sprint Qualifying. Outside those sessions it shows an unavailable message instead of stale timing.
-:::
-
-![Placeholder - F1 Qualifying Timing card screenshot](/img/placeholder_card_qualifying_timing.png)
-
-**Required entity:** `sensor.f1_driver_positions`
-
-**Optional entities:** `sensor.f1_current_tyres`, `sensor.f1_driver_list`, `sensor.f1_current_session`, `sensor.f1_session_status`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Qualifying` | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_table_header` | `true` | Show column labels |
-| `show_team_logo` | `true` | Show team logo |
-| `show_full_name` | `false` | Show full driver names |
-| `show_delta` | `true` | Show timing delta when available |
-| `show_timing_indicators` | `false` | Highlight overall fastest, personal fastest, and timed sector states |
-| `sector_display_mode` | `current` | Sector display mode. Use `current`, `personal_best`, or `hybrid` |
-| `team_logo_style` | `color` | Logo appearance |
-| `color_overall_fastest` | card default | Color for overall fastest timing cells |
-| `color_personal_fastest` | card default | Color for personal best timing cells |
-| `color_timed` | card default | Color for normally timed cells |
-
-Current sector mode keeps S1, S2, and S3 aligned with live sector progress. After a lap completes, the completed lap sectors remain visible and dimmed until the driver completes the next S1, so the card does not mix sector times from different laps.
-
----
-
-### F1 Practice Timing Card
-
-`custom:f1-practice-timing-card`
-
-Shows practice order with driver status, tyres, tyre age, optional S1-S3 sectors, last lap, fastest lap, and optional timing indicators.
-
-![Placeholder - F1 Practice Timing card screenshot](/img/placeholder_card_practice_timing.png)
-
-**Required entity:** `sensor.f1_driver_positions`
-
-**Optional entities:** `sensor.f1_current_session`, `sensor.f1_session_status`, `sensor.f1_driver_list`, `sensor.f1_current_tyres`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Free Practice` | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_table_header` | `true` | Show column labels |
-| `show_position` | `true` | Show current position |
-| `show_team_logo` | `true` | Show team logo |
-| `show_full_name` | `false` | Show full driver names |
-| `show_status` | `true` | Show driver status |
-| `show_tyre` | `true` | Show tyre compound |
-| `show_tyre_age` | `true` | Show tyre stint age |
-| `show_sectors` | `false` | Show optional S1, S2, and S3 live sector columns |
-| `show_last_lap` | `true` | Show last lap |
-| `show_fastest_lap` | `true` | Show personal fastest lap |
-| `show_timing_indicators` | `false` | Highlight timing states |
-| `team_logo_style` | `color` | Logo appearance |
-
----
-
-### F1 Race Lap Card
-
-`custom:f1-race-lap-card`
-
-Displays race or sprint order with driver gaps, tyre compound, tyre age, pit count, optional S1-S3 sectors, last lap, and personal fastest lap. Gap mode can show the gap to the leader or interval to the car ahead.
-
-:::info[Session availability]
-This card is designed for Race and Sprint sessions. Some columns depend on data that is only available during live or authenticated/replay timing.
-:::
-
-![Placeholder - F1 Race Lap card screenshot](/img/placeholder_card_race_lap.png)
-
-**Required entities:** `sensor.f1_driver_positions`, `sensor.f1_current_session`
-
-**Optional entities:** `sensor.f1_race_lap_count`, `sensor.f1_session_status`, `sensor.f1_driver_list`, `sensor.f1_current_tyres`, `sensor.f1_pitstops`, `sensor.f1_f1tv_token_status`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Race Lap` | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_table_header` | `true` | Show column labels |
-| `show_position` | `true` | Show current position |
-| `show_team_logo` | `true` | Show team logo |
-| `show_full_name` | `false` | Show full driver names |
-| `show_status` | `true` | Show inline driver status |
-| `show_gap` | `true` | Show gap or interval |
-| `gap_mode` | `ahead` | Gap mode. `ahead` shows interval to the car ahead; use the editor to switch mode where available. |
-| `show_gap_toggle` | `true` | Show the gap mode toggle |
-| `show_tyre` | `true` | Show tyre compound |
-| `show_tyre_age` | `true` | Show tyre stint age |
-| `show_pit_count` | `true` | Show number of pit stops |
-| `show_sectors` | `false` | Show optional S1, S2, and S3 live sector columns |
-| `show_last_lap` | `true` | Show last lap time |
-| `show_fastest_lap` | `true` | Show personal fastest lap |
-| `show_timing_indicators` | `false` | Highlight timing states |
-| `team_logo_style` | `color` | Logo appearance |
-| `show_availability_notice` | `true` | Show informational notices for unavailable F1TV Auth enhanced data. Authentication warnings remain visible. |
-
-Practice and Race sector columns use the same live sector handling as Qualifying. Completed lap sectors stay aligned and dimmed until the driver completes the next S1.
-
----
-
-### F1 Starting Grid Card
-
-`custom:f1-starting-grid-card`
-
-Shows the currently relevant starting grid for the weekend. Sprint weekends use Sprint Qualifying for the Sprint grid and Qualifying for the Race grid. Normal weekends use Qualifying for the Race grid.
-
-![Placeholder - F1 Starting Grid card screenshot](/img/placeholder_card_starting_grid.png)
-
-**Required entity:** `sensor.f1_starting_grid`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Starting Grid` | Card title |
-| `display_mode` | `grid` | Use `grid` or `table` layout |
-| `show_header` | `true` | Show the card header |
-| `show_table_header` | `true` | Show column labels in table mode |
-| `show_team_logo` | `true` | Show team logo |
-| `show_full_name` | `false` | Show full driver names |
-| `show_qualifying_position` | `true` | Show original qualifying position |
-| `show_qualifying_time` | `true` | Show qualifying lap time |
-| `show_qualifying_delta` | `false` | Show delta to the reference qualifying time |
-| `show_qualifying_segment` | `true` | Show Q/SQ segment |
-| `show_grid_delta` | `true` | Show movement from qualifying position to grid position |
-| `show_status_badge` | `true` | Show provisional/confirmed status |
-| `show_source_badge` | `true` | Show data source badge |
-| `show_metadata` | `true` | Show source session and target session metadata |
-| `team_logo_style` | `color` | Logo appearance |
-
----
-
-### F1 Results Card
-
-`custom:f1-last-race-results-card`
-
-Shows current-season race and Sprint classifications with a session selector. The table includes starting position, position change, completed laps, time or gap, points, status, driver images, and No Spoiler Mode.
-
-Select **Archive** in the card to browse historical race, Sprint, and qualifying classifications by season and Grand Prix. Historical data loads only after you open Archive, so the default current-season view does not create archive requests. Race and Sprint tables show race-specific fields, while qualifying tables show only position, driver, Q1, Q2, and Q3.
-
-:::info[Existing Session Archive cards]
-Existing dashboards that use `custom:f1-session-archive-card` continue to work and open the unified Results card in Archive mode. The separate Session Archive card is no longer offered in the card picker.
-:::
-
-![Placeholder - F1 Last Race Results card screenshot](/img/placeholder_card_last_race_results.png)
-
-**Required entity:** `sensor.f1_last_race_results`
-
-**Optional entities:** `sensor.f1_season_results`, `sensor.f1_sprint_results`, `sensor.f1_driver_list`, `switch.f1_no_spoiler_mode`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `show_header` | `true` | Show the card header |
-| `show_session_selector` | `true` | Allow switching between race and sprint classifications |
-| `show_session_type_badge` | `true` | Show session type badge |
-| `show_table_header` | `true` | Show column labels |
-| `show_position` | `true` | Show final position |
-| `show_grid` | `true` | Show starting grid position |
-| `show_tla` | `true` | Show driver TLA |
-| `show_full_name` | `false` | Show full driver names |
-| `show_team_logo` | `true` | Show team logo |
-| `driver_image_type` | `team_logo` | Driver image source used by the card |
-| `team_logo_style` | `color` | Logo appearance |
-| `show_delta` | `true` | Show movement from grid to finish |
-| `show_laps` | `true` | Show completed laps for race and Sprint classifications |
-| `show_time_gap` | `true` | Show the total time or gap supplied by Jolpica |
-| `show_points` | `true` | Show awarded points |
-| `show_status` | `true` | Show finish status |
-| `show_archive` | `true` | Allow switching to the on-demand results archive |
-| `history_year` | Current season | Initial season when Archive is opened |
-| `history_entry_id` | `auto` | F1 Sensor config entry used for archive requests. Keep `auto` unless you have multiple entries |
-| `top_limit` | `0` | Limit rows to top N. `0` shows all |
-
----
-
-### F1 Lap Position Progression Card
-
-`custom:f1-lap-position-progression-card`
-
-Displays a native SVG post-race lap position chart for completed main races. The card reads lightweight session metadata from `sensor.f1_lap_position_progression`, then asks the F1 Sensor backend for the selected race through Home Assistant's WebSocket API. This keeps full lap-by-lap position arrays out of entity state attributes.
-
-![Placeholder - F1 Lap Position Progression card screenshot](/img/placeholder_card_race_lap.png)
-
-**Required entity:** `sensor.f1_lap_position_progression`
-
-**Optional entities:** `sensor.f1_driver_list`, `switch.f1_no_spoiler_mode`
-
-**Example:**
-
-```yaml
-type: custom:f1-lap-position-progression-card
-entity: sensor.f1_lap_position_progression
-drivers_entity: sensor.f1_driver_list
-no_spoiler_entity: switch.f1_no_spoiler_mode
-title: Lap Position Progression
-theme_mode: auto
-top_limit: 10
-```
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `entity` | `sensor.f1_lap_position_progression` | Sensor that provides race and sprint session metadata |
-| `drivers_entity` | `sensor.f1_driver_list` | Driver list sensor used for team metadata and logos |
-| `no_spoiler_entity` | `switch.f1_no_spoiler_mode` | No Spoiler Mode switch used by the overlay behavior |
-| `theme_mode` | `auto` | Card theme. Use `dark`, `light`, or `auto` |
-| `title` | `Lap Position Progression` | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_session_selector` | `true` | Allow switching between race and sprint entries |
-| `show_full_name` | `false` | Show full driver names instead of compact labels |
-| `team_logo_style` | `color` | Logo appearance |
-| `show_points` | `true` | Show point markers on the chart |
-| `show_round_labels` | `true` | Show lap labels on the x-axis |
-| `top_limit` | `0` | Limit visible entries by final position. `0` shows all drivers |
-| `chart_height` | `420` | Chart height in pixels |
-
-The chart places P1 at the top and lap number on the x-axis. Driver labels on the left show the starting order, while the right side shows the official classified finishing order for completed races. Each progression line ends at the driver's classified result, so the chart stays consistent when penalties or other post-race adjustments change the order after the final lap. Select a driver label on either side to hide or show that driver's progression line. Drivers that have classification metadata but no lap timing rows are still listed in the side labels, but they do not draw a progression line. Hover or focus a chart point to see driver, lap, position, race name, and grid-to-finish context when available. Jolpica data is loaded for one selected race at a time and reused from the integration cache where possible.
-
-:::info[Sprint limitation]
-Sprint sessions can appear in the selector so the season context is complete, but Jolpica currently exposes sprint classification results rather than sprint lap-by-lap positions. Those sprint entries render an unsupported state instead of a chart.
-:::
-
-When No Spoiler Mode is enabled, the card uses the same overlay behavior as other bundled spoiler-sensitive cards and does not reveal newly fetched post-race position data until spoilers are allowed.
-
----
-
-### F1 Tyre Statistics Card
-
-`custom:f1-sensor-live-data-card`
-
-Displays the current tyre compound for each driver, stint history, compound statistics, and best lap times per compound.
-
-![Placeholder - F1 Tyre Statistics card screenshot](/img/placeholder_card_tyres.png)
-
-**Required entities:** `sensor.f1_tyre_statistics`, `sensor.f1_driver_list`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Tyres Statistics` | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_best_times` | `true` | Show best lap times per compound |
-| `show_stats` | `true` | Show compound usage statistics |
-| `show_delta` | `true` | Show delta values |
-| `show_tyre_image` | `true` | Show tyre compound images |
-| `show_compound_name` | `true` | Show compound name |
-| `show_full_name` | `false` | Show full driver names |
-| `show_team_logo` | `false` | Show team logo |
-| `team_logo_style` | `color` | Logo appearance |
-| `max_best_times` | `3` | Maximum number of best times to show |
-
----
-
-### F1 Pit Stop Overview Card
-
-`custom:f1-pitstop-overview-card`
-
-Shows pit stop history for all drivers: stop count, tyre fitted, tyre age, pit time, pit lane time, and delta to fastest stop.
-
-![Placeholder - F1 Pit Stop Overview card screenshot](/img/placeholder_card_pitstops.png)
-
-**Required entities:** `sensor.f1_pitstops`, `sensor.f1_current_tyres`, `sensor.f1_driver_positions`, `sensor.f1_driver_list`
-
-**Optional entity:** `sensor.f1_f1tv_token_status`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Pit Stops & Tyres` | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_table_header` | `true` | Show column labels |
-| `show_tla` | `true` | Show driver TLA |
-| `show_full_name` | `false` | Show full driver names |
-| `show_team_logo` | `false` | Show team logo |
-| `team_logo_style` | `color` | Logo appearance |
-| `show_status` | `true` | Show pit stop status |
-| `show_tyre` | `true` | Show tyre compound |
-| `show_tyre_laps` | `false` | Show laps completed on the current tyre |
-| `show_pit_count` | `true` | Show number of stops |
-| `show_pit_time` | `true` | Show pit stop duration |
-| `show_pit_lane_time` | `true` | Show total pit lane time |
-| `show_pit_delta` | `true` | Show delta to fastest stop |
-| `show_availability_notice` | `true` | Show informational notices for unavailable F1TV Auth enhanced data. Authentication warnings remain visible. |
-
----
-
-### F1 Driver Lap Times Card
-
-`custom:f1-driver-lap-times-card`
-
-Displays live lap timing, driver positions, gap/interval data, personal best laps, status, and optional lap history with trend indicators.
-
-![Placeholder - F1 Driver Lap Times card screenshot](/img/placeholder_card_lap_times.png)
-
-**Required entities:** `sensor.f1_driver_positions`, `sensor.f1_driver_list`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Driver Lap Times` | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_table_header` | `true` | Show column labels |
-| `show_position` | `true` | Show current position |
-| `show_team_logo` | `true` | Show team logo |
-| `show_tla` | `true` | Show driver TLA |
-| `show_full_name` | `false` | Show full driver names |
-| `show_status` | `true` | Show driver status |
-| `show_gap` | `true` | Show gap or interval |
-| `gap_mode` | `ahead` | Gap mode. `ahead` shows interval to the car ahead. |
-| `show_gap_toggle` | `true` | Show the gap mode toggle |
-| `show_last_lap` | `true` | Show last lap time |
-| `show_best_lap` | `true` | Show personal best lap time |
-| `show_lap_history` | `false` | Show lap-by-lap history columns |
-| `lap_history_limit` | `0` | Number of recent lap columns. `0` shows all laps. |
-| `show_lap_trend` | `true` | Show faster/slower trend indicators |
-| `team_logo_style` | `color` | Logo appearance |
-
----
-
-### F1 Investigations Card
-
-`custom:f1-investigations-card`
-
-Lists steward investigations and penalties for the current session. It can show only affected drivers or all drivers.
-
-![Placeholder - F1 Investigations card screenshot](/img/placeholder_card_investigations.png)
-
-**Required entities:** `sensor.f1_investigations`, `sensor.f1_driver_list`, `sensor.f1_driver_positions`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Investigations & Penalties` | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_table_header` | `true` | Show column labels |
-| `show_team_logo` | `false` | Show team logo |
-| `show_full_name` | `false` | Show full driver names |
-| `team_logo_style` | `color` | Logo appearance |
-| `show_all_drivers` | `false` | Show all drivers, not only affected drivers |
-
----
-
-### F1 Track Limits Card
-
-`custom:f1-track-limits-card`
-
-Shows track limit violations per driver, including deleted lap times, black and white flag warnings, and penalties.
-
-![Placeholder - F1 Track Limits card screenshot](/img/placeholder_card_track_limits.png)
-
-**Required entities:** `sensor.f1_track_limits`, `sensor.f1_driver_list`, `sensor.f1_driver_positions`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Track Limits` | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_table_header` | `true` | Show column labels |
-| `show_team_logo` | `false` | Show team logo |
-| `show_full_name` | `false` | Show full driver names |
-| `team_logo_style` | `color` | Logo appearance |
-| `show_all_drivers` | `false` | Show all drivers, not only drivers with violations |
-
----
-
-### F1 Championship Prediction Drivers Card
-
-`custom:f1-championship-prediction-drivers-card`
-
-Displays current driver standings beside predicted final standings, predicted points, current points, and delta.
-
-![Placeholder - F1 Championship Prediction Drivers card screenshot](/img/placeholder_card_prediction_drivers.png)
-
-**Required entities:** `sensor.f1_driver_standings`, `sensor.f1_championship_prediction_drivers`, `sensor.f1_driver_list`
-
-**Optional entities:** `sensor.f1_current_session`, `sensor.f1_session_status`, `switch.f1_no_spoiler_mode`, `sensor.f1_f1tv_token_status`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Driver Championship` | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_mode_badge` | `true` | Show live/replay/no-spoiler mode badge |
-| `show_table_header` | `true` | Show column labels |
-| `show_position` | `true` | Show championship position |
-| `show_tla` | `true` | Show driver TLA |
-| `show_full_name` | `false` | Show full driver names |
-| `show_team_logo` | `true` | Show team logo |
-| `driver_image_type` | `team_logo` | Driver image source used by the card |
-| `team_logo_style` | `color` | Logo appearance |
-| `show_predicted_points` | `true` | Show predicted final points |
-| `show_current_points` | `true` | Show current points |
-| `show_delta` | `true` | Show predicted points delta |
-| `show_availability_notice` | `true` | Show informational notices for unavailable F1TV Auth enhanced data. Authentication warnings remain visible. |
-| `top_limit` | `0` | Limit rows to top N. `0` shows all. |
-
----
-
-### F1 Championship Prediction Teams Card
-
-`custom:f1-championship-prediction-teams-card`
-
-Displays current constructor standings beside predicted final standings, predicted points, current points, and delta.
-
-![Placeholder - F1 Championship Prediction Teams card screenshot](/img/placeholder_card_prediction_teams.png)
-
-**Required entities:** `sensor.f1_constructor_standings`, `sensor.f1_championship_prediction_teams`
-
-**Optional entities:** `sensor.f1_current_session`, `sensor.f1_session_status`, `switch.f1_no_spoiler_mode`, `sensor.f1_f1tv_token_status`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Constructor Championship` | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_mode_badge` | `true` | Show live/replay/no-spoiler mode badge |
-| `show_table_header` | `true` | Show column labels |
-| `show_position` | `true` | Show championship position |
-| `show_team_name` | `true` | Show team name |
-| `show_team_logo` | `true` | Show team logo |
-| `team_logo_style` | `color` | Logo appearance |
-| `show_predicted_points` | `true` | Show predicted final points |
-| `show_current_points` | `true` | Show current points |
-| `show_delta` | `true` | Show predicted points delta |
-| `show_availability_notice` | `true` | Show informational notices for unavailable F1TV Auth enhanced data. Authentication warnings remain visible. |
-| `top_limit` | `0` | Limit rows to top N. `0` shows all. |
-
----
-
-### F1 Season Progression Card
-
-`custom:f1-season-progression-card`
-
-Displays driver or constructor championship point progression as a native bundled chart. Add one card with `mode: drivers` for the Drivers' Championship and another card with `mode: constructors` for the Constructors' Championship.
-
-**Required entity:** `sensor.f1_driver_points_progression` or `sensor.f1_constructor_points_progression`
-
-**Optional entities:** `sensor.f1_current_season`, `sensor.f1_driver_list`
-
-**Driver progression example:**
-
-```yaml
-type: custom:f1-season-progression-card
-mode: drivers
-entity: sensor.f1_driver_points_progression
-calendar_entity: sensor.f1_current_season
-driver_list_entity: sensor.f1_driver_list
-title: Season progression - drivers points
-theme_mode: auto
-legend_position: bottom
-show_future_rounds: true
-```
-
-**Constructor progression example:**
-
-```yaml
-type: custom:f1-season-progression-card
-mode: constructors
-entity: sensor.f1_constructor_points_progression
-calendar_entity: sensor.f1_current_season
-title: Season progression - constructors points
-theme_mode: auto
-legend_position: bottom
-show_future_rounds: true
-```
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `mode` | `drivers` | Use `drivers` or `constructors` |
-| `entity` | Mode-specific | Progression sensor used by the chart |
-| `calendar_entity` | `sensor.f1_current_season` | Season calendar sensor used to show future rounds on the x-axis |
-| `driver_list_entity` | `sensor.f1_driver_list` | Driver list sensor used for tooltip headshots in driver mode |
-| `theme_mode` | `auto` | Card theme. Use `dark`, `light`, or `auto` |
-| `title` | Mode-specific | Card title |
-| `show_header` | `true` | Show the card header |
-| `show_legend` | `true` | Show the legend |
-| `legend_position` | `bottom` | Place the legend at `bottom`, `left`, or `right` |
-| `show_legend_points` | `true` | Show latest points in the legend |
-| `show_full_name` | `false` | Show full names instead of compact labels |
-| `show_points` | `true` | Show point markers on the chart |
-| `show_round_labels` | `true` | Show round labels on the x-axis |
-| `show_future_rounds` | `true` | Keep future calendar rounds visible before points are available |
-| `top_limit` | `0` | Limit visible entries to the top N. `0` shows all |
-| `chart_height` | `320` | Chart height in pixels |
-
-The legend is interactive. Select a driver or team in the legend to hide or show that line. Hover or focus a chart point to see the round, race name, points, and available driver or team image.
-
----
-
-### F1 Replay Control Card
-
-`custom:f1-replay-control-card`
-
-Provides a purpose-built Replay Mode dashboard control. It combines season and session selectors, start reference selection, load/play/pause/stop controls, a drag-to-seek playbar, 30-second seek buttons, refresh, status details, and progress.
-
-The playbar appears when the replay media player supports seek. Drag the handle to preview a new position, then release it to send one `media_player.media_seek` command. The card does not send seek commands continuously while you drag.
-
-![Placeholder - F1 Replay Control card screenshot](/img/placeholder_card_replay_control.png)
-
-**Required entities:** `sensor.f1_replay_status`, `select.f1_replay_year`, `select.f1_replay_session`, `button.f1_replay_load`, `button.f1_replay_play`, `button.f1_replay_pause`, `button.f1_replay_stop`, `media_player.f1_replay_player`
-
-**Optional entities:** `select.f1_replay_start_reference`, `button.f1_replay_back_30`, `button.f1_replay_forward_30`, `button.f1_replay_refresh`
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme |
-| `title` | `Replay Control` | Card title |
-| `display_mode` | `full` | Use `full` or `compact` layout |
-| `show_title` | `true` | Show card title |
-| `show_status_details` | `true` | Show replay status metadata |
-| `show_secondary_selects` | `true` | Show secondary selectors |
-| `show_start_reference` | `true` | Show start reference selector |
-| `show_seek_controls` | `true` | Show back/forward 30-second controls |
-| `show_refresh` | `true` | Show refresh control |
-| `show_progress` | `true` | Show playback progress and the seek playbar when supported |
-| `show_button_labels` | `true` | Show text labels on playback buttons |
-
----
-
-### F1 Track Map Card
-
-`custom:f1-track-map-card`
-
-Shows a circuit map with driver markers, optional lap progress, and track status context. Live Track Map requires optional [F1TV Auth](/features/f1tv-auth) because public live timing does not include the needed car position data. Replay Track Map is best effort and works when the replay archive contains that data.
-
-:::info[Availability]
-The card needs the F1 Sensor integration, an active live or replay session, and usable Track Map data. During live sessions, car positions require F1TV Auth. During Replay Mode, car positions require archived position data for the loaded session.
-:::
-
-When [Live Delay](/features/live-delay) is configured, live Track Map updates follow the same delay as other live dashboard data. Replay playback remains immediate.
-
-**Required setup:** F1 Sensor integration with live data or Replay Mode enabled
-
-**Optional context entities:** `sensor.f1_race_lap_count`, `sensor.f1_track_status`
-
-```yaml
-type: custom:f1-track-map-card
-title: F1 Track Map
-entry_id: auto
-lap_count_entity: auto
-track_status_entity: auto
-```
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `theme_mode` | `dark` | Card theme. Use `dark`, `light`, or `auto` |
-| `title` | `F1 Track Map` | Card title |
-| `entry_id` | `auto` | F1 Sensor config entry to use. `auto` works for most installations |
-| `throttle_ms` | `100` | Minimum time between snapshot updates in milliseconds |
-| `interpolation_ms` | `auto` | Driver marker interpolation timing |
-| `invert_y` | `true` | Invert the Y axis for the map projection |
-| `show_header` | `true` | Show the card header |
-| `show_footer` | `true` | Show source and status details at the bottom |
-| `show_session_info` | `true` | Show meeting and session text |
-| `show_driver_count` | `true` | Show the number of drivers currently displayed |
-| `driver_label_mode` | `tla` | Use `tla`, `number`, or `off` for driver labels |
-| `show_lap_progress` | `true` | Show lap progress when a lap count entity is available |
-| `lap_count_entity` | `auto` | Lap count entity. Empty disables lap progress context |
-| `show_track_status` | `true` | Show track status context when available |
-| `track_status_entity` | `auto` | Track status entity. Empty disables track status context |
-| `track_status_line_mode` | `accent` | Use `accent`, `full`, or `off` for track status line coloring |
-| `layout_mode` | `auto` | Use `auto`, `compact`, or `full` layout |
-
-For status messages and troubleshooting, see [Track Map](/features/track-map).
-
----
+Your existing card types remain valid. [Follow the migration steps](/cards/installation#migrate-from-the-standalone-card) to remove old resources after the bundled cards work.
+
+## Adding cards
+
+Open **Edit dashboard > Add card**, search for **F1**, choose a card and save. Start with [Next Race](/cards/next-race) if you want to verify the setup outside an active session.
+
+## Shared options
+
+[Entity selection, themes, fonts, spoiler protection and actions](/cards/shared-options) work consistently across the bundled cards. Each card page lists the settings specific to that card.
+
+## Card reference
+
+These direct links preserve the older card-reference bookmarks. Open the card name for its full guide.
+
+| Card | YAML type |
+| --- | --- |
+| <span id="f1-weekend-hub-card" />[Weekend Hub](/cards/weekend-hub) | `custom:f1-weekend-hub-card` |
+| <span id="f1-live-session-card" />[Live Session](/cards/live-session) | `custom:f1-live-session-card` |
+| <span id="f1-next-race-card" />[Next Race](/cards/next-race) | `custom:f1-next-race-card` |
+| <span id="f1-race-weather-card" />[Race Weather](/cards/race-weather) | `custom:f1-weather-card` |
+| <span id="f1-season-calendar-card" />[Season Calendar](/cards/season-calendar) | `custom:f1-season-calendar-card` |
+| <span id="f1-race-control-card" />[Race Control](/cards/race-control) | `custom:f1-race-control-card` |
+| <span id="f1-fia-documents-card" />[FIA Documents](/cards/fia-documents) | `custom:f1-fia-documents-card` |
+| <span id="f1-qualifying-timing-card" />[Qualifying Timing](/cards/qualifying-timing) | `custom:f1-qualifying-timing-card` |
+| <span id="f1-practice-timing-card" />[Practice Timing](/cards/practice-timing) | `custom:f1-practice-timing-card` |
+| <span id="f1-race-lap-card" />[Race Lap](/cards/race-lap) | `custom:f1-race-lap-card` |
+| <span id="f1-starting-grid-card" />[Starting Grid](/cards/starting-grid) | `custom:f1-starting-grid-card` |
+| <span id="f1-results-card" />[Results](/cards/results) | `custom:f1-last-race-results-card` |
+| <span id="f1-lap-position-progression-card" />[Lap Position Progression](/cards/lap-position-progression) | `custom:f1-lap-position-progression-card` |
+| <span id="f1-tyre-statistics-card" />[Tyre Statistics](/cards/tyre-statistics) | `custom:f1-sensor-live-data-card` |
+| <span id="f1-pit-stop-overview-card" />[Pit Stops](/cards/pit-stops) | `custom:f1-pitstop-overview-card` |
+| <span id="f1-driver-lap-times-card" />[Driver Lap Times](/cards/driver-lap-times) | `custom:f1-driver-lap-times-card` |
+| <span id="f1-investigations-card" />[Investigations](/cards/investigations) | `custom:f1-investigations-card` |
+| <span id="f1-track-limits-card" />[Track Limits](/cards/track-limits) | `custom:f1-track-limits-card` |
+| <span id="f1-championship-prediction-drivers-card" />[Driver Championship](/cards/championship-drivers) | `custom:f1-championship-prediction-drivers-card` |
+| <span id="f1-championship-prediction-teams-card" />[Constructor Championship](/cards/championship-teams) | `custom:f1-championship-prediction-teams-card` |
+| <span id="f1-season-progression-card" />[Season Progression](/cards/season-progression) | `custom:f1-season-progression-card` |
+| <span id="f1-replay-control-card" />[Replay Control](/cards/replay-control) | `custom:f1-replay-control-card` |
+| <span id="f1-track-map-card" />[Track Map](/cards/track-map) | `custom:f1-track-map-card` |
 
 ## Related
 
-- [Live Data entities](/entities/live-data)
-- [Static Data entities](/entities/static-data)
+- [Live data reference](/entities/live-data)
+- [Static data reference](/entities/static-data)
 - [Replay Mode](/features/replay-mode)
 - [F1TV Auth](/features/f1tv-auth)
-- [Track Map](/features/track-map)
 - [Live Delay](/features/live-delay)
