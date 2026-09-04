@@ -27,10 +27,10 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Install test dependencies
-        run: pip install pytest-homeassistant-custom-component pytest-cov
+        run: pip install pytest-homeassistant-custom-component==0.13.307 pytest-cov
 
       - name: Run tests
         run: >

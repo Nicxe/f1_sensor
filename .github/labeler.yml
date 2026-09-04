@@ -1,7 +1,7 @@
 integration:
   - changed-files:
       - any-glob-to-any-file:
-          - "custom_components/f1_sensor/*.py"
+          - "custom_components/f1_sensor/**/*.py"
           - "custom_components/f1_sensor/translations/**"
           - "custom_components/f1_sensor/manifest.json"
 
@@ -9,6 +9,10 @@ tests:
   - changed-files:
       - any-glob-to-any-file:
           - "custom_components/f1_sensor/tests/**"
+          - "ci_tests/**"
+          - "ci_smoke/**"
+          - "frontend-tests/**"
+          - "docs-tests/**"
 
 card:
   - changed-files:
@@ -38,6 +42,9 @@ ci:
   - changed-files:
       - any-glob-to-any-file:
           - ".github/workflows/**"
+          - ".github/scripts/**"
+          - "scripts/**"
+          - "requirements/**"
           - ".github/dependabot.yml"
           - "pyproject.toml"
           - "pytest.ini"
