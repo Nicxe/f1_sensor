@@ -1,0 +1,11 @@
+# Test policy and migration evidence
+
+Runtime Python must retain at least 95% total line coverage; branch coverage is informational. Authentication, migrations, setup/unload, live windows and replay require behavioral regressions. Defensively mocked failure cases remain when deleting them would remove distinct regression protection. No file is removed merely to reduce the test count.
+
+The practice and next-race suites now load complete bundled JavaScript modules in Node. Browser/Lit boundaries are simulated only in unit tests; Chromium tests render the real modules and Lit implementation. Test inputs and meaningful assertions were preserved. Exact source checks for installation calls, breakpoint constants and one CSS media-query layout were removed: full-gallery keyboard/actions checks, locale/time-zone checks and mobile/tablet/desktop visual tests cover those user behaviors. Other older Python-driven card regressions remain until equivalent direct-module coverage replaces their assertions; Node is required, so they cannot silently disappear in CI.
+
+The duplicate translation-key/source-installation checks in `test_phase_5_quality.py` were removed. Translation schema and placeholder parity use one validator; browser tests retain localization, fallback and action coverage. Timing-budget tests run weekly rather than blocking ordinary PRs. The live-window recovery test drives its retry loop with controlled time instead of waiting 20 real seconds. Timer cleanup fixes preserve assertions while satisfying HA 2026.9's lifecycle checks.
+
+Control tools have separate offline tests for invalid audit responses, bounded retries, coverage measurement, branch routing and aggregation, release recovery, pagination/idempotence and safe Git synchronization. The installed-ZIP smoke test uses real HA, coordinators, entities and WebSocket handling, with external HTTP responses simulated. It verifies the packaged import path, a TrackStatus update, discovered entity IDs and unload. It does not claim live F1 network or physical-dashboard validation.
+
+During rollout, main/content keep the older stable test baseline until normal code promotion, as explicitly agreed. Their CI bootstrap and legacy content verifier must be replaced by the full dev implementation during that promotion; never carry the legacy workflow or lower test baseline back into dev/beta.

@@ -1,0 +1,265 @@
+{
+  "visibility_defaults_enable_all_sections": [
+    {
+      "action": "sections",
+      "config": {}
+    }
+  ],
+  "visibility_respects_disabled_sections": [
+    {
+      "action": "sections",
+      "config": {
+        "show_header": false,
+        "show_overview": false,
+        "show_schedule": false,
+        "show_history": false
+      }
+    }
+  ],
+  "weekend_summary_prefers_live_session": [
+    {
+      "action": "summary",
+      "nextRace": {
+        "qualifying_start_utc": "2026-03-20T14:00:00Z",
+        "race_start_utc": "2026-03-22T14:00:00Z"
+      },
+      "currentSession": {
+        "state": "Qualifying"
+      },
+      "sessionStatus": {
+        "state": "live"
+      }
+    }
+  ],
+  "weekend_summary_uses_next_upcoming_session": [
+    {
+      "action": "summary",
+      "nextRace": {
+        "first_practice_start_utc": "2099-03-20T10:00:00Z",
+        "qualifying_start_utc": "2099-03-21T14:00:00Z",
+        "race_start_utc": "2099-03-22T14:00:00Z"
+      },
+      "currentSession": null,
+      "sessionStatus": {
+        "state": "pre"
+      }
+    }
+  ],
+  "round_summary_prioritizes_round_and_season": [
+    {
+      "action": "round",
+      "nextRace": {
+        "round": 7,
+        "season": 2026
+      }
+    }
+  ],
+  "summary_cells_use_compact_four_cell_matrix": [
+    {
+      "action": "summary_cells",
+      "config": {
+        "show_overview": true,
+        "show_countdown": true
+      },
+      "nextRace": {
+        "round": 7,
+        "season": 2026,
+        "qualifying_start_utc": "2099-03-21T14:00:00Z",
+        "race_start_utc": "2099-03-22T14:00:00Z"
+      },
+      "sessionStatus": {
+        "state": "pre"
+      },
+      "countdown": {
+        "totalSeconds": 90061,
+        "days": 1,
+        "hours": 1,
+        "minutes": 1,
+        "seconds": 1,
+        "start": "2099-03-22T14:00:00.000Z"
+      }
+    }
+  ],
+  "secondary_panel_hides_when_both_parts_are_absent": [
+    {
+      "action": "secondary",
+      "sections": {
+        "map": false,
+        "weather": true
+      },
+      "weather": {
+        "show": false
+      }
+    }
+  ],
+  "secondary_panel_keeps_map_when_weather_is_missing": [
+    {
+      "action": "secondary",
+      "sections": {
+        "map": true,
+        "weather": true
+      },
+      "weather": {
+        "show": false
+      }
+    }
+  ],
+  "history_ribbon_omits_empty_state": [
+    {
+      "action": "history_ribbon",
+      "nextRace": {}
+    }
+  ],
+  "time_format_follows_ha_12_hour_setting": [
+    {
+      "action": "format_time",
+      "value": "2099-05-21T18:30:00Z",
+      "timeZone": "UTC",
+      "hass": {
+        "locale": {
+          "time_format": "12",
+          "language": "en-US",
+          "time_zone": "UTC"
+        },
+        "config": {
+          "time_zone": "UTC"
+        }
+      }
+    }
+  ],
+  "time_format_follows_ha_24_hour_setting": [
+    {
+      "action": "format_time",
+      "value": "2099-05-21T18:30:00Z",
+      "timeZone": "UTC",
+      "hass": {
+        "locale": {
+          "time_format": "24",
+          "language": "en-US",
+          "time_zone": "UTC"
+        },
+        "config": {
+          "time_zone": "UTC"
+        }
+      }
+    }
+  ],
+  "language_time_format_uses_locale_default": [
+    {
+      "action": "format_time",
+      "value": "2099-05-21T18:30:00Z",
+      "timeZone": "UTC",
+      "hass": {
+        "locale": {
+          "time_format": "language",
+          "language": "en-US",
+          "time_zone": "UTC"
+        },
+        "config": {
+          "time_zone": "UTC"
+        }
+      }
+    },
+    {
+      "action": "format_time",
+      "value": "2099-05-21T18:30:00Z",
+      "timeZone": "UTC",
+      "hass": {
+        "locale": {
+          "time_format": "language",
+          "language": "sv-SE",
+          "time_zone": "UTC"
+        },
+        "config": {
+          "time_zone": "UTC"
+        }
+      }
+    }
+  ],
+  "schedule_formats_user_and_track_times_from_ha_locale": [
+    {
+      "action": "weekend_panel",
+      "config": {
+        "show_schedule": true,
+        "show_track_time": true
+      },
+      "layoutMode": "wide",
+      "hass": {
+        "locale": {
+          "time_format": "12",
+          "language": "en-US",
+          "time_zone": "UTC"
+        },
+        "config": {
+          "time_zone": "UTC"
+        }
+      },
+      "nextRace": {
+        "circuit_timezone": "America/New_York",
+        "first_practice_start_utc": "2099-05-21T18:30:00Z",
+        "qualifying_start_utc": "2099-05-22T20:00:00Z",
+        "race_start_utc": "2099-05-24T22:00:00Z"
+      },
+      "sessionStatus": {
+        "state": "pre"
+      }
+    }
+  ],
+  "schedule_places_next_chip_in_right_status_column": [
+    {
+      "action": "weekend_panel",
+      "config": {
+        "show_schedule": true,
+        "show_track_time": false
+      },
+      "layoutMode": "wide",
+      "nextRace": {
+        "circuit_timezone": "Asia/Tokyo",
+        "first_practice_start_utc": "2099-03-20T10:00:00Z",
+        "qualifying_start_utc": "2099-03-21T14:00:00Z",
+        "race_start_utc": "2099-03-22T14:00:00Z"
+      },
+      "sessionStatus": {
+        "state": "pre"
+      }
+    }
+  ],
+  "narrow_schedule_uses_full_width_rows": [
+    {
+      "action": "weekend_panel",
+      "config": {
+        "show_schedule": true,
+        "show_track_time": true
+      },
+      "layoutMode": "narrow",
+      "nextRace": {
+        "circuit_timezone": "America/New_York",
+        "first_practice_start_utc": "2099-05-21T18:30:00Z",
+        "sprint_qualifying_start_utc": "2099-05-22T22:30:00Z",
+        "race_start_utc": "2099-05-24T22:00:00Z"
+      },
+      "sessionStatus": {
+        "state": "pre"
+      }
+    }
+  ],
+  "schedule_hides_track_column_when_disabled": [
+    {
+      "action": "weekend_panel",
+      "config": {
+        "show_schedule": true,
+        "show_track_time": false
+      },
+      "layoutMode": "wide",
+      "nextRace": {
+        "circuit_timezone": "Asia/Tokyo",
+        "first_practice_start_utc": "2099-03-20T10:00:00Z",
+        "qualifying_start_utc": "2099-03-21T14:00:00Z",
+        "race_start_utc": "2099-03-22T14:00:00Z"
+      },
+      "sessionStatus": {
+        "state": "pre"
+      }
+    }
+  ]
+}

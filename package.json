@@ -24,7 +24,7 @@
     "test:docs": "npm run build && npm run test:docs:build && npm run test:docs:browser",
     "capture:docs-cards": "node docs-tests/capture-cards.cjs",
     "test:automation": "python3 -m unittest discover -s ci_tests && node --test ci_tests/*.test.cjs",
-    "test:frontend:unit": "node --test frontend-tests/unit/*.test.mjs"
+    "test:frontend:unit": "node --experimental-vm-modules --test frontend-tests/unit/*.test.mjs"
   },
   "dependencies": {
     "@docusaurus/core": "^3.10.2",
