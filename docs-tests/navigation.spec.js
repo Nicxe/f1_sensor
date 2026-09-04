@@ -122,3 +122,19 @@ test('200 percent zoom equivalent retains content and navigation', async ({brows
     await context.close();
   }
 });
+
+for (const platform of ['Linux', 'macOS']) {
+  test(`search shortcut contrast meets AA on ${platform}`, async ({page}) => {
+    await page.addInitScript(platform => {
+      Object.defineProperty(navigator, 'userAgentData', {value: {platform}, configurable: true});
+    }, platform);
+    for (const theme of ['light', 'dark']) {
+      await page.emulateMedia({colorScheme: theme});
+      await page.goto('./');
+      await page.evaluate(() => document.fonts.ready);
+      await expect(page.locator('.navbar kbd').first()).toHaveText(platform === 'Linux' ? 'ctrl' : '⌘');
+      const {violations} = await new AxeBuilder({page}).include('.navbar').withRules(['color-contrast']).analyze();
+      expect(violations).toEqual([]);
+    }
+  });
+}
