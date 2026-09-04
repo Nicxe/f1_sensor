@@ -1,10 +1,10 @@
 'use strict';
 
-async function syncOne({github, context, core}, source, sha, target) {
+async function syncOne({github, context, core, legacyContent=false}, source, sha, target) {
   const repo = context.repo;
   const comparison = (await github.rest.repos.compareCommits({...repo, base:target, head:sha})).data;
   if (['identical','behind'].includes(comparison.status)) return 'contained';
-  if (comparison.status === 'ahead') {
+  if (comparison.status === 'ahead' && !(legacyContent && target === 'content')) {
     let updated = false;
     try {
       await github.rest.git.updateRef({...repo, ref:`heads/${target}`, sha, force:false});
@@ -31,7 +31,8 @@ async function syncOne({github, context, core}, source, sha, target) {
     body:`Preserve the published ${source} history in ${target} without replacing commits. This synchronization uses an immutable source snapshot and must pass CI before merging. Conflicts require a normal merge resolution; no side is selected automatically.`})).data;
   // GITHUB_TOKEN pushes do not reliably start CI. Run the merge ref explicitly,
   // attaching the required check to this immutable PR head.
-  await github.rest.actions.createWorkflowDispatch({...repo, workflow_id:'ci.yml', ref:branch, inputs:{release:false, pull_request:String(pr.number)}});
+  const legacy = legacyContent && target === 'content';
+  await github.rest.actions.createWorkflowDispatch({...repo, workflow_id:legacy?'sync-legacy.yml':'ci.yml', ref:legacy?'main':target, inputs:legacy?{pull_request:String(pr.number)}:{release:false, pull_request:String(pr.number)}});
   return 'pull-request';
 }
 

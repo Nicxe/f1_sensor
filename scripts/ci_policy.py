@@ -165,8 +165,15 @@ def main() -> int:
         )
         with urlopen(request, timeout=20) as response:
             pr = json.load(response)
-        if pr["head"]["sha"] != os.environ["GITHUB_SHA"]:
-            raise ValueError("PR head changed; dispatch a new check for its exact head")
+        if pr["base"]["ref"] != os.environ["GITHUB_REF_NAME"]:
+            raise ValueError("Dispatch PR verification from its trusted target branch")
+        parents = subprocess.check_output(
+            ["git", "show", "-s", "--format=%P", "HEAD"], text=True
+        ).split()
+        if parents != [pr["base"]["sha"], pr["head"]["sha"]]:
+            raise ValueError("PR merge changed during checkout; run verification again")
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+            output.write(f"tested_head={pr['head']['sha']}\n")
         event = {"pull_request": pr}
         name = "pull_request"
     files = changed_files(event, name)
