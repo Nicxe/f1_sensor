@@ -212,7 +212,7 @@ async def test_options_flow_replay_validation_and_save(
 ) -> None:
     monkeypatch.setattr(config_flow.const, "ENABLE_DEVELOPMENT_MODE_UI", True)
     entry = _entry(hass, disabled_sensors=["weather"])
-    flow = F1OptionsFlow()
+    flow = config_flow.F1FlowHandler.async_get_options_flow(entry)
     flow.hass = hass
     flow.handler = entry.entry_id
 
