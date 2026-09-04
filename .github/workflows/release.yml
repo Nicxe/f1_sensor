@@ -43,6 +43,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Attest release provenance
         if: hashFiles('f1_sensor.zip') != ''
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
         with:
           subject-path: f1_sensor.zip
