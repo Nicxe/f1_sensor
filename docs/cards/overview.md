@@ -7,7 +7,7 @@ toc_max_heading_level: 2
 
 import {CardGallery} from '@site/src/components/Docs';
 
-Choose from 23 bundled cards for your [Home Assistant](https://www.home-assistant.io/) dashboard. [Installation and setup](/cards/installation).
+Choose from 23 bundled cards for your [Home Assistant](https://www.home-assistant.io/) dashboard. [See what's new](/features/whats-new), including Weekend Hub and the Results Archive view. [Installation and setup](/cards/installation).
 
 Start with [Next Race](/cards/next-race) between sessions, [Live Session](/cards/live-session) and a timing card on race day, or [Replay Control](/cards/replay-control) when watching later.
 
@@ -19,7 +19,7 @@ Filter by purpose, then open a card for its preview, setup and options. Public l
   {
     "title": "Weekend Hub",
     "href": "/cards/weekend-hub",
-    "image": "/img/cards/weekend-hub.png",
+    "image": "/img/cards/weekend-hub-replay.png",
     "description": "Follow a race weekend in one place, from the session overview to strategy, battles and replay telemetry.",
     "category": "Session overview",
     "availability": "Live / Replay"
