@@ -72,6 +72,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .navbar__brand { gap: 0.35rem; }
 .navbar__title { font-family: var(--ifm-heading-font-family); font-size: 1.45rem; letter-spacing: 0.035em; }
 .navbar__logo { height: 2rem; }
+.navbar kbd { color: var(--f1-ink); background-color: var(--f1-panel-muted); }
 .navbar__link { font-size: 0.88rem; font-weight: 600; }
 .navbar-version-chip { font-size: 0.7rem; }
 .theme-doc-sidebar-container { border-right-color: var(--f1-border) !important; }
