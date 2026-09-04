@@ -40,7 +40,14 @@ function componentLabels(body) {
 
 function releaseIssues(body, repository) {
   const result = new Set();
-  let text = String(body || '').replace(/https:\/\/github\.com\/([^\s/]+\/[^\s/]+)\/(issues|pull)\/(\d+)[^\s)]*/g, (_all, repo, kind, number) => {
+  // Consume the whole Markdown link so a foreign #number in its label cannot
+  // accidentally refer to an unrelated issue in this repository.
+  let text = String(body || '').replace(/\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g, (_all, url) => {
+    const match = url.match(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)(?:[/?#]|$)/i);
+    if (match && match[1].toLowerCase() === repository.toLowerCase()) result.add(Number(match[2]));
+    return '';
+  });
+  text = text.replace(/https:\/\/github\.com\/([^\s/]+\/[^\s/]+)\/(issues|pull)\/(\d+)[^\s)]*/g, (_all, repo, kind, number) => {
     if (repo.toLowerCase() === repository.toLowerCase() && kind === 'issues') result.add(Number(number));
     return '';
   });
