@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   refresh:
@@ -14,7 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - id: deployment
+        name: Confirm the tested site was deployed
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {...context.repo, run_id:context.payload.workflow_run.id, per_page:100});
+            core.setOutput('deployed', jobs.some(job => job.name === 'deploy / deploy' && job.conclusion === 'success'));
       - name: Trigger Context7 re-index
+        if: steps.deployment.outputs.deployed == 'true'
         run: |
           for i in 1 2 3; do
             response=$(curl --connect-timeout 10 --max-time 30 -s -w "\n%{http_code}" -X POST https://context7.com/api/v1/refresh \

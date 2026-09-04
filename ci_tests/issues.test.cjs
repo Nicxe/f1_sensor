@@ -45,3 +45,7 @@ test('published beta and stable instructions retain user guidance', () => {
   release.prerelease = false;
   assert.match(releaseComment(issue, release), /latest stable release/);
 });
+
+test('foreign Markdown link labels cannot become local issue references',()=>{
+  assert.deepEqual(releaseIssues('[#42](https://github.com/another/project/issues/42) and [#43](https://github.com/Nicxe/f1_sensor/pull/43) and [#44](https://github.com/Nicxe/f1_sensor/issues/44)', 'Nicxe/f1_sensor'), [44]);
+});
