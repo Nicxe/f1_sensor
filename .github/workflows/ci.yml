@@ -1,110 +1,47 @@
-name: CI
+name: PR verification
+run-name: >-
+  ${{ github.event_name == 'pull_request' && format('PR #{0} · {1}', github.event.pull_request.number, github.event.pull_request.title) || format('Manual verification · {0}', github.ref_name) }}
 on:
-  push:
-    branches: [dev, beta, main, content]
   pull_request:
-    types: [opened, synchronize, reopened, edited, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       pull_request:
-        description: Verify this PR merge ref at the dispatched immutable head
+        description: Verify a PR from its trusted target branch
         type: string
         default: ''
       release:
-        description: Create or recover a release draft after verification (beta/main only)
+        description: Compatibility input; release retries use Release verification
         type: boolean
         default: false
 permissions:
   contents: read
   pull-requests: read
+  actions: read
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.event.inputs.pull_request || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event.inputs.pull_request != '' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/content' }}
+  group: pr-verification-${{ github.event.pull_request.number || github.event.inputs.pull_request || github.ref }}
+  cancel-in-progress: true
 jobs:
-  plan:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      tested_head: ${{ steps.plan.outputs.tested_head }}
-      deploy: ${{ steps.plan.outputs.deploy }}
-      selected: ${{ steps.plan.outputs.selected }}
-      lint: ${{ steps.plan.outputs.lint }}
-      backend: ${{ steps.plan.outputs.backend }}
-      frontend: ${{ steps.plan.outputs.frontend }}
-      documentation: ${{ steps.plan.outputs.documentation }}
-      validation: ${{ steps.plan.outputs.validation }}
-      package: ${{ steps.plan.outputs.package }}
-      audit: ${{ steps.plan.outputs.audit }}
-      blueprints: ${{ steps.plan.outputs.blueprints }}
-      automation: ${{ steps.plan.outputs.automation }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          ref: ${{ github.event.inputs.pull_request && format('refs/pull/{0}/merge', github.event.inputs.pull_request) || github.sha }}
-      - id: plan
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/ci_policy.py plan
-  lint:
-    needs: plan
-    if: needs.plan.outputs.lint == 'true'
-    uses: ./.github/workflows/ruff.yml
-  backend:
-    needs: plan
-    if: needs.plan.outputs.backend == 'true'
-    uses: ./.github/workflows/tests.yml
-  frontend:
-    needs: plan
-    if: needs.plan.outputs.frontend == 'true'
-    uses: ./.github/workflows/frontend.yml
-  documentation:
-    needs: plan
-    if: needs.plan.outputs.documentation == 'true'
-    uses: ./.github/workflows/documentation.yml
+  checks:
+    uses: ./.github/workflows/ci-checks.yml
     with:
-      publish: ${{ needs.plan.outputs.deploy == 'true' }}
-  validation:
-    needs: plan
-    if: needs.plan.outputs.validation == 'true'
-    uses: ./.github/workflows/validate.yml
-  package:
-    needs: plan
-    if: needs.plan.outputs.package == 'true'
-    uses: ./.github/workflows/package.yml
-  audit:
-    needs: plan
-    if: needs.plan.outputs.audit == 'true'
-    uses: ./.github/workflows/audit.yml
-  blueprints:
-    needs: plan
-    if: needs.plan.outputs.blueprints == 'true'
-    uses: ./.github/workflows/tests.yml
-    with:
-      blueprints_only: true
-  automation:
-    needs: plan
-    if: needs.plan.outputs.automation == 'true'
-    uses: ./.github/workflows/automation-tests.yml
+      allow_reuse: true
   required:
-    name: ${{ github.event.inputs.pull_request && 'Dispatched CI result' || 'CI required' }}
-    needs: [plan, lint, backend, frontend, documentation, validation, package, audit, blueprints, automation]
+    name: ${{ github.event.inputs.pull_request && 'Dispatched CI result' || github.event_name == 'pull_request' && 'CI required' || 'Manual verification result' }}
+    needs: checks
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - name: Verify every applicable result
-        env:
-          CI_NEEDS: ${{ toJSON(needs) }}
-        run: python3 scripts/ci_policy.py gate
+      - name: Direct release retries to the release pipeline
+        if: github.event.inputs.release == 'true'
+        run: echo 'Use Release verification to create or recover a release draft.'; exit 1
+      - env:
+          RESULT: ${{ needs.checks.result }}
+        run: test "$RESULT" = success
   report-pr:
     name: Report explicitly verified PR
-    needs: [plan, required]
-    if: always() && github.event.inputs.pull_request && needs.plan.outputs.tested_head
+    needs: [checks, required]
+    if: always() && github.event.inputs.pull_request && needs.checks.outputs.tested_head
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -114,43 +51,21 @@ jobs:
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           PR_NUMBER: ${{ github.event.inputs.pull_request }}
-          TESTED_HEAD: ${{ needs.plan.outputs.tested_head }}
+          TESTED_BASE: ${{ needs.checks.outputs.tested_base }}
+          TESTED_HEAD: ${{ needs.checks.outputs.tested_head }}
           CI_RESULT: ${{ needs.required.result }}
         with:
           script: |
             const pr = (await github.rest.pulls.get({...context.repo, pull_number:Number(process.env.PR_NUMBER)})).data;
-            if (pr.head.sha !== process.env.TESTED_HEAD || pr.base.ref !== context.ref.replace('refs/heads/','')) {
+            if (pr.head.sha !== process.env.TESTED_HEAD || pr.base.sha !== process.env.TESTED_BASE || pr.base.ref !== context.ref.replace('refs/heads/','')) {
               throw new Error('PR changed; dispatch verification again.');
             }
-            await github.rest.checks.create({...context.repo, name:'CI required', head_sha:process.env.TESTED_HEAD,
+            const externalId = `f1-pr:${pr.number}:${process.env.TESTED_BASE}:${process.env.TESTED_HEAD}`;
+            const checks = await github.paginate(github.rest.checks.listForRef, {...context.repo, ref:pr.head.sha, check_name:'CI required', per_page:100});
+            const pending = checks.find(check => check.external_id === externalId && check.app?.id === 15368);
+            const result = {...context.repo, name:'CI required',
               status:'completed', conclusion:process.env.CI_RESULT==='success'?'success':'failure',
               details_url:`https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              output:{title:'Verified PR merge result',summary:`All applicable checks ran on this PR merge from its trusted target branch. Result: ${process.env.CI_RESULT}.`}});
-  release:
-    needs: required
-    # Optional ancestors can be skipped; the aggregate is the release gate.
-    if: >-
-      !cancelled() && needs.required.result == 'success' && vars.CI_ROLLOUT != 'true' &&
-      !github.event.inputs.pull_request &&
-      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release)) &&
-      (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main')
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      packages: read
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/release.yml
-  deploy:
-    needs: [plan, required, documentation]
-    if: >-
-      !cancelled() && needs.required.result == 'success' && needs.documentation.result == 'success' &&
-      needs.plan.outputs.deploy == 'true' &&
-      !github.event.inputs.pull_request &&
-      github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/deploy.yml
+              output:{title:'Verified PR merge result',summary:`All applicable checks ran on this PR merge from its trusted target branch. Result: ${process.env.CI_RESULT}.`}};
+            if (pending) await github.rest.checks.update({...result, check_run_id:pending.id});
+            else await github.rest.checks.create({...result, head_sha:pr.head.sha, external_id:externalId});

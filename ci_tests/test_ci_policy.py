@@ -89,6 +89,15 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(branch_error(pull("main", "content"), ["code.py"]))
         self.assertFalse(branch_error(pull("main", "content"), ["docs/help.md"]))
 
+    def test_gate_accepts_only_verified_reuse_and_requires_actual_skip(self):
+        selected = dict.fromkeys(JOBS, False)
+        selected["backend"] = True
+        results = {job: {"result": "skipped"} for job in JOBS}
+        self.assertTrue(gate_errors(selected, results))
+        self.assertEqual(gate_errors(selected, results, ["backend"]), [])
+        results["backend"] = {"result": "failure"}
+        self.assertTrue(gate_errors(selected, results, ["backend"]))
+
     def test_aggregate_fails_for_missing_cancelled_or_unexpected_skips(self):
         selected = dict.fromkeys(JOBS, True)
         results = {j: {"result": "success"} for j in JOBS}

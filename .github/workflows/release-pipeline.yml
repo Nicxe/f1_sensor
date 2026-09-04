@@ -1,0 +1,47 @@
+name: Release verification
+run-name: ${{ github.ref_name == 'beta' && 'Beta' || 'Stable' }} verification & release · ${{ github.sha }}
+on:
+  push:
+    branches: [beta, main]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Create or recover a draft after complete verification
+        type: boolean
+        default: true
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+concurrency:
+  group: release-pipeline-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  checks:
+    uses: ./.github/workflows/ci-checks.yml
+  release:
+    needs: checks
+    # Optional ancestors can be skipped; the aggregate is the release gate.
+    if: >-
+      !cancelled() && needs.checks.result == 'success' && vars.CI_ROLLOUT != 'true' &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release)) &&
+      (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main')
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      packages: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release.yml
+  deploy:
+    needs: checks
+    if: >-
+      !cancelled() && needs.checks.result == 'success' &&
+      needs.checks.outputs.deploy == 'true' &&
+      github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy.yml

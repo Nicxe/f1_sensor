@@ -2,7 +2,7 @@ name: Refresh Context7 docs
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["Release verification"]
     types: [completed]
 
 permissions:
