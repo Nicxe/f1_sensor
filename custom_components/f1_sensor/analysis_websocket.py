@@ -284,6 +284,12 @@ class _AnalysisBroadcastHub:
         self._unsubscribe_close = store.add_close_listener(self.async_close)
         self._demand_tasks: set[asyncio.Task] = set()
         self.closed = False
+        self._unsubscribe_replay: Callable[[], None] | None = None
+        replay = runtime.replay.controller if runtime.replay is not None else None
+        manager = getattr(replay, "session_manager", None)
+        add_listener = getattr(manager, "add_listener", None)
+        if callable(add_listener):
+            self._unsubscribe_replay = add_listener(lambda _snapshot: self._broadcast())
 
     def add(self, subscription: _AnalysisSubscription) -> Callable[[], None]:
         """Add one client and turn on card-requested streams when necessary."""
@@ -301,6 +307,7 @@ class _AnalysisBroadcastHub:
                 return
             self.closed = True
             self._unsubscribe_store()
+            self._detach_replay_listener()
             _ANALYSIS_HUBS.pop(self._store, None)
             self._set_demand(active=False)
             self._release_close_listener()
@@ -382,10 +389,16 @@ class _AnalysisBroadcastHub:
         if self.closed and not self._demand_tasks:
             self._unsubscribe_close()
 
+    def _detach_replay_listener(self) -> None:
+        if self._unsubscribe_replay is not None:
+            self._unsubscribe_replay()
+            self._unsubscribe_replay = None
+
     async def async_close(self) -> None:
         """Terminate subscriptions and await work owned by the retiring store."""
         self.closed = True
         self._unsubscribe_store()
+        self._detach_replay_listener()
         if _ANALYSIS_HUBS.get(self._store) is self:
             _ANALYSIS_HUBS.pop(self._store, None)
         payload = {
