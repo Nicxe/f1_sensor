@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .auth import (
@@ -16,11 +16,15 @@ from .auth import (
     is_auth_health_visible,
     is_auth_transport_enabled,
 )
+from .auth_http import AUTH_CALLBACK_METRICS
 from .const import (
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
+    CONF_REPLAY_FILE,
     DOMAIN,
 )
+from .entity import entry_runtime_registry
+from .runtime import F1ConfigEntry, entry_value
 
 TO_REDACT = {
     CONF_LIVE_TIMING_AUTH_HEADER,
@@ -30,6 +34,13 @@ TO_REDACT = {
     "cookies",
     "login-session",
     "nonce",
+    "token",
+    "subscription_token",
+    "session_id",
+    "callback_url",
+    "helper_url",
+    "api_key",
+    "apiKey",
     "callback_body",
 }
 _TRACKED_STREAMS = (
@@ -93,7 +104,7 @@ def _serialize_signalr_stream_capabilities(
         if values := _sorted_strings(capabilities.get("auth_gated_live_streams")):
             serialized["auth_gated_live_streams"] = values
 
-    for key in ("active_live_streams",):
+    for key in ("requested_streams", "active_live_streams"):
         if values := _sorted_strings(capabilities.get(key)):
             if not include_auth:
                 allowed = set(public_streams) | set(replay_only_streams)
@@ -101,6 +112,13 @@ def _serialize_signalr_stream_capabilities(
                 if not values:
                     continue
             serialized[key] = values
+    reasons = capabilities.get("stream_reasons")
+    if isinstance(reasons, dict):
+        serialized["stream_reasons"] = {
+            str(stream): sorted(str(reason) for reason in stream_reasons)
+            for stream, stream_reasons in sorted(reasons.items())
+            if isinstance(stream_reasons, (set, frozenset, tuple, list))
+        }
     return serialized
 
 
@@ -172,12 +190,25 @@ def _serialize_jolpica_runtime(client: object) -> dict[str, Any]:
     }
 
 
+def _safe_diagnostics(source: object) -> dict[str, Any]:
+    """Return one component's already-bounded diagnostics mapping."""
+    diagnostics = getattr(source, "diagnostics", None)
+    if not callable(diagnostics):
+        return {}
+    with suppress(Exception):
+        payload = diagnostics()
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: F1ConfigEntry,
 ) -> dict[str, Any]:
     """Return diagnostics for one config entry."""
-    entry_runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id, {}) or {}
+    runtime_data = getattr(entry, "runtime_data", None)
+    entry_runtime = entry_runtime_registry(hass, entry.entry_id)
     runtime_auth_status = entry_runtime.get(AUTH_RUNTIME_STATUS)
     include_auth_transport = is_auth_transport_enabled()
     auth_status = (
@@ -194,7 +225,7 @@ async def async_get_config_entry_diagnostics(
     )
     runtime: dict[str, Any] = {
         "operation_mode": entry_runtime.get(
-            "operation_mode", entry.data.get(CONF_OPERATION_MODE)
+            "operation_mode", entry_value(entry, CONF_OPERATION_MODE)
         ),
         "signalr_stream_capabilities": capabilities,
     }
@@ -204,6 +235,19 @@ async def async_get_config_entry_diagnostics(
         runtime["f1tv_token"] = auth_status.as_safe_dict()
     if include_auth_transport:
         runtime["auth_enabled"] = bool(capabilities.get("auth_enabled"))
+    auth_callback_metrics = hass.data.get(DOMAIN, {}).get(AUTH_CALLBACK_METRICS)
+    if isinstance(auth_callback_metrics, dict):
+        failure_codes = auth_callback_metrics.get("failure_codes")
+        runtime["auth_pairing"] = {
+            "failures_total": int(auth_callback_metrics.get("failures_total", 0)),
+            "failure_codes": {
+                str(code): int(count)
+                for code, count in sorted(failure_codes.items())
+                if isinstance(count, int)
+            }
+            if isinstance(failure_codes, dict)
+            else {},
+        }
 
     live_bus = entry_runtime.get("live_bus")
     if live_bus is not None:
@@ -228,7 +272,44 @@ async def async_get_config_entry_diagnostics(
                 jolpica_runtime["cache_entries"] = len(http_cache)
         runtime["jolpica"] = jolpica_runtime
 
+    persistent_cache = entry_runtime.get("http_persistent_cache")
+    cache_diagnostics = getattr(persistent_cache, "diagnostics", None)
+    if callable(cache_diagnostics):
+        with suppress(Exception):
+            runtime["persistent_cache"] = cache_diagnostics()
+
+    if runtime_data is not None:
+        runtime["providers"] = runtime_data.providers.registry.diagnostics()
+        history_runtime = getattr(runtime_data, "history", None)
+        history_service = getattr(history_runtime, "service", None)
+        history_diagnostics = _safe_diagnostics(history_service)
+        lap_analysis = getattr(history_runtime, "lap_analysis", None)
+        if lap_analysis is not None:
+            history_diagnostics["live_replay_laps"] = _safe_diagnostics(lap_analysis)
+        if history_diagnostics:
+            runtime["history"] = history_diagnostics
+        analysis_runtime = getattr(runtime_data, "analysis", None)
+        if analysis_runtime is not None:
+            analysis_diagnostics = _safe_diagnostics(
+                getattr(analysis_runtime, "store", None)
+            )
+            telemetry_diagnostics = _safe_diagnostics(
+                getattr(analysis_runtime, "telemetry", None)
+            )
+            if telemetry_diagnostics:
+                analysis_diagnostics["replay_telemetry"] = telemetry_diagnostics
+            if analysis_diagnostics:
+                runtime["analysis"] = analysis_diagnostics
+        replay_runtime = getattr(runtime_data, "replay", None)
+        replay_controller = getattr(replay_runtime, "controller", None)
+        replay_manager = getattr(replay_controller, "session_manager", None)
+        replay_cache = getattr(replay_manager, "cache_diagnostics", None)
+        if isinstance(replay_cache, dict):
+            runtime["replay_cache"] = replay_cache
+
     entry_data = dict(entry.data)
+    if replay_file := str(entry_data.get(CONF_REPLAY_FILE, "") or "").strip():
+        entry_data[CONF_REPLAY_FILE] = Path(replay_file).name
     if not include_auth_transport:
         entry_data.pop(CONF_LIVE_TIMING_AUTH_HEADER, None)
 

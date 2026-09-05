@@ -9,7 +9,6 @@ from homeassistant.components.weather import (
     WeatherEntity,
     WeatherEntityFeature,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     Platform,
     UnitOfLength,
@@ -19,20 +18,25 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 
-from .const import DOMAIN
-from .entity import F1BaseEntity, default_object_id, set_default_entity_id
+from .entity import (
+    F1BaseEntity,
+    default_object_id,
+    entry_runtime_registry,
+    set_default_entity_id,
+)
 from .race_weather import (
     F1RaceWeatherCoordinator,
     RaceWeatherData,
     WeatherObservation,
 )
+from .runtime import F1ConfigEntry
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
+    hass: HomeAssistant, entry: F1ConfigEntry, async_add_entities
 ) -> None:
     """Set up the next-race weather entity."""
-    data = hass.data[DOMAIN][entry.entry_id]
+    data = entry_runtime_registry(hass, entry.entry_id)
     coordinator = data.get("race_weather_coordinator")
     if not isinstance(coordinator, F1RaceWeatherCoordinator):
         return

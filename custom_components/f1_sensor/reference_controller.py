@@ -67,6 +67,15 @@ class StoredReferenceController:
         self._notify_listeners()
         return self._value
 
+    async def async_close(self) -> None:
+        """Flush the pending write and release listeners."""
+        task = self._save_task
+        if task is not None and not task.done():
+            with suppress(Exception):
+                await task
+        self._save_task = None
+        self._listeners.clear()
+
     def add_listener(self, listener: Callable[[str], None]) -> Callable[[], None]:
         self._listeners.append(listener)
         try:

@@ -780,6 +780,40 @@ async def test_event_tracker_retry_uses_refreshed_root_endpoint(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_event_tracker_rejects_unsafe_dynamic_api_host(monkeypatch) -> None:
+    class _EnvResponse:
+        status = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            del exc_type, exc, tb
+            return False
+
+        async def text(self) -> str:
+            return (
+                'PUBLIC_GLOBAL_APIGEE_BASEURL":"https://attacker.example" '
+                'PUBLIC_GLOBAL_EVENTTRACKER_APIKEY":"stolen-key"'
+            )
+
+    class _EnvHttp:
+        def get(self, _url: str):
+            return _EnvResponse()
+
+    source = EventTrackerScheduleSource(
+        _EnvHttp(),  # type: ignore[arg-type]
+        base_url="https://api.formula1.com",
+        api_key="original-key",
+    )
+
+    await source._refresh_dynamic_config(force=True)
+
+    assert source._base_url == "https://api.formula1.com"
+    assert source._api_key == "original-key"
+
+
+@pytest.mark.asyncio
 async def test_event_tracker_timeout_returns_last_error() -> None:
     timeout_http = _TimeoutHttp()
     source = EventTrackerScheduleSource(
@@ -1015,6 +1049,7 @@ async def test_switch_back_to_index_when_recovered(monkeypatch, hass) -> None:
         dt.timedelta(seconds=0),
     )
     monkeypatch.setattr(supervisor, "_resolve_primary_window", _primary_window)
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
 
     reason = await supervisor._monitor_window(fallback_window, source="event_tracker")
 

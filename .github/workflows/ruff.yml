@@ -1,31 +1,22 @@
-name: Ruff
-
+name: Python lint
 on:
-  pull_request:
-    paths:
-      - "custom_components/**/*.py"
-      - "pyproject.toml"
-
+  workflow_call:
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   ruff:
-    name: Lint & format check
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Ruff lint
-        uses: astral-sh/ruff-action@v3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          args: "check custom_components"
-
-      - name: Ruff format check
-        uses: astral-sh/ruff-action@v3
+          persist-credentials: false
+          ref: ${{ github.event.inputs.pull_request && format('refs/pull/{0}/merge', github.event.inputs.pull_request) || github.sha }}
+      - uses: astral-sh/ruff-action@4919ec5cf1f49eff0871dbcea0da843445b837e6 # v3
         with:
-          args: "format --check custom_components"
+          version: "0.15.4"
+          args: "check custom_components scripts ci_tests ci_smoke"
+      - uses: astral-sh/ruff-action@4919ec5cf1f49eff0871dbcea0da843445b837e6 # v3
+        with:
+          version: "0.15.4"
+          args: "format --check custom_components scripts ci_tests ci_smoke"

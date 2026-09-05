@@ -11,7 +11,14 @@ import subprocess
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+CARD_PATH = (
+    ROOT
+    / "custom_components"
+    / "f1_sensor"
+    / "www"
+    / "f1-sensor-live-data-card"
+    / "f1-sensor-live-data-card.js"
+)
 
 NODE_PROBE_SCRIPT = r"""
 const fs = require("node:fs");
@@ -178,7 +185,7 @@ def _run_card_probe(
 ) -> dict:
     """Execute the qualifying-card row logic from the actual JS source."""
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for qualifying card regression tests")

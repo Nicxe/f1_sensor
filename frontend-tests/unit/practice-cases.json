@@ -1,0 +1,167 @@
+{
+  "test_practice_card_stays_visible_for_suspended_practice_last_label": {
+    "session_state": {
+      "state": "",
+      "attributes": {
+        "last_label": "Practice 2"
+      }
+    },
+    "session_status_state": {
+      "state": "suspended"
+    }
+  },
+  "test_practice_card_prefers_session_number_for_title": {
+    "session_state": {
+      "state": "Practice 3",
+      "attributes": {
+        "number": 3
+      }
+    },
+    "session_status_state": {
+      "state": "live"
+    }
+  },
+  "test_practice_card_uses_driver_attributes_when_position_state_unknown": {
+    "session_state": {
+      "state": "Practice 3",
+      "attributes": {
+        "number": 3
+      }
+    },
+    "session_status_state": {
+      "state": "live"
+    },
+    "position_drivers": [
+      {
+        "racing_number": "12",
+        "tla": "ANT",
+        "team": "Mercedes",
+        "current_position": "1",
+        "completed_laps": 18,
+        "laps": {
+          "18": "1:12.720"
+        }
+      }
+    ]
+  },
+  "test_practice_card_derives_laps_and_status_from_driver_history": {
+    "session_state": {
+      "state": "Practice 1",
+      "attributes": {
+        "number": 1
+      }
+    },
+    "session_status_state": {
+      "state": "live"
+    },
+    "position_drivers": [
+      {
+        "racing_number": "63",
+        "tla": "RUS",
+        "team": "Mercedes",
+        "team_color": "#00D2BE",
+        "current_position": "2",
+        "completed_laps": 2,
+        "in_pit": true,
+        "laps": {
+          "1": "1:21.000",
+          "2": "1:20.750"
+        }
+      },
+      {
+        "racing_number": "55",
+        "tla": "SAI",
+        "team": "Ferrari",
+        "team_color": "#DC0000",
+        "current_position": "1",
+        "completed_laps": 1,
+        "laps": {
+          "1": "1:20.900"
+        }
+      },
+      {
+        "racing_number": "43",
+        "tla": "COL",
+        "team": "Williams",
+        "team_color": "#005AFF",
+        "current_position": "22",
+        "completed_laps": 0,
+        "laps": {}
+      }
+    ],
+    "tyres_drivers": [
+      {
+        "racing_number": "63",
+        "compound": "MEDIUM",
+        "compound_short": "M",
+        "stint_laps": 13
+      },
+      {
+        "racing_number": "55",
+        "compound": "SOFT",
+        "compound_short": "S",
+        "stint_laps": 5
+      },
+      {
+        "racing_number": "43",
+        "compound": "HARD",
+        "compound_short": "H",
+        "stint_laps": 1
+      }
+    ],
+    "driver_list": [
+      {
+        "racing_number": "63",
+        "tla": "RUS",
+        "team": "Mercedes"
+      },
+      {
+        "racing_number": "55",
+        "tla": "SAI",
+        "team": "Ferrari"
+      },
+      {
+        "racing_number": "43",
+        "tla": "COL",
+        "team": "Williams"
+      }
+    ]
+  },
+  "test_practice_card_exposes_current_sector_values_and_timing_classes": {
+    "session_state": {
+      "state": "Practice 1",
+      "attributes": {
+        "number": 1
+      }
+    },
+    "session_status_state": {
+      "state": "live"
+    },
+    "position_drivers": [
+      {
+        "racing_number": "16",
+        "tla": "LEC",
+        "current_position": "1",
+        "sectors": {
+          "current": {
+            "sector_1": {
+              "time": 26.123,
+              "overall_fastest": true,
+              "personal_fastest": true
+            },
+            "sector_2": {
+              "time": 31.456,
+              "overall_fastest": false,
+              "personal_fastest": true
+            },
+            "sector_3": {
+              "time": 28.789,
+              "overall_fastest": false,
+              "personal_fastest": false
+            }
+          }
+        }
+      }
+    ]
+  }
+}

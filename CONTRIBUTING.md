@@ -14,7 +14,11 @@ For changes to the integration itself — sensors, binary sensors, configuration
 - `beta` — pre-release testing. Promoted from `dev` by the maintainer.
 - `main` — stable production releases. Promoted from `beta` by the maintainer.
 
-The `beta` and `main` branches are managed exclusively by the maintainer. Incorrectly targeted contributor PRs receive guidance explaining how to edit the base branch. Only maintainer promotions target beta or main.
+Promotions to `beta` and `main` must use a merge commit. Squash or rebase
+merges remove the individual conventional commits that semantic-release uses
+to determine the version and generate complete release notes.
+
+The `beta` and `main` branches are managed exclusively by the maintainer. Contributor PRs must target `dev` or `content`. A routing comment explains how to change the base branch when necessary; the same PR can be kept.
 
 ### Documentation and blueprint changes
 
@@ -22,7 +26,7 @@ For changes to documentation (`docs/`) or blueprints (`blueprints/`) that are in
 
 - `content` — the dedicated branch for documentation and blueprint contributions. PRs targeting this branch are merged directly to `main` by the maintainer, without going through beta.
 
-No version bump or release is triggered when only documentation or blueprint files change.
+Use `docs:` or `chore:` commits for standalone content so semantic-release does not create a version solely for that change.
 
 ### Which branch should I target?
 
@@ -78,8 +82,38 @@ Include the changed user journey, validation performed, and any limitations in t
 
 If you are unsure whether a change fits the project direction, open an issue before starting work. This prevents effort being spent on contributions that may not be accepted.
 
-## CI migration
+## Automated checks
 
-Full selective CI, HA 2026.9 compatibility and the 95 percent runtime line-coverage gate are active on `dev` and `beta`. The older `main` and `content` code keeps its existing test baseline until the next normal `dev → beta → main` promotion. No unreleased integration code is copied into stable solely for this migration.
+`CI required` summarizes all applicable checks. Code PRs run on the proposed merge result with read-only permissions and without secrets, including PRs from forks. Metadata workflows read trusted default-branch scripts and use the GitHub API; they never install or execute contributor code. A first-time contributor may still need the maintainer to start GitHub's restricted workflow run.
 
-Issue labels and release comments already use tested, trusted scripts. Conflict checks only read PR metadata and update labels; they never execute fork code. Synchronization preserves the exact published commit and later work without force pushes. Its PRs are explicitly verified: full `CI required` for dev/beta, and clearly named `Legacy content verification` for the temporary content baseline. No additional reviewer is required. Full CI replaces this bootstrap during normal code promotion; remove the temporary `sync-legacy.yml` verifier after the full content rollout.
+Standalone content runs documentation checks and, for blueprints, HA blueprint tests. Integration changes run Python, frontend, lint, HACS/hassfest and package checks. Dependency or workflow changes and code promotions run the complete set. Npm audit runs for dependency changes, releases and weekly maintenance; an unavailable registry is reported separately from a vulnerability.
+
+The maintainer can push directly to `dev`. Promotions use `dev → beta → main` and merge commits. No additional reviewer is required. Release drafts are created only after checks pass on the same final commit. Publishing a draft remains a manual maintainer action. Publication notifies referenced issues and synchronizes the exact released history through a fast-forward or a CI-checked synchronization PR. Conflicts are resolved normally without force-pushing either side.
+
+For a release retry, run **Actions → Release verification → Run workflow**, choose `beta` or `main`, enable the release option. CI verifies that branch head again. An existing published tag is left untouched; an interrupted draft can be recovered without changing its version. Bot-created synchronization PRs use the PR-number input to explicitly check the proposed merge when `GITHUB_TOKEN` does not trigger PR workflows.
+
+Use Python 3.14 with `requirements/ha-current.txt` for the complete HA suite, or Python 3.12 with `requirements/ha-minimum.txt` for the supported minimum. From the checkout root:
+
+```bash
+python -m pip install -r requirements/ha-current.txt
+python scripts/run_ci_tests.py
+python scripts/test_installed_release.py
+npm ci
+npm run test:automation
+npm run test:frontend:unit
+npx playwright install chromium
+npm run test:frontend
+npm run test:docs
+```
+
+The Node unit suite loads complete delivered card modules and simulates the browser/Lit boundary. Playwright renders the real components in Chromium. Run both after changing dashboard behavior; passing unit tests alone does not verify layout or accessibility.
+
+Python line coverage must remain at least 95 percent across shipped code; branch coverage is reported separately. Tests should protect user behavior, lifecycle and external boundaries rather than specific source formatting. The weekly maintenance workflow checks latest stable HA compatibility on `dev`, WebKit smoke flows, timing budgets, npm audit and review dates. Review-date checks document overdue manual review; they do not verify a remote service's security.
+
+## Avoiding duplicate verification
+
+Development checks run on pushes to `dev` and `content`. When an existing PR verification run covers that exact branch head, it owns the tests; API errors or unconfirmed runs fall back to normal push checks. PR verification provides the sole required `CI required` result. Metadata-only edits do not restart code tests; changing the target branch explicitly starts fresh verification.
+
+PRs can reuse successful checks from a development push completed within the last two hours only when the complete Git tree is identical. This includes all sources, test profiles, workflows and dependency locks. The source must be a successful push in this repository on `dev` or `content`, and all jobs in each reused profile must have succeeded. CI revalidates the source run and its attempt before passing the gate. The run summary links the evidence. Registry audits and external HACS/hassfest validation always run when applicable. Release verification never reuses results and still tests the final commit before creating a draft. GitHub may continue to display earlier push checks attached to the PR head.
+
+The repository allows Actions to create synchronization PRs. This GitHub setting also technically permits review approval; these workflows never submit approval reviews, and branch rules require zero approvals.

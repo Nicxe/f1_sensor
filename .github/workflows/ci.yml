@@ -1,25 +1,71 @@
-# Migration bootstrap: the complete implementation lives on dev and beta.
-# GitHub requires a default-branch entry point before workflow_dispatch can
-# select those branches. Normal code promotion replaces this file with full CI.
-name: CI
+name: PR verification
+run-name: >-
+  ${{ github.event_name == 'pull_request' && format('PR #{0} · {1}', github.event.pull_request.number, github.event.pull_request.title) || format('Manual verification · {0}', github.ref_name) }}
 on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       pull_request:
-        description: PR to verify from its trusted dev or beta target branch
+        description: Verify a PR from its trusted target branch
         type: string
         default: ''
       release:
-        description: Create or recover a draft after full CI (dev/beta implementation)
+        description: Compatibility input; release retries use Release verification
         type: boolean
         default: false
 permissions:
   contents: read
+  pull-requests: read
+  actions: read
+concurrency:
+  group: pr-verification-${{ github.event.pull_request.number || github.event.inputs.pull_request || github.ref }}
+  cancel-in-progress: true
 jobs:
-  migration:
+  checks:
+    uses: ./.github/workflows/ci-checks.yml
+    with:
+      allow_reuse: true
+  required:
+    name: ${{ github.event.inputs.pull_request && 'Dispatched CI result' || github.event_name == 'pull_request' && 'CI required' || 'Manual verification result' }}
+    needs: checks
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: |
-          echo 'Full CI is available on dev and beta. Select the PR target branch when dispatching.'
-          echo 'Main/content retain their existing test baseline until the normal code promotion.'
-          exit 1
+      - name: Direct release retries to the release pipeline
+        if: github.event.inputs.release == 'true'
+        run: echo 'Use Release verification to create or recover a release draft.'; exit 1
+      - env:
+          RESULT: ${{ needs.checks.result }}
+        run: test "$RESULT" = success
+  report-pr:
+    name: Report explicitly verified PR
+    needs: [checks, required]
+    if: always() && github.event.inputs.pull_request && needs.checks.outputs.tested_head
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      checks: write
+      pull-requests: read
+    steps:
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          PR_NUMBER: ${{ github.event.inputs.pull_request }}
+          TESTED_BASE: ${{ needs.checks.outputs.tested_base }}
+          TESTED_HEAD: ${{ needs.checks.outputs.tested_head }}
+          CI_RESULT: ${{ needs.required.result }}
+        with:
+          script: |
+            const pr = (await github.rest.pulls.get({...context.repo, pull_number:Number(process.env.PR_NUMBER)})).data;
+            if (pr.head.sha !== process.env.TESTED_HEAD || pr.base.sha !== process.env.TESTED_BASE || pr.base.ref !== context.ref.replace('refs/heads/','')) {
+              throw new Error('PR changed; dispatch verification again.');
+            }
+            const externalId = `f1-pr:${pr.number}:${process.env.TESTED_BASE}:${process.env.TESTED_HEAD}`;
+            const checks = await github.paginate(github.rest.checks.listForRef, {...context.repo, ref:pr.head.sha, check_name:'CI required', per_page:100});
+            const pending = checks.find(check => check.external_id === externalId && check.app?.id === 15368);
+            const result = {...context.repo, name:'CI required',
+              status:'completed', conclusion:process.env.CI_RESULT==='success'?'success':'failure',
+              details_url:`https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              output:{title:'Verified PR merge result',summary:`All applicable checks ran on this PR merge from its trusted target branch. Result: ${process.env.CI_RESULT}.`}};
+            if (pending) await github.rest.checks.update({...result, check_run_id:pending.id});
+            else await github.rest.checks.create({...result, head_sha:pr.head.sha, external_id:externalId});

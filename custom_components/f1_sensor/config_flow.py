@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from homeassistant import config_entries
+from homeassistant.core import callback
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.selector import (
     TextSelector,
@@ -10,7 +11,7 @@ from homeassistant.helpers.selector import (
 import voluptuous as vol
 
 from . import const
-from .auth import is_auth_feature_enabled
+from .auth import is_auth_feature_enabled, validate_replacement_auth_header
 from .auth_http import (
     async_create_f1tv_pairing_session,
     async_pop_f1tv_pairing_session_result,
@@ -33,11 +34,13 @@ from .const import (
     ENTITY_NAME_MODE_LOCALIZED,
     OPERATION_MODE_DEVELOPMENT,
     OPERATION_MODE_LIVE,
+    OPT_IN_SENSOR_KEYS,
     RACE_WEEK_START_MONDAY,
     RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
 )
 from .helpers import normalize_live_timing_auth_header
+from .runtime import OPTION_KEYS, effective_entry_settings
 
 _AUTH_HEADER_SELECTOR = TextSelector(
     TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="current-password")
@@ -84,9 +87,11 @@ SENSOR_OPTIONS = {
     "formation_start": "Formation start (replay or live with F1TV access)",
     "race_control": "Race control (live)",
     "top_three": "Top three (leader, live)",
+    "team_radio": "Team radio (F1TV live/replay)",
     "pitstops": "Pit stops (F1TV live/replay)",
     "championship_prediction": "Championship prediction (F1TV live/replay)",
     "driver_positions": "Driver positions (live)",
+    "favorite_driver": "Favorite driver (live)",
     "starting_grid": "Starting grid (live)",
     "track_limits": "Track limits (live)",
     "investigations": "Investigations & penalties (live)",
@@ -102,14 +107,20 @@ def _build_sensor_options() -> dict:
     return options
 
 
+def _default_enabled_sensor_keys(sensor_options: dict) -> list[str]:
+    """Return defaults while leaving explicitly opt-in features unchecked."""
+    return [key for key in sensor_options if key not in OPT_IN_SENSOR_KEYS]
+
+
 def _normalize_auth_header(value: object) -> str:
     """Return a normalized live timing authorization header."""
     return normalize_live_timing_auth_header(value)
 
 
 class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
-    VERSION = 1
+    VERSION = 4
     _pending_f1tv_setup_data: dict | None = None
+    _pending_f1tv_setup_options: dict | None = None
     _completed_f1tv_pairing_session_id: str | None = None
 
     def _current_backend_language(self) -> str:
@@ -132,17 +143,24 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return DEFAULT_RACE_WEEK_START_DAY
 
     async def async_step_user(self, user_input=None):
+        await self.async_set_unique_id(DOMAIN)
+        self._abort_if_unique_id_configured()
         errors = {}
         current = user_input or {}
         race_week_start = self._normalize_race_week_start(current)
 
         if user_input is not None:
-            auth_header = _normalize_auth_header(
-                user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
-            )
+            auth_header_raw = user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
+            auth_header = _normalize_auth_header(auth_header_raw)
             start_pairing = bool(user_input.pop(CONF_START_F1TV_PAIRING, False))
             if is_auth_feature_enabled() and auth_header:
-                user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
+                validated, error, _status = validate_replacement_auth_header(
+                    auth_header
+                )
+                if error:
+                    errors[CONF_LIVE_TIMING_AUTH_HEADER] = error
+                elif validated:
+                    user_input[CONF_LIVE_TIMING_AUTH_HEADER] = validated
 
             # Resolve and validate operation mode. Development/replay controls stay
             # tied to developer UI even when F1TV auth is public.
@@ -170,20 +188,27 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 # Store disabled_sensors (what the user unchecked) instead of
                 # enabled_sensors so that new sensors added in future versions
                 # are automatically enabled.
-                all_keys = set(_build_sensor_options().keys())
-                checked = set(user_input.pop("enabled_sensors", all_keys))
+                sensor_options = _build_sensor_options()
+                all_keys = set(sensor_options)
+                checked = set(
+                    user_input.pop(
+                        "enabled_sensors", _default_enabled_sensor_keys(sensor_options)
+                    )
+                )
                 user_input["disabled_sensors"] = sorted(all_keys - checked)
                 user_input[CONF_ENTITY_NAME_MODE] = ENTITY_NAME_MODE_LOCALIZED
                 user_input[CONF_ENTITY_NAME_LANGUAGE] = self._current_backend_language()
+                data, options = _split_entry_payload(user_input)
                 if start_pairing and is_auth_feature_enabled():
-                    self._pending_f1tv_setup_data = dict(user_input)
+                    self._pending_f1tv_setup_data = data
+                    self._pending_f1tv_setup_options = options
                     return await self._async_start_f1tv_pairing(None)
                 return self.async_create_entry(
-                    title=user_input["sensor_name"], data=user_input
+                    title=data["sensor_name"], data=data, options=options
                 )
 
         sensor_options = _build_sensor_options()
-        all_sensor_keys = list(sensor_options.keys())
+        default_sensor_keys = _default_enabled_sensor_keys(sensor_options)
 
         # Build base schema
         schema_fields: dict = {
@@ -192,7 +217,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             ): cv.string,
             vol.Required(
                 "enabled_sensors",
-                default=current.get("enabled_sensors", all_sensor_keys),
+                default=current.get("enabled_sensors", default_sensor_keys),
             ): cv.multi_select(sensor_options),
             vol.Optional("enable_race_control", default=False): cv.boolean,
             vol.Optional(
@@ -241,20 +266,25 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         entry = self._get_reconfigure_entry()
-        current = entry.data
+        current = effective_entry_settings(entry)
         race_week_start = self._normalize_race_week_start(current)
 
         if user_input is not None:
-            auth_header = _normalize_auth_header(
-                user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
-            )
+            auth_header_raw = user_input.pop(CONF_LIVE_TIMING_AUTH_HEADER, "")
+            auth_header = _normalize_auth_header(auth_header_raw)
             user_input.pop(CONF_CLEAR_LIVE_TIMING_AUTH_HEADER, None)
             start_pairing = bool(user_input.pop(CONF_START_F1TV_PAIRING, False))
             if start_pairing and is_auth_feature_enabled():
                 return await self._async_start_f1tv_pairing(entry)
             if auth_header:
                 if is_auth_feature_enabled():
-                    user_input[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
+                    validated, error, _status = validate_replacement_auth_header(
+                        auth_header
+                    )
+                    if error:
+                        errors[CONF_LIVE_TIMING_AUTH_HEADER] = error
+                    elif validated:
+                        user_input[CONF_LIVE_TIMING_AUTH_HEADER] = validated
 
             mode = user_input.get(
                 CONF_OPERATION_MODE,
@@ -280,12 +310,19 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input[CONF_REPLAY_FILE] = ""
 
             if not errors:
-                all_keys = set(_build_sensor_options().keys())
-                checked = set(user_input.pop("enabled_sensors", all_keys))
+                sensor_options = _build_sensor_options()
+                all_keys = set(sensor_options)
+                checked = set(
+                    user_input.pop(
+                        "enabled_sensors", _default_enabled_sensor_keys(sensor_options)
+                    )
+                )
                 user_input["disabled_sensors"] = sorted(all_keys - checked)
+                data_updates, option_updates = _split_entry_payload(user_input)
                 return self.async_update_reload_and_abort(
                     entry,
-                    data_updates=user_input,
+                    data_updates=data_updates,
+                    options={**entry.options, **option_updates},
                 )
 
         sensor_options = _build_sensor_options()
@@ -313,11 +350,11 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     normalized.append(key)
                     seen.add(key)
             for key in sensor_options:
-                if key not in seen:
+                if key not in seen and key not in OPT_IN_SENSOR_KEYS:
                     normalized.append(key)
             default_enabled = normalized
         else:
-            default_enabled = list(sensor_options.keys())
+            default_enabled = _default_enabled_sensor_keys(sensor_options)
 
         schema_fields: dict = {
             vol.Required(
@@ -398,10 +435,16 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             if start_pairing:
                 return await self._async_start_f1tv_pairing(self._get_reauth_entry())
             if auth_header:
-                return self.async_update_reload_and_abort(
-                    self._get_reauth_entry(),
-                    data_updates={CONF_LIVE_TIMING_AUTH_HEADER: auth_header},
+                validated, error, _status = validate_replacement_auth_header(
+                    auth_header
                 )
+                if error:
+                    errors[CONF_LIVE_TIMING_AUTH_HEADER] = error
+                elif validated:
+                    return self.async_update_reload_and_abort(
+                        self._get_reauth_entry(),
+                        data_updates={CONF_LIVE_TIMING_AUTH_HEADER: validated},
+                    )
             if clear_auth_header:
                 return self.async_update_reload_and_abort(
                     self._get_reauth_entry(),
@@ -466,19 +509,20 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             auth_header, _status = result
             data = dict(pending)
             data[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
+            options = dict(self._pending_f1tv_setup_options or {})
             self._pending_f1tv_setup_data = None
+            self._pending_f1tv_setup_options = None
             self._completed_f1tv_pairing_session_id = None
-            return self.async_create_entry(title=data["sensor_name"], data=data)
+            return self.async_create_entry(
+                title=data["sensor_name"],
+                data=data,
+                options=options,
+            )
         return self.async_abort(reason="reconfigure_successful")
 
     async def async_step_f1tv_pairing_failed(self, user_input=None):
         """Abort when the helper callback did not complete."""
         return self.async_abort(reason="f1tv_pairing_failed")
-
-    def _get_reconfigure_entry(self):
-        """Return the config entry for this domain."""
-        entries = self.hass.config_entries.async_entries(DOMAIN)
-        return entries[0] if entries else None
 
     async def _validate_replay_file(self, path: str) -> bool:
         """Return True if the provided path points to a readable file."""
@@ -494,3 +538,135 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.hass.async_add_executor_job(_check)
         except Exception:
             return False
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> "F1OptionsFlow":
+        """Return the native options flow for user-editable preferences."""
+        return F1OptionsFlow(config_entry)
+
+
+class F1OptionsFlow(config_entries.OptionsFlow):
+    """Manage optional F1 Sensor features without rewriting credentials."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry | None = None) -> None:
+        """Retain the entry for HA versions before OptionsFlow.config_entry."""
+        self._legacy_config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        """Show and save user-editable feature options."""
+        errors: dict[str, str] = {}
+        entry = getattr(self, "config_entry", None) or self._legacy_config_entry
+        if entry is None:
+            entry = self.hass.config_entries.async_get_entry(self.handler)
+        current = effective_entry_settings(entry)
+        sensor_options = _build_sensor_options()
+        all_sensor_keys = set(sensor_options)
+
+        if user_input is not None:
+            mode = user_input.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
+            if not const.ENABLE_DEVELOPMENT_MODE_UI or mode not in (
+                OPERATION_MODE_LIVE,
+                OPERATION_MODE_DEVELOPMENT,
+            ):
+                mode = DEFAULT_OPERATION_MODE
+            user_input[CONF_OPERATION_MODE] = mode
+            replay_file = str(user_input.get(CONF_REPLAY_FILE, "") or "").strip()
+            user_input[CONF_REPLAY_FILE] = replay_file
+            if mode == OPERATION_MODE_DEVELOPMENT:
+                if not replay_file:
+                    errors[CONF_REPLAY_FILE] = "replay_required"
+                elif not await _async_validate_replay_file(self.hass, replay_file):
+                    errors[CONF_REPLAY_FILE] = "replay_missing"
+            else:
+                user_input[CONF_REPLAY_FILE] = ""
+
+            if not errors:
+                checked = set(
+                    user_input.pop(
+                        "enabled_sensors", _default_enabled_sensor_keys(sensor_options)
+                    )
+                )
+                user_input["disabled_sensors"] = sorted(all_sensor_keys - checked)
+                return self.async_create_entry(title="", data=user_input)
+
+        raw_disabled = current.get("disabled_sensors")
+        disabled = (
+            set(raw_disabled or [])
+            if raw_disabled is not None
+            else set(OPT_IN_SENSOR_KEYS)
+        ) & all_sensor_keys
+        default_enabled = [key for key in sensor_options if key not in disabled]
+        race_week_start = _normalize_race_week_start_value(current)
+        schema_fields: dict = {
+            vol.Required("enabled_sensors", default=default_enabled): cv.multi_select(
+                sensor_options
+            ),
+            vol.Optional(
+                "enable_race_control",
+                default=current.get("enable_race_control", False),
+            ): cv.boolean,
+            vol.Optional(
+                CONF_RACE_WEEK_START_DAY,
+                default=race_week_start,
+            ): vol.In(RACE_WEEK_START_OPTIONS),
+        }
+        if const.ENABLE_DEVELOPMENT_MODE_UI:
+            schema_fields.update(
+                {
+                    vol.Required(
+                        CONF_OPERATION_MODE,
+                        default=current.get(
+                            CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE
+                        ),
+                    ): vol.In([OPERATION_MODE_LIVE, OPERATION_MODE_DEVELOPMENT]),
+                    vol.Optional(
+                        CONF_REPLAY_FILE,
+                        default=current.get(CONF_REPLAY_FILE, ""),
+                    ): cv.string,
+                }
+            )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(schema_fields),
+            errors=errors,
+        )
+
+
+def _split_entry_payload(payload: dict) -> tuple[dict, dict]:
+    """Split immutable connection data from user-editable options."""
+    data: dict = {}
+    options: dict = {}
+    for key, value in payload.items():
+        target = options if key in OPTION_KEYS else data
+        target[key] = value
+    return data, options
+
+
+def _normalize_race_week_start_value(data: dict) -> str:
+    value = data.get(CONF_RACE_WEEK_START_DAY)
+    if value in RACE_WEEK_START_OPTIONS:
+        return value
+    legacy = data.get(CONF_RACE_WEEK_SUNDAY_START)
+    if isinstance(legacy, bool):
+        return RACE_WEEK_START_SUNDAY if legacy else RACE_WEEK_START_MONDAY
+    if legacy in RACE_WEEK_START_OPTIONS:
+        return legacy
+    return DEFAULT_RACE_WEEK_START_DAY
+
+
+async def _async_validate_replay_file(hass, path: str) -> bool:
+    """Validate a replay path without blocking Home Assistant's event loop."""
+
+    def _check() -> bool:
+        try:
+            return Path(path).expanduser().is_file()
+        except Exception:
+            return False
+
+    try:
+        return await hass.async_add_executor_job(_check)
+    except Exception:
+        return False

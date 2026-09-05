@@ -10,7 +10,6 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
@@ -25,7 +24,6 @@ from .const import (
     CONF_RACE_WEEK_SUNDAY_START,
     DEFAULT_OPERATION_MODE,
     DEFAULT_RACE_WEEK_START_DAY,
-    DOMAIN,
     OPERATION_MODE_DEVELOPMENT,
     RACE_SWITCH_GRACE,
     RACE_WEEK_START_MONDAY,
@@ -36,6 +34,7 @@ from .entity import (
     F1AuxEntity,
     F1BaseEntity,
     default_object_id,
+    entry_runtime_registry,
     is_auth_gated_stream_active,
     is_no_spoiler_live_state,
     is_replay_only_stream_active,
@@ -43,6 +42,7 @@ from .entity import (
 )
 from .formation_start import FormationStartTracker
 from .helpers import get_next_race, normalize_track_status
+from .runtime import F1ConfigEntry, entry_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -97,11 +97,11 @@ def _normalize_race_week_start(data: dict) -> str:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
+    hass: HomeAssistant, entry: F1ConfigEntry, async_add_entities
 ):
-    data = hass.data[DOMAIN][entry.entry_id]
+    data = entry_runtime_registry(hass, entry.entry_id)
     base = entry.data.get("sensor_name", "F1")
-    disabled: set[str] = set(entry.data.get("disabled_sensors") or [])
+    disabled: set[str] = set(entry_value(entry, "disabled_sensors", []) or [])
     race_week_start = _normalize_race_week_start(entry.data)
 
     sensors = []
@@ -196,7 +196,7 @@ async def async_setup_entry(
                 sensor, Platform.BINARY_SENSOR, default_object_id("overtake_mode")
             )
             sensors.append(sensor)
-    async_add_entities(sensors, True)
+    async_add_entities(sensors, False)
 
 
 class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
@@ -291,7 +291,7 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         self._session_status_coordinator = reg.get("session_status_coordinator")
         removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
         self.async_on_remove(removal)
@@ -555,7 +555,7 @@ class F1FormationStartBinarySensor(F1AuxEntity, BinarySensorEntity):
         self._unsub = self._tracker.add_listener(self._handle_update)
         if self.hass is None:
             return
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         live_state = reg.get("live_state")
         if live_state is not None and hasattr(live_state, "add_listener"):
             try:
@@ -657,7 +657,7 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
 
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         live_state = reg.get("live_state")
         if live_state is not None and hasattr(live_state, "add_listener"):
             try:
@@ -680,7 +680,7 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
     def _compute_mode_and_ages(
         self,
     ) -> tuple[str, float | None, float | None, float | None, str | None]:
-        reg = self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         operation_mode = reg.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
         live_state = reg.get("live_state")
         live_bus = reg.get("live_bus")

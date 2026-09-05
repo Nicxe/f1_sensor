@@ -1,58 +1,21 @@
 name: Deploy Docusaurus to GitHub Pages
-
 on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
+  workflow_call:
 permissions:
   contents: read
   pages: write
   id-token: write
-  packages: read
-
 concurrency:
   group: pages
   cancel-in-progress: false
-
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: '@nicxe'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install
-        run: npm ci
-
-      - name: Build
-        run: npm run build && npm run test:docs:build
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: build
-
   deploy:
-    needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy the documentation artifact tested in this CI run
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

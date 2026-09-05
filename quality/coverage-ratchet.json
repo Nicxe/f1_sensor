@@ -1,0 +1,4 @@
+{
+  "global_floor": 95.0,
+  "measurement": "Runtime Python line coverage only. Branch coverage is reported, not gated. Critical behavior is protected by regression tests."
+}

@@ -139,6 +139,13 @@ async function main() {
       hasSeekInput: rendered.includes('class="rc-seek-input"'),
       hasProgress: rendered.includes('class="rc-progress"'),
     };
+  } else if (payload.action === "render_session_selection") {
+    const { card } = buildCard(2);
+    const entity = card.hass.states["select.f1_replay_session"];
+    const rendered = card._renderSelect("session_entity", "Replay", entity, true);
+    result = {
+      currentOptionExplicitlySelected: rendered.includes("value=Test GP - Race ?selected=true"),
+    };
   } else if (payload.action === "drag_behavior") {
     const { card, calls } = buildCard(2);
     const playerEntity = card.hass.states["media_player.f1_replay_player"];
@@ -229,7 +236,7 @@ import(`file://${process.argv[1]}/f1-sensor-live-data-card.js`)
 
 def _run_probe(action: str) -> dict:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for replay control card tests")
@@ -249,24 +256,26 @@ def _run_probe(action: str) -> dict:
 
 def test_replay_control_card_uses_bundled_lit_module() -> None:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
 
     source = CARD_PATH.read_text(encoding="utf-8")
 
     assert LIT_MODULE_PATH.is_file()
-    assert "import { LitElement, html, css, svg } from './f1-lit-3.3.2.js';" in source
+    assert "cacheBustedImport('./f1-lit-3.3.2.js')" in source
+    assert "cacheBustedImport('./platform/base-card.js')" in source
     assert "Home Assistant Lit globals are unavailable" not in source
 
 
 def test_replay_control_card_module_loads_with_bundled_lit(tmp_path: Path) -> None:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for replay control card tests")
 
     shutil.copyfile(CARD_PATH, tmp_path / CARD_PATH.name)
     shutil.copyfile(LIT_MODULE_PATH, tmp_path / LIT_MODULE_PATH.name)
+    shutil.copytree(CARD_PATH.parent / "platform", tmp_path / "platform")
     (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
 
     completed = subprocess.run(
@@ -297,6 +306,12 @@ def test_replay_control_card_hides_progress_when_configured() -> None:
     result = _run_probe("show_progress_false")
 
     assert result == {"hasSeekInput": False, "hasProgress": False}
+
+
+def test_replay_control_card_explicitly_selects_the_current_session() -> None:
+    result = _run_probe("render_session_selection")
+
+    assert result == {"currentOptionExplicitlySelected": True}
 
 
 def test_replay_control_card_seeks_only_on_release() -> None:

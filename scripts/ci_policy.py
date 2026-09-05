@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 from urllib.request import Request, urlopen
 
 JOBS = (
@@ -22,6 +23,39 @@ JOBS = (
     "automation",
 )
 RUNTIME = {"lint", "backend", "frontend", "validation", "package"}
+
+
+def selected_checks(selected: set[str]) -> dict[str, bool]:
+    """Backend profiles already include the blueprint tests."""
+    return {
+        job: job in selected and not (job == "blueprints" and "backend" in selected)
+        for job in JOBS
+    }
+
+
+def should_deploy(files: list[str] | None, event_name: str, branch: str) -> bool:
+    """A full release test run does not imply that the site needs deployment."""
+    if branch != "main" or event_name not in ("push", "workflow_dispatch"):
+        return False
+    if files is None:
+        return True
+    return any(
+        path.startswith(
+            (
+                "docs/",
+                "blueprints/",
+                "src/",
+                "static/",
+                "docs-tests/",
+                "patches/",
+                ".github/workflows/",
+            )
+        )
+        or path.endswith(".md")
+        or path.startswith(("docusaurus.config.", "sidebars.", "playwright.docs."))
+        or path in ("package.json", "package-lock.json")
+        for path in files
+    )
 
 
 def content_only(files: list[str]) -> bool:
@@ -77,7 +111,7 @@ def select_jobs(
         or promotion
         or (event_name == "push" and branch in ("beta", "main"))
     ):
-        return dict.fromkeys(JOBS, True)
+        return selected_checks(set(JOBS))
     selected = {"automation"}
     for path in files:
         if path.startswith(
@@ -107,14 +141,14 @@ def select_jobs(
             selected.update(JOBS)
         elif path not in ("LICENSE", ".gitignore"):
             selected.update(JOBS)
-    return {job: job in selected for job in JOBS}
+    return selected_checks(selected)
 
 
-def gate_errors(selected: dict, results: dict) -> list[str]:
+def gate_errors(selected: dict, results: dict, reused=()) -> list[str]:
     errors = []
     for job in JOBS:
         actual = results.get(job, {}).get("result", "missing")
-        expected = "success" if selected.get(job) else "skipped"
+        expected = "success" if selected.get(job) and job not in reused else "skipped"
         if actual != expected:
             errors.append(f"{job}: expected {expected}, got {actual}")
     return errors
@@ -148,8 +182,21 @@ def main() -> int:
         if results.get("plan", {}).get("result") != "success":
             print("CI selection/branch policy failed")
             return 1
+        evidence = json.loads(results["plan"]["outputs"].get("reused", "{}"))
+        if evidence:
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).with_name("ci_reuse.py")),
+                    "verify",
+                ],
+                env={**os.environ, "CI_REUSED": json.dumps(evidence)},
+                check=True,
+            )
         errors = gate_errors(
-            json.loads(results["plan"]["outputs"]["selected"]), results
+            json.loads(results["plan"]["outputs"]["selected"]),
+            results,
+            evidence.get("checks", []),
         )
         print("\n".join(errors) if errors else "All applicable checks passed")
         return int(bool(errors))
@@ -174,6 +221,7 @@ def main() -> int:
             raise ValueError("PR merge changed during checkout; run verification again")
         with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
             output.write(f"tested_head={pr['head']['sha']}\n")
+            output.write(f"tested_base={pr['base']['sha']}\n")
         event = {"pull_request": pr}
         name = "pull_request"
     files = changed_files(event, name)
@@ -184,6 +232,9 @@ def main() -> int:
     selected = select_jobs(files, event, name, os.environ.get("GITHUB_REF_NAME", ""))
     print(json.dumps({"files": files, "checks": selected}, indent=2))
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+        output.write(
+            f"deploy={str(should_deploy(files, name, os.environ.get('GITHUB_REF_NAME', ''))).lower()}\n"
+        )
         output.write(f"selected={json.dumps(selected)}\n")
         for job, enabled in selected.items():
             output.write(f"{job}={str(enabled).lower()}\n")

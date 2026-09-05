@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 import json
 
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from yarl import URL
 
@@ -54,6 +55,12 @@ def _schema_required_key_names(result: dict) -> set[str]:
     }
 
 
+def _schema_default(result: dict, name: str):
+    """Return the evaluated default for one config flow form field."""
+    marker = next(key for key in result["data_schema"].schema if key.schema == name)
+    return marker.default()
+
+
 def _part(value: dict) -> str:
     raw = json.dumps(value, separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
@@ -90,6 +97,21 @@ async def test_user_flow_stores_entity_name_metadata(hass) -> None:
     assert result["data"][CONF_ENTITY_NAME_LANGUAGE] == "sv"
 
 
+async def test_user_flow_aborts_when_single_instance_already_exists(
+    hass, enable_custom_integrations
+) -> None:
+    existing = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN)
+    existing.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "user"},
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "already_configured"
+
+
 async def test_user_flow_shows_auth_but_hides_development_fields_when_development_ui_disabled(
     hass, monkeypatch
 ) -> None:
@@ -115,6 +137,7 @@ async def test_user_flow_shows_auth_but_hides_development_fields_when_developmen
         CONF_LIVE_TIMING_AUTH_HEADER
     )
     assert CONF_LIVE_TIMING_AUTH_HEADER not in _schema_required_key_names(result)
+    assert "favorite_driver" not in _schema_default(result, "enabled_sensors")
 
 
 async def test_user_flow_shows_f1tv_pairing_when_development_ui_enabled(
@@ -153,6 +176,7 @@ async def test_user_flow_stores_trimmed_live_timing_auth_header(
     flow = F1FlowHandler()
     flow.hass = hass
     flow.context = {"source": "user"}
+    token = _jwt(datetime.now(UTC) + timedelta(days=1))
 
     result = await flow.async_step_user(
         {
@@ -160,12 +184,12 @@ async def test_user_flow_stores_trimmed_live_timing_auth_header(
             "enabled_sensors": ["next_race"],
             "enable_race_control": False,
             CONF_RACE_WEEK_START_DAY: RACE_WEEK_START_MONDAY,
-            CONF_LIVE_TIMING_AUTH_HEADER: "  Authorization: Bearer test-token  ",
+            CONF_LIVE_TIMING_AUTH_HEADER: f"  Authorization: Bearer {token}  ",
         },
     )
 
     assert result["type"] == "create_entry"
-    assert result["data"][CONF_LIVE_TIMING_AUTH_HEADER] == "Bearer test-token"
+    assert result["data"][CONF_LIVE_TIMING_AUTH_HEADER] == f"Bearer {token}"
 
 
 async def test_user_flow_can_start_f1tv_pairing_when_development_ui_disabled(
@@ -344,6 +368,68 @@ async def test_reconfigure_blank_auth_header_keeps_existing_value(
     assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == "Bearer existing-token"
 
 
+async def test_reconfigure_updates_the_entry_from_flow_context(
+    hass, monkeypatch
+) -> None:
+    """Legacy duplicate entries must not redirect reconfigure to the first entry."""
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
+    first = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "First"})
+    second = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "Second"})
+    first.add_to_hass(hass)
+    second.add_to_hass(hass)
+    flow = F1FlowHandler()
+    flow.hass = hass
+    flow.context = {"source": "reconfigure", "entry_id": second.entry_id}
+
+    result = await flow.async_step_reconfigure(
+        {
+            "sensor_name": "Updated second",
+            "enabled_sensors": ["next_race"],
+            "enable_race_control": False,
+            CONF_RACE_WEEK_START_DAY: RACE_WEEK_START_MONDAY,
+            CONF_OPERATION_MODE: DEFAULT_OPERATION_MODE,
+            CONF_REPLAY_FILE: "",
+            CONF_LIVE_TIMING_AUTH_HEADER: "",
+        }
+    )
+
+    assert result["type"] == "abort"
+    assert first.data["sensor_name"] == "First"
+    assert second.data["sensor_name"] == "Updated second"
+
+
+@pytest.mark.parametrize(
+    ("value", "error"),
+    [
+        ("Bearer not-a-jwt", "invalid_auth_header"),
+        (
+            lambda: f"Bearer {_jwt(datetime.now(UTC) - timedelta(minutes=1))}",
+            "auth_token_expired",
+        ),
+    ],
+)
+async def test_user_flow_rejects_invalid_manual_auth(hass, value, error) -> None:
+    submitted = value() if callable(value) else value
+    flow = F1FlowHandler()
+    flow.hass = hass
+    flow.context = {"source": "user"}
+
+    result = await flow.async_step_user(
+        {
+            "sensor_name": "F1",
+            "enabled_sensors": ["next_race"],
+            "enable_race_control": False,
+            CONF_RACE_WEEK_START_DAY: RACE_WEEK_START_MONDAY,
+            CONF_LIVE_TIMING_AUTH_HEADER: submitted,
+        }
+    )
+
+    assert result["type"] == "form"
+    assert result["errors"][CONF_LIVE_TIMING_AUTH_HEADER] == error
+
+
 async def test_reconfigure_ignores_legacy_clear_auth_header(hass, monkeypatch) -> None:
     monkeypatch.setattr(
         "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
@@ -405,13 +491,14 @@ async def test_reauth_updates_auth_header(hass, monkeypatch) -> None:
     flow = F1FlowHandler()
     flow.hass = hass
     flow.context = {"source": "reauth", "entry_id": entry.entry_id}
+    token = _jwt(datetime.now(UTC) + timedelta(days=1))
 
     result = await flow.async_step_reauth_confirm(
-        {CONF_LIVE_TIMING_AUTH_HEADER: "  Authorization: Bearer new-token  "}
+        {CONF_LIVE_TIMING_AUTH_HEADER: f"  Authorization: Bearer {token}  "}
     )
 
     assert result["type"] == "abort"
-    assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == "Bearer new-token"
+    assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == f"Bearer {token}"
 
 
 async def test_reauth_can_clear_auth_header(hass, monkeypatch) -> None:

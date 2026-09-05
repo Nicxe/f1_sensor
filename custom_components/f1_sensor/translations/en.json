@@ -22,6 +22,11 @@
       "new_fia_document": "New FIA document published",
       "investigation_changed": "Investigation status changed",
       "new_team_radio": "New team radio message",
+      "favorite_driver_position_gained": "Favorite driver gained a position",
+      "favorite_driver_position_lost": "Favorite driver lost a position",
+      "favorite_driver_entered_pits": "Favorite driver entered the pits",
+      "favorite_driver_exited_pits": "Favorite driver exited the pits",
+      "favorite_driver_retired": "Favorite driver retired",
       "live_timing_online": "Live timing came online",
       "live_timing_offline": "Live timing went offline"
     }
@@ -38,6 +43,7 @@
           "enable_race_control": "Enable live F1 API (Race Control/Track/Session)",
           "race_week_start_day": "First day of race week",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
+          "clear_live_timing_auth_header": "Clear F1TV authorization value",
           "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
         },
         "data_description": {
@@ -59,6 +65,7 @@
           "enable_race_control": "Enable live F1 API",
           "race_week_start_day": "First day of race week",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
+          "clear_live_timing_auth_header": "Clear F1TV authorization value",
           "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
         },
         "data_description": {
@@ -67,6 +74,7 @@
           "enable_race_control": "Connects to Formula 1 Live Timing to receive live updates. If disabled, these live sensors are not created.",
           "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
+          "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing only.",
           "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it."
         }
       },
@@ -101,6 +109,30 @@
       "auth_token_missing_exp": "The token does not include an expiry time.",
       "auth_token_expired": "The token has expired.",
       "auth_token_expiring_soon": "The token expires too soon. Generate a new token and try again."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure F1 Sensor features",
+        "data": {
+          "enabled_sensors": "Enabled sensors",
+          "enable_race_control": "Enable live F1 API",
+          "race_week_start_day": "First day of race week",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
+        },
+        "data_description": {
+          "enable_race_control": "Connect to Formula 1 Live Timing only when live features are enabled.",
+          "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
+          "operation_mode": "Choose Live or local replay Development mode.",
+          "replay_file": "Absolute path to a replay dump used only in Development mode."
+        }
+      }
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
     }
   },
   "issues": {
@@ -215,6 +247,9 @@
       },
       "driver_positions": {
         "name": "Driver positions"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       },
       "starting_grid": {
         "name": "Starting grid"
@@ -332,6 +367,9 @@
       }
     },
     "select": {
+      "favorite_driver": {
+        "name": "Favorite driver"
+      },
       "live_delay_reference": {
         "name": "Live delay reference"
       },

@@ -5,21 +5,25 @@ from contextlib import suppress
 from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 
 from .calibration import LiveDelayCalibrationManager
-from .const import DOMAIN
-from .entity import F1AuxEntity, default_object_id, set_default_entity_id
+from .entity import (
+    F1AuxEntity,
+    default_object_id,
+    entry_runtime_registry,
+    set_default_entity_id,
+)
 from .live_delay import LiveDelayController
+from .runtime import F1ConfigEntry
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
+    hass: HomeAssistant, entry: F1ConfigEntry, async_add_entities
 ) -> None:
-    registry = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    registry = entry_runtime_registry(hass, entry.entry_id)
     if not registry:
         return
     controller: LiveDelayController | None = registry.get("live_delay_controller")

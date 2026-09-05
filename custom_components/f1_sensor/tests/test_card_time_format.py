@@ -10,7 +10,14 @@ import subprocess
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+CARD_PATH = (
+    ROOT
+    / "custom_components"
+    / "f1_sensor"
+    / "www"
+    / "f1-sensor-live-data-card"
+    / "f1-sensor-live-data-card.js"
+)
 
 NODE_PROBE_SCRIPT = r"""
 const fs = require("node:fs");
@@ -110,6 +117,18 @@ if (payload.action === "live_status_label") {
   ]);
   const harness = new Harness(payload);
   result = harness._formatPublished(payload.value);
+} else if (payload.action === "race_control_time") {
+  const classSource = extractClass("class F1RaceControlCard extends LitElement {");
+  const Harness = buildHarness([
+    extractMethod(classSource, "_formatListTime(value) {"),
+  ]);
+  const harness = new Harness(payload);
+  result = harness._formatListTime(payload.value);
+} else if (payload.action === "explicit_time_zone") {
+  result = new Function("hass", "value", `${helperSource}
+    return formatHassDateTime(hass, new Date(value), {
+      hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Tokyo'
+    }, '--:--:--');`)(payload.hass, payload.value);
 } else if (payload.action === "starting_grid_updated") {
   const classSource = extractClass("class F1StartingGridCard extends LitElement {");
   const Harness = buildHarness([
@@ -142,7 +161,7 @@ def _hass(time_format: str, language: str = "en-US") -> dict:
 
 def _run_probe(payload: dict) -> str:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for card time formatting tests")
@@ -153,6 +172,8 @@ def _run_probe(payload: dict) -> str:
         capture_output=True,
         text=True,
         env={
+            "TZ": "America/New_York",
+            "LANG": payload.get("browser_language", "en_US.UTF-8"),
             "CARD_TIME_FORMAT_PATH": str(CARD_PATH),
             "CARD_TIME_FORMAT_PAYLOAD": json.dumps(payload),
         },
@@ -198,3 +219,109 @@ def test_starting_grid_updated_time_uses_ha_24_hour_time() -> None:
     )
 
     assert "18:30" in _normalize_space(result)
+
+
+@pytest.mark.parametrize(
+    ("time_zone", "expected"),
+    [
+        ("server", "12:33:14"),
+        ("local", "06:33:14"),
+        ("UTC", "10:33:14"),
+        (None, "12:33:14"),
+    ],
+)
+@pytest.mark.parametrize(
+    "value",
+    ["2026-09-04T10:33:14+00:00", "2026-09-04T10:33:14Z", "2026-09-04T10:33:14"],
+)
+def test_race_control_time_resolves_ha_time_zone_preference(
+    time_zone: str | None, expected: str, value: str
+) -> None:
+    hass = _hass("24", "en-GB")
+    hass["locale"]["time_zone"] = time_zone
+    hass["config"]["time_zone"] = "Europe/Stockholm"
+
+    assert (
+        _run_probe({"action": "race_control_time", "hass": hass, "value": value})
+        == expected
+    )
+
+
+def test_race_control_time_keeps_12_hour_preference() -> None:
+    hass = _hass("12")
+    hass["locale"]["time_zone"] = "server"
+    hass["config"]["time_zone"] = "Europe/Stockholm"
+
+    assert (
+        _normalize_space(
+            _run_probe(
+                {
+                    "action": "race_control_time",
+                    "hass": hass,
+                    "value": "2026-09-04T10:33:14+00:00",
+                }
+            )
+        )
+        == "12:33:14 PM"
+    )
+
+
+@pytest.mark.parametrize("value", [None, "", "invalid"])
+def test_race_control_time_keeps_placeholder_for_missing_or_invalid_time(value) -> None:
+    assert _run_probe({"action": "race_control_time", "value": value}) == "--:--:--"
+
+
+@pytest.mark.parametrize("time_zone", ["server", "local"])
+def test_explicit_track_time_zone_overrides_profile_preference(time_zone: str) -> None:
+    hass = _hass("24", "en-GB")
+    hass["locale"]["time_zone"] = time_zone
+    hass["config"]["time_zone"] = "Europe/Stockholm"
+
+    assert (
+        _run_probe(
+            {
+                "action": "explicit_time_zone",
+                "hass": hass,
+                "value": "2026-09-04T10:33:14+00:00",
+            }
+        )
+        == "19:33:14"
+    )
+
+
+@pytest.mark.parametrize(
+    ("time_format", "language", "browser_language", "expected"),
+    [
+        ("12", "en-GB", "sv_SE.UTF-8", "06:30:00 pm"),
+        ("24", "en-US", "en_US.UTF-8", "18:30:00"),
+        ("language", "en-US", "sv_SE.UTF-8", "06:30:00 PM"),
+        ("language", "en-GB", "en_US.UTF-8", "18:30:00"),
+        ("system", "en-US", "sv_SE.UTF-8", "18:30:00"),
+        ("system", "en-GB", "en_US.UTF-8", "06:30:00 pm"),
+    ],
+)
+def test_race_control_follows_all_ha_time_format_preferences(
+    time_format: str, language: str, browser_language: str, expected: str
+) -> None:
+    result = _run_probe(
+        {
+            "action": "race_control_time",
+            "hass": _hass(time_format, language),
+            "browser_language": browser_language,
+            "value": "2026-09-04T18:30:00Z",
+        }
+    )
+    assert _normalize_space(result) == expected
+
+
+def test_race_control_24_hour_midnight_starts_at_zero() -> None:
+    assert (
+        _run_probe(
+            {
+                "action": "race_control_time",
+                "hass": _hass("24", "en-US"),
+                "value": "2026-09-04T00:05:00Z",
+            }
+        )
+        == "00:05:00"
+    )

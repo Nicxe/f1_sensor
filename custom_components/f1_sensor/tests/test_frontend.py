@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
-from homeassistant.components.lovelace.const import LOVELACE_DATA
+from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DATA
 from homeassistant.helpers import issue_registry as ir
 import pytest
 
@@ -64,6 +65,7 @@ def _write_bundled_assets(source_dir: Path, js_source: str) -> None:
     source_dir.mkdir(parents=True)
     for filename in frontend.LIVE_DATA_CARD_ASSET_FILENAMES:
         path = source_dir / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
         if filename.endswith(".js"):
             path.write_text(js_source, encoding="utf-8")
         else:
@@ -115,7 +117,7 @@ async def test_lovelace_resource_creation_is_idempotent(hass) -> None:
         {
             "id": "resource-1",
             "type": "module",
-            "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=abc123",
+            "url": "/local/f1-sensor-live-data-card/register.js?v=abc123",
         }
     ]
     assert _stale_resource_issue(hass) is None
@@ -128,7 +130,7 @@ async def test_managed_lovelace_resource_does_not_create_repair_issue(hass) -> N
             {
                 "id": "managed",
                 "type": "module",
-                "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=abc123",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=abc123",
             }
         ]
     )
@@ -162,7 +164,7 @@ async def test_lovelace_resource_updates_existing_old_hacs_resource(hass) -> Non
         {
             "id": "old-resource",
             "type": "module",
-            "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=newkey",
+            "url": "/local/f1-sensor-live-data-card/register.js?v=newkey",
         }
     ]
     assert _stale_resource_issue(hass) is None
@@ -175,7 +177,7 @@ async def test_managed_resource_with_old_resource_creates_repair_issue(hass) -> 
             {
                 "id": "managed",
                 "type": "module",
-                "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=oldkey",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=oldkey",
             },
             {
                 "id": "old-hacs",
@@ -227,7 +229,7 @@ async def test_lovelace_resource_leaves_extra_old_resources_for_cleanup(hass) ->
     assert resources.items[0] == {
         "id": "old-hacs",
         "type": "module",
-        "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=cachekey",
+        "url": "/local/f1-sensor-live-data-card/register.js?v=cachekey",
     }
     assert resources.items[1] == {
         "id": "old-local",
@@ -246,7 +248,7 @@ async def test_stale_resource_repair_issue_clears_after_cleanup(hass) -> None:
             {
                 "id": "managed",
                 "type": "module",
-                "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=cachekey",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=cachekey",
             },
             {
                 "id": "old-local",
@@ -313,7 +315,7 @@ async def test_lovelace_resource_updates_when_cache_key_changes(hass) -> None:
             {
                 "id": "managed",
                 "type": "module",
-                "url": "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=oldkey",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=oldkey",
             }
         ]
     )
@@ -359,3 +361,49 @@ async def test_frontend_setup_continues_when_resource_manager_fails(
 
     runtime_dir = Path(hass.config.path("www", "f1-sensor-live-data-card"))
     assert (runtime_dir / "f1-sensor-live-data-card.js").is_file()
+
+
+async def test_frontend_sync_and_read_only_error_paths(
+    hass, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        hass,
+        "async_add_executor_job",
+        AsyncMock(side_effect=RuntimeError("filesystem")),
+    )
+    await frontend.async_ensure_live_data_card_frontend(hass)
+
+    missing = tmp_path / "missing"
+    monkeypatch.setattr(frontend, "BUNDLED_LIVE_DATA_CARD_DIR", missing)
+    with pytest.raises(FileNotFoundError, match="directory"):
+        frontend._sync_bundled_live_data_card_assets(tmp_path / "runtime")
+
+    source = tmp_path / "source"
+    source.mkdir()
+    monkeypatch.setattr(frontend, "BUNDLED_LIVE_DATA_CARD_DIR", source)
+    with pytest.raises(FileNotFoundError, match="asset"):
+        frontend._sync_bundled_live_data_card_assets(tmp_path / "runtime")
+
+    class LoadedReadOnly:
+        @property
+        def loaded(self):
+            return False
+
+        @loaded.setter
+        def loaded(self, _value):
+            raise AttributeError("read only")
+
+        async def async_load(self):
+            return None
+
+    hass.data[LOVELACE_DATA] = {"resources": LoadedReadOnly()}
+    await frontend._async_ensure_lovelace_resource(hass, "key")
+    assert frontend._get_lovelace_resources(hass) is not None
+
+    hass.data[LOVELACE_DATA] = {"resources": SimpleNamespace(async_items=lambda: [])}
+    await frontend._async_ensure_lovelace_resource(hass, "key")
+
+    hass.data[LOVELACE_DATA] = object()
+    assert frontend._get_lovelace_resources(hass) is None
+    assert frontend._normalize_resource_path("") == ""
+    assert frontend._normalize_resource_path("local/card.js?v=1") == "/local/card.js"

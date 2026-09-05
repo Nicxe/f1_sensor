@@ -187,7 +187,7 @@ process.stdout.write(JSON.stringify(result));
 
 def _run_probe(payload: dict) -> dict:
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for track map card config tests")
@@ -687,17 +687,15 @@ def test_track_map_card_uses_driver_positions_status_for_out_filter() -> None:
 def test_track_map_card_is_registered_as_configurable() -> None:
     """The custom card registry should expose the editor in Lovelace."""
     source = CARD_PATH.read_text()
-    marker = "type: 'f1-track-map-card'"
-    start = source.index(marker)
-    end = source.index("});", start)
-    block = source[start:end]
+    registry_source = (CARD_PATH.parent / "platform" / "card-registry.js").read_text()
 
     assert (
         "customElements.define('f1-track-map-card-editor', F1TrackMapCardEditor)"
         in source
     )
-    assert "configurable: true" in block
-    assert "configurable: false" not in block
+    assert "['f1-track-map-card'," in registry_source
+    assert "configurable: true" in registry_source
+    assert "configurable: false" not in registry_source
 
 
 def test_track_map_editor_uses_ha_form_for_visible_inputs() -> None:
