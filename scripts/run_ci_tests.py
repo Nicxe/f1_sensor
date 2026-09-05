@@ -23,6 +23,16 @@ MINIMUM = (
     "test_auth_http.py",
     "test_weather.py",
     "test_track_map_websocket.py",
+    "test_replay_lifecycle.py",
+    "test_shared_jolpica_lifecycle.py",
+    "test_websocket_reload_regression.py",
+    "test_analysis_delay_regression.py",
+    "test_analysis_no_spoiler_regression.py",
+    "test_live_window_replay_ownership.py",
+    "test_replay_analysis_return_to_live.py",
+    "test_live_bus_close_ownership.py",
+    "test_driver_best_lap.py",
+    "test_race_control_snapshots.py",
 )
 
 

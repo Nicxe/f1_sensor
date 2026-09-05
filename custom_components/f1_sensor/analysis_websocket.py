@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from contextlib import suppress
 from typing import Any
 
 from homeassistant.components import websocket_api
@@ -79,7 +80,7 @@ def _ws_subscribe_analysis(
     """Subscribe to shared throttled Weekend Hub analysis snapshots."""
     runtime = _resolve_runtime(hass, msg.get("entry_id"))
     store = runtime.analysis.store if runtime is not None and runtime.analysis else None
-    if runtime is None or not isinstance(store, Phase4AnalysisStore):
+    if runtime is None or not isinstance(store, Phase4AnalysisStore) or store.closed:
         connection.send_error(msg["id"], "not_loaded", "F1 analysis is not loaded")
         return
     subscription = _AnalysisSubscription(
@@ -216,6 +217,9 @@ def _analysis_payload(runtime: F1RuntimeData) -> dict[str, Any]:
     availability = live.availability if live is not None else None
     replay = runtime.replay.controller if runtime.replay is not None else None
     replay_status = replay.get_playback_status() if replay is not None else {}
+    session_manager = getattr(replay, "session_manager", None)
+    get_index = getattr(session_manager, "get_loaded_index", None)
+    replay_index = get_index() if callable(get_index) else None
     capabilities.update(
         {
             "requested_streams": sorted(runtime.capabilities.requested_streams),
@@ -242,6 +246,7 @@ def _analysis_payload(runtime: F1RuntimeData) -> dict[str, Any]:
         "status": "ready",
         "capabilities": capabilities,
         "replay": {
+            "session_id": getattr(replay_index, "session_id", None),
             "state": getattr(getattr(replay, "state", None), "value", "idle"),
             "position_ms": replay_status.get("position_ms"),
             "duration_ms": replay_status.get("duration_ms"),
@@ -276,7 +281,15 @@ class _AnalysisBroadcastHub:
         self._store = store
         self._subscribers: set[_AnalysisSubscription] = set()
         self._unsubscribe_store = store.add_listener(self._broadcast)
+        self._unsubscribe_close = store.add_close_listener(self.async_close)
+        self._demand_tasks: set[asyncio.Task] = set()
         self.closed = False
+        self._unsubscribe_replay: Callable[[], None] | None = None
+        replay = runtime.replay.controller if runtime.replay is not None else None
+        manager = getattr(replay, "session_manager", None)
+        add_listener = getattr(manager, "add_listener", None)
+        if callable(add_listener):
+            self._unsubscribe_replay = add_listener(lambda _snapshot: self._broadcast())
 
     def add(self, subscription: _AnalysisSubscription) -> Callable[[], None]:
         """Add one client and turn on card-requested streams when necessary."""
@@ -287,13 +300,17 @@ class _AnalysisBroadcastHub:
 
         @callback
         def _unsubscribe() -> None:
+            if self.closed:
+                return
             self._subscribers.discard(subscription)
             if self._subscribers or self.closed:
                 return
             self.closed = True
             self._unsubscribe_store()
+            self._detach_replay_listener()
             _ANALYSIS_HUBS.pop(self._store, None)
             self._set_demand(active=False)
+            self._release_close_listener()
 
         return _unsubscribe
 
@@ -303,11 +320,13 @@ class _AnalysisBroadcastHub:
 
     @callback
     def _broadcast(self) -> None:
+        if self.closed:
+            return
         payload = self.payload()
         for subscriber in tuple(self._subscribers):
             subscriber.receive(payload)
 
-    def _set_demand(self, *, active: bool) -> None:
+    def _set_demand(self, *, active: bool, apply: bool = True) -> None:
         live = self._runtime.live
         bus = live.bus if live is not None else None
         update_streams = getattr(bus, "async_update_streams", None)
@@ -334,9 +353,16 @@ class _AnalysisBroadcastHub:
                     self._runtime.capabilities.stream_reasons.pop(stream, None)
                     requested.discard(stream)
         self._runtime.capabilities.requested_streams = frozenset(requested)
+        if not apply:
+            return
 
         async def _async_apply() -> None:
+            requested = set(self._runtime.capabilities.requested_streams)
             await update_streams(requested)
+            if self._store.closed or requested != set(
+                self._runtime.capabilities.requested_streams
+            ):
+                return
             should_run = bool(getattr(live.availability, "is_live", False))
             if requested and should_run:
                 await bus.start()
@@ -351,7 +377,48 @@ class _AnalysisBroadcastHub:
                     self._runtime.capabilities.stream_reasons
                 )
 
-        self._hass.async_create_task(_async_apply())
+        task = self._hass.async_create_task(_async_apply())
+        self._demand_tasks.add(task)
+        task.add_done_callback(self._demand_done)
+
+    def _demand_done(self, task: asyncio.Task) -> None:
+        self._demand_tasks.discard(task)
+        self._release_close_listener()
+
+    def _release_close_listener(self) -> None:
+        if self.closed and not self._demand_tasks:
+            self._unsubscribe_close()
+
+    def _detach_replay_listener(self) -> None:
+        if self._unsubscribe_replay is not None:
+            self._unsubscribe_replay()
+            self._unsubscribe_replay = None
+
+    async def async_close(self) -> None:
+        """Terminate subscriptions and await work owned by the retiring store."""
+        self.closed = True
+        self._unsubscribe_store()
+        self._detach_replay_listener()
+        if _ANALYSIS_HUBS.get(self._store) is self:
+            _ANALYSIS_HUBS.pop(self._store, None)
+        payload = {
+            **self.payload(),
+            "status": "closed",
+            "retryable": True,
+            "reason": "entry_unloaded",
+        }
+        for subscriber in tuple(self._subscribers):
+            with suppress(Exception):
+                subscriber.terminate(payload)
+        self._subscribers.clear()
+        self._set_demand(active=False, apply=False)
+        tasks = tuple(self._demand_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._demand_tasks.clear()
+        self._unsubscribe_close()
 
 
 class _AnalysisSubscription:
@@ -373,6 +440,7 @@ class _AnalysisSubscription:
         self._last_sent = 0.0
         self._pending_handle: asyncio.TimerHandle | None = None
         self._pending_payload: dict[str, Any] | None = None
+        self._closed = False
         self._unsubscribe_hub = hub.add(self)
 
     @callback
@@ -383,6 +451,8 @@ class _AnalysisSubscription:
     @callback
     def receive(self, payload: dict[str, Any]) -> None:
         """Coalesce rapid timing updates to the newest complete snapshot."""
+        if self._closed:
+            return
         self._pending_payload = payload
         if self._pending_handle is not None:
             return
@@ -409,8 +479,22 @@ class _AnalysisSubscription:
     @callback
     def unsubscribe(self) -> None:
         """Detach the client and cancel pending sends."""
+        if self._closed:
+            return
+        self._closed = True
         self._unsubscribe_hub()
         if self._pending_handle is not None:
             self._pending_handle.cancel()
             self._pending_handle = None
         self._pending_payload = None
+
+    def terminate(self, payload: dict[str, Any]) -> None:
+        """Send the terminal state immediately, bypassing the throttle."""
+        if self._closed:
+            return
+        try:
+            self._send(payload)
+        finally:
+            self.unsubscribe()
+            if self._connection.subscriptions.get(self._msg_id) == self.unsubscribe:
+                self._connection.subscriptions.pop(self._msg_id, None)

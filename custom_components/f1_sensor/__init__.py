@@ -9,6 +9,7 @@ from functools import partial
 import hashlib
 import json
 import logging
+import math
 from pathlib import Path
 import re
 import time
@@ -203,6 +204,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
 _JOLPICA_CLIENT_INIT_TASK_KEY = "__jolpica_client_init_task__"
+_JOLPICA_SETUP_OWNERS_KEY = "__jolpica_setup_owners__"
 _REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode", "replay-preparing"})
 _REPLAY_ONLY_ACTIVE_REASONS = frozenset({"replay", "replay-mode"})
 RACE_CONTROL_LOG_MAX_ITEMS = 500
@@ -242,6 +244,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         _JOLPICA_STATS_KEY,
         JOLPICA_CLIENT_KEY,
         _JOLPICA_CLIENT_INIT_TASK_KEY,
+        _JOLPICA_SETUP_OWNERS_KEY,
         _RC_LOG_SERVICE_MARKER,
         _RC_LOG_WS_MARKER,
         AUTH_HTTP_VIEW_REGISTERED,
@@ -990,6 +993,90 @@ def _wrap_delayed_handler(
     return _wrapped
 
 
+class _DelayedAnalysisBus:
+    """Deliver one ordered, delayed input to the dependent analysis stores."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        bus: LiveBus,
+        delay_seconds: int,
+        delay_controller: LiveDelayController | None,
+        live_state: LiveAvailabilityTracker | None,
+    ) -> None:
+        self.hass = hass
+        self._handlers: dict[str, list[Callable[[Any], None]]] = {}
+        self._last_payload: dict[str, Any] = {}
+        self._stream_unsubs: dict[str, Callable[[], None]] = {}
+        self._closed = False
+        _init_stream_delay_state(
+            self,
+            delay_seconds,
+            bus=bus,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
+
+    def subscribe(
+        self, stream: str, handler: Callable[[Any], None]
+    ) -> Callable[[], None]:
+        """Preserve registration order with one raw subscription per stream."""
+        handlers = self._handlers.setdefault(stream, [])
+        handlers.append(handler)
+        if stream not in self._stream_unsubs:
+            self._stream_unsubs[stream] = self._bus.subscribe(
+                stream,
+                _wrap_delayed_handler(
+                    self, lambda payload: self._dispatch(stream, payload)
+                ),
+            )
+        elif stream in self._last_payload:
+            handler(self._last_payload[stream])
+
+        def _unsubscribe() -> None:
+            with suppress(ValueError):
+                handlers.remove(handler)
+
+        return _unsubscribe
+
+    def _dispatch(self, stream: str, payload: Any) -> None:
+        if self._closed or _is_no_spoiler_blocked(self):
+            return
+        self._last_payload[stream] = payload
+        for handler in tuple(self._handlers.get(stream, ())):
+            handler(payload)
+
+    def set_delay(self, seconds: int) -> None:
+        _apply_delay_with_queue(self, seconds)
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
+        replay_mode = _is_replay_delay_reason(reason)
+        if (
+            replay_mode != self._replay_mode
+            or not is_live
+            or _is_no_spoiler_live_state(reason)
+        ):
+            self.reset_for_replay()
+        self._replay_mode = replay_mode
+
+    def reset_for_replay(self) -> None:
+        """Discard raw frames from the previous playback generation."""
+        _clear_delayed_ingest_state(self)
+        self._last_payload.clear()
+
+    async def async_close(self) -> None:
+        """Cancel delayed work before releasing the raw stream subscriptions."""
+        self._closed = True
+        _close_stream_delay_state(self)
+        for unsubscribe in self._stream_unsubs.values():
+            unsubscribe()
+        self._stream_unsubs.clear()
+        self._handlers.clear()
+        self._last_payload.clear()
+
+
 def _apply_delay_simple(instance: Any, seconds: int) -> None:
     new_delay = max(0, int(seconds or 0))
     if new_delay == instance._delay:
@@ -1374,10 +1461,18 @@ async def _async_close_runtime_mapping(data: dict[str, Any]) -> None:
 
 
 async def _async_close_shared_client_if_unused(hass: HomeAssistant) -> None:
-    """Close the domain client after a failed setup with no remaining entries."""
+    """Close the domain client only when no setup or loaded entry owns it."""
     root = hass.data.get(DOMAIN)
     if not isinstance(root, dict):
         return
+    if root.get(_JOLPICA_SETUP_OWNERS_KEY):
+        return
+    initialization = root.get(_JOLPICA_CLIENT_INIT_TASK_KEY)
+    if isinstance(initialization, _JolpicaClientInitialization):
+        if initialization.waiters:
+            return
+        root.pop(_JOLPICA_CLIENT_INIT_TASK_KEY, None)
+        await initialization.async_close()
     if any(
         isinstance(value, dict)
         for key, value in root.items()
@@ -1448,6 +1543,37 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
     return True
 
 
+class _JolpicaClientInitialization:
+    """Own one initialization until a waiting setup claims its client."""
+
+    def __init__(self, hass: HomeAssistant, session: Any, user_agent: str) -> None:
+        self.waiters = 0
+        self.task = hass.loop.create_task(
+            self._async_initialize(hass, session, user_agent)
+        )
+
+    async def _async_initialize(
+        self, hass: HomeAssistant, session: Any, user_agent: str
+    ) -> JolpicaClient:
+        client = JolpicaClient(hass, session, user_agent)
+        try:
+            await client.async_initialize()
+        except BaseException:
+            with suppress(Exception):
+                await client.async_close()
+            raise
+        return client
+
+    async def async_close(self) -> None:
+        """Cancel unfinished initialization or close an unclaimed result."""
+        if not self.task.done():
+            self.task.cancel()
+        result = (await asyncio.gather(self.task, return_exceptions=True))[0]
+        if not isinstance(result, BaseException):
+            with suppress(Exception):
+                await result.async_close()
+
+
 async def _async_get_shared_jolpica_client(
     hass: HomeAssistant,
     session: Any,
@@ -1459,23 +1585,31 @@ async def _async_get_shared_jolpica_client(
     if isinstance(client, JolpicaClient):
         return client
 
-    init_task = domain_root.get(_JOLPICA_CLIENT_INIT_TASK_KEY)
-    if not isinstance(init_task, asyncio.Task):
+    initialization = domain_root.get(_JOLPICA_CLIENT_INIT_TASK_KEY)
+    if not isinstance(initialization, _JolpicaClientInitialization):
+        initialization = _JolpicaClientInitialization(hass, session, user_agent)
+        domain_root[_JOLPICA_CLIENT_INIT_TASK_KEY] = initialization
 
-        async def _async_initialize() -> JolpicaClient:
-            initialized = JolpicaClient(hass, session, user_agent)
-            await initialized.async_initialize()
-            domain_root[JOLPICA_CLIENT_KEY] = initialized
-            return initialized
-
-        init_task = hass.loop.create_task(_async_initialize())
-        domain_root[_JOLPICA_CLIENT_INIT_TASK_KEY] = init_task
-
+    initialization.waiters += 1
     try:
-        return await asyncio.shield(init_task)
+        client = await asyncio.shield(initialization.task)
+        # Only a live waiter may publish; the background task never publishes.
+        domain_root[JOLPICA_CLIENT_KEY] = client
+        return client
     finally:
-        if domain_root.get(_JOLPICA_CLIENT_INIT_TASK_KEY) is init_task:
-            domain_root.pop(_JOLPICA_CLIENT_INIT_TASK_KEY, None)
+        initialization.waiters -= 1
+        if not initialization.waiters:
+            if domain_root.get(_JOLPICA_CLIENT_INIT_TASK_KEY) is initialization:
+                domain_root.pop(_JOLPICA_CLIENT_INIT_TASK_KEY, None)
+            task = initialization.task
+            claimed = (
+                task.done()
+                and not task.cancelled()
+                and task.exception() is None
+                and domain_root.get(JOLPICA_CLIENT_KEY) is task.result()
+            )
+            if not claimed:
+                await initialization.async_close()
 
 
 async def _async_refresh_static_runtime(
@@ -1526,6 +1660,10 @@ async def _async_refresh_static_runtime(
 async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
     """Set up one config entry transactionally."""
     transaction = _SetupTransaction()
+    root = hass.data.setdefault(DOMAIN, {})
+    owners = root.setdefault(_JOLPICA_SETUP_OWNERS_KEY, set())
+    owner = object()
+    owners.add(owner)
     try:
         return await _async_setup_entry(hass, entry, transaction)
     except BaseException:
@@ -1542,8 +1680,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
         async_cancel_f1tv_auth_status_refresh(hass, entry.entry_id)
         unregister_entry_name_settings(entry.entry_id)
         entry.runtime_data = None
-        await _async_close_shared_client_if_unused(hass)
         raise
+    finally:
+        owners.discard(owner)
+        if not owners and root.get(_JOLPICA_SETUP_OWNERS_KEY) is owners:
+            root.pop(_JOLPICA_SETUP_OWNERS_KEY, None)
+        await _async_close_shared_client_if_unused(hass)
 
 
 async def _async_setup_entry(
@@ -2329,14 +2471,18 @@ async def _async_setup_entry(
                 return str(value)
         return None
 
+    analysis_bus = _DelayedAnalysisBus(
+        hass, live_bus, live_delay, delay_controller, live_state
+    )
+    transaction.track(analysis_bus)
     lap_analysis_store = LapAnalysisStore(
-        live_bus,
+        analysis_bus,
         source_provider=_lap_analysis_provider,
         session_type=_lap_analysis_session_type,
     )
     transaction.track(lap_analysis_store)
     phase4_analysis_store = Phase4AnalysisStore(
-        live_bus,
+        analysis_bus,
         lap_analysis_store,
         source_provider=_lap_analysis_provider,
     )
@@ -2681,10 +2827,12 @@ async def _async_setup_entry(
         "formation_start_tracker": formation_tracker,
         "replay_controller": replay_controller,
         "history_service": history_service,
+        "analysis_bus": analysis_bus,
         "lap_analysis_store": lap_analysis_store,
         "phase4_analysis_store": phase4_analysis_store,
         "replay_telemetry_service": replay_telemetry_service,
         "replay_reset_callbacks": _build_replay_reset_callbacks(
+            live_bus,
             track_status_coordinator,
             session_status_coordinator,
             session_info_coordinator,
@@ -2700,6 +2848,7 @@ async def _async_setup_entry(
             championship_prediction_coordinator,
             drivers_coordinator,
             track_map_replay_adapter,
+            analysis_bus,
             lap_analysis_store,
             phase4_analysis_store,
         ),
@@ -3105,35 +3254,42 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     def _extract_items(msg) -> list[dict]:
         # RaceControl feed can be a list of entries or a dict with list under key
         if isinstance(msg, list):
-            return [m for m in msg if isinstance(m, dict)]
+            return [m for m in msg if isinstance(m, dict) and m]
         if isinstance(msg, dict):
             # Some payloads contain { "Messages": [ ... ] }
             messages = msg.get("Messages")
             if isinstance(messages, list):
-                return [m for m in messages if isinstance(m, dict)]
+                return [m for m in messages if isinstance(m, dict) and m]
             # Some payloads contain { "Messages": { "1": {...}, "2": {...}, ... } }
-            if isinstance(messages, dict) and messages:
+            if isinstance(messages, dict):
                 try:
-                    numeric_keys = [k for k in messages.keys() if str(k).isdigit()]
-                    # Sort by numeric key to preserve order if automations iterate
-                    numeric_keys.sort(key=lambda x: int(x))
+                    keys = [
+                        key
+                        for key, value in messages.items()
+                        if isinstance(value, dict) and value
+                    ]
+                    # Replay checkpoints also use timestamps or source IDs. Keep
+                    # their insertion order, including mixed timestamp/index maps.
+                    if all(str(key).isdigit() for key in keys):
+                        keys.sort(key=lambda key: int(key))
                     result: list[dict] = []
-                    for key in numeric_keys:
-                        val = messages.get(key)
-                        if isinstance(val, dict):
-                            item = dict(val)
-                            # Provide stable id if not present
+                    for key in keys:
+                        item = dict(messages[key])
+                        # Provide the existing numeric source ID when available.
+                        if str(key).isdigit():
                             item.setdefault("id", int(key))
-                            result.append(item)
-                    if result:
-                        return result
+                        result.append(item)
+                    return result
                 except Exception:  # noqa: BLE001
                     _LOGGER.debug(
                         "RaceControlMessages: failed to normalize Messages dict",
                         exc_info=True,
                     )
+                    return []
+            if "Messages" in msg:
+                return []
             # Or a single message
-            return [msg]
+            return [msg] if msg else []
         return []
 
     @staticmethod
@@ -5301,6 +5457,49 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         return changed
 
+    def _merge_official_best_lap(self, timing: dict, payload: Any) -> bool:
+        """Keep source corrections separate from incomplete observed lap history."""
+        previous = timing.get("official_best_lap")
+        best = (
+            dict(previous)
+            if isinstance(previous, dict)
+            else {
+                "time": None,
+                "time_secs": None,
+                "lap": None,
+            }
+        )
+        if payload is None or (
+            isinstance(payload, dict) and payload.get("Deleted") is True
+        ):
+            best = {"time": None, "time_secs": None, "lap": None}
+        elif isinstance(payload, dict):
+            if "Value" in payload:
+                value = payload["Value"]
+                value = value.strip() if isinstance(value, str) else None
+                seconds = self._parse_laptime_secs(value)
+                if seconds is None or not math.isfinite(seconds) or seconds <= 0:
+                    value, seconds = None, None
+                if best["time"] != value:
+                    best["lap"] = None
+                best["time"], best["time_secs"] = value, seconds
+            elif previous is None:
+                # Empty and lap-only deltas do not supply an authoritative time.
+                return False
+            if "Lap" in payload:
+                lap = payload["Lap"]
+                if isinstance(lap, str) and lap.strip().isdigit():
+                    lap = int(lap)
+                best["lap"] = lap if type(lap) is int and lap > 0 else None
+            if best["time"] is None:
+                best["lap"] = None
+        else:
+            return False
+        if previous == best:
+            return False
+        timing["official_best_lap"] = best
+        return True
+
     def _merge_timingdata(self, payload: dict) -> bool:
         # payload: {"Lines": { rn: {...timing...} } }
         lines = (payload or {}).get("Lines", {})
@@ -5379,6 +5578,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     lap_num = completed if isinstance(completed, int) else None
                 if self._ingest_completed_lap(rn, last_lap, lap_num):
                     changed = True
+            if "BestLapTime" in td and self._merge_official_best_lap(
+                timing, td["BestLapTime"]
+            ):
+                changed = True
             best_lap = self._get_value(td, "BestLapTime", "Value")
             best_lap_num_raw = self._get_value(td, "BestLapTime", "Lap")
             best_lap_num: int | None = None
@@ -6830,11 +7033,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     with suppress(Exception):
                         unsub()
                 data_root.pop(_JOLPICA_STATS_KEY, None)
-                shared_client = data_root.pop(JOLPICA_CLIENT_KEY, None)
-                close = getattr(shared_client, "async_close", None)
-                if callable(close):
-                    with suppress(Exception):
-                        await close()
+                await _async_close_shared_client_if_unused(hass)
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("Error during entry data cleanup: %s", err)
     return unload_ok

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -777,6 +777,7 @@ class TrackMapStore:
         self._position_data_unavailable = False
         self._replay_state: str | None = None
         self._listeners: dict[int, Callable[[], None]] = {}
+        self._close_listeners: list[Callable[[], Awaitable[None]]] = []
         self._next_listener_id = 0
         self._closed = False
 
@@ -1057,8 +1058,23 @@ class TrackMapStore:
         """Release runtime data owned by this store."""
         self._reset_session_state()
         self._closed = True
+        for listener in tuple(self._close_listeners):
+            await listener()
+        self._close_listeners.clear()
         self._notify_listeners()
         self._listeners.clear()
+
+    def add_close_listener(
+        self, listener: Callable[[], Awaitable[None]]
+    ) -> Callable[[], None]:
+        """Bind an asynchronous consumer's cleanup to this store's lifetime."""
+        self._close_listeners.append(listener)
+
+        def _unsubscribe() -> None:
+            with suppress(ValueError):
+                self._close_listeners.remove(listener)
+
+        return _unsubscribe
 
     def add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
         """Register a state-change listener and return its unsubscribe callback."""

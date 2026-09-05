@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from contextlib import suppress
 from typing import Any
 
 from homeassistant.components import websocket_api
@@ -179,20 +180,25 @@ def _resolve_track_map_store(
     if entry_id:
         runtime = runtime_from_hass(hass, entry_id)
         store = runtime.track_map_store if runtime is not None else None
-        if isinstance(store, TrackMapStore):
+        if isinstance(store, TrackMapStore) and not store._closed:
             return store
         root = hass.data.get(DOMAIN)
         legacy = root.get(entry_id) if isinstance(root, dict) else None
         legacy_store = (
             legacy.get("track_map_store") if isinstance(legacy, dict) else None
         )
-        return legacy_store if isinstance(legacy_store, TrackMapStore) else None
+        return (
+            legacy_store
+            if isinstance(legacy_store, TrackMapStore) and not legacy_store._closed
+            else None
+        )
 
     stores = [
         runtime.track_map_store
         for entry in hass.config_entries.async_entries(DOMAIN)
         if (runtime := runtime_from_hass(hass, entry.entry_id)) is not None
         and isinstance(runtime.track_map_store, TrackMapStore)
+        and not runtime.track_map_store._closed
     ]
     if len(stores) == 1:
         return stores[0]
@@ -205,6 +211,7 @@ def _resolve_track_map_store(
             for value in root.values()
             if isinstance(root, dict) and isinstance(value, dict)
             if isinstance((store := value.get("track_map_store")), TrackMapStore)
+            and not store._closed
         ]
         if isinstance(root, dict)
         else []
@@ -229,11 +236,14 @@ class _TrackMapBroadcastHub:
     def __init__(self, hass: HomeAssistant, store: TrackMapStore) -> None:
         self._hass = hass
         self._store = store
+        self._runtime = runtime_from_hass(hass, store.entry_id)
         self._subscribers: set[_TrackMapSnapshotSubscription] = set()
         self._snapshot = store.snapshot()
         self._sequence = 0
         self._geometry_revision = int(self._snapshot.get("track") is not None)
         self._unsub_store = store.add_listener(self._broadcast_update)
+        self._unsubscribe_close = store.add_close_listener(self.async_close)
+        self._demand_tasks: set[asyncio.Task] = set()
         self.closed = False
 
     def add(self, subscription: _TrackMapSnapshotSubscription) -> Callable[[], None]:
@@ -245,6 +255,8 @@ class _TrackMapBroadcastHub:
 
         @callback
         def _unsubscribe() -> None:
+            if self.closed:
+                return
             self._subscribers.discard(subscription)
             if self._subscribers or self.closed:
                 return
@@ -252,12 +264,13 @@ class _TrackMapBroadcastHub:
             self._unsub_store()
             _TRACK_MAP_HUBS.pop(self._store, None)
             self._set_track_map_demand(active=False)
+            self._release_close_listener()
 
         return _unsubscribe
 
-    def _set_track_map_demand(self, *, active: bool) -> None:
+    def _set_track_map_demand(self, *, active: bool, apply: bool = True) -> None:
         """Add or remove transient Track Map streams from the shared bus."""
-        runtime = runtime_from_hass(self._hass, self._store.entry_id)
+        runtime = self._runtime
         live = runtime.live if runtime is not None else None
         bus = live.bus if live is not None else None
         update_streams = getattr(bus, "async_update_streams", None)
@@ -280,9 +293,16 @@ class _TrackMapBroadcastHub:
                 runtime.capabilities.stream_reasons.pop(stream, None)
                 requested.discard(stream)
         runtime.capabilities.requested_streams = frozenset(requested)
+        if not apply:
+            return
 
         async def _async_apply_demand() -> None:
+            requested = set(runtime.capabilities.requested_streams)
             await update_streams(requested)
+            if self._store._closed or requested != set(
+                runtime.capabilities.requested_streams
+            ):
+                return
             availability = live.availability if live is not None else None
             should_run = bool(getattr(availability, "is_live", False))
             if requested and should_run:
@@ -298,7 +318,43 @@ class _TrackMapBroadcastHub:
                     runtime.capabilities.stream_reasons
                 )
 
-        self._hass.async_create_task(_async_apply_demand())
+        task = self._hass.async_create_task(_async_apply_demand())
+        self._demand_tasks.add(task)
+        task.add_done_callback(self._demand_done)
+
+    def _demand_done(self, task: asyncio.Task) -> None:
+        self._demand_tasks.discard(task)
+        self._release_close_listener()
+
+    def _release_close_listener(self) -> None:
+        if self.closed and not self._demand_tasks:
+            self._unsubscribe_close()
+
+    async def async_close(self) -> None:
+        """Release all clients and tasks before the store is discarded."""
+        self.closed = True
+        self._unsub_store()
+        if _TRACK_MAP_HUBS.get(self._store) is self:
+            _TRACK_MAP_HUBS.pop(self._store, None)
+        self._snapshot = self._store.snapshot()
+        for subscriber in tuple(self._subscribers):
+            payload = {
+                **self.full_payload(subscriber._protocol_version),
+                "status": "closed",
+                "retryable": True,
+                "reason": "entry_unloaded",
+            }
+            with suppress(Exception):
+                subscriber.terminate(payload)
+        self._subscribers.clear()
+        self._set_track_map_demand(active=False, apply=False)
+        tasks = tuple(self._demand_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._demand_tasks.clear()
+        self._unsubscribe_close()
 
     def full_payload(self, protocol_version: int) -> dict[str, Any]:
         """Return the latest full state for one protocol version."""
@@ -313,6 +369,8 @@ class _TrackMapBroadcastHub:
 
     @callback
     def _broadcast_update(self) -> None:
+        if self.closed:
+            return
         previous = self._snapshot
         current = self._store.snapshot()
         self._sequence += 1
@@ -352,6 +410,7 @@ class _TrackMapSnapshotSubscription:
         self._last_sent = 0.0
         self._pending_handle: asyncio.TimerHandle | None = None
         self._pending_payload: dict[str, Any] | None = None
+        self._closed = False
         self._unsub_hub = hub.add(self)
 
     @callback
@@ -366,6 +425,8 @@ class _TrackMapSnapshotSubscription:
         v2_payload: dict[str, Any],
     ) -> None:
         """Receive the already-built shared payload for this protocol."""
+        if self._closed:
+            return
         if self._protocol_version == TRACK_MAP_PROTOCOL_V2:
             self._pending_payload = _merge_v2_deltas(
                 self._pending_payload,
@@ -401,11 +462,25 @@ class _TrackMapSnapshotSubscription:
     @callback
     def unsubscribe(self) -> None:
         """Unsubscribe from the hub and cancel pending sends."""
+        if self._closed:
+            return
+        self._closed = True
         self._unsub_hub()
         if self._pending_handle is not None:
             self._pending_handle.cancel()
             self._pending_handle = None
         self._pending_payload = None
+
+    def terminate(self, payload: dict[str, Any]) -> None:
+        """Deliver a terminal full snapshot before removing the binding."""
+        if self._closed:
+            return
+        try:
+            self._send(payload)
+        finally:
+            self.unsubscribe()
+            if self._connection.subscriptions.get(self._msg_id) == self.unsubscribe:
+                self._connection.subscriptions.pop(self._msg_id, None)
 
 
 def _v1_payload(store: TrackMapStore, snapshot: dict[str, Any]) -> dict[str, Any]:

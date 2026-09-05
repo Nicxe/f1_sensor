@@ -47,6 +47,9 @@ Each entry in `drivers` contains:
 | current_position | string | Current position in the session |
 | laps | object | Map of lap numbers to lap times (e.g., `{"1": "1:32.456", "2": "1:31.789"}`) |
 | completed_laps | number | Number of laps completed by this driver |
+| best_lap_time | string | Driver's personal best lap time; `null` when unknown or removed by the timing source |
+| best_lap_time_secs | number | Personal best lap time in seconds; `null` when no valid best time is available |
+| best_lap_lap | number | Lap number for the personal best; `null` when the source does not provide it |
 | status | string | Driver status: `on_track`, `pit_in`, `pit_out`, or `out` |
 | gap_to_leader | string | Public live timing gap to the session leader when available |
 | interval_to_position_ahead | string | Public live timing interval to the car directly ahead when available |
@@ -54,10 +57,10 @@ Each entry in `drivers` contains:
 | pit_out | boolean | Whether driver just exited pits |
 | retired | boolean | Whether driver has retired from the session |
 | stopped | boolean | Whether driver has stopped on track |
-| fastest_lap | boolean | True if this driver currently holds fastest lap (race/sprint only) |
-| fastest_lap_time | string | Fastest lap time (race/sprint only) |
-| fastest_lap_time_secs | number | Fastest lap time in seconds (race/sprint only) |
-| fastest_lap_lap | number | Lap number of the fastest lap (race/sprint only) |
+| fastest_lap | boolean | True if this driver currently holds the session's fastest lap (race/sprint only) |
+| fastest_lap_time | string | Session's fastest lap time for its current holder; `null` for other drivers and outside races/sprints |
+| fastest_lap_time_secs | number | Session's fastest lap time in seconds for its current holder; otherwise `null` |
+| fastest_lap_lap | number | Lap number of the session's fastest lap for its current holder; otherwise `null` |
 | sector_1 | number | Current sector 1 time in seconds; `null` while sector has not been completed this lap |
 | sector_2 | number | Current sector 2 time in seconds; `null` while not yet completed |
 | sector_3 | number | Current sector 3 time in seconds; `null` while not yet completed |
@@ -96,6 +99,12 @@ Each entry in `drivers` contains:
 | q3_knocked_out | boolean | Always `false` (Q3 is the final segment); `null` outside qualifying |
 | q3_position | number | Finishing rank in Q3; `null` if no time was set |
 
+### Personal best and session fastest lap
+
+Use `best_lap_time` for each driver's **BEST** time in practice, qualifying, races, and sprints. It follows the timing source's personal best even when earlier laps are missing from `laps`, for example after joining a session late. Before the source supplies a personal best value, the integration uses the best lap it has observed, when available.
+
+Source corrections replace the personal best even when the corrected time is slower. If the source removes the value, the personal best fields become `null` until a valid value arrives; an older observed lap is not restored. `best_lap_lap` can also be `null` when a time is available but its lap number is unknown. The separate `fastest_lap` fields continue to identify the overall fastest driver during races and sprints.
+
 <details>
 <summary>JSON Structure Example — Race</summary>
 
@@ -117,6 +126,9 @@ Each entry in `drivers` contains:
         "3": "1:31.234"
       },
       "completed_laps": 45,
+      "best_lap_time": "1:29.123",
+      "best_lap_time_secs": 89.123,
+      "best_lap_lap": 42,
       "status": "on_track",
       "in_pit": false,
       "pit_out": false,
@@ -184,6 +196,9 @@ Each entry in `drivers` contains:
       "current_position": "1",
       "laps": {},
       "completed_laps": 6,
+      "best_lap_time": "1:21.987",
+      "best_lap_time_secs": 81.987,
+      "best_lap_lap": null,
       "status": "on_track",
       "in_pit": false,
       "pit_out": false,
@@ -225,6 +240,9 @@ Each entry in `drivers` contains:
       "current_position": "16",
       "laps": {},
       "completed_laps": 4,
+      "best_lap_time": "1:24.892",
+      "best_lap_time_secs": 84.892,
+      "best_lap_lap": null,
       "status": "on_track",
       "in_pit": false,
       "pit_out": false,

@@ -2306,6 +2306,7 @@ class ReplayTransport:
         self._pause_started_at: float | None = None
         self._total_paused_duration: float = 0.0
         self._listeners: list[Callable[[dict], None]] = []
+        self._reader_task: asyncio.Future[None] | None = None
 
     def _resolve_start_ms(self) -> int:
         if self._start_from_ms is not None:
@@ -2332,7 +2333,6 @@ class ReplayTransport:
             self._index.session_started_at_ms,
         )
 
-        reader_task = None
         try:
             queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=500)
             loop = self._hass.loop
@@ -2380,7 +2380,7 @@ class ReplayTransport:
                         else:
                             fut.cancel()
 
-            reader_task = self._hass.async_add_executor_job(_read_frames_stream)
+            self._reader_task = self._hass.async_add_executor_job(_read_frames_stream)
             _LOGGER.debug("Replay: streaming cache file from disk")
 
             yielded_count = 0
@@ -2447,9 +2447,11 @@ class ReplayTransport:
             _LOGGER.debug("Replay transport cancelled")
             raise
         finally:
-            if reader_task is not None:
-                with suppress(Exception):
-                    await reader_task
+            # Cancellation must unblock the producer before waiting for it. The
+            # bus cannot call close() until this generator has finished unwinding.
+            self._closed = True
+            self._pause_event.set()
+            await self._async_wait_for_reader()
 
         # All frames exhausted - mark as closed so playback stops (don't restart)
         _LOGGER.info("Replay playback completed - all frames played")
@@ -2459,6 +2461,29 @@ class ReplayTransport:
         """Close the transport."""
         self._closed = True
         self._pause_event.set()  # Unblock if paused
+        await self._async_wait_for_reader()
+
+    async def _async_wait_for_reader(self) -> None:
+        """Join the disk worker without cancellation orphaning its queue put."""
+        reader = self._reader_task
+        if reader is None:
+            return
+        cancelled = False
+        while not reader.done():
+            try:
+                await asyncio.shield(reader)
+            except asyncio.CancelledError:
+                # Repeated stop/unload cancellation must not cancel the executor
+                # Future while its worker is still exiting the bounded queue.
+                cancelled = True
+            except Exception:  # noqa: BLE001
+                break
+        with suppress(Exception, asyncio.CancelledError):
+            reader.result()
+        if self._reader_task is reader:
+            self._reader_task = None
+        if cancelled:
+            raise asyncio.CancelledError
 
     def pause(self) -> None:
         """Pause playback."""
@@ -2752,8 +2777,7 @@ class ReplayController:
         if self._transport is not None:
             await self._transport.close()
 
-        if self._live_bus._running:
-            await self._live_bus.async_close()
+        await self._live_bus.async_close()
 
         self._transport = None
 
@@ -2764,6 +2788,7 @@ class ReplayController:
             self._playback_task = None
 
     def _ensure_replay_active(self) -> None:
+        self._live_bus.set_heartbeat_expectation(False)
         if self._live_state is not None:
             self._live_state.set_state(True, "replay")
         if not self._replay_active:
@@ -2956,10 +2981,16 @@ class ReplayController:
         if self._live_state is not None:
             self._live_state.set_state(False, "replay-preparing")
 
-        # Now safe to stop the live bus
-        await self._live_bus.async_close()
+        # Close the old replay reader and playback monitor as well as the bus.
+        # A session selection does not by itself stop its previous transport.
+        await self._stop_active_replay_transport()
+        if self._replay_active:
+            self._live_bus._transport_factory = self._original_transport_factory
+            self._original_transport_factory = None
+            self._replay_active = False
 
         # Download and index the session
+        await self._run_replay_reset_callbacks()
         await self._session_manager.async_load_session()
 
         # If loading failed (state reverted to SELECTED), release the
@@ -3026,6 +3057,14 @@ class ReplayController:
     async def async_stop(self) -> None:
         """Stop playback and return to idle."""
         _LOGGER.info("Stopping replay playback")
+        had_replay_state = (
+            self._replay_active
+            or self._transport is not None
+            or self._session_manager.get_loaded_index() is not None
+        )
+        # Claim explicit stop before cancellation can run the playback monitor's
+        # natural-completion cleanup and wake live data a second time.
+        self._set_state(ReplayState.IDLE)
 
         # IMPORTANT: Restore factory FIRST, then close bus to avoid race condition
         # where LiveSessionSupervisor restarts bus with old replay factory
@@ -3053,6 +3092,8 @@ class ReplayController:
 
         self._pending_start_ms = None
         self._reset_track_map_runtime()
+        if had_replay_state:
+            await self._run_replay_reset_callbacks()
 
         # Restore live state to idle - let LiveSessionSupervisor control it
         if self._live_state is not None:
@@ -3108,6 +3149,8 @@ class ReplayController:
                 # Clean up transport
                 if self._transport:
                     self._transport = None
+
+                await self._run_replay_reset_callbacks()
 
                 # Restore live state
                 if self._live_state is not None:

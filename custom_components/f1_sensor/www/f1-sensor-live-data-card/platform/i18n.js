@@ -207,6 +207,8 @@ export const FRONTEND_TEXT_TRANSLATIONS = {
     Status: 'Status',
     'Stint analysis': 'Stintanalys',
     'Strategy readiness': 'Strategiberedskap',
+    Telemetry: 'Telemetri',
+    'Telemetry metric': 'Telemetrimått',
     Throttle: 'Gas',
     'Time delta': 'Tidsdifferens',
     Timeline: 'Tidslinje',

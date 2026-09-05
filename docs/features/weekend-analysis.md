@@ -66,7 +66,7 @@ A panel can therefore say **waiting for clean completed laps** even after severa
 5. Select **Compare selected laps**.
 6. Switch between **Speed**, **Throttle**, **Brake**, **Gear** and **Time delta** to inspect the selected traces.
 
-The chart compares the selected laps over distance. Only the selected replay windows are requested; it does not fetch an entire season's telemetry. The first selected lap is the reference for time delta. If a lap has no usable telemetry, check another completed lap in the loaded session.
+The chart compares the selected laps over distance. Only the selected replay windows are requested; it does not fetch an entire season's telemetry. Traces are ordered by driver number, then lap number; the first trace is the reference for time delta. If a lap has no usable telemetry, check another completed lap in the loaded session.
 
 Live telemetry comparison and corner annotations are not available. Loading an archive classification does not imply that telemetry or complete sector data exists for it.
 

@@ -162,8 +162,10 @@ async def test_hub_demand_can_close_empty_bus_and_update_legacy_state(hass) -> N
     hub = object.__new__(ws._AnalysisBroadcastHub)
     hub._hass = hass
     hub._runtime = runtime
-    hub._store = Mock()
+    hub._store = SimpleNamespace(closed=False)
     hub._subscribers = set()
+    hub._demand_tasks = set()
+    hub._unsubscribe_close = Mock()
     hub.closed = False
     hub._set_demand(active=False)
     await hass.async_block_till_done()
