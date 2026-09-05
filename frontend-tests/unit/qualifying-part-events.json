@@ -1,0 +1,63 @@
+{
+  "observation": "HA 2026.9.0, Italian Grand Prix Qualifying 11357, 2026-09-05 16:29:08 Europe/Stockholm; selected existing fields only",
+  "current_qualifying_part": 2,
+  "drivers": [
+    {
+      "racing_number": "3",
+      "tla": "VER",
+      "current_position": "1",
+      "laps": {
+        "3": "1:53.815",
+        "5": "20:29.380",
+        "6": "1:22.573"
+      },
+      "q1_time": "1:22.631",
+      "q1_position": 2,
+      "q1_knocked_out": false,
+      "q2_time": "1:22.573",
+      "q2_position": 1,
+      "q2_knocked_out": false,
+      "q3_time": null,
+      "q3_position": null,
+      "q3_knocked_out": false
+    },
+    {
+      "racing_number": "16",
+      "tla": "LEC",
+      "current_position": "11",
+      "laps": {
+        "3": "1:56.520",
+        "5": "2:10.770",
+        "6": "1:42.985"
+      },
+      "q1_time": "1:22.902",
+      "q1_position": 9,
+      "q1_knocked_out": false,
+      "q2_time": null,
+      "q2_position": null,
+      "q2_knocked_out": false,
+      "q3_time": null,
+      "q3_position": null,
+      "q3_knocked_out": false
+    },
+    {
+      "racing_number": "22",
+      "tla": "TSU",
+      "current_position": "17",
+      "laps": {
+        "3": "1:43.673",
+        "5": "6:06.868",
+        "6": "1:52.174"
+      },
+      "q1_time": "1:23.755",
+      "q1_position": 17,
+      "q1_knocked_out": true,
+      "q2_time": null,
+      "q2_position": null,
+      "q2_knocked_out": false,
+      "q3_time": null,
+      "q3_position": null,
+      "q3_knocked_out": false
+    }
+  ]
+}
