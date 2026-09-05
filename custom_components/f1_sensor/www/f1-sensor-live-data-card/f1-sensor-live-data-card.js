@@ -27115,11 +27115,14 @@ class F1QualifyingTimingCard extends LitElement {
   }
 
   _resolveBestQualifyingLap(row) {
-    const candidates = [
-      ['q3_lap', 'q3_lap_position'],
-      ['q2_lap', 'q2_lap_position'],
-      ['q1_lap', 'q1_lap_position'],
-    ];
+    const part = this._normalizeQualifyingPart(row?.qualifying_part);
+    const candidates = part !== null
+      ? [[`q${part}_lap`, `q${part}_lap_position`]]
+      : [
+        ['q3_lap', 'q3_lap_position'],
+        ['q2_lap', 'q2_lap_position'],
+        ['q1_lap', 'q1_lap_position'],
+      ];
 
     for (const [timeKey, positionKey] of candidates) {
       const time = row?.[timeKey];
@@ -27296,6 +27299,7 @@ class F1QualifyingTimingCard extends LitElement {
         sector_state: pos.sector_state ?? pos.sectors?.state ?? null,
         last_lap: lastLap,
         current_segment_best_lap: currentSegmentBestLap,
+        qualifying_part: resolvedQPart,
         sort_position: sortPosition,
         q1_lap: pos.q1_time ?? null,
         q1_lap_position: pos.q1_position ?? null,
