@@ -3254,35 +3254,42 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     def _extract_items(msg) -> list[dict]:
         # RaceControl feed can be a list of entries or a dict with list under key
         if isinstance(msg, list):
-            return [m for m in msg if isinstance(m, dict)]
+            return [m for m in msg if isinstance(m, dict) and m]
         if isinstance(msg, dict):
             # Some payloads contain { "Messages": [ ... ] }
             messages = msg.get("Messages")
             if isinstance(messages, list):
-                return [m for m in messages if isinstance(m, dict)]
+                return [m for m in messages if isinstance(m, dict) and m]
             # Some payloads contain { "Messages": { "1": {...}, "2": {...}, ... } }
-            if isinstance(messages, dict) and messages:
+            if isinstance(messages, dict):
                 try:
-                    numeric_keys = [k for k in messages.keys() if str(k).isdigit()]
-                    # Sort by numeric key to preserve order if automations iterate
-                    numeric_keys.sort(key=lambda x: int(x))
+                    keys = [
+                        key
+                        for key, value in messages.items()
+                        if isinstance(value, dict) and value
+                    ]
+                    # Replay checkpoints also use timestamps or source IDs. Keep
+                    # their insertion order, including mixed timestamp/index maps.
+                    if all(str(key).isdigit() for key in keys):
+                        keys.sort(key=lambda key: int(key))
                     result: list[dict] = []
-                    for key in numeric_keys:
-                        val = messages.get(key)
-                        if isinstance(val, dict):
-                            item = dict(val)
-                            # Provide stable id if not present
+                    for key in keys:
+                        item = dict(messages[key])
+                        # Provide the existing numeric source ID when available.
+                        if str(key).isdigit():
                             item.setdefault("id", int(key))
-                            result.append(item)
-                    if result:
-                        return result
+                        result.append(item)
+                    return result
                 except Exception:  # noqa: BLE001
                     _LOGGER.debug(
                         "RaceControlMessages: failed to normalize Messages dict",
                         exc_info=True,
                     )
+                    return []
+            if "Messages" in msg:
+                return []
             # Or a single message
-            return [msg]
+            return [msg] if msg else []
         return []
 
     @staticmethod
