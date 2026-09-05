@@ -29,7 +29,7 @@ rules:
     status: done
   test-coverage:
     status: done
-    comment: Coverage is 96.170 percent and CI enforces a strict floor above 95 percent globally and for every integration module
+    comment: Current-HA CI measures runtime line coverage and rejects any global or production-module result at or below 95 percent. Full-suite coverage.json contains the candidate evidence; branch coverage remains informational. Cache-write cancellation and flush/remove lifecycle regressions run on current and minimum Home Assistant
   strict-typing:
     status: todo
     comment: Platinum-only rule; F1ConfigEntry exists, but full mypy strict enforcement remains future work and is not a Silver requirement

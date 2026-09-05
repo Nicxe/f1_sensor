@@ -762,7 +762,8 @@ class LiveBus:
         except asyncio.CancelledError:
             raise
         finally:
-            self._connection_state = LiveConnectionState.STOPPED
+            if self._task is None or self._task is asyncio.current_task():
+                self._connection_state = LiveConnectionState.STOPPED
 
     def _process_payload(self, payload: Any) -> bool:
         """Dispatch one transport payload and report meaningful activity."""
@@ -911,25 +912,29 @@ class LiveBus:
     # Debug helpers removed to keep options surface minimal
 
     async def async_close(self) -> None:
+        # Detach this generation before awaiting transport cleanup. A replay
+        # takeover may start another generation while the old client closes.
+        task, self._task = self._task, None
+        heartbeat_guard, self._heartbeat_guard = self._heartbeat_guard, None
+        client, self._client = self._client, None
         self._running = False
         self._connection_state = LiveConnectionState.STOPPED
         _LOGGER.info("LiveBus shutting down")
-        if self._task:
-            self._task.cancel()
+        if task:
+            task.cancel()
+        if heartbeat_guard:
+            heartbeat_guard.cancel()
+        if task:
             with suppress(asyncio.CancelledError):
-                await self._task  # Wait for task to actually finish
-            self._task = None
-        if self._heartbeat_guard:
-            self._heartbeat_guard.cancel()
+                await task
+        if heartbeat_guard:
             with suppress(asyncio.CancelledError):
-                await self._heartbeat_guard
-            self._heartbeat_guard = None
-        if self._client:
+                await heartbeat_guard
+        if client:
             try:
-                await self._client.close()
+                await client.close()
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("Live timing cleanup failed during shutdown: %s", err)
-            self._client = None
 
     def _create_client(self) -> LiveTransport:
         if callable(self._transport_factory):
@@ -1079,11 +1084,7 @@ class LiveBus:
             await self.async_close()
 
         self._transport_factory = transport_factory
-        self._last_payload.clear()  # Clear cached payloads from previous session
-        self._cnt.clear()
-        self._stream_frames.clear()
-        self._stream_last_keys.clear()
-        self._last_ts.clear()
+        self.reset_for_replay()
 
         # For replay mode (transport_factory provided), always start the bus
         # For restoring to live (transport_factory=None), only restart if it was running
@@ -1094,6 +1095,14 @@ class LiveBus:
         elif was_running:
             _LOGGER.info("Restarting LiveBus with live transport")
             await self.start()
+
+    def reset_for_replay(self) -> None:
+        """Clear retained frames when live/replay session ownership changes."""
+        self._last_payload.clear()
+        self._cnt.clear()
+        self._stream_frames.clear()
+        self._stream_last_keys.clear()
+        self._last_ts.clear()
 
     def inject_message(self, stream: str, payload: StreamPayload) -> None:
         """Inject a message directly into the bus (for replay mode).

@@ -48,6 +48,8 @@ Use a reference visible both in the timing and in the broadcast, such as the ses
 
 Live Delay also applies to live Track Map updates and likely on-track incident updates. This means the Track Map card, `f1_sensor_incident` events, the On-track Incident and Possible On-track Incident binary sensors, and notification blueprints can be delayed to match what you see on TV.
 
+Weekend Hub's live analysis follows the same Live Delay.
+
 Use this when you want a possible stopped-car notification to arrive with the broadcast pictures instead of ahead of them.
 
 :::info

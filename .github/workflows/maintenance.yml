@@ -35,7 +35,12 @@ jobs:
       - run: python scripts/test_installed_release.py
       - name: Measure backend performance
         if: always()
-        run: python -m pytest -q custom_components/f1_sensor/tests/test_phase_5_quality.py -m performance --durations=0
+        run: >-
+          python -m pytest -q
+          custom_components/f1_sensor/tests/test_phase_5_quality.py
+          custom_components/f1_sensor/tests/test_release_websocket_load.py
+          custom_components/f1_sensor/tests/test_release_replay_load.py
+          -m performance --durations=0
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:

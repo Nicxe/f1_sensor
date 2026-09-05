@@ -108,7 +108,7 @@ npm run test:docs
 
 The Node unit suite loads complete delivered card modules and simulates the browser/Lit boundary. Playwright renders the real components in Chromium. Run both after changing dashboard behavior; passing unit tests alone does not verify layout or accessibility.
 
-Python line coverage must remain at least 95 percent across shipped code; branch coverage is reported separately. Tests should protect user behavior, lifecycle and external boundaries rather than specific source formatting. The weekly maintenance workflow checks latest stable HA compatibility on `dev`, WebKit smoke flows, timing budgets, npm audit and review dates. Review-date checks document overdue manual review; they do not verify a remote service's security.
+Python line coverage must remain strictly above 95 percent globally and in every production module; branch coverage is informational. Tests should protect user behavior, lifecycle and external boundaries rather than specific source formatting. The weekly maintenance workflow checks latest stable HA compatibility on `dev`, WebKit smoke flows, timing budgets, npm audit and review dates. Review-date checks document overdue manual review; they do not verify a remote service's security.
 
 ## Avoiding duplicate verification
 

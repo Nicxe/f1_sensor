@@ -71,6 +71,9 @@ class FakeLiveBus:
         self._running = False
         self.injected: list[tuple[str, dict]] = []
 
+    def set_heartbeat_expectation(self, enabled: bool) -> None:
+        self._expect_heartbeat = enabled
+
     def subscribe(self, stream: str, callback):
         self._subs.setdefault(stream, []).append(callback)
 

@@ -18041,6 +18041,15 @@ class F1ReplayControlCard extends LitElement {
     ensureF1Fonts();
   }
 
+  updated() {
+    // Reused option nodes can retain native selectedness after the list changes.
+    // Apply the controlled value after Lit has finished updating the options.
+    for (const select of this.renderRoot.querySelectorAll('.rc-select-field select')) {
+      const value = select.dataset.replayValue ?? '';
+      if (select.value !== value) select.value = value;
+    }
+  }
+
   setConfig(config = {}) {
     this.config = {
       theme_mode: DEFAULT_F1_THEME_MODE,
@@ -18336,6 +18345,7 @@ class F1ReplayControlCard extends LitElement {
         <span class="rc-select-wrap">
           <select
             .value=${currentValue}
+            data-replay-value=${currentValue}
             ?disabled=${disabled}
             @change=${(ev) => this._selectOption(entityId, ev.target.value)}
           >
@@ -32538,6 +32548,10 @@ class F1TrackMapCard extends LitElement {
     this._unsubscribeTrackMap = null;
     this._subscriptionKey = null;
     this._subscriptionToken = 0;
+    this._subscriptionPending = false;
+    this._subscriptionBlocked = false;
+    this._subscriptionConnection = null;
+    this._subscriptionDisconnected = false;
     this._drawRaf = 0;
     this._resizeObserver = null;
     this._driverSamples = new Map();
@@ -32587,6 +32601,7 @@ class F1TrackMapCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._teardownSubscription();
+    this._unwatchSubscriptionConnection();
     if (this._drawRaf) {
       cancelAnimationFrame(this._drawRaf);
       this._drawRaf = 0;
@@ -32708,17 +32723,21 @@ class F1TrackMapCard extends LitElement {
 
   async _ensureSubscription() {
     if (!this.hass || !this.isConnected) return;
+    this._watchSubscriptionConnection(this.hass.connection);
+    if (this._subscriptionDisconnected) return;
     const entryId = this.config?.entry_id && this.config.entry_id !== 'auto'
       ? String(this.config.entry_id)
       : null;
     const throttleMs = this._clampInteger(this.config?.throttle_ms, 100, 0, 5000);
     const key = `${entryId || 'auto'}:${throttleMs}`;
-    if (this._subscriptionKey === key && this._unsubscribeTrackMap) return;
+    if (key === this._subscriptionKey && (this._unsubscribeTrackMap
+      || this._subscriptionPending || this._subscriptionRetryTimer || this._subscriptionBlocked)) return;
 
     this._teardownSubscription();
     this._subscriptionKey = key;
     this._error = null;
     const token = ++this._subscriptionToken;
+    this._subscriptionPending = true;
     const message = {
       type: 'f1_sensor/track_map/subscribe',
       throttle_ms: throttleMs,
@@ -32738,13 +32757,15 @@ class F1TrackMapCard extends LitElement {
           if (!this.isConnected || token !== this._subscriptionToken) return;
           this._handleTrackMapMessage(event);
         },
-        message
+        message,
+        { resubscribe: false },
       );
       if (!this.isConnected || token !== this._subscriptionToken) {
         this._callUnsubscribe(unsubscribe);
         return;
       }
       this._unsubscribeTrackMap = unsubscribe;
+      this._subscriptionPending = false;
       this._subscriptionRetryAttempt = 0;
       this._clearSubscriptionRetry();
     } catch (err) {
@@ -32755,7 +32776,9 @@ class F1TrackMapCard extends LitElement {
         'Track map websocket unavailable',
       );
       this._status = 'not_loaded';
-      this._scheduleSubscriptionRetry(key, token);
+      this._subscriptionPending = false;
+      this._subscriptionBlocked = !this._isRetryableSubscriptionError(err);
+      if (!this._subscriptionBlocked) this._scheduleSubscriptionRetry(key, token);
     }
   }
 
@@ -32776,11 +32799,17 @@ class F1TrackMapCard extends LitElement {
         'Track map websocket unavailable',
       );
       this._status = 'not_loaded';
+      this._subscriptionBlocked = !this._isRetryableSubscriptionError(err);
+      if (!this._subscriptionBlocked) this._scheduleSubscriptionRetry(this._subscriptionKey, token);
+    } finally {
+      if (token === this._subscriptionToken) this._subscriptionPending = false;
     }
   }
 
   _teardownSubscription() {
     this._subscriptionToken += 1;
+    this._subscriptionPending = false;
+    this._subscriptionBlocked = false;
     this._subscriptionKey = null;
     this._clearSubscriptionRetry();
     this._callUnsubscribe(this._unsubscribeTrackMap);
@@ -32816,6 +32845,59 @@ class F1TrackMapCard extends LitElement {
     this._subscriptionRetryTimer = 0;
   }
 
+  _isRetryableSubscriptionError(error) {
+    if (typeof error?.retryable === 'boolean') return error.retryable;
+    const code = error?.code;
+    return code == null || [1, 3, 'not_loaded', 'connection_lost', 'connection_closed',
+      'connection_error', 'timeout', 'disconnected'].includes(code);
+  }
+
+  _watchSubscriptionConnection(connection) {
+    if (connection === this._subscriptionConnection) return;
+    this._unwatchSubscriptionConnection();
+    this._teardownSubscription();
+    this._subscriptionConnection = connection;
+    this._subscriptionRetryAttempt = 0;
+    this._subscriptionDisconnected = false;
+    this._subscriptionReadyListener = () => {
+      this._subscriptionDisconnected = false;
+      this._teardownSubscription();
+      this._subscriptionRetryAttempt = 0;
+      this._ensureSubscription();
+    };
+    this._subscriptionDisconnectListener = () => {
+      this._subscriptionDisconnected = true;
+      this._teardownSubscription();
+      this._snapshot = null;
+      this._status = 'not_loaded';
+      this._invalidateTelemetry?.({ clearSelections: true });
+      this.requestUpdate();
+    };
+    connection?.addEventListener?.('ready', this._subscriptionReadyListener);
+    connection?.addEventListener?.('disconnected', this._subscriptionDisconnectListener);
+  }
+
+  _unwatchSubscriptionConnection() {
+    this._subscriptionConnection?.removeEventListener?.('ready', this._subscriptionReadyListener);
+    this._subscriptionConnection?.removeEventListener?.('disconnected', this._subscriptionDisconnectListener);
+    this._subscriptionConnection = null;
+  }
+
+  _handleSubscriptionClosed(payload) {
+    const key = this._subscriptionKey;
+    this._teardownSubscription();
+    this._subscriptionKey = key;
+    this._snapshot = null;
+    this._status = 'not_loaded';
+    this._error = null;
+    this._invalidateTelemetry?.({ clearSelections: true });
+    this._subscriptionBlocked = payload.retryable === false;
+    if (!this._subscriptionBlocked) {
+      this._scheduleSubscriptionRetry(key, this._subscriptionToken);
+    }
+    this.requestUpdate();
+  }
+
   _callUnsubscribe(unsubscribe) {
     if (typeof unsubscribe !== 'function') return;
     try {
@@ -32829,6 +32911,10 @@ class F1TrackMapCard extends LitElement {
   }
 
   _handleTrackMapMessage(message) {
+    if (message?.status === 'closed') {
+      this._handleSubscriptionClosed(message);
+      return;
+    }
     if (message?.protocol_version === 2 && message?.type === 'delta') {
       const baseSequence = Number(message.base_sequence);
       if (
@@ -34571,8 +34657,9 @@ class F1WeekendHubCard extends LitElement {
       .wh-panel, .wh-panel.third { grid-column: 1 / -1; }
       .wh-telemetry-form { grid-template-columns: 1fr 90px; }
       .wh-telemetry-form .wh-button { grid-column: 1 / -1; }
-      .wh-event { grid-template-columns: auto minmax(0, 1fr); }
+      .wh-event, .wh-stint { grid-template-columns: auto minmax(0, 1fr); }
       .wh-event .wh-confidence { display: none; }
+      .wh-stint .wh-confidence { grid-column: 2; justify-self: start; }
     }
   `];
 
@@ -34591,10 +34678,18 @@ class F1WeekendHubCard extends LitElement {
     this._telemetryMetric = 'speed';
     this._unsubscribeAnalysis = null;
     this._subscriptionKey = null;
+    this._subscriptionRetryTimer = 0;
+    this._subscriptionRetryAttempt = 0;
+    this._telemetryGeneration = 0;
     this._subscriptionToken = 0;
+    this._subscriptionPending = false;
+    this._subscriptionBlocked = false;
+    this._subscriptionConnection = null;
+    this._subscriptionDisconnected = false;
   }
 
   setConfig(config) {
+    const previousEntry = this._entryId();
     this.config = {
       theme_mode: DEFAULT_F1_THEME_MODE,
       font_style: DEFAULT_FONT_STYLE,
@@ -34606,6 +34701,12 @@ class F1WeekendHubCard extends LitElement {
       throttle_ms: 500,
       ...config,
     };
+    if (previousEntry !== this._entryId()) {
+      this._teardownSubscription();
+      this._snapshot = null;
+      this._status = 'loading';
+      this._invalidateTelemetry({ clearSelections: true });
+    }
     this.config.theme_mode = normalizeThemeMode(this.config.theme_mode);
     this.config.default_view = ['overview', 'timeline', 'strategy', 'telemetry', 'battles']
       .includes(this.config.default_view) ? this.config.default_view : 'overview';
@@ -34634,6 +34735,8 @@ class F1WeekendHubCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._teardownSubscription();
+    this._unwatchSubscriptionConnection();
+    this._invalidateTelemetry({ clearSelections: true });
   }
 
   updated(changed) {
@@ -34656,13 +34759,17 @@ class F1WeekendHubCard extends LitElement {
 
   async _ensureSubscription() {
     if (!this.hass || !this.isConnected) return;
+    this._watchSubscriptionConnection(this.hass.connection);
+    if (this._subscriptionDisconnected) return;
     const entryId = this._entryId();
     const throttle = Math.min(5000, Math.max(100, Number(this.config?.throttle_ms) || 500));
     const key = `${entryId || 'auto'}:${throttle}`;
-    if (key === this._subscriptionKey && this._unsubscribeAnalysis) return;
+    if (key === this._subscriptionKey && (this._unsubscribeAnalysis
+      || this._subscriptionPending || this._subscriptionRetryTimer || this._subscriptionBlocked)) return;
     this._teardownSubscription();
     this._subscriptionKey = key;
     const token = ++this._subscriptionToken;
+    this._subscriptionPending = true;
     const message = {
       type: 'f1_sensor/analysis/subscribe',
       protocol_version: 1,
@@ -34682,16 +34789,23 @@ class F1WeekendHubCard extends LitElement {
           }
         },
         message,
+        { resubscribe: false },
       );
       if (!this.isConnected || token !== this._subscriptionToken) {
         this._callUnsubscribe(unsubscribe);
         return;
       }
       this._unsubscribeAnalysis = unsubscribe;
+      this._subscriptionPending = false;
+      this._subscriptionRetryAttempt = 0;
+      this._clearSubscriptionRetry();
     } catch (err) {
       if (token !== this._subscriptionToken) return;
       this._status = 'error';
       this._error = err?.message || 'Weekend Hub websocket unavailable';
+      this._subscriptionPending = false;
+      this._subscriptionBlocked = !this._isRetryableSubscriptionError(err);
+      if (!this._subscriptionBlocked) this._scheduleSubscriptionRetry(key, token);
     }
   }
 
@@ -34707,16 +34821,29 @@ class F1WeekendHubCard extends LitElement {
       if (token !== this._subscriptionToken) return;
       this._status = 'error';
       this._error = err?.message || 'Weekend Hub data is unavailable';
+      this._subscriptionBlocked = !this._isRetryableSubscriptionError(err);
+      if (!this._subscriptionBlocked) this._scheduleSubscriptionRetry(this._subscriptionKey, token);
+    } finally {
+      if (token === this._subscriptionToken) this._subscriptionPending = false;
     }
   }
 
   _receiveSnapshot(payload) {
+    if (payload?.status === 'closed') {
+      this._handleSubscriptionClosed(payload);
+      return;
+    }
+    const previousContext = this._telemetryContextKey();
     if (!payload || payload.status === 'not_loaded') {
       this._status = 'not_loaded';
       this._snapshot = payload || null;
+      this._invalidateTelemetry({ clearSelections: true });
       return;
     }
     this._snapshot = payload;
+    if (previousContext !== this._telemetryContextKey()) {
+      this._invalidateTelemetry({ clearSelections: true });
+    }
     this._status = 'ready';
     this._error = null;
     const contextPatch = { entry_id: this._entryId() };
@@ -34728,9 +34855,83 @@ class F1WeekendHubCard extends LitElement {
 
   _teardownSubscription() {
     this._subscriptionToken += 1;
+    this._subscriptionPending = false;
+    this._subscriptionBlocked = false;
     this._subscriptionKey = null;
+    this._clearSubscriptionRetry();
     this._callUnsubscribe(this._unsubscribeAnalysis);
     this._unsubscribeAnalysis = null;
+  }
+
+  _scheduleSubscriptionRetry(key, token) {
+    if (!this.isConnected || token !== this._subscriptionToken || this._subscriptionRetryTimer) return;
+    const delay = Math.min(30000, 1000 * (2 ** this._subscriptionRetryAttempt));
+    this._subscriptionRetryAttempt = Math.min(this._subscriptionRetryAttempt + 1, 5);
+    this._subscriptionRetryTimer = window.setTimeout(() => {
+      this._subscriptionRetryTimer = 0;
+      if (!this.isConnected || token !== this._subscriptionToken || this._subscriptionKey !== key) return;
+      this._subscriptionKey = null;
+      this._ensureSubscription();
+    }, delay);
+  }
+
+  _clearSubscriptionRetry() {
+    if (!this._subscriptionRetryTimer) return;
+    window.clearTimeout(this._subscriptionRetryTimer);
+    this._subscriptionRetryTimer = 0;
+  }
+
+  _isRetryableSubscriptionError(error) {
+    if (typeof error?.retryable === 'boolean') return error.retryable;
+    const code = error?.code;
+    return code == null || [1, 3, 'not_loaded', 'connection_lost', 'connection_closed',
+      'connection_error', 'timeout', 'disconnected'].includes(code);
+  }
+
+  _watchSubscriptionConnection(connection) {
+    if (connection === this._subscriptionConnection) return;
+    this._unwatchSubscriptionConnection();
+    this._teardownSubscription();
+    this._subscriptionConnection = connection;
+    this._subscriptionRetryAttempt = 0;
+    this._subscriptionDisconnected = false;
+    this._subscriptionReadyListener = () => {
+      this._subscriptionDisconnected = false;
+      this._teardownSubscription();
+      this._subscriptionRetryAttempt = 0;
+      this._ensureSubscription();
+    };
+    this._subscriptionDisconnectListener = () => {
+      this._subscriptionDisconnected = true;
+      this._teardownSubscription();
+      this._snapshot = null;
+      this._status = 'not_loaded';
+      this._invalidateTelemetry?.({ clearSelections: true });
+      this.requestUpdate();
+    };
+    connection?.addEventListener?.('ready', this._subscriptionReadyListener);
+    connection?.addEventListener?.('disconnected', this._subscriptionDisconnectListener);
+  }
+
+  _unwatchSubscriptionConnection() {
+    this._subscriptionConnection?.removeEventListener?.('ready', this._subscriptionReadyListener);
+    this._subscriptionConnection?.removeEventListener?.('disconnected', this._subscriptionDisconnectListener);
+    this._subscriptionConnection = null;
+  }
+
+  _handleSubscriptionClosed(payload) {
+    const key = this._subscriptionKey;
+    this._teardownSubscription();
+    this._subscriptionKey = key;
+    this._snapshot = null;
+    this._status = 'not_loaded';
+    this._error = null;
+    this._invalidateTelemetry?.({ clearSelections: true });
+    this._subscriptionBlocked = payload.retryable === false;
+    if (!this._subscriptionBlocked) {
+      this._scheduleSubscriptionRetry(key, this._subscriptionToken);
+    }
+    this.requestUpdate();
   }
 
   _callUnsubscribe(unsubscribe) {
@@ -35060,7 +35261,7 @@ class F1WeekendHubCard extends LitElement {
       </div>
       <div class="wh-actions" style="margin:12px 0">
         <button class="wh-button primary" type="button" ?disabled=${this._telemetryLoading || !this._telemetrySelections.length} @click=${this._compareTelemetry}>${this._telemetryLoading ? 'Loading…' : 'Compare selected laps'}</button>
-        <select class="wh-select" style="width:auto" .value=${this._telemetryMetric} @change=${(ev) => { this._telemetryMetric = ev.target.value; }}>
+        <select class="wh-select" style="width:auto" aria-label="Telemetry metric" .value=${this._telemetryMetric} @change=${(ev) => { this._telemetryMetric = ev.target.value; }}>
           <option value="speed">Speed</option><option value="throttle">Throttle</option><option value="brake">Brake</option><option value="gear">Gear</option><option value="delta_s">Time delta</option>
         </select>
       </div>
@@ -35073,27 +35274,55 @@ class F1WeekendHubCard extends LitElement {
     const normalized = { driver_number: Number(driver), lap_number: Number(this._telemetryLap) };
     if (!normalized.driver_number || !normalized.lap_number) return;
     const exists = this._telemetrySelections.some((item) => item.driver_number === normalized.driver_number && item.lap_number === normalized.lap_number);
-    if (!exists) this._telemetrySelections = [...this._telemetrySelections, normalized].slice(-4);
+    if (!exists) {
+      this._invalidateTelemetry();
+      this._telemetrySelections = [...this._telemetrySelections, normalized].slice(-4);
+    }
   }
 
   _removeTelemetrySelection(selection) {
+    this._invalidateTelemetry();
     this._telemetrySelections = this._telemetrySelections.filter((item) => item !== selection);
   }
 
+  _telemetryContextKey() {
+    return JSON.stringify([this._entryId(), this._snapshot?.provider,
+      this._snapshot?.session_id, this._snapshot?.replay?.session_id]);
+  }
+
+  _invalidateTelemetry({ clearSelections = false } = {}) {
+    this._telemetryGeneration += 1;
+    this._telemetry = null;
+    this._telemetryError = null;
+    this._telemetryLoading = false;
+    if (clearSelections) this._telemetrySelections = [];
+  }
+
   async _compareTelemetry() {
-    if (!this._telemetrySelections.length || this._telemetryLoading) return;
+    if (!this._telemetrySelections.length || this._telemetryLoading || !this.isConnected) return;
+    const selections = this._telemetrySelections.map((item) => ({ ...item }));
+    const selectionKey = JSON.stringify(selections);
+    const contextKey = this._telemetryContextKey();
+    const replaySession = this._snapshot?.replay?.session_id;
+    const token = ++this._telemetryGeneration;
+    const isCurrent = () => this.isConnected && token === this._telemetryGeneration
+      && contextKey === this._telemetryContextKey()
+      && selectionKey === JSON.stringify(this._telemetrySelections);
     this._telemetryLoading = true;
     this._telemetryError = null;
-    const message = { type: 'f1_sensor/analysis/telemetry_compare', selections: this._telemetrySelections };
+    const message = { type: 'f1_sensor/analysis/telemetry_compare', selections };
     if (this._entryId()) message.entry_id = this._entryId();
     try {
-      this._telemetry = typeof this.hass?.callWS === 'function'
+      const response = typeof this.hass?.callWS === 'function'
         ? await this.hass.callWS(message)
         : await this.hass?.connection?.sendMessagePromise?.(message);
+      if (isCurrent() && (!replaySession || response?.session_id === replaySession)) {
+        this._telemetry = response;
+      }
     } catch (err) {
-      this._telemetryError = err?.message || 'Replay telemetry is unavailable';
+      if (isCurrent()) this._telemetryError = err?.message || 'Replay telemetry is unavailable';
     } finally {
-      this._telemetryLoading = false;
+      if (isCurrent()) this._telemetryLoading = false;
     }
   }
 

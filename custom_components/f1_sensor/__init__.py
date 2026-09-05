@@ -203,6 +203,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _JOLPICA_STATS_KEY = "__jolpica_stats__"
 _JOLPICA_CLIENT_INIT_TASK_KEY = "__jolpica_client_init_task__"
+_JOLPICA_SETUP_OWNERS_KEY = "__jolpica_setup_owners__"
 _REPLAY_DELAY_REASONS = frozenset({"replay", "replay-mode", "replay-preparing"})
 _REPLAY_ONLY_ACTIVE_REASONS = frozenset({"replay", "replay-mode"})
 RACE_CONTROL_LOG_MAX_ITEMS = 500
@@ -242,6 +243,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         _JOLPICA_STATS_KEY,
         JOLPICA_CLIENT_KEY,
         _JOLPICA_CLIENT_INIT_TASK_KEY,
+        _JOLPICA_SETUP_OWNERS_KEY,
         _RC_LOG_SERVICE_MARKER,
         _RC_LOG_WS_MARKER,
         AUTH_HTTP_VIEW_REGISTERED,
@@ -990,6 +992,90 @@ def _wrap_delayed_handler(
     return _wrapped
 
 
+class _DelayedAnalysisBus:
+    """Deliver one ordered, delayed input to the dependent analysis stores."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        bus: LiveBus,
+        delay_seconds: int,
+        delay_controller: LiveDelayController | None,
+        live_state: LiveAvailabilityTracker | None,
+    ) -> None:
+        self.hass = hass
+        self._handlers: dict[str, list[Callable[[Any], None]]] = {}
+        self._last_payload: dict[str, Any] = {}
+        self._stream_unsubs: dict[str, Callable[[], None]] = {}
+        self._closed = False
+        _init_stream_delay_state(
+            self,
+            delay_seconds,
+            bus=bus,
+            delay_controller=delay_controller,
+            live_state=live_state,
+        )
+
+    def subscribe(
+        self, stream: str, handler: Callable[[Any], None]
+    ) -> Callable[[], None]:
+        """Preserve registration order with one raw subscription per stream."""
+        handlers = self._handlers.setdefault(stream, [])
+        handlers.append(handler)
+        if stream not in self._stream_unsubs:
+            self._stream_unsubs[stream] = self._bus.subscribe(
+                stream,
+                _wrap_delayed_handler(
+                    self, lambda payload: self._dispatch(stream, payload)
+                ),
+            )
+        elif stream in self._last_payload:
+            handler(self._last_payload[stream])
+
+        def _unsubscribe() -> None:
+            with suppress(ValueError):
+                handlers.remove(handler)
+
+        return _unsubscribe
+
+    def _dispatch(self, stream: str, payload: Any) -> None:
+        if self._closed or _is_no_spoiler_blocked(self):
+            return
+        self._last_payload[stream] = payload
+        for handler in tuple(self._handlers.get(stream, ())):
+            handler(payload)
+
+    def set_delay(self, seconds: int) -> None:
+        _apply_delay_with_queue(self, seconds)
+
+    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
+        if reason == "init":
+            return
+        replay_mode = _is_replay_delay_reason(reason)
+        if (
+            replay_mode != self._replay_mode
+            or not is_live
+            or _is_no_spoiler_live_state(reason)
+        ):
+            self.reset_for_replay()
+        self._replay_mode = replay_mode
+
+    def reset_for_replay(self) -> None:
+        """Discard raw frames from the previous playback generation."""
+        _clear_delayed_ingest_state(self)
+        self._last_payload.clear()
+
+    async def async_close(self) -> None:
+        """Cancel delayed work before releasing the raw stream subscriptions."""
+        self._closed = True
+        _close_stream_delay_state(self)
+        for unsubscribe in self._stream_unsubs.values():
+            unsubscribe()
+        self._stream_unsubs.clear()
+        self._handlers.clear()
+        self._last_payload.clear()
+
+
 def _apply_delay_simple(instance: Any, seconds: int) -> None:
     new_delay = max(0, int(seconds or 0))
     if new_delay == instance._delay:
@@ -1374,10 +1460,18 @@ async def _async_close_runtime_mapping(data: dict[str, Any]) -> None:
 
 
 async def _async_close_shared_client_if_unused(hass: HomeAssistant) -> None:
-    """Close the domain client after a failed setup with no remaining entries."""
+    """Close the domain client only when no setup or loaded entry owns it."""
     root = hass.data.get(DOMAIN)
     if not isinstance(root, dict):
         return
+    if root.get(_JOLPICA_SETUP_OWNERS_KEY):
+        return
+    initialization = root.get(_JOLPICA_CLIENT_INIT_TASK_KEY)
+    if isinstance(initialization, _JolpicaClientInitialization):
+        if initialization.waiters:
+            return
+        root.pop(_JOLPICA_CLIENT_INIT_TASK_KEY, None)
+        await initialization.async_close()
     if any(
         isinstance(value, dict)
         for key, value in root.items()
@@ -1448,6 +1542,37 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
     return True
 
 
+class _JolpicaClientInitialization:
+    """Own one initialization until a waiting setup claims its client."""
+
+    def __init__(self, hass: HomeAssistant, session: Any, user_agent: str) -> None:
+        self.waiters = 0
+        self.task = hass.loop.create_task(
+            self._async_initialize(hass, session, user_agent)
+        )
+
+    async def _async_initialize(
+        self, hass: HomeAssistant, session: Any, user_agent: str
+    ) -> JolpicaClient:
+        client = JolpicaClient(hass, session, user_agent)
+        try:
+            await client.async_initialize()
+        except BaseException:
+            with suppress(Exception):
+                await client.async_close()
+            raise
+        return client
+
+    async def async_close(self) -> None:
+        """Cancel unfinished initialization or close an unclaimed result."""
+        if not self.task.done():
+            self.task.cancel()
+        result = (await asyncio.gather(self.task, return_exceptions=True))[0]
+        if not isinstance(result, BaseException):
+            with suppress(Exception):
+                await result.async_close()
+
+
 async def _async_get_shared_jolpica_client(
     hass: HomeAssistant,
     session: Any,
@@ -1459,23 +1584,31 @@ async def _async_get_shared_jolpica_client(
     if isinstance(client, JolpicaClient):
         return client
 
-    init_task = domain_root.get(_JOLPICA_CLIENT_INIT_TASK_KEY)
-    if not isinstance(init_task, asyncio.Task):
+    initialization = domain_root.get(_JOLPICA_CLIENT_INIT_TASK_KEY)
+    if not isinstance(initialization, _JolpicaClientInitialization):
+        initialization = _JolpicaClientInitialization(hass, session, user_agent)
+        domain_root[_JOLPICA_CLIENT_INIT_TASK_KEY] = initialization
 
-        async def _async_initialize() -> JolpicaClient:
-            initialized = JolpicaClient(hass, session, user_agent)
-            await initialized.async_initialize()
-            domain_root[JOLPICA_CLIENT_KEY] = initialized
-            return initialized
-
-        init_task = hass.loop.create_task(_async_initialize())
-        domain_root[_JOLPICA_CLIENT_INIT_TASK_KEY] = init_task
-
+    initialization.waiters += 1
     try:
-        return await asyncio.shield(init_task)
+        client = await asyncio.shield(initialization.task)
+        # Only a live waiter may publish; the background task never publishes.
+        domain_root[JOLPICA_CLIENT_KEY] = client
+        return client
     finally:
-        if domain_root.get(_JOLPICA_CLIENT_INIT_TASK_KEY) is init_task:
-            domain_root.pop(_JOLPICA_CLIENT_INIT_TASK_KEY, None)
+        initialization.waiters -= 1
+        if not initialization.waiters:
+            if domain_root.get(_JOLPICA_CLIENT_INIT_TASK_KEY) is initialization:
+                domain_root.pop(_JOLPICA_CLIENT_INIT_TASK_KEY, None)
+            task = initialization.task
+            claimed = (
+                task.done()
+                and not task.cancelled()
+                and task.exception() is None
+                and domain_root.get(JOLPICA_CLIENT_KEY) is task.result()
+            )
+            if not claimed:
+                await initialization.async_close()
 
 
 async def _async_refresh_static_runtime(
@@ -1526,6 +1659,10 @@ async def _async_refresh_static_runtime(
 async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
     """Set up one config entry transactionally."""
     transaction = _SetupTransaction()
+    root = hass.data.setdefault(DOMAIN, {})
+    owners = root.setdefault(_JOLPICA_SETUP_OWNERS_KEY, set())
+    owner = object()
+    owners.add(owner)
     try:
         return await _async_setup_entry(hass, entry, transaction)
     except BaseException:
@@ -1542,8 +1679,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
         async_cancel_f1tv_auth_status_refresh(hass, entry.entry_id)
         unregister_entry_name_settings(entry.entry_id)
         entry.runtime_data = None
-        await _async_close_shared_client_if_unused(hass)
         raise
+    finally:
+        owners.discard(owner)
+        if not owners and root.get(_JOLPICA_SETUP_OWNERS_KEY) is owners:
+            root.pop(_JOLPICA_SETUP_OWNERS_KEY, None)
+        await _async_close_shared_client_if_unused(hass)
 
 
 async def _async_setup_entry(
@@ -2329,14 +2470,18 @@ async def _async_setup_entry(
                 return str(value)
         return None
 
+    analysis_bus = _DelayedAnalysisBus(
+        hass, live_bus, live_delay, delay_controller, live_state
+    )
+    transaction.track(analysis_bus)
     lap_analysis_store = LapAnalysisStore(
-        live_bus,
+        analysis_bus,
         source_provider=_lap_analysis_provider,
         session_type=_lap_analysis_session_type,
     )
     transaction.track(lap_analysis_store)
     phase4_analysis_store = Phase4AnalysisStore(
-        live_bus,
+        analysis_bus,
         lap_analysis_store,
         source_provider=_lap_analysis_provider,
     )
@@ -2681,10 +2826,12 @@ async def _async_setup_entry(
         "formation_start_tracker": formation_tracker,
         "replay_controller": replay_controller,
         "history_service": history_service,
+        "analysis_bus": analysis_bus,
         "lap_analysis_store": lap_analysis_store,
         "phase4_analysis_store": phase4_analysis_store,
         "replay_telemetry_service": replay_telemetry_service,
         "replay_reset_callbacks": _build_replay_reset_callbacks(
+            live_bus,
             track_status_coordinator,
             session_status_coordinator,
             session_info_coordinator,
@@ -2700,6 +2847,7 @@ async def _async_setup_entry(
             championship_prediction_coordinator,
             drivers_coordinator,
             track_map_replay_adapter,
+            analysis_bus,
             lap_analysis_store,
             phase4_analysis_store,
         ),
@@ -6830,11 +6978,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     with suppress(Exception):
                         unsub()
                 data_root.pop(_JOLPICA_STATS_KEY, None)
-                shared_client = data_root.pop(JOLPICA_CLIENT_KEY, None)
-                close = getattr(shared_client, "async_close", None)
-                if callable(close):
-                    with suppress(Exception):
-                        await close()
+                await _async_close_shared_client_if_unused(hass)
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("Error during entry data cleanup: %s", err)
     return unload_ok

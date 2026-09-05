@@ -24,6 +24,7 @@ class _Bus:
         self.async_close = AsyncMock()
         self.swap_transport = AsyncMock()
         self.inject_message = Mock()
+        self.set_heartbeat_expectation = Mock()
 
 
 def _index(tmp_path: Path) -> ReplayIndex:

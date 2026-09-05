@@ -1032,6 +1032,7 @@ async def test_replay_controller_exact_guards_and_pending_start(hass, tmp_path) 
         _transport_factory=None,
         _running=False,
         inject_message=Mock(),
+        set_heartbeat_expectation=Mock(),
         swap_transport=AsyncMock(),
         async_close=AsyncMock(),
     )

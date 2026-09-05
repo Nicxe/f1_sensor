@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass, replace
@@ -666,6 +666,8 @@ class Phase4AnalysisStore:
         self._penalty_context: dict[int, set[int]] = {}
         self._observed_streams: set[str] = set()
         self._listeners: list[Callable[[], None]] = []
+        self._close_listeners: list[Callable[[], Awaitable[None]]] = []
+        self.closed = False
         self._unsubs: list[Callable[[], None]] = []
         self._updates = 0
         self._attach()
@@ -700,6 +702,8 @@ class Phase4AnalysisStore:
         handler: Callable[[Any], None],
         payload: Any,
     ) -> None:
+        if self.closed:
+            return
         self._observed_streams.add(stream)
         handler(payload)
         self._updates += 1
@@ -714,6 +718,18 @@ class Phase4AnalysisStore:
         def _unsubscribe() -> None:
             with suppress(ValueError):
                 self._listeners.remove(callback)
+
+        return _unsubscribe
+
+    def add_close_listener(
+        self, listener: Callable[[], Awaitable[None]]
+    ) -> Callable[[], None]:
+        """Bind an asynchronous consumer's cleanup to this store's lifetime."""
+        self._close_listeners.append(listener)
+
+        def _unsubscribe() -> None:
+            with suppress(ValueError):
+                self._close_listeners.remove(listener)
 
         return _unsubscribe
 
@@ -1451,6 +1467,10 @@ class Phase4AnalysisStore:
 
     async def async_close(self) -> None:
         """Detach all stream and WebSocket listeners."""
+        self.closed = True
+        for listener in tuple(self._close_listeners):
+            await listener()
+        self._close_listeners.clear()
         for unsubscribe in self._unsubs:
             with suppress(Exception):
                 unsubscribe()
