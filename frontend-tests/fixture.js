@@ -143,3 +143,5 @@ window.mountF1Gallery = async ({ editor = false, language = 'en-GB', theme = 'da
   }
   return mounted;
 };
+
+await import('./realtime-fixture.js');

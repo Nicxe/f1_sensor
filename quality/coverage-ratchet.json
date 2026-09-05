@@ -1,4 +1,5 @@
 {
   "global_floor": 95.0,
-  "measurement": "Runtime Python line coverage only. Branch coverage is reported, not gated. Critical behavior is protected by regression tests."
+  "module_floor": 95.0,
+  "measurement": "Runtime Python line coverage must be strictly above both floors globally and for every production module. Branch coverage is reported, not gated. Critical behavior is protected by regression tests."
 }
