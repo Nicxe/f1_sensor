@@ -2831,6 +2831,7 @@ async def _async_setup_entry(
         "phase4_analysis_store": phase4_analysis_store,
         "replay_telemetry_service": replay_telemetry_service,
         "replay_reset_callbacks": _build_replay_reset_callbacks(
+            live_bus,
             track_status_coordinator,
             session_status_coordinator,
             session_info_coordinator,

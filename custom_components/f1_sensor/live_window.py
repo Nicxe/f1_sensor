@@ -96,6 +96,7 @@ class LiveAvailabilityTracker:
         self._state = False
         self._reason: str | None = "init"
         self._replay_locked = False  # When True, only replay can change state
+        self._replay_generation = 0
 
     @property
     def is_live(self) -> bool:
@@ -109,6 +110,11 @@ class LiveAvailabilityTracker:
     def replay_locked(self) -> bool:
         """True when replay controls the state and the supervisor should stay idle."""
         return self._replay_locked
+
+    @property
+    def replay_generation(self) -> int:
+        """Identify replay takeovers, including those already stopped."""
+        return self._replay_generation
 
     def set_state(self, is_live: bool, reason: str | None = None) -> None:
         is_replay_reason = reason in self._REPLAY_REASONS
@@ -124,6 +130,8 @@ class LiveAvailabilityTracker:
 
         # Update replay lock based on reason
         if reason in ("replay", "replay-preparing"):
+            if not self._replay_locked:
+                self._replay_generation += 1
             self._replay_locked = True
         elif reason in ("replay-completed", "replay-stopped"):
             self._replay_locked = False
@@ -1337,6 +1345,7 @@ class LiveSessionSupervisor:
         return True
 
     async def _activate_window(self, window: SessionWindow, *, source: str) -> None:
+        replay_generation = self._availability.replay_generation
         self._current_window = window
         self._current_window_source = source
         label = window.label
@@ -1347,27 +1356,50 @@ class LiveSessionSupervisor:
             window.connect_at.isoformat(),
             window.disconnect_at.isoformat(),
         )
-        await self._bus.start()
-        self._bus.set_heartbeat_expectation(True)
-        self._availability.set_state(True, f"live-{window.session_name}")
         reason = "interrupted"
         try:
-            reason = await self._monitor_window(window, source=source)
+            await self._bus.start()
+            if (
+                self._availability.replay_locked
+                or self._availability.replay_generation != replay_generation
+            ):
+                reason = "replay-takeover"
+            else:
+                self._bus.set_heartbeat_expectation(True)
+                self._availability.set_state(True, f"live-{window.session_name}")
+                reason = await self._monitor_window(window, source=source)
         finally:
-            self._bus.set_heartbeat_expectation(False)
+            # Replay can replace the transport during sleep or a schedule fetch.
+            # A completed replay must not restore this old window's ownership.
+            owns_bus = (
+                not self._availability.replay_locked
+                and self._availability.replay_generation == replay_generation
+            )
             try:
-                await self._bus.async_close()
+                if owns_bus:
+                    self._bus.set_heartbeat_expectation(False)
+                    await self._bus.async_close()
             finally:
                 self._current_window = None
                 self._current_window_source = "none"
-                availability_reason = (
-                    "no-spoiler"
-                    if reason == "no-spoiler-activated"
-                    else f"finished-{window.session_name}"
+                owns_bus = (
+                    owns_bus
+                    and not self._availability.replay_locked
+                    and self._availability.replay_generation == replay_generation
                 )
-                self._availability.set_state(False, availability_reason)
-                _LOGGER.info("Live timing closed for %s (%s)", label, reason)
-            if reason != "interrupted":
+                if owns_bus:
+                    availability_reason = (
+                        "no-spoiler"
+                        if reason == "no-spoiler-activated"
+                        else f"finished-{window.session_name}"
+                    )
+                    self._availability.set_state(False, availability_reason)
+                    _LOGGER.info("Live timing closed for %s (%s)", label, reason)
+                else:
+                    _LOGGER.debug(
+                        "Live window released after replay takeover: %s", label
+                    )
+            if owns_bus and reason != "interrupted":
                 try:
                     await self._session_coord.async_request_refresh()
                 except Exception:  # noqa: BLE001
@@ -1376,11 +1408,17 @@ class LiveSessionSupervisor:
                     )
 
     async def _monitor_window(self, window: SessionWindow, *, source: str) -> str:
+        replay_generation = self._availability.replay_generation
         label = window.label
         reason = "disconnect-window-expired"
         max_disconnect_at = window.disconnect_at + POST_WINDOW_EXTENSION_CAP
         while not self._stopped:
             await self._interruptible_sleep(ACTIVE_REFRESH.total_seconds())
+            if (
+                self._availability.replay_locked
+                or self._availability.replay_generation != replay_generation
+            ):
+                return "replay-takeover"
             # If No Spoiler Mode was activated mid-session, close the connection immediately.
             if self._is_no_spoiler_active:
                 _LOGGER.info(

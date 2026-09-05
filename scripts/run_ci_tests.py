@@ -28,6 +28,9 @@ MINIMUM = (
     "test_websocket_reload_regression.py",
     "test_analysis_delay_regression.py",
     "test_analysis_no_spoiler_regression.py",
+    "test_live_window_replay_ownership.py",
+    "test_replay_analysis_return_to_live.py",
+    "test_live_bus_close_ownership.py",
 )
 
 

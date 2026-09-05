@@ -18041,6 +18041,15 @@ class F1ReplayControlCard extends LitElement {
     ensureF1Fonts();
   }
 
+  updated() {
+    // Reused option nodes can retain native selectedness after the list changes.
+    // Apply the controlled value after Lit has finished updating the options.
+    for (const select of this.renderRoot.querySelectorAll('.rc-select-field select')) {
+      const value = select.dataset.replayValue ?? '';
+      if (select.value !== value) select.value = value;
+    }
+  }
+
   setConfig(config = {}) {
     this.config = {
       theme_mode: DEFAULT_F1_THEME_MODE,
@@ -18336,6 +18345,7 @@ class F1ReplayControlCard extends LitElement {
         <span class="rc-select-wrap">
           <select
             .value=${currentValue}
+            data-replay-value=${currentValue}
             ?disabled=${disabled}
             @change=${(ev) => this._selectOption(entityId, ev.target.value)}
           >

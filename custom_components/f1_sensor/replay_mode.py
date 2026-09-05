@@ -2788,6 +2788,7 @@ class ReplayController:
             self._playback_task = None
 
     def _ensure_replay_active(self) -> None:
+        self._live_bus.set_heartbeat_expectation(False)
         if self._live_state is not None:
             self._live_state.set_state(True, "replay")
         if not self._replay_active:
@@ -2989,6 +2990,7 @@ class ReplayController:
             self._replay_active = False
 
         # Download and index the session
+        await self._run_replay_reset_callbacks()
         await self._session_manager.async_load_session()
 
         # If loading failed (state reverted to SELECTED), release the
@@ -3055,6 +3057,14 @@ class ReplayController:
     async def async_stop(self) -> None:
         """Stop playback and return to idle."""
         _LOGGER.info("Stopping replay playback")
+        had_replay_state = (
+            self._replay_active
+            or self._transport is not None
+            or self._session_manager.get_loaded_index() is not None
+        )
+        # Claim explicit stop before cancellation can run the playback monitor's
+        # natural-completion cleanup and wake live data a second time.
+        self._set_state(ReplayState.IDLE)
 
         # IMPORTANT: Restore factory FIRST, then close bus to avoid race condition
         # where LiveSessionSupervisor restarts bus with old replay factory
@@ -3082,6 +3092,8 @@ class ReplayController:
 
         self._pending_start_ms = None
         self._reset_track_map_runtime()
+        if had_replay_state:
+            await self._run_replay_reset_callbacks()
 
         # Restore live state to idle - let LiveSessionSupervisor control it
         if self._live_state is not None:
@@ -3137,6 +3149,8 @@ class ReplayController:
                 # Clean up transport
                 if self._transport:
                     self._transport = None
+
+                await self._run_replay_reset_callbacks()
 
                 # Restore live state
                 if self._live_state is not None:

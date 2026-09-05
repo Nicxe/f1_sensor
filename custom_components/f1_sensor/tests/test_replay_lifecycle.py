@@ -165,9 +165,10 @@ async def test_full_replay_queue_can_close_or_load_next_session(
                 await wait_for_reader()
 
             monkeypatch.setattr(transport, "_async_wait_for_reader", observe_join)
+            playback_task = bus._task
             operation = asyncio.create_task(bus.async_close())
             await asyncio.wait_for(joining.wait(), 3)
-            bus._task.cancel()
+            playback_task.cancel()
         else:
             operation = asyncio.create_task(bus.async_close())
         # Shield keeps the failed baseline alive for explicit safe cleanup below.
