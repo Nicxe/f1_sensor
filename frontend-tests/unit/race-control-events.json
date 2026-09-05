@@ -1,0 +1,83 @@
+{
+  "entity_id": "sensor.f1_officials_f1_race_control",
+  "session_key": "1293|2026-09-05T12:30:00|Practice 3",
+  "backend_log_count": 16,
+  "backend_items": [
+    {
+      "event_id": "3616c7c03651ee4b52d5996189559699bc65df67",
+      "utc": "2026-09-05T11:20:41+00:00",
+      "received_at": "2026-09-05T11:20:43+00:00",
+      "category": "Other",
+      "flag": null,
+      "scope": null,
+      "sector": null,
+      "car_number": null,
+      "message": "CAR 11 (PER) TIME 1:38.908 DELETED - TRACK LIMITS AT TURN 6 LAP 14 13:19:11",
+      "sequence": 11
+    },
+    {
+      "event_id": "28a011b161eb8948ea7a622e3189563074de39e3",
+      "utc": "2026-09-05T11:16:13+00:00",
+      "received_at": "2026-09-05T11:16:15+00:00",
+      "category": "Other",
+      "flag": null,
+      "scope": null,
+      "sector": null,
+      "car_number": null,
+      "message": "CAR 18 (STR) TIME 1:59.863 DELETED - TRACK LIMITS AT TURN 1 LAP 13 13:12:45",
+      "sequence": 10
+    }
+  ],
+  "sensor_states": [
+    {
+      "state": "CAR 11 (PER) TIME 1:38.908 DELETED - TRACK LIMITS AT TURN 6 LAP 14 13:19:11",
+      "last_changed": "2026-09-05T13:20:43.459016+02:00",
+      "last_updated": "2026-09-05T13:20:43.459016+02:00",
+      "attributes": {
+        "utc": "2026-09-05T11:20:41+00:00",
+        "received_at": "2026-09-05T11:20:43+00:00",
+        "category": "Other",
+        "flag": null,
+        "scope": null,
+        "sector": null,
+        "car_number": null,
+        "message": "CAR 11 (PER) TIME 1:38.908 DELETED - TRACK LIMITS AT TURN 6 LAP 14 13:19:11",
+        "event_id": "2026-09-05T11:20:41|Other|CAR 11 (PER) TIME 1:38.908 DELETED - TRACK LIMITS AT TURN 6 LAP 14 13:19:11",
+        "sequence": 40,
+        "raw_message": {
+          "Utc": "2026-09-05T11:20:41",
+          "Category": "Other",
+          "Message": "CAR 11 (PER) TIME 1:38.908 DELETED - TRACK LIMITS AT TURN 6 LAP 14 13:19:11",
+          "id": 39
+        },
+        "icon": "mdi:flag-outline",
+        "friendly_name": "F1 - Officials Race control"
+      }
+    },
+    {
+      "state": "CAR 18 (STR) TIME 1:59.863 DELETED - TRACK LIMITS AT TURN 1 LAP 13 13:12:45",
+      "last_changed": "2026-09-05T13:16:15.011148+02:00",
+      "last_updated": "2026-09-05T13:16:15.011148+02:00",
+      "attributes": {
+        "utc": "2026-09-05T11:16:13+00:00",
+        "received_at": "2026-09-05T11:16:15+00:00",
+        "category": "Other",
+        "flag": null,
+        "scope": null,
+        "sector": null,
+        "car_number": null,
+        "message": "CAR 18 (STR) TIME 1:59.863 DELETED - TRACK LIMITS AT TURN 1 LAP 13 13:12:45",
+        "event_id": "2026-09-05T11:16:13|Other|CAR 18 (STR) TIME 1:59.863 DELETED - TRACK LIMITS AT TURN 1 LAP 13 13:12:45",
+        "sequence": 39,
+        "raw_message": {
+          "Utc": "2026-09-05T11:16:13",
+          "Category": "Other",
+          "Message": "CAR 18 (STR) TIME 1:59.863 DELETED - TRACK LIMITS AT TURN 1 LAP 13 13:12:45",
+          "id": 38
+        },
+        "icon": "mdi:flag-outline",
+        "friendly_name": "F1 - Officials Race control"
+      }
+    }
+  ]
+}

@@ -5073,7 +5073,7 @@ class F1DriverLapTimesCard extends LitElement {
     const lapEntries = this._normalizeLapEntries(positionInfo?.laps);
     const completedLaps = Number(positionInfo?.completed_laps);
     const lastLapEntry = this._resolveLastLapEntry(lapEntries, completedLaps);
-    const bestLapEntry = this._resolveBestLapEntry(lapEntries);
+    const bestLapEntry = this._resolveBestLapEntry(lapEntries, positionInfo);
     const lapsByNumber = {};
     lapEntries.forEach((entry) => {
       lapsByNumber[entry.lap] = entry.time;
@@ -5176,7 +5176,14 @@ class F1DriverLapTimesCard extends LitElement {
     return entries[entries.length - 1];
   }
 
-  _resolveBestLapEntry(entries) {
+  _resolveBestLapEntry(entries, positionInfo) {
+    if (Object.prototype.hasOwnProperty.call(positionInfo || {}, 'best_lap_time')) {
+      const time = typeof positionInfo.best_lap_time === 'string' ? positionInfo.best_lap_time.trim() : null;
+      const seconds = this._parseLapTimeSeconds(time);
+      if (seconds == null || seconds <= 0) return null;
+      const lap = Number(positionInfo.best_lap_lap);
+      return { time, seconds, lap: Number.isInteger(lap) && lap > 0 ? lap : null };
+    }
     if (!Array.isArray(entries) || entries.length === 0) return null;
     let bestEntry = null;
     let bestSeconds = null;
@@ -24277,14 +24284,15 @@ class F1RaceControlCard extends LitElement {
       return;
     }
 
-    this._listMessages = this._sortListItems([normalized, ...this._listMessages]);
+    this._listMessages = this._sortListItems([...this._listMessages, normalized]);
     this._listLoading = false;
     this._listError = null;
   }
 
   _normalizeListItem(item, fallbackIndex = 0) {
     if (!item || typeof item !== 'object') return null;
-    const utc = item.utc || item.Utc || item.utc_ts || item.received_at || null;
+    const sourceUtc = item.utc || item.Utc || item.utc_ts || null;
+    const utc = sourceUtc || item.received_at || null;
     const category = item.category || item.Category || item.CategoryType || null;
     const flag = item.flag || item.Flag || null;
     const scope = item.scope || item.Scope || null;
@@ -24311,17 +24319,24 @@ class F1RaceControlCard extends LitElement {
       message,
       sequence,
       _parsedTime: parsedTime,
+      // Sensor and saved-log IDs differ; exact source fields identify the event.
+      // Receive time alone cannot distinguish separate source events.
+      _sourceKey: sourceUtc && this._parseIncidentTime(sourceUtc) !== null && message
+        ? JSON.stringify([this._parseIncidentTime(sourceUtc), category, flag, scope, sector, carNumber, message].map(value => String(value ?? '')))
+        : null,
     };
   }
 
   _sortListItems(items) {
     const unique = [];
     const seen = new Set();
+    const sourceKeys = new Set();
 
     for (const item of items) {
       if (!item || !item.id) continue;
-      if (seen.has(item.id)) continue;
+      if (seen.has(item.id) || (item._sourceKey && sourceKeys.has(item._sourceKey))) continue;
       seen.add(item.id);
+      if (item._sourceKey) sourceKeys.add(item._sourceKey);
       unique.push(item);
     }
 
@@ -28700,8 +28715,8 @@ class F1PracticeTimingCard extends LitElement {
           : compoundBaseColor,
       );
       const tyreAge = this._formatLaps(tyre?.stint_laps);
-      // Practice timing intentionally derives fastest laps from lap history because
-      // the integration only exposes top-level fastest_lap metadata during race sessions.
+      // The integration's best lap survives joining late and official corrections.
+      // Older integrations still fall back to the observed lap history.
       const lapSnapshot = this._buildLapSnapshot(pos);
       const position = this._parsePosition(pos?.current_position ?? pos?.grid_position);
       const [sector1, sector2, sector3] = resolveF1CurrentSectorSet(this, pos);
@@ -28846,7 +28861,7 @@ class F1PracticeTimingCard extends LitElement {
     const lapEntries = this._normalizeLapEntries(positionInfo?.laps);
     const completedLaps = Number(positionInfo?.completed_laps);
     const lastLapEntry = this._resolveLastLapEntry(lapEntries, completedLaps);
-    const bestLapEntry = this._resolveBestLapEntry(lapEntries);
+    const bestLapEntry = this._resolveBestLapEntry(lapEntries, positionInfo);
 
     return {
       last_lap: lastLapEntry?.time || null,
@@ -28880,7 +28895,14 @@ class F1PracticeTimingCard extends LitElement {
     return entries[entries.length - 1];
   }
 
-  _resolveBestLapEntry(entries) {
+  _resolveBestLapEntry(entries, positionInfo) {
+    if (Object.prototype.hasOwnProperty.call(positionInfo || {}, 'best_lap_time')) {
+      const time = typeof positionInfo.best_lap_time === 'string' ? positionInfo.best_lap_time.trim() : null;
+      const seconds = this._parseLapTimeSeconds(time);
+      if (seconds == null || seconds <= 0) return null;
+      const lap = Number(positionInfo.best_lap_lap);
+      return { time, seconds, lap: Number.isInteger(lap) && lap > 0 ? lap : null };
+    }
     if (!Array.isArray(entries) || entries.length === 0) return null;
     let bestEntry = null;
     let bestSeconds = null;
@@ -30222,7 +30244,9 @@ class F1RaceLapCard extends LitElement {
       );
       const tyreAge = this._formatLaps(tyre?.stint_laps);
       const lapSnapshot = this._buildLapSnapshot(pos);
-      const bestLap = lapSnapshot.best_lap || (typeof pos?.fastest_lap_time === 'string' ? pos.fastest_lap_time.trim() : null);
+      const bestLap = Object.prototype.hasOwnProperty.call(pos || {}, 'best_lap_time')
+        ? lapSnapshot.best_lap
+        : lapSnapshot.best_lap || (typeof pos?.fastest_lap_time === 'string' ? pos.fastest_lap_time.trim() : null);
       const isFastest = Boolean(pos?.fastest_lap) || this._matchesFastest(rn, tla, fastestInfo);
       const position = this._parsePosition(pos?.current_position ?? pos?.grid_position);
       const [sector1, sector2, sector3] = resolveF1CurrentSectorSet(this, pos);
@@ -30363,7 +30387,7 @@ class F1RaceLapCard extends LitElement {
     const lapEntries = this._normalizeLapEntries(positionInfo?.laps);
     const completedLaps = Number(positionInfo?.completed_laps);
     const lastLapEntry = this._resolveLastLapEntry(lapEntries, completedLaps);
-    const bestLapEntry = this._resolveBestLapEntry(lapEntries);
+    const bestLapEntry = this._resolveBestLapEntry(lapEntries, positionInfo);
 
     return {
       last_lap: lastLapEntry?.time || null,
@@ -30395,7 +30419,14 @@ class F1RaceLapCard extends LitElement {
     return entries[entries.length - 1];
   }
 
-  _resolveBestLapEntry(entries) {
+  _resolveBestLapEntry(entries, positionInfo) {
+    if (Object.prototype.hasOwnProperty.call(positionInfo || {}, 'best_lap_time')) {
+      const time = typeof positionInfo.best_lap_time === 'string' ? positionInfo.best_lap_time.trim() : null;
+      const seconds = this._parseLapTimeSeconds(time);
+      if (seconds == null || seconds <= 0) return null;
+      const lap = Number(positionInfo.best_lap_lap);
+      return { time, seconds, lap: Number.isInteger(lap) && lap > 0 ? lap : null };
+    }
     if (!Array.isArray(entries) || entries.length === 0) return null;
     let bestEntry = null;
     let bestSeconds = null;

@@ -266,6 +266,7 @@ async def test_timing_data_merges_all_incremental_driver_fields(hass) -> None:
         "interval": "+0.000",
         "last_lap": "1:20.000",
         "best_lap": "1:19.500",
+        "official_best_lap": {"time": "1:19.500", "time_secs": 79.5, "lap": 2},
         "in_pit": True,
         "pit_out": True,
         "pit_stops": 2,

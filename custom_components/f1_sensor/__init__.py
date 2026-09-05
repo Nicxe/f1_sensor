@@ -9,6 +9,7 @@ from functools import partial
 import hashlib
 import json
 import logging
+import math
 from pathlib import Path
 import re
 import time
@@ -5449,6 +5450,49 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         return changed
 
+    def _merge_official_best_lap(self, timing: dict, payload: Any) -> bool:
+        """Keep source corrections separate from incomplete observed lap history."""
+        previous = timing.get("official_best_lap")
+        best = (
+            dict(previous)
+            if isinstance(previous, dict)
+            else {
+                "time": None,
+                "time_secs": None,
+                "lap": None,
+            }
+        )
+        if payload is None or (
+            isinstance(payload, dict) and payload.get("Deleted") is True
+        ):
+            best = {"time": None, "time_secs": None, "lap": None}
+        elif isinstance(payload, dict):
+            if "Value" in payload:
+                value = payload["Value"]
+                value = value.strip() if isinstance(value, str) else None
+                seconds = self._parse_laptime_secs(value)
+                if seconds is None or not math.isfinite(seconds) or seconds <= 0:
+                    value, seconds = None, None
+                if best["time"] != value:
+                    best["lap"] = None
+                best["time"], best["time_secs"] = value, seconds
+            elif previous is None:
+                # Empty and lap-only deltas do not supply an authoritative time.
+                return False
+            if "Lap" in payload:
+                lap = payload["Lap"]
+                if isinstance(lap, str) and lap.strip().isdigit():
+                    lap = int(lap)
+                best["lap"] = lap if type(lap) is int and lap > 0 else None
+            if best["time"] is None:
+                best["lap"] = None
+        else:
+            return False
+        if previous == best:
+            return False
+        timing["official_best_lap"] = best
+        return True
+
     def _merge_timingdata(self, payload: dict) -> bool:
         # payload: {"Lines": { rn: {...timing...} } }
         lines = (payload or {}).get("Lines", {})
@@ -5527,6 +5571,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     lap_num = completed if isinstance(completed, int) else None
                 if self._ingest_completed_lap(rn, last_lap, lap_num):
                     changed = True
+            if "BestLapTime" in td and self._merge_official_best_lap(
+                timing, td["BestLapTime"]
+            ):
+                changed = True
             best_lap = self._get_value(td, "BestLapTime", "Value")
             best_lap_num_raw = self._get_value(td, "BestLapTime", "Lap")
             best_lap_num: int | None = None
