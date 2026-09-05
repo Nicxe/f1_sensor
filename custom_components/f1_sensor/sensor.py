@@ -4,6 +4,7 @@ import asyncio
 from contextlib import suppress
 import datetime
 from logging import getLogger
+import math
 import re
 from zoneinfo import ZoneInfo
 
@@ -6174,6 +6175,9 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "pit_out": False,
                 "retired": False,
                 "stopped": False,
+                "best_lap_time": "1:30.456",
+                "best_lap_time_secs": 90.456,
+                "best_lap_lap": 40,
                 "fastest_lap": False,
                 "fastest_lap_time": "1:29.123",
                 "fastest_lap_time_secs": 89.123,
@@ -6211,6 +6215,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         }
         self._last_write_ts: float | None = None
         self._pending_write: bool = False
+        self._pending_write_cancel = None
         self._pit_out_until: dict[str, float] = {}
         self._pit_out_last: dict[str, bool] = {}
         self._session_info_coordinator = None
@@ -6218,6 +6223,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        self.async_on_remove(self._cancel_pending_state_write)
 
         # Subscribe to session coordinators for accurate gating and Q-part updates.
         try:
@@ -6429,6 +6435,9 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             for drv in drivers:
                 if not isinstance(drv, dict):
                     continue
+                drv.setdefault("best_lap_time", None)
+                drv.setdefault("best_lap_time_secs", None)
+                drv.setdefault("best_lap_lap", None)
                 drv.setdefault("fastest_lap", False)
                 drv.setdefault("fastest_lap_time", None)
                 drv.setdefault("fastest_lap_time_secs", None)
@@ -6475,6 +6484,25 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             identity = info.get("identity", {})
             lap_history = info.get("lap_history", {})
             timing = info.get("timing", {})
+            official_best = timing.get("official_best_lap")
+            if isinstance(official_best, dict):
+                best_lap_time = official_best.get("time")
+                best_lap_seconds = official_best.get("time_secs")
+                best_lap_number = official_best.get("lap")
+            else:
+                # Before an official value arrives, retain observed-lap fallback.
+                best_lap_time = timing.get("best_lap")
+                best_lap_seconds = None
+                best_lap_number = None
+                if isinstance(best_lap_time, str):
+                    with suppress(ValueError, TypeError):
+                        best_lap_seconds = _parse_lap_time_to_secs(best_lap_time)
+                if (
+                    best_lap_seconds is None
+                    or not math.isfinite(best_lap_seconds)
+                    or best_lap_seconds <= 0
+                ):
+                    best_lap_time = best_lap_seconds = None
             _sectors = info.get("sectors", {})
             _cur = _sectors.get("current", {})
             _bst = _sectors.get("best", {})
@@ -6583,6 +6611,9 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "status": status,
                 "gap_to_leader": timing.get("gap_to_leader"),
                 "interval_to_position_ahead": timing.get("interval"),
+                "best_lap_time": best_lap_time,
+                "best_lap_time_secs": best_lap_seconds,
+                "best_lap_lap": best_lap_number,
                 "fastest_lap": is_fastest,
                 "fastest_lap_time": fastest.get("time") if is_fastest else None,
                 "fastest_lap_time_secs": (
@@ -6767,6 +6798,14 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "fastest_lap": None,
         }
 
+    @callback
+    def _cancel_pending_state_write(self) -> None:
+        """Release the entity's scheduled state write when it is removed."""
+        if self._pending_write_cancel is not None:
+            self._pending_write_cancel()
+            self._pending_write_cancel = None
+        self._pending_write = False
+
     def _rate_limited_write(self) -> None:
         """Write state with 1-second rate limiting."""
         import time as _time
@@ -6780,14 +6819,16 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self._pending_write = True
             delay = max(0.0, 1.0 - (now - self._last_write_ts))
 
+            @callback
             def _do_write(_now):
+                self._pending_write_cancel = None
                 try:
                     self._last_write_ts = _time.time()
                     self._safe_write_ha_state()
                 finally:
                     self._pending_write = False
 
-            async_call_later(self.hass, delay, _do_write)
+            self._pending_write_cancel = async_call_later(self.hass, delay, _do_write)
 
     @property
     def state(self):

@@ -60,7 +60,7 @@ def test_race_control_parser_and_normalized_message_shapes() -> None:
     ) == {"Messages": []}
     assert RaceControlCoordinator._parse_message({"M": [{"A": []}]}) is None
     assert RaceControlCoordinator._extract_items(None) == []
-    assert RaceControlCoordinator._extract_items([{}, "bad"]) == [{}]
+    assert RaceControlCoordinator._extract_items([{}, "bad"]) == []
     assert RaceControlCoordinator._extract_items(
         {"Messages": [{"Message": "A"}, "bad"]}
     ) == [{"Message": "A"}]

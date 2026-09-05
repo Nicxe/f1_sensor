@@ -9,6 +9,7 @@ from functools import partial
 import hashlib
 import json
 import logging
+import math
 from pathlib import Path
 import re
 import time
@@ -3253,35 +3254,42 @@ class RaceControlCoordinator(DataUpdateCoordinator):
     def _extract_items(msg) -> list[dict]:
         # RaceControl feed can be a list of entries or a dict with list under key
         if isinstance(msg, list):
-            return [m for m in msg if isinstance(m, dict)]
+            return [m for m in msg if isinstance(m, dict) and m]
         if isinstance(msg, dict):
             # Some payloads contain { "Messages": [ ... ] }
             messages = msg.get("Messages")
             if isinstance(messages, list):
-                return [m for m in messages if isinstance(m, dict)]
+                return [m for m in messages if isinstance(m, dict) and m]
             # Some payloads contain { "Messages": { "1": {...}, "2": {...}, ... } }
-            if isinstance(messages, dict) and messages:
+            if isinstance(messages, dict):
                 try:
-                    numeric_keys = [k for k in messages.keys() if str(k).isdigit()]
-                    # Sort by numeric key to preserve order if automations iterate
-                    numeric_keys.sort(key=lambda x: int(x))
+                    keys = [
+                        key
+                        for key, value in messages.items()
+                        if isinstance(value, dict) and value
+                    ]
+                    # Replay checkpoints also use timestamps or source IDs. Keep
+                    # their insertion order, including mixed timestamp/index maps.
+                    if all(str(key).isdigit() for key in keys):
+                        keys.sort(key=lambda key: int(key))
                     result: list[dict] = []
-                    for key in numeric_keys:
-                        val = messages.get(key)
-                        if isinstance(val, dict):
-                            item = dict(val)
-                            # Provide stable id if not present
+                    for key in keys:
+                        item = dict(messages[key])
+                        # Provide the existing numeric source ID when available.
+                        if str(key).isdigit():
                             item.setdefault("id", int(key))
-                            result.append(item)
-                    if result:
-                        return result
+                        result.append(item)
+                    return result
                 except Exception:  # noqa: BLE001
                     _LOGGER.debug(
                         "RaceControlMessages: failed to normalize Messages dict",
                         exc_info=True,
                     )
+                    return []
+            if "Messages" in msg:
+                return []
             # Or a single message
-            return [msg]
+            return [msg] if msg else []
         return []
 
     @staticmethod
@@ -5449,6 +5457,49 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         return changed
 
+    def _merge_official_best_lap(self, timing: dict, payload: Any) -> bool:
+        """Keep source corrections separate from incomplete observed lap history."""
+        previous = timing.get("official_best_lap")
+        best = (
+            dict(previous)
+            if isinstance(previous, dict)
+            else {
+                "time": None,
+                "time_secs": None,
+                "lap": None,
+            }
+        )
+        if payload is None or (
+            isinstance(payload, dict) and payload.get("Deleted") is True
+        ):
+            best = {"time": None, "time_secs": None, "lap": None}
+        elif isinstance(payload, dict):
+            if "Value" in payload:
+                value = payload["Value"]
+                value = value.strip() if isinstance(value, str) else None
+                seconds = self._parse_laptime_secs(value)
+                if seconds is None or not math.isfinite(seconds) or seconds <= 0:
+                    value, seconds = None, None
+                if best["time"] != value:
+                    best["lap"] = None
+                best["time"], best["time_secs"] = value, seconds
+            elif previous is None:
+                # Empty and lap-only deltas do not supply an authoritative time.
+                return False
+            if "Lap" in payload:
+                lap = payload["Lap"]
+                if isinstance(lap, str) and lap.strip().isdigit():
+                    lap = int(lap)
+                best["lap"] = lap if type(lap) is int and lap > 0 else None
+            if best["time"] is None:
+                best["lap"] = None
+        else:
+            return False
+        if previous == best:
+            return False
+        timing["official_best_lap"] = best
+        return True
+
     def _merge_timingdata(self, payload: dict) -> bool:
         # payload: {"Lines": { rn: {...timing...} } }
         lines = (payload or {}).get("Lines", {})
@@ -5527,6 +5578,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     lap_num = completed if isinstance(completed, int) else None
                 if self._ingest_completed_lap(rn, last_lap, lap_num):
                     changed = True
+            if "BestLapTime" in td and self._merge_official_best_lap(
+                timing, td["BestLapTime"]
+            ):
+                changed = True
             best_lap = self._get_value(td, "BestLapTime", "Value")
             best_lap_num_raw = self._get_value(td, "BestLapTime", "Lap")
             best_lap_num: int | None = None

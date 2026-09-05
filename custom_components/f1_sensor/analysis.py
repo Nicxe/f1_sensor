@@ -707,6 +707,9 @@ class Phase4AnalysisStore:
         self._observed_streams.add(stream)
         handler(payload)
         self._updates += 1
+        self._notify_listeners()
+
+    def _notify_listeners(self) -> None:
         for listener in tuple(self._listeners):
             with suppress(Exception):
                 listener()
@@ -801,6 +804,7 @@ class Phase4AnalysisStore:
         self._reset_session()
         self._session_id = None
         self._session_name = None
+        self._notify_listeners()
 
     def _on_session_info(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):

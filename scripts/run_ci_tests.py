@@ -31,6 +31,8 @@ MINIMUM = (
     "test_live_window_replay_ownership.py",
     "test_replay_analysis_return_to_live.py",
     "test_live_bus_close_ownership.py",
+    "test_driver_best_lap.py",
+    "test_race_control_snapshots.py",
 )
 
 
