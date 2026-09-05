@@ -1,10 +1,43 @@
 # F1 Sensor for Home Assistant
 
-Bring Formula 1 into your home with race schedules, live timing, dashboard cards and automations. Follow a session live, align updates with your TV broadcast, or play archived timing data alongside a replay.
+## Your home. On race time.
+
+Turn your Home Assistant dashboard into a personal pit wall and let your home follow the action. F1 Sensor brings Formula 1 schedules, live timing, race updates and results into Home Assistant, with ready-to-use dashboard cards and automations you can make your own.
+
+See when the next session starts, follow the drivers as they race, and make your lights react when the flags change. Watching on a delayed broadcast or catching up later? Match live updates to your TV with Live Delay, or bring archived timing to life with Replay Mode.
 
 [Documentation](https://nicxe.github.io/f1_sensor/) · [Installation](https://nicxe.github.io/f1_sensor/getting-started/installation) · [Dashboard cards](https://nicxe.github.io/f1_sensor/cards/cards-overview) · [Releases](https://github.com/Nicxe/f1_sensor/releases)
 
-![F1 Sensor dashboard cards showing timing, race control and championship information](static/img/placeholder_cards_overview.png)
+## Yellow flag. Yellow light.
+
+A yellow flag on TV, a yellow light in your living room. When track conditions change, your room can follow: green for clear racing, yellow for caution, red for a red flag, and distinct colors for Safety Car and Virtual Safety Car.
+
+![Yellow flag on TV with a lamp glowing yellow](static/img/flag-light-demo.gif)
+
+Use the [Track Status Light blueprint](https://nicxe.github.io/f1_sensor/blueprints/track-status-light) to connect an RGB light or light group in Home Assistant. Choose when it should react with presence, TV and quiet-hour conditions, or use WLED presets and playlists for your own effects. Set [Live Delay](https://nicxe.github.io/f1_sensor/features/live-delay) to align the changes with your broadcast.
+
+Lights are just the start. Get a reminder before a session, receive selected Race Control messages, or trigger your own actions when your favorite driver gains a place or enters the pits. Explore the [automation guides and blueprints](https://nicxe.github.io/f1_sensor/automation) for ideas you can use at home.
+
+## Your personal pit wall
+
+Keep the race weekend beside your TV, on a tablet, or wherever you use Home Assistant. Start with a next-race countdown and build up to a dashboard with driver positions, lap times, gaps, tyres, weather and Race Control messages.
+
+[![Example F1 Sensor dashboard with session status, driver lap times, tyres, pit stops and championship predictions](static/img/placeholder_cards_overview.png)](https://nicxe.github.io/f1_sensor/cards/cards-overview)
+
+| Follow the weekend | What you can do |
+| --- | --- |
+| Before the lights go out | Check the season calendar, session times, circuit weather and championship standings. |
+| During the session | Follow practice, qualifying, Sprint and Race timing, with track flags, tyre information and Race Control updates. |
+| Follow your driver | Select a [Favorite Driver](https://nicxe.github.io/f1_sensor/features/favorite-driver) for focused timing and automations based on their position and pit activity. |
+| After the chequered flag | Review results, explore the [Results Archive](https://nicxe.github.io/f1_sensor/cards/results), and see how the championship develops. |
+
+The dashboard cards are included with the integration and registered automatically. [Explore the card catalogue](https://nicxe.github.io/f1_sensor/cards/cards-overview) to choose the views that suit your setup.
+
+## Watch on your time
+
+**Watching live?** Use [Live Delay](https://nicxe.github.io/f1_sensor/features/live-delay) to match timing updates, lights and notifications to your TV or stream. Adjust the delay yourself or use guided calibration to find the offset.
+
+**Watching later?** Turn on [No Spoiler Mode](https://nicxe.github.io/f1_sensor/features/no-spoiler-mode) before the session to hold back supported spoiler-sensitive updates in F1 Sensor. When archive data is available, load the completed session in [Replay Mode](https://nicxe.github.io/f1_sensor/features/replay-mode) and align it with your recording so your dashboard and automations follow along. Replay Mode plays timing data; you provide the race video.
 
 ## Start with your next race
 
@@ -12,7 +45,9 @@ Bring Formula 1 into your home with race schedules, live timing, dashboard cards
 2. [Add and configure F1 Sensor](https://nicxe.github.io/f1_sensor/getting-started/add-integration).
 3. [Build your first dashboard](https://nicxe.github.io/f1_sensor/getting-started/first-dashboard) with the Next Race card. No active session is needed.
 
-Dashboard card resources are bundled and registered automatically. Live information appears when the relevant session streams are available; schedules, standings and results have their own update cycles.
+Start with schedules and public live timing without F1TV authentication. Optional [F1TV Auth](https://nicxe.github.io/f1_sensor/features/f1tv-auth) adds access to extra live features such as Track Map, Pit Stops, Team Radio and Championship Prediction when the source provides the data.
+
+Live information appears when the relevant session streams are available; schedules, standings and results have their own update cycles. Each card and feature guide explains its requirements, including which features need optional access and what is available in replay.
 
 ## Make race day your own
 
@@ -24,8 +59,6 @@ Dashboard card resources are bundled and registered automatically. Live informat
 | Make my lights react to flags | [Track Status Light blueprint](https://nicxe.github.io/f1_sensor/blueprints/track-status-light) |
 | Understand a sensor or event | [Entity and event reference](https://nicxe.github.io/f1_sensor/reference/overview) |
 | Work out why data is missing | [Help and troubleshooting](https://nicxe.github.io/f1_sensor/help/overview) |
-
-Core schedule and public timing features work without F1TV authentication. Some detailed live streams need [F1TV Auth](https://nicxe.github.io/f1_sensor/features/f1tv-auth); requirements are listed on each card and entity page. Availability depends on the selected mode, enabled features and upstream data.
 
 ## Community and contributions
 
