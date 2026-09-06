@@ -41,8 +41,7 @@ jobs:
             const automation = require('./.github/scripts/auto-merge.cjs');
             const pr = context.payload.pull_request;
             if (automation.eligible(pr.base.ref, {alert:process.env.ALERT, ghsa:process.env.GHSA, update:process.env.UPDATE})) {
-              await automation.enable({github, context}, pr);
-              await automation.refresh({github, context}, pr);
+              await automation.queueDependabot({github, context}, pr);
             } else {
               core.info('This update is outside the automatic merge policy.');
             }
