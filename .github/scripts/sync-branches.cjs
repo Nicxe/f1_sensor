@@ -1,55 +1,75 @@
 'use strict';
+const {enable} = require('./auto-merge.cjs');
 
-async function syncOne({github, context, core, legacyContent=false}, source, sha, target) {
+async function syncOne(environment, source, sha, target) {
+  const {github, context, core} = environment;
   const repo = context.repo;
-  const comparison = (await github.rest.repos.compareCommits({...repo, base:target, head:sha})).data;
-  if (['identical','behind'].includes(comparison.status)) return 'contained';
-  if (comparison.status === 'ahead' && !(legacyContent && target === 'content')) {
-    let updated = false;
-    try {
-      await github.rest.git.updateRef({...repo, ref:`heads/${target}`, sha, force:false});
-      updated = true;
-    } catch (error) {
-      if (![403,422].includes(error.status)) throw error;
-      core.info(`Protected ${target}; using a pull request.`);
-    }
-    if (updated) {
-      await github.rest.actions.createWorkflowDispatch({...repo, workflow_id:'ci.yml', ref:target, inputs:{release:false}});
-      return 'fast-forward';
-    }
-  }
-  const branch = `sync/${source}-to-${target}/${sha.slice(0,12)}`;
+  const base = (await github.rest.git.getRef({...repo, ref:`heads/${target}`})).data.object.sha;
+  const comparison = (await github.rest.repos.compareCommits({...repo, base, head:sha})).data;
+  if (['identical', 'behind'].includes(comparison.status)) return 'contained';
+  // A new target head gets a new snapshot; strict branch rules never require
+  // rewriting a snapshot or choosing a conflict resolution automatically.
+  const prefix = `sync/${source}-to-${target}/`;
+  const branch = `${prefix}${sha.slice(0,12)}-${base.slice(0,12)}`;
   try { await github.rest.git.createRef({...repo, ref:`refs/heads/${branch}`, sha}); }
-  catch (error) {
-    if (error.status !== 422) throw error;
-    const existing = (await github.rest.git.getRef({...repo, ref:`heads/${branch}`})).data;
-    if (existing.object.sha !== sha) throw new Error('Synchronization snapshot changed; refusing to overwrite it.');
+  catch (error) { if (error.status !== 422) throw error; }
+  const snapshot = (await github.rest.repos.getCommit({...repo, ref:branch})).data;
+  if (snapshot.sha !== sha && (snapshot.parents?.length !== 2
+      || snapshot.parents[0].sha !== sha || snapshot.parents[1].sha !== base)) {
+    throw new Error('Synchronization snapshot changed; refusing to overwrite it.');
   }
-  const pulls = await github.paginate(github.rest.pulls.list, {...repo, state:'open', base:target, head:`${repo.owner}:${branch}`, per_page:100});
+  if (snapshot.sha === sha && comparison.status === 'diverged') {
+    // GitHub returns 409 for conflicts, leaving both protected branches intact.
+    await github.rest.repos.merge({...repo, base:branch, head:base,
+      commit_message:`chore: Preserve ${target} changes while synchronizing ${source}`});
+  }
+  const pulls = await github.paginate(github.rest.pulls.list,
+    {...repo, state:'open', base:target, head:`${repo.owner}:${branch}`, per_page:100});
   const pr = pulls[0] || (await github.rest.pulls.create({...repo, base:target, head:branch,
     title:`chore: Synchronize ${source} into ${target}`,
-    body:`Preserve the published ${source} history in ${target} without replacing commits. This synchronization uses an immutable source snapshot and must pass CI before merging. Conflicts require a normal merge resolution; no side is selected automatically.`})).data;
-  // GITHUB_TOKEN pushes do not reliably start CI. Run the merge ref explicitly,
-  // attaching the required check to this immutable PR head.
-  const legacy = legacyContent && target === 'content';
-  await github.rest.actions.createWorkflowDispatch({...repo, workflow_id:legacy?'sync-legacy.yml':'ci.yml', ref:legacy?'main':target, inputs:legacy?{pull_request:String(pr.number)}:{release:false, pull_request:String(pr.number)}});
+    body:`Preserve the ${source} and ${target} histories. This snapshot includes the exact target head before verification. Automatic merging requires CI; conflicts require normal manual resolution.`})).data;
+  if (pr.user.login !== 'github-actions[bot]') throw new Error('Unexpected synchronization PR author.');
+  if (pr.auto_merge) return 'queued';
+  const head = pr.head.sha;
+  if (pr.base.sha !== base) throw new Error('Target changed; a fresh synchronization snapshot is required.');
+  // Fence off unrelated green checks on the same commit before enabling merge.
+  const externalId = `f1-pr:${pr.number}:${base}:${head}`;
+  const checks = await github.paginate(github.rest.checks.listForRef,
+    {...repo, ref:head, check_name:'CI required', per_page:100});
+  const existing = checks.find(check => check.external_id === externalId && check.app?.id === 15368);
+  const pending = {...repo, name:'CI required', status:'in_progress',
+    output:{title:'Verifying synchronization',summary:'Checking the exact source and target snapshot before automatic merging.'}};
+  if (existing) await github.rest.checks.update({...pending, check_run_id:existing.id});
+  else await github.rest.checks.create({...pending, head_sha:head, external_id:externalId});
+  await github.rest.actions.createWorkflowDispatch({...repo, workflow_id:'ci.yml', ref:target,
+    inputs:{release:false, pull_request:String(pr.number)}});
+  await enable(environment, pr);
+  // Retire only our older pending snapshots, after the replacement is queued.
+  const obsolete = await github.paginate(github.rest.pulls.list, {...repo, state:'open', base:target, per_page:100});
+  for (const old of obsolete) {
+    if (old.number !== pr.number && old.user.login === 'github-actions[bot]'
+        && old.head.repo?.full_name === pr.head.repo.full_name && old.head.ref.startsWith(prefix)) {
+      await github.rest.pulls.update({...repo, pull_number:old.number, state:'closed'});
+    }
+  }
+  core.info(`Queued synchronization PR #${pr.number}.`);
   return 'pull-request';
 }
 
 async function synchronize(environment) {
   const {github, context} = environment;
   const release = context.payload.release;
-  let source, sha, targets;
+  let source = 'main';
+  let targets = ['beta', 'content', 'dev'];
+  let sha;
   if (release) {
     if (release.draft) return;
     source = release.prerelease ? 'beta' : 'main';
     if (release.target_commitish !== source) throw new Error('Unexpected release target; synchronization stopped.');
     sha = (await github.rest.repos.getCommit({...context.repo, ref:release.tag_name})).data.sha;
-    targets = release.prerelease ? ['dev'] : ['beta','content','dev'];
+    if (release.prerelease) targets = ['dev'];
   } else {
-    source = 'main';
-    sha = context.payload.after;
-    targets = ['content','dev'];
+    sha = (await github.rest.git.getRef({...context.repo, ref:'heads/main'})).data.object.sha;
   }
   const failures = [];
   for (const target of targets) {

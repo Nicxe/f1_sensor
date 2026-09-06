@@ -19,7 +19,8 @@ permissions:
   pull-requests: read
   actions: read
 concurrency:
-  group: pr-verification-${{ github.event.pull_request.number || github.event.inputs.pull_request || github.ref }}
+  # Native PR checks and dispatched reports must both finish: each owns a check.
+  group: pr-verification-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.inputs.pull_request || github.ref }}
   cancel-in-progress: true
 jobs:
   checks:
@@ -41,7 +42,7 @@ jobs:
   report-pr:
     name: Report explicitly verified PR
     needs: [checks, required]
-    if: always() && github.event.inputs.pull_request && needs.checks.outputs.tested_head
+    if: ${{ !cancelled() && github.event.inputs.pull_request && needs.checks.outputs.tested_head }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
