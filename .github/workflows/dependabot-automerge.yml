@@ -1,36 +1,42 @@
 name: Dependabot auto-merge
 on:
   pull_request_target:
-    branches: [dev]
+    branches: [dev, main]
     types: [opened, reopened, synchronize]
 permissions:
   contents: write
   pull-requests: write
+  vulnerability-alerts: read
 concurrency:
   group: dependabot-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
   automerge:
-    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.base.ref == 'dev'
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verify required checks are enforced before enabling auto-merge
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          script: |
-            const rules = await github.paginate('GET /repos/{owner}/{repo}/rules/branches/{branch}', {...context.repo, branch:'dev'});
-            if (!rules.some(r => r.type === 'pull_request') || !rules.some(r => r.type === 'required_status_checks' && r.parameters.required_status_checks.some(c => c.context === 'CI required'))) {
-              throw new Error('Auto-merge requires the active dev PR rule and CI required check.');
-            }
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
       - uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2
         id: metadata
         with:
           github-token: ${{ github.token }}
-      - name: Queue patch/minor merge after required checks
-        if: steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor'
+          alert-lookup: ${{ github.event.pull_request.base.ref == 'main' && 'true' || '' }}
+      - name: Queue verified security updates and development patch/minor updates
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          GH_TOKEN: ${{ github.token }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: gh pr merge --auto --squash --match-head-commit "$PR_HEAD" "$PR_URL"
+          ALERT: ${{ steps.metadata.outputs.alert-state }}
+          GHSA: ${{ steps.metadata.outputs.ghsa-id }}
+          UPDATE: ${{ steps.metadata.outputs.update-type }}
+        with:
+          script: |
+            const automation = require('./.github/scripts/auto-merge.cjs');
+            const pr = context.payload.pull_request;
+            if (automation.eligible(pr.base.ref, {alert:process.env.ALERT, ghsa:process.env.GHSA, update:process.env.UPDATE})) {
+              await automation.enable({github, context}, pr);
+            } else {
+              core.info('This update is outside the automatic merge policy.');
+            }
