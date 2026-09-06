@@ -11,8 +11,9 @@ function environment(status='diverged') {
     ] : [],
     graphql:async(_,data)=>writes.push(['queue',data]),
     rest:{
-      git:{getRef:async()=>({data:{object:{sha:base}}}),createRef:async data=>writes.push(['snapshot',data])},
-      repos:{compareCommits:async()=>({data:{status}}),getCommit:async()=>({data:{sha:source}}),merge:async data=>writes.push(['merge',data])},
+      git:{getRef:async()=>({data:{object:{sha:base}}}),createRef:async data=>writes.push(['snapshot',data]),
+        createCommit:async data=>{writes.push(['commit',data]);return {data:{sha:merged}};},updateRef:async data=>writes.push(['update',data])},
+      repos:{compareCommits:async()=>({data:{status}}),getCommit:async()=>({data:{sha:source,commit:{tree:{sha:'source-tree'}}}}),merge:async data=>writes.push(['merge',data])},
       pulls:{list(){},create:async data=>{writes.push(['pr',data]);return {data:pr};},get:async()=>({data:pr}),update:async data=>writes.push(['close',data])},
       checks:{listForRef(){},create:async data=>writes.push(['pending',data])},
       actions:{createWorkflowDispatch:async data=>writes.push(['ci',data])},
@@ -36,6 +37,22 @@ test('target snapshot is merged before CI and automatic merge is queued last', a
   assert.equal(env.writes[1][1].head,base);
   assert.equal(env.writes[3][1].external_id,`f1-pr:42:${base}:${merged}`);
   assert.equal(env.writes[4][1].inputs.pull_request,'42');
+});
+test('fast-forwardable targets receive separate commits so their required checks cannot collide',async()=>{
+  const messages=[];
+  for(const target of ['dev','beta','content']) {
+    const env=environment('ahead');env.pr.base.ref=target;
+    await syncOne(env,'main',source,target);
+    const commit=env.writes.find(x=>x[0]==='commit')[1];
+    messages.push(commit.message);
+    assert.equal(commit.tree,'source-tree');
+    assert.deepEqual(commit.parents,[source,base]);
+    const update=env.writes.find(x=>x[0]==='update')[1];
+    assert.equal(update.force,false);
+    assert.notEqual(update.sha,source);
+    assert.ok(env.writes.findIndex(x=>x[0]==='update') < env.writes.findIndex(x=>x[0]==='ci'));
+  }
+  assert.equal(new Set(messages).size,3);
 });
 test('conflicts, unexpected snapshots and failed dispatch never enable automatic merging',async()=>{
   for(const failure of ['conflict','snapshot','dispatch']) {
