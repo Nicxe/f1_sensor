@@ -68,3 +68,16 @@ test('a behind dependency PR refreshes its exact head and explicitly restarts CI
   assert.equal(calls[1].inputs.pull_request,'1');
   assert.equal(calls[1].ref,'main');
 });
+
+test('reopened dependency events refresh the base without trusting a changed dependency head',async()=>{
+  const {queueDependabot}=require('../.github/scripts/auto-merge.cjs');
+  let current={...pr,base:{ref:'main',sha:'advanced'}};
+  let queued=0;
+  const env={context:{repo:{}},github:{paginate:async()=>rules,
+    rest:{pulls:{get:async()=>({data:current})}},graphql:async()=>queued++}};
+  await queueDependabot(env,pr);
+  assert.equal(queued,1);
+  current={...current,head:{sha:'changed'}};
+  await assert.rejects(queueDependabot(env,pr));
+  assert.equal(queued,1);
+});
