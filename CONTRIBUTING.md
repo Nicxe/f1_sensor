@@ -117,3 +117,9 @@ Development checks run on pushes to `dev` and `content`. When an existing PR ver
 PRs can reuse successful checks from a development push completed within the last two hours only when the complete Git tree is identical. This includes all sources, test profiles, workflows and dependency locks. The source must be a successful push in this repository on `dev` or `content`, and all jobs in each reused profile must have succeeded. CI revalidates the source run and its attempt before passing the gate. The run summary links the evidence. Registry audits and external HACS/hassfest validation always run when applicable. Release verification never reuses results and still tests the final commit before creating a draft. GitHub may continue to display earlier push checks attached to the PR head.
 
 The repository allows Actions to create synchronization PRs. This GitHub setting also technically permits review approval; these workflows never submit approval reviews, and branch rules require zero approvals.
+
+## Security updates and branch synchronization
+
+Dependabot security updates target `main`. Dependency-only PRs from Dependabot may run full CI there; automatic merging additionally requires verified Dependabot commits and a matching open security advisory. Ordinary patch/minor Dependabot updates continue to target `dev`. Both paths use merge commits and require strict, GitHub Actions-bound `CI required` protection.
+
+After changes reach `main`, automation synchronizes its history to `beta`, `content` and `dev`. Each synchronization PR preserves the exact target snapshot and merges automatically only after CI. A changed target produces a new snapshot; conflicts and failed tests remain visible for manual resolution. Synchronization runs on main pushes, after PR verification, and every 30 minutes to recover events suppressed by bot tokens. Published beta releases also synchronize to `dev`. Release publication remains manual.
