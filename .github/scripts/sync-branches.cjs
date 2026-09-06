@@ -22,6 +22,13 @@ async function syncOne(environment, source, sha, target) {
     // GitHub returns 409 for conflicts, leaving both protected branches intact.
     await github.rest.repos.merge({...repo, base:branch, head:base,
       commit_message:`chore: Preserve ${target} changes while synchronizing ${source}`});
+  } else if (snapshot.sha === sha) {
+    // Even when the source already contains the target, give each PR its own
+    // head. GitHub associates required checks with commits, not PR numbers.
+    const commit = (await github.rest.git.createCommit({...repo,
+      message:`chore: Verify ${source} synchronization into ${target}`,
+      tree:snapshot.commit.tree.sha, parents:[sha, base]})).data;
+    await github.rest.git.updateRef({...repo, ref:`heads/${branch}`, sha:commit.sha, force:false});
   }
   const pulls = await github.paginate(github.rest.pulls.list,
     {...repo, state:'open', base:target, head:`${repo.owner}:${branch}`, per_page:100});
