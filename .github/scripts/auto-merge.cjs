@@ -71,4 +71,16 @@ function eligible(base, metadata) {
   return base === 'dev' && ['version-update:semver-patch', 'version-update:semver-minor'].includes(metadata.update);
 }
 
-module.exports = {enable, eligible, verifyDependabot, refresh};
+async function queueDependabot(environment, verifiedPR) {
+  const {github, context} = environment;
+  // Reopened dependency events can retain an old base SHA. Refresh the base,
+  // while requiring the exact dependency head that was just authenticated.
+  const current = (await github.rest.pulls.get({...context.repo, pull_number:verifiedPR.number})).data;
+  if (current.head.sha !== verifiedPR.head.sha || current.base.ref !== verifiedPR.base.ref) {
+    throw new Error('Dependency PR changed after verification.');
+  }
+  await enable(environment, current);
+  await refresh(environment, current);
+}
+
+module.exports = {enable, eligible, verifyDependabot, refresh, queueDependabot};
