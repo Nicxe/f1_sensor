@@ -12,4 +12,4 @@ def initialize_dns_cleanup_worker() -> None:
     # not an integration-owned thread. Keep HA's per-test cleanup checks intact
     # so any additional threads, tasks and timers still fail verification.
     if hasattr(pycares.Channel, "close"):
-        pycares.Channel(event_thread=False).close()
+        pycares.Channel().close()
