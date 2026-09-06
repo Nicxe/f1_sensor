@@ -25,6 +25,32 @@ def pull(base, head, fork=False):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_dependabot_default_branch_dependency_exception_is_narrow(self):
+        event = pull("main", "dependabot/pip/requirements/pycares-4.9.0")
+        event["pull_request"]["user"]["login"] = "dependabot[bot]"
+        files = ["requirements/ha-minimum.txt"]
+        self.assertEqual(branch_error(event, files), "")
+        self.assertTrue(
+            all(
+                enabled
+                for job, enabled in select_jobs(
+                    files, event, "pull_request", ""
+                ).items()
+                if job != "blueprints"
+            )
+        )
+        for changed in [
+            [],
+            ["scripts/ci_policy.py"],
+            ["custom_components/f1_sensor/sensor.py"],
+        ]:
+            self.assertTrue(branch_error(event, changed))
+        event["pull_request"]["user"]["login"] = "contributor"
+        self.assertTrue(branch_error(event, files))
+        event["pull_request"]["user"]["login"] = "dependabot[bot]"
+        event["pull_request"]["head"]["repo"]["full_name"] = "fork/repo"
+        self.assertTrue(branch_error(event, files))
+
     def test_site_deploy_depends_on_content_even_when_release_tests_run(self):
         self.assertFalse(
             should_deploy(["custom_components/f1_sensor/auth.py"], "push", "main")

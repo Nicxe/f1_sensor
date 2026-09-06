@@ -78,6 +78,23 @@ def branch_error(event: dict, files: list[str]) -> str:
     )
     if sync and base in ("dev", "beta", "content"):
         return ""
+    # Dependency PRs may target the default branch for security fixes. The
+    # trusted auto-merge workflow separately verifies signed Dependabot commits
+    # and a matching open security alert before enabling automatic merging.
+    dependency_files = bool(files) and all(
+        p in ("package.json", "package-lock.json")
+        or (p.startswith("requirements/") and p.endswith(".txt"))
+        or (p.startswith(".github/workflows/") and p.endswith((".yml", ".yaml")))
+        for p in files
+    )
+    if (
+        same_repo
+        and base == "main"
+        and head.startswith("dependabot/")
+        and pr["user"]["login"] == "dependabot[bot]"
+        and dependency_files
+    ):
+        return ""
     if base == "dev":
         return (
             "Use content for standalone docs/blueprints." if content_only(files) else ""

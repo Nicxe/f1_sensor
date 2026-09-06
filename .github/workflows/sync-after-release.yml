@@ -4,11 +4,17 @@ on:
     types: [published]
   push:
     branches: [main]
-    paths: ['docs/**', 'blueprints/**']
+  workflow_run:
+    workflows: ['PR verification']
+    types: [completed]
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
 permissions:
   contents: write
   pull-requests: write
   actions: write
+  checks: write
 concurrency:
   group: synchronize-published-history
   cancel-in-progress: false
