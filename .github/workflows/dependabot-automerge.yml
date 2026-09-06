@@ -7,6 +7,7 @@ permissions:
   contents: write
   pull-requests: write
   vulnerability-alerts: read
+  actions: write
 concurrency:
   group: dependabot-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -20,6 +21,10 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
+      - name: Verify every dependency commit
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: await require('./.github/scripts/auto-merge.cjs').verifyDependabot({github, context}, context.payload.pull_request);
       - uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2
         id: metadata
         with:
@@ -37,6 +42,7 @@ jobs:
             const pr = context.payload.pull_request;
             if (automation.eligible(pr.base.ref, {alert:process.env.ALERT, ghsa:process.env.GHSA, update:process.env.UPDATE})) {
               await automation.enable({github, context}, pr);
+              await automation.refresh({github, context}, pr);
             } else {
               core.info('This update is outside the automatic merge policy.');
             }

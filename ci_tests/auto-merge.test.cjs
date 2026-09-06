@@ -40,3 +40,31 @@ test('automatic merging requires strict app-bound checks and an unchanged PR', a
   }
   assert.equal(calls.length,1);
 });
+
+test('every dependency commit is checked, not just the first signed commit',async()=>{
+  const {verifyDependabot}=require('../.github/scripts/auto-merge.cjs');
+  const signed={author:{login:'dependabot[bot]'},commit:{verification:{verified:true}}};
+  let commits=[signed];
+  const env={context:{repo:{}},github:{paginate:async()=>commits,rest:{pulls:{listCommits(){}},repos:{compareCommits:async()=>({data:{status:'ahead'}})}}}};
+  const dependency={...pr,user:{login:'dependabot[bot]'},head:{repo:{full_name:'own/repo'}},base:{sha:'base',repo:{full_name:'own/repo'}}};
+  await verifyDependabot(env,dependency);
+  commits=[signed,{...signed,author:{login:'someone-else'}}];
+  await assert.rejects(verifyDependabot(env,dependency));
+  commits=[signed,{...signed,author:{login:'github-actions[bot]'},parents:[{sha:'head'},{sha:'base'}]}];
+  await verifyDependabot(env,dependency);
+  env.github.rest.repos.compareCommits=async()=>({data:{status:'diverged'}});
+  await assert.rejects(verifyDependabot(env,dependency));
+});
+
+test('a behind dependency PR refreshes its exact head and explicitly restarts CI',async()=>{
+  const {refresh}=require('../.github/scripts/auto-merge.cjs');
+  const calls=[];let refreshed=false;
+  const env={context:{repo:{}},github:{rest:{pulls:{
+    get:async()=>({data:{...pr,mergeable_state:'behind',head:{sha:refreshed?'new':'head'}}}),
+    updateBranch:async data=>{calls.push(data);refreshed=true;},
+  },actions:{createWorkflowDispatch:async data=>calls.push(data)}}}};
+  await refresh(env,pr);
+  assert.equal(calls[0].expected_head_sha,'head');
+  assert.equal(calls[1].inputs.pull_request,'1');
+  assert.equal(calls[1].ref,'main');
+});
