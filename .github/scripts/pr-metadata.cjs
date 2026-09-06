@@ -4,7 +4,12 @@ const {upsertComment, ensureLabel, removeLabel} = require('./issue-automation.cj
 
 async function routing({github, context}) {
   const pr = (await github.rest.pulls.get({...context.repo, pull_number:context.payload.pull_request.number})).data;
-  const files = await github.paginate(github.rest.pulls.listFiles, {...context.repo, pull_number:pr.number, per_page:100});
+  // Release promotions are validated by their branches, independently of files.
+  // Avoid GitHub's diff generation limit on large promotion PRs.
+  const promotion = pr.head.repo?.full_name === pr.base.repo.full_name
+    && ((pr.base.ref === 'main' && pr.head.ref === 'beta')
+      || (pr.base.ref === 'beta' && pr.head.ref === 'dev'));
+  const files = promotion ? [] : await github.paginate(github.rest.pulls.listFiles, {...context.repo, pull_number:pr.number, per_page:100});
   const check = spawnSync('python3', ['-c', 'import json,sys; from scripts.ci_policy import branch_error; d=json.load(sys.stdin); print(branch_error(d["event"],d["files"]))'], {input:JSON.stringify({event:{pull_request:pr}, files:files.flatMap(f => f.previous_filename ? [f.filename,f.previous_filename] : [f.filename])}), encoding:'utf8'});
   if (check.status !== 0) throw new Error(check.stderr);
   const error = check.stdout.trim();
