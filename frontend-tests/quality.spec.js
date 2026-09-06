@@ -219,6 +219,9 @@ for (const matrix of [
   { name: 'wide-dark-en', width: 1050, theme: 'dark', language: 'en-GB' },
 ]) {
   test(`visual matrix ${matrix.name}`, async ({ page }) => {
+    // Keep the fixture race in the future regardless of the day CI runs.
+    // Fixed Date values preserve real timers and rendering callbacks.
+    await page.clock.setFixedTime(new Date('2026-09-05T12:00:00Z'));
     await page.setViewportSize({ width: matrix.width, height: 900 });
     await openFixture(page);
     await page.evaluate((options) => window.mountF1Gallery(options), matrix);
