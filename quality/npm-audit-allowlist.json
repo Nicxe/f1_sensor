@@ -1,0 +1,40 @@
+{
+  "reviewed_on": "2026-08-31",
+  "entries": [
+    {
+      "package": "image-size",
+      "advisory_ids": [1138808, 1138809],
+      "scope": "Docusaurus build tooling only; never shipped in the Home Assistant archive",
+      "reason": "No patched upstream release is available",
+      "expires": "2026-11-30"
+    },
+    {
+      "package": "brace-expansion",
+      "advisory_ids": [1130591, 1130734],
+      "scope": "Bundled inside the current npm release used only by release tooling",
+      "reason": "The current npm package bundles the affected version and cannot be overridden",
+      "expires": "2026-10-31"
+    },
+    {
+      "package": "ip-address",
+      "advisory_ids": [1130722, 1130723, 1130724],
+      "scope": "Bundled inside the current npm release used only by release tooling",
+      "reason": "The current npm package bundles the affected version and cannot be overridden",
+      "expires": "2026-10-31"
+    },
+    {
+      "package": "tar",
+      "advisory_ids": [1145647],
+      "scope": "Bundled inside the current npm release used only by release tooling",
+      "reason": "The current npm package bundles the affected version and cannot be overridden",
+      "expires": "2026-10-31"
+    },
+    {
+      "package": "undici",
+      "advisory_ids": [1130716, 1130727, 1130732],
+      "scope": "Bundled inside the current npm release used only by release tooling",
+      "reason": "The current npm package bundles the affected version and cannot be overridden",
+      "expires": "2026-10-31"
+    }
+  ]
+}

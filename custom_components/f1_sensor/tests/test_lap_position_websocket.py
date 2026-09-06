@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock
 
+from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.f1_sensor import lap_position_websocket
 from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor.lap_position_websocket import (
     LAP_POSITION_WS_MARKER,
@@ -98,3 +102,28 @@ def test_lap_position_websocket_registration_is_idempotent(hass, monkeypatch) ->
 
     assert registered == [_ws_get_lap_position_session]
     assert hass.data[DOMAIN][LAP_POSITION_WS_MARKER] is True
+
+
+def test_lap_position_coordinator_resolves_from_entity_config_entry(
+    hass, monkeypatch
+) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, entry_id="entry-1")
+    entry.add_to_hass(hass)
+    entity = er.async_get(hass).async_get_or_create(
+        "sensor", DOMAIN, "lap-position", config_entry=entry
+    )
+    coordinator = object()
+    monkeypatch.setattr(
+        lap_position_websocket,
+        "runtime_from_hass",
+        lambda _hass, entry_id: (
+            {"lap_position_progression_coordinator": coordinator}
+            if entry_id == entry.entry_id
+            else None
+        ),
+    )
+
+    assert (
+        lap_position_websocket._resolve_lap_position_coordinator(hass, entity.entity_id)
+        is coordinator
+    )

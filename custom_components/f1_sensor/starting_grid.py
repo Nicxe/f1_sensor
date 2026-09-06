@@ -113,7 +113,7 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         self._unsubs.clear()
         if self._archive_task is not None:
             self._archive_task.cancel()
-            with suppress(Exception):
+            with suppress(asyncio.CancelledError):
                 await self._archive_task
             self._archive_task = None
 

@@ -37,6 +37,8 @@ theme_mode: auto
 
 Blue-flag and track-limit filters change the messages visible in this card; they do not remove stored history or change your notification automations. A minimum display time can keep a banner readable when several messages arrive close together.
 
+Message timestamps follow Home Assistant's timezone and 12/24-hour preference. Check the profile's time format and timezone if the displayed time differs from what you expect.
+
 ## Configuration
 
 ### Data sources

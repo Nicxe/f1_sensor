@@ -1,0 +1,5 @@
+# HACS minimum: Home Assistant 2024.11.0 / Python 3.12
+pytest-homeassistant-custom-component==0.13.181
+pytest-cov==5.0.0
+josepy<2
+pycares==4.4.0

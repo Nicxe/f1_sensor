@@ -90,6 +90,30 @@ async def test_timingapp_logs_first_meaningful_compound_live(
 
 
 @pytest.mark.asyncio
+async def test_timingapp_sparse_delta_does_not_warn_after_compounds_arrive(
+    hass, monkeypatch, caplog
+) -> None:
+    coord = _make_coord(hass)
+    caplog.set_level(logging.INFO, logger="custom_components.f1_sensor")
+
+    now = {"value": 200.0}
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.__init__.time.monotonic",
+        lambda: now["value"],
+    )
+
+    coord._handle_live_state(True, "live-Race")
+    coord._merge_sessionstatus({"Status": "Started", "Started": True})
+    coord._merge_timingapp({"Lines": {"1": {"Stints": {"0": {"Compound": "HARD"}}}}})
+
+    now["value"] = 501.0
+    coord._merge_timingapp({"Lines": {"1": {"Stints": {"0": {"TotalLaps": 5}}}}})
+
+    assert "without tyre compounds" not in caplog.text
+    assert coord._state["drivers"]["1"]["tyres"]["compound"] == "HARD"
+
+
+@pytest.mark.asyncio
 async def test_timingapp_warning_timer_starts_when_session_starts(
     hass, monkeypatch, caplog
 ) -> None:

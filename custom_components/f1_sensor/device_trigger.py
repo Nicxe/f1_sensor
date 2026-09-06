@@ -12,11 +12,19 @@ from homeassistant.helpers.typing import ConfigType
 import voluptuous as vol
 
 from .const import DOMAIN
+from .favorite_driver import FAVORITE_DRIVER_EVENT
 
 _INCIDENT_EVENT = f"{DOMAIN}_incident"
 _INCIDENT_EVENT_TRIGGER_PHASES: dict[str, frozenset[str]] = {
     "possible_on_track_incident_detected": frozenset({"candidate", "confirmed"}),
     "on_track_incident_detected": frozenset({"confirmed"}),
+}
+_FAVORITE_DRIVER_EVENT_TRIGGER_TYPES: dict[str, frozenset[str]] = {
+    "favorite_driver_position_gained": frozenset({"position_gained"}),
+    "favorite_driver_position_lost": frozenset({"position_lost"}),
+    "favorite_driver_entered_pits": frozenset({"entered_pits"}),
+    "favorite_driver_exited_pits": frozenset({"exited_pits"}),
+    "favorite_driver_retired": frozenset({"retired"}),
 }
 
 # Maps trigger_type → (unique_id_suffix, entity_domain, to_state or None).
@@ -44,7 +52,7 @@ _TRIGGER_MAP: dict[str, tuple[str, str, str | None]] = {
     "formation_start_ready": ("formation_start", "binary_sensor", "on"),
     "overtake_mode_enabled": ("overtake_mode", "binary_sensor", "on"),
     "overtake_mode_disabled": ("overtake_mode", "binary_sensor", "off"),
-    "session_live": ("session_status", "sensor", None),
+    "session_live": ("session_status", "sensor", "live"),
     "track_status_clear": ("track_status", "sensor", "CLEAR"),
     "track_status_yellow": ("track_status", "sensor", "YELLOW"),
     "track_status_safety_car": ("track_status", "sensor", "SC"),
@@ -56,6 +64,11 @@ _TRIGGER_MAP: dict[str, tuple[str, str, str | None]] = {
     "investigation_changed": ("investigations", "sensor", None),
     # Drivers device
     "new_team_radio": ("team_radio", "sensor", None),
+    "favorite_driver_position_gained": ("favorite_driver", "sensor", None),
+    "favorite_driver_position_lost": ("favorite_driver", "sensor", None),
+    "favorite_driver_entered_pits": ("favorite_driver", "sensor", None),
+    "favorite_driver_exited_pits": ("favorite_driver", "sensor", None),
+    "favorite_driver_retired": ("favorite_driver", "sensor", None),
     # System device
     "live_timing_online": ("live_timing_online", "binary_sensor", "on"),
     "live_timing_offline": ("live_timing_online", "binary_sensor", "off"),
@@ -112,7 +125,9 @@ async def async_get_trigger_capabilities(
     hass: HomeAssistant, config: ConfigType
 ) -> dict[str, vol.Schema]:
     """Return extra trigger fields supported by the selected trigger type."""
-    if config.get(CONF_TYPE) in _INCIDENT_EVENT_TRIGGER_PHASES:
+    if config.get(CONF_TYPE) in (
+        _INCIDENT_EVENT_TRIGGER_PHASES | _FAVORITE_DRIVER_EVENT_TRIGGER_TYPES
+    ):
         return {"extra_fields": vol.Schema({})}
     return {
         "extra_fields": vol.Schema(
@@ -136,6 +151,14 @@ async def async_attach_trigger(
             action,
             trigger_info,
             _INCIDENT_EVENT_TRIGGER_PHASES[trigger_type],
+        )
+    if trigger_type in _FAVORITE_DRIVER_EVENT_TRIGGER_TYPES:
+        return _attach_favorite_driver_event_trigger(
+            hass,
+            config,
+            action,
+            trigger_info,
+            _FAVORITE_DRIVER_EVENT_TRIGGER_TYPES[trigger_type],
         )
 
     _suffix, _domain, to_state = _TRIGGER_MAP[trigger_type]
@@ -195,3 +218,45 @@ def _attach_incident_event_trigger(
         )
 
     return hass.bus.async_listen(_INCIDENT_EVENT, _handle_incident_event)
+
+
+def _attach_favorite_driver_event_trigger(
+    hass: HomeAssistant,
+    config: ConfigType,
+    action: TriggerActionType,
+    trigger_info: TriggerInfo,
+    event_types: frozenset[str],
+) -> CALLBACK_TYPE:
+    """Attach a favourite-driver event trigger scoped to its config entry."""
+    entity_registry = er.async_get(hass)
+    entity_id = er.async_resolve_entity_id(entity_registry, config[CONF_ENTITY_ID])
+    registry_entry = entity_registry.async_get(entity_id) if entity_id else None
+    config_entry_id = registry_entry.config_entry_id if registry_entry else None
+    job = HassJob(action, f"device trigger {trigger_info}")
+    trigger_data = trigger_info["trigger_data"]
+
+    @callback
+    def _handle_favorite_driver_event(event: Event) -> None:
+        event_data = event.data
+        if (
+            config_entry_id is not None
+            and event_data.get("entry_id") != config_entry_id
+        ):
+            return
+        if event_data.get("event_type") not in event_types:
+            return
+        hass.loop.call_soon(
+            hass.async_run_hass_job,
+            job,
+            {
+                "trigger": {
+                    **trigger_data,
+                    "platform": "device",
+                    "event": event,
+                    "description": f"event '{event.event_type}'",
+                }
+            },
+            event.context,
+        )
+
+    return hass.bus.async_listen(FAVORITE_DRIVER_EVENT, _handle_favorite_driver_event)

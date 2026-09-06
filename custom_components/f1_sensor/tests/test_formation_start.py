@@ -16,7 +16,6 @@ from custom_components.f1_sensor.formation_start import FormationStartTracker
 from custom_components.f1_sensor.replay_mode import (
     CACHE_VERSION,
     ReplayController,
-    ReplayFrame,
     ReplayIndex,
     ReplaySession,
     ReplaySessionManager,
@@ -743,14 +742,25 @@ async def test_replay_manager_rebuilds_old_cache_with_formation_marker(
         encoding="utf-8",
     )
     formation_start = session.start_utc + timedelta(milliseconds=120)
-    manager._download_stream = AsyncMock(  # type: ignore[method-assign]
-        return_value=[
-            ReplayFrame(
-                timestamp_ms=0,
-                stream="TimingData",
-                payload={"Utc": _iso_utc(session.start_utc)},
+
+    async def _write_stream(_url: str, stream: str, destination: Path) -> int:
+        if stream != "TimingData":
+            return 0
+        destination.write_text(
+            json.dumps(
+                {
+                    "t": 0,
+                    "s": stream,
+                    "p": {"Utc": _iso_utc(session.start_utc)},
+                }
             )
-        ]
+            + "\n",
+            encoding="utf-8",
+        )
+        return 1
+
+    manager._download_stream_to_file = AsyncMock(  # type: ignore[method-assign]
+        side_effect=_write_stream
     )
     manager._find_formation_start_utc = AsyncMock(  # type: ignore[method-assign]
         return_value=formation_start
@@ -759,7 +769,7 @@ async def test_replay_manager_rebuilds_old_cache_with_formation_marker(
 
     index = await manager._download_and_index_session(session)
 
-    assert manager._download_stream.await_count > 0
+    assert manager._download_stream_to_file.await_count > 0
     saved = json.loads((session_dir / "index.json").read_text(encoding="utf-8"))
     assert saved["cache_version"] == CACHE_VERSION
     assert saved["formation_start_utc"] == formation_start.isoformat()
@@ -777,14 +787,25 @@ async def test_replay_manager_handles_non_race_sessions_without_marker(
         session_type="Practice",
         path="2026/2026-03-08_Australian_Grand_Prix/2026-03-08_Practice_1",
     )
-    manager._download_stream = AsyncMock(  # type: ignore[method-assign]
-        return_value=[
-            ReplayFrame(
-                timestamp_ms=0,
-                stream="TimingData",
-                payload={"Utc": _iso_utc(session.start_utc)},
+
+    async def _write_stream(_url: str, stream: str, destination: Path) -> int:
+        if stream != "TimingData":
+            return 0
+        destination.write_text(
+            json.dumps(
+                {
+                    "t": 0,
+                    "s": stream,
+                    "p": {"Utc": _iso_utc(session.start_utc)},
+                }
             )
-        ]
+            + "\n",
+            encoding="utf-8",
+        )
+        return 1
+
+    manager._download_stream_to_file = AsyncMock(  # type: ignore[method-assign]
+        side_effect=_write_stream
     )
     manager._find_formation_start_utc = AsyncMock()  # type: ignore[method-assign]
 

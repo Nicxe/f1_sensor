@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.helpers.entity import EntityCategory
 import pytest
@@ -16,6 +16,7 @@ from custom_components.f1_sensor.auth_http import AUTH_PAIRING_SESSIONS
 from custom_components.f1_sensor.button import (
     F1ClearF1TvAccessButton,
     F1JolpicaUserAgentTestButton,
+    F1MatchDelayButton,
     F1RefreshF1TvAccessButton,
     async_setup_entry,
 )
@@ -277,3 +278,104 @@ async def test_refresh_f1tv_access_button_is_added_without_saved_token(
 
     assert any(isinstance(entity, F1RefreshF1TvAccessButton) for entity in added)
     assert not any(isinstance(entity, F1ClearF1TvAccessButton) for entity in added)
+
+
+@pytest.mark.parametrize(
+    ("snapshot", "expected"),
+    [
+        ({"mode": "waiting"}, "timer hasn't started"),
+        ({"mode": "idle"}, "Calibration is not enabled"),
+        ({"mode": "running", "message": "wait"}, "Detail: wait"),
+    ],
+)
+async def test_match_delay_button_explains_calibration_state(
+    hass, monkeypatch, snapshot, expected
+) -> None:
+    manager = MagicMock()
+    manager.async_complete = AsyncMock(side_effect=RuntimeError("not ready"))
+    manager.snapshot.return_value = snapshot
+    notifications = AsyncMock()
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.button.persistent_notification.async_create",
+        notifications,
+    )
+    button = F1MatchDelayButton(manager, "match", "entry", "F1")
+    button.hass = hass
+
+    await button.async_press()
+
+    manager.async_complete.assert_awaited_once_with(source="button")
+    assert expected in notifications.await_args.args[1]
+
+
+async def test_match_delay_button_success_and_snapshot_failure(
+    hass, monkeypatch
+) -> None:
+    notifications = AsyncMock()
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.button.persistent_notification.async_create",
+        notifications,
+    )
+    success = MagicMock()
+    success.async_complete = AsyncMock()
+    button = F1MatchDelayButton(success, "success", "entry", "F1")
+    button.hass = hass
+    await button.async_press()
+    notifications.assert_not_called()
+
+    broken = MagicMock()
+    broken.async_complete = AsyncMock(side_effect=RuntimeError("not ready"))
+    broken.snapshot.side_effect = RuntimeError("snapshot")
+    button = F1MatchDelayButton(broken, "broken", "entry", "F1")
+    button.hass = hass
+    await button.async_press()
+    assert "Calibration is not enabled" in notifications.await_args.args[1]
+
+
+async def test_jolpica_button_missing_client_and_success(hass, monkeypatch) -> None:
+    notifications = AsyncMock()
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.button.persistent_notification.async_create",
+        notifications,
+    )
+    button = F1JolpicaUserAgentTestButton(
+        hass=hass,
+        unique_id="ua",
+        entry_id="entry",
+        device_name="F1",
+    )
+    hass.data.setdefault(DOMAIN, {})["entry"] = {}
+    await button.async_press()
+    assert "No Jolpica API client" in notifications.await_args.args[1]
+
+    notifications.reset_mock()
+    hass.data[DOMAIN]["entry"]["jolpica_client"] = _TestJolpicaClient()
+    await button.async_press()
+    assert "Jolpica API test OK" in notifications.await_args.args[1]
+
+
+async def test_button_setup_includes_calibration_development_and_replay(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.const.ENABLE_DEVELOPMENT_MODE_UI", True
+    )
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", False)
+    entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
+    entry.add_to_hass(hass)
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "calibration_manager": MagicMock(),
+        "jolpica_client": _TestJolpicaClient(),
+        "replay_controller": MagicMock(),
+    }
+    added = []
+
+    await async_setup_entry(hass, entry, added.extend)
+
+    assert any(isinstance(entity, F1MatchDelayButton) for entity in added)
+    assert any(isinstance(entity, F1JolpicaUserAgentTestButton) for entity in added)
+    assert len(added) == 9
+
+    empty = MockConfigEntry(domain=DOMAIN, data={})
+    empty.add_to_hass(hass)
+    await async_setup_entry(hass, empty, added.extend)

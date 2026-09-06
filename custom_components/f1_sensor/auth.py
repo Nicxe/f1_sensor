@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 import json
 from typing import Any
@@ -52,7 +52,7 @@ class F1TvAuthStatus:
 
     status: str
     configured: bool
-    header: str = ""
+    header: str = field(default="", repr=False, compare=False)
     expires_at: datetime | None = None
     reason: str | None = None
     used_for_live_timing: bool = False

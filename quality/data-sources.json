@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "name": "F1 live timing",
+      "purpose": "Live timing, telemetry, replay streams and session metadata",
+      "url": "https://livetiming.formula1.com/",
+      "terms_url": "https://account.formula1.com/#/en/terms-of-use",
+      "license_or_terms": "Formula 1 terms of use; private non-commercial Home Assistant use only",
+      "reviewed_on": "2026-08-31",
+      "review_by": "2026-11-30"
+    },
+    {
+      "name": "Jolpica F1 API",
+      "purpose": "Season calendar, standings and historical race results",
+      "url": "https://api.jolpi.ca/ergast/f1/",
+      "terms_url": "https://github.com/jolpica/jolpica-f1/blob/main/TERMS.md",
+      "license_or_terms": "Non-commercial use under CC BY-NC-SA 4.0, with the published rate limits and a project-specific User-Agent",
+      "reviewed_on": "2026-08-31",
+      "review_by": "2026-11-30"
+    },
+    {
+      "name": "Open-Meteo",
+      "purpose": "Race-start weather forecast",
+      "url": "https://api.open-meteo.com/v1/forecast",
+      "terms_url": "https://open-meteo.com/en/terms",
+      "license_or_terms": "Free non-commercial API use under CC BY 4.0; attribution is exposed by the Home Assistant weather entity",
+      "reviewed_on": "2026-08-31",
+      "review_by": "2026-11-30"
+    },
+    {
+      "name": "FIA documents",
+      "purpose": "Public Formula One event documents",
+      "url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14",
+      "terms_url": "https://www.fia.com/terms-use",
+      "license_or_terms": "FIA website terms apply; documents are linked rather than republished",
+      "reviewed_on": "2026-08-31",
+      "review_by": "2026-11-30"
+    },
+    {
+      "name": "Formula 1 media",
+      "purpose": "Driver, team and circuit imagery",
+      "url": "https://media.formula1.com/",
+      "terms_url": "https://account.formula1.com/#/en/terms-of-use",
+      "license_or_terms": "Formula 1 terms apply; assets are loaded from their original host",
+      "reviewed_on": "2026-08-31",
+      "review_by": "2026-11-30"
+    },
+    {
+      "name": "FlagCDN",
+      "purpose": "Country flags in race cards",
+      "url": "https://flagcdn.com/",
+      "terms_url": "https://flagpedia.net/download/api",
+      "license_or_terms": "Free CDN service based on Wikimedia Commons flags; the provider requests a Flagpedia backlink",
+      "reviewed_on": "2026-08-31",
+      "review_by": "2026-11-30"
+    }
+  ]
+}

@@ -18,8 +18,10 @@ PLATFORMS: list[Platform] = [
 # Replay Mode
 REPLAY_CACHE_DIR = "f1_replay_cache"
 REPLAY_CACHE_RETENTION_DAYS = (
-    1  # Short retention - cache is deleted on stop, this is just backup
+    7  # Bounded Replay v2 LRU cache; runtime data never ships in releases
 )
+REPLAY_CACHE_MAX_BYTES = 512 * 1024 * 1024
+REPLAY_CACHE_MAX_SESSIONS = 3
 
 CONF_OPERATION_MODE = "operation_mode"
 CONF_REPLAY_FILE = "replay_file"
@@ -73,6 +75,10 @@ ENABLE_F1TV_AUTH = True
 
 LATEST_TRACK_STATUS = "f1_latest_track_status"
 
+# Features that require an explicit user choice instead of being enabled when
+# their sensor key first appears in an integration update.
+OPT_IN_SENSOR_KEYS = frozenset({"favorite_driver"})
+
 # All supported sensor keys (used for normalization and config entry filtering).
 SUPPORTED_SENSOR_KEYS = frozenset(
     {
@@ -112,6 +118,7 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "live_timing_diagnostics",
         "tyre_statistics",
         "driver_positions",
+        "favorite_driver",
         "starting_grid",
         "track_limits",
         "investigations",
@@ -178,7 +185,6 @@ FIA_DOCUMENTS_BASE_URL = (
     "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14"
 )
 FIA_SEASON_LIST_URL = f"{FIA_DOCUMENTS_BASE_URL}/season"
-FIA_SEASON_FALLBACK_URL = f"{FIA_DOCUMENTS_BASE_URL}/season/season-2025-2071"
 FIA_DOCS_POLL_INTERVAL = 900  # seconds
 FIA_DOCS_FETCH_TIMEOUT = 15
 

@@ -2,7 +2,13 @@
 
 import unittest
 
-from scripts.ci_policy import JOBS, branch_error, gate_errors, select_jobs
+from scripts.ci_policy import (
+    JOBS,
+    branch_error,
+    gate_errors,
+    select_jobs,
+    should_deploy,
+)
 
 
 def pull(base, head, fork=False):
@@ -19,6 +25,15 @@ def pull(base, head, fork=False):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_site_deploy_depends_on_content_even_when_release_tests_run(self):
+        self.assertFalse(
+            should_deploy(["custom_components/f1_sensor/auth.py"], "push", "main")
+        )
+        self.assertTrue(should_deploy(["docs/help.md"], "push", "main"))
+        self.assertFalse(should_deploy(["docs/help.md"], "pull_request", "main"))
+        self.assertFalse(should_deploy(None, "push", "beta"))
+        self.assertTrue(should_deploy(None, "workflow_dispatch", "main"))
+
     def test_docs_do_not_require_backend_or_registry(self):
         selected = select_jobs(
             ["docs/help.md"], pull("content", "fix", True), "pull_request", ""
@@ -34,7 +49,10 @@ class PolicyTests(unittest.TestCase):
             [".github/workflows/ci.yml"],
             ["package-lock.json"],
         ]:
-            self.assertTrue(all(select_jobs(files, {}, "push", "dev").values()))
+            self.assertEqual(
+                select_jobs(files, {}, "push", "dev"),
+                {job: job != "blueprints" for job in JOBS},
+            )
 
     def test_runtime_and_blueprints(self):
         self.assertTrue(
@@ -48,15 +66,13 @@ class PolicyTests(unittest.TestCase):
 
     def test_promotions_and_final_commits_always_run_all(self):
         for base, head in [("beta", "dev"), ("main", "beta")]:
-            self.assertTrue(
-                all(
-                    select_jobs(
-                        ["docs/help.md"], pull(base, head), "pull_request", ""
-                    ).values()
-                )
+            self.assertEqual(
+                select_jobs(["docs/help.md"], pull(base, head), "pull_request", ""),
+                {job: job != "blueprints" for job in JOBS},
             )
-            self.assertTrue(
-                all(select_jobs(["docs/help.md"], {}, "push", base).values())
+            self.assertEqual(
+                select_jobs(["docs/help.md"], {}, "push", base),
+                {job: job != "blueprints" for job in JOBS},
             )
 
     def test_branch_routing_including_forks_and_retarget(self):
@@ -72,6 +88,15 @@ class PolicyTests(unittest.TestCase):
         )
         self.assertTrue(branch_error(pull("main", "content"), ["code.py"]))
         self.assertFalse(branch_error(pull("main", "content"), ["docs/help.md"]))
+
+    def test_gate_accepts_only_verified_reuse_and_requires_actual_skip(self):
+        selected = dict.fromkeys(JOBS, False)
+        selected["backend"] = True
+        results = {job: {"result": "skipped"} for job in JOBS}
+        self.assertTrue(gate_errors(selected, results))
+        self.assertEqual(gate_errors(selected, results, ["backend"]), [])
+        results["backend"] = {"result": "failure"}
+        self.assertTrue(gate_errors(selected, results, ["backend"]))
 
     def test_aggregate_fails_for_missing_cancelled_or_unexpected_skips(self):
         selected = dict.fromkeys(JOBS, True)

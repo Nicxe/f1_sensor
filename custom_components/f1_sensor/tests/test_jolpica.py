@@ -22,6 +22,7 @@ from custom_components.f1_sensor.jolpica import (
 
 _URL = "https://api.jolpi.ca/ergast/f1/current.json"
 _USER_AGENT = "HomeAssistantF1Sensor/1.0.0 HomeAssistant/2026.7.0"
+_CLIENTS_KEY = "_f1_sensor_test_jolpica_clients"
 
 
 class _Response:
@@ -89,9 +90,19 @@ class _Session:
 
 async def _client(hass, session: _Session, **kwargs) -> JolpicaClient:
     client = JolpicaClient(hass, session, _USER_AGENT, **kwargs)
+    hass.data.setdefault(_CLIENTS_KEY, []).append(client)
     with patch.object(client._store, "async_load", AsyncMock(return_value=None)):
         await client.async_initialize()
     return client
+
+
+@pytest.fixture(autouse=True)
+async def close_jolpica_clients(hass) -> None:
+    """Close clients created by a test and cancel their delayed saves."""
+    yield
+    for client in reversed(hass.data.pop(_CLIENTS_KEY, [])):
+        with patch.object(client._store, "async_save", AsyncMock()):
+            await client.async_close()
 
 
 async def test_requires_canonical_user_agent(hass) -> None:
@@ -351,3 +362,49 @@ async def test_close_cancels_inflight_request_and_flushes_once(hass) -> None:
     with pytest.raises(asyncio.CancelledError):
         await request
     save.assert_awaited_once()
+
+
+async def test_invalid_persisted_values_json_lifecycle_and_timeout_matrix(hass) -> None:
+    stored = {
+        "request_timestamps": ["bad", time.time()],
+        "cooldown_until": "bad",
+        "backoff_step": "bad",
+        "latest_429": "bad",
+    }
+    client = JolpicaClient(hass, _Session(), _USER_AGENT)
+    with patch.object(client._store, "async_load", AsyncMock(return_value=stored)):
+        await client.async_initialize()
+    assert client.diagnostics()["requests_last_hour"] == 1
+
+    class InvalidJsonResponse(_Response):
+        async def text(self) -> str:
+            return "{"
+
+    client._session = _Session([InvalidJsonResponse()])
+    with pytest.raises(Exception, match="invalid JSON"):
+        await client.async_get_json(_URL, params={"limit": 1})
+
+    with pytest.raises(JolpicaInvalidRequestError, match="positive"):
+        await client.async_get_json(_URL, timeout=0)
+    assert JolpicaClient._parse_retry_after("bad", now=time.time()) is None
+    assert JolpicaClient._parse_retry_after("-1", now=time.time()) == 0.0
+
+    await client.async_close()
+    with pytest.raises(JolpicaConfigurationError, match="closed"):
+        await client.async_get_json(_URL)
+
+    uninitialized = JolpicaClient(hass, _Session(), _USER_AGENT)
+    with pytest.raises(JolpicaConfigurationError, match="initialized"):
+        await uninitialized.async_get_json(_URL)
+
+
+async def test_jolpica_limiter_recovery_and_save_failure_are_safe(hass) -> None:
+    client = await _client(hass, _Session([_Response()]))
+    client._limit_problem_active = True
+    client._cooldown_until = 0
+    assert await client.async_get_json(_URL, params={"limit": 1}) == {"MRData": {}}
+    assert client._limit_problem_active is False
+    with patch.object(
+        client._store, "async_save", AsyncMock(side_effect=RuntimeError("store"))
+    ):
+        await client.async_close()

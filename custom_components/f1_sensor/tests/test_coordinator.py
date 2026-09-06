@@ -17,7 +17,6 @@ from custom_components.f1_sensor.__init__ import (
 )
 from custom_components.f1_sensor.const import (
     API_URL,
-    FIA_SEASON_FALLBACK_URL,
     SEASON_RESULTS_URL,
     SPRINT_RESULTS_URL,
 )
@@ -810,7 +809,7 @@ async def test_lap_position_progression_coordinator_no_spoiler_keeps_previous_da
 
 
 @pytest.mark.asyncio
-async def test_fia_documents_timeout_uses_fallback_season_url(hass) -> None:
+async def test_fia_documents_timeout_never_uses_a_different_season(hass) -> None:
     race_coordinator = MagicMock()
     race_coordinator.data = _future_race_payload()
     coordinator = FiaDocumentsCoordinator(
@@ -829,9 +828,8 @@ async def test_fia_documents_timeout_uses_fallback_season_url(hass) -> None:
             "custom_components.f1_sensor.__init__.fetch_text",
             mock_fetch,
         )
-        url = await coordinator._get_season_url("2026")
-
-    assert url == FIA_SEASON_FALLBACK_URL
+        with pytest.raises(UpdateFailed, match="season page for 2026 is unavailable"):
+            await coordinator._get_season_url("2026")
 
 
 @pytest.mark.asyncio

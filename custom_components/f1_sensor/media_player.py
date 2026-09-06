@@ -11,15 +11,19 @@ from homeassistant.components.media_player.const import (
     MediaPlayerEntityFeature,
     MediaPlayerState,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
-from .entity import F1AuxEntity, default_object_id, set_default_entity_id
+from .entity import (
+    F1AuxEntity,
+    default_object_id,
+    entry_runtime_registry,
+    set_default_entity_id,
+)
 from .replay_mode import ReplayController, ReplayState
+from .runtime import F1ConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,10 +31,10 @@ _REPLAY_TICK_INTERVAL = datetime.timedelta(seconds=1)
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
+    hass: HomeAssistant, entry: F1ConfigEntry, async_add_entities
 ) -> None:
     """Set up replay media player entity."""
-    registry = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    registry = entry_runtime_registry(hass, entry.entry_id)
     if not registry:
         return
 

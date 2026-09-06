@@ -49,6 +49,8 @@ CARDATA_MAX_ENTRIES = 2048
 POSITION_Z_MAX_LINE_BYTES = 512 * 1024
 POSITION_Z_MAX_DECOMPRESSED_BYTES = 4 * 1024 * 1024
 FIA_ALLOWED_DOCUMENT_HOSTS = frozenset({"fia.com", "www.fia.com"})
+PERSISTENT_CACHE_MAX_BYTES = 24 * 1024 * 1024
+PERSISTENT_CACHE_MAX_ENTRIES = 512
 
 
 def normalize_live_timing_auth_header(value: object) -> str:
@@ -558,12 +560,25 @@ async def fetch_text(
 class PersistentCache:
     """Versioned persistent cache using HA Store, per config-entry."""
 
-    def __init__(self, hass, entry_id: str, version: int = 1) -> None:
+    def __init__(
+        self,
+        hass,
+        entry_id: str,
+        version: int = 1,
+        *,
+        max_bytes: int = PERSISTENT_CACHE_MAX_BYTES,
+        max_entries: int = PERSISTENT_CACHE_MAX_ENTRIES,
+    ) -> None:
         self._hass = hass
         self._entry_id = entry_id
         self._store = Store(hass, version, f"{DOMAIN}_{entry_id}_http_cache_v1")
         self._data: dict[str, Any] = {}
         self._save_task: asyncio.Task | None = None
+        self._max_bytes = max(1, int(max_bytes))
+        self._max_entries = max(1, int(max_entries))
+        self._estimated_bytes = 0
+        self._pruned_entries = 0
+        self._last_prune_at: float | None = None
 
     async def load(self) -> dict[str, Any]:
         try:
@@ -574,6 +589,10 @@ class PersistentCache:
                 self._data = {}
         except Exception:
             self._data = {}
+        removed = await self._async_prune()
+        if removed:
+            with suppress(Exception):
+                await self._store.async_save(self._data)
         return self._data
 
     def map(self) -> dict[str, Any]:
@@ -587,6 +606,7 @@ class PersistentCache:
             async def _save_later():
                 with suppress(Exception):
                     await asyncio.sleep(delay)
+                    await self._async_prune()
                     await self._store.async_save(self._data)
 
             self._save_task = self._hass.loop.create_task(_save_later())
@@ -602,8 +622,93 @@ class PersistentCache:
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
+        await self._async_prune()
         with suppress(Exception):
             await self._store.async_save(self._data)
+
+    async def async_remove(self) -> None:
+        """Remove this entry's persistent cache."""
+        task = self._save_task
+        if task is not None and not task.done():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        self._data.clear()
+        await self._store.async_remove()
+
+    def diagnostics(self) -> dict[str, int | float | None]:
+        """Return bounded, non-sensitive cache health metrics."""
+        return {
+            "entries": len(self._data),
+            "estimated_bytes": self._estimated_bytes,
+            "max_entries": self._max_entries,
+            "max_bytes": self._max_bytes,
+            "pruned_entries": self._pruned_entries,
+            "last_prune_at": self._last_prune_at,
+        }
+
+    async def _async_prune(self) -> int:
+        snapshot = list(self._data.items())
+        now = time.time()
+        remove_keys, estimated_bytes = await self._hass.async_add_executor_job(
+            self._plan_prune,
+            snapshot,
+            now,
+            self._max_entries,
+            self._max_bytes,
+        )
+        removed = 0
+        for key in remove_keys:
+            if key in self._data:
+                self._data.pop(key, None)
+                removed += 1
+        self._estimated_bytes = estimated_bytes
+        self._pruned_entries += removed
+        self._last_prune_at = now
+        return removed
+
+    @staticmethod
+    def _plan_prune(
+        items: list[tuple[str, Any]],
+        now: float,
+        max_entries: int,
+        max_bytes: int,
+    ) -> tuple[list[str], int]:
+        """Plan expiry and LRU pruning outside the event loop."""
+        retained: list[tuple[str, Any, float, int]] = []
+        remove_keys: list[str] = []
+        for key, value in items:
+            saved_at = 0.0
+            ttl_seconds: float | None = None
+            if isinstance(value, dict):
+                with suppress(TypeError, ValueError):
+                    saved_at = float(value.get("saved_at") or 0.0)
+                with suppress(TypeError, ValueError):
+                    ttl_seconds = float(value.get("ttl_seconds"))
+            if (
+                saved_at > 0
+                and ttl_seconds is not None
+                and ttl_seconds > 0
+                and saved_at + ttl_seconds <= now
+            ):
+                remove_keys.append(key)
+                continue
+            try:
+                encoded = json.dumps(
+                    {key: value}, separators=(",", ":"), default=str
+                ).encode()
+                size = len(encoded)
+            except Exception:
+                size = len(str(key).encode()) + len(str(value).encode())
+            retained.append((key, value, saved_at, size))
+
+        retained.sort(key=lambda item: (item[2], item[0]))
+        total_bytes = sum(item[3] for item in retained)
+        while retained and (len(retained) > max_entries or total_bytes > max_bytes):
+            key, _value, _saved_at, size = retained.pop(0)
+            remove_keys.append(key)
+            total_bytes -= size
+        return remove_keys, max(0, total_bytes)
 
 
 _PDF_ANCHOR_RE = re.compile(

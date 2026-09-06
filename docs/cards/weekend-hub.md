@@ -8,11 +8,11 @@ import {Figure} from '@site/src/components/Docs';
 
 Follow a race weekend in one place, from the session overview to strategy, battles and replay telemetry. Use Weekend Hub when you want several views of the same session without building a separate dashboard for each.
 
-<Figure src="/img/cards/weekend-hub.png" alt="Weekend Hub card showing its dashboard layout" caption="Weekend Hub rendered with illustrative sample data." />
+<Figure src="/img/cards/weekend-hub-replay.png" alt="Weekend Hub overview during a Dutch Grand Prix replay, showing session coverage and recent events" caption="Captured in Home Assistant during a replay of the 2026 Dutch Grand Prix." />
 
 ## Availability
 
-**Live / Replay.** Enable the live and analysis features you want to use in F1 Sensor. The card connects to the integration directly; it does not need a primary sensor. Public timing supplies basic session context. Individual analysis views depend on available laps and timing data; telemetry comparison requires a loaded replay with the selected laps. Optional F1TV Auth can add live data when the source provides it.
+**Live / Replay.** Enable live data and the timing features you want to use in F1 Sensor. The card connects to the integration directly; it does not need a primary sensor. Public timing supplies basic session context. Individual analysis views depend on available laps and timing data; telemetry comparison requires a loaded replay with the selected laps. Optional F1TV Auth can add live data when the source provides it.
 
 ## Add the card
 
@@ -31,7 +31,10 @@ Use this in a manual dashboard card. Replace any entity ID with the one in your 
 type: custom:f1-weekend-hub-card
 entry_id: auto
 theme_mode: auto
+no_spoiler_entity: switch.f1_no_spoiler_mode
 ```
+
+This example connects spoiler protection to the integration switch. Turn that switch off in Home Assistant when you are ready to reveal results; the card does not toggle a configured switch. See [spoiler controls](/cards/shared-options#spoiler-protection) for the optional helper behavior.
 
 ## Use the card
 
@@ -47,7 +50,7 @@ The five tabs answer different questions:
 
 Supported cards share the focus driver, gap reference and spoiler selection. For example, Driver Lap Times follows the selected gap reference and highlights the same driver.
 
-Telemetry is available only for selected laps in the loaded replay. Corner annotations are not currently available.
+Telemetry is available only for selected laps in the loaded replay. Corner annotations are not currently available. Follow the [analysis walkthrough](/features/weekend-analysis) for clean-lap interpretation, battle confidence and the step-by-step telemetry comparison.
 
 ## Configuration
 

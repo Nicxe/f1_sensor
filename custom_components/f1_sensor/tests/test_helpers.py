@@ -18,6 +18,7 @@ from custom_components.f1_sensor.helpers import (
     CARDATA_MAX_DECOMPRESSED_BYTES,
     CARDATA_MAX_ENTRIES,
     CARDATA_MAX_LINE_BYTES,
+    PersistentCache,
     fetch_json,
     fetch_text,
     parse_cardata_line,
@@ -325,3 +326,126 @@ async def test_fia_documents_coordinator_passes_user_agent_to_season_lookup(
 
     assert url.endswith("/season/season-2026-9999")
     assert mock_fetch.await_args.kwargs["headers"] == {"User-Agent": "test-ua"}
+
+
+@pytest.mark.asyncio
+async def test_persistent_cache_prunes_expired_and_oldest_entries(hass) -> None:
+    now = time.time()
+    cache = PersistentCache(
+        hass,
+        "bounded-entry-count",
+        max_entries=2,
+        max_bytes=1024 * 1024,
+    )
+    data = await cache.load()
+    data.update(
+        {
+            "expired": {"data": "gone", "saved_at": now - 100, "ttl_seconds": 1},
+            "old": {"data": "old", "saved_at": now - 2, "ttl_seconds": 60},
+            "new": {"data": "new", "saved_at": now - 1, "ttl_seconds": 60},
+            "newest": {"data": "newest", "saved_at": now, "ttl_seconds": 60},
+        }
+    )
+
+    await cache.async_close()
+    reloaded = PersistentCache(
+        hass,
+        "bounded-entry-count",
+        max_entries=2,
+        max_bytes=1024 * 1024,
+    )
+    persisted = await reloaded.load()
+
+    assert set(persisted) == {"new", "newest"}
+    assert reloaded.diagnostics()["entries"] == 2
+
+
+@pytest.mark.asyncio
+async def test_persistent_cache_enforces_byte_cap_and_can_be_removed(hass) -> None:
+    now = time.time()
+    cache = PersistentCache(
+        hass,
+        "bounded-byte-count",
+        max_entries=10,
+        max_bytes=450,
+    )
+    data = await cache.load()
+    data.update(
+        {
+            "old": {"data": "x" * 300, "saved_at": now - 1, "ttl_seconds": 60},
+            "new": {"data": "y" * 300, "saved_at": now, "ttl_seconds": 60},
+        }
+    )
+
+    await cache.async_close()
+
+    assert set(cache.map()) == {"new"}
+    assert cache.diagnostics()["estimated_bytes"] <= 450
+
+    await cache.async_remove()
+    reloaded = PersistentCache(hass, "bounded-byte-count")
+    assert await reloaded.load() == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["close", "remove"])
+@pytest.mark.parametrize("write_started", [False, True])
+async def test_persistent_cache_cancels_owned_write_before_cleanup(
+    hass, monkeypatch, action: str, write_started: bool
+) -> None:
+    """Unload flushes and removal cannot be undone by an old pending writer."""
+    entry_id = f"pending-write-{action}-{write_started}"
+    cache = PersistentCache(hass, entry_id)
+    data = await cache.load()
+    data["race"] = {
+        "data": {"round": "16"},
+        "saved_at": time.time(),
+        "ttl_seconds": 3600,
+    }
+    await cache.async_close()
+    data["race"]["data"]["round"] = "17"
+
+    entered = asyncio.Event()
+    cancelled = asyncio.Event()
+    original_save = cache._store.async_save
+    if write_started:
+
+        async def controlled_save(value):
+            if not entered.is_set():
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    cancelled.set()
+                    raise
+            await original_save(value)
+
+        monkeypatch.setattr(cache._store, "async_save", controlled_save)
+
+    cache.schedule_save(delay=0 if write_started else 3600)
+    pending = cache._save_task
+    assert pending is not None
+    if write_started:
+        async with asyncio.timeout(5):
+            await entered.wait()
+    else:
+        await asyncio.sleep(0)
+    assert not pending.done()
+
+    async with asyncio.timeout(5):
+        if action == "close":
+            await cache.async_close()
+        else:
+            await cache.async_remove()
+
+    assert pending.done()
+    assert pending.cancelled()
+    if write_started:
+        assert cancelled.is_set()
+    reloaded = PersistentCache(hass, entry_id)
+    persisted = await reloaded.load()
+    if action == "close":
+        assert persisted["race"]["data"] == {"round": "17"}
+    else:
+        assert cache.map() == {}
+        assert persisted == {}

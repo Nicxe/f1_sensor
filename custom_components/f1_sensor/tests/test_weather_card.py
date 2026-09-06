@@ -18,6 +18,9 @@ def _source() -> str:
 
 def test_weather_card_is_registered_with_editor_and_picker_metadata() -> None:
     source = _source()
+    registry_source = (CARD_PATH.parent / "platform" / "card-registry.js").read_text(
+        encoding="utf-8"
+    )
 
     assert "class F1WeatherCard extends LitElement" in source
     assert "class F1WeatherCardEditor extends LitElement" in source
@@ -26,8 +29,8 @@ def test_weather_card_is_registered_with_editor_and_picker_metadata() -> None:
         "customElements.define('f1-weather-card-editor', F1WeatherCardEditor)" in source
     )
     assert "type: 'custom:f1-weather-card'" in source
-    assert "type: 'f1-weather-card'" in source
-    assert "name: 'F1 Race Weather'" in source
+    assert "['f1-weather-card', 'F1 Race Weather'," in registry_source
+    assert "configurable: true" in registry_source
 
 
 def test_weather_card_uses_family_theme_responsive_layout_and_auto_height() -> None:

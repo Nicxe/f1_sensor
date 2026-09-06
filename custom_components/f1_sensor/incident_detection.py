@@ -2051,11 +2051,13 @@ def _timestamp_from_payload(payload: Mapping[str, Any]) -> Any:
 
 
 def _normalize_session_status_value(payload: Mapping[str, Any]) -> str | None:
-    raw = (
-        payload.get("SessionStatus")
-        or payload.get("Status")
-        or payload.get("Started")
-        or payload.get("Message")
+    raw = next(
+        (
+            payload.get(key)
+            for key in ("SessionStatus", "Status", "Started", "Message")
+            if key in payload and payload.get(key) is not None
+        ),
+        None,
     )
     if raw is None:
         return None

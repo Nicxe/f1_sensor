@@ -10,11 +10,17 @@
           "replay_file": "Replay dump path",
           "race_week_start_day": "Første dag i løbsugen",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
+          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
+          "enable_race_control": "Enable live F1 API (Race Control/Track/Session)",
+          "clear_live_timing_auth_header": "Clear F1TV authorization value"
         },
         "data_description": {
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste the full Bearer token from the F1TV Token Helper only as an advanced fallback. Leave blank to use public live timing only.",
-          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it."
+          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
+          "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
+          "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
+          "enable_race_control": "Connects to Formula 1 Live Timing via SignalR to receive live updates. If disabled, these live sensors are not created.",
+          "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday."
         }
       },
       "reconfigure": {
@@ -27,12 +33,17 @@
           "race_week_start_day": "Første dag i løbsugen",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
           "clear_live_timing_auth_header": "Clear F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
+          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
+          "enable_race_control": "Enable live F1 API"
         },
         "data_description": {
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
           "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing only.",
-          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it."
+          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
+          "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
+          "replay_file": "Absolute path to a recorded SignalR dump file. Only required in Development mode.",
+          "enable_race_control": "Connects to Formula 1 Live Timing to receive live updates. If disabled, these live sensors are not created.",
+          "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday."
         }
       },
       "reauth_confirm": {
@@ -64,7 +75,8 @@
     },
     "abort": {
       "f1tv_pairing_unavailable": "F1TV pairing is not available in this build.",
-      "f1tv_pairing_failed": "F1TV pairing did not complete. Start a new pairing session and try again."
+      "f1tv_pairing_failed": "F1TV pairing did not complete. Start a new pairing session and try again.",
+      "reconfigure_successful": "F1 Sensor was successfully reconfigured."
     }
   },
   "entity": {
@@ -130,6 +142,83 @@
       },
       "f1tv_token_expires_at": {
         "name": "F1TV token expires at"
+      },
+      "track_time": {
+        "name": "Track time"
+      },
+      "track_weather": {
+        "name": "Track weather"
+      },
+      "top_three_p1": {
+        "name": "Top three (P1)"
+      },
+      "top_three_p2": {
+        "name": "Top three (P2)"
+      },
+      "top_three_p3": {
+        "name": "Top three (P3)"
+      },
+      "championship_prediction_drivers": {
+        "name": "Championship prediction (drivers)"
+      },
+      "championship_prediction_teams": {
+        "name": "Championship prediction (teams)"
+      },
+      "driver_positions": {
+        "name": "Driver positions"
+      },
+      "starting_grid": {
+        "name": "Starting grid"
+      },
+      "straight_mode": {
+        "name": "Straight mode",
+        "state": {
+          "normal_grip": "Normal grip",
+          "low_grip": "Low grip",
+          "disabled": "Disabled"
+        }
+      },
+      "track_status": {
+        "name": "Track status"
+      },
+      "session_status": {
+        "name": "Session status"
+      },
+      "session_time_remaining": {
+        "name": "Session time remaining"
+      },
+      "session_time_elapsed": {
+        "name": "Session time elapsed"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "Time to 3-hour limit"
+      },
+      "driver_list": {
+        "name": "Driver list"
+      },
+      "current_tyres": {
+        "name": "Current tyres"
+      },
+      "tyre_statistics": {
+        "name": "Tyre statistics"
+      },
+      "team_radio": {
+        "name": "Team radio"
+      },
+      "race_lap_count": {
+        "name": "Race lap count"
+      },
+      "driver_points_progression": {
+        "name": "Driver points progression"
+      },
+      "constructor_points_progression": {
+        "name": "Constructor points progression"
+      },
+      "replay_status": {
+        "name": "Replay status"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "media_player": {
@@ -149,6 +238,9 @@
       },
       "replay_start_reference": {
         "name": "Replay start reference"
+      },
+      "favorite_driver": {
+        "name": "Favorite driver"
       }
     },
     "binary_sensor": {
@@ -169,11 +261,17 @@
       },
       "formation_start": {
         "name": "Formation start"
+      },
+      "overtake_mode": {
+        "name": "Overtake mode"
       }
     },
     "switch": {
       "no_spoiler_mode": {
         "name": "Ingen Spoiler-tilstand"
+      },
+      "delay_calibration": {
+        "name": "Delay calibration"
       }
     },
     "weather": {
@@ -184,6 +282,46 @@
     "button": {
       "clear_f1tv_access": {
         "name": "Clear F1TV access"
+      },
+      "delay_calibration_match": {
+        "name": "Match live delay"
+      },
+      "replay_load": {
+        "name": "Load session"
+      },
+      "replay_play": {
+        "name": "Play"
+      },
+      "replay_pause": {
+        "name": "Pause"
+      },
+      "replay_back_30": {
+        "name": "Back 30 seconds"
+      },
+      "replay_forward_30": {
+        "name": "Forward 30 seconds"
+      },
+      "replay_stop": {
+        "name": "Stop"
+      },
+      "replay_refresh": {
+        "name": "Refresh sessions"
+      },
+      "jolpica_ua_test": {
+        "name": "Jolpica user-agent test"
+      },
+      "refresh_f1tv_access": {
+        "name": "Refresh F1TV access"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "Live delay"
+      }
+    },
+    "calendar": {
+      "season_calendar": {
+        "name": "Season calendar"
       }
     }
   },
@@ -195,17 +333,83 @@
           "confirm": {
             "data": {
               "live_timing_auth_header": "F1TV authorization value",
-              "clear_live_timing_auth_header": "Clear F1TV authorization value"
+              "clear_live_timing_auth_header": "Clear F1TV authorization value",
+              "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
             },
             "data_description": {
               "live_timing_auth_header": "Paste a new Bearer token value from the F1TV Token Helper for F1TV access.",
-              "clear_live_timing_auth_header": "Remove the saved F1TV token and continue with public live timing only."
+              "clear_live_timing_auth_header": "Remove the saved F1TV token and continue with public live timing only.",
+              "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually."
             },
             "description": "The saved F1TV token for {name} needs attention. Public live timing continues to work, but F1TV live data will not be used until the token is replaced.",
             "title": "Update F1TV live timing token"
+          },
+          "f1tv_pairing": {
+            "title": "Connect F1TV access",
+            "description": "Use the F1TV Token Helper to send your token to Home Assistant. F1TV access is optional, and this pairing expires at {expires_at}."
           }
         }
       }
+    },
+    "stale_live_data_card_resources": {
+      "description": "F1 Sensor now bundles and manages the live data cards. Home Assistant still has stale Lovelace resource entries for the old standalone card ({stale_resource_count} detected), which can cause duplicate or outdated card behavior. Confirm that the bundled card works, then remove the old standalone HACS dashboard repository and the stale Lovelace resource entries. Restart Home Assistant or reload Lovelace resources and hard refresh the browser if stale card UI remains.",
+      "title": "Old standalone F1 live data card resources detected"
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Race week has started",
+      "race_week_ended": "Race week has ended",
+      "safety_car_deployed": "Safety car deployed",
+      "safety_car_cleared": "Safety car cleared",
+      "possible_on_track_incident_detected": "Possible on-track incident detected",
+      "possible_on_track_incident_cleared": "Possible on-track incident cleared",
+      "on_track_incident_detected": "On-track incident detected",
+      "on_track_incident_cleared": "On-track incident cleared",
+      "formation_start_ready": "Formation start ready",
+      "overtake_mode_enabled": "Overtake mode enabled",
+      "overtake_mode_disabled": "Overtake mode disabled",
+      "session_live": "Session went live",
+      "track_status_clear": "Track status: Clear",
+      "track_status_yellow": "Track status: Yellow flag",
+      "track_status_safety_car": "Track status: Safety car",
+      "track_status_vsc": "Track status: Virtual safety car",
+      "track_status_red_flag": "Track status: Red flag",
+      "new_race_control_message": "New race control message",
+      "new_fia_document": "New FIA document published",
+      "investigation_changed": "Investigation status changed",
+      "new_team_radio": "New team radio message",
+      "live_timing_online": "Live timing came online",
+      "live_timing_offline": "Live timing went offline",
+      "favorite_driver_position_gained": "Favorite driver gained a position",
+      "favorite_driver_position_lost": "Favorite driver lost a position",
+      "favorite_driver_entered_pits": "Favorite driver entered the pits",
+      "favorite_driver_exited_pits": "Favorite driver exited the pits",
+      "favorite_driver_retired": "Favorite driver retired"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure F1 Sensor features",
+        "data": {
+          "enabled_sensors": "Enabled sensors",
+          "enable_race_control": "Enable live F1 API",
+          "race_week_start_day": "First day of race week",
+          "operation_mode": "Operation mode",
+          "replay_file": "Replay dump path"
+        },
+        "data_description": {
+          "enable_race_control": "Connect to Formula 1 Live Timing only when live features are enabled.",
+          "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
+          "operation_mode": "Choose Live or local replay Development mode.",
+          "replay_file": "Absolute path to a replay dump used only in Development mode."
+        }
+      }
+    },
+    "error": {
+      "replay_required": "Select a replay dump file when Development mode is enabled.",
+      "replay_missing": "Replay dump file not found or unreadable."
     }
   }
 }

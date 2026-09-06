@@ -229,3 +229,21 @@ async def test_repair_flow_is_hidden_when_f1tv_auth_disabled(hass, monkeypatch) 
         )
         is None
     )
+
+
+async def test_repair_flow_handles_init_and_unavailable_pairing(
+    hass, monkeypatch
+) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, title="F1")
+    entry.add_to_hass(hass)
+    flow = repairs.F1TvTokenRepairFlow(entry)
+    flow.hass = hass
+    assert (await flow.async_step_init())["type"] == "form"
+
+    monkeypatch.setattr(repairs, "is_auth_feature_enabled", lambda: False)
+    assert (await flow._async_start_f1tv_pairing())["reason"] == (
+        "f1tv_pairing_unavailable"
+    )
+
+    unknown = await repairs.async_create_fix_flow(hass, "unknown", None)
+    assert unknown.__class__.__name__ == "ConfirmRepairFlow"

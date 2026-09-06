@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from homeassistant.components.lovelace.const import (
     CONF_RESOURCE_TYPE_WS,
     CONF_URL,
-    LOVELACE_DATA,
+    DOMAIN as LOVELACE_DATA,
 )
 from homeassistant.const import CONF_ID, CONF_TYPE
 from homeassistant.core import HomeAssistant, callback as ha_callback
@@ -28,23 +28,30 @@ BUNDLED_LIVE_DATA_CARD_DIR = (
     Path(__file__).resolve().parent / "www" / "f1-sensor-live-data-card"
 )
 LIVE_DATA_CARD_ASSET_FILENAMES = (
+    "register.js",
     "f1-sensor-live-data-card.js",
     "f1-lit-3.3.2.js",
+    "platform/accessibility.js",
+    "platform/actions.js",
+    "platform/base-card.js",
+    "platform/card-registry.js",
+    "platform/dashboard-context.js",
+    "platform/entity-resolver.js",
+    "platform/i18n.js",
     "hard_tyre.png",
     "intermediate_tyre.png",
     "medium_tyre.png",
     "soft_tyre.png",
     "wet_tyre.png",
 )
-MANAGED_LIVE_DATA_CARD_RESOURCE_URL = (
-    "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js"
-)
+MANAGED_LIVE_DATA_CARD_RESOURCE_URL = "/local/f1-sensor-live-data-card/register.js"
 STALE_LIVE_DATA_CARD_RESOURCES_ISSUE_ID = "stale_live_data_card_resources"
 OLD_LIVE_DATA_CARD_RESOURCE_URL_PATHS = frozenset(
     {
         "/hacsfiles/f1-sensor-live-data-card/f1-sensor-live-data-card.js",
         "/local/community/f1-sensor-live-data-card/f1-sensor-live-data-card.js",
         "/local/f1-sensor-live-data-card.js",
+        "/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js",
     }
 )
 RUNTIME_LIVE_DATA_CARD_DIR_PARTS = ("www", "f1-sensor-live-data-card")
@@ -105,12 +112,16 @@ def _sync_bundled_live_data_card_assets(
         if not source.is_file():
             raise FileNotFoundError(f"Bundled card asset missing: {source}")
         target = target_dir / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
         if not target.is_file() or source.read_bytes() != target.read_bytes():
             shutil.copy2(source, target)
             copied_files += 1
 
-    js_source = source_dir / "f1-sensor-live-data-card.js"
-    cache_key = sha256(js_source.read_bytes()).hexdigest()[:12]
+    digest = sha256()
+    for filename in LIVE_DATA_CARD_ASSET_FILENAMES:
+        digest.update(filename.encode())
+        digest.update((source_dir / filename).read_bytes())
+    cache_key = digest.hexdigest()[:12]
     return LiveDataCardFrontendSync(cache_key=cache_key, copied_files=copied_files)
 
 

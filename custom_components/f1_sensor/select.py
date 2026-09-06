@@ -6,35 +6,43 @@ from contextlib import suppress
 import logging
 
 from homeassistant.components.select import SelectEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
-    DOMAIN,
     LIVE_DELAY_REFERENCE_LAP_SYNC,
     LIVE_DELAY_REFERENCE_SESSION,
 )
-from .entity import F1AuxEntity, default_object_id, set_default_entity_id
+from .entity import (
+    F1AuxEntity,
+    default_object_id,
+    entry_runtime_registry,
+    set_default_entity_id,
+)
+from .favorite_driver import (
+    FAVORITE_DRIVER_NONE,
+    FavoriteDriverController,
+)
 from .live_delay import LiveDelayReferenceController
 from .replay_entities import (
     F1ReplaySessionSelect,
     F1ReplayStartReferenceSelect,
     F1ReplayYearSelect,
 )
+from .runtime import F1ConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: F1ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up F1 Sensor select entities."""
-    registry = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    registry = entry_runtime_registry(hass, entry.entry_id)
     if not registry:
         return
 
@@ -53,6 +61,21 @@ async def async_setup_entry(
         )
         set_default_entity_id(
             entity, Platform.SELECT, default_object_id("live_delay_reference")
+        )
+        entities.append(entity)
+
+    favorite_driver_controller = registry.get("favorite_driver_controller")
+    if isinstance(favorite_driver_controller, FavoriteDriverController):
+        entity = F1FavoriteDriverSelect(
+            favorite_driver_controller,
+            f"{entry.entry_id}_favorite_driver_select",
+            entry.entry_id,
+            name,
+        )
+        set_default_entity_id(
+            entity,
+            Platform.SELECT,
+            default_object_id("favorite_driver"),
         )
         entities.append(entity)
 
@@ -151,4 +174,51 @@ class F1LiveDelayReferenceSelect(F1AuxEntity, SelectEntity):
     def _handle_reference_update(self, value: str) -> None:
         self._current_option = self._value_to_option.get(value, "Session live")
         if self.hass:
+            self.async_write_ha_state()
+
+
+class F1FavoriteDriverSelect(F1AuxEntity, SelectEntity):
+    """Select the driver projected by the favourite-driver sensor."""
+
+    _device_category = "drivers"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:account-star"
+    _attr_translation_key = "favorite_driver"
+
+    def __init__(
+        self,
+        controller: FavoriteDriverController,
+        unique_id: str,
+        entry_id: str,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
+        SelectEntity.__init__(self)
+        self._controller = controller
+        self._unsub = None
+
+    async def async_added_to_hass(self) -> None:
+        if self._unsub is None:
+            self._unsub = self._controller.add_listener(self._handle_update)
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub is not None:
+            self._unsub()
+            self._unsub = None
+
+    @property
+    def options(self) -> list[str]:
+        return [FAVORITE_DRIVER_NONE, *self._controller.options]
+
+    @property
+    def current_option(self) -> str:
+        return self._controller.selected_tla or FAVORITE_DRIVER_NONE
+
+    async def async_select_option(self, option: str) -> None:
+        await self._controller.async_set_driver(
+            None if option == FAVORITE_DRIVER_NONE else option
+        )
+
+    def _handle_update(self) -> None:
+        if self.hass is not None:
             self.async_write_ha_state()

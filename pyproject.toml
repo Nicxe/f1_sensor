@@ -1,5 +1,5 @@
 [tool.ruff]
-target-version = "py313"
+target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
@@ -14,3 +14,15 @@ combine-as-imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = ["performance: weekly timing budgets; excluded from PR gates"]
+
+[tool.coverage.run]
+branch = true
+source = ["custom_components/f1_sensor"]
+omit = [
+  "*/tests/*",
+  "*/track_map_static_geometry_builder.py",
+  "*/track_map_static_geometry_calibrator.py",
+  "*/track_map_static_geometry_maintenance.py",
+  "*/track_map_static_geometry_qa.py",
+]

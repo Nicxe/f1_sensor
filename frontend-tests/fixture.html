@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>F1 Sensor quality fixture</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --primary-color: #e10600;
+        --primary-text-color: #f7f7f7;
+        --secondary-text-color: #b8bcc4;
+        --card-background-color: #16181d;
+        --ha-card-background: #16181d;
+        --divider-color: #343740;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 16px; background: #0d0f13; color: #f7f7f7; font-family: Arial, sans-serif; }
+      body.light {
+        color-scheme: light;
+        --primary-text-color: #18191d;
+        --secondary-text-color: #555a64;
+        --card-background-color: #fff;
+        --ha-card-background: #fff;
+        --divider-color: #d7d9df;
+        background: #f3f4f6;
+        color: #18191d;
+      }
+      #mount { display: grid; gap: 16px; align-items: start; }
+      #mount.gallery { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+      ha-card { display: block; border-radius: 12px; background: var(--ha-card-background); }
+      ha-icon { display: inline-block; width: 24px; height: 24px; }
+      ha-select, ha-textfield { display: block; min-height: 40px; }
+    </style>
+  </head>
+  <body>
+    <main id="mount" aria-label="F1 Sensor card test area"></main>
+    <script type="module" src="./fixture.js"></script>
+  </body>
+</html>

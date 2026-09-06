@@ -1,0 +1,114 @@
+{
+  "session_id": "2026_1293_11355",
+  "checkpoint_ms": 3570041,
+  "initial_state": {
+    "Messages": {
+      "2026-09-04T13:48:53": {
+        "Utc": "2026-09-04T13:48:53",
+        "Category": "Other",
+        "Message": "BLUE HEAD PADDING MATERIAL MUST BE USED"
+      }
+    }
+  },
+  "checkpoint": {
+    "Messages": {
+      "2026-09-04T13:48:53": {
+        "Utc": "2026-09-04T13:48:53",
+        "Category": "Other",
+        "Message": "BLUE HEAD PADDING MATERIAL MUST BE USED"
+      },
+      "1": {
+        "Utc": "2026-09-04T14:00:00",
+        "Category": "Flag",
+        "Flag": "GREEN",
+        "Scope": "Track",
+        "Message": "GREEN LIGHT - PIT EXIT OPEN",
+        "id": 1
+      },
+      "2": {
+        "Utc": "2026-09-04T14:09:50",
+        "Category": "Other",
+        "Message": "CAR 18 (STR) TIME 2:00.390 DELETED - TRACK LIMITS AT TURN 1 LAP 5 16:06:33",
+        "id": 2
+      },
+      "3": {
+        "Utc": "2026-09-04T14:09:50",
+        "Category": "Other",
+        "Message": "CAR 23 (ALB) TIME 1:45.889 DELETED - TRACK LIMITS AT TURN 1 LAP 5 16:07:39",
+        "id": 3
+      },
+      "4": {
+        "Utc": "2026-09-04T14:11:50",
+        "Category": "Other",
+        "Message": "CAR 16 (LEC) TIME 1:52.593 DELETED - TRACK LIMITS AT TURN 1 LAP 6 16:09:57",
+        "id": 4
+      },
+      "5": {
+        "Utc": "2026-09-04T14:14:22",
+        "Category": "Other",
+        "Message": "CAR 1 (NOR) LAP DELETED - TRACK LIMITS AT TURN 1 LAP 8 16:12:34 (PIT)",
+        "id": 5
+      },
+      "6": {
+        "Utc": "2026-09-04T14:15:00",
+        "Category": "Other",
+        "Message": "TURN 1 INCIDENT INVOLVING CARS 18 (STR) AND 1 (NOR) NOTED (16:12:24)",
+        "id": 6
+      },
+      "7": {
+        "Utc": "2026-09-04T14:16:49",
+        "Category": "Other",
+        "Message": "CAR 5 (BOR) LAP DELETED - TRACK LIMITS AT TURN 1 LAP 9 16:14:06 (PIT)",
+        "id": 7
+      },
+      "8": {
+        "Utc": "2026-09-04T14:16:57",
+        "Category": "Other",
+        "Message": "CAR 18 (STR) TIME 1:45.975 DELETED - TRACK LIMITS AT TURN 1 LAP 9 16:14:38",
+        "id": 8
+      },
+      "9": {
+        "Utc": "2026-09-04T14:24:01",
+        "Category": "Other",
+        "Message": "FIA STEWARDS: TURN 1 INCIDENT INVOLVING CARS 18 (STR) AND 1 (NOR) WILL BE INVESTIGATED AFTER THE SESSION - IMPEDING (16:12:24)",
+        "id": 9
+      },
+      "10": {
+        "Utc": "2026-09-04T14:32:46",
+        "Category": "Other",
+        "Message": "CAR 1 (NOR) TIME 1:43.177 DELETED - TRACK LIMITS AT TURN 1 LAP 10 16:30:34",
+        "id": 10
+      },
+      "11": {
+        "Utc": "2026-09-04T14:33:11",
+        "Category": "Other",
+        "Message": "CAR 5 (BOR) TIME 1:59.221 DELETED - TRACK LIMITS AT TURN 5 LAP 14 16:31:09",
+        "id": 11
+      },
+      "12": {
+        "Utc": "2026-09-04T14:33:51",
+        "Category": "Other",
+        "Message": "CAR 10 (GAS) TIME 1:23.803 DELETED - TRACK LIMITS AT TURN 6 LAP 12 16:31:56",
+        "id": 12
+      },
+      "13": {
+        "Utc": "2026-09-04T14:34:40",
+        "Category": "Other",
+        "Message": "CAR 16 (LEC) LAP DELETED - TRACK LIMITS AT TURN 4 LAP 14 16:32:36 (PIT)",
+        "id": 13
+      },
+      "14": {
+        "Utc": "2026-09-04T14:34:47",
+        "Category": "Other",
+        "Message": "CAR 18 (STR) LAP DELETED - TRACK LIMITS AT TURN 4 LAP 14 16:32:35 (PIT)",
+        "id": 14
+      },
+      "15": {
+        "Utc": "2026-09-04T14:39:36",
+        "Category": "Other",
+        "Message": "CAR 44 (HAM) TIME 1:56.521 DELETED - TRACK LIMITS AT TURN 1 LAP 14 16:37:31",
+        "id": 15
+      }
+    }
+  }
+}

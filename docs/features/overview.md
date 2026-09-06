@@ -6,6 +6,10 @@ description: Choose a guide for live TV, replay, automations, optional F1TV acce
 
 Choose what you want to do next. Each guide explains the setup, when data is available, and what to check if it does not appear.
 
+## Explore the new features
+
+See [What's new](/features/whats-new) for Weekend Hub, Results Archive, Favorite Driver and shared dashboard improvements.
+
 ## Watch live
 
 | I want to… | Start here |
@@ -18,6 +22,8 @@ Choose what you want to do next. Each guide explains the setup, when data is ava
 ## Watch later
 
 Enable [No Spoiler Mode](/features/no-spoiler-mode) before the session. When the session archive is available, use [Replay Mode](/features/replay-mode) to follow the recording. The [Replay Sync blueprint](/blueprints/replay-sync) can follow your TV's play/pause changes after you align playback.
+
+For published classifications without playback, use [Results Archive](/features/historical-results).
 
 ## Build your race-day setup
 

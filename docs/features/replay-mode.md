@@ -144,6 +144,14 @@ Seek controls are designed to preserve the visible replay state after the jump. 
 ---
 
 
+## Replay improvements
+
+Loading and seeking restore the session's accumulated timing state. Large jumps can still briefly show `seeking`; wait for that operation to finish before sending another command. Cached session data is bounded and older cached downloads can be removed automatically, so a previously watched session may need downloading again.
+
+The selectors, playback buttons and media player remain the controls for Replay Mode. You do not need to recreate them after updating. Rewinding can still emit the same historical events again, so keep the notification behavior described above in mind.
+
+A loaded replay also supplies selected-lap comparisons in [Weekend Hub Telemetry](/features/weekend-analysis#compare-replay-laps). Browsing [Results Archive](/features/historical-results) is a separate operation: it displays classifications and does not load or start a replay.
+
 ## Replay Mode vs Developer mode
 
 Replay Mode and Developer mode both send recorded timing data through live entities, but they solve different problems.

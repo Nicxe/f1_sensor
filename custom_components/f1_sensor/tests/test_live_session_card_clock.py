@@ -11,7 +11,14 @@ import subprocess
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-CARD_PATH = ROOT / "www" / "f1-sensor-live-data-card.js"
+CARD_PATH = (
+    ROOT
+    / "custom_components"
+    / "f1_sensor"
+    / "www"
+    / "f1-sensor-live-data-card"
+    / "f1-sensor-live-data-card.js"
+)
 
 NODE_PROBE_SCRIPT = r"""
 const fs = require("node:fs");
@@ -111,12 +118,13 @@ def _clock_entities(
     elapsed: str,
     clock_running: bool,
     clock_phase: str,
+    last_updated: str | None = None,
 ) -> dict[str, dict]:
     attrs = {
         "clock_running": clock_running,
         "clock_phase": clock_phase,
     }
-    return {
+    entities = {
         "sensor.f1_session_time_remaining": {
             "state": remaining,
             "attributes": attrs,
@@ -126,12 +134,16 @@ def _clock_entities(
             "attributes": attrs,
         },
     }
+    if last_updated is not None:
+        for entity in entities.values():
+            entity["last_updated"] = last_updated
+    return entities
 
 
 def _run_clock_probe(steps: list[dict]) -> dict:
     """Execute the live session clock logic directly from the JS source."""
     if not CARD_PATH.exists():
-        pytest.skip(f"card JS not found at {CARD_PATH}")
+        pytest.fail(f"Bundled card JS not found at {CARD_PATH}")
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for live session card clock tests")
@@ -201,6 +213,30 @@ def test_live_session_clock_waits_for_full_second_before_advancing() -> None:
     assert result["after_full_second"] == {
         "remaining": "0:59:59",
         "elapsed": "0:00:01",
+    }
+
+
+def test_live_session_clock_uses_ha_update_anchor_when_opened_later() -> None:
+    """A newly mounted card catches up without one-second backend writes."""
+    result = _run_clock_probe(
+        [
+            {
+                "name": "mounted_later",
+                "nowMs": 31_000,
+                "hassStates": _clock_entities(
+                    remaining="1:00:00",
+                    elapsed="0:00:00",
+                    clock_running=True,
+                    clock_phase="running",
+                    last_updated="1970-01-01T00:00:01.000Z",
+                ),
+            }
+        ]
+    )
+
+    assert result["mounted_later"] == {
+        "remaining": "0:59:30",
+        "elapsed": "0:00:30",
     }
 
 

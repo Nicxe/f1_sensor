@@ -1,0 +1,109 @@
+name: Shared checks
+on:
+  workflow_call:
+    inputs:
+      allow_reuse:
+        type: boolean
+        default: false
+    outputs:
+      deploy:
+        value: ${{ jobs.plan.outputs.deploy }}
+      tested_base:
+        value: ${{ jobs.plan.outputs.tested_base }}
+      tested_head:
+        value: ${{ jobs.plan.outputs.tested_head }}
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tested_base: ${{ steps.plan.outputs.tested_base }}
+      tested_head: ${{ steps.plan.outputs.tested_head }}
+      reused: ${{ steps.reuse.outputs.reused }}
+      deploy: ${{ steps.plan.outputs.deploy }}
+      selected: ${{ steps.plan.outputs.selected }}
+      lint: ${{ steps.reuse.outputs.lint }}
+      backend: ${{ steps.reuse.outputs.backend }}
+      frontend: ${{ steps.reuse.outputs.frontend }}
+      documentation: ${{ steps.reuse.outputs.documentation }}
+      validation: ${{ steps.reuse.outputs.validation }}
+      package: ${{ steps.reuse.outputs.package }}
+      audit: ${{ steps.reuse.outputs.audit }}
+      blueprints: ${{ steps.reuse.outputs.blueprints }}
+      automation: ${{ steps.reuse.outputs.automation }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.inputs.pull_request && format('refs/pull/{0}/merge', github.event.inputs.pull_request) || github.sha }}
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci_policy.py plan
+      - id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_SELECTED: ${{ steps.plan.outputs.selected }}
+          CI_ALLOW_REUSE: ${{ inputs.allow_reuse }}
+        run: python3 scripts/ci_reuse.py plan
+  lint:
+    needs: plan
+    if: needs.plan.outputs.lint == 'true'
+    uses: ./.github/workflows/ruff.yml
+  backend:
+    needs: plan
+    if: needs.plan.outputs.backend == 'true'
+    uses: ./.github/workflows/tests.yml
+  frontend:
+    needs: plan
+    if: needs.plan.outputs.frontend == 'true'
+    uses: ./.github/workflows/frontend.yml
+  documentation:
+    needs: plan
+    if: needs.plan.outputs.documentation == 'true'
+    uses: ./.github/workflows/documentation.yml
+    with:
+      publish: ${{ needs.plan.outputs.deploy == 'true' }}
+  validation:
+    needs: plan
+    if: needs.plan.outputs.validation == 'true'
+    uses: ./.github/workflows/validate.yml
+  package:
+    needs: plan
+    if: needs.plan.outputs.package == 'true'
+    uses: ./.github/workflows/package.yml
+  audit:
+    needs: plan
+    if: needs.plan.outputs.audit == 'true'
+    uses: ./.github/workflows/audit.yml
+  blueprints:
+    needs: plan
+    if: needs.plan.outputs.blueprints == 'true'
+    uses: ./.github/workflows/tests.yml
+    with:
+      blueprints_only: true
+  automation:
+    needs: plan
+    if: needs.plan.outputs.automation == 'true'
+    uses: ./.github/workflows/automation-tests.yml
+  required:
+    name: Verify selected checks
+    needs: [plan, lint, backend, frontend, documentation, validation, package, audit, blueprints, automation]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.inputs.pull_request && format('refs/pull/{0}/merge', github.event.inputs.pull_request) || github.sha }}
+      - name: Verify every applicable result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci_policy.py gate

@@ -1,0 +1,98 @@
+[
+  {
+    "name": "complete green lap",
+    "input": {
+      "lap_duration": 90.0,
+      "sector_durations": [30.0, 30.0, 30.0],
+      "track_status": "1"
+    },
+    "expected": {
+      "clean": true,
+      "confidence": 1.0,
+      "reasons": []
+    }
+  },
+  {
+    "name": "deleted track-limits lap",
+    "input": {
+      "deleted": true,
+      "deletion_reason": "TRACK LIMITS AT TURN 4",
+      "lap_duration": 90.0,
+      "sector_durations": [30.0, 30.0, 30.0],
+      "track_status": "1"
+    },
+    "expected": {
+      "clean": false,
+      "confidence": 1.0,
+      "reasons": ["deleted"]
+    }
+  },
+  {
+    "name": "inferred incomplete lap",
+    "input": {
+      "inferred": true,
+      "lap_duration": null,
+      "sector_durations": [31.0, null, null],
+      "track_status": "1"
+    },
+    "expected": {
+      "clean": false,
+      "confidence": 0.5,
+      "reasons": ["inferred", "missing_lap_time", "missing_sectors"]
+    }
+  },
+  {
+    "name": "pit-out lap",
+    "input": {
+      "is_pit_out_lap": true,
+      "lap_duration": 105.0,
+      "sector_durations": [45.0, 30.0, 30.0],
+      "track_status": "1"
+    },
+    "expected": {
+      "clean": false,
+      "confidence": 1.0,
+      "reasons": ["pit_out"]
+    }
+  },
+  {
+    "name": "sector sum mismatch",
+    "input": {
+      "lap_duration": 90.0,
+      "sector_durations": [30.0, 30.0, 29.9],
+      "track_status": "1"
+    },
+    "expected": {
+      "clean": false,
+      "confidence": 0.75,
+      "reasons": ["sector_sum_mismatch"]
+    }
+  },
+  {
+    "name": "safety car affected lap",
+    "input": {
+      "lap_duration": 120.0,
+      "sector_durations": [40.0, 40.0, 40.0],
+      "track_status": "14"
+    },
+    "expected": {
+      "clean": false,
+      "confidence": 1.0,
+      "reasons": ["safety_car_or_red_flag"]
+    }
+  },
+  {
+    "name": "first lap after safety car",
+    "input": {
+      "lap_duration": 100.0,
+      "sector_durations": [34.0, 33.0, 33.0],
+      "track_status": "1",
+      "previous_track_status": "4"
+    },
+    "expected": {
+      "clean": false,
+      "confidence": 1.0,
+      "reasons": ["first_lap_after_safety_car"]
+    }
+  }
+]

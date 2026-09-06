@@ -97,6 +97,24 @@ async def test_manager_listener_unsubscribe(hass) -> None:
     assert received == []
 
 
+async def test_manager_storage_and_listener_failures_are_isolated(hass) -> None:
+    mgr = NoSpoilerModeManager(hass)
+    with patch.object(
+        mgr._store, "async_load", AsyncMock(side_effect=RuntimeError("load"))
+    ):
+        await mgr.async_load()
+    assert mgr.is_active is False
+
+    remove = mgr.add_listener(MagicMock(side_effect=RuntimeError("listener")))
+    with patch.object(
+        mgr._store, "async_save", AsyncMock(side_effect=RuntimeError("save"))
+    ):
+        await mgr.async_set_active(True)
+    assert mgr.is_active is True
+    remove()
+    remove()
+
+
 # ---------------------------------------------------------------------------
 # _is_no_spoiler_blocked and _is_no_spoiler_jolpica_blocked unit tests
 # ---------------------------------------------------------------------------

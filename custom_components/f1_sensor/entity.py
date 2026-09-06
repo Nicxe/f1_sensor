@@ -20,12 +20,30 @@ from .const import (
     ENTITY_NAME_MODE_LOCALIZED,
     OPERATION_MODE_DEVELOPMENT,
 )
+from .runtime import runtime_from_hass
 
 _TRANSLATIONS_DIR = Path(__file__).parent / "translations"
 _ENTRY_NAME_SETTINGS: dict[str, tuple[str, str]] = {}
 _TRANSLATION_NAME_CACHE: dict[str, dict[str, str]] = {}
 _REPLAY_ONLY_ACTIVE_REASONS = frozenset({"replay", "replay-mode"})
 _NO_SPOILER_LIVE_STATE_REASON = "no-spoiler"
+
+
+def entry_runtime_registry(
+    hass: HomeAssistant | None, entry_id: str | None
+) -> dict[str, object]:
+    """Return the typed config-entry runtime compatibility mapping."""
+    if hass is None or not entry_id:
+        return {}
+    runtime = runtime_from_hass(hass, entry_id)
+    if runtime is not None:
+        return runtime.legacy
+    # Isolated platform tests and pre-v3 compatibility callers can still provide
+    # the former mapping before a typed config-entry runtime exists. Production
+    # setup always resolves the typed branch above.
+    root = hass.data.get(DOMAIN)
+    legacy = root.get(entry_id) if isinstance(root, dict) else None
+    return legacy if isinstance(legacy, dict) else {}
 
 
 def _normalize_language(language: str | None) -> str:
@@ -224,7 +242,7 @@ def is_replay_only_stream_active(
     """Return True when replay-only entities should expose live data."""
     if hass is None or not entry_id:
         return False
-    reg = hass.data.get(DOMAIN, {}).get(entry_id, {}) or {}
+    reg = entry_runtime_registry(hass, entry_id)
     live_state = reg.get("live_state")
     if live_state is None:
         return False
@@ -243,7 +261,7 @@ def is_auth_gated_stream_active(
     if hass is None or not entry_id or not stream:
         return False
 
-    reg = hass.data.get(DOMAIN, {}).get(entry_id, {}) or {}
+    reg = entry_runtime_registry(hass, entry_id)
     if (
         reg.get(CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE)
         == OPERATION_MODE_DEVELOPMENT
@@ -335,9 +353,7 @@ class F1BaseEntity(CoordinatorEntity):
                 # This prevents sensors from staying available with restored/stale
                 # values when the supervisor is idle or the upstream is quiet.
                 with suppress(Exception):
-                    reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(
-                        self._entry_id, {}
-                    ) or {}
+                    reg = entry_runtime_registry(self.hass, self._entry_id)
                     operation_mode = reg.get(
                         CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE
                     )
@@ -406,9 +422,7 @@ class F1BaseEntity(CoordinatorEntity):
         _safe_write_ha_state(self)
 
     def _is_stream_active(self) -> bool:
-        reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(
-            self._entry_id, {}
-        ) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         live_state = reg.get("live_state")
         if live_state is not None and bool(getattr(live_state, "is_live", False)):
             return True
@@ -475,9 +489,7 @@ class F1AuxEntity(Entity):
         _safe_write_ha_state(self)
 
     def _is_stream_active(self) -> bool:
-        reg = (self.hass.data.get(DOMAIN, {}) if self.hass else {}).get(
-            self._entry_id, {}
-        ) or {}
+        reg = entry_runtime_registry(self.hass, self._entry_id)
         live_state = reg.get("live_state")
         if live_state is not None and bool(getattr(live_state, "is_live", False)):
             return True

@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-09-01",
+  "review_by": "2026-12-01",
+  "source_repository": "https://github.com/Nicxe/f1tv-token-helper",
+  "reviewed_commit": "368feb46b22f148958afe897ec9c18b6e622fbb3",
+  "manifest_version": 3,
+  "extension_version": "0.1.0",
+  "store_extension_id": "bbpgdcjohdjcechlffloekhpgdbjoafh",
+  "reproducible_build_sha256": "b82872ff7939f6f988b309f9705f7468d28f950715f3ebe98c585d8146e3cfd4",
+  "permissions": [
+    "cookies",
+    "activeTab",
+    "scripting",
+    "clipboardWrite",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://formula1.com/*",
+    "https://*.formula1.com/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "privacy": {
+    "analytics": false,
+    "remote_code": false,
+    "project_backend": false,
+    "persistent_token_storage": false,
+    "send_requires_user_action": true,
+    "pairing_session_uses_session_storage": true
+  },
+  "callback_policy": {
+    "https_required_for_public_hosts": true,
+    "local_http_allowed": true,
+    "exact_callback_path_required": true,
+    "userinfo_query_and_fragment_rejected": true
+  },
+  "production_dependency_vulnerabilities": 0,
+  "review_result": "approved"
+}

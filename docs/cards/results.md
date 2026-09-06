@@ -37,7 +37,11 @@ theme_mode: auto
 
 Select **Archive**, then a season, Grand Prix and session to load historical classifications. Race and Sprint tables show race fields; qualifying tables show position, driver and Q1–Q3 times. A published result can change after penalties or corrections.
 
-Existing `custom:f1-session-archive-card` configurations still open Results in Archive mode. The separate Session Archive card is no longer offered in the picker. You can use `default_scope: archive` with the current card type to open the archive first.
+<Figure src="/img/cards/results-archive.png" alt="Results card in Archive mode with the 2024 Abu Dhabi Grand Prix race classification" caption="Archive mode in Home Assistant, with season, Grand Prix and session controls." />
+
+Follow [Browse historical results](/features/historical-results) for a complete Archive workflow and a YAML example that opens a past season.
+
+Existing [`custom:f1-session-archive-card` configurations](/cards/session-archive) still open Results in Archive mode. The separate Session Archive card is no longer offered in the picker. You can use `default_scope: archive` with the current card type to open the archive first.
 
 ## Configuration
 

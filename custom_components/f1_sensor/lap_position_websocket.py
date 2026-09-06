@@ -10,6 +10,7 @@ from homeassistant.helpers import config_validation as cv, entity_registry as er
 import voluptuous as vol
 
 from .const import DOMAIN
+from .runtime import runtime_from_hass
 
 LAP_POSITION_WS_MARKER = "__lap_position_ws_registered__"
 LAP_POSITION_WS_SESSION_TYPE = f"{DOMAIN}/lap_position/session"
@@ -56,22 +57,34 @@ def _resolve_lap_position_coordinator(
     hass: HomeAssistant,
     entity_id: str,
 ) -> Any | None:
-    root = hass.data.get(DOMAIN)
-    if not isinstance(root, dict):
-        return None
-
     registry = er.async_get(hass)
-    entry = registry.async_get(entity_id)
-    if entry is not None and entry.config_entry_id:
-        data = root.get(entry.config_entry_id)
-        if isinstance(data, dict):
-            return data.get("lap_position_progression_coordinator")
+    entity_entry = registry.async_get(entity_id)
+    if entity_entry is not None and entity_entry.config_entry_id:
+        runtime = runtime_from_hass(hass, entity_entry.config_entry_id)
+        if runtime is not None:
+            return runtime.get("lap_position_progression_coordinator")
 
     candidates = [
-        data.get("lap_position_progression_coordinator")
-        for data in root.values()
-        if isinstance(data, dict) and data.get("lap_position_progression_coordinator")
+        coordinator
+        for config_entry in hass.config_entries.async_entries(DOMAIN)
+        if (runtime := runtime_from_hass(hass, config_entry.entry_id)) is not None
+        if (coordinator := runtime.get("lap_position_progression_coordinator"))
     ]
     if len(candidates) == 1:
         return candidates[0]
+    if candidates:
+        return None
+    root = hass.data.get(DOMAIN)
+    legacy_candidates = (
+        [
+            coordinator
+            for value in root.values()
+            if isinstance(root, dict) and isinstance(value, dict)
+            if (coordinator := value.get("lap_position_progression_coordinator"))
+        ]
+        if isinstance(root, dict)
+        else []
+    )
+    if len(legacy_candidates) == 1:
+        return legacy_candidates[0]
     return None

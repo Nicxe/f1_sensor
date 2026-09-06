@@ -2,6 +2,7 @@
   "name": "f1-sensor",
   "version": "5.2",
   "private": true,
+  "packageManager": "npm@10.9.8",
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
@@ -11,12 +12,19 @@
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
     "postinstall": "patch-package",
+    "test:frontend": "playwright test",
+    "test:frontend:update": "playwright test --update-snapshots",
+    "test:audit": "python3 scripts/run_npm_audit.py",
+    "test:release": "python3 scripts/check_release_build.py",
+    "test:quality": "python3 scripts/check_translations.py custom_components/f1_sensor/translations && npm run test:automation && npm run test:release && npm run test:frontend:unit && npm run test:frontend",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
     "test:docs:build": "node --test docs-tests/build.test.cjs",
     "test:docs:browser": "playwright test --config playwright.docs.config.js",
     "test:docs": "npm run build && npm run test:docs:build && npm run test:docs:browser",
-    "capture:docs-cards": "node docs-tests/capture-cards.cjs"
+    "capture:docs-cards": "node docs-tests/capture-cards.cjs",
+    "test:automation": "python3 -m unittest discover -s ci_tests && node --test ci_tests/*.test.cjs",
+    "test:frontend:unit": "node --experimental-vm-modules --test frontend-tests/unit/*.test.mjs"
   },
   "dependencies": {
     "@docusaurus/core": "^3.10.2",
@@ -32,19 +40,19 @@
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@docusaurus/faster": "3.10.1",
-    "@docusaurus/module-type-aliases": "3.10.1",
-    "@docusaurus/types": "3.10.1",
+    "@axe-core/playwright": "^4.13.0",
+    "@docusaurus/faster": "3.10.2",
+    "@docusaurus/module-type-aliases": "3.10.2",
+    "@docusaurus/types": "3.10.2",
     "@nicxe/semantic-release-config": "^1.2.3",
+    "@playwright/test": "^1.62.1",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/github": "^12.0.9",
     "@semantic-release/release-notes-generator": "^14.1.1",
     "conventional-changelog-conventionalcommits": "^9.3.1",
     "patch-package": "^8.0.0",
-    "semantic-release": "^25.0.5",
-    "@axe-core/playwright": "^4.13.0",
-    "@playwright/test": "^1.62.1"
+    "semantic-release": "^25.0.5"
   },
   "browserslist": {
     "production": [

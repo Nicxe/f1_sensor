@@ -1,41 +1,52 @@
-name: Tests
-
+name: Python tests
 on:
-  push:
-    branches: [dev, beta, main]
-    paths:
-      - ".github/workflows/tests.yml"
-      - "custom_components/**/*.py"
-      - "custom_components/**/*.js"
-      - "custom_components/**/tests/**"
-  pull_request:
-
+  workflow_call:
+    inputs:
+      blueprints_only:
+        type: boolean
+        default: false
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   tests:
-    name: Run pytest
+    name: HA ${{ matrix.profile }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: minimum
+            python: "3.12"
+          - profile: current
+            python: "3.14"
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          python-version: "3.14"
-
-      - name: Install test dependencies
-        run: pip install pytest-homeassistant-custom-component==0.13.307 pytest-cov
-
-      - name: Run tests
-        run: >
-          python -m pytest
-          custom_components/f1_sensor/tests/
-          --cov=custom_components.f1_sensor
-          --cov-report=term-missing
-          -q
+          persist-credentials: false
+          ref: ${{ github.event.inputs.pull_request && format('refs/pull/{0}/merge', github.event.inputs.pull_request) || github.sha }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements/ha-${{ matrix.profile }}.txt
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+      - run: pip install -r requirements/ha-${{ matrix.profile }}.txt
+      - name: Test selected HA profile
+        env:
+          TEST_PROFILE: ${{ matrix.profile }}
+          BLUEPRINTS_ONLY: ${{ inputs.blueprints_only }}
+        run: python scripts/run_ci_tests.py
+      - name: Test installed release
+        if: matrix.profile == 'current' && !inputs.blueprints_only
+        run: python scripts/test_installed_release.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: python-${{ matrix.profile }}-${{ inputs.blueprints_only }}
+          path: |
+            test-results/python-*.xml
+            coverage.json
+          retention-days: 7

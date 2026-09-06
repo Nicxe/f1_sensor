@@ -1,0 +1,26 @@
+{
+  "reviewed_on": "2026-09-05",
+  "websocket": {
+    "clients": [1, 3, 10],
+    "drivers": 22,
+    "seed_laps": 60,
+    "updates": 100,
+    "burst_size": 10,
+    "throttle_ms": 500,
+    "total_runtime_ms": 20000,
+    "p95_dispatch_ms": 50,
+    "bytes_per_client_per_source_second": 1048576
+  },
+  "replay": {
+    "duration_seconds": 7200,
+    "drivers": 22,
+    "lap_seconds": 90,
+    "timing_interval_seconds": 1,
+    "sessions": 2,
+    "fixture_disk_mib": 96,
+    "runtime_seconds_per_session": 120,
+    "peak_python_allocation_mib": 64,
+    "retained_growth_mib": 8,
+    "retained_after_unload_mib": 16
+  }
+}
