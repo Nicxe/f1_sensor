@@ -25,6 +25,29 @@ def pull(base, head, fork=False):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_owner_maintenance_can_repair_main_without_promoting_runtime_code(self):
+        event = pull("main", "maintenance/dependency-ci-recovery")
+        event["pull_request"]["user"]["login"] = "Nicxe"
+        files = [
+            "package.json",
+            ".github/scripts/auto-merge.cjs",
+            "scripts/ci_policy.py",
+            "ci_tests/test_ci_policy.py",
+        ]
+        self.assertEqual(branch_error(event, files), "")
+        for changed in [
+            [],
+            files + ["custom_components/f1_sensor/sensor.py"],
+            ["docs/help.md"],
+            ["scripts/other.py"],
+        ]:
+            self.assertTrue(branch_error(event, changed))
+        event["pull_request"]["user"]["login"] = "contributor"
+        self.assertTrue(branch_error(event, files))
+        event["pull_request"]["user"]["login"] = "Nicxe"
+        event["pull_request"]["head"]["repo"]["full_name"] = "fork/repo"
+        self.assertTrue(branch_error(event, files))
+
     def test_dependabot_default_branch_dependency_exception_is_narrow(self):
         event = pull("main", "dependabot/pip/requirements/pycares-4.9.0")
         event["pull_request"]["user"]["login"] = "dependabot[bot]"

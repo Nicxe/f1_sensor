@@ -94,7 +94,7 @@ jobs:
   required:
     name: Verify selected checks
     needs: [plan, lint, backend, frontend, documentation, validation, package, audit, blueprints, automation]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
