@@ -20,5 +20,6 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - name: Use the project npm version
+        run: npm install --global npm@10.9.8 --no-audit --no-fund
       - run: npm run test:audit

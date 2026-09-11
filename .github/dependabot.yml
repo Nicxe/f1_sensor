@@ -8,6 +8,25 @@ registries:
     token: ${{ secrets.DEPENDABOT_GH_PACKAGES_TOKEN }}
 
 updates:
+  # Security updates use the default branch. Group them so independent fixes
+  # do not block one another behind the repository-wide dependency audit.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    registries:
+      - github-packages
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
   - package-ecosystem: "npm"
     directory: "/"
     target-branch: "dev"
