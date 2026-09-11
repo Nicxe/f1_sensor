@@ -78,6 +78,29 @@ def branch_error(event: dict, files: list[str]) -> str:
     )
     if sync and base in ("dev", "beta", "content"):
         return ""
+    # The repository owner can repair dependency/CI infrastructure on main
+    # without promoting unreleased integration changes from dev. Required CI
+    # and PR protection still apply; this does not grant automatic merging.
+    maintenance_files = bool(files) and all(
+        p
+        in (
+            "package.json",
+            "package-lock.json",
+            ".github/dependabot.yml",
+            "quality/npm-audit-allowlist.json",
+            "scripts/ci_policy.py",
+        )
+        or p.startswith((".github/workflows/", ".github/scripts/", "ci_tests/"))
+        for p in files
+    )
+    if (
+        same_repo
+        and base == "main"
+        and head.startswith("maintenance/")
+        and pr["user"]["login"] == pr["base"]["repo"]["full_name"].split("/")[0]
+        and maintenance_files
+    ):
+        return ""
     # Dependency PRs may target the default branch for security fixes. The
     # trusted auto-merge workflow separately verifies signed Dependabot commits
     # and a matching open security alert before enabling automatic merging.
