@@ -7,7 +7,7 @@ from typing import Final, NotRequired, TypedDict
 STATIC_TRACK_GEOMETRY_APPROVAL_GENERATED: Final = "generated"
 STATIC_TRACK_GEOMETRY_APPROVAL_QA_PASSED: Final = "qa_passed"
 STATIC_TRACK_GEOMETRY_APPROVAL_VISUAL_APPROVED: Final = "visual_approved"
-STATIC_TRACK_GEOMETRY_CATALOG_VERSION: Final = "2026-07-03.static-catalog-v2"
+STATIC_TRACK_GEOMETRY_CATALOG_VERSION: Final = "2026-09-11.static-catalog-v3"
 STATIC_TRACK_GEOMETRY_GENERATOR: Final = "track_map_static_geometry_builder:geometry_v2"
 STATIC_TRACK_GEOMETRY_CALIBRATOR: Final = (
     "track_map_static_geometry_calibrator:detailed_map_shape_alignment"
@@ -2432,6 +2432,105 @@ STATIC_TRACK_GEOMETRIES: Final[dict[str, StaticTrackGeometryEntry]] = {
             (566, 2266),
         ),
     },
+    "153": {
+        "circuit_key": "153",
+        "circuit_id": "madring",
+        "aliases": ("madring", "madrid"),
+        "rotation": -94.3,
+        "points": (
+            (-3818, 9073),
+            (-3614, 9360),
+            (-3649, 9689),
+            (-3770, 9931),
+            (-3938, 10328),
+            (-3998, 10823),
+            (-3951, 11818),
+            (-3270, 12544),
+            (-3189, 13281),
+            (-3408, 13858),
+            (-3550, 14671),
+            (-3025, 15329),
+            (-1926, 15253),
+            (-1384, 14494),
+            (-1488, 13603),
+            (-1924, 12854),
+            (-2605, 12057),
+            (-3155, 11311),
+            (-3320, 10689),
+            (-2997, 10331),
+            (-2552, 10000),
+            (-2025, 9415),
+            (-1948, 8600),
+            (-1813, 7762),
+            (-1304, 7145),
+            (-378, 6904),
+            (452, 6944),
+            (942, 7157),
+            (1308, 6944),
+            (1598, 6489),
+            (1873, 5997),
+            (2135, 5536),
+            (2753, 5171),
+            (3403, 5251),
+            (4241, 5042),
+            (4607, 4445),
+            (4769, 3531),
+            (4873, 2676),
+            (4978, 2058),
+            (5051, 1823),
+            (5271, 1706),
+            (5491, 1833),
+            (5926, 1928),
+            (6443, 1970),
+            (6753, 1713),
+            (6845, 1439),
+            (6970, 853),
+            (7107, 48),
+            (7185, -659),
+            (6965, -1101),
+            (6446, -1214),
+            (6025, -1285),
+            (5258, -1411),
+            (4363, -1557),
+            (3694, -1665),
+            (3240, -1736),
+            (2669, -1817),
+            (2351, -1860),
+            (2019, -1906),
+            (1813, -1935),
+            (1654, -1957),
+            (1462, -1994),
+            (1231, -2112),
+            (1109, -2360),
+            (990, -2595),
+            (701, -2701),
+            (347, -2731),
+            (9, -2676),
+            (-674, -2152),
+            (-988, -1669),
+            (-1333, -1096),
+            (-1688, -520),
+            (-2073, 92),
+            (-2504, 786),
+            (-2974, 1657),
+            (-3188, 2259),
+            (-3369, 3080),
+            (-3401, 3807),
+            (-3359, 4187),
+            (-3225, 4694),
+            (-3100, 5018),
+            (-2973, 5297),
+            (-2951, 5506),
+            (-3011, 5795),
+            (-2968, 6048),
+            (-3065, 6485),
+            (-3234, 6989),
+            (-3491, 7477),
+            (-3682, 8107),
+            (-3832, 8580),
+            (-3818, 9073),
+        ),
+    },
 }
 
 
@@ -2488,6 +2587,27 @@ STATIC_TRACK_GEOMETRY_PROVENANCE_BY_CIRCUIT_ID: Final[
 ] = {
     circuit_id: _build_static_track_geometry_provenance(circuit_id, race_dump)
     for circuit_id, race_dump in _STATIC_TRACK_GEOMETRY_SOURCE_RACE_DUMPS.items()
+}
+
+
+STATIC_TRACK_GEOMETRY_PROVENANCE_BY_CIRCUIT_ID["madring"] = {
+    "approval_status": STATIC_TRACK_GEOMETRY_APPROVAL_VISUAL_APPROVED,
+    "visual_approved_at": "2026-09-11",
+    "catalog_version": STATIC_TRACK_GEOMETRY_CATALOG_VERSION,
+    "geometry_source": "position_z_dump",
+    "position_stream": "Position.z",
+    "source_season": 2026,
+    "source_session": "Practice 1",
+    "source_dump_path": (
+        "/Users/niklas/Desktop/import_requests/Streams/"
+        "2026-09-11_Spanish_Grand_Prix/2026-09-11_Practice_1"
+    ),
+    "generator": STATIC_TRACK_GEOMETRY_GENERATOR,
+    "calibration_source": "f1_detailed_map",
+    "calibrator": STATIC_TRACK_GEOMETRY_CALIBRATOR,
+    "qa_artifact": (
+        "/Users/niklas/GitHub/f1_track_map_madring_fp1_2026/madring_review.png"
+    ),
 }
 
 
