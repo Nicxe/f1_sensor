@@ -81,3 +81,50 @@ test('reopened dependency events refresh the base without trusting a changed dep
   await assert.rejects(queueDependabot(env,pr));
   assert.equal(queued,1);
 });
+
+test('security lookup paginates open alerts and verifies the exact changed lockfile',async()=>{
+  const {securityAdvisories}=require('../.github/scripts/auto-merge.cjs');
+  const alert={state:'open',dependency:{package:{ecosystem:'npm',name:'svgo'},manifest_path:'package-lock.json'},
+    security_advisory:{ghsa_id:'GHSA-w27v-7q3p-w38r'},security_vulnerability:{first_patched_version:{identifier:'3.3.5'}}};
+  let alerts=[alert], version='3.3.5', changed=true;
+  const calls=[];
+  const env={context:{repo:{owner:'Nicxe',repo:'f1_sensor'}},github:{
+    paginate:async(route,params)=>{calls.push({route,params});return route.includes('dependabot')?alerts:changed?[{filename:'package-lock.json'}]:[];},
+    rest:{repos:{getContent:async({ref})=>({data:{encoding:'base64',content:Buffer.from(JSON.stringify({packages:{'node_modules/svgo':{version:ref==='base'?'3.3.4':version}}})).toString('base64')}})}}}};
+  const metadata=[{dependencyName:'svgo',packageEcosystem:'npm_and_yarn',directory:'/'}];
+  assert.deepEqual(await securityAdvisories(env,pr,metadata),['GHSA-w27v-7q3p-w38r']);
+  assert.equal(calls[0].params.state,'open');assert.equal(calls[0].params.per_page,100);
+  version='3.3.4';assert.deepEqual(await securityAdvisories(env,pr,metadata),[]);
+  version='4.0.0';assert.deepEqual(await securityAdvisories(env,pr,metadata),[]);
+  version='3.3.5';changed=false;assert.deepEqual(await securityAdvisories(env,pr,metadata),[]);
+  changed=true;alerts=[{...alert,state:'dismissed'}];assert.deepEqual(await securityAdvisories(env,pr,metadata),[]);
+  alerts=[{...alert,dependency:{...alert.dependency,manifest_path:'other/package-lock.json'}}];
+  assert.deepEqual(await securityAdvisories(env,pr,metadata),[]);
+  alerts=[{...alert,security_vulnerability:{first_patched_version:null}}];
+  assert.deepEqual(await securityAdvisories(env,pr,metadata),[]);
+});
+
+test('grouped security updates use lockfile versions and API failures stop automation',async()=>{
+  const {securityAdvisories}=require('../.github/scripts/auto-merge.cjs');
+  const alert={state:'open',dependency:{package:{ecosystem:'npm',name:'colord'},manifest_path:'package-lock.json'},
+    security_advisory:{ghsa_id:'GHSA-2wm5-q62r-hmrv'},security_vulnerability:{first_patched_version:{identifier:'2.9.4'}}};
+  const env={context:{repo:{}},github:{paginate:async(route)=>route.includes('dependabot')?[alert]:[{filename:'package-lock.json'}],
+    rest:{repos:{getContent:async({ref})=>({data:{encoding:'base64',content:Buffer.from(JSON.stringify({packages:{'node_modules/colord':{version:ref==='base'?'2.9.3':'2.10.0'}}})).toString('base64')}})}}}};
+  assert.deepEqual(await securityAdvisories(env,pr,[{dependencyName:'svgo',directory:'/',packageEcosystem:'npm_and_yarn'},
+    {dependencyName:'colord',directory:'/',packageEcosystem:'npm_and_yarn',prevVersion:'',newVersion:''}]),['GHSA-2wm5-q62r-hmrv']);
+  env.github.paginate=async()=>{throw new Error('API unavailable');};
+  await assert.rejects(securityAdvisories(env,pr,[]),/API unavailable/);
+});
+
+test('pinned Python security fixes are checked against both commit snapshots',async()=>{
+  const {securityAdvisories}=require('../.github/scripts/auto-merge.cjs');
+  const alert={state:'open',dependency:{package:{ecosystem:'pip',name:'pycares'},manifest_path:'requirements/ha-minimum.txt'},
+    security_advisory:{ghsa_id:'GHSA-5qpg-rh4j-qp35'},security_vulnerability:{first_patched_version:{identifier:'4.9.0'}}};
+  let after='pycares==4.9.0\n';
+  const env={context:{repo:{}},github:{paginate:async(route)=>route.includes('dependabot')?[alert]:[{filename:'requirements/ha-minimum.txt'}],
+    rest:{repos:{getContent:async({ref})=>({data:{encoding:'base64',content:Buffer.from(ref==='base'?'pycares==4.8.0\n':after).toString('base64')}})}}}};
+  const metadata=[{dependencyName:'pycares',directory:'/requirements',packageEcosystem:'pip'}];
+  assert.deepEqual(await securityAdvisories(env,pr,metadata),['GHSA-5qpg-rh4j-qp35']);
+  after='pycares==4.8.0\n';assert.deepEqual(await securityAdvisories(env,pr,metadata),[]);
+  after='pycares>=4.9.0\n';assert.deepEqual(await securityAdvisories(env,pr,metadata),[]);
+});

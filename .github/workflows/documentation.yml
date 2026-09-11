@@ -20,15 +20,18 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - name: Use the project npm version
+        run: npm install --global npm@10.9.8 --no-audit --no-fund
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
       - run: npm run test:docs
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         if: inputs.publish && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
           path: build
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: failure()
+        if: failure() && hashFiles('playwright-report/docs/**', 'test-results/docs/**') != ''
         with:
           name: documentation-evidence
           path: |
