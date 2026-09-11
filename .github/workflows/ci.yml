@@ -30,7 +30,7 @@ jobs:
   required:
     name: ${{ github.event.inputs.pull_request && 'Dispatched CI result' || github.event_name == 'pull_request' && 'CI required' || 'Manual verification result' }}
     needs: checks
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Direct release retries to the release pipeline
