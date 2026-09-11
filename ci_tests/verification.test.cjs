@@ -41,3 +41,17 @@ test('cancelled verification cannot publish failure while completed failures sti
     assert.equal(Boolean(vm.runInNewContext(expression, context)), false);
   }
 });
+
+test('superseded native runs skip both gates, while real failures still reach the gates', () => {
+  for (const filename of ['ci.yml','ci-checks.yml']) {
+    const text=fs.readFileSync(path.join(__dirname,'../.github/workflows',filename),'utf8');
+    const condition=text.split('  required:')[1].match(/^    if: (.+)$/m)[1];
+    const expression=condition.replace(/^\$\{\{\s*|\s*\}\}$/g,'');
+    for (const result of ['success','failure']) {
+      const context={always:()=>true,cancelled:()=>false,needs:{checks:{result}}};
+      assert.equal(Boolean(vm.runInNewContext(expression,context)),true);
+      context.cancelled=()=>true;
+      assert.equal(Boolean(vm.runInNewContext(expression,context)),false);
+    }
+  }
+});
