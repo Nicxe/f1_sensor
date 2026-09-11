@@ -25,23 +25,24 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: await require('./.github/scripts/auto-merge.cjs').verifyDependabot({github, context}, context.payload.pull_request);
-      - uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2
+      - uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         id: metadata
         with:
           github-token: ${{ github.token }}
-          alert-lookup: ${{ github.event.pull_request.base.ref == 'main' && 'true' || '' }}
       - name: Queue verified security updates and development patch/minor updates
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          ALERT: ${{ steps.metadata.outputs.alert-state }}
-          GHSA: ${{ steps.metadata.outputs.ghsa-id }}
+          DEPENDENCIES: ${{ steps.metadata.outputs.updated-dependencies-json }}
           UPDATE: ${{ steps.metadata.outputs.update-type }}
         with:
           script: |
             const automation = require('./.github/scripts/auto-merge.cjs');
             const pr = context.payload.pull_request;
-            if (automation.eligible(pr.base.ref, {alert:process.env.ALERT, ghsa:process.env.GHSA, update:process.env.UPDATE})) {
+            const advisories = pr.base.ref === 'main'
+              ? await automation.securityAdvisories({github, context}, pr, JSON.parse(process.env.DEPENDENCIES)) : [];
+            if (automation.eligible(pr.base.ref, {alert:advisories.length ? 'OPEN' : '', ghsa:advisories[0], update:process.env.UPDATE})) {
               await automation.queueDependabot({github, context}, pr);
+              await core.summary.addRaw(`PR #${pr.number}: automatic merge requested, subject to required CI. Verified advisories: ${advisories.join(', ') || 'development patch/minor update'}.`).write();
             } else {
-              core.info('This update is outside the automatic merge policy.');
+              await core.summary.addRaw(`PR #${pr.number}: automatic merge was not enabled. No eligible security fix or development patch/minor update could be verified; maintainer review is required.`).write();
             }
