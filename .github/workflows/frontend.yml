@@ -16,12 +16,15 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - name: Use the project npm version
+        run: npm install --global npm@10.9.8 --no-audit --no-fund
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
       - run: npm run test:frontend:unit
       - run: npx playwright install --with-deps chromium
       - run: npm run test:frontend
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: failure()
+        if: failure() && hashFiles('playwright-report/**', 'test-results/playwright/**') != ''
         with:
           name: frontend-evidence
           path: |
