@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Iterable
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import suppress
 from copy import deepcopy
@@ -2318,6 +2318,13 @@ class ReplayTransport:
     async def ensure_connection(self) -> None:
         """No-op for replay transport - data is already local."""
         pass
+
+    async def update_streams(self, streams: Iterable[str]) -> None:
+        """Keep replay running when dashboard stream demand changes.
+
+        Replay delivers every stream in the cached archive. Live subscription
+        changes therefore require no transport update or playback reset.
+        """
 
     async def messages(self) -> AsyncGenerator[dict]:
         """Yield replay frames as SignalR-compatible messages."""

@@ -7,12 +7,15 @@ from datetime import UTC, datetime
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor import async_unload_entry, replay_mode
 from custom_components.f1_sensor.const import DOMAIN
+from custom_components.f1_sensor.feature_plan import TRACK_MAP_STREAMS
+from custom_components.f1_sensor.providers import ProviderRegistry
 from custom_components.f1_sensor.replay_mode import (
     ReplayController,
     ReplayIndex,
@@ -20,7 +23,23 @@ from custom_components.f1_sensor.replay_mode import (
     ReplayState,
     ReplayTransport,
 )
+from custom_components.f1_sensor.runtime import (
+    CacheRuntime,
+    CapabilityState,
+    F1RuntimeData,
+    HistoryRuntime,
+    LiveRuntime,
+    ProviderRuntime,
+    ReplayRuntime,
+    StaticRuntime,
+)
 from custom_components.f1_sensor.signalr import LiveBus
+from custom_components.f1_sensor.track_map import TrackMapRuntimeData, TrackMapStore
+from custom_components.f1_sensor.track_map_websocket import (
+    _TRACK_MAP_HUBS,
+    TRACK_MAP_WS_SUBSCRIBE_TYPE,
+    _ws_subscribe_track_map_snapshot,
+)
 
 
 @pytest.fixture
@@ -76,6 +95,111 @@ def _index(tmp_path: Path, name: str, *, large: bool) -> ReplayIndex:
         frames_file=path,
         index_file=tmp_path / f"{name}.json",
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("paused", [False, True], ids=["playing", "paused"])
+async def test_track_map_navigation_preserves_replay(
+    hass, tmp_path, playback_probe, paused
+):
+    """Dashboard subscriptions must not close or restart an active replay."""
+    queue_created, queue_full, _queues, readers = playback_probe
+    entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
+    entry.add_to_hass(hass)
+    index = _index(tmp_path, "navigation", large=True)
+    transport = ReplayTransport(hass, index, start_from_session_start=False)
+    if paused:
+        transport.pause()
+    base_streams = frozenset({"TimingData"})
+    bus = LiveBus(
+        hass,
+        AsyncMock(),
+        transport_factory=lambda: transport,
+        requested_streams=base_streams,
+    )
+    controller = ReplayController(hass, entry.entry_id, AsyncMock(), bus)
+    controller._transport = transport
+    controller._replay_active = True
+    controller.session_manager._loaded_index = index
+    controller.session_manager._state = (
+        ReplayState.PAUSED if paused else ReplayState.PLAYING
+    )
+    store = TrackMapStore(entry.entry_id)
+    entry.runtime_data = F1RuntimeData(
+        static=StaticRuntime(),
+        live=LiveRuntime(bus=bus, availability=SimpleNamespace(is_live=True)),
+        replay=ReplayRuntime(controller, None),
+        track_map=TrackMapRuntimeData(store),
+        cache=CacheRuntime(object(), {}, {}, {}),
+        providers=ProviderRuntime(ProviderRegistry()),
+        history=HistoryRuntime(service=object()),
+        capabilities=CapabilityState(
+            frozenset(), base_streams, base_streams, {"TimingData": ("live",)}
+        ),
+        legacy={},
+    )
+    connection = SimpleNamespace(
+        send_result=Mock(), send_event=Mock(), send_error=Mock(), subscriptions={}
+    )
+    try:
+        controller._playback_task = hass.async_create_task(controller._run_playback())
+        await bus.start()
+        await asyncio.wait_for(queue_created.wait(), 3)
+        await asyncio.wait_for(queue_full.wait(), 3)
+        playback_task = bus._task
+        position = transport.get_playback_position_ms()
+
+        # Open two cards, leave one, leave the last, then revisit the dashboard.
+        for message_id, subscribe in [
+            (1, True),
+            (2, True),
+            (1, False),
+            (2, False),
+            (3, True),
+            (3, False),
+        ]:
+            if subscribe:
+                _ws_subscribe_track_map_snapshot(
+                    hass,
+                    connection,
+                    {
+                        "id": message_id,
+                        "type": TRACK_MAP_WS_SUBSCRIBE_TYPE,
+                        "entry_id": entry.entry_id,
+                        "protocol_version": 2,
+                        "throttle_ms": 0,
+                    },
+                )
+                hub = _TRACK_MAP_HUBS[store]
+            else:
+                hub = _TRACK_MAP_HUBS[store]
+                connection.subscriptions.pop(message_id)()
+            await asyncio.wait_for(asyncio.gather(*hub._demand_tasks), 3)
+
+            assert not transport._closed
+            assert bus._client is transport
+            assert bus._task is playback_task
+            assert not playback_task.done()
+            assert controller.transport is transport
+            assert controller.state is (
+                ReplayState.PAUSED if paused else ReplayState.PLAYING
+            )
+            assert transport.get_playback_position_ms() == position
+            assert transport._paused is paused
+            assert transport._pause_event.is_set() is not paused
+            assert bus.requested_streams == (
+                base_streams | TRACK_MAP_STREAMS
+                if connection.subscriptions
+                else base_streams
+            )
+        connection.send_error.assert_not_called()
+    finally:
+        for unsubscribe in list(connection.subscriptions.values()):
+            unsubscribe()
+        await controller.async_close()
+        await bus.async_close()
+        await hass.async_block_till_done()
+    assert readers[0].done() and not readers[0].cancelled()
 
 
 @pytest.mark.asyncio

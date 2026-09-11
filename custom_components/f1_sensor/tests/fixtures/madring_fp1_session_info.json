@@ -1,0 +1,30 @@
+{
+  "Meeting": {
+    "Key": 1294,
+    "Name": "Spanish Grand Prix",
+    "OfficialName": "FORMULA 1 TAG HEUER GRAN PREMIO DE ESPAÑA 2026",
+    "Location": "Madrid",
+    "Number": 14,
+    "Country": {
+      "Key": 1,
+      "Code": "ESP",
+      "Name": "Spain"
+    },
+    "Circuit": {
+      "Key": 153,
+      "ShortName": "Madring"
+    }
+  },
+  "SessionStatus": "Inactive",
+  "ArchiveStatus": {
+    "Status": "Generating"
+  },
+  "Key": 11362,
+  "Type": "Practice",
+  "Number": 1,
+  "Name": "Practice 1",
+  "StartDate": "2026-09-11T13:30:00",
+  "EndDate": "2026-09-11T14:30:00",
+  "GmtOffset": "02:00:00",
+  "Path": "2026/2026-09-13_Spanish_Grand_Prix/2026-09-11_Practice_1/"
+}

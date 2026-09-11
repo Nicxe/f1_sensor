@@ -562,7 +562,7 @@ def test_static_track_geometry_catalog_uses_full_silverstone_loop() -> None:
     assert any(x <= -2200 and -400 <= y <= 600 for x, y in geometry.points)
 
 
-def test_static_track_geometry_catalog_contains_2025_calendar_tracks() -> None:
+def test_static_track_geometry_catalog_contains_2025_2026_calendar_tracks() -> None:
     expected = {
         "2": "Silverstone",
         "4": "Hungaroring",
@@ -588,6 +588,7 @@ def test_static_track_geometry_catalog_contains_2025_calendar_tracks() -> None:
         "150": "Lusail",
         "151": "Miami",
         "152": "Las Vegas",
+        "153": "Madring",
     }
 
     assert set(STATIC_TRACK_GEOMETRIES) == set(expected)
@@ -742,9 +743,15 @@ def test_static_track_geometry_catalog_entries_have_valid_shapes() -> None:
         assert provenance["catalog_version"] == STATIC_TRACK_GEOMETRY_CATALOG_VERSION
         assert provenance["geometry_source"] == "position_z_dump"
         assert provenance["position_stream"] == "Position.z"
-        assert provenance["source_session"] == "Race"
-        assert provenance["source_dump_path"].endswith("/Race")
-        assert provenance["qa_artifact"] == STATIC_TRACK_GEOMETRY_QA_ARTIFACT
+        if entry["circuit_id"] == "madring":
+            assert provenance["source_session"] == "Practice 1"
+            assert provenance["source_season"] == 2026
+            assert provenance["source_dump_path"].endswith("2026-09-11_Practice_1")
+            assert provenance["qa_artifact"].endswith("madring_review.png")
+        else:
+            assert provenance["source_session"] == "Race"
+            assert provenance["source_dump_path"].endswith("/Race")
+            assert provenance["qa_artifact"] == STATIC_TRACK_GEOMETRY_QA_ARTIFACT
         for alias in entry["aliases"]:
             assert alias == alias.lower()
             assert alias not in seen_aliases
@@ -759,16 +766,33 @@ def test_static_track_geometry_provenance_can_be_looked_up() -> None:
         provenance["approval_status"] == STATIC_TRACK_GEOMETRY_APPROVAL_VISUAL_APPROVED
     )
     assert provenance["source_dump_path"].endswith("/2025-05-02_Miami_Grand_Prix/Race")
-    assert get_static_track_geometry_provenance(circuit_id="madring") is None
+    assert get_static_track_geometry_provenance(circuit_id="unknown") is None
 
 
-def test_static_track_geometry_qa_reports_calendar_coverage_gap() -> None:
+@pytest.mark.parametrize("short_name", ["Madring", "Madrid", "MAD-RING"])
+def test_madring_geometry_matches_fp1_identity(short_name: str) -> None:
+    geometry = get_static_track_geometry(circuit_key="153")
+    assert geometry is not None
+    assert get_static_track_geometry(circuit_short_name=short_name) == geometry
+    assert geometry.source == TRACK_MAP_STATIC_GEOMETRY_SOURCE
+    assert geometry.points[0] == geometry.points[-1]
+    provenance = get_static_track_geometry_provenance(circuit_key="153")
+    assert provenance is not None
+    assert provenance["source_season"] == 2026
+    assert provenance["source_session"] == "Practice 1"
+    assert provenance["source_dump_path"].endswith("2026-09-11_Practice_1")
+    # The historic Spanish alias must continue to resolve to Barcelona.
+    assert get_static_track_geometry(circuit_short_name="Spanish").circuit_key == "15"
+
+
+def test_static_track_geometry_qa_reports_complete_calendar_coverage() -> None:
     report = build_static_track_geometry_qa_report()
 
     assert "madring" in expected_2025_2026_catalog_circuit_ids()
     assert report.expected_count == 25
-    assert report.catalog_count == 24
-    assert report.missing_circuit_ids == ("madring",)
+    assert report.catalog_count == 25
+    assert report.covered_count == 25
+    assert report.missing_circuit_ids == ()
     assert report.unexpected_circuit_ids == ()
 
     miami = next(entry for entry in report.entries if entry.circuit_id == "miami")
@@ -782,11 +806,21 @@ def test_static_track_geometry_qa_reports_calendar_coverage_gap() -> None:
     assert miami.provenance["catalog_version"] == STATIC_TRACK_GEOMETRY_CATALOG_VERSION
 
     madring = next(entry for entry in report.entries if entry.circuit_id == "madring")
+    assert madring.status == STATUS_OK
+    assert madring.circuit_key == "153"
+    assert madring.point_count >= 50
+    assert madring.image_source == "f1_detailed_map"
+    assert madring.approval_status == STATIC_TRACK_GEOMETRY_APPROVAL_VISUAL_APPROVED
+    assert madring.provenance["source_session"] == "Practice 1"
+
+
+def test_static_track_geometry_qa_reports_missing_catalog(monkeypatch) -> None:
+    monkeypatch.delitem(STATIC_TRACK_GEOMETRIES, "153")
+    report = build_static_track_geometry_qa_report()
+    assert report.missing_circuit_ids == ("madring",)
+    madring = next(entry for entry in report.entries if entry.circuit_id == "madring")
     assert madring.status == STATUS_MISSING_CATALOG
     assert madring.point_count == 0
-    assert madring.image_source == "f1_detailed_map"
-    assert madring.approval_status is None
-    assert madring.provenance is None
 
 
 def test_static_track_geometry_qa_writes_artifacts(
@@ -810,7 +844,7 @@ def test_static_track_geometry_qa_writes_artifacts(
     assert paths["overlay"].exists()
     assert "madring" in paths["markdown"].read_text(encoding="utf-8")
     payload = json.loads(paths["json"].read_text(encoding="utf-8"))
-    assert payload["missing_circuit_ids"] == ["madring"]
+    assert payload["missing_circuit_ids"] == []
     miami = next(
         entry for entry in payload["entries"] if entry["circuit_id"] == "miami"
     )
@@ -843,7 +877,9 @@ def test_static_track_geometry_qa_overlay_can_render_subset(tmp_path) -> None:
 
 def test_static_track_geometry_maintenance_generates_missing_candidate(
     tmp_path,
+    monkeypatch,
 ) -> None:
+    monkeypatch.delitem(STATIC_TRACK_GEOMETRIES, "153")
     _write_dump_session(
         tmp_path,
         event_dir="2026-09-13_Madrid_Grand_Prix",
@@ -885,7 +921,10 @@ def test_static_track_geometry_maintenance_generates_missing_candidate(
     assert entry.candidate.provenance["source_dump_path"].endswith("/Race")
 
 
-def test_static_track_geometry_maintenance_writes_artifacts(tmp_path) -> None:
+def test_static_track_geometry_maintenance_writes_artifacts(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.delitem(STATIC_TRACK_GEOMETRIES, "153")
     _write_dump_session(
         tmp_path,
         event_dir="2026-09-13_Madrid_Grand_Prix",
@@ -921,7 +960,9 @@ def test_static_track_geometry_maintenance_writes_artifacts(tmp_path) -> None:
 
 def test_static_track_geometry_maintenance_reports_cataloged_and_missing(
     tmp_path,
+    monkeypatch,
 ) -> None:
+    monkeypatch.delitem(STATIC_TRACK_GEOMETRIES, "153")
     _write_dump_session(
         tmp_path,
         event_dir="2026-05-03_Miami_Grand_Prix",
