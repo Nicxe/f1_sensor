@@ -13,6 +13,7 @@ from homeassistant.helpers.entity import EntityCategory
 
 from . import const
 from .auth import (
+    async_renew_f1tv_token,
     async_set_runtime_f1tv_auth_status,
     async_update_f1tv_auth_repair_issue,
     evaluate_f1tv_auth_header,
@@ -194,6 +195,13 @@ class F1RefreshF1TvAccessButton(F1AuxEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         if not is_auth_feature_enabled():
+            return
+
+        if await async_renew_f1tv_token(self.hass, self._entry):
+            persistent_notification.async_dismiss(
+                self.hass,
+                f"{DOMAIN}_f1tv_token_refresh_{self._entry.entry_id}",
+            )
             return
 
         async_setup_f1tv_auth_http(self.hass)

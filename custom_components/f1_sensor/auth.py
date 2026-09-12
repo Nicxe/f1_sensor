@@ -7,16 +7,26 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 import json
+import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later
 
 from . import const
 from .const import CONF_LIVE_TIMING_AUTH_HEADER, DOMAIN
 from .helpers import normalize_live_timing_auth_header
+
+_LOGGER = logging.getLogger(__name__)
+
+F1_RETRIEVE_SUBSCRIBER_URL = (
+    "https://api.formula1.com/v1/account/Subscriber/RetrieveSubscriber"
+)
+F1_API_KEY = "fCUCjWrKPu9ylJwRAv8BpGLEgiAuThx7"
+F1_SYSTEM_ID = "60a9ad84-e93d-480f-80d6-af37494f2e22"
 
 AUTH_STATUS_NOT_CONFIGURED = "not_configured"
 AUTH_STATUS_VALID = "valid"
@@ -115,6 +125,24 @@ def _extract_bearer_token(header: str) -> str:
     return parts[1].strip()
 
 
+def extract_f1tv_session_id(header: str | None) -> str | None:
+    """Extract the Ascendon SessionId from an F1TV live timing JWT."""
+    if not header:
+        return None
+    try:
+        token = _extract_bearer_token(header)
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        payload = _decode_jwt_part(parts[1])
+        session_id = payload.get("SessionId")
+        if isinstance(session_id, str) and session_id.strip():
+            return session_id.strip()
+    except Exception:
+        return None
+    return None
+
+
 def evaluate_f1tv_auth_header(
     value: object,
     *,
@@ -202,6 +230,83 @@ def validate_replacement_auth_header(
     if status.expires_at - now <= AUTH_MIN_REPLACEMENT_REMAINING:
         return None, "auth_token_expiring_soon", status
     return status.header, None, status
+
+
+async def async_renew_f1tv_token(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> bool:
+    """Attempt to automatically renew the F1TV live timing token using the saved session."""
+    if not is_auth_feature_enabled():
+        return False
+
+    current_header = entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER)
+    session_id = extract_f1tv_session_id(current_header)
+    if not session_id:
+        _LOGGER.debug("F1TV token auto-renewal skipped: No SessionId found in current token")
+        return False
+
+    session = async_get_clientsession(hass)
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like"
+            " Gecko) Chrome/133.0.0.0 Safari/537.36"
+        ),
+        "Content-Type": "application/json",
+        "apikey": F1_API_KEY,
+        "CD-SystemId": F1_SYSTEM_ID,
+        "cd-sessionid": session_id,
+        "orderSubmitted": "true",
+    }
+
+    try:
+        async with session.post(
+            F1_RETRIEVE_SUBSCRIBER_URL,
+            headers=headers,
+            json={},
+            timeout=15,
+        ) as response:
+            if response.status != 200:
+                _LOGGER.warning(
+                    "F1TV token auto-renewal failed: HTTP %s from F1 API", response.status
+                )
+                return False
+            data = await response.json()
+    except Exception as err:
+        _LOGGER.warning("F1TV token auto-renewal failed: %s", err)
+        return False
+
+    sub_token = (
+        data.get("data", {}).get("subscriptionToken") if isinstance(data, dict) else None
+    )
+    if not sub_token or not isinstance(sub_token, str):
+        _LOGGER.warning("F1TV token auto-renewal failed: No subscriptionToken in response")
+        return False
+
+    auth_header, error, status = validate_replacement_auth_header(
+        f"Bearer {sub_token}"
+    )
+    if error is not None or auth_header is None:
+        _LOGGER.warning(
+            "F1TV token auto-renewal returned invalid token: %s", error or "unknown_error"
+        )
+        return False
+
+    _LOGGER.info(
+        "Successfully auto-renewed F1TV token for entry %s (valid until %s)",
+        entry.entry_id,
+        status.expires_at_iso,
+    )
+
+    new_data = dict(entry.data)
+    new_data[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
+    hass.config_entries.async_update_entry(entry, data=new_data)
+    async_update_f1tv_auth_repair_issue(hass, entry, status)
+    async_set_runtime_f1tv_auth_status(hass, entry.entry_id, status)
+    ir.async_delete_issue(hass, DOMAIN, f1tv_auth_repair_issue_id(entry.entry_id))
+
+    await hass.config_entries.async_reload(entry.entry_id)
+    return True
 
 
 def rejected_f1tv_auth_status(status: F1TvAuthStatus) -> F1TvAuthStatus:
@@ -350,6 +455,12 @@ def async_schedule_f1tv_auth_status_refresh(
             entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER)
         )
 
+    if current.status in (AUTH_STATUS_EXPIRING_SOON, AUTH_STATUS_EXPIRED):
+        if extract_f1tv_session_id(entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER)):
+            _LOGGER.info("F1TV token is %s; scheduling automatic renewal", current.status)
+            hass.async_create_task(async_renew_f1tv_token(hass, entry))
+            return
+
     delay = _next_refresh_delay(current, _utcnow())
     if delay is None:
         return
@@ -368,6 +479,15 @@ def async_schedule_f1tv_auth_status_refresh(
             status = replace(status, used_for_live_timing=False)
         async_set_runtime_f1tv_auth_status(hass, entry.entry_id, status)
         async_update_f1tv_auth_repair_issue(hass, entry, status)
+
+        if status.status in (AUTH_STATUS_EXPIRING_SOON, AUTH_STATUS_EXPIRED):
+            if extract_f1tv_session_id(entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER)):
+                _LOGGER.info(
+                    "F1TV token entered %s; automatically renewing...", status.status
+                )
+                hass.async_create_task(async_renew_f1tv_token(hass, entry))
+                return
+
         async_schedule_f1tv_auth_status_refresh(hass, entry)
 
     data[AUTH_RUNTIME_STATUS_REFRESH_UNSUB] = async_call_later(hass, delay, _refresh)
