@@ -13,6 +13,7 @@ from homeassistant.helpers.entity import EntityCategory
 
 from . import const
 from .auth import (
+    F1TvRenewalResult,
     async_renew_f1tv_token,
     async_set_runtime_f1tv_auth_status,
     async_update_f1tv_auth_repair_issue,
@@ -173,7 +174,7 @@ class F1ClearF1TvAccessButton(F1AuxEntity, ButtonEntity):
 
 
 class F1RefreshF1TvAccessButton(F1AuxEntity, ButtonEntity):
-    """Button that starts a manual F1TV Token Helper pairing session."""
+    """Renew F1TV access, opening browser pairing only when required."""
 
     _device_category = "system"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -197,11 +198,14 @@ class F1RefreshF1TvAccessButton(F1AuxEntity, ButtonEntity):
         if not is_auth_feature_enabled():
             return
 
-        if await async_renew_f1tv_token(self.hass, self._entry):
+        result = await async_renew_f1tv_token(self.hass, self._entry)
+        if result == F1TvRenewalResult.RENEWED:
             persistent_notification.async_dismiss(
                 self.hass,
                 f"{DOMAIN}_f1tv_token_refresh_{self._entry.entry_id}",
             )
+            return
+        if result != F1TvRenewalResult.PAIRING_REQUIRED:
             return
 
         async_setup_f1tv_auth_http(self.hass)

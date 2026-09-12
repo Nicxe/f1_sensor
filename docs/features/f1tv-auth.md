@@ -63,7 +63,9 @@ Public live timing continues to work if F1TV access is missing, expired, invalid
 
 The recommended way to connect F1TV Auth is the [F1TV Token Helper](/help/f1tv-token-helper). The helper reads a short-lived live timing token from your own browser session and sends it to your own Home Assistant pairing callback.
 
-Home Assistant does not ask for your Formula 1 password. Tokens are short-lived, so expect to renew access when `sensor.f1_f1tv_token_status` reports `expiring_soon`, `expired`, `invalid`, or `rejected`.
+Home Assistant does not ask for your Formula 1 password. When your token contains a usable Formula 1 session, F1 Sensor automatically requests a replacement as the token enters its final 24 hours. Temporary connection failures are retried automatically. Your browser does not need to stay open.
+
+The underlying session has an observed lifetime of about 30 days from the original Formula 1 sign-in. Replacing the short-lived token does not extend that session. Formula 1 can also revoke it earlier. When the session can no longer renew access, Home Assistant shows a repair that leads you back to Token Helper. Tokens without a usable session continue to use manual pairing.
 
 The integration can check locally that a JWT is well-formed and unexpired. This does not prove that the token is authentic. F1TV access is confirmed only after Formula 1 accepts it during an upstream request.
 
@@ -80,7 +82,7 @@ Downloaded diagnostics can include redacted token health and live timing activit
 ## Limitations
 
 - F1TV Auth is optional.
-- Tokens are short-lived and renewal is not automatic.
+- Automatic renewal requires a usable session in the saved token. You still need Token Helper when that session expires or is revoked.
 - Extra live features are available only during suitable live sessions when Formula 1 publishes the needed data.
 - Live Track Map cannot be fully verified without an active session and a working token.
 - Replay Mode is separate from live auth and can show archived data later when the replay archive contains it.

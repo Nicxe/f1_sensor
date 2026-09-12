@@ -17,8 +17,8 @@ The Token Helper is the recommended way to connect optional [F1TV Auth](/feature
 Install the helper from the [Chrome Web Store](https://chromewebstore.google.com/detail/f1tv-token-helper-beta/bbpgdcjohdjcechlffloekhpgdbjoafh) before you start pairing from Home Assistant.
 
 :::info
-F1TV live timing tokens are short-lived. Expect to renew F1TV access about every four days.
-Home Assistant shows a repair issue in the UI when F1TV access needs renewal.
+F1TV live timing tokens are short-lived. F1 Sensor renews them automatically while the saved Formula 1 session remains usable.
+Home Assistant shows a repair issue when you need to sign in again.
 :::
 
 ## Step-by-step
@@ -54,8 +54,8 @@ Home Assistant stores only the live timing authorization value it needs.
 If the token expires later, public live timing continues to work.
 
 After pairing, `sensor.f1_f1tv_token_status` and `sensor.f1_f1tv_token_expires_at` show the saved token health.
-Renew the token when its status or expiry sensor says access needs attention.
-You can start a new pairing later with `button.f1_refresh_f1tv_access` or remove the saved token with `button.f1_clear_f1tv_access`.
+Follow the Home Assistant repair when access needs a new sign-in.
+F1 Sensor automatically renews access while the saved token contains a usable Formula 1 session. You can request renewal with `button.f1_refresh_f1tv_access`; it starts a new pairing when a browser sign-in is needed. Use `button.f1_clear_f1tv_access` to remove the saved token.
 
 For the full live timing availability model, see [F1TV Auth](/features/f1tv-auth). For setup steps, see [F1TV Auth Setup](/help/f1tv-auth-setup).
 
@@ -93,7 +93,7 @@ Pairing links are intentionally short-lived.
 
 This is expected.
 F1TV live timing tokens are short-lived and normally need to be renewed about every four days.
-Start a new pairing with `button.f1_refresh_f1tv_access` when the token status shows that F1TV access needs attention.
+F1 Sensor attempts automatic renewal before expiry and retries temporary connection failures. The underlying Formula 1 session has an observed lifetime of about 30 days from the original sign-in, and renewal does not extend that deadline. When Home Assistant reports that sign-in is required, use `button.f1_refresh_f1tv_access` or the repair flow to pair again. See [token lifetime](/help/f1tv-auth-setup#step-3---understand-token-lifetime).
 
 </details>
 

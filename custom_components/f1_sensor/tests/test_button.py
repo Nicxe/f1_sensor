@@ -11,6 +11,7 @@ from yarl import URL
 from custom_components.f1_sensor.auth import (
     AUTH_RUNTIME_STATUS,
     AUTH_STATUS_NOT_CONFIGURED,
+    F1TvRenewalResult,
 )
 from custom_components.f1_sensor.auth_http import AUTH_PAIRING_SESSIONS
 from custom_components.f1_sensor.button import (
@@ -178,6 +179,10 @@ async def test_refresh_f1tv_access_button_creates_pairing_notification(
         },
     )
     entry.add_to_hass(hass)
+    renewal = AsyncMock(return_value=F1TvRenewalResult.PAIRING_REQUIRED)
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.button.async_renew_f1tv_token", renewal
+    )
     notifications = AsyncMock()
     monkeypatch.setattr(
         "custom_components.f1_sensor.button.persistent_notification.async_create",
@@ -196,6 +201,7 @@ async def test_refresh_f1tv_access_button_creates_pairing_notification(
 
     await button.async_press()
 
+    renewal.assert_awaited_once_with(hass, entry)
     notifications.assert_awaited_once()
     message = notifications.await_args.args[1]
     assert "Open F1TV Token Helper" in message
@@ -208,6 +214,71 @@ async def test_refresh_f1tv_access_button_creates_pairing_notification(
     session = sessions[helper_url.query["session_id"]]
     assert session.entry_id == entry.entry_id
     assert helper_url.query["nonce"] == session.nonce
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        F1TvRenewalResult.RENEWED,
+        F1TvRenewalResult.RETRY_LATER,
+        F1TvRenewalResult.CANCELLED,
+    ],
+)
+async def test_refresh_f1tv_access_button_avoids_unnecessary_pairing(
+    hass, monkeypatch, result
+) -> None:
+    monkeypatch.setattr("custom_components.f1_sensor.const.ENABLE_F1TV_AUTH", True)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            CONF_LIVE_TIMING_AUTH_HEADER: "Bearer existing-token",
+        },
+    )
+    entry.add_to_hass(hass)
+    renewal = AsyncMock(return_value=result)
+    notifications = AsyncMock()
+    dismiss = MagicMock()
+    setup_pairing = MagicMock()
+    create_pairing = MagicMock()
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.button.async_renew_f1tv_token", renewal
+    )
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.button.persistent_notification.async_create",
+        notifications,
+    )
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.button.persistent_notification.async_dismiss",
+        dismiss,
+    )
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.button.async_setup_f1tv_auth_http", setup_pairing
+    )
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.button.async_create_f1tv_pairing_session",
+        create_pairing,
+    )
+    button = F1RefreshF1TvAccessButton(
+        hass=hass,
+        unique_id=f"{entry.entry_id}_refresh_f1tv_access",
+        entry=entry,
+        device_name="F1",
+    )
+
+    await button.async_press()
+
+    renewal.assert_awaited_once_with(hass, entry)
+    notifications.assert_not_called()
+    setup_pairing.assert_not_called()
+    create_pairing.assert_not_called()
+    assert AUTH_PAIRING_SESSIONS not in hass.data.get(DOMAIN, {})
+    if result is F1TvRenewalResult.RENEWED:
+        dismiss.assert_called_once_with(
+            hass, f"{DOMAIN}_f1tv_token_refresh_{entry.entry_id}"
+        )
+    else:
+        dismiss.assert_not_called()
 
 
 @pytest.mark.asyncio
