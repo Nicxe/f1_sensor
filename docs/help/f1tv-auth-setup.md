@@ -84,7 +84,11 @@ Home Assistant should finish the pairing, save the live timing authorization val
 ## Step 3 - Understand token lifetime
 
 F1TV tokens are short-lived.
-They are usually valid for only a few days, so you should expect to repeat the helper flow and replace the saved token when it expires.
+They are usually valid for only a few days. F1 Sensor automatically tries to renew them during their final 24 hours, using the session already contained in the saved token. Home Assistant also attempts renewal if it starts with an expired token and a usable session. You can close your browser after pairing.
+
+The underlying Formula 1 session has an observed lifetime of about 30 days from the original sign-in. Automatic token renewal does not extend that deadline, and Formula 1 can revoke the session earlier. When the session expires or is rejected, use the Home Assistant repair or Token Helper to sign in again and reconnect. Tokens without a usable session require manual renewal.
+
+Temporary connection failures are retried with increasing delays. Token expiry monitoring continues while Home Assistant retries, so a failed request does not hide an expired token.
 
 The integration exposes two helper sensors so you can monitor token health from Home Assistant:
 
@@ -103,7 +107,7 @@ button.f1_refresh_f1tv_access
 button.f1_clear_f1tv_access
 ```
 
-Use `button.f1_refresh_f1tv_access` to start a new Token Helper pairing from Home Assistant.
+Use `button.f1_refresh_f1tv_access` to request renewal. If a new browser sign-in is needed, it opens the existing Token Helper pairing notification. Temporary failures are retried automatically without asking you to sign in again.
 Use `button.f1_clear_f1tv_access` to remove the saved token and return to public live timing only.
 
 The saved token is part of the Home Assistant config entry and normally follows it into Home Assistant backups. Treat shared backups as credentials. If you suspect exposure, clear the saved token and revoke the Formula 1 browser session before pairing again.
