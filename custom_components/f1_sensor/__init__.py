@@ -22,6 +22,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, callback as ha_callba
 from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.entity_platform import async_get_platforms
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -1660,6 +1661,9 @@ async def _async_refresh_static_runtime(
 async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
     """Set up one config entry transactionally."""
     transaction = _SetupTransaction()
+    existing_platforms = {
+        id(platform) for platform in async_get_platforms(hass, DOMAIN)
+    }
     root = hass.data.setdefault(DOMAIN, {})
     owners = root.setdefault(_JOLPICA_SETUP_OWNERS_KEY, set())
     owner = object()
@@ -1667,6 +1671,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
     try:
         return await _async_setup_entry(hass, entry, transaction)
     except BaseException:
+        # Only unload platforms created for this attempt. HA may retain platform
+        # objects from earlier unloads in its entity-platform registry.
+        started_platforms = [
+            platform.domain
+            for platform in async_get_platforms(hass, DOMAIN)
+            if platform.config_entry is entry and id(platform) not in existing_platforms
+        ]
+        if started_platforms:
+            with suppress(Exception):
+                await hass.config_entries.async_unload_platforms(
+                    entry, started_platforms
+                )
         data_root = hass.data.get(DOMAIN)
         data = (
             data_root.pop(entry.entry_id, None) if isinstance(data_root, dict) else None
@@ -1675,8 +1691,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
             await _async_close_runtime_mapping(data)
         else:
             await transaction.async_rollback()
-        with suppress(Exception):
-            await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
         async_cancel_f1tv_auth_status_refresh(hass, entry.entry_id)
         unregister_entry_name_settings(entry.entry_id)
         entry.runtime_data = None
@@ -7341,31 +7355,30 @@ class F1DataCoordinator(DataUpdateCoordinator):
                 else:
                     validate_single_page_jolpica(payload, race_leaf_keys)
 
-            async with asyncio.timeout(10):
-                data = await fetch_json(
-                    self.hass,
-                    self._session,
-                    request_url,
-                    headers=self._headers,
-                    ttl_seconds=self._ttl,
-                    cache=self._cache,
-                    inflight=self._inflight,
-                    persist_map=self._persist,
-                    persist_save=self._persist_save,
-                    validator=_validate,
-                )
-                # Detect season rollovers in current.json and clear stale caches if needed.
-                self._handle_season_rollover_if_needed(data)
-                # No-spoiler: keep the cache warm but don't deliver new data to entities.
-                if _is_no_spoiler_jolpica_blocked(self):
-                    return self.data
-                if self._provider_registry is None:
-                    return data
-                return self._provider_registry.normalize(
-                    "jolpica",
-                    self._url,
-                    data,
-                ).payload
+            data = await fetch_json(
+                self.hass,
+                self._session,
+                request_url,
+                headers=self._headers,
+                ttl_seconds=self._ttl,
+                cache=self._cache,
+                inflight=self._inflight,
+                persist_map=self._persist,
+                persist_save=self._persist_save,
+                validator=_validate,
+            )
+            # Detect season rollovers in current.json and clear stale caches if needed.
+            self._handle_season_rollover_if_needed(data)
+            # No-spoiler: keep the cache warm but don't deliver new data to entities.
+            if _is_no_spoiler_jolpica_blocked(self):
+                return self.data
+            if self._provider_registry is None:
+                return data
+            return self._provider_registry.normalize(
+                "jolpica",
+                self._url,
+                data,
+            ).payload
         except Exception as err:
             raise UpdateFailed(
                 f"Error fetching data: {_format_update_error(err)}"
@@ -7670,19 +7683,18 @@ class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
             else:
                 validate_single_page_jolpica(payload, race_leaf_keys)
 
-        async with asyncio.timeout(10):
-            payload = await fetch_json(
-                self.hass,
-                self._session,
-                request_url,
-                headers=self._headers,
-                ttl_seconds=self._ttl,
-                cache=self._cache,
-                inflight=self._inflight,
-                persist_map=self._persist,
-                persist_save=self._persist_save,
-                validator=_validate,
-            )
+        payload = await fetch_json(
+            self.hass,
+            self._session,
+            request_url,
+            headers=self._headers,
+            ttl_seconds=self._ttl,
+            cache=self._cache,
+            inflight=self._inflight,
+            persist_map=self._persist,
+            persist_save=self._persist_save,
+            validator=_validate,
+        )
         return payload
 
     def _target_race(self) -> dict[str, Any] | None:

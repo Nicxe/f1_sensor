@@ -8,9 +8,15 @@ import time
 from unittest.mock import AsyncMock, patch
 
 from aiohttp import ClientConnectionError, ClientResponseError
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.exceptions import ConfigEntryNotReady
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.f1_sensor import F1DataCoordinator
+from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor.jolpica import (
+    JOLPICA_CLIENT_KEY,
     JolpicaClient,
     JolpicaConfigurationError,
     JolpicaHTTPError,
@@ -112,6 +118,55 @@ async def test_requires_canonical_user_agent(hass) -> None:
         pytest.raises(JolpicaConfigurationError),
     ):
         await client.async_initialize()
+
+
+@pytest.mark.parametrize("slow_response", [True, False])
+async def test_first_refresh_jolpica_budget_and_recovery(hass, slow_response) -> None:
+    """Allow a slow valid response and recover after a transport timeout."""
+    payload = {
+        "MRData": {
+            "total": "0",
+            "limit": "100",
+            "offset": "0",
+            "RaceTable": {"season": "2026", "Races": []},
+        }
+    }
+    gate = asyncio.Event()
+    session = _Session(
+        [_Response(payload=payload, gate=gate)],
+        error=None if slow_response else TimeoutError(),
+    )
+    client = await _client(hass, session)
+    hass.data.setdefault(DOMAIN, {})[JOLPICA_CLIENT_KEY] = client
+    entry = MockConfigEntry(domain=DOMAIN)
+    entry.add_to_hass(hass)
+    entry.mock_state(hass, ConfigEntryState.SETUP_IN_PROGRESS)
+    coordinator = F1DataCoordinator(
+        hass,
+        _URL,
+        "Race calendar",
+        session=session,
+        config_entry=entry,
+        cache={},
+        inflight={},
+        persist_map={},
+    )
+    release = hass.loop.call_later(11, gate.set) if slow_response else None
+    try:
+        if not slow_response:
+            with pytest.raises(ConfigEntryNotReady, match="Jolpica request timed out"):
+                await coordinator.async_config_entry_first_refresh()
+            assert coordinator.last_update_success is False
+            session.error = None
+            gate.set()
+        await coordinator.async_config_entry_first_refresh()
+        assert coordinator.last_update_success is True
+        assert coordinator.data == payload
+        assert len(session.calls) == (1 if slow_response else 2)
+    finally:
+        if release is not None:
+            release.cancel()
+        await coordinator.async_shutdown()
 
 
 @pytest.mark.parametrize(

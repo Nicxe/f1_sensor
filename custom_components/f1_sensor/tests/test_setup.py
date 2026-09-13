@@ -7,10 +7,12 @@ from datetime import UTC, datetime, timedelta
 import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.entity_platform import DATA_ENTITY_PLATFORM
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -800,6 +802,8 @@ async def test_failed_first_refresh_rolls_back_all_started_runtime(
 
         with pytest.raises(ConfigEntryNotReady, match="injected refresh failure"):
             await async_setup_entry(hass, mock_config_entry)
+        hass.config_entries.async_forward_entry_setups.assert_not_awaited()
+        hass.config_entries.async_unload_platforms.assert_not_awaited()
         failed_bus = FakeLiveBus.last_instance
         failed_client = DummyJolpicaClient.created[-1]
         assert mock_config_entry.entry_id not in hass.data[DOMAIN]
@@ -813,6 +817,40 @@ async def test_failed_first_refresh_rolls_back_all_started_runtime(
         assert retry_bus.started is True
         assert isinstance(mock_config_entry.runtime_data, F1RuntimeData)
         assert await async_unload_entry(hass, mock_config_entry)
+
+
+@pytest.mark.asyncio
+async def test_failed_setup_unloads_only_platforms_for_its_entry(
+    hass,
+    mock_config_entry,
+) -> None:
+    """A partial startup must not unload untouched platforms or other entries."""
+    other_entry = MockConfigEntry(domain=DOMAIN)
+    hass.data[DATA_ENTITY_PLATFORM] = {
+        DOMAIN: [
+            SimpleNamespace(domain="calendar", config_entry=mock_config_entry),
+            SimpleNamespace(domain="button", config_entry=other_entry),
+            SimpleNamespace(domain="weather", config_entry=None),
+        ]
+    }
+
+    async def partial_setup(*args):
+        hass.data[DATA_ENTITY_PLATFORM][DOMAIN].append(
+            SimpleNamespace(domain="sensor", config_entry=mock_config_entry)
+        )
+        raise ConfigEntryNotReady("partial startup failure")
+
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    with patch(
+        "custom_components.f1_sensor._async_setup_entry",
+        side_effect=partial_setup,
+    ):
+        with pytest.raises(ConfigEntryNotReady, match="partial startup failure"):
+            await async_setup_entry(hass, mock_config_entry)
+    hass.config_entries.async_unload_platforms.assert_awaited_once_with(
+        mock_config_entry, ["sensor"]
+    )
+    hass.data.pop(DATA_ENTITY_PLATFORM)
 
 
 @pytest.mark.asyncio
