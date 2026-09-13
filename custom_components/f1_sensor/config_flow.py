@@ -119,6 +119,7 @@ def _normalize_auth_header(value: object) -> str:
 
 class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 4
+    MINOR_VERSION = 2
     _pending_f1tv_setup_data: dict | None = None
     _pending_f1tv_setup_options: dict | None = None
     _completed_f1tv_pairing_session_id: str | None = None

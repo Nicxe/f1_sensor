@@ -56,6 +56,7 @@ from .auth_http import (
 from .calibration import LiveDelayCalibrationManager
 from .const import (
     API_URL,
+    CONF_LEGACY_RACE_CONTROL_EVENTS,
     CONF_LIVE_DELAY_REFERENCE,
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
@@ -1523,6 +1524,15 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
         options["disabled_sensors"] = sorted(disabled)
         changed = True
 
+    if entry.version < 4 or entry.minor_version < 2:
+        # Before feature-based demand, enabling live timing also enabled Race
+        # Control events regardless of the selected sensors. Preserve that
+        # contract for existing event automations without creating extra sensors.
+        data[CONF_LEGACY_RACE_CONTROL_EVENTS] = bool(
+            options.get("enable_race_control", data.get("enable_race_control", False))
+        )
+        changed = True
+
     unique_id = entry.unique_id
     if unique_id is None:
         conflicting = any(
@@ -1540,6 +1550,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
             options=options,
             unique_id=unique_id,
             version=4,
+            minor_version=max(entry.minor_version, 2) if entry.version == 4 else 2,
         )
     return True
 
@@ -2123,6 +2134,9 @@ async def _async_setup_entry(
         enabled,
         live_enabled=enable_rc,
         development_mode=operation_mode == OPERATION_MODE_DEVELOPMENT,
+        legacy_race_control_events=bool(
+            entry.data.get(CONF_LEGACY_RACE_CONTROL_EVENTS, False)
+        ),
     )
     await _async_refresh_static_runtime(
         race_coordinator=race_coordinator,

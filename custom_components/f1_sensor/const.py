@@ -48,6 +48,10 @@ ENTITY_NAME_MODE_LEGACY = "legacy"
 ENTITY_NAME_MODE_LOCALIZED = "localized"
 DEFAULT_ENTITY_NAME_LANGUAGE = "en"
 
+# Compatibility metadata for entries created before event delivery became
+# dependent on sensor selection. Kept in entry data across options changes.
+CONF_LEGACY_RACE_CONTROL_EVENTS = "legacy_race_control_events"
+
 # Race schedule grace period: keep a session "current" briefly after start.
 RACE_SWITCH_GRACE = timedelta(hours=3)
 

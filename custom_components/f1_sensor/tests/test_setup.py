@@ -1640,6 +1640,7 @@ async def test_legacy_enabled_sensor_migration_is_lossless_and_idempotent(hass) 
     first_data = dict(entry.data)
 
     assert entry.version == 4
+    assert entry.minor_version == 2
     assert entry.unique_id == DOMAIN
     assert "disabled_sensors" not in entry.data
     assert "next_race" not in entry.options["disabled_sensors"]
