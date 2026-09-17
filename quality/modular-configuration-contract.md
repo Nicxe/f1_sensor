@@ -63,6 +63,7 @@ Tabellen beskriver normaliserade värden. Den inkommande konfigurationen får ut
 | `layout` | `stack` eller `tabs`, standard `stack` | Samma modulmodeller används i båda layouterna |
 | `modules` | Lista, standard helgmallen | Ordningen är visningsordningen. Tom lista ger ett tomt kort med vägledning. Högst 64 moduler. |
 | `appearance` | Objekt | Kortgemensamma grafiska inställningar enligt avsnitt 5 |
+| `styles` | Valfri CSS-text, högst 32 768 tecken | Kortlokal avancerad styling enligt avsnitt 5. JavaScript-mallar, `@import` och `url()` accepteras inte. |
 | `accessibility` | Objekt | Kortgemensamma tillgänglighetsval enligt avsnitt 6 |
 | `context` | Objekt | Installationens visningssammanhang enligt avsnitt 7 |
 | HA:s åtgärdsegenskaper | JSON-värden, exempelvis `entity`, `tap_action`, `hold_action`, `double_tap_action` | Förmedlas genom den gemensamma HA-åtgärdshanteringen. `entity` är ett åtgärdsmål, inte ersättning för F1-installationsvalet. |
@@ -134,7 +135,14 @@ Prioriteten är följande:
 5. Dekorativ accent och teamfärger ändrar inte betydelsen av timingfärger. `palette` gäller de semantiska statusnycklar som renderaren stöder; okända giltiga färgnycklar bevaras men får ingen uppfunnen betydelse.
 6. Hög kontrast och systemets forced-colors måste kunna göra innehållet läsbart även när dekorativa färger inte kan behållas. Egna färger behålls i konfigurationen.
 
-Versionsgräns: version 2 har kortgemensamt utseende och separata visningsval för modul-/tabellrubriker. Det finns inte ett allmänt objekt för godtycklig CSS eller en separat fullständig stilprofil per modul. Fältens presentationsval, exempelvis tabell eller diagram, ligger i respektive moduls `options`.
+Versionsgräns: version 2 har kortgemensamt utseende, separata visningsval för
+modul-/tabellrubriker och valfri kortlokal CSS i `styles`. CSS tillämpas efter det
+beräknade standardutseendet och begränsas av kortets Shadow DOM. Dokumenterade
+`--f1-*`-variabler, modulernas `data-module-type`/`data-module-id` och offentliga
+Shadow Parts utgör det stabila stylingkontraktet; privata klassnamn gör det inte.
+Det finns ingen JavaScript-utvärdering, extern CSS-import eller separat fullständig
+stilprofil per modul. Fältens presentationsval, exempelvis tabell eller diagram,
+ligger i respektive moduls `options`.
 
 ## 6. Tillgänglighetsmodell
 

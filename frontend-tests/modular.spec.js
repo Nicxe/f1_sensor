@@ -321,6 +321,68 @@ test('all three styles retain timing content in light and dark themes', async ({
   }
 });
 
+test('custom CSS uses stable module targets, public parts and one reusable scoped stylesheet', async ({ page }) => {
+  const styles = `body { --f1-outside-probe: changed; }\nha-card { --f1-card-radius: 31px; }\nf1-module-view[data-module-type="timing"] { --f1-cell-padding: 3px 7px; }\nf1-module-view[data-module-type="timing"]::part(module-title) { color: rgb(1, 2, 3); }`;
+  await page.evaluate(styles => window.mountModular({ config: { styles, modules: [{ id: 'main-timing', type: 'timing', fields: ['position', 'driver', 'last_lap'] }] } }), styles);
+  await expect.poll(() => page.evaluate(() => {
+    const card = window.fixtureCard;
+    const module = [...card.moduleNodes.values()][0];
+    const style = card.shadowRoot.querySelector('style[data-f1-user-styles]');
+    const surface = card.shadowRoot.querySelector('ha-card');
+    const cell = module?.shadowRoot?.querySelector('td');
+    const title = module?.shadowRoot?.querySelector('[part="module-title"]');
+    return {
+      styleCount: card.shadowRoot.querySelectorAll('style[data-f1-user-styles]').length,
+      styleText: style?.textContent,
+      radius: surface ? getComputedStyle(surface).borderRadius : null,
+      moduleType: module?.dataset.moduleType,
+      moduleId: module?.dataset.moduleId,
+      modulePart: module?.getAttribute('part'),
+      cellPadding: cell ? getComputedStyle(cell).padding : null,
+      titleColor: title ? getComputedStyle(title).color : null,
+      outsideProbe: getComputedStyle(document.body).getPropertyValue('--f1-outside-probe'),
+    };
+  })).toEqual({
+    styleCount: 1,
+    styleText: styles,
+    radius: '31px',
+    moduleType: 'timing',
+    moduleId: 'main-timing',
+    modulePart: 'module',
+    cellPadding: '3px 7px',
+    titleColor: 'rgb(1, 2, 3)',
+    outsideProbe: '',
+  });
+  expect(await page.evaluate(() => {
+    const card = window.fixtureCard;
+    window.originalUserStyle = card.shadowRoot.querySelector('style[data-f1-user-styles]');
+    card.setConfig({ ...card.config, styles: 'ha-card { --f1-card-radius: 18px; }' });
+    card.revision++;
+    return true;
+  })).toBe(true);
+  await expect.poll(() => page.evaluate(() => {
+    const card = window.fixtureCard;
+    const style = card.shadowRoot.querySelector('style[data-f1-user-styles]');
+    return { same: style === window.originalUserStyle, text: style?.textContent, count: card.shadowRoot.querySelectorAll('style[data-f1-user-styles]').length };
+  })).toEqual({ same: true, text: 'ha-card { --f1-card-radius: 18px; }', count: 1 });
+  await page.evaluate(() => { const card = window.fixtureCard; const config = { ...card.config }; delete config.styles; card.setConfig(config); card.revision++; });
+  await expect.poll(() => page.evaluate(() => window.fixtureCard.shadowRoot.querySelectorAll('style[data-f1-user-styles]').length)).toBe(0);
+});
+
+test('visual editor saves, previews and resets custom CSS', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'timing' }] } }));
+  const editor = page.locator('f1-sensor-card-editor');
+  await editor.locator('summary').filter({ hasText: /^Appearance$/ }).click();
+  await editor.locator('summary').filter({ hasText: /^Custom CSS \(advanced\)$/ }).click();
+  const input = editor.getByLabel('Custom CSS', { exact: true });
+  await input.fill('ha-card { --f1-card-radius: 27px; }');
+  await expect.poll(() => page.evaluate(() => window.savedConfig?.styles)).toBe('ha-card { --f1-card-radius: 27px; }');
+  await expect.poll(() => editor.locator('f1-sensor-card').evaluate(card => getComputedStyle(card.shadowRoot.querySelector('ha-card')).borderRadius)).toBe('27px');
+  await editor.getByRole('button', { name: 'Reset custom CSS', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Object.hasOwn(window.savedConfig, 'styles'))).toBe(false);
+  await expect(input).toHaveValue('');
+});
+
 test('editor and preview remain operable with forced colors and enlarged text', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 950 });
   await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' });

@@ -28,6 +28,7 @@ const sidebars = {
         "cards/cards-overview",
         "cards/installation",
         "cards/modular",
+        "cards/modular-styling",
         "cards/shared-options",
         "cards/modular-migration",
         "cards/modular-accessibility"

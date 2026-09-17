@@ -25,6 +25,8 @@ parity, extended live-session testing and beta feedback are still required.
   documents, map, timeline, strategy, battles and recorded-lap telemetry.
 - Visual editing of modules, order, fields, profiles, filters, focus, session
   context, style, density, typography, logos, flags, tyres and timing signals.
+- Scoped custom CSS with documented F1 variables, stable module targets and
+  public Shadow Parts, without JavaScript templates or external CSS resources.
 - Explicit missing, stale, disconnected, retained, frozen, estimated and
   spoiler-protected data states.
 - Shared Live Delay and spoiler controls that respect the integration boundary;

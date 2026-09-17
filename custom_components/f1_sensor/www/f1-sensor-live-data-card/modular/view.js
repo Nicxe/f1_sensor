@@ -64,7 +64,7 @@ export const sharedStyles = css`
   .empty p+p { margin-top:8px; }
   .chip { display:inline-flex; align-items:center; gap:6px; font-size:.85em; font-weight:650; padding:3px 8px; border:1px solid currentColor; border-radius:5px; }
   .section-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
-  .table-scroll { overflow:auto; max-width:100%; scrollbar-gutter:stable; border:1px solid var(--f1-border,#6c7480); border-radius:8px; }
+  .table-scroll { overflow:auto; max-width:100%; scrollbar-gutter:stable; border:1px solid var(--f1-border,#6c7480); border-radius:var(--f1-table-radius,8px); }
   .result-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr)); gap:12px; list-style:none; margin:0; padding:0; }
   .result-grid li { border:1px solid var(--f1-divider); border-left:4px solid var(--f1-border); border-radius:8px; padding:12px; min-width:0; }
   .result-grid dl { display:grid; grid-template-columns:minmax(7rem,auto) minmax(0,1fr); gap:5px 10px; margin:0; }
@@ -252,15 +252,15 @@ export class F1ModuleView extends LitElement {
   render() {
     if (!this.module || !this.model) return html``;
     const title = this.module.title || this.model.title;
-    return html`<section aria-label=${title}>
-      ${this.module.show_header !== false || this.model.badge ? html`<div class="section-head"><h2 class=${this.module.show_header === false ? 'sr' : ''}>${title}</h2>${this.model.badge ? html`<span class="chip">${this.model.badge}</span>` : ''}</div>` : html`<h2 class="sr">${title}</h2>`}
+    return html`<section part="module-content" aria-label=${title}>
+      ${this.module.show_header !== false || this.model.badge ? html`<div class="section-head" part="module-header"><h2 part="module-title" class=${this.module.show_header === false ? 'sr' : ''}>${title}</h2>${this.model.badge ? html`<span class="chip" part="module-badge">${this.model.badge}</span>` : ''}</div>` : html`<h2 class="sr" part="module-title">${title}</h2>`}
       ${this.module.focus_mode === 'independent' && moduleFocusKinds(this.module).length ? html`<p class="muted module-focus">${this.w('Own selection', 'Eget urval')}</p>` : ''}
       ${this.model.blocked ? this.empty(this.model.blocked) : html`${this.contextLine()}${this.coverageLine()}${this.content()}`}
       ${this.module.options.show_explanation !== false && this.model.explanation ? html`<details class="analysis-explanation"><summary>${this.model.explanationTitle ?? this.w('About this analysis', 'Om analysen')}</summary><p class="muted">${this.model.explanation}</p></details>` : ''}
       ${this.model.notice ? html`<p class="muted" style="margin-top:10px;font-size:.85em">${this.model.notice}</p>` : ''}
     </section>`;
   }
-  empty(message) { return html`<div class="empty"><p>${message}</p></div>`; }
+  empty(message) { return html`<div class="empty" part="empty-state"><p>${message}</p></div>`; }
   content() {
     switch (this.module.type) {
       case 'overview': return this.overview();
@@ -283,6 +283,7 @@ export class F1ModuleView extends LitElement {
   map() {
     if (!this.mapNode) {
       this.mapNode = document.createElement('f1-track-map-view');
+      this.mapNode.setAttribute('part', 'map');
       mapLoading ??= load('./map-view.js').catch(error => { mapLoading = null; throw error; });
       mapLoading.catch(() => { this.mapError = true; this.requestUpdate(); });
     }
@@ -294,6 +295,7 @@ export class F1ModuleView extends LitElement {
     if (!this.module.fields.includes(['lap_chart', 'archive'].includes(this.module.type) ? 'lap_series' : 'progression')) return this.empty(this.w('Choose fields in the editor.', 'Välj fält i editorn.'));
     if (!this.chartNode) {
       this.chartNode = document.createElement('f1-series-chart');
+      this.chartNode.setAttribute('part', 'chart');
       chartLoading ??= load('./chart.js').catch(error => { chartLoading = null; throw error; });
       chartLoading.catch(() => { this.chartError = true; this.requestUpdate(); });
     }
@@ -304,6 +306,7 @@ export class F1ModuleView extends LitElement {
   telemetry() {
     if (!this.telemetryNode) {
       this.telemetryNode = document.createElement('f1-telemetry-view');
+      this.telemetryNode.setAttribute('part', 'telemetry');
       telemetryLoading ??= load('./telemetry-view.js').catch(error => { telemetryLoading = null; throw error; });
       telemetryLoading.catch(() => { this.telemetryError = true; this.requestUpdate(); });
     }
@@ -417,13 +420,13 @@ export class F1ModuleView extends LitElement {
   tableHeader(fields) {
     const hidden = this.module.show_table_header === false;
     // Keep native column relationships when only the visible labels are hidden.
-    return html`<thead class=${hidden ? 'labels-hidden' : ''}><tr>${repeat(fields, id => id, id => html`<th scope="col"><span class=${hidden ? 'sr' : ''}>${label(this.field(id), this.language)}</span></th>`)}</tr></thead>`;
+    return html`<thead part="table-header" class=${hidden ? 'labels-hidden' : ''}><tr part="table-row">${repeat(fields, id => id, id => html`<th part="table-cell" scope="col"><span class=${hidden ? 'sr' : ''}>${label(this.field(id), this.language)}</span></th>`)}</tr></thead>`;
   }
   timingHeader(fields, laps) {
     const hidden = this.module.show_table_header === false;
-    return html`<thead class=${hidden ? 'labels-hidden' : ''}><tr>
-      ${repeat(fields, id => id, id => html`<th scope="col"><span class=${hidden ? 'sr' : ''}>${label(this.field(id), this.language)}</span></th>`)}
-      ${repeat(laps, lap => lap, (lap, index) => html`<th scope="col" class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}><span class=${hidden ? 'sr' : ''}>${this.w('Lap', 'Varv')} ${lap}</span></th>`)}
+    return html`<thead part="table-header" class=${hidden ? 'labels-hidden' : ''}><tr part="table-row">
+      ${repeat(fields, id => id, id => html`<th part="table-cell" scope="col"><span class=${hidden ? 'sr' : ''}>${label(this.field(id), this.language)}</span></th>`)}
+      ${repeat(laps, lap => lap, (lap, index) => html`<th part="table-cell" scope="col" class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}><span class=${hidden ? 'sr' : ''}>${this.w('Lap', 'Varv')} ${lap}</span></th>`)}
     </tr></thead>`;
   }
   results() {
@@ -432,11 +435,11 @@ export class F1ModuleView extends LitElement {
     const selector = this.module.options.show_selector && this.model.choices?.length ? html`<label class="module-picker"><span>${this.w('Round', 'Deltävling')}</span><select aria-label=${this.w('Round', 'Deltävling')} data-focus="result-round" .value=${this.model.selected} @change=${event => this.choose('round', event.target.value)}>${this.model.choices.map(item => html`<option value=${item.id} .selected=${item.id === this.model.selected}>${item.id} · ${item.name}</option>`)}</select></label>` : '';
     if (!rows.length) return html`${selector}${this.empty(this.model.filtered ? this.w('No competitors match this selection.', 'Inga deltagare matchar urvalet.') : this.model.emptyMessage ?? this.w('No data is available for this selection yet.', 'Inga uppgifter finns för urvalet ännu.'))}`;
     if (!fields.length) return this.empty(this.w('Choose columns in the editor.', 'Välj kolumner i editorn.'));
-    if (this.module.type === 'results' && this.module.options.presentation === 'grid') return html`${selector}<ol class="result-grid" aria-label=${this.module.title || this.model.title}>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<li data-driver=${row.id}><dl>${repeat(fields, id => id, id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.resultCell(row, id)}</dd></div>`)}</dl></li>`)}</ol><p class="muted" style="margin-top:10px">${rows.length} ${this.w('of', 'av')} ${this.model.total} ${this.w('competitors', 'deltagare')}</p>`;
-    return html`${selector}<div class="table-scroll" tabindex="0" role="region" aria-label=${`${this.module.title || this.model.title} · ${this.w('scroll horizontally for more columns', 'rulla i sidled för fler kolumner')}`}><table>
+    if (this.module.type === 'results' && this.module.options.presentation === 'grid') return html`${selector}<ol class="result-grid" part="result-grid" aria-label=${this.module.title || this.model.title}>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<li part="result-card" data-driver=${row.id}><dl>${repeat(fields, id => id, id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.resultCell(row, id)}</dd></div>`)}</dl></li>`)}</ol><p class="muted" style="margin-top:10px">${rows.length} ${this.w('of', 'av')} ${this.model.total} ${this.w('competitors', 'deltagare')}</p>`;
+    return html`${selector}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${`${this.module.title || this.model.title} · ${this.w('scroll horizontally for more columns', 'rulla i sidled för fler kolumner')}`}><table part="table">
       <caption class="sr">${this.module.title || this.model.title}</caption>${this.tableHeader(fields)}
-      <tbody>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<tr data-driver=${row.id}>${repeat(fields, id => id, id => html`<td>${row.derived && id === fields[0] ? html`<span class="provenance">${this.w('Derived estimate', 'Härledd uppskattning')}</span>` : ''}${this.resultCell(row, id)}</td>`)}</tr>
-      ${this.expanded === row.id ? html`<tr><td class="details" colspan=${fields.length}><h3>${row.name} · ${row.team ?? '—'}</h3><dl>${fields.filter(id => !['driver', 'team'].includes(id)).map(id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.resultCell(row, id)}</dd></div>`)}</dl></td></tr>` : ''}`)}</tbody>
+      <tbody>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<tr part="table-row" data-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${row.derived && id === fields[0] ? html`<span class="provenance">${this.w('Derived estimate', 'Härledd uppskattning')}</span>` : ''}${this.resultCell(row, id)}</td>`)}</tr>
+      ${this.expanded === row.id ? html`<tr part="table-row"><td part="table-cell" class="details" colspan=${fields.length}><h3>${row.name} · ${row.team ?? '—'}</h3><dl>${fields.filter(id => !['driver', 'team'].includes(id)).map(id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.resultCell(row, id)}</dd></div>`)}</dl></td></tr>` : ''}`)}</tbody>
     </table></div><div class="section-head" style="margin:10px 0 0"><span class="muted">${rows.length} ${this.w('of', 'av')} ${this.model.total} ${this.model.countKind === 'stints' ? this.w('stints', 'stintar') : this.model.countKind === 'stops' ? this.w('stops', 'stopp') : this.model.countKind === 'compounds' ? this.w('compounds', 'blandningar') : this.model.countKind === 'comparisons' ? this.w('comparisons', 'jämförelser') : this.model.countKind === 'events' ? this.w('events', 'händelser') : this.w('competitors', 'deltagare')}</span>
       ${this.model.total > this.module.options.rows ? html`<button data-focus="result-count" @click=${() => this.choose('rows', rows.length < this.model.total ? (['pit_stops', 'incidents', 'timeline', 'strategy', 'battles'].includes(this.module.type) ? 500 : 100) : this.module.options.rows)}>${rows.length < this.model.total ? this.w('Show all', 'Visa alla') : this.w('Show fewer', 'Visa färre')}</button>` : ''}</div>`;
   }
@@ -487,7 +490,7 @@ export class F1ModuleView extends LitElement {
   overview() {
     const items = this.model.items ?? [];
     if (!items.length) return this.empty(this.w('Waiting for information.', 'Väntar på information.'));
-    return html`<div class="overview ${this.module.options.layout_mode === 'auto' ? '' : this.module.options.layout_mode}">${items.map(item => item.id === 'circuit_map' ? this.circuitMap(item.value) : item.id === 'circuit_history' ? this.circuitHistory(item.value) : html`<div class="metric ${item.id === 'meeting' ? 'hero' : ''}">
+    return html`<div class="overview ${this.module.options.layout_mode === 'auto' ? '' : this.module.options.layout_mode}" part="metrics">${items.map(item => item.id === 'circuit_map' ? this.circuitMap(item.value) : item.id === 'circuit_history' ? this.circuitHistory(item.value) : html`<div class="metric ${item.id === 'meeting' ? 'hero' : ''}" part="metric">
       ${item.flag && this.settings.appearance.flags ? html`<img class="flag" src=${item.flag} alt=${item.country ?? ''} width="40" height="27" @error=${event => { event.target.hidden = true; }} @load=${event => { event.target.hidden = false; }}>` : ''}
       <div><small>${label(FIELDS[item.id], this.language)}</small><strong>${item.id === 'track_status' ? this.flagCell(item.value) : item.value ?? '—'}</strong>${item.detail ? html`<span class="provenance">${item.detail}</span>` : ''}</div>
     </div>`)}</div>`;
@@ -535,10 +538,10 @@ export class F1ModuleView extends LitElement {
       ${(fields.includes('replay_transport') || fields.includes('replay_progress')) && model.playerStatus !== 'available' ? html`<p class="muted">${model.playerStatus === 'disabled' ? this.w('Enable the replay player entity in F1 Sensor to use playback controls.', 'Aktivera replay-spelarens entitet i F1 Sensor för att använda uppspelningskontrollerna.') : this.w('Playback controls are unavailable because the replay player has no usable state.', 'Uppspelningskontrollerna är avstängda eftersom replay-spelaren saknar användbar status.')}</p>` : ''}
       ${model.readonly ? html`<p class="muted">${model.frozen ? this.w('Resume the view to use replay controls.', 'Återuppta vyn för att använda replaykontrollerna.') : this.w('Replay controls are disabled in previews.', 'Replaykontroller är avstängda i förhandsvisningar.')}</p>` : ''}
       ${fields.includes('replay_progress') && model.duration !== null ? html`<div class="replay-progress"><span>${this.w('From replay start', 'Från replaystart')}: ${clock(model.position)} / ${clock(model.duration)}</span>
-        ${fields.includes('replay_transport') && options.seek_controls ? html`<label><span class="sr">${this.w('Replay position in seconds', 'Replayposition i sekunder')}</span><input data-focus="replay-seek" type="range" aria-label=${this.w('Replay position in seconds', 'Replayposition i sekunder')} min="0" max=${model.duration} step="1" .value=${String(target)} aria-valuetext=${clock(target)} ?disabled=${disabled || !model.allowed.seek} @input=${event => { this.seekDraft = { context: model.controlContext, value: Number(event.target.value) }; }}></label><div class="replay-controls"><span>${this.w('Go to', 'Gå till')}: ${clock(target)}</span><button class=${options.show_button_labels ? '' : 'icon-only'} data-focus="replay-apply-seek" aria-label=${this.w('Go to replay position', 'Gå till replayposition')} title=${this.w('Go to replay position', 'Gå till replayposition')} ?disabled=${disabled || !model.allowed.seek || !this.seekDraft || target === model.position} @click=${() => { this.replayAction('seek', target); this.seekDraft = null; }}><span aria-hidden="true">↦</span>${actionLabel('Go to replay position', 'Gå till replayposition')}</button></div>` : html`<progress max=${model.duration} value=${model.position} aria-label=${this.w('Replay progress', 'Replayposition')}></progress>`}
+        ${fields.includes('replay_transport') && options.seek_controls ? html`<label><span class="sr">${this.w('Replay position in seconds', 'Replayposition i sekunder')}</span><input data-focus="replay-seek" type="range" aria-label=${this.w('Replay position in seconds', 'Replayposition i sekunder')} min="0" max=${model.duration} step="1" .value=${String(target)} aria-valuetext=${clock(target)} ?disabled=${disabled || !model.allowed.seek} @input=${event => { this.seekDraft = { context: model.controlContext, value: Number(event.target.value) }; }}></label><div class="replay-controls" part="controls"><span>${this.w('Go to', 'Gå till')}: ${clock(target)}</span><button class=${options.show_button_labels ? '' : 'icon-only'} data-focus="replay-apply-seek" aria-label=${this.w('Go to replay position', 'Gå till replayposition')} title=${this.w('Go to replay position', 'Gå till replayposition')} ?disabled=${disabled || !model.allowed.seek || !this.seekDraft || target === model.position} @click=${() => { this.replayAction('seek', target); this.seekDraft = null; }}><span aria-hidden="true">↦</span>${actionLabel('Go to replay position', 'Gå till replayposition')}</button></div>` : html`<progress max=${model.duration} value=${model.position} aria-label=${this.w('Replay progress', 'Replayposition')}></progress>`}
       </div>` : ''}
       ${model.replayState === 'loading' ? html`<div class="replay-progress"><span>${this.w('Download', 'Hämtning')}: ${model.download !== null && model.download >= 0 && model.download <= 100 ? `${model.download}%` : '—'}</span></div>` : ''}
-      ${fields.includes('replay_transport') ? html`<div class="replay-controls">${model.replayState === 'playing' ? send('pause', 'Pause replay', 'Pausa replay', 'Ⅱ') : send('play', 'Play replay', 'Spela replay', '▶')}
+      ${fields.includes('replay_transport') ? html`<div class="replay-controls" part="controls">${model.replayState === 'playing' ? send('pause', 'Pause replay', 'Pausa replay', 'Ⅱ') : send('play', 'Play replay', 'Spela replay', '▶')}
         ${options.seek_controls ? html`<button class=${options.show_button_labels ? '' : 'icon-only'} data-focus="replay-back" aria-label=${this.w('Back 30 s', 'Bakåt 30 s')} title=${this.w('Back 30 s', 'Bakåt 30 s')} ?disabled=${disabled || !model.allowed.seek || model.position <= 0} @click=${() => this.replayAction('seek', Math.max(0, model.position - 30))}><span aria-hidden="true">−30</span>${actionLabel('Back 30 s', 'Bakåt 30 s')}</button>
         <button class=${options.show_button_labels ? '' : 'icon-only'} data-focus="replay-forward" aria-label=${this.w('Forward 30 s', 'Framåt 30 s')} title=${this.w('Forward 30 s', 'Framåt 30 s')} ?disabled=${disabled || !model.allowed.seek || model.position >= model.duration} @click=${() => this.replayAction('seek', Math.min(model.duration, model.position + 30))}><span aria-hidden="true">+30</span>${actionLabel('Forward 30 s', 'Framåt 30 s')}</button>` : ''}
         ${send('stop', 'Stop replay', 'Stoppa replay', '■')}</div>` : ''}
@@ -550,7 +553,7 @@ export class F1ModuleView extends LitElement {
             ${!selected.options.includes(selected.state) ? html`<option value="">${this.w('Choose…', 'Välj…')}</option>` : ''}
             ${selected.options.map(value => html`<option value=${value} .selected=${value === selected.state}>${value}</option>`)}
           </select></label>`;
-        })}</div><div class="replay-controls">${options.refresh ? send('refresh', 'Refresh session list', 'Uppdatera sessionslistan') : ''}${send('load', 'Load selected replay', 'Ladda vald replay')}</div>
+        })}</div><div class="replay-controls" part="controls">${options.refresh ? send('refresh', 'Refresh session list', 'Uppdatera sessionslistan') : ''}${send('load', 'Load selected replay', 'Ladda vald replay')}</div>
       </details>` : ''}
       ${model.downloadError ? html`<p role="alert">${this.w('The replay download failed. Try loading the selected session again.', 'Hämtningen av replay misslyckades. Försök ladda den valda sessionen igen.')}</p>` : ''}
       ${model.indexError ? html`<p>${this.w('The session list could not be retrieved. Try refreshing it.', 'Sessionslistan kunde inte hämtas. Försök uppdatera den.')}</p>` : ''}
@@ -662,18 +665,18 @@ export class F1ModuleView extends LitElement {
     if (!fields.length) return this.empty(this.w('Choose columns in the editor.', 'Välj kolumner i editorn.'));
     const historyLimit = this.module.options.history;
     const lapNumbers = historyLimit ? [...new Set(rows.flatMap(row => row.history.map(lap => lap.lap)).filter(Number.isInteger))].sort((a, b) => a - b).slice(-historyLimit) : [];
-    const gapToggle = showGapToggle ? html`<div class="timing-gap-toggle" role="group" aria-label=${this.w('Gap mode', 'Avståndsläge')}>
+    const gapToggle = showGapToggle ? html`<div class="timing-gap-toggle" part="controls" role="group" aria-label=${this.w('Gap mode', 'Avståndsläge')}>
       <button data-focus="timing-gap-ahead" aria-pressed=${String(this.timingGapMode === 'ahead')} @click=${() => { this.timingGapMode = 'ahead'; }}>${this.w('Ahead', 'Framför')}</button>
       <button data-focus="timing-gap-leader" aria-pressed=${String(this.timingGapMode === 'leader')} @click=${() => { this.timingGapMode = 'leader'; }}>${this.w('Leader', 'Ledaren')}</button>
     </div>` : '';
-    return html`${gapToggle}<div class="table-scroll" tabindex="0" role="region" aria-label=${this.w('Timing table, scroll horizontally for more columns', 'Timingtabell, rulla i sidled för fler kolumner')}><table>
+    return html`${gapToggle}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${this.w('Timing table, scroll horizontally for more columns', 'Timingtabell, rulla i sidled för fler kolumner')}><table part="table">
       <caption class="sr">${this.module.title || this.model.title}</caption>
       ${this.timingHeader(fields, lapNumbers)}
-      <tbody>${repeat(rows, row => row.id, row => html`<tr data-driver=${row.id}>${repeat(fields, id => id, id => html`<td>${this.cell(row, id)}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
+      <tbody>${repeat(rows, row => row.id, row => html`<tr part="table-row" data-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${this.cell(row, id)}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
         const value = row.history.find(item => item.lap === lap);
-        return html`<td class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}>${this.timeCell(value ? { ...value, source: 'completed_lap', previous_lap: true } : { time: null, lap })}</td>`;
+        return html`<td part="table-cell" class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}>${this.timeCell(value ? { ...value, source: 'completed_lap', previous_lap: true } : { time: null, lap })}</td>`;
       })}</tr>
-        ${this.expanded === row.id ? html`<tr><td class="details" colspan=${fields.length + lapNumbers.length}>
+        ${this.expanded === row.id ? html`<tr part="table-row"><td part="table-cell" class="details" colspan=${fields.length + lapNumbers.length}>
           <h3>${row.name} · ${row.team ?? '—'}</h3><dl>${fields.filter(id => id !== 'driver').map(id => html`<div><dt class="muted">${label(this.field(id), this.language)}</dt><dd>${this.cell(row, id)}</dd></div>`)}</dl>
           ${row.history.length ? html`<h3 style="margin-top:16px">${this.w('Completed laps', 'Avslutade varv')}</h3><ol>${row.history.map(lap => html`<li>${this.w('Lap', 'Varv')} ${lap.lap}: ${formatTime(lap.time)}</li>`)}</ol>` : ''}
         </td></tr>` : ''}`)}</tbody>
@@ -703,7 +706,7 @@ export class F1ModuleView extends LitElement {
     const rows = this.module.options.presentation === 'latest_message' && this.module.options.min_display_time > 0 ? [this.raceShown].filter(Boolean) : this.model.rows ?? [];
     const height = this.module.options.presentation === 'list' ? this.module.options.list_max_height : 0;
     const request = this.model.request, canClear = this.module.options.presentation === 'list' && this.module.options.show_clear_button;
-    const controls = canClear ? html`<div class="replay-controls"><button data-focus="race-control-clear" ?disabled=${this.model.readonly || request?.pending} @click=${this.clearRaceControl}>${request?.pending ? this.w('Clearing…', 'Tömmer…') : this.clearConfirm ? this.w('Confirm clear', 'Bekräfta tömning') : this.w('Clear saved messages', 'Töm sparade meddelanden')}</button></div>
+    const controls = canClear ? html`<div class="replay-controls" part="controls"><button data-focus="race-control-clear" ?disabled=${this.model.readonly || request?.pending} @click=${this.clearRaceControl}>${request?.pending ? this.w('Clearing…', 'Tömmer…') : this.clearConfirm ? this.w('Confirm clear', 'Bekräfta tömning') : this.w('Clear saved messages', 'Töm sparade meddelanden')}</button></div>
       ${request?.busy ? html`<p class="muted">${this.w('Another Race Control action is already running.', 'En annan Race Control-åtgärd pågår redan.')}</p>` : request?.error ? html`<p class="muted">${this.w('Saved messages could not be cleared.', 'De sparade meddelandena kunde inte tömmas.')}</p>` : ''}` : '';
     if (!rows.length) return html`${this.module.options.show_fia_logo ? html`<p class="document-summary"><strong class="chip">FIA</strong></p>` : ''}${this.empty(this.w('No matching messages yet.', 'Inga matchande meddelanden ännu.'))}${controls}`;
     return html`${this.module.options.show_fia_logo ? html`<p class="document-summary"><strong class="chip">FIA</strong></p>` : ''}<ol class="events" style=${height ? `max-height:${height}px` : ''} tabindex="0" aria-label="Race Control">${repeat(rows, row => row.id, row => html`<li data-event=${row.id}>

@@ -2,16 +2,21 @@
 
 Decision date: 2026-09-17.
 
+Current project entry point:
+[`F1_SENSOR_NYA_KORT_START_HAR.md`](/Users/niklas/GitHub/F1_SENSOR_NYA_KORT_START_HAR.md).
+
 ## Decision
 
-Keep all existing F1 Sensor card types registered, selectable, loadable and
-supported throughout the modular card's development and beta period. Do not hide,
-deprecate or remove any legacy card in this delivery, and do not rewrite saved
-dashboards automatically.
+Deprecate the existing single-purpose F1 Sensor card types for new dashboards and
+direct new documentation and product development to `custom:f1-sensor-card`.
+Keep every existing type registered, selectable and loadable throughout the
+modular card's development and migration period so saved dashboards continue to
+work. Do not remove a legacy type or rewrite a saved dashboard automatically.
 
-The modular card is currently an additional choice. Its conversion flow may create
-a reviewable copy and preserve the exact original configuration, but that does not
-make the modular result a verified replacement for every real dashboard.
+The modular conversion flow creates a reviewable draft and preserves the exact
+original configuration. Deprecation communicates the intended direction; it does
+not claim that every real dashboard has already completed manual semantic
+comparison or remove the user's safe fallback.
 
 ## Reason
 
@@ -22,14 +27,14 @@ assistive-technology checks, real-session coverage, long-running multi-client
 behavior and beta feedback are maintained separately in the external handoff
 report and are not part of the completed agent goal.
 
-Removing or hiding legacy choices before those checks would make the automated
-migration sample carry more meaning than it proves and would reduce the safe
-fallback available to existing users.
+Removing legacy choices before those checks would make the automated migration
+sample carry more meaning than it proves and would reduce the safe fallback
+available to existing users. Deprecation itself does not remove that fallback.
 
 ## Conditions for reconsideration
 
-Reconsider deprecation only after handoff checks H1–H9 are documented against the
-same release candidate, including:
+Reconsider removal or hiding of legacy choices only after handoff checks H1–H9 are
+documented against the same release candidate, including:
 
 - Representative real dashboards, custom sources and values outside the generated
   migration probe domains have been compared semantically.
@@ -41,10 +46,11 @@ same release candidate, including:
 
 ## Future change classification
 
-Hiding legacy cards from new selection while continuing to load and edit saved
-cards would require its own documented product decision and beta validation.
-Removing a registered type, stopping its resource delivery or making an existing
-saved dashboard fail would be a breaking change and require explicit user
-instructions and the corresponding major-release classification.
+Hiding deprecated cards from new selection while continuing to load and edit saved
+cards requires its own documented product decision and beta validation. Removing
+a registered type, stopping its resource delivery or making an existing saved
+dashboard fail is a breaking change and requires explicit user instructions and
+the corresponding major-release classification.
 
-This decision can be revised later; it authorizes no removal in the current work.
+This decision can be revised later; deprecation authorizes no removal in the
+current work.

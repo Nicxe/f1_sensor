@@ -2362,3 +2362,41 @@ release package retains SHA-256
 the report dates the last byte-identical runtime proof to 2026-09-16 instead of
 presenting historical evidence as a fresh check. No runtime source changed after
 that proof, and no commit, push, beta or release was made.
+
+## 2026-09-17 — Scoped custom CSS and stable styling contract
+
+The modular card now accepts an optional root-level `styles` string. The visual
+editor exposes it under **Appearance → Custom CSS (advanced)** with live preview
+and a dedicated reset action; YAML users can use the same `styles: |` value.
+Blank CSS is removed from the saved configuration, while non-string values,
+stylesheets over 32,768 characters, JavaScript template interpolation, `@import`
+and `url()` resources are rejected. The card never evaluates the value as
+JavaScript and installs at most one reusable style element inside its own Shadow
+DOM, so selectors cannot style the surrounding Home Assistant page.
+
+Documented `--f1-*` variables override the calculated appearance defaults without
+discarding the existing style, theme or density settings. Every module host now
+has stable `data-module-type` and `data-module-id` attributes. The card shell and
+module content expose public Shadow Parts for headings, toolbars, states, tables,
+results, metrics, controls, maps, charts and telemetry. Private class names remain
+outside the compatibility contract. The user guide is available at
+`docs/cards/modular-styling.md`, is linked from the modular-card guide and sidebar,
+and the configuration/release contracts describe the same boundary.
+
+Validation passes with 225 frontend unit tests, 167 Chromium browser flows and
+the full 1,569-test `/Volumes/config` integration suite. The two new CSS flows also
+pass in Firefox and WebKit. Automation passes 40 Python and 47 Node tests after
+regenerating the migration audit's source fingerprints. Documentation passes its
+production build, four build checks and 15 browser checks. The deterministic
+106-file release package has SHA-256
+`c5a834142c2beba1b81fac5fdd147fc3c6569a25620c33ad7fdef1bf59a3ea0e`, and
+`git diff --check` passes. All 32 delivered JavaScript files are byte-identical
+between `/Volumes/config/www`, the bundled integration and the repository.
+
+HAdev entry reload succeeded and registered managed resource
+`/local/f1-sensor-live-data-card/register.js?v=ff37e89bfc78`. The authenticated
+editor displayed the advanced CSS section, and a temporary 34 px radius with a
+red border rendered immediately in the real card preview. The edit was cancelled;
+the three saved modular dashboard cards still have no `styles` property. The
+current Home Assistant log UI reports no issue for the search term `f1`. No commit,
+push, release or persistent dashboard edit was made.

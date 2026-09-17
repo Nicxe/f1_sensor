@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeConfig, applyPreset, duplicateModule, moveModule, exportConfig, exportTemplate, importConfig, importTemplate, configWarnings, resolveSelection } from '../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/config.js';
+import { CUSTOM_STYLE_MAX_LENGTH, normalizeConfig, applyPreset, duplicateModule, moveModule, exportConfig, exportTemplate, importConfig, importTemplate, configWarnings, resolveSelection } from '../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/config.js';
 import { MODULES, PRESETS, FIELDS } from '../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/catalog.js';
 
 test('module focus behavior preserves explicit independence and rejects invalid modes', () => {
@@ -88,6 +88,22 @@ test('accent, branding and surface choices serialize without overwriting focus o
   assert.deepEqual(changed.context, config.context);
   assert.deepEqual(changed.modules, config.modules);
   for (const appearance of [{ accent_team: 4 }, { logo_size: 1000 }, { logo_style: 'none' }, { surface: 'css' }, { accent_mode: 'semantic' }]) assert.throws(() => normalizeConfig({ appearance }));
+});
+
+test('custom CSS round trips as scoped presentation data and rejects active content', () => {
+  const styles = `ha-card {\n  --f1-card-radius: 22px;\n}\n\nf1-module-view[data-module-type="timing"] {\n  --f1-cell-padding: 6px 8px;\n}`;
+  const config = normalizeConfig({ styles, modules: [{ type: 'timing' }] });
+  assert.equal(config.styles, styles);
+  assert.deepEqual(importConfig(exportConfig(config)), config);
+  assert.deepEqual(importTemplate(exportTemplate(config, 'Styled timing')).card, config);
+  assert.equal(normalizeConfig({}).styles, undefined);
+  for (const [value, pattern] of [
+    [42, /styles/],
+    ['@import "https:\/\/example.com\/theme.css";', /@import/],
+    ['ha-card { background: url(https:\/\/example.com\/image.png); }', /url/],
+    ['ha-card { color: ${hass.states["sensor.example"].state}; }', /JavaScript templates/],
+    ['x'.repeat(CUSTOM_STYLE_MAX_LENGTH + 1), /at most/],
+  ]) assert.throws(() => normalizeConfig({ styles: value }), pattern);
 });
 
 test('each preset saves without entity IDs and expands to independent editable modules', () => {

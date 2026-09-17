@@ -40,11 +40,23 @@ function cancelInitialRender(card) {
 export class F1SensorCard extends LitElement {
   static properties = { hass: { attribute: false }, config: { attribute: false }, preview: { type: Boolean }, previewData: { attribute: false }, revision: { state: true }, frozen: { state: true }, tab: { state: true } };
   static styles = [sharedStyles, css`
-    ha-card { display:block; padding:var(--f1-card-padding,20px); border:1px solid var(--f1-border); border-radius:var(--ha-card-border-radius,14px); background:var(--f1-surface); color:var(--f1-text); overflow:hidden; }
+    :where(ha-card) {
+      --f1-card-padding:var(--_f1-card-padding,20px); --f1-minimal-padding:var(--_f1-minimal-padding,12px);
+      --f1-module-gap:var(--_f1-module-gap,26px); --f1-section-space:var(--_f1-section-space,20px);
+      --f1-cell-padding:var(--_f1-cell-padding,10px 12px); --f1-item-padding:var(--_f1-item-padding,9px);
+      --f1-heading-font:var(--_f1-heading-font,inherit); --f1-heading-transform:var(--_f1-heading-transform,none);
+      --f1-module-heading-size:var(--_f1-module-heading-size,1.1em); --f1-surface:var(--_f1-surface,transparent);
+      --f1-text:var(--_f1-text,var(--primary-text-color,#e9edf3)); --f1-muted:var(--_f1-muted,var(--secondary-text-color,#b9c1ce));
+      --f1-border:var(--_f1-border,#6c7480); --f1-divider:var(--_f1-divider,rgba(127,127,127,.25));
+      --f1-panel:var(--_f1-panel,rgba(127,127,127,.07)); --f1-focus:var(--_f1-focus,#56aaff);
+      --f1-row-alternate:var(--_f1-row-alternate,transparent); --f1-accent:var(--_f1-accent,#e10600);
+      --f1-numerals:var(--_f1-numerals,tabular-nums); --f1-card-radius:var(--_f1-card-radius,var(--ha-card-border-radius,14px));
+      display:block; padding:var(--f1-card-padding); border:1px solid var(--f1-border); border-radius:var(--f1-card-radius); background:var(--f1-surface); color:var(--f1-text); overflow:hidden;
+    }
     ha-card[data-style=minimal] { border-color:transparent; box-shadow:none; padding:var(--f1-minimal-padding,12px); }
-    ha-card[data-surface=framed] { border:1px solid var(--f1-border); border-radius:8px; box-shadow:none; }
-    ha-card[data-surface=soft] { border:1px solid var(--f1-divider); border-radius:20px; box-shadow:none; }
-    ha-card[data-surface=flat] { border:0; border-radius:0; box-shadow:none; }
+    ha-card[data-surface=framed] { border:1px solid var(--f1-border); box-shadow:none; }
+    ha-card[data-surface=soft] { border:1px solid var(--f1-divider); box-shadow:none; }
+    ha-card[data-surface=flat] { border:0; box-shadow:none; }
     ha-card[data-accent=true] { border-top:3px solid var(--f1-accent); }
     header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:var(--f1-section-space,20px); }
     .heading strong { font-family:var(--f1-heading-font,inherit); font-size:1.25em; letter-spacing:-.02em; }
@@ -62,7 +74,7 @@ export class F1SensorCard extends LitElement {
     .frozen { padding:10px 12px; margin-bottom:16px; border:1px solid currentColor; border-radius:8px; }
     .connection-status { padding:10px 12px; margin:0 0 16px; border:1px solid currentColor; border-radius:8px; }
     .demo { font-size:.85em; padding:6px 0 12px; font-weight:650; }
-    @media(max-width:360px) { ha-card { padding:14px; } }
+    @media(max-width:360px) { :where(ha-card) { --f1-card-padding:14px; } }
   `];
   constructor() {
     super(); this.entries = []; this.revision = 0; this.frozen = false; this.tab = ''; this.focus = {}; this.groupContext = {};
@@ -178,6 +190,7 @@ export class F1SensorCard extends LitElement {
     }
   }
   updated() {
+    this.syncUserStyles();
     clearTimeout(this.mapAgeTimer);
     const expiry = !this.previewData && !this.frozen && this.mapKey ? mapExpiry(this.mapState.data?.snapshot) : null;
     const remaining = expiry === null ? null : expiry - Date.now();
@@ -186,6 +199,17 @@ export class F1SensorCard extends LitElement {
     const module = this.moduleNodes.get(this.focusRestore.module);
     const button = [...(module?.shadowRoot?.querySelectorAll('[data-focus]') ?? [])].find(node => node.dataset.focus === this.focusRestore.control);
     if (button && module.shadowRoot.activeElement !== button && !module.hidden) button.focus({ preventScroll: true });
+  }
+  syncUserStyles() {
+    const source = this.config?.styles;
+    let style = this.renderRoot?.querySelector('style[data-f1-user-styles]');
+    if (!source) { style?.remove(); return; }
+    if (!style) {
+      style = document.createElement('style');
+      style.setAttribute('data-f1-user-styles', '');
+      this.renderRoot.append(style);
+    }
+    if (style.textContent !== source) style.textContent = source;
   }
   locationParts() {
     const parts = window.location.pathname.split('/').filter(Boolean);
@@ -217,14 +241,14 @@ export class F1SensorCard extends LitElement {
   }
   actionDouble(event) { event.preventDefault(); this.cancelActions(); this._handleCardAction('double_tap'); }
   actionHeading() {
-    const title = html`<strong>${this.config.title}</strong>`;
+    const title = html`<strong part="card-title">${this.config.title}</strong>`;
     return hasF1Action(this, 'tap') ? html`<button data-f1-card-action aria-label=${`${this.config.title} · ${this.w('card action', 'kortåtgärd')}`}
       @pointerdown=${this.actionDown} @pointerup=${this.actionRelease} @pointerleave=${this.actionRelease} @pointercancel=${this.cancelActions}
       @click=${this.actionClick} @dblclick=${this.actionDouble}>${title}</button>` : title;
   }
   actionAlternatives() {
     const actions = [...(this.config.appearance.show_header ? [] : [['tap', this.w('Tap action', 'Åtgärd vid tryck')]]), ['hold', this.w('Hold action', 'Åtgärd vid långtryck')], ['double_tap', this.w('Double tap action', 'Åtgärd vid dubbeltryck')]].filter(([key]) => hasF1Action(this, key));
-    return actions.length ? html`<details class="action-alternatives"><summary>${this.w('Card actions', 'Kortåtgärder')}</summary><div class="tools">${actions.map(([key, text]) => html`<button @click=${() => this._handleCardAction(key)}>${text}</button>`)}</div></details>` : '';
+    return actions.length ? html`<details class="action-alternatives" part="action-alternatives"><summary>${this.w('Card actions', 'Kortåtgärder')}</summary><div class="tools" part="action-toolbar">${actions.map(([key, text]) => html`<button @click=${() => this._handleCardAction(key)}>${text}</button>`)}</div></details>` : '';
   }
   chooseDriver(event) {
     this.frozen = false;
@@ -558,8 +582,9 @@ export class F1SensorCard extends LitElement {
     const spacing = density === 'compact' ? [16, 10, 16, 14, '5px 9px', '5px'] : density === 'spacious' ? [24, 16, 32, 24, '15px 16px', '14px'] : [20, 12, 26, 20, '10px 12px', '9px'];
     const typography = settings.appearance.font === 'f1';
     const accent = cardAccent(settings.appearance, this.previewData?.accentTeams ?? data.accentTeams(this.hass, this.entry), settings.mode);
-    const style = `--f1-card-padding:${spacing[0]}px;--f1-minimal-padding:${spacing[1]}px;--f1-module-gap:${spacing[2]}px;--f1-section-space:${spacing[3]}px;--f1-cell-padding:${spacing[4]};--f1-item-padding:${spacing[5]};--f1-heading-font:${typography ? "'F1 Barlow Condensed',sans-serif" : 'var(--ha-font-family-heading,var(--ha-font-family-body,inherit))'};--f1-heading-transform:${typography ? 'uppercase' : 'none'};--f1-module-heading-size:${typography ? '1.3em' : '1.1em'};--f1-surface:${background};--f1-text:${text};--f1-muted:${muted};--f1-border:${dark ? '#637083' : '#778397'};--f1-divider:${dark ? '#354150' : '#cbd1da'};--f1-panel:${dark ? '#1b2430' : '#f1f4f8'};--f1-focus:${dark ? '#7ebfff' : '#005db5'};--f1-row-alternate:${settings.appearance.surface === 'soft' ? 'var(--f1-panel)' : 'transparent'};--f1-accent:${accent.color};--f1-numerals:${settings.appearance.numbers === 'tabular' ? 'tabular-nums' : 'normal'}`;
-    if (!this.entry) return html`<ha-card data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>${settings.appearance.show_header ? html`<header class="heading">${this.actionHeading()}</header>` : ''}<div class="empty">${this.discovery?.status === 'error' ? this.discovery.error : (this.previewData?.entries ?? this.entries).length > 1 ? this.w('Choose an F1 Sensor installation in the editor.', 'Välj en F1 Sensor-installation i editorn.') : this.w('Waiting for F1 Sensor…', 'Väntar på F1 Sensor…')}</div>${this.actionAlternatives()}</ha-card>`;
+    const radius = settings.appearance.surface === 'framed' ? '8px' : settings.appearance.surface === 'soft' ? '20px' : settings.appearance.surface === 'flat' ? '0' : 'var(--ha-card-border-radius,14px)';
+    const style = `--_f1-card-padding:${spacing[0]}px;--_f1-minimal-padding:${spacing[1]}px;--_f1-module-gap:${spacing[2]}px;--_f1-section-space:${spacing[3]}px;--_f1-cell-padding:${spacing[4]};--_f1-item-padding:${spacing[5]};--_f1-heading-font:${typography ? "'F1 Barlow Condensed',sans-serif" : 'var(--ha-font-family-heading,var(--ha-font-family-body,inherit))'};--_f1-heading-transform:${typography ? 'uppercase' : 'none'};--_f1-module-heading-size:${typography ? '1.3em' : '1.1em'};--_f1-surface:${background};--_f1-text:${text};--_f1-muted:${muted};--_f1-border:${dark ? '#637083' : '#778397'};--_f1-divider:${dark ? '#354150' : '#cbd1da'};--_f1-panel:${dark ? '#1b2430' : '#f1f4f8'};--_f1-focus:${dark ? '#7ebfff' : '#005db5'};--_f1-row-alternate:${settings.appearance.surface === 'soft' ? 'var(--f1-panel)' : 'transparent'};--_f1-accent:${accent.color};--_f1-numerals:${settings.appearance.numbers === 'tabular' ? 'tabular-nums' : 'normal'};--_f1-card-radius:${radius}`;
+    if (!this.entry) return html`<ha-card part="card" data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>${settings.appearance.show_header ? html`<header class="heading" part="header">${this.actionHeading()}</header>` : ''}<div class="empty" part="empty-state">${this.discovery?.status === 'error' ? this.discovery.error : (this.previewData?.entries ?? this.entries).length > 1 ? this.w('Choose an F1 Sensor installation in the editor.', 'Välj en F1 Sensor-installation i editorn.') : this.w('Waiting for F1 Sensor…', 'Väntar på F1 Sensor…')}</div>${this.actionAlternatives()}</ha-card>`;
     const models = this.frozen ? this.frozenModels : this.buildModels();
     const protection = data.spoilerState(this.hass, this.entry, this.config.context.spoilers);
     const modules = this.config.modules.filter(module => module.enabled && !models.get(module.id)?.hidden);
@@ -598,25 +623,28 @@ export class F1SensorCard extends LitElement {
       node.module = models.get(module.id)?.fields ? { ...module, fields: models.get(module.id).fields } : module; node.model = ['replay', 'telemetry', 'race_control'].includes(module.type) ? { ...models.get(module.id), readonly: Boolean(this.preview || this.previewData || this.frozen), frozen: this.frozen, ...(module.type === 'race_control' ? { request: this.raceControlRequest } : {}) } : models.get(module.id); node.settings = settings;
       node.hidden = this.config.layout === 'tabs' && active !== module.id;
       node.id = `module-${module.id}`;
+      node.dataset.moduleType = module.type;
+      node.dataset.moduleId = module.id;
+      node.setAttribute('part', 'module');
       return node;
     });
     for (const id of this.moduleNodes.keys()) if (!this.config.modules.some(module => module.id === id)) this.moduleNodes.delete(id);
-    return html`<ha-card data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>
+    return html`<ha-card part="card" data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>
       ${this.previewData ? html`<p class="demo">${this.w('DEMO · sample data', 'DEMO · exempeldata')}</p>` : ''}
-      <header>${settings.appearance.show_header ? html`<div class="heading">${this.actionHeading()}<small>${this.w('Your Formula 1 view', 'Din Formel 1-vy')}</small></div>` : ''}
-        <div class="tools">${this.config.context.show_focus_control && drivers.length ? html`<label><span class="sr">${this.w('Driver focus', 'Förarfokus')}</span><select .value=${focusedDriver} @change=${this.chooseDriver}><option value="" .selected=${!focusedDriver}>${this.w('All drivers', 'Alla förare')}</option>${repeat(drivers, driver => String(driver.racing_number), driver => html`<option value=${String(driver.racing_number)} .selected=${focusedDriver === String(driver.racing_number)}>${driver.tla ?? driver.racing_number}</option>`)}</select></label>` : ''}
+      <header part="header">${settings.appearance.show_header ? html`<div class="heading" part="title">${this.actionHeading()}<small>${this.w('Your Formula 1 view', 'Din Formel 1-vy')}</small></div>` : ''}
+        <div class="tools" part="toolbar">${this.config.context.show_focus_control && drivers.length ? html`<label><span class="sr">${this.w('Driver focus', 'Förarfokus')}</span><select .value=${focusedDriver} @change=${this.chooseDriver}><option value="" .selected=${!focusedDriver}>${this.w('All drivers', 'Alla förare')}</option>${repeat(drivers, driver => String(driver.racing_number), driver => html`<option value=${String(driver.racing_number)} .selected=${focusedDriver === String(driver.racing_number)}>${driver.tla ?? driver.racing_number}</option>`)}</select></label>` : ''}
         ${this.group && this.config.context.share.includes('selection') ? html`<label><span class="sr">${this.w('Shared session selection', 'Delat sessionsurval')}</span><select .value=${groupSelection} @change=${this.chooseGroupSelection}>${groupSelections.map(([selection, title]) => html`<option value=${JSON.stringify(selection)}>${title}</option>`)}</select></label>` : ''}
         ${this.config.context.show_freeze_control ? html`<button @click=${this.freeze} aria-pressed=${String(this.frozen)}>${this.frozen ? this.w('Resume', 'Fortsätt') : this.w('Freeze view', 'Frys vyn')}</button>` : ''}</div>
       </header>
       ${this.actionAlternatives()}
-      ${!this.previewData && this.hass.connection?.connected === false ? html`<p class="connection-status" role="status">${this.w('Disconnected from Home Assistant · any visible values are saved snapshots. Live updates resume after reconnection.', 'Frånkopplad från Home Assistant · värden som visas är sparade ögonblicksbilder. Liveuppdateringar återkommer efter anslutning.')}</p>` : ''}
-      ${this.config.context.viewing_controls ? html`<f1-viewing-controls .model=${data.viewingModel(this.hass, this.entry, this.config.context.spoilers)} .settings=${settings} .connection=${this.hass.connection} .readonly=${Boolean(this.preview || this.previewData || this.frozen)} .localHidden=${this.config.context.spoilers === 'hide'} .request=${this.viewingRequest?.entryId === this.entry.entry_id && this.viewingRequest.connection === this.hass.connection ? this.viewingRequest : null} @f1-viewing-action=${this.viewingAction}></f1-viewing-controls>` : ''}
+      ${!this.previewData && this.hass.connection?.connected === false ? html`<p class="connection-status" part="connection-status" role="status">${this.w('Disconnected from Home Assistant · any visible values are saved snapshots. Live updates resume after reconnection.', 'Frånkopplad från Home Assistant · värden som visas är sparade ögonblicksbilder. Liveuppdateringar återkommer efter anslutning.')}</p>` : ''}
+      ${this.config.context.viewing_controls ? html`<f1-viewing-controls part="viewing-controls" .model=${data.viewingModel(this.hass, this.entry, this.config.context.spoilers)} .settings=${settings} .connection=${this.hass.connection} .readonly=${Boolean(this.preview || this.previewData || this.frozen)} .localHidden=${this.config.context.spoilers === 'hide'} .request=${this.viewingRequest?.entryId === this.entry.entry_id && this.viewingRequest.connection === this.hass.connection ? this.viewingRequest : null} @f1-viewing-action=${this.viewingAction}></f1-viewing-controls>` : ''}
       <div aria-live=${settings.accessibility.announce ? 'polite' : 'off'} aria-atomic="true">${this.frozen ? html`<p class="frozen">${this.w('Reading snapshot', 'Fryst läsvy')} · ${dateTime(this.frozenAt, settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · ${this.w('Only this card is paused', 'Endast detta kort är pausat')}${this.frozenGeneration !== this.savedSources.viewGeneration ? html`<br>${this.w('Session or playback settings have changed. This snapshot keeps its original context. Resume to show current data.', 'Sessionen eller uppspelningsinställningarna har ändrats. Läsbilden behåller sitt ursprungliga sammanhang. Välj Fortsätt för att visa aktuell data.')}` : ''}${this.focus.driver !== this.frozenFocus?.driver || this.focus.team !== this.frozenFocus?.team ? html`<br>${this.w('Group focus has changed. Resume to follow it.', 'Gruppens fokus har ändrats. Välj Fortsätt för att följa det.')}` : ''}</p>` : ''}</div>
-      ${this.config.layout === 'tabs' ? html`<nav aria-label=${this.w('Modules', 'Moduler')}>${modules.map(module => html`<button aria-pressed=${String(active === module.id)} aria-controls=${`module-${module.id}`} @click=${() => { this.tab = module.id; }}>${module.title || models.get(module.id).title}</button>`)}</nav>` : ''}
-      ${nodes.length ? html`<div class="modules">${nodes}</div>` : this.emptyCard()}
+      ${this.config.layout === 'tabs' ? html`<nav part="tabs" aria-label=${this.w('Modules', 'Moduler')}>${modules.map(module => html`<button aria-pressed=${String(active === module.id)} aria-controls=${`module-${module.id}`} @click=${() => { this.tab = module.id; }}>${module.title || models.get(module.id).title}</button>`)}</nav>` : ''}
+      ${nodes.length ? html`<div class="modules" part="modules">${nodes}</div>` : this.emptyCard()}
       ${configWarnings(this.config).length ? html`<p class="muted">${this.w('Some settings need a newer card version. They are preserved in the editor.', 'Vissa inställningar kräver en nyare kortversion. De finns kvar i editorn.')}</p>` : ''}
     </ha-card>`;
   }
-  emptyCard() { return html`<div class="empty">${this.w('Add your first module in the editor.', 'Lägg till din första modul i editorn.')}</div>`; }
+  emptyCard() { return html`<div class="empty" part="empty-state">${this.w('Add your first module in the editor.', 'Lägg till din första modul i editorn.')}</div>`; }
 }
 if (!customElements.get('f1-sensor-card')) customElements.define('f1-sensor-card', F1SensorCard);

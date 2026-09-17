@@ -38,6 +38,7 @@ export const APPEARANCE = {
   logos: true, logo_style: 'auto', logo_size: 'normal', flags: true, team_colors: true, full_names: false,
   numbers: 'tabular', tyre_style: 'ring', palette: {},
 };
+export const CUSTOM_STYLE_MAX_LENGTH = 32_768;
 export const ACCESSIBILITY = { high_contrast: false, signals: 'shape', motion: 'system', announce: true };
 export const PHASES = ['before', 'active', 'finished', 'unknown'];
 export const CONTEXT = {
@@ -83,6 +84,14 @@ export function normalizeConfig(input) {
   if (inputVersion === 1 && (config.context?.selection !== undefined || config.context?.share !== undefined || Array.isArray(config.modules) && config.modules.some(item => item?.selection !== undefined || item?.when !== undefined))) fail('version', 'version 2 is required for session selection and phase visibility');
   config.version = VERSION;
   config.title ??= 'F1 Sensor'; text(config.title, 'title');
+  if (config.styles !== undefined) {
+    text(config.styles, 'styles');
+    if (config.styles.length > CUSTOM_STYLE_MAX_LENGTH) fail('styles', `expected at most ${CUSTOM_STYLE_MAX_LENGTH} characters`);
+    const inspected = config.styles.replace(/\/\*[\s\S]*?\*\//g, '');
+    if (/@import(?:\s|["'(])/i.test(inspected)) fail('styles', '@import is not supported');
+    if (/\burl\s*\(/i.test(inspected)) fail('styles', 'url() is not supported');
+    if (/\$\{/.test(inspected)) fail('styles', 'JavaScript templates are not supported');
+  }
   config.f1_entry_id ??= ''; text(config.f1_entry_id, 'f1_entry_id');
   config.layout ??= 'stack'; choice(config.layout, ['stack', 'tabs'], 'layout');
   config.appearance = { ...copyConfig(APPEARANCE), ...object(config.appearance ?? {}, 'appearance') };

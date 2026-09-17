@@ -68,6 +68,11 @@ Open **Appearance** to choose a style, light/dark behavior and information densi
 
 For a simple card, choose a preset and adjust only the style and density. The additional groups let you change titles, surfaces, accents, logos, flags, team colors, typography and tyre presentation. A neutral or team accent changes decoration; timing status has its own color settings.
 
+Open **Custom CSS (advanced)** when the normal appearance controls do not cover
+your layout. The CSS applies only to that card and has a live preview. Use the
+documented variables and public parts in [custom CSS styling](/cards/modular-styling)
+instead of relying on private class names.
+
 Module titles and table headers have separate visibility options under **Module appearance**. Hidden headings and column labels remain available to assistive technology. Chart data tables retain their labels.
 
 The card-level driver menu uses three-letter driver codes to stay compact. Open **Layout and shared focus** and clear **Show driver focus menu** if you do not want the menu on that card. A saved default driver or module-level driver selection continues to apply when the menu is hidden.
