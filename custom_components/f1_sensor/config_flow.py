@@ -21,6 +21,7 @@ from .const import (
     CONF_CLEAR_LIVE_TIMING_AUTH_HEADER,
     CONF_ENTITY_NAME_LANGUAGE,
     CONF_ENTITY_NAME_MODE,
+    CONF_INSTALL_DASHBOARD_CARDS,
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
     CONF_RACE_WEEK_START_DAY,
@@ -28,6 +29,7 @@ from .const import (
     CONF_REPLAY_FILE,
     CONF_START_F1TV_PAIRING,
     DEFAULT_ENTITY_NAME_LANGUAGE,
+    DEFAULT_INSTALL_DASHBOARD_CARDS,
     DEFAULT_OPERATION_MODE,
     DEFAULT_RACE_WEEK_START_DAY,
     DOMAIN,
@@ -222,6 +224,13 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             ): cv.multi_select(sensor_options),
             vol.Optional("enable_race_control", default=False): cv.boolean,
             vol.Optional(
+                CONF_INSTALL_DASHBOARD_CARDS,
+                default=current.get(
+                    CONF_INSTALL_DASHBOARD_CARDS,
+                    DEFAULT_INSTALL_DASHBOARD_CARDS,
+                ),
+            ): cv.boolean,
+            vol.Optional(
                 CONF_RACE_WEEK_START_DAY,
                 default=race_week_start,
             ): vol.In(RACE_WEEK_START_OPTIONS),
@@ -368,6 +377,13 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional(
                 "enable_race_control",
                 default=current.get("enable_race_control", False),
+            ): cv.boolean,
+            vol.Optional(
+                CONF_INSTALL_DASHBOARD_CARDS,
+                default=current.get(
+                    CONF_INSTALL_DASHBOARD_CARDS,
+                    DEFAULT_INSTALL_DASHBOARD_CARDS,
+                ),
             ): cv.boolean,
             vol.Optional(
                 CONF_RACE_WEEK_START_DAY,
@@ -608,6 +624,13 @@ class F1OptionsFlow(config_entries.OptionsFlow):
             vol.Optional(
                 "enable_race_control",
                 default=current.get("enable_race_control", False),
+            ): cv.boolean,
+            vol.Optional(
+                CONF_INSTALL_DASHBOARD_CARDS,
+                default=current.get(
+                    CONF_INSTALL_DASHBOARD_CARDS,
+                    DEFAULT_INSTALL_DASHBOARD_CARDS,
+                ),
             ): cv.boolean,
             vol.Optional(
                 CONF_RACE_WEEK_START_DAY,

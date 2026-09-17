@@ -104,7 +104,7 @@ from .entity_map_websocket import (
 from .favorite_driver import FavoriteDriverController
 from .feature_plan import FeaturePlan, build_feature_plan
 from .formation_start import FormationStartTracker
-from .frontend import async_ensure_live_data_card_frontend
+from .frontend import async_reconcile_live_data_card_frontend
 from .helpers import (
     PersistentCache,
     build_user_agent,
@@ -1713,6 +1713,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
         await _async_close_shared_client_if_unused(hass)
 
 
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload an entry after its user-editable options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 async def _async_setup_entry(
     hass: HomeAssistant,
     entry: F1ConfigEntry,
@@ -2301,7 +2306,7 @@ async def _async_setup_entry(
             static_entry_data["no_spoiler_unsub"] = no_spoiler_mgr.add_listener(
                 _on_static_no_spoiler_changed
             )
-        await async_ensure_live_data_card_frontend(hass)
+        await async_reconcile_live_data_card_frontend(hass)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         if track_map_replay_adapter is not None:
             track_map_replay_adapter.start()
@@ -3018,7 +3023,7 @@ async def _async_setup_entry(
                 _on_no_spoiler_changed
             )
 
-    await async_ensure_live_data_card_frontend(hass)
+    await async_reconcile_live_data_card_frontend(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     track_map_replay_adapter.start()
     if race_weather_coordinator is not None:
@@ -3027,6 +3032,7 @@ async def _async_setup_entry(
         await live_supervisor.async_start()
     else:
         await live_bus.start()
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     transaction.commit()
     return True
 

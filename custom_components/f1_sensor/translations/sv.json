@@ -41,6 +41,7 @@
           "operation_mode": "Driftläge",
           "replay_file": "Sökväg till replay-dump",
           "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
+          "install_dashboard_cards": "Installera medföljande dashboardkort",
           "race_week_start_day": "Första dagen i tävlingsveckan",
           "live_timing_auth_header": "Manuell reservväg: F1TV-auktoriseringsvärde",
           "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst med Token Helper",
@@ -50,6 +51,7 @@
           "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
           "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
           "enable_race_control": "Ansluter till Formula 1 Live Timing via SignalR för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
+          "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-kort slutar fungera när webbläsaren har laddats om.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
           "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra bara in hela Bearer-token från F1TV Token Helper som avancerad reservväg. Lämna tomt för att bara använda publik live timing.",
           "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. F1TV-åtkomst är valfri; publik live timing fortsätter fungera utan den."
@@ -63,6 +65,7 @@
           "operation_mode": "Driftläge",
           "replay_file": "Sökväg till replay-dump",
           "enable_race_control": "Aktivera live F1 API",
+          "install_dashboard_cards": "Installera medföljande dashboardkort",
           "race_week_start_day": "Första dagen i tävlingsveckan",
           "live_timing_auth_header": "Manuell reservväg: F1TV-auktoriseringsvärde",
           "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst med Token Helper",
@@ -72,6 +75,7 @@
           "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
           "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
           "enable_race_control": "Ansluter till Formula 1 Live Timing för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
+          "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-kort slutar fungera när webbläsaren har laddats om.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
           "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra bara in en ny fullständig Bearer-token som avancerad reservväg. Lämna tomt för att behålla nuvarande värde.",
           "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. F1TV-åtkomst är valfri; publik live timing fortsätter fungera utan den.",
@@ -118,12 +122,14 @@
         "data": {
           "enabled_sensors": "Aktiverade sensorer",
           "enable_race_control": "Aktivera live F1 API",
+          "install_dashboard_cards": "Installera medföljande dashboardkort",
           "race_week_start_day": "Första dagen i tävlingsveckan",
           "operation_mode": "Driftläge",
           "replay_file": "Sökväg till replay-dump"
         },
         "data_description": {
           "enable_race_control": "Anslut endast till Formula 1 Live Timing när livefunktioner är aktiverade.",
+          "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-kort slutar fungera när webbläsaren har laddats om.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
           "operation_mode": "Välj Live eller lokalt utvecklingsläge med replay.",
           "replay_file": "Absolut sökväg till en replay-dump som endast används i utvecklingsläge."
@@ -162,7 +168,7 @@
       "title": "F1TV live timing-token behöver åtgärdas"
     },
     "stale_live_data_card_resources": {
-      "description": "F1 Sensor now bundles and manages the live data cards. Home Assistant still has stale Lovelace resource entries for the old standalone card ({stale_resource_count} detected), which can cause duplicate or outdated card behavior. Confirm that the bundled card works, then remove the old standalone HACS dashboard repository and the stale Lovelace resource entries. Restart Home Assistant or reload Lovelace resources and hard refresh the browser if stale card UI remains.",
+      "description": "Home Assistant har fortfarande inaktuella Lovelace-resurser för det äldre fristående F1-kortet ({stale_resource_count} upptäckta). De kan orsaka dubbla kort eller göra att F1-kort fortfarande visas när de medföljande dashboardkorten har stängts av. Ta bort det äldre fristående HACS-dashboardrepoet och dess inaktuella Lovelace-resurser. Starta sedan om Home Assistant eller ladda om Lovelace-resurserna och gör en fullständig omladdning av webbläsaren.",
       "title": "Old standalone F1 live data card resources detected"
     }
   },

@@ -10,9 +10,10 @@ from unittest.mock import AsyncMock
 from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DATA
 from homeassistant.helpers import issue_registry as ir
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor import frontend
-from custom_components.f1_sensor.const import DOMAIN
+from custom_components.f1_sensor.const import CONF_INSTALL_DASHBOARD_CARDS, DOMAIN
 
 
 class DummyLovelaceResources:
@@ -21,6 +22,7 @@ class DummyLovelaceResources:
     def __init__(self, items: list[dict[str, Any]] | None = None) -> None:
         self.created = 0
         self.items = items or []
+        self.deleted = 0
         self.loaded = False
         self.updated = 0
 
@@ -52,6 +54,10 @@ class DummyLovelaceResources:
                 item["url"] = updates["url"]
                 return item
         raise KeyError(item_id)
+
+    async def async_delete_item(self, item_id: str) -> None:
+        self.deleted += 1
+        self.items = [item for item in self.items if item.get("id") != item_id]
 
 
 class FailingCreateLovelaceResources(DummyLovelaceResources):
@@ -326,6 +332,125 @@ async def test_lovelace_resource_updates_when_cache_key_changes(hass) -> None:
     assert resources.created == 0
     assert resources.updated == 1
     assert resources.items[0]["url"].endswith("?v=newkey")
+
+
+def test_dashboard_cards_are_requested_by_default(hass) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
+    entry.add_to_hass(hass)
+
+    assert frontend._dashboard_cards_requested(hass) is True
+
+
+def test_dashboard_cards_remain_requested_when_any_entry_enables_them(hass) -> None:
+    disabled = MockConfigEntry(
+        domain=DOMAIN,
+        data={"sensor_name": "F1 disabled"},
+        options={CONF_INSTALL_DASHBOARD_CARDS: False},
+    )
+    enabled = MockConfigEntry(
+        domain=DOMAIN,
+        data={"sensor_name": "F1 enabled"},
+        options={CONF_INSTALL_DASHBOARD_CARDS: True},
+    )
+    disabled.add_to_hass(hass)
+    enabled.add_to_hass(hass)
+
+    assert frontend._dashboard_cards_requested(hass) is True
+
+
+def test_dashboard_cards_are_not_requested_when_all_entries_disable_them(hass) -> None:
+    for title in ("First", "Second"):
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={"sensor_name": title},
+            options={CONF_INSTALL_DASHBOARD_CARDS: False},
+        )
+        entry.add_to_hass(hass)
+
+    assert frontend._dashboard_cards_requested(hass) is False
+
+
+@pytest.mark.asyncio
+async def test_reconcile_installs_cards_when_requested(hass, monkeypatch) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
+    entry.add_to_hass(hass)
+    ensure_frontend = AsyncMock()
+    monkeypatch.setattr(
+        frontend,
+        "async_ensure_live_data_card_frontend",
+        ensure_frontend,
+    )
+
+    await frontend.async_reconcile_live_data_card_frontend(hass)
+
+    ensure_frontend.assert_awaited_once_with(hass)
+
+
+@pytest.mark.asyncio
+async def test_disabling_dashboard_cards_removes_only_managed_resources(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"sensor_name": "F1"},
+        options={CONF_INSTALL_DASHBOARD_CARDS: False},
+    )
+    entry.add_to_hass(hass)
+    resources = DummyLovelaceResources(
+        [
+            {
+                "id": "managed-1",
+                "type": "module",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=oldkey",
+            },
+            {
+                "id": "managed-2",
+                "type": "module",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=duplicate",
+            },
+            {
+                "id": "old-hacs",
+                "type": "js",
+                "url": "/hacsfiles/f1-sensor-live-data-card/f1-sensor-live-data-card.js",
+            },
+            {
+                "id": "unrelated",
+                "type": "module",
+                "url": "/hacsfiles/other-card/other-card.js",
+            },
+        ]
+    )
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
+
+    await frontend.async_reconcile_live_data_card_frontend(hass)
+
+    assert resources.deleted == 2
+    assert [item["id"] for item in resources.items] == ["old-hacs", "unrelated"]
+    issue = _stale_resource_issue(hass)
+    assert issue is not None
+    assert issue.data == {"stale_resource_count": 1}
+
+
+@pytest.mark.asyncio
+async def test_disabling_dashboard_cards_handles_read_only_resources(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"sensor_name": "F1"},
+        options={CONF_INSTALL_DASHBOARD_CARDS: False},
+    )
+    entry.add_to_hass(hass)
+    hass.data[LOVELACE_DATA] = SimpleNamespace(
+        resources=SimpleNamespace(
+            loaded=True,
+            async_items=lambda: [
+                {
+                    "id": "managed",
+                    "type": "module",
+                    "url": "/local/f1-sensor-live-data-card/register.js?v=key",
+                }
+            ],
+        )
+    )
+
+    await frontend.async_reconcile_live_data_card_frontend(hass)
 
 
 @pytest.mark.asyncio
