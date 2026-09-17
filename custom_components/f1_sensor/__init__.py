@@ -22,6 +22,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, callback as ha_callba
 from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.entity_platform import async_get_platforms
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -55,6 +56,7 @@ from .auth_http import (
 from .calibration import LiveDelayCalibrationManager
 from .const import (
     API_URL,
+    CONF_LEGACY_RACE_CONTROL_EVENTS,
     CONF_LIVE_DELAY_REFERENCE,
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
@@ -102,7 +104,7 @@ from .entity_map_websocket import (
 from .favorite_driver import FavoriteDriverController
 from .feature_plan import FeaturePlan, build_feature_plan
 from .formation_start import FormationStartTracker
-from .frontend import async_ensure_live_data_card_frontend
+from .frontend import async_reconcile_live_data_card_frontend
 from .helpers import (
     PersistentCache,
     build_user_agent,
@@ -1522,6 +1524,15 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
         options["disabled_sensors"] = sorted(disabled)
         changed = True
 
+    if entry.version < 4 or entry.minor_version < 2:
+        # Before feature-based demand, enabling live timing also enabled Race
+        # Control events regardless of the selected sensors. Preserve that
+        # contract for existing event automations without creating extra sensors.
+        data[CONF_LEGACY_RACE_CONTROL_EVENTS] = bool(
+            options.get("enable_race_control", data.get("enable_race_control", False))
+        )
+        changed = True
+
     unique_id = entry.unique_id
     if unique_id is None:
         conflicting = any(
@@ -1539,6 +1550,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
             options=options,
             unique_id=unique_id,
             version=4,
+            minor_version=max(entry.minor_version, 2) if entry.version == 4 else 2,
         )
     return True
 
@@ -1660,6 +1672,9 @@ async def _async_refresh_static_runtime(
 async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
     """Set up one config entry transactionally."""
     transaction = _SetupTransaction()
+    existing_platforms = {
+        id(platform) for platform in async_get_platforms(hass, DOMAIN)
+    }
     root = hass.data.setdefault(DOMAIN, {})
     owners = root.setdefault(_JOLPICA_SETUP_OWNERS_KEY, set())
     owner = object()
@@ -1667,6 +1682,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
     try:
         return await _async_setup_entry(hass, entry, transaction)
     except BaseException:
+        # Only unload platforms created for this attempt. HA may retain platform
+        # objects from earlier unloads in its entity-platform registry.
+        started_platforms = [
+            platform.domain
+            for platform in async_get_platforms(hass, DOMAIN)
+            if platform.config_entry is entry and id(platform) not in existing_platforms
+        ]
+        if started_platforms:
+            with suppress(Exception):
+                await hass.config_entries.async_unload_platforms(
+                    entry, started_platforms
+                )
         data_root = hass.data.get(DOMAIN)
         data = (
             data_root.pop(entry.entry_id, None) if isinstance(data_root, dict) else None
@@ -1675,8 +1702,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
             await _async_close_runtime_mapping(data)
         else:
             await transaction.async_rollback()
-        with suppress(Exception):
-            await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
         async_cancel_f1tv_auth_status_refresh(hass, entry.entry_id)
         unregister_entry_name_settings(entry.entry_id)
         entry.runtime_data = None
@@ -1686,6 +1711,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
         if not owners and root.get(_JOLPICA_SETUP_OWNERS_KEY) is owners:
             root.pop(_JOLPICA_SETUP_OWNERS_KEY, None)
         await _async_close_shared_client_if_unused(hass)
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload an entry after its user-editable options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def _async_setup_entry(
@@ -2109,6 +2139,9 @@ async def _async_setup_entry(
         enabled,
         live_enabled=enable_rc,
         development_mode=operation_mode == OPERATION_MODE_DEVELOPMENT,
+        legacy_race_control_events=bool(
+            entry.data.get(CONF_LEGACY_RACE_CONTROL_EVENTS, False)
+        ),
     )
     await _async_refresh_static_runtime(
         race_coordinator=race_coordinator,
@@ -2273,7 +2306,7 @@ async def _async_setup_entry(
             static_entry_data["no_spoiler_unsub"] = no_spoiler_mgr.add_listener(
                 _on_static_no_spoiler_changed
             )
-        await async_ensure_live_data_card_frontend(hass)
+        await async_reconcile_live_data_card_frontend(hass)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         if track_map_replay_adapter is not None:
             track_map_replay_adapter.start()
@@ -2990,7 +3023,7 @@ async def _async_setup_entry(
                 _on_no_spoiler_changed
             )
 
-    await async_ensure_live_data_card_frontend(hass)
+    await async_reconcile_live_data_card_frontend(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     track_map_replay_adapter.start()
     if race_weather_coordinator is not None:
@@ -2999,6 +3032,7 @@ async def _async_setup_entry(
         await live_supervisor.async_start()
     else:
         await live_bus.start()
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     transaction.commit()
     return True
 
@@ -7341,31 +7375,30 @@ class F1DataCoordinator(DataUpdateCoordinator):
                 else:
                     validate_single_page_jolpica(payload, race_leaf_keys)
 
-            async with asyncio.timeout(10):
-                data = await fetch_json(
-                    self.hass,
-                    self._session,
-                    request_url,
-                    headers=self._headers,
-                    ttl_seconds=self._ttl,
-                    cache=self._cache,
-                    inflight=self._inflight,
-                    persist_map=self._persist,
-                    persist_save=self._persist_save,
-                    validator=_validate,
-                )
-                # Detect season rollovers in current.json and clear stale caches if needed.
-                self._handle_season_rollover_if_needed(data)
-                # No-spoiler: keep the cache warm but don't deliver new data to entities.
-                if _is_no_spoiler_jolpica_blocked(self):
-                    return self.data
-                if self._provider_registry is None:
-                    return data
-                return self._provider_registry.normalize(
-                    "jolpica",
-                    self._url,
-                    data,
-                ).payload
+            data = await fetch_json(
+                self.hass,
+                self._session,
+                request_url,
+                headers=self._headers,
+                ttl_seconds=self._ttl,
+                cache=self._cache,
+                inflight=self._inflight,
+                persist_map=self._persist,
+                persist_save=self._persist_save,
+                validator=_validate,
+            )
+            # Detect season rollovers in current.json and clear stale caches if needed.
+            self._handle_season_rollover_if_needed(data)
+            # No-spoiler: keep the cache warm but don't deliver new data to entities.
+            if _is_no_spoiler_jolpica_blocked(self):
+                return self.data
+            if self._provider_registry is None:
+                return data
+            return self._provider_registry.normalize(
+                "jolpica",
+                self._url,
+                data,
+            ).payload
         except Exception as err:
             raise UpdateFailed(
                 f"Error fetching data: {_format_update_error(err)}"
@@ -7670,19 +7703,18 @@ class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
             else:
                 validate_single_page_jolpica(payload, race_leaf_keys)
 
-        async with asyncio.timeout(10):
-            payload = await fetch_json(
-                self.hass,
-                self._session,
-                request_url,
-                headers=self._headers,
-                ttl_seconds=self._ttl,
-                cache=self._cache,
-                inflight=self._inflight,
-                persist_map=self._persist,
-                persist_save=self._persist_save,
-                validator=_validate,
-            )
+        payload = await fetch_json(
+            self.hass,
+            self._session,
+            request_url,
+            headers=self._headers,
+            ttl_seconds=self._ttl,
+            cache=self._cache,
+            inflight=self._inflight,
+            persist_map=self._persist,
+            persist_save=self._persist_save,
+            validator=_validate,
+        )
         return payload
 
     def _target_race(self) -> dict[str, Any] | None:

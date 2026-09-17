@@ -20,7 +20,11 @@ from homeassistant.const import CONF_ID, CONF_TYPE
 from homeassistant.core import HomeAssistant, callback as ha_callback
 from homeassistant.helpers import issue_registry as ir
 
-from .const import DOMAIN
+from .const import (
+    CONF_INSTALL_DASHBOARD_CARDS,
+    DEFAULT_INSTALL_DASHBOARD_CARDS,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,6 +98,75 @@ async def async_ensure_live_data_card_frontend(hass: HomeAssistant) -> None:
             "Could not update the F1 Sensor live data card Lovelace resource: %s",
             err,
         )
+
+
+async def async_reconcile_live_data_card_frontend(hass: HomeAssistant) -> None:
+    """Install or remove the bundled dashboard resource based on entry options."""
+    if _dashboard_cards_requested(hass):
+        await async_ensure_live_data_card_frontend(hass)
+        return
+
+    try:
+        await _async_remove_lovelace_resources(hass)
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning(
+            "Could not remove the F1 Sensor dashboard card Lovelace resource: %s",
+            err,
+        )
+
+
+def _dashboard_cards_requested(hass: HomeAssistant) -> bool:
+    """Return whether any enabled F1 Sensor entry requests dashboard cards."""
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.disabled_by is not None:
+            continue
+        enabled = entry.options.get(
+            CONF_INSTALL_DASHBOARD_CARDS,
+            entry.data.get(
+                CONF_INSTALL_DASHBOARD_CARDS,
+                DEFAULT_INSTALL_DASHBOARD_CARDS,
+            ),
+        )
+        if bool(enabled):
+            return True
+    return False
+
+
+async def _async_remove_lovelace_resources(hass: HomeAssistant) -> None:
+    """Remove only resources managed by the bundled F1 Sensor dashboard cards."""
+    resources = _get_lovelace_resources(hass)
+    if resources is None:
+        _LOGGER.debug("Lovelace resources are not available during F1 Sensor setup")
+        return
+
+    async_load = getattr(resources, "async_load", None)
+    if not bool(getattr(resources, "loaded", True)) and callable(async_load):
+        await async_load()
+        try:
+            resources.loaded = True
+        except AttributeError:
+            pass
+
+    async_items = getattr(resources, "async_items", None)
+    if not callable(async_items):
+        _LOGGER.debug("Lovelace resource collection cannot list resources")
+        return
+
+    items = list(async_items() or [])
+    managed_items = [
+        item for item in items if _is_managed_resource_url(str(item.get(CONF_URL, "")))
+    ]
+    old_items = _find_old_live_data_card_resources(items)
+    async_delete_item = getattr(resources, "async_delete_item", None)
+    if managed_items and not callable(async_delete_item):
+        _LOGGER.debug("Lovelace resource collection is read-only")
+    elif callable(async_delete_item):
+        for item in managed_items:
+            item_id = item.get(CONF_ID)
+            if isinstance(item_id, str):
+                await async_delete_item(item_id)
+
+    _async_update_stale_live_data_card_resource_issue(hass, len(old_items))
 
 
 def _sync_bundled_live_data_card_assets(

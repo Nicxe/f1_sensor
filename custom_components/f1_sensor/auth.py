@@ -2,21 +2,36 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 import json
+import logging
+import math
 from typing import Any
 
+from aiohttp import ClientError, ClientTimeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later
 
 from . import const
 from .const import CONF_LIVE_TIMING_AUTH_HEADER, DOMAIN
 from .helpers import normalize_live_timing_auth_header
+
+_LOGGER = logging.getLogger(__name__)
+
+F1_RETRIEVE_SUBSCRIBER_URL = (
+    "https://api.formula1.com/v1/account/Subscriber/RetrieveSubscriber"
+)
+F1_API_KEY = "fCUCjWrKPu9ylJwRAv8BpGLEgiAuThx7"
+F1_SYSTEM_ID = "60a9ad84-e93d-480f-80d6-af37494f2e22"
 
 AUTH_STATUS_NOT_CONFIGURED = "not_configured"
 AUTH_STATUS_VALID = "valid"
@@ -44,6 +59,9 @@ AUTH_REPAIR_TRANSLATION_KEY = "f1tv_token_attention_required"
 AUTH_RUNTIME_STATUS = "f1tv_auth_status"
 AUTH_RUNTIME_STATUS_LISTENERS = "f1tv_auth_status_listeners"
 AUTH_RUNTIME_STATUS_REFRESH_UNSUB = "f1tv_auth_status_refresh_unsub"
+AUTH_RUNTIME_RENEWAL = "f1tv_token_renewal"
+AUTH_RENEWAL_RETRY_SECONDS = 60
+AUTH_RENEWAL_MAX_RETRY_SECONDS = 3600
 
 
 @dataclass(frozen=True)
@@ -113,6 +131,25 @@ def _extract_bearer_token(header: str) -> str:
     if len(parts) != 2 or parts[0].lower() != "bearer":
         raise ValueError("missing_bearer_scheme")
     return parts[1].strip()
+
+
+def extract_f1tv_session_id(header: str | None) -> str | None:
+    """Extract the Ascendon SessionId from an F1TV live timing JWT."""
+    header = normalize_live_timing_auth_header(header)
+    if not header:
+        return None
+    try:
+        token = _extract_bearer_token(header)
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        payload = _decode_jwt_part(parts[1])
+        session_id = payload.get("SessionId")
+        if isinstance(session_id, str) and session_id.strip():
+            return session_id.strip()
+    except (ValueError, TypeError):
+        return None
+    return None
 
 
 def evaluate_f1tv_auth_header(
@@ -204,6 +241,244 @@ def validate_replacement_auth_header(
     return status.header, None, status
 
 
+class F1TvRenewalResult(StrEnum):
+    """Separate temporary renewal failures from a required browser sign-in."""
+
+    RENEWED = "renewed"
+    RETRY_LATER = "retry_later"
+    PAIRING_REQUIRED = "pairing_required"
+    CANCELLED = "cancelled"
+
+
+def _session_expired(session_id: str) -> bool:
+    """Use an embedded expiry when available; let F1 validate opaque sessions."""
+    try:
+        parts = session_id.split(".")
+        if len(parts) != 3:
+            return False
+        expiry = _decode_jwt_part(parts[1]).get("exp")
+        return (
+            isinstance(expiry, (int, float))
+            and math.isfinite(expiry)
+            and expiry <= _utcnow().timestamp()
+        )
+    except (ValueError, TypeError):
+        return False
+
+
+class F1TvTokenRenewal:
+    """Own one renewal request and its retry timer for a loaded config entry."""
+
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, runtime: dict[str, Any]
+    ) -> None:
+        self.hass = hass
+        self.entry = entry
+        self.runtime = runtime
+        self.task: asyncio.Task[F1TvRenewalResult] | None = None
+        self.retry_unsub: Callable[[], None] | None = None
+        self.retry_delay = AUTH_RENEWAL_RETRY_SECONDS
+        self.closed = False
+        self.blocked_header: str | None = None
+        self.replacement_header: str | None = None
+
+    def _is_current(self, header: str | None) -> bool:
+        return (
+            not self.closed
+            and is_auth_feature_enabled()
+            and _runtime_data(self.hass, self.entry.entry_id) is self.runtime
+            and self.hass.config_entries.async_get_entry(self.entry.entry_id)
+            is self.entry
+            and self.entry.disabled_by is None
+            and self.entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER) == header
+        )
+
+    @callback
+    def async_start(self) -> asyncio.Task[F1TvRenewalResult] | None:
+        """Start at most one request, respecting a pending retry or session failure."""
+        header = self.entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER)
+        if not self._is_current(header) or self.blocked_header == header:
+            return None
+        if self.task is not None and not self.task.done():
+            return self.task
+        if self.retry_unsub is not None:
+            return None
+        self.task = self.entry.async_create_background_task(
+            self.hass,
+            self._async_attempt(header),
+            "Renew F1TV access",
+            eager_start=False,
+        )
+        self.task.add_done_callback(self._async_finished)
+        return self.task
+
+    @callback
+    def _async_finished(self, task: asyncio.Task[F1TvRenewalResult]) -> None:
+        """Reload only after the entry-owned request has finished."""
+        if (
+            not task.cancelled()
+            and task.result() == F1TvRenewalResult.RENEWED
+            and self._is_current(self.replacement_header)
+        ):
+            self.hass.config_entries.async_schedule_reload(self.entry.entry_id)
+
+    @callback
+    def _retry(self) -> F1TvRenewalResult:
+        """Retry temporary failures with a capped exponential backoff."""
+        if self.retry_delay == AUTH_RENEWAL_RETRY_SECONDS:
+            _LOGGER.warning("Unable to renew F1TV access; retrying automatically")
+        delay = self.retry_delay
+        self.retry_delay = min(delay * 2, AUTH_RENEWAL_MAX_RETRY_SECONDS)
+
+        @callback
+        def retry(_now: datetime | None = None) -> None:
+            self.retry_unsub = None
+            self.async_start()
+
+        self.retry_unsub = async_call_later(self.hass, delay, retry)
+        return F1TvRenewalResult.RETRY_LATER
+
+    @callback
+    def _require_pairing(self, header: str) -> F1TvRenewalResult:
+        """Stop renewing this session and expose the existing repair flow."""
+        self.blocked_header = header
+        status = evaluate_f1tv_auth_header(header)
+        # A failed renewal need not invalidate the still-usable access token.
+        # Leave runtime token health alone, but surface the required sign-in.
+        async_update_f1tv_auth_repair_issue(
+            self.hass,
+            self.entry,
+            replace(status, status=AUTH_STATUS_REJECTED, reason="session_rejected"),
+        )
+        return F1TvRenewalResult.PAIRING_REQUIRED
+
+    async def _async_attempt(self, current_header: str) -> F1TvRenewalResult:
+        if not self._is_current(current_header):
+            return F1TvRenewalResult.CANCELLED
+        session_id = extract_f1tv_session_id(current_header)
+        if not session_id or _session_expired(session_id):
+            return self._require_pairing(current_header)
+
+        session = async_get_clientsession(self.hass)
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like"
+                " Gecko) Chrome/133.0.0.0 Safari/537.36"
+            ),
+            "Content-Type": "application/json",
+            "apikey": F1_API_KEY,
+            "CD-SystemId": F1_SYSTEM_ID,
+            "cd-sessionid": session_id,
+            "orderSubmitted": "true",
+        }
+        try:
+            async with session.post(
+                F1_RETRIEVE_SUBSCRIBER_URL,
+                headers=headers,
+                json={},
+                timeout=ClientTimeout(total=15),
+                allow_redirects=False,
+            ) as response:
+                http_status = response.status
+                data = await response.json() if http_status == 200 else None
+        except (ClientError, TimeoutError, ValueError):
+            if not self._is_current(current_header):
+                return F1TvRenewalResult.CANCELLED
+            return self._retry()
+
+        if not self._is_current(current_header):
+            return F1TvRenewalResult.CANCELLED
+        if http_status in (401, 403):
+            return self._require_pairing(current_header)
+        if http_status != 200:
+            return self._retry()
+
+        subscriber = data.get("data") if isinstance(data, dict) else None
+        sub_token = (
+            subscriber.get("subscriptionToken")
+            if isinstance(subscriber, dict)
+            else None
+        )
+        if not isinstance(sub_token, str) or not sub_token.strip():
+            return self._retry()
+        auth_header, error, status = validate_replacement_auth_header(
+            f"Bearer {sub_token}"
+        )
+        previous = evaluate_f1tv_auth_header(current_header)
+        if (
+            error is not None
+            or auth_header is None
+            or status.status != AUTH_STATUS_VALID
+            or auth_header == current_header
+            or (
+                previous.expires_at is not None
+                and status.expires_at <= previous.expires_at
+            )
+        ):
+            return self._retry()
+
+        new_data = dict(self.entry.data)
+        new_data[CONF_LIVE_TIMING_AUTH_HEADER] = auth_header
+        self.hass.config_entries.async_update_entry(self.entry, data=new_data)
+        async_update_f1tv_auth_repair_issue(self.hass, self.entry, status)
+        async_set_runtime_f1tv_auth_status(self.hass, self.entry.entry_id, status)
+        self.replacement_header = auth_header
+        _LOGGER.info("Renewed F1TV access until %s", status.expires_at_iso)
+        return F1TvRenewalResult.RENEWED
+
+    async def async_close(self) -> None:
+        """Cancel retries and requests on unload, including setup rollback."""
+        self.closed = True
+        if self.retry_unsub is not None:
+            self.retry_unsub()
+            self.retry_unsub = None
+        if self.task is not None and not self.task.done():
+            self.task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self.task
+
+
+@callback
+def _renewal_manager(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> F1TvTokenRenewal | None:
+    runtime = _runtime_data(hass, entry.entry_id)
+    if (
+        runtime is None
+        or hass.config_entries.async_get_entry(entry.entry_id) is not entry
+    ):
+        return None
+    manager = runtime.get(AUTH_RUNTIME_RENEWAL)
+    if not isinstance(manager, F1TvTokenRenewal):
+        manager = runtime[AUTH_RUNTIME_RENEWAL] = F1TvTokenRenewal(hass, entry, runtime)
+    return manager
+
+
+async def async_renew_f1tv_token(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> F1TvRenewalResult:
+    """Renew access or tell the manual button whether browser pairing is needed."""
+    if not is_auth_feature_enabled():
+        return F1TvRenewalResult.CANCELLED
+    header = entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER)
+    if not extract_f1tv_session_id(header):
+        return F1TvRenewalResult.PAIRING_REQUIRED
+    manager = _renewal_manager(hass, entry)
+    if manager is None or manager.closed:
+        return F1TvRenewalResult.CANCELLED
+    if manager.blocked_header == header:
+        return F1TvRenewalResult.PAIRING_REQUIRED
+    task = manager.async_start()
+    if task is None:
+        return F1TvRenewalResult.RETRY_LATER
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        if task.cancelled():
+            return F1TvRenewalResult.CANCELLED
+        raise
+
+
 def rejected_f1tv_auth_status(status: F1TvAuthStatus) -> F1TvAuthStatus:
     """Return a rejected status for a token the server refused."""
     return replace(
@@ -232,6 +507,14 @@ def async_update_f1tv_auth_repair_issue(
     if not is_auth_feature_enabled():
         ir.async_delete_issue(hass, DOMAIN, issue_id)
         return
+    runtime = _runtime_data(hass, entry.entry_id) or {}
+    renewal = runtime.get(AUTH_RUNTIME_RENEWAL)
+    if (
+        isinstance(renewal, F1TvTokenRenewal)
+        and not renewal.closed
+        and renewal.blocked_header == status.header
+    ):
+        status = replace(status, status=AUTH_STATUS_REJECTED, reason="session_rejected")
     if not status.issue_required:
         ir.async_delete_issue(hass, DOMAIN, issue_id)
         return
@@ -351,6 +634,10 @@ def async_schedule_f1tv_auth_status_refresh(
         )
 
     delay = _next_refresh_delay(current, _utcnow())
+    if current.status in (AUTH_STATUS_EXPIRING_SOON, AUTH_STATUS_EXPIRED):
+        if extract_f1tv_session_id(entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER)):
+            if manager := _renewal_manager(hass, entry):
+                manager.async_start()
     if delay is None:
         return
 
@@ -368,6 +655,7 @@ def async_schedule_f1tv_auth_status_refresh(
             status = replace(status, used_for_live_timing=False)
         async_set_runtime_f1tv_auth_status(hass, entry.entry_id, status)
         async_update_f1tv_auth_repair_issue(hass, entry, status)
+
         async_schedule_f1tv_auth_status_refresh(hass, entry)
 
     data[AUTH_RUNTIME_STATUS_REFRESH_UNSUB] = async_call_later(hass, delay, _refresh)
