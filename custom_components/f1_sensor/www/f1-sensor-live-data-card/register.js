@@ -5,3 +5,7 @@ const { registerF1CardMetadata } = await import(`./platform/card-registry.js${ca
 registerF1CardMetadata();
 
 await import(`./f1-sensor-live-data-card.js${cacheSuffix}`);
+await import(`./modular/card.js${cacheSuffix}`);
+await import(`./modular/editor.js${cacheSuffix}`);
+const { installLegacyMigrationEditors } = await import(`./modular/migration-editor.js${cacheSuffix}`);
+installLegacyMigrationEditors();

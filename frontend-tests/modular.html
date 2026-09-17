@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>F1 modular card development fixture</title>
+<style>body{margin:0;padding:16px;background:#0c1017;color:#f1f4f8;font-family:system-ui}main{max-width:1100px;margin:auto}*{box-sizing:border-box}</style></head>
+<body><main id="root"></main><script type="module">
+  const base='/custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/';
+  const [{makeDemo},{normalizeConfig,applyPreset}]=await Promise.all([import(base+'demo.js'),import(base+'config.js'),import(base+'card.js'),import(base+'editor.js')]);
+  if(!customElements.get('ha-card'))customElements.define('ha-card',class extends HTMLElement{});
+  window.mountModular=({preset='session',config,editor=false,language='en',scene='race'}={})=>{
+    const value=config?normalizeConfig(config):applyPreset(normalizeConfig({}),preset);
+    const demo=makeDemo(scene,language,value.f1_entry_id);
+    const node=document.createElement(editor?'f1-sensor-card-editor':'f1-sensor-card');
+    node.hass=demo.hass;
+    if(!editor)node.previewData=demo.preview;
+    node.setConfig(value);
+    node.addEventListener('config-changed',event=>{window.savedConfig=event.detail.config;});
+    document.querySelector('#root').replaceChildren(node);
+    window.fixtureCard=node;window.fixtureDemo=demo;
+    return value;
+  };
+  window.modularReady=true;
+</script></body></html>

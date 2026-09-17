@@ -26,6 +26,7 @@ export const F1_CARD_DEFINITIONS = [
   ['f1-practice-timing-card', 'F1 Free Practice Timing', 'Practice timing with sectors, tyres, and fastest laps', 'practice'],
   ['f1-race-lap-card', 'F1 Race Lap', 'Race timing with sectors, laps, tyres, and pit stops', 'race_lap'],
   ['f1-starting-grid-card', 'F1 Starting Grid', 'Starting grid for the active Sprint or Race', 'starting_grid'],
+  ['f1-sensor-card', 'F1 Sensor', 'Build your own Formula 1 view with configurable modules, colors and accessible timing', 'modular'],
 ].map(([type, name, description, translationKey]) => ({
   type,
   name,

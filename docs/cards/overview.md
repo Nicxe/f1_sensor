@@ -11,6 +11,10 @@ Choose from 23 bundled cards for your [Home Assistant](https://www.home-assistan
 
 Start with [Next Race](/cards/next-race) between sessions, [Live Session](/cards/live-session) and a timing card on race day, or [Replay Control](/cards/replay-control) when watching later.
 
+:::info Development preview
+The [modular F1 Sensor card](/cards/modular) combines selectable content with a visual editor. Its guide applies to development builds that include the new card; the existing cards below remain supported.
+:::
+
 ## Available cards
 
 Filter by purpose, then open a card for its preview, setup and options. Public live timing works without F1TV Auth; check each card’s data requirements.

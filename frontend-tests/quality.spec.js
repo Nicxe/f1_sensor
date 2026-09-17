@@ -16,7 +16,7 @@ const openFixture = async (page) => {
 test('mounts and unmounts all cards and editors without browser errors', async ({ page }) => {
   const errors = await openFixture(page);
   const types = await page.evaluate(() => window.f1CardTypes());
-  expect(types).toHaveLength(23);
+  expect(types).toHaveLength(24);
   for (const type of types) {
     const card = await page.evaluate((current) => window.mountF1Element({ type: current }), type);
     expect(card.tag).toBe(type);
@@ -157,7 +157,7 @@ test('card picker metadata follows the browser language with English fallback', 
     name,
     description,
   })));
-  expect(metadata).toHaveLength(23);
+  expect(metadata).toHaveLength(24);
   expect(metadata[0]).toEqual({
     name: 'F1 Helghubb',
     description: 'En synkroniserad samlingsplats för live, repris och analys efter sessionen',
@@ -224,7 +224,9 @@ for (const matrix of [
     await page.clock.setFixedTime(new Date('2026-09-05T12:00:00Z'));
     await page.setViewportSize({ width: matrix.width, height: 900 });
     await openFixture(page);
-    await page.evaluate((options) => window.mountF1Gallery(options), matrix);
+    // Keep the existing 23-card visual baseline comparable. The new renderer
+    // has its populated style/theme matrix in modular.spec.js.
+    await page.evaluate((options) => window.mountF1Gallery({ ...options, legacyOnly: true }), matrix);
     await expect(page).toHaveScreenshot(`${matrix.name}-${process.platform}.png`, {
       fullPage: true,
     });

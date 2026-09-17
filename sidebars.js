@@ -28,6 +28,9 @@ const sidebars = {
         "cards/cards-overview",
         "cards/installation",
         "cards/shared-options",
+        "cards/modular",
+        "cards/modular-migration",
+        "cards/modular-accessibility",
         {
           "type": "category",
           "label": "Race weekend",
