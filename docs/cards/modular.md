@@ -50,6 +50,8 @@ Data availability depends on the source and session. Adding a module does not cr
 
 Timing can follow a session profile or use your selected columns. Choosing your own timing columns keeps them as a custom selection. A module pinned to a driver keeps that driver when you change the card's general focus.
 
+Set **Recent lap columns** under the Timing module's **Module options** to compare the latest 1–30 completed laps directly in the timing table. The default value is 0, which keeps these columns hidden. Each column is labelled with its lap number; a dash means that no usable time is available for that driver and lap.
+
 Weather, Battles, Strategy and Replay telemetry show a collapsible **About** section by default. To remove it from one module, open that module's **Module options** and clear **Show About section**. Warnings, errors and controls remain visible.
 
 ## Choose and lock a session
@@ -67,6 +69,8 @@ Open **Appearance** to choose a style, light/dark behavior and information densi
 For a simple card, choose a preset and adjust only the style and density. The additional groups let you change titles, surfaces, accents, logos, flags, team colors, typography and tyre presentation. A neutral or team accent changes decoration; timing status has its own color settings.
 
 Module titles and table headers have separate visibility options under **Module appearance**. Hidden headings and column labels remain available to assistive technology. Chart data tables retain their labels.
+
+The card-level driver menu uses three-letter driver codes to stay compact. Open **Layout and shared focus** and clear **Show driver focus menu** if you do not want the menu on that card. A saved default driver or module-level driver selection continues to apply when the menu is hidden.
 
 :::tip Keep the important fields first
 Put the driver and the time or status you follow most near the start of a table. A small number of useful columns is easier to read on a phone than a full timing sheet.
@@ -89,6 +93,8 @@ Open **Accessibility and timing colors** to adjust timing colors and the accompa
 The default sector view keeps values from the same lap together. The **Latest sectors, with lap labels** option can mix the most recently supplied sectors; the individual lap labels matter in that view. A theoretical lap is the sum of personal-best sectors and may combine different laps.
 
 Custom colors can help you distinguish the timing states. Keep symbols or text available and check both light and dark themes. High contrast, reduced motion and readable text alternatives are part of the card's controls; automated checks alone do not establish compatibility with every screen reader or device.
+
+Track Map moves driver markers smoothly between consecutive live or replay positions. It moves directly to the new position when reduced motion is enabled, the session changes, the position is stale or the new sample is too far from the previous one to be a continuous movement.
 
 See [card accessibility](/cards/modular-accessibility) for focused keyboard, contrast and motion guidance.
 

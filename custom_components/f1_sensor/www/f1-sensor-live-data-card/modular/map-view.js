@@ -29,18 +29,81 @@ class F1TrackMapView extends LitElement {
     .driver-list small { display:block; font-size:.8em; }
     @media(forced-colors:active) { .track,.marker circle { stroke:CanvasText!important; } .marker text { fill:CanvasText!important; stroke:Canvas!important; } .marker .team { display:none; } }
   `];
-  constructor() { super(); this.width = 400; this.selected = ''; this.listOpen = false; }
+  constructor() {
+    super(); this.width = 400; this.selected = ''; this.listOpen = false;
+    this.motions = new Map(); this.motionFrame = 0;
+  }
   connectedCallback() {
     super.connectedCallback(); this.observer = new ResizeObserver(entries => { this.width = Math.max(200, entries[0].contentRect.width); }); this.observer.observe(this);
   }
-  disconnectedCallback() { super.disconnectedCallback(); this.observer?.disconnect(); }
+  disconnectedCallback() {
+    super.disconnectedCallback(); this.observer?.disconnect();
+    if (this.motionFrame) cancelAnimationFrame(this.motionFrame);
+    this.motionFrame = 0;
+  }
   willUpdate(changed) {
-    if (this.model?.sessionKey !== this.sessionKey) { this.sessionKey = this.model?.sessionKey; this.selected = ''; }
+    const sessionChanged = this.model?.sessionKey !== this.sessionKey;
+    if (sessionChanged) { this.sessionKey = this.model?.sessionKey; this.selected = ''; }
+    if (changed.has('model') || changed.has('settings')) this.syncMotion(sessionChanged, changed.has('model'));
     if (changed.has('module')) {
       const showList = this.module?.fields.includes('map_drivers');
       if (showList !== this.showList) { this.listOpen = Boolean(showList); this.showList = showList; }
     }
     if (this.selected && !this.model?.rows.some(row => row.id === this.selected)) this.selected = '';
+  }
+  reducedMotion() {
+    return this.settings?.accessibility?.motion === 'reduced' || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  }
+  motionPoint(row, now = performance.now()) {
+    const motion = this.motions.get(row.id);
+    if (!motion) return row.point;
+    if (!motion.duration || now >= motion.start + motion.duration) return motion.to;
+    const progress = Math.max(0, Math.min(1, (now - motion.start) / motion.duration));
+    return motion.from.map((value, index) => value + (motion.to[index] - value) * progress);
+  }
+  syncMotion(sessionChanged, modelChanged) {
+    const rows = this.model?.rows ?? [], now = performance.now();
+    if (!rows.length) {
+      this.motions.clear();
+      if (this.motionFrame) cancelAnimationFrame(this.motionFrame);
+      this.motionFrame = 0; return;
+    }
+    const reduced = this.reducedMotion(), stale = this.model?.freshness?.stale;
+    const next = new Map(); let active = false;
+    for (const row of rows) {
+      if (!row.point) continue;
+      const existing = this.motions.get(row.id), previous = this.motionPoint(row, now);
+      const unchanged = existing && existing.to.every((value, index) => value === row.point[index]);
+      if (unchanged && !reduced && !sessionChanged && !stale && !row.stale) {
+        next.set(row.id, existing);
+        active ||= now < existing.start + existing.duration;
+        continue;
+      }
+      const targetChanged = !existing || !unchanged;
+      const rawInterval = modelChanged && targetChanged && existing ? now - existing.observedAt : null;
+      const validInterval = rawInterval >= 120 && rawInterval <= 5000;
+      const sampleInterval = sessionChanged ? 900 : validInterval
+        ? (existing.sampleInterval * .7) + (rawInterval * .3)
+        : existing?.sampleInterval ?? 900;
+      const duration = Math.max(350, Math.min(2500, sampleInterval * 1.1));
+      const distance = previous ? Math.hypot(row.point[0] - previous[0], row.point[1] - previous[1]) : Infinity;
+      const animate = !reduced && !sessionChanged && !stale && !row.stale && previous && distance > .001 && distance <= 45;
+      const observedAt = modelChanged && targetChanged ? now : existing?.observedAt ?? now;
+      const motion = animate
+        ? { from: previous, to: [...row.point], start: now, duration, observedAt, sampleInterval }
+        : { from: [...row.point], to: [...row.point], start: now, duration: 0, observedAt, sampleInterval };
+      next.set(row.id, motion); active ||= animate;
+    }
+    this.motions = next;
+    if (!active && this.motionFrame) { cancelAnimationFrame(this.motionFrame); this.motionFrame = 0; }
+    if (active) this.scheduleMotionFrame();
+  }
+  scheduleMotionFrame() {
+    if (this.motionFrame || !this.isConnected) return;
+    this.motionFrame = requestAnimationFrame(now => {
+      this.motionFrame = 0; this.requestUpdate();
+      if ([...this.motions.values()].some(motion => motion.duration && now < motion.start + motion.duration)) this.scheduleMotionFrame();
+    });
   }
   accent(row) {
     const value = String(row.team_color ?? '').replace(/^#/, '');
@@ -90,7 +153,10 @@ class F1TrackMapView extends LitElement {
         <desc id="map-description">${showLabels ? this.w('Labels identify each driver. A dashed outline indicates a stale position. Use the driver list for status and timestamps.', 'Etiketter identifierar varje förare. Streckad kontur betyder inaktuell position. Förarlistan visar status och tidsstämplar.') : this.w('Driver labels are hidden. A dashed outline indicates a stale position. Use the driver list to identify drivers and read status and timestamps.', 'Föraretiketter är dolda. Streckad kontur betyder inaktuell position. Använd förarlistan för att identifiera förare och läsa status och tidsstämplar.')} ${status ? `${this.w('Track status', 'Banstatus')}: ${status.value}.` : ''}</desc>
         ${lineMode === 'accent' && status ? svg`<path class="track-status-accent" d=${this.path()}></path>` : ''}
         <path class="track ${lineMode === 'full' && status ? 'status-full' : ''}" d=${this.path()}></path>
-        ${repeat(rows.filter(row => row.point && row.point.every(value => value >= 0 && value <= 100)), row => row.id, row => svg`<g style=${`--team-accent:${this.accent(row)}`} class="marker ${row.stale ? 'stale' : ''} ${row.selected || row.id === this.selected ? 'selected' : ''}" transform=${`translate(${row.point[0]} ${row.point[1]})`}><circle r="1.6"></circle><circle class="team" r="1"></circle>${showLabels ? svg`<text x=${row.point[0] + 2.2 + String(this.module.options.labels === 'number' ? row.id : row.driver).length * font * .7 > 99 ? -2.2 : 2.2} text-anchor=${row.point[0] + 2.2 + String(this.module.options.labels === 'number' ? row.id : row.driver).length * font * .7 > 99 ? 'end' : 'start'} y=${row.point[1] < font + 2 ? font + 1.5 : -1.5} font-size=${font}>${this.module.options.labels === 'number' ? row.id : row.driver}</text>` : ''}</g>`)}
+        ${repeat(rows.filter(row => row.point && row.point.every(value => value >= 0 && value <= 100)), row => row.id, row => {
+          const point = this.motionPoint(row);
+          return svg`<g style=${`--team-accent:${this.accent(row)}`} class="marker ${row.stale ? 'stale' : ''} ${row.selected || row.id === this.selected ? 'selected' : ''}" transform=${`translate(${point[0]} ${point[1]})`}><circle r="1.6"></circle><circle class="team" r="1"></circle>${showLabels ? svg`<text x=${point[0] + 2.2 + String(this.module.options.labels === 'number' ? row.id : row.driver).length * font * .7 > 99 ? -2.2 : 2.2} text-anchor=${point[0] + 2.2 + String(this.module.options.labels === 'number' ? row.id : row.driver).length * font * .7 > 99 ? 'end' : 'start'} y=${point[1] < font + 2 ? font + 1.5 : -1.5} font-size=${font}>${this.module.options.labels === 'number' ? row.id : row.driver}</text>` : ''}</g>`;
+        })}
       </svg></div>` : html`<p class="empty">${this.w('Track geometry is not available for this session yet.', 'Bangeometri finns inte för sessionen ännu.')}</p>` : ''}
       ${showList || showMap ? html`<details class="map-list" .open=${this.listOpen} @toggle=${event => { this.listOpen = event.target.open; }}><summary>${this.w('Driver positions and status', 'Förarpositioner och status')}${this.module.options.show_driver_count === false ? '' : ` · ${rows.length}`}</summary>
         ${rows.length ? html`<ul class="driver-list">${repeat(rows, row => row.id, row => html`<li><button aria-pressed=${String(this.selected === row.id)} @click=${() => { this.selected = this.selected === row.id ? '' : row.id; }}><span>${row.id} · ${this.settings.appearance.full_names ? row.name : row.driver}<small>${row.team ?? ''}</small></span><span><span>${this.state(row)}</span><small>${dateTime(row.timestamp, this.settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</small></span></button></li>`)}</ul>` : html`<p class="empty">${this.w('No driver positions are available. Live positioning needs F1TV access and a supported session feed; replay can provide recorded positions.', 'Förarpositioner saknas. Livepositioner kräver F1TV-åtkomst och en sessionskälla med stöd; replay kan ge inspelade positioner.')}</p>`}

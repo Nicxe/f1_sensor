@@ -23,6 +23,8 @@ The card resolves renamed entity IDs and entry suffixes automatically. Modules t
 
 Choose **Stack** to show modules one after another or **Tabs** to show one module at a time. The card can also keep a shared driver or team focus so related modules follow the same selection.
 
+The driver focus menu shows compact three-letter driver codes. Clear **Show driver focus menu** to hide it from the card. The menu is shown by default, and hiding it does not remove a saved default driver or a module's own driver selection.
+
 For several cards on the same dashboard view, assign the same context group to share temporary focus. You can also share temporary session selection. Group state is local to that dashboard view, browser connection and F1 Sensor installation; it does not change the integration's Favorite Driver selector, Replay Mode, Live Delay or automations.
 
 Pinned cards and independently configured modules keep their own selection instead of following the group.
@@ -75,7 +77,11 @@ Module headings and table headers can be hidden visually while their accessible 
 
 Timing states pair color with a shape or text signal. Purple with a diamond means overall fastest, green with a circle means personal best, and yellow with a square means a recorded time. Lap deltas and position changes use separate arrows and references.
 
+In a Timing module, set **Recent lap columns** to a value from 1 to 30 to show that many latest completed laps as labelled comparison columns. Keep it at 0 to hide the extra columns.
+
 Use **Accessibility and timing colors** to change the palette, enable high contrast, reduce motion and choose shape, text or both. See [card accessibility](/cards/modular-accessibility) for the complete guidance.
+
+Track Map interpolates consecutive driver positions for smoother live and replay movement. Reduced motion, stale positions, session changes and unusually large jumps are shown without animation.
 
 ## Use spoilers, Live Delay and replay controls
 

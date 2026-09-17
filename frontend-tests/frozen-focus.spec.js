@@ -30,7 +30,7 @@ test('a frozen group card retains its driver and roster until resuming the lates
     card.hass = { ...card.hass, states: { ...card.hass.states, [id]: { ...old, attributes: { ...old.attributes, drivers: old.attributes.drivers.filter(driver => String(driver.racing_number) !== '16') } } } };
   });
   await expect(first.getByRole('combobox', { name: 'Driver focus', exact: true })).toHaveValue('16');
-  await expect(first.getByRole('combobox', { name: 'Driver focus', exact: true }).locator('option:checked')).toContainText('Leclerc');
+  await expect(first.getByRole('combobox', { name: 'Driver focus', exact: true }).locator('option:checked')).toHaveText('LEC');
   await first.getByRole('button', { name: 'Resume', exact: true }).click();
   await expect(first.getByRole('combobox', { name: 'Driver focus', exact: true })).toHaveValue('4');
   await expect(first.locator('tr[data-driver="4"]')).toBeVisible();

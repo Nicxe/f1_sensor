@@ -20,6 +20,14 @@ test('freeze control stays visible by default and can be hidden with a typed set
   assert.throws(() => normalizeConfig({ context: { show_freeze_control: 'false' } }), /show_freeze_control/);
 });
 
+test('driver focus control stays visible by default and can be hidden with a typed setting', () => {
+  assert.equal(normalizeConfig({}).context.show_focus_control, true);
+  const hidden = normalizeConfig({ context: { show_focus_control: false } });
+  assert.equal(hidden.context.show_focus_control, false);
+  assert.deepEqual(importConfig(exportConfig(hidden)), hidden);
+  assert.throws(() => normalizeConfig({ context: { show_focus_control: 'false' } }), /show_focus_control/);
+});
+
 test('About sections stay visible by default and can be hidden per supported module', () => {
   for (const type of ['weather', 'battles', 'strategy', 'telemetry']) {
     const shown = normalizeConfig({ modules: [{ type }] });

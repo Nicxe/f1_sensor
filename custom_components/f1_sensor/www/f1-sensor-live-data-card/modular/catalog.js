@@ -199,7 +199,7 @@ export const MODULES = {
     direction: { type: 'enum', values: ['asc', 'desc'], default: 'asc', label: { en: 'Direction', sv: 'Ordning' } },
     rows: { type: 'integer', min: 1, max: 100, default: 30, label: { en: 'Maximum drivers', sv: 'Max antal förare' } },
     sectors: { type: 'enum', values: ['coherent', 'latest'], default: 'coherent', label: { en: 'Sector laps', sv: 'Sektorernas varv' } },
-    history: { type: 'integer', min: 0, max: 30, default: 0, label: { en: 'Previous laps', sv: 'Tidigare varv' } },
+    history: { type: 'integer', min: 0, max: 30, default: 0, label: { en: 'Recent lap columns', sv: 'Kolumner för senaste varv' } },
     show_gap_toggle: { type: 'boolean', default: false, label: { en: 'Show live gap toggle', sv: 'Visa val av liveavstånd' } },
   }, ['driver_positions', 'driver_list', 'current_tyres', 'current_session', 'session_status'], { defaultFields: ['position', 'driver', 'gap', 'last_lap', 'sector_1', 'sector_2', 'sector_3', 'tyre'] }),
   race_control: module('race_control', 'Race Control', 'Race Control', ['event_time', 'message'], {

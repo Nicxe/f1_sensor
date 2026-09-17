@@ -169,6 +169,7 @@ export const sharedStyles = css`
   .module-picker select { display:block; max-width:100%; width:100%; min-height:44px; font:inherit; color:inherit; background:var(--f1-surface); border:1px solid var(--f1-border); border-radius:7px; padding:8px; }
   .timing-gap-toggle { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
   .timing-gap-toggle button { min-width:88px; }
+  th.recent-lap.lap-start,td.recent-lap.lap-start { border-left:2px solid var(--f1-border,#6c7480); }
   .documents { list-style:none; margin:0; padding:0; }
   .documents li { border-bottom:1px solid var(--f1-divider); padding:12px 0; overflow-wrap:anywhere; }
   .documents li[class^="tone-"] { border-left:3px solid var(--document-tone,var(--f1-border)); padding-left:10px; }
@@ -418,6 +419,13 @@ export class F1ModuleView extends LitElement {
     // Keep native column relationships when only the visible labels are hidden.
     return html`<thead class=${hidden ? 'labels-hidden' : ''}><tr>${repeat(fields, id => id, id => html`<th scope="col"><span class=${hidden ? 'sr' : ''}>${label(this.field(id), this.language)}</span></th>`)}</tr></thead>`;
   }
+  timingHeader(fields, laps) {
+    const hidden = this.module.show_table_header === false;
+    return html`<thead class=${hidden ? 'labels-hidden' : ''}><tr>
+      ${repeat(fields, id => id, id => html`<th scope="col"><span class=${hidden ? 'sr' : ''}>${label(this.field(id), this.language)}</span></th>`)}
+      ${repeat(laps, lap => lap, (lap, index) => html`<th scope="col" class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}><span class=${hidden ? 'sr' : ''}>${this.w('Lap', 'Varv')} ${lap}</span></th>`)}
+    </tr></thead>`;
+  }
   results() {
     const rows = this.model.rows ?? [];
     const fields = this.module.fields.filter(id => moduleFields(this.module).includes(id));
@@ -652,15 +660,20 @@ export class F1ModuleView extends LitElement {
     }
     if (!rows.length) return this.empty(this.model.filtered ? this.w('No drivers match this selection.', 'Inga förare matchar urvalet.') : this.w('Timing will appear when session data is available.', 'Timing visas när det finns sessionsdata.'));
     if (!fields.length) return this.empty(this.w('Choose columns in the editor.', 'Välj kolumner i editorn.'));
+    const historyLimit = this.module.options.history;
+    const lapNumbers = historyLimit ? [...new Set(rows.flatMap(row => row.history.map(lap => lap.lap)).filter(Number.isInteger))].sort((a, b) => a - b).slice(-historyLimit) : [];
     const gapToggle = showGapToggle ? html`<div class="timing-gap-toggle" role="group" aria-label=${this.w('Gap mode', 'Avståndsläge')}>
       <button data-focus="timing-gap-ahead" aria-pressed=${String(this.timingGapMode === 'ahead')} @click=${() => { this.timingGapMode = 'ahead'; }}>${this.w('Ahead', 'Framför')}</button>
       <button data-focus="timing-gap-leader" aria-pressed=${String(this.timingGapMode === 'leader')} @click=${() => { this.timingGapMode = 'leader'; }}>${this.w('Leader', 'Ledaren')}</button>
     </div>` : '';
     return html`${gapToggle}<div class="table-scroll" tabindex="0" role="region" aria-label=${this.w('Timing table, scroll horizontally for more columns', 'Timingtabell, rulla i sidled för fler kolumner')}><table>
       <caption class="sr">${this.module.title || this.model.title}</caption>
-      ${this.tableHeader(fields)}
-      <tbody>${repeat(rows, row => row.id, row => html`<tr data-driver=${row.id}>${repeat(fields, id => id, id => html`<td>${this.cell(row, id)}</td>`)}</tr>
-        ${this.expanded === row.id ? html`<tr><td class="details" colspan=${fields.length}>
+      ${this.timingHeader(fields, lapNumbers)}
+      <tbody>${repeat(rows, row => row.id, row => html`<tr data-driver=${row.id}>${repeat(fields, id => id, id => html`<td>${this.cell(row, id)}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
+        const value = row.history.find(item => item.lap === lap);
+        return html`<td class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}>${this.timeCell(value ? { ...value, source: 'completed_lap', previous_lap: true } : { time: null, lap })}</td>`;
+      })}</tr>
+        ${this.expanded === row.id ? html`<tr><td class="details" colspan=${fields.length + lapNumbers.length}>
           <h3>${row.name} · ${row.team ?? '—'}</h3><dl>${fields.filter(id => id !== 'driver').map(id => html`<div><dt class="muted">${label(this.field(id), this.language)}</dt><dd>${this.cell(row, id)}</dd></div>`)}</dl>
           ${row.history.length ? html`<h3 style="margin-top:16px">${this.w('Completed laps', 'Avslutade varv')}</h3><ol>${row.history.map(lap => html`<li>${this.w('Lap', 'Varv')} ${lap.lap}: ${formatTime(lap.time)}</li>`)}</ol>` : ''}
         </td></tr>` : ''}`)}</tbody>

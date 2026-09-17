@@ -205,6 +205,47 @@ test('freeze control is shown by default and can be hidden in the visual editor'
   await expect(page.getByRole('button', { name: 'Freeze view', exact: true })).toHaveCount(0);
 });
 
+test('driver focus menu uses compact TLA labels and can be hidden in the visual editor', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'timing', fields: ['driver', 'last_lap'] }] } }));
+  const editor = page.locator('f1-sensor-card-editor');
+  const focus = editor.getByRole('combobox', { name: 'Driver focus', exact: true });
+  await expect(focus).toBeVisible();
+  await expect(focus.locator('option')).toHaveText(['All drivers', 'LEC', 'NOR', 'RUS', 'VER', 'ALO']);
+  await editor.locator('summary').filter({ hasText: /^Layout and shared focus$/ }).click();
+  const control = editor.getByRole('checkbox', { name: 'Show driver focus menu', exact: true });
+  await expect(control).toBeChecked();
+  await control.uncheck();
+  await expect(focus).toHaveCount(0);
+  const saved = await page.evaluate(() => window.savedConfig);
+  expect(saved.context.show_focus_control).toBe(false);
+  await page.reload();
+  await page.waitForFunction(() => window.modularReady);
+  await page.evaluate(config => window.mountModular({ config }), saved);
+  await expect(page.getByRole('combobox', { name: 'Driver focus', exact: true })).toHaveCount(0);
+});
+
+test('timing can show a configurable number of recent laps as comparison columns', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'timing', fields: ['position', 'driver'], options: { history: 3 } }] } }));
+  const editor = page.locator('f1-sensor-card-editor');
+  await expect(editor.getByRole('columnheader', { name: 'Lap 10', exact: true })).toBeVisible();
+  await expect(editor.getByRole('columnheader', { name: 'Lap 11', exact: true })).toBeVisible();
+  await expect(editor.getByRole('columnheader', { name: 'Lap 12', exact: true })).toBeVisible();
+  await expect(editor.locator('tr[data-driver="16"] .recent-lap .time')).toHaveText(['1:21.543', '1:21.100', '1:20.873']);
+  await editor.getByText('Module options', { exact: true }).click();
+  const history = editor.getByRole('spinbutton', { name: 'Recent lap columns', exact: true });
+  await expect(history).toHaveValue('3');
+  await history.fill('2');
+  await history.blur();
+  const saved = await page.evaluate(() => window.savedConfig);
+  expect(saved.modules[0].options.history).toBe(2);
+  await page.reload();
+  await page.waitForFunction(() => window.modularReady);
+  await page.evaluate(config => window.mountModular({ config }), saved);
+  await expect(page.getByRole('columnheader', { name: 'Lap 10', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('columnheader', { name: 'Lap 11', exact: true })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Lap 12', exact: true })).toBeVisible();
+});
+
 test('About sections are shown by default and can be hidden per module', async ({ page }) => {
   await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'weather', options: { content: 'automatic_conditions' } }] } }));
   const editor = page.locator('f1-sensor-card-editor');
@@ -741,6 +782,63 @@ test('map renders migrated session, lap, track-status, layout and footer choices
   await expect(map.locator('.map-footer')).toHaveCount(0);
   await expect(map.locator('.track-status-accent')).toHaveCount(0);
   await expect(map.locator('.track.status-full')).toHaveCount(0);
+});
+
+test('map interpolates new positions and snaps when reduced motion is requested', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'map' }] } }));
+  const map = page.locator('f1-track-map-view');
+  await expect(map).toBeVisible();
+  const movement = await map.evaluate(async view => {
+    await view.updateComplete;
+    const rowIndex = view.model.rows.filter(row => row.point && row.point.every(value => value >= 0 && value <= 100)).findIndex(row => row.id === '16');
+    const marker = () => view.shadowRoot.querySelectorAll('.marker')[rowIndex].getAttribute('transform');
+    const initial = marker();
+    const model = structuredClone(view.model);
+    const row = model.rows.find(item => item.id === '16');
+    row.point = [Math.min(95, row.point[0] + 15), Math.min(95, row.point[1] + 15)];
+    const target = `translate(${row.point[0]} ${row.point[1]})`;
+    view.model = model;
+    await view.updateComplete;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return { initial, target, current: marker(), duration: view.motions.get('16').duration };
+  });
+  expect(movement.current).not.toBe(movement.initial);
+  expect(movement.current).not.toBe(movement.target);
+  expect(movement.duration).toBeGreaterThanOrEqual(850);
+  await expect.poll(() => map.evaluate(node => {
+    const rowIndex = node.model.rows.filter(row => row.point && row.point.every(value => value >= 0 && value <= 100)).findIndex(row => row.id === '16');
+    return node.shadowRoot.querySelectorAll('.marker')[rowIndex].getAttribute('transform');
+  })).toBe(movement.target);
+
+  const refreshedMovement = await map.evaluate(async view => {
+    view.model = structuredClone(view.model);
+    await view.updateComplete;
+    view.model = structuredClone(view.model);
+    await view.updateComplete;
+    const model = structuredClone(view.model), row = model.rows.find(item => item.id === '16');
+    row.point = [Math.max(5, row.point[0] - 5), Math.max(5, row.point[1] - 5)];
+    view.model = model;
+    await view.updateComplete;
+    return view.motions.get('16').duration;
+  });
+  expect(refreshedMovement).toBeGreaterThanOrEqual(850);
+
+  await page.evaluate(() => {
+    const card = window.fixtureCard;
+    card.setConfig({ ...card.config, accessibility: { ...card.config.accessibility, motion: 'reduced' } });
+  });
+  const snapped = await map.evaluate(async view => {
+    await view.updateComplete;
+    const model = structuredClone(view.model), row = model.rows.find(item => item.id === '16');
+    row.point = [Math.max(5, row.point[0] - 10), Math.max(5, row.point[1] - 10)];
+    const target = `translate(${row.point[0]} ${row.point[1]})`;
+    view.model = model;
+    await view.updateComplete;
+    const rowIndex = view.model.rows.filter(item => item.point && item.point.every(value => value >= 0 && value <= 100)).findIndex(item => item.id === '16');
+    return { target, current: view.shadowRoot.querySelectorAll('.marker')[rowIndex].getAttribute('transform') };
+  });
+  expect(snapped.current).toBe(snapped.target);
 });
 
 test('live map becomes stale on its deadline, handles new sessions and releases its subscriber without replay actions', async ({ page }) => {
