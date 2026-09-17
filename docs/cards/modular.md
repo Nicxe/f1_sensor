@@ -1,15 +1,11 @@
 ---
 id: modular
-title: Modular F1 Sensor card
-description: Build your own F1 view from presets, selectable modules and accessible visual styles.
+title: Build your F1 Sensor card
+description: Build one Formula 1 view from presets, configurable modules and accessible visual styles.
 toc_max_heading_level: 2
 ---
 
-Build a compact weekend overview or a detailed session view with the same **F1 Sensor** card. Choose your content first, then adjust its appearance in the visual editor.
-
-:::info Development preview
-This guide describes the modular card in development builds that include it. It is not a declaration that the complete replacement for the existing cards is ready. Existing cards remain supported; full migration parity, real-device accessibility checks and live-session acceptance are still in progress.
-:::
+Build a compact weekend overview or a detailed session view with the **F1 Sensor** card. Choose your content first, then adjust its appearance in the visual editor.
 
 ## Start with a preset
 
@@ -21,6 +17,7 @@ This guide describes the modular card in development builds that include it. It 
 | Preset | Initial content |
 | --- | --- |
 | Race weekend | Overview, weekend schedule and weather. |
+| Weather comparison | Current conditions and race-start forecast. |
 | Follow the session | Session overview, timing and Race Control. |
 | My driver | Session overview, driver timing with recent laps, and Race Control. Choose a driver in the card or editor. |
 | Results and championship | Results, championship standings and points progression. |
@@ -42,11 +39,11 @@ Use **Add module** to add content, then select the module to edit it. Select fie
 
 | Content | Available modules |
 | --- | --- |
-| Planning | Overview, calendar and weather. |
-| Session | Timing, Race Control, tyres, pit stops and investigations/track limits. |
-| Results | Results, standings, points progression and historical archive. |
-| Analysis | Recorded lap charts, timeline, strategy, battles and track map. |
-| Watching later | Replay controls and recorded telemetry comparison. |
+| Planning | Overview, Schedule and Weather. |
+| Session | Timing, Race Control, Tyres, Pit stops and Incidents. |
+| Results | Results, Championship, Season progression and Historical archive. |
+| Analysis | Lap history chart, Session timeline, Strategy analysis, Battles and position changes, and Track map. |
+| Watching later | Replay and Replay telemetry. |
 | Officials | FIA documents. |
 
 Data availability depends on the source and session. Adding a module does not create missing observations, enable integration features or guarantee access to every live stream. See [F1TV access and data coverage](/features/f1tv-auth), [historical results](/features/historical-results) and [weekend analysis](/features/weekend-analysis).
@@ -91,7 +88,7 @@ The default sector view keeps values from the same lap together. The **Latest se
 
 Custom colors can help you distinguish the timing states. Keep symbols or text available and check both light and dark themes. High contrast, reduced motion and readable text alternatives are part of the card's controls; automated checks alone do not establish compatibility with every screen reader or device.
 
-See [the modular accessibility guide](/cards/modular-accessibility) for a focused keyboard, contrast, motion and device checklist.
+See [card accessibility](/cards/modular-accessibility) for focused keyboard, contrast and motion guidance.
 
 ## Times and saved data
 
@@ -127,10 +124,10 @@ Demo previews cannot issue integration actions. A saved card's local driver focu
 
 ## Save, reuse and migrate
 
-Save permanent choices in the Home Assistant card editor. **Export and import** copies the complete modular configuration as JSON; importing replaces the card configuration and can be undone in the editor.
+Save permanent choices in the Home Assistant card editor. **Export and import** copies the complete card configuration as JSON; importing replaces the editor draft and can be undone before saving.
 
-Converted legacy configurations retain a recoverable original and show differences for review. Treat conversion as a reviewed starting point while migration parity is still under development. Keep the original dashboard until the new card covers the behavior you use.
+Converted deprecated configurations retain a recoverable original and show differences for review. Treat conversion as a reviewed starting point and keep a dashboard backup until the new card covers the behavior you use.
 
-Follow [the modular migration guide](/cards/modular-migration) to convert one card at a time, interpret the review and restore the exact stored legacy configuration.
+Follow [the migration guide](/cards/modular-migration) to convert one card at a time, interpret the review and restore the exact stored deprecated configuration when needed.
 
 Shared driver focus is scoped to the configured group within the same dashboard view and F1 installation. You can also explicitly share temporary session selection; pinned cards keep their own session, and the group cannot operate replay, Live Delay or automations. Temporary group changes are local to that browser connection; they are not synchronized personal preferences across devices.

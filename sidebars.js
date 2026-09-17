@@ -27,64 +27,10 @@ const sidebars = {
       "items": [
         "cards/cards-overview",
         "cards/installation",
-        "cards/shared-options",
         "cards/modular",
+        "cards/shared-options",
         "cards/modular-migration",
-        "cards/modular-accessibility",
-        {
-          "type": "category",
-          "label": "Race weekend",
-          "items": [
-            "cards/weekend-hub",
-            "cards/next-race",
-            "cards/race-weather",
-            "cards/season-calendar",
-            "cards/live-session"
-          ]
-        },
-        {
-          "type": "category",
-          "label": "Live timing",
-          "items": [
-            "cards/qualifying-timing",
-            "cards/practice-timing",
-            "cards/race-lap",
-            "cards/starting-grid",
-            "cards/tyre-statistics",
-            "cards/pit-stops",
-            "cards/driver-lap-times",
-            "cards/track-map"
-          ]
-        },
-        {
-          "type": "category",
-          "label": "Officials",
-          "items": [
-            "cards/race-control",
-            "cards/fia-documents",
-            "cards/investigations",
-            "cards/track-limits"
-          ]
-        },
-        {
-          "type": "category",
-          "label": "Results and championship",
-          "items": [
-            "cards/results",
-            "cards/session-archive",
-            "cards/lap-position-progression",
-            "cards/championship-drivers",
-            "cards/championship-teams",
-            "cards/season-progression"
-          ]
-        },
-        {
-          "type": "category",
-          "label": "Replay",
-          "items": [
-            "cards/replay-control"
-          ]
-        }
+        "cards/modular-accessibility"
       ]
     },
     {

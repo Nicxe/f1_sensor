@@ -1,72 +1,90 @@
 ---
 id: modular-migration
-title: Move an existing F1 dashboard to the modular card
-description: Review a legacy F1 Sensor card conversion, preserve the original and migrate a dashboard without losing a working setup.
+title: Move to the F1 Sensor card
+description: Convert a deprecated F1 dashboard card, review every change and keep a recoverable original.
 toc_max_heading_level: 2
 ---
 
-Move one card at a time and keep the working dashboard until the modular version
-shows the information and behavior you rely on. Existing F1 Sensor cards remain
-supported during the development preview.
+The earlier single-purpose F1 dashboard cards are deprecated. Move each dashboard configuration to `custom:f1-sensor-card`, which replaces them with configurable modules in one visual editor.
 
-:::warning Review every conversion
-Conversion creates a starting point, not a promise of identical appearance or
-behavior. Settings without a supported equivalent stay in the recoverable
-original and appear in the review instead of being silently discarded.
+:::warning[Deprecated cards]
+Deprecated card types are kept only to help existing dashboards move. Do not use them for a new dashboard. Future development and documentation target the **F1 Sensor** card.
 :::
 
-## Convert a card
+## Convert an existing card
 
-1. Open the dashboard editor and add **F1 Sensor**.
-2. Open the conversion option and paste or select the legacy card configuration.
-3. Choose the correct F1 Sensor installation if it cannot be identified uniquely.
-4. Read every **Carried**, **Changed** and **Review** row before applying the result.
-5. Compare the preview with the original card, then save only when the result is
-   useful for your dashboard.
+1. Make a dashboard backup. To compare both versions, duplicate the old card before converting the copy.
+2. Open the old card in the Home Assistant dashboard editor.
+3. In **Try the modular F1 Sensor card**, select **Review conversion**.
+4. Choose the correct F1 Sensor installation if the converter cannot identify it uniquely.
+5. Open every **Choose again or keep the original**, **Changed behavior** and **Transferred settings** section.
+6. Review the sample-data preview and accept the review statement.
+7. Select **Apply conversion**. This changes only the editor draft.
+8. Configure any missing choices in the new editor, preview the result and select **Save** in Home Assistant.
 
-The editor keeps an exact copy of the input configuration inside the converted
-card. Applying a conversion changes only the editor draft; Home Assistant does
-not save the dashboard until you select **Save**.
+The converter stores an exact copy of the original configuration inside the converted card. Canceling the conversion leaves the original unchanged.
 
-## Understand the review
+## Understand what the converter creates
 
-| Result | Meaning |
+| Deprecated card purpose | New starting point |
 | --- | --- |
-| Carried | The value has a supported destination in the modular configuration. |
-| Changed | The closest supported behavior is applied and the difference is explained. |
-| Review | No equivalent value is applied. Keep the original card if you require it. |
+| Weekend Hub | Overview, Session timeline, Strategy analysis, Battles and position changes, Replay telemetry |
+| Next Race | Overview, Schedule, current weather and race-start forecast |
+| Race Weather | Current weather and race-start forecast |
+| Season Calendar | Season Schedule |
+| Live Session | Overview and track weather |
+| Practice, qualifying or race timing | Timing, with Pit stops added for the race view |
+| Starting Grid | Results in starting-grid mode |
+| Race Control | Race Control |
+| FIA Documents | FIA documents |
+| Investigations or Track Limits | Incidents in the matching view |
+| Tyre Statistics | Tyres in statistics mode |
+| Pit Stops | Pit stops and Tyres |
+| Driver Lap Times | Timing with gap controls |
+| Results | Results and Historical archive |
+| Session Archive or Lap Position Progression | Historical archive in the matching view |
+| Driver or constructor championship | Championship for drivers or teams |
+| Season Progression | Season progression |
+| Replay Control | Replay |
+| Track Map | Track map |
 
-Entity overrides can be replaced by installation-based source discovery. Timing
-symbols remain present even when an older card disabled color indicators. Weather
-can become separate current-condition and race-start forecast modules. Old
-practice, qualifying and race card restrictions are not automatically treated as
-a session lock; use the module's phase and session controls explicitly.
+This is a sensible starting point, not an exact visual copy. The new card combines shared focus, session selection, accessibility and data-availability behavior that did not exist consistently across the deprecated cards.
 
-Temporary archive or replay selections are not inferred from an old card. Select
-the archive event and session or load the replay yourself. Conversion never starts
-live data, loads a replay, changes Live Delay or changes global spoiler protection.
+## Read the conversion review
 
-## Verify before replacing the original
+| Review group | Meaning |
+| --- | --- |
+| **Transferred settings** | The setting has a supported destination in the new card. |
+| **Changed behavior** | The closest supported behavior is applied and the difference is explained. |
+| **Choose again or keep the original** | No equivalent is applied; choose a new value or retain the original configuration. |
 
-Check the migrated card between sessions and with the data mode you normally use:
+Entity overrides normally become installation-based source discovery. Timing symbols remain available even when a deprecated card hid color indicators. Weather settings can become separate current-condition and race-start forecast modules.
 
-1. Confirm the selected installation, module order, fields and filters.
-2. Confirm spoiler behavior and any retained-data choice.
-3. Reopen the saved card editor and confirm the choices remain.
-4. During a suitable session or replay, compare timing, gaps, sectors and status
-   values with the original.
-5. Test the dashboard on the phones, tablets and browsers you use.
+Temporary archive and replay selections are not inferred. Select an archive event in its module or load a replay after conversion. Conversion never starts live data, loads a replay, changes Live Delay or changes global spoiler protection.
 
-Do not remove the original card until these checks pass for your setup. Full
-semantic parity for every option of all legacy cards is not claimed by the
-development preview.
+## Finish the new configuration
 
-## Restore the legacy configuration
+After applying the conversion draft:
 
-Open the converted card's migration review and choose the restore option. The
-editor reconstructs the exact stored legacy configuration. Review it before
-saving because changes made only to the modular card are not copied back into the
-legacy format.
+1. Confirm the selected installation and card title.
+2. Reorder, add or remove modules for the dashboard's purpose.
+3. Review fields, filters, driver or team focus and unavailable-data behavior for every module.
+4. Choose stacked or tabbed layout and adjust appearance and timing signals.
+5. Save the card, reopen its editor and confirm the saved choices.
 
-For general setup, see [the modular card guide](/cards/modular). For readable
-layouts and non-color signals, see [the accessibility guide](/cards/modular-accessibility).
+The old configuration may contain options with no direct equivalent. These remain in the stored original and are shown in the review instead of being silently discarded.
+
+## Restore or export the original
+
+Open the converted card editor and expand its migration section.
+
+- **Export original** copies the exact stored deprecated configuration as JSON.
+- **Restore original…** shows a confirmation inside the editor, then replaces the current draft with that stored configuration.
+
+Restoring does not save the dashboard automatically. Review the draft and select **Save** only if you intentionally want to return to the deprecated card.
+
+## Build the replacement manually
+
+If a deprecated card does not open its converter, add a new **F1 Sensor** card and choose the closest preset from [the card overview](/cards/cards-overview). Use the mapping above to add the equivalent modules, then remove the deprecated card after the new configuration is saved.
+
+For module setup, see [Build your F1 Sensor card](/cards/modular). For readable layouts and non-color signals, see [card accessibility](/cards/modular-accessibility).

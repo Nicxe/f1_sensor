@@ -104,7 +104,7 @@ const config = {
       links: [
         {title: 'Build your setup', items: [
           {label: 'Get started', to: '/getting-started/installation'},
-          {label: 'Dashboard cards', to: '/cards/cards-overview'},
+          {label: 'Dashboard card', to: '/cards/cards-overview'},
           {label: 'Automations', to: '/automation'},
         ]},
         {title: 'Find answers', items: [

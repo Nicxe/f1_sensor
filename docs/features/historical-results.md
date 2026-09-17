@@ -1,63 +1,68 @@
 ---
 id: historical-results
 title: Browse historical results
-description: Open the Results archive to compare past Race, Sprint and qualifying classifications without starting Replay Mode.
+description: Use the Historical archive module to review past classifications and lap charts without starting Replay Mode.
 ---
 
-import {Figure} from '@site/src/components/Docs';
-
-Use the **Archive** view in [Results](/cards/results) to browse published classifications from previous seasons. It is useful for checking a finishing order, grid movement, points or qualifying times without loading a full replay.
-
-<Figure src="/img/cards/results-archive.png" alt="Results Archive showing the 2024 Abu Dhabi Grand Prix race classification and season, event and session selectors" caption="The 2024 Abu Dhabi Grand Prix race result, captured from Results Archive in Home Assistant." />
+Add the **Historical archive** module to the [F1 Sensor card](/cards/cards-overview) to browse published classifications, lap times and lap-position history from previous seasons. Archive requests are separate from Replay Mode.
 
 ## Before you start
 
-Update F1 Sensor and reload the dashboard so it uses the matching bundled cards. You need a working F1 Sensor entry and access to the historical results provider. F1TV Auth and an active live session are not required.
+Update F1 Sensor and reload the dashboard. You need a working F1 Sensor installation and access to the historical results provider. F1TV Auth and an active live session are not required.
 
-## Open a classification
+## Add the archive module
 
-1. Add the **F1 Results** card through **Edit dashboard → Add card**, or open an existing Results card.
-2. Select **Archive** in the card.
-3. Choose a season using the year controls, then select a Grand Prix and an available session.
-4. Wait for the classification. Use **Refresh** to request an updated result if the source has published a correction.
+1. Edit an **F1 Sensor** card or add a new one with **Build your own**.
+2. Select **Add module > Historical archive**.
+3. Under **Module options**, choose the year and archive view.
+4. Save the card.
+5. In the saved card, choose a Grand Prix and an available session.
 
-Race and Sprint classifications show race fields such as grid, laps, finish status and points. Qualifying uses position, driver and Q1–Q3 times. Some sessions or older seasons have incomplete information; an empty field does not mean the driver had a zero time.
+| Archive view | What it shows |
+| --- | --- |
+| **Classification** | Race, Sprint or qualifying results where published |
+| **Lap time** | Recorded lap-time history for selected drivers |
+| **Lap position** | Recorded position by lap for selected drivers |
 
-Opening Archive fetches the selected historical data on demand. It does not load every season in the background or start a replay.
+Race and Sprint classifications can include grid, laps, finish status and points. Qualifying can include position and Q1-Q3 times. Some sessions or older seasons have incomplete information; an empty field does not mean that the value was zero.
 
-<Figure src="/img/cards/results-archive-qualifying.png" alt="Results Archive qualifying classification with Q1, Q2 and Q3 times" caption="Selecting Qualifying switches the same card to Q1–Q3 times. Shown here: Abu Dhabi, 2024." />
+Archive data is requested on demand. Choosing an event does not load every season in the background or start a replay.
 
-## Open Archive by default
+## Open the archive first
 
-Paste this into a manual dashboard card. It opens the 2024 season's archive and lets you select an event and session:
+Use the visual editor for normal setup. This YAML creates a card containing only the Historical archive module and starts with 2024 selected:
 
 ```yaml
-type: custom:f1-last-race-results-card
-default_scope: archive
-show_archive: true
-history_year: 2024
-history_entry_id: auto
-theme_mode: auto
+type: custom:f1-sensor-card
+version: 2
+title: Historical results
+modules:
+  - type: archive
+    id: archive-1
+    options:
+      year: 2024
+      content: classification
+      show_session_selector: true
 ```
 
-With several F1 Sensor entries, select the intended sources in the card editor and set **Archive config entry id** when necessary. An integration entry ID is different from a sensor entity ID. Keep custom entity names already used by your dashboard. See [Results configuration](/cards/results#configuration) for all display options.
+With several F1 Sensor installations, select the intended installation in the editor. An integration entry ID is different from a sensor entity ID.
 
 ## Archive or Replay?
 
 | Choose | What happens |
 | --- | --- |
-| **Results → Archive** | Displays a published classification. Other live entities continue following their existing session. |
-| **Replay Control → Load** | Loads archived timing for playback through supported F1 entities and automations. |
-| **Weekend Hub → Telemetry** | Compares selected laps from the replay you have already loaded. |
+| **Historical archive** | Retrieves a published classification or lap series. Other modules keep their configured source. |
+| **Replay > Load** | Loads archived timing for playback through supported F1 entities, modules and automations. |
+| **Replay telemetry** | Compares selected laps from the replay already loaded in the integration. |
 
-Selecting an Archive event does not load it into Weekend Hub. To analyse its timing there, select and load that session in [Replay Mode](/features/replay-mode) and follow the [analysis walkthrough](/features/weekend-analysis).
+To analyse the timing of an archived session, load that session in [Replay Mode](/features/replay-mode) and use the [analysis modules](/features/weekend-analysis). Merely selecting it in Historical archive does not start playback.
 
-## When a result is missing
+## When data is missing
 
-- **No events or sessions:** check the year and try another published session. Practice classifications are not supplied by this archive; historical Race, Sprint and qualifying availability varies.
-- **An error with Try again:** retry the request after checking connectivity. Reinstalling the card cannot make an unavailable provider respond.
-- **A result without lap progression:** classification and lap-by-lap coverage are separate. A Sprint result does not guarantee a position chart or telemetry.
-- **Hidden results:** check the configured [spoiler protection](/features/no-spoiler-mode). Reveal results only when you are ready.
-- **Archive is absent:** check the installed version, `show_archive`, and the [card loading checks](/cards/installation#card-loading-checks).
+- **No events or sessions:** check the year and try another published session. Historical availability varies by season and session type.
+- **An error with Try again:** retry after checking connectivity. Reinstalling the card cannot make an unavailable provider respond.
+- **Classification without lap history:** classifications, lap progression and telemetry have separate coverage.
+- **Hidden results:** check [No Spoiler Mode](/features/no-spoiler-mode) and reveal the data only when you are ready.
+- **Module unavailable:** confirm that the correct F1 Sensor installation is selected and use the [card loading checks](/cards/installation#card-loading-checks).
 
-If you previously installed a separate Session Archive card, use the [compatibility guide](/cards/session-archive). Existing configurations continue to open Archive.
+If you still use a deprecated Results, Session Archive or Lap Position Progression card, follow [Move to the F1 Sensor card](/cards/modular-migration).

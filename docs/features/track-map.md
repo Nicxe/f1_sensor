@@ -4,11 +4,7 @@ title: Follow cars on Track Map
 description: Understand Track Map availability, add the card, and resolve waiting or stale position data.
 ---
 
-Track Map shows car markers on a circuit map during live or replay sessions. It is designed for dashboards where you want a quick visual view of where cars are on track.
-
-![Track Map with circuit outline and driver markers](/img/cards/track-map.png)
-
-*Example dashboard view. Data availability depends on the session and timing mode.*
+The **Track map** module shows car markers on a circuit map during live or replay sessions. Add it to the [F1 Sensor card](/cards/cards-overview) when you want a quick visual view of where cars are on track.
 
 ## Availability
 
@@ -20,7 +16,7 @@ Track Map shows car markers on a circuit map during live or replay sessions. It 
 
 Live Track Map depends on [F1TV Auth](/features/f1tv-auth). Replay Track Map is separate from live auth and can work later from archived replay data when the session archive contains car positions.
 
-During live sessions, Track Map follows the configured [Live Delay](/features/live-delay). This keeps car markers aligned with the rest of the Live Data Cards and with delayed TV or streaming broadcasts. Replay Track Map is not delayed.
+During live sessions, Track Map follows the configured [Live Delay](/features/live-delay). This keeps car markers aligned with the other modules and with delayed TV or streaming broadcasts. Replay Track Map is not delayed.
 
 ## What to expect
 
@@ -30,23 +26,25 @@ If Formula 1 publishes an invalid position frame, for example a frame that place
 
 Supported circuits can show a map quickly. For newer or unsupported circuits, replay data may need enough usable position updates before the map can be drawn.
 
-## Add the Track Map card
+<span id="add-the-track-map-card" />
+<span id="card-options" />
 
-Add the bundled card from the Home Assistant dashboard editor, or use YAML:
+## Add the Track map module
+
+Edit an **F1 Sensor** card and select **Add module > Track map**. Start with automatic entry selection, then adjust driver labels, focus, map orientation, lap progress and track-status presentation under **Module options**.
+
+For a card containing only the map:
 
 ```yaml
-type: custom:f1-track-map-card
+type: custom:f1-sensor-card
+version: 2
 title: F1 Track Map
-entry_id: auto
-lap_count_entity: auto
-track_status_entity: auto
+modules:
+  - type: map
+    id: map-1
 ```
 
-The card is bundled with F1 Sensor and is registered with the other [Live Data Cards](/cards/cards-overview).
-
-## Card options
-
-Use the [Track Map card reference](/cards/track-map) for the full configuration table. Start with the automatic entry selection and then adjust labels, lap progress and theme in the visual editor.
+The module uses the F1 Sensor installation selected for the card. It can inherit the shared driver focus or use an independent focus.
 
 ## Status messages
 
@@ -89,10 +87,10 @@ The card has car position data but cannot yet draw the map outline. This is more
 
 ## Limitations
 
-- Live Track Map cannot be fully verified without an active F1 session and working F1TV Auth.
+- Live Track Map requires an active F1 session with usable position data and working F1TV Auth.
 - Replay Track Map is best effort and depends on the archived session data.
 - The map outline may be unavailable for unknown circuits until enough replay data exists.
-- Track Map is a dashboard card feature, not a normal Home Assistant entity.
+- Track Map is a module in the F1 Sensor dashboard card, not a normal Home Assistant entity.
 
 ## Optional demonstration
 
@@ -103,5 +101,5 @@ The card has car position data but cannot yet draw the map outline. This is more
 - [F1TV Auth](/features/f1tv-auth)
 - [Replay Mode](/features/replay-mode)
 - [Incident Detection](/features/incident-detection)
-- [Live Data Cards](/cards/cards-overview)
+- [F1 Sensor card](/cards/cards-overview)
 - [Diagnostics](/entities/diagnostics)

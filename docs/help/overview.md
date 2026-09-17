@@ -11,7 +11,7 @@ Choose the symptom closest to what you see. Check your installed version and whe
 | What you see | Check first | Next step |
 | --- | --- | --- |
 | F1 Sensor is missing from Add integration | Installation completed and Home Assistant restarted | [Installation](/getting-started/installation) |
-| No F1 cards in the dashboard picker | Restart after update, then refresh the browser | [Card installation and migration](/cards/installation) |
+| No F1 Sensor card in the dashboard picker | Restart after update, then refresh the browser | [Card installation and loading checks](/cards/installation) |
 | A card says an entity is missing | Feature enabled and correct entity selected | [Configuration](/getting-started/add-integration) |
 | Live entities are inactive | There is an active/upcoming session and live data is enabled | [No live updates](#no-live-updates) |
 | Track Map has no cars | Session, token health and position-data availability | [Track Map status messages](/features/track-map#status-messages) |

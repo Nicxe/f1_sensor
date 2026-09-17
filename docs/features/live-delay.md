@@ -79,9 +79,9 @@ It uses these helper entities:
 
 The [Live Delay control reference](/reference/live-delay-controls) lists calibration states, timestamps and attributes for custom dashboards. Follow the steps below for normal calibration.
 
-### Optional controls in the modular card
+### Optional controls in the F1 Sensor card
 
-You can also use these controls directly in the modular F1 Sensor card:
+You can also use these controls directly in the F1 Sensor card:
 
 1. Edit the card and open **Layout and shared focus**.
 2. Enable **Show Live Delay and global spoiler controls** and save the card.

@@ -1,19 +1,13 @@
 ---
 id: modular-accessibility
-title: Make the modular card easier to read and operate
-description: Configure readable timing signals, keyboard access, contrast, motion and compact layouts in the modular F1 Sensor card.
+title: Make the F1 Sensor card easier to read and operate
+description: Configure readable timing signals, keyboard access, contrast, motion and compact layouts in the F1 Sensor card.
 toc_max_heading_level: 2
 ---
 
-The modular card pairs timing colors with symbols or text and keeps important
+The F1 Sensor card pairs timing colors with symbols or text and keeps important
 labels available to assistive technology. Use the visual editor to adapt the card
 to your display and input method.
-
-:::info Development preview
-This guide applies to development builds that include the [modular F1 Sensor
-card](/cards/modular). Automated checks cover keyboard focus, enlarged text and
-forced colors. They do not certify every screen reader, browser or Companion App.
-:::
 
 ## Start with a readable layout
 
@@ -71,5 +65,5 @@ portrait and landscape orientation in the Companion App. Report the exact device
 operating system, Home Assistant version, theme, card module and expected result
 when something is not usable.
 
-See [the modular card guide](/cards/modular) for timing semantics and [reporting
+See [the F1 Sensor card guide](/cards/modular) for timing semantics and [reporting
 an issue](/help/contact) for support channels.
