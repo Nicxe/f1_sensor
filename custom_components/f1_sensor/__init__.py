@@ -1713,6 +1713,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
         await _async_close_shared_client_if_unused(hass)
 
 
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload an entry after its user-editable options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 async def _async_setup_entry(
     hass: HomeAssistant,
     entry: F1ConfigEntry,
@@ -3027,6 +3032,7 @@ async def _async_setup_entry(
         await live_supervisor.async_start()
     else:
         await live_bus.start()
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     transaction.commit()
     return True
 

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.f1_sensor import config_flow
+from custom_components.f1_sensor import _async_reload_entry, config_flow
 from custom_components.f1_sensor.config_flow import F1FlowHandler, F1OptionsFlow
 from custom_components.f1_sensor.const import (
     CONF_INSTALL_DASHBOARD_CARDS,
@@ -102,7 +102,16 @@ def test_language_race_week_and_payload_helpers(hass, monkeypatch) -> None:
         CONF_INSTALL_DASHBOARD_CARDS: False,
     }
     assert isinstance(F1FlowHandler.async_get_options_flow(Mock()), F1OptionsFlow)
-    assert issubclass(F1OptionsFlow, config_flow.config_entries.OptionsFlowWithReload)
+
+
+async def test_options_update_reloads_the_config_entry(hass, monkeypatch) -> None:
+    entry = _entry(hass)
+    reload_entry = AsyncMock(return_value=True)
+    monkeypatch.setattr(hass.config_entries, "async_reload", reload_entry)
+
+    await _async_reload_entry(hass, entry)
+
+    reload_entry.assert_awaited_once_with(entry.entry_id)
 
 
 async def test_user_development_replay_validation_matrix(

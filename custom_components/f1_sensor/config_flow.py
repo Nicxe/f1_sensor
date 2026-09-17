@@ -565,7 +565,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return F1OptionsFlow(config_entry)
 
 
-class F1OptionsFlow(config_entries.OptionsFlowWithReload):
+class F1OptionsFlow(config_entries.OptionsFlow):
     """Manage optional F1 Sensor features without rewriting credentials."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry | None = None) -> None:
