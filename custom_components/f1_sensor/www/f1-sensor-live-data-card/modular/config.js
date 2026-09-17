@@ -41,7 +41,7 @@ export const APPEARANCE = {
 export const ACCESSIBILITY = { high_contrast: false, signals: 'shape', motion: 'system', announce: true };
 export const PHASES = ['before', 'active', 'finished', 'unknown'];
 export const CONTEXT = {
-  driver: '', team: '', group: '', scope: 'local', spoilers: 'inherit', viewing_controls: false,
+  driver: '', team: '', group: '', scope: 'local', spoilers: 'inherit', viewing_controls: false, show_freeze_control: true,
   selection: { mode: 'follow', source: 'auto' }, share: ['focus'],
 };
 
@@ -101,7 +101,7 @@ export function normalizeConfig(input) {
   for (const key of ['driver', 'team', 'group']) text(config.context[key], `context.${key}`);
   choice(config.context.scope, ['local', 'group'], 'context.scope');
   choice(config.context.spoilers, ['inherit', 'hide'], 'context.spoilers');
-  bool(config.context.viewing_controls, 'context.viewing_controls');
+  for (const key of ['viewing_controls', 'show_freeze_control']) bool(config.context[key], `context.${key}`);
   config.context.selection = normalizeSelection(config.context.selection, 'context.selection', false);
   strings(config.context.share, 'context.share');
   for (const value of config.context.share) choice(value, ['focus', 'selection'], 'context.share');

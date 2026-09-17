@@ -12,6 +12,25 @@ test('module focus behavior preserves explicit independence and rejects invalid 
   assert.throws(() => normalizeConfig({ modules: [{ type: 'timing', focus_mode: 'invalid' }] }), /focus_mode/);
 });
 
+test('freeze control stays visible by default and can be hidden with a typed setting', () => {
+  assert.equal(normalizeConfig({}).context.show_freeze_control, true);
+  const hidden = normalizeConfig({ context: { show_freeze_control: false } });
+  assert.equal(hidden.context.show_freeze_control, false);
+  assert.deepEqual(importConfig(exportConfig(hidden)), hidden);
+  assert.throws(() => normalizeConfig({ context: { show_freeze_control: 'false' } }), /show_freeze_control/);
+});
+
+test('About sections stay visible by default and can be hidden per supported module', () => {
+  for (const type of ['weather', 'battles', 'strategy', 'telemetry']) {
+    const shown = normalizeConfig({ modules: [{ type }] });
+    assert.equal(shown.modules[0].options.show_explanation, true);
+    const hidden = normalizeConfig({ modules: [{ type, options: { show_explanation: false } }] });
+    assert.equal(hidden.modules[0].options.show_explanation, false);
+    assert.deepEqual(importConfig(exportConfig(hidden)), hidden);
+  }
+  assert.throws(() => normalizeConfig({ modules: [{ type: 'weather', options: { show_explanation: 'false' } }] }), /show_explanation/);
+});
+
 test('version 1 migrates to typed session selection and phase visibility without changing fields', () => {
   const migrated = normalizeConfig({ version: 1, context: { driver: '16' }, modules: [{ type: 'timing', fields: ['driver', 'last_lap'] }] });
   assert.equal(migrated.version, 2);

@@ -54,7 +54,9 @@ Each module has a **When data is unavailable** setting.
 
 Retained values are reading snapshots, not proof of a current live state. Changing installation, session, replay position, Live Delay or spoiler state clears incompatible snapshots.
 
-**Freeze view** captures the currently displayed reading in that card. **Resume** returns to current data. Freezing the card does not pause Replay Mode or change any integration setting.
+**Freeze view** captures the currently displayed reading in that card. **Resume** returns to current data. Freezing the card does not pause Replay Mode or change any integration setting. To remove this control from a card, open **Layout and shared focus** and clear **Show Freeze view button**. The button is shown by default.
+
+Weather, Battles, Strategy and Replay telemetry also show a collapsible **About** section by default. Clear **Show About section** under the relevant module's **Module options** to hide that explanation without hiding warnings, errors or controls.
 
 ## Choose appearance
 

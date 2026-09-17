@@ -188,6 +188,43 @@ test('freeze is a local reading snapshot and active spoiler protection clears a 
   await expect(page.getByText('1:39.000', { exact: true })).toHaveCount(0);
 });
 
+test('freeze control is shown by default and can be hidden in the visual editor', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true }));
+  const editor = page.locator('f1-sensor-card-editor');
+  await expect(editor.getByRole('button', { name: 'Freeze view', exact: true })).toBeVisible();
+  await editor.locator('summary').filter({ hasText: /^Layout and shared focus$/ }).click();
+  const control = editor.getByRole('checkbox', { name: 'Show Freeze view button', exact: true });
+  await expect(control).toBeChecked();
+  await control.uncheck();
+  await expect(editor.getByRole('button', { name: 'Freeze view', exact: true })).toHaveCount(0);
+  const saved = await page.evaluate(() => window.savedConfig);
+  expect(saved.context.show_freeze_control).toBe(false);
+  await page.reload();
+  await page.waitForFunction(() => window.modularReady);
+  await page.evaluate(config => window.mountModular({ config }), saved);
+  await expect(page.getByRole('button', { name: 'Freeze view', exact: true })).toHaveCount(0);
+});
+
+test('About sections are shown by default and can be hidden per module', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'weather', options: { content: 'automatic_conditions' } }] } }));
+  const editor = page.locator('f1-sensor-card-editor');
+  await expect(editor.getByText('About the weather data', { exact: true })).toBeVisible();
+  await editor.getByText('Module options', { exact: true }).click();
+  const control = editor.getByRole('checkbox', { name: 'Show About section', exact: true });
+  await expect(control).toBeChecked();
+  await control.uncheck();
+  await expect(editor.getByText('About the weather data', { exact: true })).toHaveCount(0);
+  const saved = await page.evaluate(() => window.savedConfig);
+  expect(saved.modules[0].options.show_explanation).toBe(false);
+  await page.reload();
+  await page.waitForFunction(() => window.modularReady);
+  await page.evaluate(config => window.mountModular({ config }), saved);
+  await expect(page.getByText('About the weather data', { exact: true })).toHaveCount(0);
+  await page.evaluate(() => window.mountModular({ scene: 'replay', config: { modules: [{ type: 'telemetry', options: { show_explanation: false } }] } }));
+  await expect(page.locator('f1-telemetry-view svg.plot')).toHaveCount(3);
+  await expect(page.getByText('About the telemetry', { exact: true })).toHaveCount(0);
+});
+
 test('module reordering preserves the module element and keyboard focus on its driver', async ({ page }) => {
   await page.evaluate(() => window.mountModular());
   const driver = page.locator('button[data-focus="driver-16"]');
@@ -1301,6 +1338,7 @@ test('telemetry curves show units, patterns, gaps and accessible sample tables o
   await page.setViewportSize({ width: 360, height: 900 });
   await page.evaluate(() => window.mountModular({ scene: 'replay', config: { modules: [{ type: 'telemetry', fields: ['telemetry_speed', 'telemetry_throttle', 'telemetry_delta_s'], options: { axis: 'distance' } }] } }));
   await expect(page.getByRole('heading', { name: 'Replay telemetry', exact: true })).toBeVisible();
+  await expect(page.getByText('About the telemetry', { exact: true })).toBeVisible();
   await expect(page.locator('f1-telemetry-view svg.plot')).toHaveCount(3);
   await expect(page.getByText('Estimated distance (m)', { exact: true }).first()).toBeVisible();
   const paths = await page.locator('f1-telemetry-view svg.plot').first().locator('[data-series="16:2"] path').count();

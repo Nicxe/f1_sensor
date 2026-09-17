@@ -271,6 +271,7 @@ export const MODULES = {
     session_id: { type: 'text', default: '', label: { en: 'Saved replay session', sv: 'Sparad replaysession' } },
     axis: { type: 'enum', values: ['time_s', 'distance'], default: 'time_s', label: { en: 'Horizontal axis', sv: 'Horisontell axel' } },
     presentation: { type: 'enum', values: ['chart', 'table', 'both'], default: 'chart', label: { en: 'Presentation', sv: 'Visning' } },
+    show_explanation: { type: 'boolean', default: true, label: { en: 'Show About section', sv: 'Visa Om-sektion' } },
   }, ['replay_status', 'replay_player', 'analysis/telemetry_catalog', 'analysis/telemetry_compare'], { spoiler: true, defaultFields: ['telemetry_speed', 'telemetry_throttle', 'telemetry_brake'] }),
   replay: module('replay', 'Replay', 'Replay', ['replay_selection', 'replay_transport', 'replay_progress'], {
     display: { type: 'enum', values: ['full', 'compact'], default: 'full', label: { en: 'Replay layout', sv: 'Replaylayout' } },
@@ -340,6 +341,7 @@ export const MODULES = {
     minimum_score: { type: 'integer', min: 0, max: 100, default: 0, label: { en: 'Minimum evidence score (%)', sv: 'Lägsta underlagspoäng (%)' } },
     order: { type: 'enum', values: ['newest', 'oldest'], default: 'newest', label: { en: 'Recorded order', sv: 'Registreringsordning' } },
     rows: { type: 'integer', min: 1, max: 500, default: 20, label: { en: 'Maximum rows', sv: 'Max antal rader' } },
+    show_explanation: { type: 'boolean', default: true, label: { en: 'Show About section', sv: 'Visa Om-sektion' } },
   }, ['analysis'], { spoiler: true, stream: 'analysis', focus: ['driver', 'team'] }),
   strategy: module('strategy', 'Strategy analysis', 'Strategianalys', ['driver', 'team', 'tyre', 'stint_number', 'stint_first_lap', 'stint_last_lap', 'stint_start_age', 'clean_pace', 'raw_pace', 'degradation', 'clean_samples', 'raw_samples', 'excluded_samples', 'exclusion_reasons', 'strategy_pit_loss', 'compound_gap', 'analysis_quality', 'incident_drivers', 'comparison_pace', 'comparison_gap', 'pace_leader', 'comparison_tyres', 'crossover_age', 'observed_age_range', 'crossover_pace', 'strategy_outcome', 'comparison_stops', 'exchange_positions', 'analysis_source'], {
     content: { type: 'enum', values: ['stints', 'compound_comparison', 'teammates', 'crossover', 'pit_outcomes'], default: 'stints', label: { en: 'Analysis content', sv: 'Analysinnehåll' } },
@@ -350,6 +352,7 @@ export const MODULES = {
     sort: { type: 'enum', values: ['driver', 'stint_number', 'clean_pace', 'clean_samples', 'degradation', 'analysis_quality'], default: 'driver', label: { en: 'Sort by', sv: 'Sortera efter' } },
     direction: { type: 'enum', values: ['asc', 'desc'], default: 'asc', label: { en: 'Direction', sv: 'Ordning' } },
     rows: { type: 'integer', min: 1, max: 500, default: 30, label: { en: 'Maximum rows', sv: 'Max antal rader' } },
+    show_explanation: { type: 'boolean', default: true, label: { en: 'Show About section', sv: 'Visa Om-sektion' } },
   }, ['analysis'], { spoiler: true, stream: 'analysis', focus: ['driver', 'team'], fieldDefinitions: {
     analysis_quality: { ...FIELDS.analysis_quality, path: 'strategy.stints[].confidence' },
     compound_gap: { ...FIELDS.compound_gap, source: 'analysis', path: 'strategy.compound_comparison[].delta_to_fastest', estimated: true },
@@ -398,6 +401,7 @@ export const MODULES = {
   weather: module('weather', 'Weather', 'Väder', WEATHER_FIELDS.map(field => field.id), {
     content: { type: 'enum', values: ['weather_overview', 'current_conditions', 'automatic_conditions', 'race_forecast', 'track_conditions'], default: 'weather_overview', label: { en: 'Weather source', sv: 'Väderkälla' } },
     presentation: { type: 'enum', values: ['metrics', 'compact_list'], default: 'metrics', label: { en: 'Weather layout', sv: 'Väderlayout' } },
+    show_explanation: { type: 'boolean', default: true, label: { en: 'Show About section', sv: 'Visa Om-sektion' } },
   }, ['weather', 'track_weather']),
 };
 

@@ -255,7 +255,7 @@ export class F1ModuleView extends LitElement {
       ${this.module.show_header !== false || this.model.badge ? html`<div class="section-head"><h2 class=${this.module.show_header === false ? 'sr' : ''}>${title}</h2>${this.model.badge ? html`<span class="chip">${this.model.badge}</span>` : ''}</div>` : html`<h2 class="sr">${title}</h2>`}
       ${this.module.focus_mode === 'independent' && moduleFocusKinds(this.module).length ? html`<p class="muted module-focus">${this.w('Own selection', 'Eget urval')}</p>` : ''}
       ${this.model.blocked ? this.empty(this.model.blocked) : html`${this.contextLine()}${this.coverageLine()}${this.content()}`}
-      ${this.model.explanation ? html`<details class="analysis-explanation"><summary>${this.model.explanationTitle ?? this.w('About this analysis', 'Om analysen')}</summary><p class="muted">${this.model.explanation}</p></details>` : ''}
+      ${this.module.options.show_explanation !== false && this.model.explanation ? html`<details class="analysis-explanation"><summary>${this.model.explanationTitle ?? this.w('About this analysis', 'Om analysen')}</summary><p class="muted">${this.model.explanation}</p></details>` : ''}
       ${this.model.notice ? html`<p class="muted" style="margin-top:10px;font-size:.85em">${this.model.notice}</p>` : ''}
     </section>`;
   }

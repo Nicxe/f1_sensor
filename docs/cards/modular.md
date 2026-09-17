@@ -50,6 +50,8 @@ Data availability depends on the source and session. Adding a module does not cr
 
 Timing can follow a session profile or use your selected columns. Choosing your own timing columns keeps them as a custom selection. A module pinned to a driver keeps that driver when you change the card's general focus.
 
+Weather, Battles, Strategy and Replay telemetry show a collapsible **About** section by default. To remove it from one module, open that module's **Module options** and clear **Show About section**. Warnings, errors and controls remain visible.
+
 ## Choose and lock a session
 
 Open **Layout and shared focus** to choose whether the card follows the automatic source, the live session or the loaded replay. When the integration exposes a complete stable identity, the editor also offers **Pin current live session** or **Pin loaded replay**. An Archive module can pin the event and session selected from its historical catalogue.
@@ -108,7 +110,7 @@ When the browser loses its Home Assistant connection, the card shows a clear dis
 
 Entity-backed modules can keep their last captured content when a source becomes unavailable, even if its attributes disappear. Filters continue to apply to that saved content. A different installation, session, replay seek, Live Delay or spoiler state clears these snapshots; they are also released when the card is removed or the page reloads. An available empty result replaces the saved result instead of reviving older rows.
 
-**Freeze view** captures a reading snapshot in this card. Its values remain at the capture point, identified by the reading-snapshot notice. **Resume** returns to current data. Freezing does not pause backend replay, change Live Delay or change automations.
+**Freeze view** captures a reading snapshot in this card. Its values remain at the capture point, identified by the reading-snapshot notice. **Resume** returns to current data. Freezing does not pause backend replay, change Live Delay or change automations. The button is shown by default; clear **Show Freeze view button** under **Layout and shared focus** if you do not want it on a card.
 
 ## Live Delay, spoilers and replay
 
