@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "configuration_version": 2,
+  "configuration_version": 3,
   "generated_from": "modular/catalog.js",
   "field_count": 137,
   "module_count": 20,

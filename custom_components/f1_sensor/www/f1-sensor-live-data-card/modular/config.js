@@ -31,6 +31,59 @@ const strings = (value, path) => {
   if (new Set(value).size !== value.length) fail(path, 'duplicate names');
   return value;
 };
+const optionalText = (value, path) => { if (value !== undefined) text(value, path); };
+const nonemptyText = (value, path) => { text(value, path); if (!value.trim()) fail(path, 'enter a value'); };
+const scalar = (value, path) => { if (typeof value !== 'string' && !(typeof value === 'number' && Number.isFinite(value))) fail(path, 'expected text or a number'); };
+const TIME = /^(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+function normalizeVisibility(value, path, depth = 0) {
+  if (!Array.isArray(value)) fail(path, 'expected a list');
+  if (value.length > 32) fail(path, 'at most 32 conditions');
+  if (depth > 8) fail(path, 'condition nesting is too deep');
+  return value.map((condition, index) => {
+    const conditionPath = `${path}.${index}`;
+    object(condition, conditionPath); text(condition.condition, `${conditionPath}.condition`);
+    if (['and', 'or', 'not'].includes(condition.condition)) {
+      condition.conditions = normalizeVisibility(condition.conditions, `${conditionPath}.conditions`, depth + 1);
+      if (!condition.conditions.length) fail(`${conditionPath}.conditions`, 'choose at least one condition');
+      return condition;
+    }
+    if (condition.condition === 'state') {
+      nonemptyText(condition.entity, `${conditionPath}.entity`); optionalText(condition.attribute, `${conditionPath}.attribute`);
+      if ((condition.state === undefined) === (condition.state_not === undefined)) fail(conditionPath, 'choose either state or state_not');
+      const target = condition.state ?? condition.state_not;
+      if (Array.isArray(target)) { strings(target, `${conditionPath}.${condition.state === undefined ? 'state_not' : 'state'}`); if (!target.length || target.some(item => !item.trim())) fail(conditionPath, 'enter at least one state'); }
+      else nonemptyText(target, `${conditionPath}.${condition.state === undefined ? 'state_not' : 'state'}`);
+      return condition;
+    }
+    if (condition.condition === 'numeric_state') {
+      nonemptyText(condition.entity, `${conditionPath}.entity`); optionalText(condition.attribute, `${conditionPath}.attribute`);
+      if (condition.above === undefined && condition.below === undefined) fail(conditionPath, 'enter an above or below threshold');
+      if (condition.above !== undefined) scalar(condition.above, `${conditionPath}.above`);
+      if (condition.below !== undefined) scalar(condition.below, `${conditionPath}.below`);
+      return condition;
+    }
+    if (condition.condition === 'screen') {
+      text(condition.media_query, `${conditionPath}.media_query`);
+      if (!condition.media_query.trim()) fail(`${conditionPath}.media_query`, 'enter a media query');
+      try { globalThis.matchMedia?.(condition.media_query); } catch { fail(`${conditionPath}.media_query`, 'enter a valid media query'); }
+      return condition;
+    }
+    if (condition.condition === 'user') { strings(condition.users, `${conditionPath}.users`); if (!condition.users.length || condition.users.some(item => !item.trim())) fail(`${conditionPath}.users`, 'choose at least one user'); return condition; }
+    if (condition.condition === 'location') { strings(condition.locations, `${conditionPath}.locations`); if (!condition.locations.length || condition.locations.some(item => !item.trim())) fail(`${conditionPath}.locations`, 'choose at least one location'); return condition; }
+    if (condition.condition === 'time') {
+      optionalText(condition.after, `${conditionPath}.after`); optionalText(condition.before, `${conditionPath}.before`);
+      if (condition.after !== undefined && !TIME.test(condition.after)) fail(`${conditionPath}.after`, 'use HH:MM or HH:MM:SS');
+      if (condition.before !== undefined && !TIME.test(condition.before)) fail(`${conditionPath}.before`, 'use HH:MM or HH:MM:SS');
+      if (condition.after && condition.before && condition.after === condition.before) fail(conditionPath, 'after and before must differ');
+      if (condition.weekdays !== undefined) { strings(condition.weekdays, `${conditionPath}.weekdays`); for (const day of condition.weekdays) choice(day, WEEKDAYS, `${conditionPath}.weekdays`); }
+      if (!condition.after && !condition.before && !condition.weekdays?.length) fail(conditionPath, 'enter a time or weekday');
+      return condition;
+    }
+    fail(`${conditionPath}.condition`, 'choose state, numeric_state, screen, user, location, time, and, or or not');
+  });
+}
 
 export const APPEARANCE = {
   style: 'f1', mode: 'auto', font: 'auto', show_header: true, density: 'comfortable', accent: '#e10600',
@@ -80,8 +133,9 @@ export function normalizeConfig(input) {
   config.type ??= CARD_TYPE;
   choice(config.type, [CARD_TYPE], 'type');
   const inputVersion = config.version ?? VERSION;
-  choice(inputVersion, [1, VERSION], 'version');
+  choice(inputVersion, [1, 2, VERSION], 'version');
   if (inputVersion === 1 && (config.context?.selection !== undefined || config.context?.share !== undefined || Array.isArray(config.modules) && config.modules.some(item => item?.selection !== undefined || item?.when !== undefined))) fail('version', 'version 2 is required for session selection and phase visibility');
+  if (inputVersion < 3 && Array.isArray(config.modules) && config.modules.some(item => item?.visibility !== undefined)) fail('version', 'version 3 is required for module visibility conditions');
   config.version = VERSION;
   config.title ??= 'F1 Sensor'; text(config.title, 'title');
   if (config.styles !== undefined) {
@@ -134,6 +188,7 @@ export function normalizeConfig(input) {
     item.selection = normalizeSelection(item.selection ?? { mode: 'inherit' }, `${path}.selection`, true);
     item.when ??= [...PHASES]; strings(item.when, `${path}.when`);
     for (const value of item.when) choice(value, PHASES, `${path}.when`);
+    item.visibility = normalizeVisibility(item.visibility ?? [], `${path}.visibility`);
     item.driver ??= ''; text(item.driver, `${path}.driver`);
     item.team ??= ''; text(item.team, `${path}.team`);
     const definition = MODULES[item.type];

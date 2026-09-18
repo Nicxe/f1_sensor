@@ -2400,3 +2400,82 @@ red border rendered immediately in the real card preview. The edit was cancelled
 the three saved modular dashboard cards still have no `styles` property. The
 current Home Assistant log UI reports no issue for the search term `f1`. No commit,
 push, release or persistent dashboard edit was made.
+
+## 2026-09-17 — Card and module scope hierarchy in the visual editor
+
+The editor now separates whole-card settings and module-only settings into two
+named visual regions. The card region contains the title, installation, layout,
+shared focus, appearance, accessibility, actions, recovery, templates and raw
+configuration. The module region contains the ordered module picker, add control
+and the selected module's title, visibility, content, appearance, behavior and
+destructive actions. Each region has its own border, subtle surface tint, scope
+label and explanatory text; the selected module also shows its position as
+**Editing module X of Y**. Template starters are collapsed by default, and every
+disclosure now has an explicit direction indicator.
+
+Color is supplementary rather than the only scope signal. Region names, labels,
+numbering and borders retain the hierarchy in forced-colors mode. An initial axe
+run found insufficient contrast when F1 red was used for small scope text in some
+Home Assistant themes; that text now follows the theme's primary text color while
+the accent remains on borders and surfaces. The existing accessible name
+**Selected module** is retained for compatibility.
+
+The change adds a browser regression that proves card inputs do not appear in the
+module region, the selected module changes from 1 of 2 to 2 of 2, and the pressed
+state follows the selection. Template journeys now explicitly expand the new
+starter disclosure. Validation passes with 225 frontend unit tests, 168 Chromium
+browser flows and the full 1,569-test `/Volumes/config` integration suite. The new
+scope regression and the full editor axe check also pass in Firefox and WebKit.
+All 32 delivered JavaScript files are byte-identical between the primary HAdev
+source, the bundled integration and the repository.
+
+The authenticated HAdev editor displayed the new card and module regions on the
+saved Race weekend card in the real light theme, including the collapsed starter,
+four-module list and selected-module counter. Save remained disabled and the
+editor was cancelled without changing the dashboard. No commit, push or release
+was made.
+
+## 2026-09-18 — Conditional visibility for individual modules
+
+Every module now accepts an optional `visibility` list in configuration version 3.
+The supported conditions follow Home Assistant's card-visibility concepts for
+entity state, numeric state, screen media query, user, current-user location and
+local time. Top-level conditions use AND semantics, while nested AND, OR and NOT
+groups support more complex rules. State attributes, entity-backed comparison
+values, weekday filters and time ranges across midnight are included. Visibility
+only changes presentation; it is not an authorization boundary.
+
+The visual editor exposes the rules under **Visibility conditions** for the
+selected module. Users can add, remove and nest conditions without JSON or YAML,
+pick entities from Home Assistant, use phone, tablet and desktop screen presets,
+select the current user, and see an immediate **Visible now**, **Hidden now** or
+**Always visible** result. A hidden module is removed from tab navigation, layout,
+card-size calculation, model building and live-stream subscription until its
+conditions match again. Screen and time conditions re-evaluate without requiring
+a card reload.
+
+The configuration validator limits rule depth and list size, rejects unsupported
+or incomplete rules and migrates earlier configurations without changing their
+visibility. User documentation distinguishes module visibility from Home
+Assistant's whole-card Visibility tab and notes the layout and permission
+boundaries. The generated field catalog and configuration contract now describe
+version 3.
+
+Validation passes with 230 frontend unit tests, 171 Chromium browser flows and
+the full 1,569-test `/Volumes/config` integration suite. The three new visibility
+browser flows also pass in Firefox and WebKit. Documentation passes its production
+build, four build checks and 15 browser checks. Automation passes 40 Python and 47
+Node tests after regenerating the migration audit's source fingerprints.
+Field-catalog validation, deterministic release validation and `git diff --check`
+pass. The deterministic
+107-file release package has SHA-256
+`ad5614e8f1b4c37a1f55092d1ddfc53f2b916f0125027bb60aa6ee68ee2ecd93`.
+All 33 delivered JavaScript files are byte-identical between the primary HAdev
+source, the bundled integration and the repository.
+
+The authenticated HAdev editor loaded configuration version 3 and the new
+visibility evaluator. A temporary entity-state condition changed the selected
+module's status to **Hidden now** and removed only that module from the live
+preview. The draft was cancelled, edit mode was closed without saving, and the
+browser console contained no errors. No commit, push, release or persistent
+dashboard edit was made.

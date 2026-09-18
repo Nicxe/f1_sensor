@@ -1,7 +1,7 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ LitElement, html, css, repeat }, configAPI, { MODULES, PRESETS, FIELDS, defaultFields, fieldDefinition, moduleFields, timingFields, INCIDENT_SIGNALS, label, moduleTitle, moduleFocusKinds }, { sharedStyles, words }, { makeDemo }, { watchEntries, HistoryResources }] = await Promise.all([
-  load('../f1-lit-3.3.2.js'), load('./config.js'), load('./catalog.js'), load('./view.js'), load('./demo.js'), load('./connection.js'),
+const [{ LitElement, html, css, repeat }, configAPI, { MODULES, PRESETS, FIELDS, defaultFields, fieldDefinition, moduleFields, timingFields, INCIDENT_SIGNALS, label, moduleTitle, moduleFocusKinds }, { sharedStyles, words }, { makeDemo }, { watchEntries, HistoryResources }, { visibilityMet }] = await Promise.all([
+  load('../f1-lit-3.3.2.js'), load('./config.js'), load('./catalog.js'), load('./view.js'), load('./demo.js'), load('./connection.js'), load('./visibility.js'),
 ]);
 await load('./card.js');
 const { source, array, lapChartModel, spoilerState, accentTeams } = await load('./data.js');
@@ -15,7 +15,7 @@ const { resultChoices, resultsModel, standingsModel, progressionModel, archiveMo
 export class F1SensorCardEditor extends LitElement {
   static properties = { hass: { attribute: false }, config: { state: true }, selected: { state: true }, error: { state: true }, pendingPreset: { state: true }, scene: { state: true }, width: { state: true }, mobilePreview: { state: true }, entries: { state: true }, transfer: { state: true }, templateName: { state: true }, pendingTemplate: { state: true }, templateEntry: { state: true }, pendingRestore: { state: true }, originalTransfer: { state: true } };
   static styles = [sharedStyles, css`
-    :host { container-type:inline-size; --f1-text:var(--primary-text-color,#e9edf3); --f1-muted:var(--secondary-text-color,#b9c1ce); --f1-surface:var(--card-background-color,#17202b); --f1-border:var(--divider-color,#637083); }
+    :host { container-type:inline-size; --f1-text:var(--primary-text-color,#e9edf3); --f1-muted:var(--secondary-text-color,#b9c1ce); --f1-surface:var(--card-background-color,#17202b); --f1-border:var(--divider-color,#637083); --editor-card-accent:var(--primary-color,#03a9f4); --editor-module-accent:#e10600; }
     .builder { display:grid; grid-template-columns:minmax(260px,1fr) minmax(300px,1fr); gap:24px; align-items:start; }
     .form { min-width:0; }
     .preview { min-width:0; overflow:auto; position:sticky; top:0; }
@@ -25,9 +25,23 @@ export class F1SensorCardEditor extends LitElement {
     .presets { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:16px; }
     .presets button { text-align:left; min-height:72px; overflow-wrap:anywhere; }
     .presets small { display:block; color:var(--f1-muted); font-size:.75em; }
+    .scope-panel { --scope-accent:var(--editor-card-accent); position:relative; margin:16px 0; padding:16px; border:1px solid color-mix(in srgb,var(--scope-accent) 42%,var(--f1-border)); border-inline-start:5px solid var(--scope-accent); border-radius:14px; background:color-mix(in srgb,var(--scope-accent) 6%,var(--f1-surface)); box-shadow:0 1px 2px rgba(0,0,0,.08); }
+    .module-scope { --scope-accent:var(--editor-module-accent); }
+    .scope-heading,.selected-module-heading { display:flex; gap:12px; align-items:flex-start; margin-bottom:12px; }
+    .scope-heading h3,.selected-module-heading h4 { margin:2px 0 3px; line-height:1.2; }
+    .scope-heading p,.selected-module-heading p { margin:0; }
+    .scope-badge,.module-number { flex:0 0 auto; display:grid; place-items:center; min-width:34px; height:34px; padding:0 7px; border:2px solid var(--scope-accent); border-radius:9px; color:var(--f1-text); background:var(--f1-surface); font-size:.72em; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+    .scope-kicker { color:var(--f1-text); font-size:.72em; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+    .scope-description { color:var(--f1-muted); font-size:.84em; }
     .module-list { list-style:none; margin:12px 0; padding:0; }
-    .module-row { margin-bottom:8px; border:1px solid var(--f1-border); border-radius:8px; padding:4px; }
-    .module-row .select-module { flex:1; text-align:left; min-width:120px; border:0; }
+    .module-row { margin-bottom:8px; border:1px solid var(--f1-border); border-radius:10px; padding:4px; background:var(--f1-surface); transition:border-color .15s ease,box-shadow .15s ease; }
+    .module-row[data-selected=true] { border-color:var(--editor-module-accent); box-shadow:inset 4px 0 0 var(--editor-module-accent); }
+    .module-row .select-module { flex:1; display:flex; align-items:center; gap:10px; text-align:left; min-width:120px; border:0; }
+    .module-row .select-module[aria-pressed=true] { color:var(--f1-text); background:transparent; box-shadow:none; }
+    .module-row .module-index { color:var(--f1-muted); font-variant-numeric:tabular-nums; font-size:.8em; font-weight:700; }
+    .module-row .module-name { font-weight:650; }
+    .selected-module { margin-top:16px; padding:14px; border:1px solid color-mix(in srgb,var(--editor-module-accent) 36%,var(--f1-border)); border-radius:11px; background:color-mix(in srgb,var(--editor-module-accent) 4%,var(--f1-surface)); }
+    .selected-module-heading { margin-bottom:6px; }
     label { display:block; margin:12px 0; }
     label span { display:block; margin-bottom:5px; }
     input:not([type=checkbox]),select,textarea { width:100%; min-height:44px; padding:8px 10px; border:1px solid var(--f1-border); border-radius:7px; background:var(--f1-surface); }
@@ -38,14 +52,29 @@ export class F1SensorCardEditor extends LitElement {
     .palette-row button { margin-bottom:12px; }
     .field-row { display:flex; align-items:center; gap:5px; }
     .field-row .check { flex:1; }
+    .visibility-status { display:inline-flex; align-items:center; gap:6px; margin:0 0 8px; padding:5px 8px; border:1px solid var(--f1-border); border-radius:999px; font-size:.82em; }
+    .condition-list { display:grid; gap:10px; margin:10px 0; }
+    .condition-row { padding:10px; border:1px solid var(--f1-border); border-radius:9px; background:var(--f1-surface); }
+    .condition-row > .buttons { justify-content:space-between; }
+    .condition-row .condition-list { margin-inline-start:12px; padding-inline-start:10px; border-inline-start:2px solid var(--f1-border); }
+    .weekday-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:2px 8px; }
+    .weekday-grid .check { min-width:0; }
     details { border-top:1px solid var(--f1-border); padding:12px 0; }
-    summary { cursor:pointer; min-height:44px; display:flex; align-items:center; font-weight:650; }
+    details:first-of-type { border-top:0; }
+    summary { cursor:pointer; min-height:44px; display:flex; align-items:center; justify-content:space-between; gap:12px; font-weight:650; }
+    summary::-webkit-details-marker { display:none; }
+    summary::marker { content:""; }
+    summary::after { content:"›"; flex:0 0 auto; color:var(--f1-muted); font-size:1.35em; line-height:1; transform:rotate(0deg); transition:transform .15s ease; }
+    details[open] > summary::after { transform:rotate(90deg); }
+    .starter { padding:0 14px 14px; border:1px solid var(--f1-border); border-radius:12px; background:color-mix(in srgb,var(--f1-border) 5%,transparent); }
+    .starter summary { margin-bottom:4px; }
     .danger,.notice { border:1px solid currentColor; border-radius:8px; padding:12px; margin:12px 0; }
     .notice p { margin-bottom:8px; }
     .danger { color:var(--error-color,#ffb4b4); }
     .muted { font-size:.85em; }
     textarea { min-height:130px; font-family:monospace; font-size:.85em; }
     .mobile-toggle { display:none; }
+    @media(forced-colors:active) { .scope-panel,.selected-module,.module-row[data-selected=true] { border-color:CanvasText; } .scope-badge,.module-number { border-color:CanvasText; color:CanvasText; } }
     @container(max-width:760px) { .builder { grid-template-columns:1fr; } .preview { position:static; } .mobile-toggle { display:flex; } .builder[data-mobile=edit] .preview,.builder[data-mobile=preview] .form { display:none; } }
   `];
   constructor() { super(); this.archive = new HistoryResources(() => this.requestUpdate()); this.telemetry = new HistoryResources(() => this.requestUpdate()); this.history = []; this.entries = []; this.selected = ''; this.scene = 'race'; this.width = 'normal'; this.mobilePreview = false; this.error = ''; this.pendingPreset = ''; this.transfer = ''; this.templateName = ''; this.pendingTemplate = null; this.templateEntry = ''; }
@@ -206,6 +235,77 @@ export class F1SensorCardEditor extends LitElement {
     this.updateConfig(config => configAPI.moveModule(config, id, offset));
     this.updateComplete.then(() => [...this.shadowRoot.querySelectorAll('[data-module]')].find(button => button.dataset.module === id)?.focus({ preventScroll: true }));
   }
+  visibilityList(module, parentPath) {
+    let list = module.visibility;
+    for (const index of parentPath) list = list[index].conditions;
+    return list;
+  }
+  visibilityDefault(type) {
+    const entity = Object.keys(this.hass?.states ?? {})[0] ?? 'sensor.example';
+    if (type === 'state') return { condition: type, entity, state: 'on' };
+    if (type === 'numeric_state') return { condition: type, entity, above: 0 };
+    if (type === 'screen') return { condition: type, media_query: '(min-width: 768px)' };
+    if (type === 'user') return { condition: type, users: [this.hass?.user?.id ?? 'current-user'] };
+    if (type === 'location') {
+      const person = Object.entries(this.hass?.states ?? {}).find(([id, state]) => id.startsWith('person.') && state?.attributes?.user_id === this.hass?.user?.id)?.[1];
+      return { condition: type, locations: [person?.state ?? 'home'] };
+    }
+    if (type === 'time') return { condition: type, after: '08:00' };
+    return { condition: type, conditions: [this.visibilityDefault('state')] };
+  }
+  updateVisibility(change) {
+    this.updateConfig(config => {
+      const module = config.modules.find(item => item.id === this.selected);
+      if (module) change(module);
+      return config;
+    });
+  }
+  addVisibility(parentPath, type) { this.updateVisibility(module => { this.visibilityList(module, parentPath).push(this.visibilityDefault(type)); }); }
+  removeVisibility(path) { this.updateVisibility(module => { const list = this.visibilityList(module, path.slice(0, -1)); list.splice(path.at(-1), 1); }); }
+  replaceVisibility(path, type) { this.updateVisibility(module => { const list = this.visibilityList(module, path.slice(0, -1)); list[path.at(-1)] = this.visibilityDefault(type); }); }
+  setVisibilityValue(path, key, value) {
+    this.updateVisibility(module => {
+      const list = this.visibilityList(module, path.slice(0, -1)), condition = list[path.at(-1)];
+      if (value === undefined) delete condition[key]; else condition[key] = value;
+    });
+  }
+  listValue(value) { return Array.isArray(value) ? value.join(', ') : String(value ?? ''); }
+  parseList(value) { return [...new Set(value.split(',').map(item => item.trim()).filter(Boolean))]; }
+  threshold(value) { const text = value.trim(); return text === '' ? undefined : /^-?(?:\d+\.?\d*|\.\d+)$/.test(text) ? Number(text) : text; }
+  conditionTypeOptions() {
+    return [
+      ['state', this.w('Entity state', 'Entitetsstatus')], ['numeric_state', this.w('Numeric state', 'Numeriskt värde')],
+      ['screen', this.w('Screen', 'Skärm')], ['user', this.w('User', 'Användare')], ['location', this.w('Location', 'Plats')],
+      ['time', this.w('Time', 'Tid')], ['and', this.w('All conditions (AND)', 'Alla villkor (OCH)')],
+      ['or', this.w('Any condition (OR)', 'Något villkor (ELLER)')], ['not', this.w('Invert conditions (NOT)', 'Invertera villkor (INTE)')],
+    ];
+  }
+  visibilityCondition(condition, path) {
+    const name = `${this.w('Condition', 'Villkor')} ${path.map(index => index + 1).join('.')}`;
+    const set = (key, value) => this.setVisibilityValue(path, key, value);
+    const common = html`<div class="buttons">${this.select(this.w('Condition type', 'Villkorstyp'), condition.condition, this.conditionTypeOptions(), value => this.replaceVisibility(path, value))}<button aria-label=${`${this.w('Remove', 'Ta bort')} ${name}`} @click=${() => this.removeVisibility(path)}>${this.w('Remove', 'Ta bort')}</button></div>`;
+    if (['and', 'or', 'not'].includes(condition.condition)) return html`<section class="condition-row" aria-label=${name}>${common}<p class="muted">${condition.condition === 'and' ? this.w('Every nested condition must match.', 'Alla underliggande villkor måste uppfyllas.') : condition.condition === 'or' ? this.w('At least one nested condition must match.', 'Minst ett underliggande villkor måste uppfyllas.') : this.w('The nested result is inverted.', 'Resultatet från underliggande villkor inverteras.')}</p>${this.visibilityConditions(condition.conditions, path)}</section>`;
+    let fields;
+    if (condition.condition === 'state') {
+      const negative = condition.state === undefined;
+      fields = html`${this.entityInput(this.w('Entity', 'Entitet'), condition.entity, value => set('entity', value))}${this.input(this.w('Attribute (optional)', 'Attribut (valfritt)'), condition.attribute, value => set('attribute', value || undefined))}${this.select(this.w('Comparison', 'Jämförelse'), negative ? 'not' : 'is', [['is', this.w('Is', 'Är')], ['not', this.w('Is not', 'Är inte')]], value => { const current = condition.state ?? condition.state_not; this.updateVisibility(module => { const item = this.visibilityList(module, path.slice(0, -1))[path.at(-1)]; delete item.state; delete item.state_not; item[value === 'is' ? 'state' : 'state_not'] = current; }); })}${this.input(this.w('State values, separated by commas', 'Statusvärden, separerade med kommatecken'), this.listValue(condition.state ?? condition.state_not), value => set(negative ? 'state_not' : 'state', this.parseList(value)))}`;
+    } else if (condition.condition === 'numeric_state') fields = html`${this.entityInput(this.w('Entity', 'Entitet'), condition.entity, value => set('entity', value))}${this.input(this.w('Attribute (optional)', 'Attribut (valfritt)'), condition.attribute, value => set('attribute', value || undefined))}${this.input(this.w('Above (optional)', 'Över (valfritt)'), condition.above, value => set('above', this.threshold(value)))}${this.input(this.w('Below (optional)', 'Under (valfritt)'), condition.below, value => set('below', this.threshold(value)))}`;
+    else if (condition.condition === 'screen') fields = html`${this.input(this.w('Media query', 'Media query'), condition.media_query, value => set('media_query', value))}<div class="buttons"><button @click=${() => set('media_query', '(max-width: 767px)')}>${this.w('Phone', 'Telefon')}</button><button @click=${() => set('media_query', '(min-width: 768px) and (max-width: 1023px)')}>${this.w('Tablet', 'Surfplatta')}</button><button @click=${() => set('media_query', '(min-width: 1024px)')}>${this.w('Desktop', 'Dator')}</button></div>`;
+    else if (condition.condition === 'user') fields = html`${this.input(this.w('User IDs, separated by commas', 'Användar-ID, separerade med kommatecken'), this.listValue(condition.users), value => set('users', this.parseList(value)))}${this.hass?.user?.id ? html`<button @click=${() => set('users', [this.hass.user.id])}>${this.w('Use current user', 'Använd aktuell användare')}</button>` : ''}`;
+    else if (condition.condition === 'location') fields = this.input(this.w('Locations, separated by commas', 'Platser, separerade med kommatecken'), this.listValue(condition.locations), value => set('locations', this.parseList(value)));
+    else fields = html`${this.input(this.w('After (optional)', 'Efter (valfritt)'), condition.after, value => set('after', value || undefined), 'time')}${this.input(this.w('Before (optional)', 'Före (valfritt)'), condition.before, value => set('before', value || undefined), 'time')}<p>${this.w('Weekdays (optional)', 'Veckodagar (valfritt)')}</p><div class="weekday-grid">${[['mon', 'Mon', 'Mån'], ['tue', 'Tue', 'Tis'], ['wed', 'Wed', 'Ons'], ['thu', 'Thu', 'Tor'], ['fri', 'Fri', 'Fre'], ['sat', 'Sat', 'Lör'], ['sun', 'Sun', 'Sön']].map(([day, en, sv]) => this.check(this.w(en, sv), condition.weekdays?.includes(day), checked => set('weekdays', checked ? [...(condition.weekdays ?? []), day] : (condition.weekdays ?? []).filter(item => item !== day))))}</div>`;
+    return html`<section class="condition-row" aria-label=${name}>${common}${fields}</section>`;
+  }
+  visibilityConditions(conditions, parentPath = []) {
+    return html`<div class="condition-list">${conditions.map((condition, index) => this.visibilityCondition(condition, [...parentPath, index]))}<div class="buttons">${this.select(this.w('Add condition', 'Lägg till villkor'), '', [['', this.w('Choose…', 'Välj…')], ...this.conditionTypeOptions()], value => { if (value) this.addVisibility(parentPath, value); })}</div></div>`;
+  }
+  visibilitySettings(module) {
+    return html`<details><summary>${this.w('Visibility conditions', 'Synlighetsvillkor')}</summary><p class="muted">${this.w('Like Home Assistant card visibility, every top-level condition must match. Session phases above are combined with these conditions.', 'Precis som Home Assistants kortsynlighet måste alla villkor på översta nivån uppfyllas. Sessionsfaserna ovan kombineras med dessa villkor.')}</p>${module.visibility.length ? html`<p class="visibility-status">${visibilityMet(module.visibility, this.hass) ? this.w('Visible now', 'Synlig nu') : this.w('Hidden now', 'Dold nu')}</p>` : html`<p class="visibility-status">${this.w('Always visible', 'Alltid synlig')}</p>`}${this.visibilityConditions(module.visibility)}</details>`;
+  }
+  entityInput(title, value, change) {
+    const id = `entities-${this.selected}-${title.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
+    return html`<label><span>${title}</span><input list=${id} .value=${String(value ?? '')} @change=${event => change(event.target.value)}><datalist id=${id}>${Object.keys(this.hass?.states ?? {}).sort().map(entity => html`<option value=${entity}></option>`)}</datalist></label>`;
+  }
   moduleSettings() {
     const saved = this.config.modules.find(module => module.id === this.selected), definition = MODULES[saved?.type];
     if (!saved) return html``;
@@ -215,7 +315,8 @@ export class F1SensorCardEditor extends LitElement {
     const archiveFields = archiveState?.fields ?? null;
     const module = saved.type === 'timing' ? { ...saved, fields: timingFields(saved, this.scene) } : archiveFields ? { ...saved, fields: archiveFields } : saved;
     const available = moduleFields(module), fields = [...module.fields, ...available.filter(id => !module.fields.includes(id))];
-    return html`<section aria-label=${this.w('Selected module', 'Vald modul')}><h3>${moduleTitle(module, this.language)}</h3>
+    const index = this.config.modules.findIndex(item => item.id === module.id);
+    return html`<section class="selected-module" aria-label=${this.w('Selected module', 'Vald modul')}><div class="selected-module-heading"><span class="module-number" aria-hidden="true">${index + 1}</span><div><p class="scope-kicker">${this.w(`Editing module ${index + 1} of ${this.config.modules.length}`, `Redigerar modul ${index + 1} av ${this.config.modules.length}`)}</p><h4>${moduleTitle(module, this.language)}</h4><p class="scope-description">${this.w('Only this module is affected by the settings below.', 'Inställningarna nedan påverkar bara den här modulen.')}</p></div></div>
       ${this.input(this.w('Module title', 'Modulrubrik'), module.title, value => this.setModule('title', value))}
       ${this.check(this.w('Show module', 'Visa modulen'), module.enabled, value => this.setModule('enabled', value))}
       <details><summary>${this.w('Module appearance', 'Modulens utseende')}</summary>
@@ -283,6 +384,7 @@ export class F1SensorCardEditor extends LitElement {
       ${(moduleFocusKinds(module).includes('driver')) ? this.focusPicker('driver', this.w('Pinned driver', 'Låst förare'), module.driver, value => this.setModule('driver', value), module.focus_mode !== 'independent') : ''}
       ${(moduleFocusKinds(module).includes('team')) ? this.focusPicker('team', this.w('Pinned team', 'Låst team'), module.team, value => this.setModule('team', value), module.focus_mode !== 'independent') : ''}
       <button @click=${() => this.setModule('options', Object.fromEntries(Object.entries(module.options).filter(([key]) => !Object.hasOwn(definition?.options ?? {}, key))))}>${this.w('Reset module options', 'Återställ modulinställningar')}</button></details>
+      ${this.visibilitySettings(module)}
       <div class="buttons"><button @click=${() => this.updateConfig(config => configAPI.duplicateModule(config, module.id))}>${this.w('Duplicate module', 'Duplicera modulen')}</button>
       <button @click=${() => { const index = this.config.modules.findIndex(item => item.id === module.id); this.updateConfig(config => { config.modules = config.modules.filter(item => item.id !== module.id); return config; }); this.selected = this.config.modules[Math.min(index, this.config.modules.length - 1)]?.id ?? ''; }}>${this.w('Remove module', 'Ta bort modulen')}</button></div>
     </section>`;
@@ -367,14 +469,15 @@ export class F1SensorCardEditor extends LitElement {
       <div class="buttons mobile-toggle"><button aria-pressed=${String(!this.mobilePreview)} @click=${() => { this.mobilePreview = false; }}>${this.w('Edit', 'Redigera')}</button><button aria-pressed=${String(this.mobilePreview)} @click=${() => { this.mobilePreview = true; }}>${this.w('Preview', 'Förhandsvisa')}</button></div>
       ${this.error ? html`<p class="danger" role="alert">${this.error}</p>` : ''}
       <div class="builder" data-mobile=${this.mobilePreview ? 'preview' : 'edit'}><div class="form">
-        <div class="presets">${Object.entries(PRESETS).map(([id, preset]) => html`<button @click=${() => { if (this.config.modules.length) this.pendingPreset = id; else { this.updateConfig(config => configAPI.applyPreset(config, id)); this.selected = this.config.modules[0]?.id ?? ''; } }}>${label(preset, this.language)}<small>${preset.modules.map(module => moduleTitle(module, this.language)).join(' · ') || this.w('Choose your first module', 'Välj din första modul')}</small></button>`)}</div>
-        ${this.pendingPreset ? html`<div class="notice" role="region" aria-label=${this.w('Replace content', 'Byt innehåll')}><p>${this.w('Current modules will be replaced. Appearance is kept.', 'Nuvarande moduler ersätts. Utseendet behålls.')}</p><p>${this.config.modules.map(module => moduleTitle(module, this.language)).join(', ')} → ${label(PRESETS[this.pendingPreset], this.language)}</p><div class="buttons"><button @click=${() => { this.updateConfig(config => configAPI.applyPreset(config, this.pendingPreset)); this.selected = this.config.modules[0]?.id ?? ''; this.pendingPreset = ''; }}>${this.w('Replace content', 'Byt innehåll')}</button><button @click=${() => { this.pendingPreset = ''; }}>${this.w('Cancel', 'Avbryt')}</button></div></div>` : ''}
-        ${this.input(this.w('Card title', 'Kortrubrik'), this.config.title, value => this.updateConfig(config => ({ ...config, title: value })))}
-        ${this.entries.length > 1 || this.config.f1_entry_id ? this.select(this.w('F1 Sensor installation', 'F1 Sensor-installation'), this.config.f1_entry_id, [['', this.w('Automatic (one installation)', 'Automatiskt (en installation)')], ...this.entries.map(entry => [entry.entry_id, entry.title])], value => this.updateConfig(config => ({ ...config, f1_entry_id: value }))) : ''}
-        <h3>${this.w('Your modules', 'Dina moduler')}</h3><ol class="module-list">${repeat(this.config.modules, module => module.id, (module, index) => html`<li class="module-row"><button class="select-module" data-module=${module.id} aria-pressed=${String(this.selected === module.id)} @click=${() => { this.selected = module.id; }}>${index + 1}. ${moduleTitle(module, this.language)}</button><button ?disabled=${index === 0} aria-label=${`${this.w('Move up', 'Flytta upp')} ${moduleTitle(module, this.language)}`} @click=${() => this.move(module.id, -1)}>↑</button><button ?disabled=${index === this.config.modules.length - 1} aria-label=${`${this.w('Move down', 'Flytta ned')} ${moduleTitle(module, this.language)}`} @click=${() => this.move(module.id, 1)}>↓</button></li>`)}</ol>
-        ${this.select(this.w('Add module', 'Lägg till modul'), '', [['', this.w('Choose content…', 'Välj innehåll…')], ...Object.values(MODULES).map(module => [module.id, label(module, this.language)])], value => { if (!value) return; const module = configAPI.makeModule(value, this.config.modules); this.updateConfig(config => ({ ...config, modules: [...config.modules, module] })); this.selected = module.id; })}
-        ${this.moduleSettings()}${this.appearanceSettings()}${this.actionSettings()}${this.migrationSettings()}
-        <details><summary>${this.w('Layout and shared focus', 'Layout och gemensamt fokus')}</summary>
+        <details class="starter"><summary>${this.w('Start from a template', 'Börja från en mall')}</summary>
+          <p class="scope-description">${this.w('Templates replace the module content but keep the card appearance.', 'Mallar ersätter modulinnehållet men behåller kortets utseende.')}</p>
+          <div class="presets">${Object.entries(PRESETS).map(([id, preset]) => html`<button @click=${() => { if (this.config.modules.length) this.pendingPreset = id; else { this.updateConfig(config => configAPI.applyPreset(config, id)); this.selected = this.config.modules[0]?.id ?? ''; } }}>${label(preset, this.language)}<small>${preset.modules.map(module => moduleTitle(module, this.language)).join(' · ') || this.w('Choose your first module', 'Välj din första modul')}</small></button>`)}</div>
+          ${this.pendingPreset ? html`<div class="notice" role="region" aria-label=${this.w('Replace content', 'Byt innehåll')}><p>${this.w('Current modules will be replaced. Appearance is kept.', 'Nuvarande moduler ersätts. Utseendet behålls.')}</p><p>${this.config.modules.map(module => moduleTitle(module, this.language)).join(', ')} → ${label(PRESETS[this.pendingPreset], this.language)}</p><div class="buttons"><button @click=${() => { this.updateConfig(config => configAPI.applyPreset(config, this.pendingPreset)); this.selected = this.config.modules[0]?.id ?? ''; this.pendingPreset = ''; }}>${this.w('Replace content', 'Byt innehåll')}</button><button @click=${() => { this.pendingPreset = ''; }}>${this.w('Cancel', 'Avbryt')}</button></div></div>` : ''}
+        </details>
+        <section class="scope-panel card-scope" data-scope="card" aria-labelledby="card-settings-title"><div class="scope-heading"><span class="scope-badge" aria-hidden="true">${this.w('Card', 'Kort')}</span><div><p class="scope-kicker">${this.w('Whole card', 'Hela kortet')}</p><h3 id="card-settings-title">${this.w('Card settings', 'Kortinställningar')}</h3><p class="scope-description">${this.w('These settings apply to every module in this card.', 'Dessa inställningar gäller alla moduler i kortet.')}</p></div></div>
+          ${this.input(this.w('Card title', 'Kortrubrik'), this.config.title, value => this.updateConfig(config => ({ ...config, title: value })))}
+          ${this.entries.length > 1 || this.config.f1_entry_id ? this.select(this.w('F1 Sensor installation', 'F1 Sensor-installation'), this.config.f1_entry_id, [['', this.w('Automatic (one installation)', 'Automatiskt (en installation)')], ...this.entries.map(entry => [entry.entry_id, entry.title])], value => this.updateConfig(config => ({ ...config, f1_entry_id: value }))) : ''}
+          <details><summary>${this.w('Layout and shared focus', 'Layout och gemensamt fokus')}</summary>
           ${this.select(this.w('Layout', 'Layout'), this.config.layout, [['stack', this.w('Stacked modules', 'Staplade moduler')], ['tabs', this.w('Tabs', 'Flikar')]], value => this.updateConfig(config => ({ ...config, layout: value })))}
           ${this.focusPicker('driver', this.w('Default driver', 'Förvald förare'), this.config.context.driver, value => this.setGroup('context', 'driver', value))}
           ${this.focusPicker('team', this.w('Default team', 'Förvalt team'), this.config.context.team, value => this.setGroup('context', 'team', value))}
@@ -388,17 +491,24 @@ export class F1SensorCardEditor extends LitElement {
           ${this.check(this.w('Show Live Delay and global spoiler controls', 'Visa kontroller för Live Delay och globalt spoilerskydd'), this.config.context.viewing_controls, value => this.setGroup('context', 'viewing_controls', value))}
           <p class="muted">${this.w('Optional viewing controls change integration settings. Live Delay affects this installation and its automations; spoiler protection affects every F1 installation.', 'Valfria visningskontroller ändrar integrationens inställningar. Live Delay påverkar denna installation och dess automationer; spoilerskyddet påverkar alla F1-installationer.')}</p>
           ${this.check(this.w('Always hide spoilers in this card', 'Dölj alltid spoilers i detta kort'), this.config.context.spoilers === 'hide', value => this.setGroup('context', 'spoilers', value ? 'hide' : 'inherit'))}
-        </details>
-        <details><summary>${this.w('Reusable templates', 'Återanvändbara mallar')}</summary><p class="muted">${this.w('Export a named template or paste/open one to review it before replacing this card. Applying a template can be undone and does not save the dashboard automatically.', 'Exportera en namngiven mall eller klistra in/öppna en för att granska den innan kortet ersätts. En tillämpad mall kan ångras och sparar inte dashboarden automatiskt.')}</p>
+          </details>
+          ${this.appearanceSettings()}${this.actionSettings()}${this.migrationSettings()}
+          <details><summary>${this.w('Reusable templates', 'Återanvändbara mallar')}</summary><p class="muted">${this.w('Export a named template or paste/open one to review it before replacing this card. Applying a template can be undone and does not save the dashboard automatically.', 'Exportera en namngiven mall eller klistra in/öppna en för att granska den innan kortet ersätts. En tillämpad mall kan ångras och sparar inte dashboarden automatiskt.')}</p>
           ${this.input(this.w('Template name', 'Mallnamn'), this.templateName, value => { this.templateName = value; })}
           <label><span>${this.w('Template JSON', 'Mallens JSON')}</span><textarea .value=${this.transfer} @input=${event => { this.transfer = event.target.value; }}></textarea></label>
           <div class="buttons"><button @click=${() => { try { this.transfer = configAPI.exportTemplate(this.config, this.templateName); this.error = ''; } catch (error) { this.error = error.message; } }}>${this.w('Export template', 'Exportera mall')}</button><button @click=${() => this.reviewTemplate(this.transfer)}>${this.w('Review template', 'Granska mall')}</button><label class="file-button"><span>${this.w('Open template file', 'Öppna mallfil')}</span><input type="file" accept="application/json,.json" @change=${event => this.readTemplateFile(event)}></label></div>
           ${this.pendingTemplate ? html`<div class="notice" role="region" aria-label=${this.w('Template review', 'Mallgranskning')}><p><strong>${this.pendingTemplate.name}</strong></p><p>${this.w('Current content', 'Nuvarande innehåll')}: ${this.config.modules.map(module => moduleTitle(module, this.language)).join(', ') || '—'}<br>${this.w('Template content', 'Mallens innehåll')}: ${this.pendingTemplate.card.modules.map(module => moduleTitle(module, this.language)).join(', ') || '—'}</p>
             ${this.pendingTemplate.card.f1_entry_id && !this.entries.some(entry => entry.entry_id === this.pendingTemplate.card.f1_entry_id) ? html`<p>${this.w('The saved installation is not available here. Choose the installation this copy should use.', 'Den sparade installationen finns inte här. Välj vilken installation kopian ska använda.')}</p>${this.select(this.w('F1 Sensor installation for template', 'F1 Sensor-installation för mallen'), this.templateEntry, [['', this.w('Choose…', 'Välj…')], ...this.entries.map(entry => [entry.entry_id, entry.title])], value => { this.templateEntry = value; })}` : ''}
             <div class="buttons"><button @click=${() => { this.pendingTemplate = null; this.templateEntry = ''; }}>${this.w('Cancel', 'Avbryt')}</button><button ?disabled=${Boolean(this.pendingTemplate.card.f1_entry_id && !this.entries.some(entry => entry.entry_id === this.pendingTemplate.card.f1_entry_id) && !this.templateEntry)} @click=${() => this.applyTemplate()}>${this.w('Apply template', 'Tillämpa mall')}</button></div></div>` : ''}
-        </details><details><summary>${this.w('Advanced card JSON', 'Avancerad kort-JSON')}</summary><p class="muted">${this.w('Export or import the raw card configuration. Import applies immediately and can be undone.', 'Exportera eller importera kortets råa konfiguration. Import tillämpas direkt och kan ångras.')}</p>
+          </details><details><summary>${this.w('Advanced card JSON', 'Avancerad kort-JSON')}</summary><p class="muted">${this.w('Export or import the raw card configuration. Import applies immediately and can be undone.', 'Exportera eller importera kortets råa konfiguration. Import tillämpas direkt och kan ångras.')}</p>
           <div class="buttons"><button @click=${() => { this.transfer = configAPI.exportConfig(this.config); }}>${this.w('Export card JSON', 'Exportera kort-JSON')}</button><button @click=${() => this.updateConfig(() => configAPI.importConfig(this.transfer))}>${this.w('Import card JSON', 'Importera kort-JSON')}</button></div>
-        </details>
+          </details>
+        </section>
+        <section class="scope-panel module-scope" data-scope="module" aria-labelledby="modules-title"><div class="scope-heading"><span class="scope-badge" aria-hidden="true">${this.w('Module', 'Modul')}</span><div><p class="scope-kicker">${this.w('Selected content', 'Valt innehåll')}</p><h3 id="modules-title">${this.w('Modules', 'Moduler')}</h3><p class="scope-description">${this.w('Choose a module to edit only its content, behavior and appearance.', 'Välj en modul för att redigera endast dess innehåll, beteende och utseende.')}</p></div></div>
+          <ol class="module-list">${repeat(this.config.modules, module => module.id, (module, index) => html`<li class="module-row" data-selected=${String(this.selected === module.id)}><button class="select-module" data-module=${module.id} aria-label=${`${index + 1}. ${moduleTitle(module, this.language)}`} aria-pressed=${String(this.selected === module.id)} @click=${() => { this.selected = module.id; }}><span class="module-index">${String(index + 1).padStart(2, '0')}</span><span class="module-name">${moduleTitle(module, this.language)}</span></button><button ?disabled=${index === 0} aria-label=${`${this.w('Move up', 'Flytta upp')} ${moduleTitle(module, this.language)}`} @click=${() => this.move(module.id, -1)}>↑</button><button ?disabled=${index === this.config.modules.length - 1} aria-label=${`${this.w('Move down', 'Flytta ned')} ${moduleTitle(module, this.language)}`} @click=${() => this.move(module.id, 1)}>↓</button></li>`)}</ol>
+          ${this.select(this.w('Add module', 'Lägg till modul'), '', [['', this.w('Choose content…', 'Välj innehåll…')], ...Object.values(MODULES).map(module => [module.id, label(module, this.language)])], value => { if (!value) return; const module = configAPI.makeModule(value, this.config.modules); this.updateConfig(config => ({ ...config, modules: [...config.modules, module] })); this.selected = module.id; })}
+          ${this.moduleSettings()}
+        </section>
       </div><div class="preview"><h3>${this.w('Preview', 'Förhandsvisning')}</h3><div class="toolbar">
         ${this.select(this.w('Sample session', 'Exempelsession'), this.scene, [['before', this.w('Before a session', 'Före session')], ['practice', this.w('Practice', 'Träning')], ['qualifying', this.w('Qualifying', 'Kval')], ['sprint_qualifying', this.w('Sprint qualifying', 'Sprintkval')], ['sprint', 'Sprint'], ['race', 'Race'], ['ended', this.w('Finished', 'Avslutad')], ['replay', 'Replay'], ['missing', this.w('Missing data', 'Saknad data')]], value => { this.scene = value; })}
         ${this.select(this.w('Preview width', 'Förhandsvisningens bredd'), this.width, [['narrow', this.w('Narrow', 'Smal')], ['normal', this.w('Normal', 'Normal')], ['wide', this.w('Wide', 'Bred')]], value => { this.width = value; })}

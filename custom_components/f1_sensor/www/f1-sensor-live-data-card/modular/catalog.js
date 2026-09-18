@@ -1,5 +1,5 @@
 // Field IDs are configuration API. Labels, sources and presentation stay together.
-export const VERSION = 2;
+export const VERSION = 3;
 export const CARD_TYPE = 'custom:f1-sensor-card';
 export const label = (item, language = 'en') => item?.label?.[String(language).startsWith('sv') ? 'sv' : 'en'] ?? item?.id ?? '';
 

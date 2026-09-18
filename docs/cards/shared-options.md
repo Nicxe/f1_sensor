@@ -105,7 +105,7 @@ For direct YAML editing, keep the card type and configuration version:
 
 ```yaml
 type: custom:f1-sensor-card
-version: 2
+version: 3
 title: Race weekend
 layout: stack
 modules:

@@ -1,8 +1,8 @@
 # Kontrakt för det modulära F1-kortets konfiguration
 
-Datum: 2026-09-15. Konfigurationsversion: **2**. Status: teknisk specifikation för den lokala implementationen, med uttryckligt avgränsade återstående produktkrav.
+Datum: 2026-09-18. Konfigurationsversion: **3**. Status: teknisk specifikation för den lokala implementationen, med uttryckligt avgränsade återstående produktkrav.
 
-Detta dokument hör till planens A3. Det specificerar konfiguration, modulgränser, grafisk stil och tillgänglighet. Det är inte ett besked om att hela kortplattformen, migrationen eller testmatrisen är färdig. Referensen för vad version 2 faktiskt accepterar är [config.js](../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/config.js), tillsammans med [catalog.js](../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/catalog.js). Bilagan nedan är hämtad från dessa filer.
+Detta dokument hör till planens A3. Det specificerar konfiguration, modulgränser, grafisk stil och tillgänglighet. Det är inte ett besked om att hela kortplattformen, migrationen eller testmatrisen är färdig. Referensen för vad version 3 faktiskt accepterar är [config.js](../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/config.js), tillsammans med [catalog.js](../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/catalog.js). Bilagan nedan är hämtad från dessa filer.
 
 ## 1. Fyra separata delar
 
@@ -42,6 +42,7 @@ flowchart LR
 | Låst förare eller team i en modul | Modulens `driver` och `team` | Sparas med kortet |
 | Kortets eller modulens sessionsurval | `context.selection` respektive `modules[].selection` | Sparas med kortet; ett lås startar inte en livekälla eller replay |
 | Modulens fasprofil | `modules[].when` | Sparas med kortet; automatiska fasbyten skriver inte om konfigurationen |
+| Modulens synlighetsvillkor | `modules[].visibility` | Sparas med kortet; tillståndsbyten visar eller döljer utan att skriva om konfigurationen |
 | Ett förarval i det visade kortet | Kortets visningsfokus, eller dess kontrollgrupp | Tillfälligt; skriver inte dashboardkonfigurationen |
 | Vald flik, Visa alla och interaktiva diagram-/arkivval | Kortets lokala tillstånd | Återställs vid ny kortinstans eller relevanta konfigurationsbyten |
 | Frys vyn | En lokal kopia av visningsmodellerna | Endast detta kort; pausar inte backend |
@@ -50,14 +51,14 @@ flowchart LR
 
 Inspelningar, livevärden, anslutningar och abonnemang ska inte serialiseras i kortkonfigurationen. Språk och generellt 12/24-timmarsformat hämtas från HA-profilen. Ett schema kan uttryckligen välja hemmatid, bantid eller UTC.
 
-## 3. Rotobjektet i version 2
+## 3. Rotobjektet i version 3
 
 Tabellen beskriver normaliserade värden. Den inkommande konfigurationen får utelämna inställningar som har standardvärden. Normaliseringen kopierar konfigurationen och ändrar inte anroparens objekt.
 
 | Egenskap | Typ och standard | Betydelse |
 | --- | --- | --- |
 | `type` | `custom:f1-sensor-card` | Enda korttypen som denna normaliserare accepterar |
-| `version` | Heltalet `2` | Konfigurationsformat; separat från integrationsversion och resursens cacheversion. Giltig version 1 migreras framåt vid normalisering. |
+| `version` | Heltalet `3` | Konfigurationsformat; separat från integrationsversion och resursens cacheversion. Giltig version 1 och 2 migreras framåt vid normalisering. |
 | `title` | Text, `F1 Sensor` | Kortets rubrik; tom text är tillåten |
 | `f1_entry_id` | Text, tom | Tomt väljer automatiskt endast när exakt en installation upptäckts. Flera installationer kräver ett uttryckligt val. |
 | `layout` | `stack` eller `tabs`, standard `stack` | Samma modulmodeller används i båda layouterna |
@@ -68,7 +69,7 @@ Tabellen beskriver normaliserade värden. Den inkommande konfigurationen får ut
 | `context` | Objekt | Installationens visningssammanhang enligt avsnitt 7 |
 | HA:s åtgärdsegenskaper | JSON-värden, exempelvis `entity`, `tap_action`, `hold_action`, `double_tap_action` | Förmedlas genom den gemensamma HA-åtgärdshanteringen. `entity` är ett åtgärdsmål, inte ersättning för F1-installationsvalet. |
 | `migration` | JSON-objekt när ett gammalt kort konverterats | Bevarat original och konverteringsunderlag för granskning/återställning |
-| Okända egenskaper | Kopierbara JSON-värden | Bevaras för återställning och vidare redigering; innebär inte att version 2 implementerar deras funktion |
+| Okända egenskaper | Kopierbara JSON-värden | Bevaras för återställning och vidare redigering; innebär inte att version 3 implementerar deras funktion |
 
 En saknad vald installation får inte tyst ersättas av en annan. Entitets-id för F1-data upptäcks via vald installation och ska inte behöva kopieras av användaren.
 
@@ -87,12 +88,13 @@ En saknad vald installation får inte tyst ersättas av en annan. Entitets-id f�
 | `focus_mode` | `inherit`, `independent`; standard `inherit` | Följ kortets fokus eller använd enbart modulens egna förar-/teamfilter |
 | `selection` | Typat objekt; standard `{mode: inherit}` | Ärver kortets session, följer en vald källa eller låser en stabil sessionsidentitet |
 | `when` | Unik lista av `before`, `active`, `finished`, `unknown`; standard alla | Styr i vilka sessionsfaser modulen visas. Tom lista döljer utan att radera modulen. |
+| `visibility` | Lista av villkorsobjekt; standard tom | Home Assistant-liknande modulvillkor. Alla objekt på översta nivån måste uppfyllas. Tom lista visar alltid modulen. |
 | `driver` | Text, tom | Låst modulval; tomt ärver kortets fokus i `inherit` och omfattar alla i `independent` |
 | `team` | Text, tom | Låst modulval; tomt ärver kortets fokus i `inherit` och omfattar alla i `independent` |
 | `options` | Objekt | Modulens innehålls- och presentationsval enligt bilagan |
 | Okända egenskaper | JSON-värden | Bevaras; ska inte exekveras eller tappas vid stilbyte/import/export |
 
-Modulgränsen går vid ett avgränsat innehåll med egen fältlista och datamodell. Samma timingmodul används ensam eller tillsammans med andra moduler. Det finns ingen fri nästling av moduler i version 2.
+Modulgränsen går vid ett avgränsat innehåll med egen fältlista och datamodell. Samma timingmodul används ensam eller tillsammans med andra moduler. Det finns ingen fri nästling av moduler i version 3.
 
 Modulregistret anger fält, standardval, källor, fokusstöd och eventuell ström. Datamodellen hanterar datatolkning, sortering, filter, tomma värden och sammanhang. Visningskomponenten presenterar modellen och skickar uttryckliga användarhändelser. Den ska inte själv uppfinna en ny tolkning av ett tidsvärde eller göra en integrationsändring från en renderingsuppdatering.
 
@@ -135,7 +137,7 @@ Prioriteten är följande:
 5. Dekorativ accent och teamfärger ändrar inte betydelsen av timingfärger. `palette` gäller de semantiska statusnycklar som renderaren stöder; okända giltiga färgnycklar bevaras men får ingen uppfunnen betydelse.
 6. Hög kontrast och systemets forced-colors måste kunna göra innehållet läsbart även när dekorativa färger inte kan behållas. Egna färger behålls i konfigurationen.
 
-Versionsgräns: version 2 har kortgemensamt utseende, separata visningsval för
+Versionsgräns: version 3 har kortgemensamt utseende, separata visningsval för
 modul-/tabellrubriker och valfri kortlokal CSS i `styles`. CSS tillämpas efter det
 beräknade standardutseendet och begränsas av kortets Shadow DOM. Dokumenterade
 `--f1-*`-variabler, modulernas `data-module-type`/`data-module-id` och offentliga
@@ -169,7 +171,7 @@ Tangentbordsfokus och skärmläsarnamn ska fungera även när synliga rubriker d
 | `spoilers` | `inherit` eller `hide`, standard `inherit` | Följer globalt skydd eller döljer alltid i detta kort |
 | `viewing_controls` | Boolesk, `false` | Visar uttryckliga Live Delay-/spoilerkontroller |
 
-En kontrollgrupp adresseras av anslutning, F1-installation, dashboard, vy och trimmat gruppnamn. Version 2 delar förar-/teamfokus och kan uttryckligen dela ett tillfälligt sessionsurval. Ett låst kort behåller sitt sparade urval. Gruppen är lokal till den aktuella webbläsaranslutningen; den är inte en synkroniseringstjänst mellan telefoner eller användare. Gruppen försvinner när dess sista deltagare lämnar den och kan aldrig publicera replay-, Live Delay- eller automationskommandon.
+En kontrollgrupp adresseras av anslutning, F1-installation, dashboard, vy och trimmat gruppnamn. Version 3 behåller version 2:s delning av förar-/teamfokus och kan uttryckligen dela ett tillfälligt sessionsurval. Ett låst kort behåller sitt sparade urval. Gruppen är lokal till den aktuella webbläsaranslutningen; den är inte en synkroniseringstjänst mellan telefoner eller användare. Gruppen försvinner när dess sista deltagare lämnar den och kan aldrig publicera replay-, Live Delay- eller automationskommandon.
 
 Globalt spoilerskydd har företräde framför modulval, kortets lokala visningsfokus och sparade modeller. Okänt skyddstillstånd ska inte behandlas som att skyddet är av. Lokalt `hide` kan inte användas för att stänga av globalt skydd.
 
@@ -177,15 +179,16 @@ Live Delay gäller vald installation och dess liveleverans/automationer. Globalt
 
 ## 8. Validering, okända inställningar och versioner
 
-| Fall | Kontrakt i version 2 |
+| Fall | Kontrakt i version 3 |
 | --- | --- |
 | Saknade standardiserade egenskaper | Fylls i utan att anroparens objekt muteras |
 | Fel typ eller känt alternativ utanför tillåtet intervall | `ConfigurationError` med sökväg, exempelvis `modules.0.options.rows` |
 | Okänd modul | Behåll alla inställningar, visa förklaring i modulens plats och låt kända moduler fungera |
 | Okänt fält i en känd modul | Bevara fält-id och visa varning; påstå inte att innehållet stöds |
 | Okänd rot-/options-/utseendeegenskap | Bevara JSON-värdet; det finns inte automatiskt en varning för varje okänd egenskap |
-| Giltig konfigurationsversion `1` | Migrera till version 2 med följläge, ärvt modulurval, alla faser och endast fokusdelning; ändra inte fält |
-| Okänd konfigurationsversion | Avvisa; tolka inte som version 2 och nedgradera inte automatiskt |
+| Giltig konfigurationsversion `1` | Migrera till version 3 med följläge, ärvt modulurval, alla faser, tomma synlighetsvillkor och endast fokusdelning; ändra inte fält |
+| Giltig konfigurationsversion `2` | Migrera till version 3 med tomma synlighetsvillkor; behåll urval, faser och fält |
+| Okänd konfigurationsversion | Avvisa; tolka inte som version 3 och nedgradera inte automatiskt |
 | Dubbla modul-id eller fältnamn | Avvisa med inställningssökväg |
 | Icke-JSON-värden, obegränsade tal eller reserverade prototypegenskaper | Avvisa vid kopiering |
 | För djup nästling | Kopieringen avvisar djup större än 40 |
@@ -202,7 +205,7 @@ En framtida ändring av betydelsen hos ett befintligt fält kräver en uttryckli
 
 ## 9. Implementerat versionskontrakt och återstående målbild
 
-Tabellen skiljer de nu implementerade version-2-gränserna från produktkrav som fortfarande behöver bredare datastöd eller acceptans.
+Tabellen skiljer de nu implementerade version-3-gränserna från produktkrav som fortfarande behöver bredare datastöd eller acceptans.
 
 | Återstående förmåga | Specificerad gräns och regel | Implementation/acceptans |
 | --- | --- | --- |
@@ -214,9 +217,9 @@ Tabellen skiljer de nu implementerade version-2-gränserna från produktkrav som
 | Sammanhang för kombinerad data | Fält ska bära gemensam identitet och generation där data kombineras. Mottaget samtidigt i webbläsaren är inte samma sak som observerat samtidigt hos källan. | A1/E4/E5; sparade källdata ersätter inte backendkontraktet |
 | Komplett gammal konfiguration | Varje gammalt alternativ behöver verifierad motsvarighet, uttryckligt reservbeteende eller dokumenterat bortval. Okänd JSON som bevaras är återställningsskydd, inte funktionsparitet. | A2/F2 |
 
-### Implementerad modell för konfigurationsversion 2
+### Implementerad modell för konfigurationsversion 3
 
-Version 2 inför generellt sessionsurval och fasstyrning. Följande nycklar valideras av normaliseraren och exponeras i den visuella editorn:
+Version 3 behåller version 2:s generella sessionsurval och fasstyrning och lägger till modulvisa synlighetsvillkor. Följande nycklar valideras av normaliseraren och exponeras i den visuella editorn:
 
 | Sökväg | Form och standard | Regel |
 | --- | --- | --- |
@@ -224,6 +227,7 @@ Version 2 inför generellt sessionsurval och fasstyrning. Följande nycklar vali
 | `modules[].selection` | Objekt; standard `mode=inherit` | Ärver kortet, följer aktuell session uttryckligen eller låser en egen jämförelse |
 | `context.share` | Unik lista ur `focus`, `selection`; standard endast `focus` | Används endast i en uttryckligt vald kontrollgrupp |
 | `modules[].when` | Unik lista ur `before`, `active`, `finished`, `unknown`; standard samtliga | Fasstyrd synlighet utan att ändra sparade fält eller starta integrationsåtgärder |
+| `modules[].visibility` | Lista; standard tom | Entitetsstatus, numeriskt värde, skärm, användare, plats, tid samt nästlade `and`, `or` och `not` |
 
 Urvalsobjektet är en diskriminerad union:
 
@@ -237,16 +241,18 @@ Prioritetsordningen för sessionsurval ska vara: uttryckligt modulurval, låst k
 
 `active` omfattar pågående session samt rödflagg och andra avbrott som ännu inte avslutat sessionen. `finished` kräver ett explicit avslutat sammanhang; `unknown` används när fasen inte kan avgöras. Replay följer den inspelade fasen, inte dagens klocka. Tom `when`-lista visar inte modulen men bevarar den i editorn. Fasval tillämpas före visningspolicyn för saknad data, och spoilerskydd tillämpas innan något känsligt innehåll visas. Automatiskt byte mellan moduler ska inte skriva om deras konfiguration.
 
+En tom `visibility`-lista är alltid sann. Objekt på översta nivån kombineras med OCH. `and`, `or` och `not` kan innehålla nästlade listor till högst åtta nivåer; varje lista har högst 32 villkor. Statusvillkor kan läsa ett entitetstillstånd eller attribut och numeriska gränser kan vara tal eller tillståndet hos en annan entitet. Skärmvillkor använder en CSS media query. Användar- och platsvillkor följer aktuell Home Assistant-användare och den personentitet som har samma `user_id`. Tidsvillkor använder användarens eller serverns valda tidszon och kan passera midnatt. Okända villkor avvisas i stället för att tyst visas. Villkoren styr presentation och datastreams men är inte en behörighetsgräns.
+
 Egna mallar kan väljas/importeras som JSON-filer eller kopierad text genom UI med en granskningsvy före ersättning. Exportformatet har `format=f1-sensor-template`, `version=1`, ett icke-tomt `name` med högst 100 tecken och `card` med en validerad konfiguration av en stödd kortversion. Mallens formatversion är separat från `card.version`. En installation som inte finns hos mottagaren måste väljas om i granskningsvyn; den ersätts inte godtyckligt. Import och applicering sparar inte automatiskt dashboarden och behåller föregående kort för ångra. Filer ger återanvändning mellan enheter, men ingen automatisk synkronisering av personliga val utlovas.
 
-Migrering v1 → v2 kopierar samtliga befintliga inställningar och lägger till följ/ärv, alla faser samt endast fokusdelning som standard. Den ändrar inte kolumner och skapar inget historiskt sessionslås. Automatisk nedgradering v2 → v1 är inte tillåten, eftersom en äldre renderare annars kan visa aktuell session där användaren valt ett historiskt sammanhang. Liveidentitet kommer från aktuellt sessionsobjekt, replayidentitet från den laddade inspelningen och arkividentitet verifieras genom historikkatalogen. En arkivlåsning på en annan modultyp ger därför en uttrycklig otillgänglighetsförklaring i stället för att visa aktuell data.
+Migrering v1 → v3 kopierar samtliga befintliga inställningar och lägger till följ/ärv, alla faser, tomma synlighetsvillkor samt endast fokusdelning som standard. Migrering v2 → v3 lägger endast till tomma synlighetsvillkor. Ingen migrering ändrar kolumner eller skapar ett historiskt sessionslås. Automatisk nedgradering är inte tillåten, eftersom en äldre renderare annars kan visa innehåll vars session eller synlighet den inte förstår. Liveidentitet kommer från aktuellt sessionsobjekt, replayidentitet från den laddade inspelningen och arkividentitet verifieras genom historikkatalogen. En arkivlåsning på en annan modultyp ger därför en uttrycklig otillgänglighetsförklaring i stället för att visa aktuell data.
 
-## 10. Validerade exempel för version 2
+## 10. Validerade exempel för version 3
 
 Ett användbart kort med helgmallens standardinnehåll:
 
 ```json
-{"type":"custom:f1-sensor-card","version":2}
+{"type":"custom:f1-sensor-card","version":3}
 ```
 
 Två oberoende förarjämförelser med samma modultyp och gemensamt utseende:
@@ -254,7 +260,7 @@ Två oberoende förarjämförelser med samma modultyp och gemensamt utseende:
 ```json
 {
   "type": "custom:f1-sensor-card",
-  "version": 2,
+  "version": 3,
   "title": "Mina förare",
   "appearance": {"style": "ha", "mode": "auto", "logos": true},
   "accessibility": {"signals": "both", "motion": "reduced"},
@@ -270,7 +276,7 @@ Ett litet kort med schema i UTC och tydlig rubrikstyrning:
 ```json
 {
   "type": "custom:f1-sensor-card",
-  "version": 2,
+  "version": 3,
   "title": "Nästa helg",
   "appearance": {"style": "minimal", "show_header": false, "density": "compact"},
   "modules": [{"id": "schedule", "type": "calendar", "title": "Helgens tider", "options": {"timezone": "utc", "sessions": ["qualifying", "race"]}}]
@@ -284,6 +290,7 @@ Dessa exempel är tekniska verifieringsexempel. Användaren ska kunna göra mots
 | Kontraktsdel | Nuvarande verifiering |
 | --- | --- |
 | Normalisering, immutabilitet, versionsavvisning, export/import, okända egenskaper | `frontend-tests/unit/modular-config.test.mjs` |
+| Villkorsutvärdering, nästling, tidsintervall, responsiva lyssnare och visuell redigering | `frontend-tests/unit/modular-visibility.test.mjs`, `frontend-tests/module-visibility.spec.js` |
 | Okänd modul utan att övriga moduler slutar fungera; editorändring och ny kortinstans | `frontend-tests/config-contract.spec.js` |
 | Stilval, loggor, accent och sparade val | `frontend-tests/appearance.spec.js`, `branding.spec.js`, konfigurationsenhetstester |
 | Fokusgrupper och delade abonnemang | `frontend-tests/unit/modular-connection.test.mjs` och modulernas webbläsartester |
@@ -294,7 +301,7 @@ Dessa exempel är tekniska verifieringsexempel. Användaren ska kunna göra mots
 
 Testerna bevisar de kontrollerade beteendena, inte att alla användarflöden, appar, enheter eller verkliga livehelger är godkända. Det aktuella verifieringsresultatet finns i [genomförandeloggen](modular-card-development.md).
 
-## 12. Katalogbilaga för version 2
+## 12. Katalogbilaga för version 3
 
 Bilagan nedan listar den aktuella konfigurationens modul-id, möjliga källor, standardfält och varje känt modulspecifikt alternativ. Fältlistor och källa är tekniska API-namn. Dynamiska innehålls- och sessionsprofiler kan välja andra effektiva fält enligt katalogen. Användarens uttryckliga val bevaras enligt reglerna ovan.
 

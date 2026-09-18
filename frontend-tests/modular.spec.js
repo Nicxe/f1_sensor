@@ -112,6 +112,25 @@ test('editor adapts to a narrow HA dialog column on a wide desktop', async ({ pa
   expect(await editor.evaluate(node => node.scrollWidth <= 390)).toBe(true);
 });
 
+test('editor clearly separates whole-card settings from the selected module', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true, config: { title: 'Race view', modules: [{ type: 'overview' }, { type: 'timing' }] } }));
+  const editor = page.locator('f1-sensor-card-editor');
+  const cardSettings = editor.getByRole('region', { name: 'Card settings', exact: true });
+  const modules = editor.getByRole('region', { name: 'Modules', exact: true });
+
+  await expect(cardSettings.getByText('Whole card', { exact: true })).toBeVisible();
+  await expect(cardSettings.getByText('These settings apply to every module in this card.', { exact: true })).toBeVisible();
+  await expect(cardSettings.getByLabel('Card title', { exact: true })).toHaveValue('Race view');
+  await expect(cardSettings.getByLabel('Module title', { exact: true })).toHaveCount(0);
+  await expect(modules.getByText('Selected content', { exact: true })).toBeVisible();
+  await expect(modules.getByText('Only this module is affected by the settings below.', { exact: true })).toBeVisible();
+  await expect(modules.getByText('Editing module 1 of 2', { exact: true })).toBeVisible();
+
+  await modules.getByRole('button', { name: '2. Timing', exact: true }).click();
+  await expect(modules.getByText('Editing module 2 of 2', { exact: true })).toBeVisible();
+  await expect(modules.getByRole('button', { name: '2. Timing', exact: true })).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('editor changes style and columns, persists emitted configuration, and preserves content after reload', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.evaluate(() => window.mountModular({ preset: 'session', editor: true }));

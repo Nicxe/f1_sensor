@@ -41,12 +41,49 @@ test('About sections stay visible by default and can be hidden per supported mod
 
 test('version 1 migrates to typed session selection and phase visibility without changing fields', () => {
   const migrated = normalizeConfig({ version: 1, context: { driver: '16' }, modules: [{ type: 'timing', fields: ['driver', 'last_lap'] }] });
-  assert.equal(migrated.version, 2);
+  assert.equal(migrated.version, 3);
   assert.deepEqual(migrated.context.selection, { mode: 'follow', source: 'auto' });
   assert.deepEqual(migrated.context.share, ['focus']);
   assert.deepEqual(migrated.modules[0].selection, { mode: 'inherit' });
   assert.deepEqual(migrated.modules[0].when, ['before', 'active', 'finished', 'unknown']);
+  assert.deepEqual(migrated.modules[0].visibility, []);
   assert.deepEqual(migrated.modules[0].fields, ['driver', 'last_lap']);
+});
+
+test('version 2 migrates to always-visible version 3 modules', () => {
+  const migrated = normalizeConfig({ version: 2, modules: [{ type: 'timing', when: ['active'] }] });
+  assert.equal(migrated.version, 3);
+  assert.deepEqual(migrated.modules[0].when, ['active']);
+  assert.deepEqual(migrated.modules[0].visibility, []);
+  assert.throws(() => normalizeConfig({ version: 2, modules: [{ type: 'timing', visibility: [{ condition: 'state', entity: 'input_boolean.f1', state: 'on' }] }] }), /version 3/);
+});
+
+test('module visibility conditions round trip and reject incomplete or unsupported conditions', () => {
+  const visibility = [
+    { condition: 'state', entity: 'input_boolean.f1', state: ['on', 'auto'] },
+    { condition: 'or', conditions: [
+      { condition: 'numeric_state', entity: 'sensor.temperature', above: 10, below: 'sensor.maximum' },
+      { condition: 'not', conditions: [{ condition: 'screen', media_query: '(max-width: 767px)' }] },
+    ] },
+    { condition: 'user', users: ['abc'] },
+    { condition: 'location', locations: ['home'] },
+    { condition: 'time', after: '08:00', before: '17:30:00', weekdays: ['mon', 'fri'] },
+  ];
+  const config = normalizeConfig({ modules: [{ type: 'timing', visibility }] });
+  assert.deepEqual(config.modules[0].visibility, visibility);
+  assert.deepEqual(importConfig(exportConfig(config)), config);
+  for (const invalid of [
+    { condition: 'state', entity: 'input_boolean.f1' },
+    { condition: 'state', entity: '', state: 'on' },
+    { condition: 'state', entity: 'input_boolean.f1', state: [] },
+    { condition: 'numeric_state', entity: 'sensor.temperature' },
+    { condition: 'screen', media_query: '' },
+    { condition: 'user', users: [] },
+    { condition: 'location', locations: [] },
+    { condition: 'time', after: '25:00' },
+    { condition: 'or', conditions: [] },
+    { condition: 'template', value_template: '{{ true }}' },
+  ]) assert.throws(() => normalizeConfig({ modules: [{ type: 'timing', visibility: [invalid] }] }), /visibility/);
 });
 
 test('session selection is a strict union and follows module, card and group priority', () => {
@@ -158,7 +195,7 @@ test('stable IDs preserve identity through duplicate/reorder and do not mutate i
 
 test('invalid values and unsafe input produce errors at the offending setting', () => {
   for (const [value, pattern] of [
-    [{ version: 3 }, /version/],
+    [{ version: 4 }, /version/],
     [{ appearance: { logos: 'false' } }, /appearance.logos/],
     [{ appearance: { accent: 'red;display:none' } }, /appearance.accent/],
     [{ modules: [{ type: 'timing', options: { rows: 0 } }] }, /modules.0.options.rows/],

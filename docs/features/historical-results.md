@@ -34,7 +34,7 @@ Use the visual editor for normal setup. This YAML creates a card containing only
 
 ```yaml
 type: custom:f1-sensor-card
-version: 2
+version: 3
 title: Historical results
 modules:
   - type: archive

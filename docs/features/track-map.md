@@ -37,7 +37,7 @@ For a card containing only the map:
 
 ```yaml
 type: custom:f1-sensor-card
-version: 2
+version: 3
 title: F1 Track Map
 modules:
   - type: map

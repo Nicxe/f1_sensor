@@ -62,6 +62,45 @@ A module can inherit the card, follow a source independently or keep its own pin
 
 Under **Module options**, use **Show in session phases** to choose **Before**, **Active or interrupted**, **Finished** and **Unknown**. A module hidden by the current phase remains saved in the editor. Red-flag and other non-final interruptions count as active; only an explicit end state counts as finished.
 
+## Show modules conditionally
+
+Open a module's **Visibility conditions** to show it only when the current Home
+Assistant state matches your choices. You can add conditions for an entity state,
+a numeric value, screen size, user, location or time. You can also group
+conditions with **All conditions (AND)**, **Any condition (OR)** or **Invert
+conditions (NOT)**.
+
+Every condition at the top level must match. These conditions are combined with
+the module's selected session phases. The editor shows **Visible now**, **Hidden
+now** or **Always visible**, while the saved module remains available for editing.
+Hidden modules are removed from stacked content and from the card's tab list.
+
+For example, you can show Timing only when a helper is on and the dashboard is
+open on a tablet or desktop:
+
+```yaml
+type: custom:f1-sensor-card
+version: 3
+modules:
+  - type: timing
+    visibility:
+      - condition: state
+        entity: input_boolean.show_f1_timing
+        state: "on"
+      - condition: screen
+        media_query: "(min-width: 768px)"
+```
+
+Use Home Assistant's card-level **Visibility** tab when you want to hide the
+entire F1 Sensor card. Module visibility controls only the content inside the
+card. If every module is hidden, a Sections dashboard may still reserve the
+card's configured grid area.
+
+:::info
+Visibility changes presentation, not permissions. A user who has access to an
+entity in Home Assistant may still access it even when a module is hidden.
+:::
+
 ## Make the card your own
 
 Open **Appearance** to choose a style, light/dark behavior and information density. **F1**, **Home Assistant** and **Minimal** use the same content and filters.

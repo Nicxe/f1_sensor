@@ -6,6 +6,7 @@ test('weather template and custom fields survive UI edits and serialized reload'
   await page.waitForFunction(() => window.modularReady);
   await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [] } }));
   let editor = page.locator('f1-sensor-card-editor');
+  await editor.getByText('Start from a template', { exact: true }).click();
   await editor.getByRole('button', { name: /^Weather comparison/ }).click();
   await expect(editor.getByRole('button', { name: '1. Automatic current weather', exact: true })).toBeVisible();
   await expect(editor.getByRole('button', { name: '2. Race-start forecast', exact: true })).toBeVisible();

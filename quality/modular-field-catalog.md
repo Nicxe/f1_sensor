@@ -2,7 +2,7 @@
 
 This catalog is generated from the delivered module registry. It records the source path, data capability, supported modes and sessions, identity boundary, time provenance, freshness rule, unit and presentation for every field in every content-dependent module variant.
 
-Configuration version: 2. Modules: 20. Base field IDs: 137. Resolved sources: 31.
+Configuration version: 3. Modules: 20. Base field IDs: 137. Resolved sources: 31.
 
 A source path describes the contract consumed by the card; it is not a promise that the value is available in every session. `identity` lists the values that must still describe the same observation before fields may be combined. `timestamps` distinguishes source time, receipt time, entity update time and display snapshot time where the source supplies them.
 

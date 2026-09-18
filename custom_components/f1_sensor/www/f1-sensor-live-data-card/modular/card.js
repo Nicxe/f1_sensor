@@ -1,7 +1,7 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ LitElement, html, css, repeat }, { normalizeConfig, configWarnings, resolveSelection }, { MODULES, label, moduleTitle, moduleFocusKinds }, data, { SectorStore, safeImageUrl, cardAccent }, { watchEntries, watchRaceControl, watchGroup, watchAnalysis, watchTrackMap, HistoryResources, callEntityService }, { sharedStyles, words, dateTime }] = await Promise.all([
-  load('../f1-lit-3.3.2.js'), load('./config.js'), load('./catalog.js'), load('./data.js'), load('./semantics.js'), load('./connection.js'), load('./view.js'),
+const [{ LitElement, html, css, repeat }, { normalizeConfig, configWarnings, resolveSelection }, { MODULES, label, moduleTitle, moduleFocusKinds }, data, { SectorStore, safeImageUrl, cardAccent }, { watchEntries, watchRaceControl, watchGroup, watchAnalysis, watchTrackMap, HistoryResources, callEntityService }, { sharedStyles, words, dateTime }, { visibilityMet, visibilityMediaQueries, hasTimeVisibility }] = await Promise.all([
+  load('../f1-lit-3.3.2.js'), load('./config.js'), load('./catalog.js'), load('./data.js'), load('./semantics.js'), load('./connection.js'), load('./view.js'), load('./visibility.js'),
 ]);
 const { ensureTypography } = await load('./typography.js');
 await load('./viewing-controls.js');
@@ -83,10 +83,10 @@ export class F1SensorCard extends LitElement {
     this.telemetry = new HistoryResources(() => { this.revision++; }); this.telemetryRequests = new Map();
     this.viewingRequest = null; this.raceControlRequest = null; this.replayRequests = new Map(); this.sectors = new SectorStore(); this.choices = new Map(); this.moduleNodes = new Map(); this.eventState = { data: [], status: 'loading' }; this.analysisState = { data: null, status: 'loading' }; this.mapState = { data: null, status: 'loading' };
   }
-  setConfig(config) { this.cancelActions(); this.choices?.clear(); this.config = normalizeConfig(config); }
+  setConfig(config) { this.cancelActions(); this.choices?.clear(); this.config = normalizeConfig(config); this.syncVisibilityListeners(); }
   static getStubConfig() { return normalizeConfig({}); }
   static async getConfigElement() { await load('./editor.js'); return document.createElement('f1-sensor-card-editor'); }
-  getCardSize() { return 2 + (this.config?.modules?.filter(module => module.enabled).length ?? 1) * 4; }
+  getCardSize() { return 2 + (this.config?.modules?.filter(module => module.enabled && (!this.hass || this.moduleVisible(module))).length ?? 1) * 4; }
   getGridOptions() { return { columns: 12, min_columns: 6, min_rows: 2 }; }
   async scheduleUpdate() {
     // Shared HA pushes can dirty many cards in the same microtask. Give each
@@ -97,18 +97,36 @@ export class F1SensorCard extends LitElement {
   }
   connectedCallback() {
     super.connectedCallback();
-    this.clock = setInterval(() => { this.revision++; }, 30_000);
     this.media = window.matchMedia('(prefers-color-scheme: dark)');
     this.themeChanged = () => { this.revision++; };
     this.media.addEventListener('change', this.themeChanged);
+    this.syncVisibilityListeners();
     this.requestUpdate();
   }
   disconnectedCallback() {
     super.disconnectedCallback(); cancelInitialRender(this); clearInterval(this.clock); clearTimeout(this.mapAgeTimer);
     this.cancelActions(); this.replayRequests.clear(); this.viewingRequest = null; this.raceControlRequest = null;
     this.media?.removeEventListener('change', this.themeChanged);
+    this.clearVisibilityMedia();
     this.stopSources();
   }
+  clearVisibilityMedia() {
+    for (const [query, listener] of this.visibilityMedia ?? []) query.removeEventListener('change', listener);
+    this.visibilityMedia = new Map();
+  }
+  syncVisibilityListeners() {
+    clearInterval(this.clock); this.clearVisibilityMedia();
+    if (!this.isConnected || !this.config) return;
+    const conditions = this.config.modules.flatMap(module => module.visibility);
+    this.clock = setInterval(() => { this.revision++; }, hasTimeVisibility(conditions) ? 1_000 : 30_000);
+    for (const source of visibilityMediaQueries(conditions)) {
+      let query;
+      try { query = window.matchMedia(source); } catch { continue; }
+      const listener = () => { this.revision++; };
+      query.addEventListener('change', listener); this.visibilityMedia.set(query, listener);
+    }
+  }
+  moduleVisible(module) { return visibilityMet(module.visibility, this.hass); }
   stopSources() {
     this.savedSources.clear();
     this.frozen = false; this.frozenModels = null; this.frozenFocus = null; this.frozenRoster = null; this.frozenGeneration = null;
@@ -149,7 +167,7 @@ export class F1SensorCard extends LitElement {
     }
     const entry = this.entry;
     if (this.viewingRequest && (this.viewingRequest.entryId !== entry?.entry_id || this.viewingRequest.connection !== this.hass.connection)) this.viewingRequest = null;
-    const usable = module => module.enabled && this.moduleSessionState(module).available && module.when.includes(this.moduleSessionState(module).phase);
+    const usable = module => module.enabled && this.moduleVisible(module) && this.moduleSessionState(module).available && module.when.includes(this.moduleSessionState(module).phase);
     const historyQueries = entry && data.spoilerState(this.hass, entry, this.config.context.spoilers) === 'clear'
       ? this.config.modules.filter(module => usable(module) && module.type === 'archive').flatMap(module => season.archivePlan({ ...module, selection: resolveSelection(this.config.context, module, this.groupContext), options: { ...module.options, ...this.choices.get(module.id) } }, entry.entry_id, query => this.history.read(query)).requests) : [];
     this.history.sync(this.hass, historyQueries);
@@ -363,6 +381,7 @@ export class F1SensorCard extends LitElement {
       const definition = MODULES[module.type];
       const focus = module.focus_mode === 'independent' ? {} : this.focus;
       const model = { title: moduleTitle(module, this.language) };
+      if (!this.moduleVisible(module)) { model.hidden = true; models.set(module.id, model); continue; }
       const selection = resolveSelection(this.config.context, module, this.groupContext), sessionState = this.moduleSessionState(module);
       const effective = data.resolveWeatherModule(this.hass, entry, { ...module, selection, options: { ...module.options, ...this.choices.get(module.id) } });
       const sensitive = definition?.spoiler || ['timing', 'race_control'].includes(module.type) || module.type === 'weather' && effective.options.content === 'track_conditions';
@@ -587,7 +606,7 @@ export class F1SensorCard extends LitElement {
     if (!this.entry) return html`<ha-card part="card" data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>${settings.appearance.show_header ? html`<header class="heading" part="header">${this.actionHeading()}</header>` : ''}<div class="empty" part="empty-state">${this.discovery?.status === 'error' ? this.discovery.error : (this.previewData?.entries ?? this.entries).length > 1 ? this.w('Choose an F1 Sensor installation in the editor.', 'Välj en F1 Sensor-installation i editorn.') : this.w('Waiting for F1 Sensor…', 'Väntar på F1 Sensor…')}</div>${this.actionAlternatives()}</ha-card>`;
     const models = this.frozen ? this.frozenModels : this.buildModels();
     const protection = data.spoilerState(this.hass, this.entry, this.config.context.spoilers);
-    const modules = this.config.modules.filter(module => module.enabled && !models.get(module.id)?.hidden);
+    const modules = this.config.modules.filter(module => module.enabled && this.moduleVisible(module) && !models.get(module.id)?.hidden);
     const active = modules.some(module => module.id === this.tab) ? this.tab : modules[0]?.id;
     const hasDriverFocus = modules.some(module => moduleFocusKinds(module).includes('driver'));
     const currentRoster = this.frozen ? this.frozenRoster : data.source(this.hass, this.entry, 'driver_list');
@@ -645,6 +664,6 @@ export class F1SensorCard extends LitElement {
       ${configWarnings(this.config).length ? html`<p class="muted">${this.w('Some settings need a newer card version. They are preserved in the editor.', 'Vissa inställningar kräver en nyare kortversion. De finns kvar i editorn.')}</p>` : ''}
     </ha-card>`;
   }
-  emptyCard() { return html`<div class="empty" part="empty-state">${this.w('Add your first module in the editor.', 'Lägg till din första modul i editorn.')}</div>`; }
+  emptyCard() { return html`<div class="empty" part="empty-state">${this.config.modules.length ? this.w('No modules are visible under the current conditions.', 'Inga moduler är synliga med de aktuella villkoren.') : this.w('Add your first module in the editor.', 'Lägg till din första modul i editorn.')}</div>`; }
 }
 if (!customElements.get('f1-sensor-card')) customElements.define('f1-sensor-card', F1SensorCard);
