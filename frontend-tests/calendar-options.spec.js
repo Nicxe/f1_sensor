@@ -38,29 +38,29 @@ test('calendar options survive editor reload and show meaningful past, next and 
   await expect(card.getByText('All selected sessions are in the past and are hidden.', { exact: true })).toBeVisible();
 });
 
-test('calendar flags obey appearance settings and recover from image failure without losing the event', async ({ page }) => {
+test('season calendar flags obey appearance settings and recover from image failure without losing the event', async ({ page }) => {
   await page.route('https://flags.example/**', route => route.request().url().endsWith('/missing.svg') ? route.abort() : route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="27"><rect width="40" height="27" fill="#2266bb"/></svg>' }));
   await page.goto('/frontend-tests/modular.html'); await page.waitForFunction(() => window.modularReady);
   await page.setViewportSize({ width: 320, height: 900 });
   await page.evaluate(() => {
-    window.mountModular({ config: { appearance: { flags: true }, modules: [{ type: 'calendar', options: { sessions: ['race'] } }] } });
-    const card = window.fixtureCard, id = card.entry.entities.next_race;
-    card.hass = { ...card.hass, states: { ...card.hass.states, [id]: { ...card.hass.states[id], attributes: { ...card.hass.states[id].attributes, country_flag_url: 'https://flags.example/first.svg', circuit_country: 'Test country' } } } };
+    window.mountModular({ config: { appearance: { flags: true }, modules: [{ type: 'calendar', options: { range: 'season', sessions: ['race'] } }] } });
+    const card = window.fixtureCard, id = 'sensor.flag_season'; card.entry.entities.current_season = id;
+    card.hass = { ...card.hass, states: { ...card.hass.states, [id]: { ...card.hass.states[id], attributes: { races: [{ race_name: 'Test Grand Prix', race_start_utc: '2026-09-20T13:00:00Z', country_flag_url: 'https://flags.example/first.svg', circuit_country: 'Test country' }] } } } };
   });
   const card = page.locator('f1-sensor-card'), flag = card.getByRole('img', { name: 'Test country', exact: true });
   await expect(flag).toBeVisible();
   await expect(card.locator('.schedule time')).toBeVisible();
   await page.evaluate(() => {
-    const card = window.fixtureCard, id = card.entry.entities.next_race;
-    card.hass = { ...card.hass, states: { ...card.hass.states, [id]: { ...card.hass.states[id], attributes: { ...card.hass.states[id].attributes, country_flag_url: 'https://flags.example/missing.svg' } } } };
+    const card = window.fixtureCard, id = 'sensor.flag_season'; card.entry.entities.current_season = id;
+    card.hass = { ...card.hass, states: { ...card.hass.states, [id]: { ...card.hass.states[id], attributes: { races: [{ ...card.hass.states[id].attributes.races[0], country_flag_url: 'https://flags.example/missing.svg' }] } } } };
   });
   await expect(flag).toHaveCount(0);
   await expect(card.locator('.flag-fallback')).toBeVisible();
   await expect(card.locator('.flag-fallback')).toHaveText('Test country');
   await expect(card.locator('.schedule time')).toBeVisible();
   await page.evaluate(() => {
-    const card = window.fixtureCard, id = card.entry.entities.next_race;
-    card.hass = { ...card.hass, states: { ...card.hass.states, [id]: { ...card.hass.states[id], attributes: { ...card.hass.states[id].attributes, country_flag_url: 'https://flags.example/recovered.svg' } } } };
+    const card = window.fixtureCard, id = 'sensor.flag_season'; card.entry.entities.current_season = id;
+    card.hass = { ...card.hass, states: { ...card.hass.states, [id]: { ...card.hass.states[id], attributes: { races: [{ ...card.hass.states[id].attributes.races[0], country_flag_url: 'https://flags.example/recovered.svg' }] } } } };
   });
   await expect(flag).toBeVisible();
   await expect(card.locator('.flag-fallback')).toBeHidden();

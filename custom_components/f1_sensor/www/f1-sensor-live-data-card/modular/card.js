@@ -84,10 +84,59 @@ export class F1SensorCard extends LitElement {
     this.viewingRequest = null; this.raceControlRequest = null; this.replayRequests = new Map(); this.sectors = new SectorStore(); this.choices = new Map(); this.moduleNodes = new Map(); this.eventState = { data: [], status: 'loading' }; this.analysisState = { data: null, status: 'loading' }; this.mapState = { data: null, status: 'loading' };
   }
   setConfig(config) { this.cancelActions(); this.choices?.clear(); this.config = normalizeConfig(config); this.syncVisibilityListeners(); }
-  static getStubConfig() { return normalizeConfig({}); }
+  static getStubConfig() { return normalizeConfig({ modules: [] }); }
   static async getConfigElement() { await load('./editor.js'); return document.createElement('f1-sensor-card-editor'); }
-  getCardSize() { return 2 + (this.config?.modules?.filter(module => module.enabled && (!this.hass || this.moduleVisible(module))).length ?? 1) * 4; }
-  getGridOptions() { return { columns: 12, min_columns: 6, min_rows: 2 }; }
+  async getCardSize() {
+    await this.updateComplete;
+    const height = this.renderRoot?.querySelector('ha-card')?.getBoundingClientRect().height ?? 0;
+    return height > 0 ? Math.max(1, Math.ceil(height / 50))
+      : 2 + (this.config?.modules?.filter(module => module.enabled && (!this.hass || this.moduleVisible(module))).length ?? 1) * 4;
+  }
+  getGridOptions() {
+    // Keep automatic height by default. HA also clamps saved numeric rows to
+    // this measured minimum, so an old two-row setting cannot overlap content.
+    return { columns: 12, min_columns: 6, min_rows: this.minimumGridRows ?? 2 };
+  }
+  syncCardSize() {
+    if (!this.isConnected) return;
+    // em-based grid lengths belong to HA's wrapper, not the card typography.
+    const gridFont = getComputedStyle(this.parentElement ?? this).fontSize;
+    if (this.sizeProbe) this.sizeProbe.style.fontSize = gridFont;
+    const card = this.renderRoot?.querySelector('ha-card');
+    if (this.sizeTarget === card && this.sizeObserver && this.sizeProbe?.parentNode === this.renderRoot) return;
+    this.sizeObserver?.disconnect();
+    this.sizeTarget = card;
+    if (!card) return;
+    if (!this.sizeProbe) {
+      // Resolve HA's actual grid lengths in CSS, including rem/calc themes.
+      // This invisible probe takes no space and never sets the card's height.
+      this.sizeProbe = document.createElement('span');
+      this.sizeProbe.setAttribute('aria-hidden', 'true');
+      this.sizeProbe.style.cssText = 'all:initial;position:absolute;display:block;visibility:hidden;pointer-events:none;contain:strict;font:inherit;top:0;left:0;width:var(--row-height,var(--ha-section-grid-row-height,56px));height:var(--row-gap,var(--ha-section-grid-row-gap,8px));';
+      this.sizeProbe.style.fontSize = gridFont;
+    }
+    // Lit replaces the loading template after entry discovery.
+    if (this.sizeProbe.parentNode !== this.renderRoot) this.renderRoot.append(this.sizeProbe);
+    if (typeof ResizeObserver !== 'undefined') {
+      this.sizeObserver ??= new ResizeObserver(() => this.updateCardSize());
+      this.sizeObserver.observe(card, { box: 'border-box' });
+      this.sizeObserver.observe(this.sizeProbe);
+    }
+    this.updateCardSize();
+  }
+  updateCardSize() {
+    if (!this.isConnected || !this.sizeTarget) return;
+    const height = Math.ceil(this.sizeTarget.getBoundingClientRect().height);
+    if (height <= 0) return;
+    const metrics = this.sizeProbe.getBoundingClientRect();
+    const rowHeight = metrics.width > 0 ? metrics.width : 56;
+    const gap = Math.max(0, metrics.height);
+    const minimum = Math.max(2, Math.ceil((height + gap) / (rowHeight + gap)));
+    if (height === this.measuredHeight && minimum === this.minimumGridRows) return;
+    this.measuredHeight = height; this.minimumGridRows = minimum;
+    this.dispatchEvent(new Event('card-updated', { bubbles: true, composed: true }));
+    this.dispatchEvent(new Event('iron-resize', { bubbles: true, composed: true }));
+  }
   async scheduleUpdate() {
     // Shared HA pushes can dirty many cards in the same microtask. Give each
     // card a browser task so one dashboard update cannot monopolize input.
@@ -105,6 +154,7 @@ export class F1SensorCard extends LitElement {
   }
   disconnectedCallback() {
     super.disconnectedCallback(); cancelInitialRender(this); clearInterval(this.clock); clearTimeout(this.mapAgeTimer);
+    this.sizeObserver?.disconnect(); this.sizeTarget = null;
     this.cancelActions(); this.replayRequests.clear(); this.viewingRequest = null; this.raceControlRequest = null;
     this.media?.removeEventListener('change', this.themeChanged);
     this.clearVisibilityMedia();
@@ -209,6 +259,7 @@ export class F1SensorCard extends LitElement {
   }
   updated() {
     this.syncUserStyles();
+    this.syncCardSize();
     clearTimeout(this.mapAgeTimer);
     const expiry = !this.previewData && !this.frozen && this.mapKey ? mapExpiry(this.mapState.data?.snapshot) : null;
     const remaining = expiry === null ? null : expiry - Date.now();

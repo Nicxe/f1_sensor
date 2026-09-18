@@ -1210,6 +1210,7 @@ test('overview renders migrated Live Session lap progress, layout and flag visib
 });
 
 test('Next Race overview retains the circuit map, history and circuit-time schedule', async ({ page }) => {
+  await page.route('https://flagcdn.com/**', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="27"><rect width="40" height="27" fill="green"/></svg>' }));
   await page.evaluate(() => window.mountModular({ config: { modules: [
     { type: 'overview', fields: ['meeting', 'circuit_map', 'circuit_history'] },
     { type: 'calendar', options: { show_track_time: true } },
@@ -1222,6 +1223,15 @@ test('Next Race overview retains the circuit map, history and circuit-time sched
   await expect(history.getByText('Last podium · 2025', { exact: true })).toBeVisible();
   const schedule = page.getByRole('region', { name: 'Schedule', exact: true });
   await expect(schedule.getByText('Circuit time · Europe/Rome', { exact: true })).toHaveCount(5);
+  await expect(schedule.locator('img.flag')).toHaveCount(0);
+  const flag = overview.locator('.hero img.flag');
+  await expect(flag).toBeVisible();
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const flagBox = await flag.boundingBox();
+    const nameBox = await overview.locator('.hero strong').boundingBox();
+    expect(Math.abs(flagBox.y + flagBox.height / 2 - nameBox.y - nameBox.height / 2)).toBeLessThan(1);
+  }
 });
 
 
@@ -1252,6 +1262,33 @@ test('weather profiles expose distinct data, a real rain indicator and a compact
   await expect(forecast.getByText('22.8 °C', { exact: true })).toBeVisible();
 });
 
+test('weather conditions fill the spare row and icons support color, monochrome and text', async ({ page }) => {
+  await page.setViewportSize({ width: 520, height: 1000 });
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'weather', fields: ['temperature', 'humidity', 'wind', 'weather_condition'], options: { content: 'current_conditions' } }] } }));
+  const condition = page.locator('.weather-item').filter({ hasText: 'Partly cloudy' });
+  const icon = condition.locator('ha-icon');
+  await expect(icon).toHaveAttribute('icon', 'mdi:weather-partly-cloudy');
+  await expect(icon).toHaveCSS('color', 'rgb(213, 154, 36)');
+  const conditionBox = await condition.boundingBox();
+  const rowBox = await page.locator('dl.overview').boundingBox();
+  expect(conditionBox.width).toBeCloseTo(rowBox.width, 0);
+  const textLines = await condition.locator('.weather-condition-text').evaluate(el => {
+    const range = document.createRange(); range.selectNodeContents([...el.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.includes('Partly cloudy')));
+    return range.getClientRects().length;
+  });
+  expect(textLines).toBe(1);
+  const iconBox = await icon.boundingBox();
+  const textBox = await condition.locator('.weather-condition-text').boundingBox();
+  expect(Math.abs(iconBox.y + iconBox.height / 2 - textBox.y - textBox.height / 2)).toBeLessThan(1);
+  await page.evaluate(() => { const card = window.fixtureCard; const config = structuredClone(card.config); config.modules[0].options.colored_icons = false; card.setConfig(config); });
+  expect(await icon.evaluate(el => getComputedStyle(el).color === getComputedStyle(el.parentElement).color)).toBe(true);
+  await page.setViewportSize({ width: 320, height: 1000 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.evaluate(() => { const card = window.fixtureCard; const config = structuredClone(card.config); config.accessibility.signals = 'text'; card.setConfig(config); });
+  await expect(condition.locator('ha-icon')).toHaveCount(0);
+  await expect(condition).toContainText('Partly cloudy');
+});
+
 test('weather editor changes source and presentation without losing custom fields on reload', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'weather' }] } }));
@@ -1259,10 +1296,13 @@ test('weather editor changes source and presentation without losing custom field
   await editor.getByText('Module options', { exact: true }).click();
   await editor.getByLabel('Weather source', { exact: true }).selectOption('track_conditions');
   await editor.getByLabel('Weather layout', { exact: true }).selectOption('compact_list');
+  await expect(editor.getByRole('checkbox', { name: 'Colored weather icons', exact: true })).toBeChecked();
+  await editor.getByRole('checkbox', { name: 'Colored weather icons', exact: true }).uncheck();
   await expect(editor.getByRole('checkbox', { name: 'Track temperature', exact: true })).toBeChecked();
   await editor.getByRole('checkbox', { name: 'Wind from', exact: true }).check();
   const saved = await page.evaluate(() => window.savedConfig);
   expect(saved.modules[0].fields).toContain('wind_direction');
+  expect(saved.modules[0].options.colored_icons).toBe(false);
   await editor.getByLabel('Weather source', { exact: true }).selectOption('race_forecast');
   expect(await page.evaluate(() => window.savedConfig.modules[0].fields)).toEqual(saved.modules[0].fields);
   await page.reload(); await page.waitForFunction(() => window.modularReady);

@@ -2512,3 +2512,147 @@ restored both the line and pressed state. All
 delivered JavaScript files are byte-identical between the primary HAdev source,
 the bundled integration and the repository. No dashboard configuration was
 saved, and no commit, push or release was made.
+
+
+## 2026-09-18 — Content-aware Sections and Masonry sizing
+
+The actual HAdev progression card had saved `grid_options: {columns: 24, rows: 2}`.
+Its content initially measured 840.35 px while the editing wrapper reserved
+120 px. The modular card already omitted default `rows`; changing that alone
+would not fix the saved numeric override. Context7 and the official frontend
+sources confirm that HA merges saved grid options over element defaults and
+clamps numeric rows against `min_rows`.
+
+The shared modular card now observes its rendered border-box height and reports
+`min_rows = ceil((height + gap) / (rowHeight + gap))`, with the existing minimum
+of two rows. Default intrinsic height remains unchanged, and explicitly larger
+saved row counts remain respected. Masonry receives the measured height in its
+separate 50 px units. This adapts the legacy cards' measurement and resize-event
+pattern without confusing Sections rows with Masonry units.
+
+An invisible, out-of-flow probe resolves native row/gap CSS lengths, including
+px, rem, em and calc values; em uses the surrounding HA typography. Both the
+card and probe are observed, so theme changes can update minimum rows without a
+content-height change. Events are emitted only when rounded height or minimum
+rows changes. Observers disconnect when the card is removed and reconnect after
+reattachment. The probe is restored when Lit replaces the waiting template after
+entry discovery.
+
+The six browser regressions cover all six presets with saved two-row layouts,
+following cards and section controls, chart table growth/shrinkage, container
+width changes, automatic height, larger saved rows, theme dimensions, Masonry
+measurement, observer stability/cleanup/reconnect and repeated discovery/loss.
+The original five tests all failed before implementation and passed after the
+fix; the sixth protects the loading-template transition found in live testing.
+All six pass in Chromium, Firefox and WebKit. The complete browser suite passes
+178 tests, frontend units pass 231, automation passes 40 Python and 47 Node tests,
+and the required HAdev integration suite passes 1,569 tests in 394.13 seconds.
+Ruff left 217 files unchanged and passed. The deterministic 107-file package has
+SHA-256 `04a1557608960b372164cb4be7ede3b398f0ed7ed32dd7cb8f997ff38d3d8109`.
+All 33 JavaScript files are byte-identical across primary, bundled and repository
+copies, and `git diff --check` passes.
+
+After a cache-bypassing reload, HAdev's real edit-mode wrapper reserved 952 px
+for 916.37 px of content while preserving the saved two-row configuration.
+Opening the actual progression table grew content to 1,544.23 px and the wrapper
+to 1,592 px; closing it returned both to their previous heights. The Add card and
+Create section controls were visually below the card. There were no browser
+errors; pre-existing unused Roboto preload warnings remained. The table was
+closed and edit mode exited without changing or saving dashboard configuration.
+No commit, push or release was made.
+
+References: [HA custom-card sizing](https://developers.home-assistant.io/docs/frontend/custom-ui/custom-card/),
+[native grid clamping](https://github.com/home-assistant/frontend/blob/dev/src/panels/lovelace/common/compute-card-grid-size.ts),
+[Sections layout](https://github.com/home-assistant/frontend/blob/dev/src/panels/lovelace/sections/hui-grid-section.ts),
+and [saved-option precedence](https://github.com/home-assistant/frontend/blob/dev/src/panels/lovelace/cards/hui-card.ts).
+
+
+## 2026-09-18 — Overview flag alignment
+
+The race-weekend schedule no longer repeats the country flag before each session.
+Overview centers the remaining flag beside the Grand Prix name, below its small
+label. Season calendar flags retain their appearance toggle and image fallback.
+
+Verified in the authenticated HAdev dashboard at `/lovelace/7` after a hard reload.
+The existing schedule regression now checks flag removal and name alignment at
+360 px and 1280 px; image fallback coverage uses the season calendar. All 231
+frontend unit tests and 178 Chromium browser tests passed; the Overview check
+also passed in WebKit. Ruff passed and all 33 delivered JavaScript files have
+byte parity across primary, integration and repository copies. The full integration
+suite passed: 1,569 tests in 394.51 seconds. No commit or push.
+
+
+## 2026-09-18 — Weather layout and optional colored icons
+
+Weather metrics now share the available width on each row, allowing a trailing
+Conditions field to use the empty space instead of wrapping within one column.
+Weather conditions use Home Assistant weather icons, colored by default, with a
+per-module `colored_icons` toggle exposed as Colored weather icons in Module
+options. Monochrome follows the text color; text-only signals omit icons and
+forced-colors mode uses the system text color.
+
+Verified the single-line Partly cloudy text and colored icon on the authenticated
+HAdev dashboard, and confirmed the toggle in its real visual editor; cancelled
+without saving dashboard changes. Browser coverage checks the spare row, narrow
+layout, color and monochrome rendering, text-only mode and editor persistence.
+All 231 frontend unit tests and 179 Chromium browser tests passed. Ruff passed,
+`git diff --check` passed and all 33 delivered JavaScript files have byte parity.
+No commit or push.
+
+The full integration suite also passed: 1,569 tests in 398.83 seconds.
+
+
+## 2026-09-18 — Weather icon and text alignment
+
+Replaced the weather icon's baseline offset with a shared inline-flex condition
+row. The icon and label now share a vertical center in both current weather and
+forecast, including when the label wraps. The existing weather browser test
+now measures their vertical centers, avoiding reliance on a visual guess.
+
+Verified both Clear sky rows in the running HAdev dashboard using a separate
+in-app browser. All 231 frontend unit tests and 179 browser tests passed. Ruff
+and byte parity for all 33 delivered JavaScript files passed. No commit or push.
+
+Full integration validation: 1569 passed in 391.87s (0:06:31).
+
+
+## 2026-09-18 — Empty new cards and optional legacy registration
+
+The Home Assistant card stub now uses an explicit empty module list, matching
+Build your own. The template section starts expanded on empty cards; existing
+saved configurations and the historical minimal-YAML fallback retain their
+modules. Browser tests cover starting empty, applying a preset and reopening it.
+
+Setup, reconfigure and options now expose Install legacy dashboard cards in all
+ten translations. New entries default off and store the choice in options;
+entries predating the setting default on to preserve existing dashboards. The
+master dashboard installation toggle gates both card generations. Resource
+reconciliation enables legacy registration if any enabled entry requesting
+dashboard cards also requests legacy cards. Options override data. Disabling
+legacy registration adds `legacy=0` to the managed resource; register.js then
+loads only the modular card/editor and excludes legacy picker metadata and
+migration editors. A browser reload is required because custom elements cannot
+be unregistered from an already loaded page. Independently installed HACS
+resources remain outside this option. Stale managed duplicates receive the same
+registration mode so they cannot accidentally reload the disabled legacy bundle.
+
+Added the already delivered visibility.js to the backend asset manifest, fixing
+a missing dependency on clean installs. All 40 packaged assets are present and
+the 33 JavaScript files have byte parity across the three delivery locations;
+backend, tests and translations are also synchronized.
+
+HAdev was restarted and both modes verified through the real integration options.
+With legacy off, its single resource was register.js?v=52fdceb3360a&legacy=0 and
+the F1 picker showed only F1 Sensor. Adding it opened an empty editor with
+templates visible; Race weekend added four modules. The preview was cancelled,
+not saved. Legacy was restored to on, the resource returned to the same URL
+without legacy=0, and all 66 entities remained. The log UI showed no F1 Sensor
+error; one Home Assistant Core websocket closing-transport error was unrelated
+to the frontend option path.
+
+Validation: 231 frontend unit tests, 182 Chromium browser tests, 68 focused
+Python tests, documentation build and 15 documentation browser tests passed.
+Ruff/CI Ruff, 197 translation keys in ten locales, deterministic release
+packaging and git diff --check passed. No commit, push or release.
+
+Final full integration suite: 1,578 passed in 386.87 seconds. No remaining agent work for these two changes.

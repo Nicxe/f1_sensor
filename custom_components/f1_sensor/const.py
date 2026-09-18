@@ -29,6 +29,7 @@ CONF_LIVE_TIMING_AUTH_HEADER = "live_timing_auth_header"
 CONF_CLEAR_LIVE_TIMING_AUTH_HEADER = "clear_live_timing_auth_header"
 CONF_START_F1TV_PAIRING = "start_f1tv_pairing"
 CONF_INSTALL_DASHBOARD_CARDS = "install_dashboard_cards"
+CONF_INSTALL_LEGACY_CARDS = "install_legacy_cards"
 CONF_RACE_WEEK_SUNDAY_START = "race_week_sunday_start"
 CONF_RACE_WEEK_START_DAY = "race_week_start_day"
 RACE_WEEK_START_MONDAY = "monday"
@@ -40,6 +41,8 @@ OPERATION_MODE_LIVE = "live"
 OPERATION_MODE_DEVELOPMENT = "development"
 DEFAULT_OPERATION_MODE = OPERATION_MODE_LIVE
 DEFAULT_INSTALL_DASHBOARD_CARDS = True
+# Preserve existing dashboards when an older entry has no explicit choice.
+DEFAULT_INSTALL_LEGACY_CARDS = True
 
 # Internal naming metadata. This is not user-configurable; it lets new config
 # entries snapshot the backend language for localized friendly names while

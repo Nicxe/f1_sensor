@@ -401,6 +401,7 @@ export const MODULES = {
   weather: module('weather', 'Weather', 'Väder', WEATHER_FIELDS.map(field => field.id), {
     content: { type: 'enum', values: ['weather_overview', 'current_conditions', 'automatic_conditions', 'race_forecast', 'track_conditions'], default: 'weather_overview', label: { en: 'Weather source', sv: 'Väderkälla' } },
     presentation: { type: 'enum', values: ['metrics', 'compact_list'], default: 'metrics', label: { en: 'Weather layout', sv: 'Väderlayout' } },
+    colored_icons: { type: 'boolean', default: true, label: { en: 'Colored weather icons', sv: 'Färgade väderikoner' } },
     show_explanation: { type: 'boolean', default: true, label: { en: 'Show About section', sv: 'Visa Om-sektion' } },
   }, ['weather', 'track_weather']),
 };

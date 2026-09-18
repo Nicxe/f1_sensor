@@ -7,6 +7,8 @@ toc_max_heading_level: 2
 
 Build a compact weekend overview or a detailed session view with the **F1 Sensor** card. Choose your content first, then adjust its appearance in the visual editor.
 
+New cards start with the empty **Build your own** template. The template chooser is open so you can select a preset or add your first module. Existing saved cards keep their modules.
+
 ## Start with a preset
 
 1. Edit your Home Assistant dashboard and choose **Add card**.

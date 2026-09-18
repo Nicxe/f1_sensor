@@ -46,7 +46,7 @@ test('three complete dashboard views are built in one editor and survive a separ
       window.fixtureCard.requestUpdate();
     });
     const editor = page.locator('f1-sensor-card-editor');
-    await editor.getByText('Start from a template', { exact: true }).click();
+    await expect(editor.locator('details.starter')).toHaveAttribute('open', '');
     await editor.getByRole('button', { name: scenario.preset }).click();
     await editor.getByRole('textbox', { name: 'Card title', exact: true }).fill(scenario.title);
     await editor.getByRole('textbox', { name: 'Card title', exact: true }).press('Tab');

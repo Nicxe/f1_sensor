@@ -41,11 +41,11 @@ export const F1_CARD_TAGS = new Set(F1_CARD_DEFINITIONS.flatMap(({ type }) => [
   `${type}-editor`,
 ]));
 
-export const registerF1CardMetadata = () => {
+export const registerF1CardMetadata = (includeLegacy = true) => {
   window.customCards = window.customCards || [];
   const registered = new Set(window.customCards.map((card) => card?.type));
   for (const definition of F1_CARD_DEFINITIONS) {
-    if (registered.has(definition.type)) continue;
+    if ((!includeLegacy && definition.type !== 'f1-sensor-card') || registered.has(definition.type)) continue;
     const hass = { locale: { language: navigator.language || 'en' } };
     window.customCards.push({
       ...definition,

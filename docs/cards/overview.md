@@ -20,7 +20,7 @@ F1 Sensor includes one dashboard card: **F1 Sensor**. Start with a ready-made pr
 2. Open a dashboard and select **Edit dashboard > Add card**.
 3. Search for **F1 Sensor** and select the card.
 4. Choose the F1 Sensor installation if Home Assistant shows more than one.
-5. Select a preset, review the preview and save.
+5. The editor starts empty with **Build your own**. Add a module or select a preset, review the preview and save.
 
 The minimal YAML configuration is:
 
@@ -32,6 +32,14 @@ With one F1 Sensor installation, the card discovers that installation and its en
 
 <span id="available-cards" />
 <span id="card-reference" />
+
+## Choose which cards to install
+
+In the F1 Sensor integration settings, **Install bundled dashboard cards** controls whether the dashboard cards are registered at all. **Install legacy dashboard cards** additionally enables the deprecated card types and requires the main installation option to be enabled.
+
+New installations leave legacy cards disabled. Existing installations keep them enabled until you choose otherwise. [Migrate existing legacy cards](/cards/modular-migration) before switching them off, then reload the browser. Saved legacy cards cannot render while their card types are disabled. The F1 Sensor card and your entities are unaffected by switching off legacy cards.
+
+These resources are shared by Home Assistant. If you have several F1 Sensor installations, legacy cards remain available while any enabled installation with dashboard cards enabled requests them. Independently installed HACS resources are not removed by this option.
 
 ## Choose a starting preset
 

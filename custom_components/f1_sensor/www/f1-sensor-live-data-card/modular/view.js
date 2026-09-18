@@ -89,12 +89,17 @@ export const sharedStyles = css`
   .weather-list { margin:0; }
   .weather-list .weather-item { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:6px 20px; padding:var(--f1-item-padding,9px) 0; border-bottom:1px solid var(--f1-divider); }
   .weather-item dt { color:var(--f1-muted); }
-  dl.overview { margin:0; grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr)); }
+  dl.overview { margin:0; display:flex; flex-wrap:wrap; }
+  dl.overview > .weather-item { flex:1 1 8rem; min-width:0; }
   .metric.weather-item dt { font-size:.85em; margin-bottom:5px; }
   .metric.weather-item dd { font-size:1.35em; line-height:1.3; overflow-wrap:anywhere; }
   .metric.weather-item .provenance { font-size:.65em; line-height:1.5; }
   .weather-item dd { margin:0; font-weight:650; font-variant-numeric:tabular-nums; }
   .weather-symbol { display:inline-block; width:1.3em; text-align:center; margin-right:.25em; color:inherit; }
+  .weather-condition { display:inline-flex; align-items:center; gap:.25em; max-width:100%; }
+  .weather-condition-text { min-width:0; }
+  ha-icon.weather-symbol { --mdc-icon-size:1.1em; display:inline-flex; align-items:center; justify-content:center; flex:0 0 1.3em; height:1.1em; margin:0; line-height:0; }
+  @media (forced-colors:active) { ha-icon.weather-symbol { color:CanvasText !important; } }
   .weather-item .provenance { font-weight:400; }
 
   .analysis-explanation { margin-top:12px; font-size:.85em; }
@@ -133,7 +138,11 @@ export const sharedStyles = css`
   .overview.full { grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); }
   .metric small { display:block; color:var(--f1-muted,#b9c1ce); margin-bottom:5px; }
   .metric strong { display:block; font-size:1.35em; line-height:1.25; overflow-wrap:anywhere; }
-  .metric.hero { grid-column:1/-1; display:flex; align-items:flex-start; gap:14px; }
+  .metric.hero { grid-column:1/-1; }
+  .metric-value { display:flex; align-items:center; gap:14px; min-width:0; }
+  .metric-value strong { min-width:0; }
+  .metric.hero:has(.flag:not([hidden])) > small { margin-inline-start:54px; }
+  .metric-value .flag { margin-top:0; }
   .metric.hero strong { font-size:clamp(1.4rem,4vw,2rem); letter-spacing:-.025em; }
   .circuit-panel { grid-column:1/-1; display:grid; gap:12px; }
   .circuit-map { min-height:180px; display:grid; place-items:center; overflow:hidden; border:1px solid var(--f1-border); border-radius:10px; background:var(--f1-panel); }
@@ -491,8 +500,9 @@ export class F1ModuleView extends LitElement {
     const items = this.model.items ?? [];
     if (!items.length) return this.empty(this.w('Waiting for information.', 'Väntar på information.'));
     return html`<div class="overview ${this.module.options.layout_mode === 'auto' ? '' : this.module.options.layout_mode}" part="metrics">${items.map(item => item.id === 'circuit_map' ? this.circuitMap(item.value) : item.id === 'circuit_history' ? this.circuitHistory(item.value) : html`<div class="metric ${item.id === 'meeting' ? 'hero' : ''}" part="metric">
+      <small>${label(FIELDS[item.id], this.language)}</small><div class="metric-value">
       ${item.flag && this.settings.appearance.flags ? html`<img class="flag" src=${item.flag} alt=${item.country ?? ''} width="40" height="27" @error=${event => { event.target.hidden = true; }} @load=${event => { event.target.hidden = false; }}>` : ''}
-      <div><small>${label(FIELDS[item.id], this.language)}</small><strong>${item.id === 'track_status' ? this.flagCell(item.value) : item.value ?? '—'}</strong>${item.detail ? html`<span class="provenance">${item.detail}</span>` : ''}</div>
+      <strong>${item.id === 'track_status' ? this.flagCell(item.value) : item.value ?? '—'}</strong></div>${item.detail ? html`<span class="provenance">${item.detail}</span>` : ''}
     </div>`)}</div>`;
   }
   circuitMap(value = {}) {
@@ -574,12 +584,18 @@ export class F1ModuleView extends LitElement {
     if (item.type === 'rain_indicator') return item.value ? this.w('Yes · rain detected', 'Ja · regn registrerat') : this.w('No rain detected', 'Inget regn registrerat');
     if (item.type === 'weather_condition') {
       const groups = [
-        [[0], '☀', 'Clear sky', 'Klar himmel'], [[1, 2], '☁', 'Partly cloudy', 'Delvis molnigt'], [[3], '☁', 'Overcast', 'Mulet'], [[45, 48], '≈', 'Fog', 'Dimma'],
-        [[51, 53, 55], '☂', 'Drizzle', 'Duggregn'], [[61, 63, 65, 80, 81, 82], '☂', 'Rain', 'Regn'], [[56, 57, 66, 67], '☂', 'Freezing precipitation', 'Underkyld nederbörd'],
-        [[71, 73, 75, 77, 85, 86], '✳', 'Snow', 'Snö'], [[95, 96, 99], 'ϟ', 'Thunderstorm', 'Åska'],
+        [[0], 'weather-sunny', 'Clear sky', 'Klar himmel', '#e5a000'], [[1, 2], 'weather-partly-cloudy', 'Partly cloudy', 'Delvis molnigt', '#d59a24'],
+        [[3], 'weather-cloudy', 'Overcast', 'Mulet', '#78909c'], [[45, 48], 'weather-fog', 'Fog', 'Dimma', '#78909c'],
+        [[51, 53, 55], 'weather-rainy', 'Drizzle', 'Duggregn', '#298fcb'], [[61, 63, 65, 80, 81, 82], 'weather-pouring', 'Rain', 'Regn', '#298fcb'],
+        [[56, 57, 66, 67], 'weather-snowy-rainy', 'Freezing precipitation', 'Underkyld nederbörd', '#49a6c7'],
+        [[71, 73, 75, 77, 85, 86], 'weather-snowy', 'Snow', 'Snö', '#49a6c7'], [[95, 96, 99], 'weather-lightning-rainy', 'Thunderstorm', 'Åska', '#9975cf'],
       ];
       const group = groups.find(([codes]) => codes.includes(item.value));
-      return group ? html`${symbols ? html`<span class="weather-symbol" aria-hidden="true">${item.night ? '☾' : group[1]}</span>` : ''}${this.w(group[2], group[3])}` : this.w('Unknown condition', 'Okända väderförhållanden');
+      if (!group) return this.w('Unknown condition', 'Okända väderförhållanden');
+      const nightIcon = item.night && item.value <= 2;
+      const icon = nightIcon ? item.value === 0 ? 'weather-night' : 'weather-night-partly-cloudy' : group[1];
+      const color = this.module.options.colored_icons ? nightIcon ? '#8498cf' : group[4] : 'inherit';
+      return html`<span class="weather-condition">${symbols ? html`<ha-icon class="weather-symbol" aria-hidden="true" icon=${`mdi:${icon}`} style=${`color:${color}`}></ha-icon>` : ''}<span class="weather-condition-text">${this.w(group[2], group[3])}</span></span>`;
     }
     const value = new Intl.NumberFormat(this.language, { maximumFractionDigits: 1 }).format(item.value);
     return html`${item.type === 'bearing' && symbols ? html`<span class="weather-symbol" aria-hidden="true" style=${`transform:rotate(${item.value}deg)`}>↑</span>` : ''}${value}${item.type === 'bearing' ? '' : ' '}${item.unit ?? ''}`;
@@ -588,7 +604,7 @@ export class F1ModuleView extends LitElement {
     if (!this.model.rows?.length) return this.empty(this.model.hiddenRows ? this.w('All selected sessions are in the past and are hidden.', 'Alla valda sessioner ligger i det förflutna och är dolda.') : this.w('No published session dates or times are available.', 'Inga publicerade sessionsdatum eller tider finns tillgängliga.'));
     return html`<ol class="schedule">${this.model.rows.map(row => html`<li>
       <div class="schedule-identity">
-        ${row.flag && this.settings.appearance.flags ? html`<span><img class="flag" src=${row.flag} alt=${row.country ?? ''} width="40" height="27" loading="lazy"
+        ${this.module.options.range === 'season' && row.flag && this.settings.appearance.flags ? html`<span><img class="flag" src=${row.flag} alt=${row.country ?? ''} width="40" height="27" loading="lazy"
           @error=${event => { event.target.hidden = true; event.target.nextElementSibling.hidden = false; }}
           @load=${event => { event.target.hidden = false; event.target.nextElementSibling.hidden = true; }}><span class="flag-fallback" hidden>${row.country ?? ''}</span></span>` : ''}
       <div class="schedule-copy"><strong>${label(row, this.language)}</strong>${this.module.options.range === 'season' ? html`<div class="muted">${row.meeting}</div>` : ''}
