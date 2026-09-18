@@ -638,6 +638,42 @@ test('progression chart applies legacy legend, point, label, future-round and he
   await expect(chart.locator('.chart-legend')).toHaveCount(0);
 });
 
+test('progression uses team colors and toggles drivers from either the legend or chart line', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'progression', options: { selected: ['LEC', 'NOR'] } }] } }));
+  const chart = page.locator('f1-series-chart');
+  const leclerc = chart.locator('[data-series="LEC"]');
+  const norris = chart.locator('[data-series="NOR"]');
+  await expect(leclerc.locator('.series-line').first()).toHaveAttribute('style', /stroke:#ed1131/);
+  await expect(norris.locator('.series-line').first()).toHaveAttribute('style', /stroke:#f47600/);
+  const legend = chart.locator('.chart-legend');
+  const leclercLegend = legend.getByRole('button', { name: 'Charles Leclerc: visible. Hide series.', exact: true });
+  const norrisLegend = legend.getByRole('button', { name: 'Lando Norris: visible. Hide series.', exact: true });
+  await expect(leclercLegend).toHaveAttribute('aria-pressed', 'true');
+
+  const linePoint = await leclerc.locator('.series-line').first().evaluate(node => {
+    const point = node.getPointAtLength(node.getTotalLength() / 2), matrix = node.getScreenCTM();
+    return { x: point.x * matrix.a + point.y * matrix.c + matrix.e, y: point.x * matrix.b + point.y * matrix.d + matrix.f };
+  });
+  await page.mouse.click(linePoint.x, linePoint.y);
+  await expect(chart.locator('[data-series="LEC"]')).toHaveCount(0);
+  await expect(legend.getByRole('button', { name: 'Charles Leclerc: hidden. Show series.', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await chart.getByRole('button', { name: 'Show data table', exact: true }).click();
+  await expect(chart.getByRole('columnheader', { name: 'Charles Leclerc', exact: true })).toHaveCount(0);
+  await expect(chart.getByRole('columnheader', { name: 'Lando Norris', exact: true })).toBeVisible();
+
+  await legend.getByRole('button', { name: 'Charles Leclerc: hidden. Show series.', exact: true }).click();
+  await expect(chart.locator('[data-series="LEC"]')).toHaveCount(1);
+  await norrisLegend.click();
+  await expect(chart.locator('[data-series="NOR"]')).toHaveCount(0);
+  await expect(legend.getByRole('button', { name: 'Lando Norris: hidden. Show series.', exact: true })).toHaveAttribute('aria-pressed', 'false');
+
+  await page.evaluate(() => {
+    const card = window.fixtureCard, config = structuredClone(card.config);
+    config.appearance.team_colors = false; card.setConfig(config);
+  });
+  await expect(chart.locator('[data-series="LEC"] .series-line').first()).not.toHaveAttribute('style', /stroke:#ed1131/);
+});
+
 test('limited result tables disclose their row count and expand locally without changing saved defaults', async ({ page }) => {
   await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'results', options: { rows: 2 } }] } }));
   await expect(page.getByText('2 of 5 competitors', { exact: true })).toBeVisible();

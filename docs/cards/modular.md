@@ -54,6 +54,8 @@ Set **Recent lap columns** under the Timing module's **Module options** to compa
 
 Weather, Battles, Strategy and Replay telemetry show a collapsible **About** section by default. To remove it from one module, open that module's **Module options** and clear **Show About section**. Warnings, errors and controls remain visible.
 
+Season progression uses each driver's or team's established Formula 1 color when **Team accents** is enabled. Select a name in the legend or select its line in the chart to hide that series; select the crossed-out legend name to show it again. The data table follows the visible series. This filter is temporary and does not change the saved card configuration; hiding the legend shows every series again.
+
 ## Choose and lock a session
 
 Open **Layout and shared focus** to choose whether the card follows the automatic source, the live session or the loaded replay. When the integration exposes a complete stable identity, the editor also offers **Pin current live session** or **Pin loaded replay**. An Archive module can pin the event and session selected from its historical catalogue.

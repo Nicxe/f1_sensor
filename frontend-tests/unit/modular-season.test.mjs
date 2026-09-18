@@ -92,6 +92,31 @@ test('progression retains actual round alignment, zero points and gaps instead o
   assert.equal(progressionModel(hass, entry, configModule('progression', { start_round: '3', end_round: '1' })).rounds.length, 0);
 });
 
+test('progression reuses legacy driver and team colors with safe source fallbacks', async () => {
+  const { progressionModel } = await import('../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/season-data.js');
+  const { hass, entry } = fixture({
+    driver_list: { drivers: [
+      { tla: 'LEC', full_name: 'Charles Leclerc', team: 'Ferrari', team_color: '#e80020' },
+      { tla: 'HST', full_name: 'Historic Driver', team: 'Historic Team', team_color: '#123ABC' },
+    ] },
+    driver_points_progression: { rounds: [{ round: 1 }], drivers: {
+      LEC: { identity: { code: 'LEC', name: 'Charles Leclerc' }, cumulative_points: [25], totals: { points: 25 } },
+      HST: { identity: { code: 'HST', name: 'Historic Driver' }, cumulative_points: [18], totals: { points: 18 } },
+    } },
+    constructor_points_progression: { rounds: [{ round: 1 }], constructors: {
+      ferrari: { identity: { constructorId: 'ferrari', name: 'Ferrari' }, color: '#000000', cumulative_points: [43], totals: { points: 43 } },
+      custom: { identity: { constructorId: 'custom', name: 'Custom Team' }, team_color: '#ABCDEF', cumulative_points: [10], totals: { points: 10 } },
+    } },
+  });
+  const drivers = progressionModel(hass, entry, configModule('progression')).allSeries;
+  assert.equal(drivers.find(item => item.id === 'LEC').color, '#ed1131');
+  assert.equal(drivers.find(item => item.id === 'HST').color, '#123abc');
+  assert.equal(drivers.find(item => item.id === 'HST').team, 'Historic Team');
+  const teams = progressionModel(hass, entry, configModule('progression', { competitors: 'teams' })).allSeries;
+  assert.equal(teams.find(item => item.id === 'ferrari').color, '#ed1131');
+  assert.equal(teams.find(item => item.id === 'custom').color, '#abcdef');
+});
+
 test('chart axes use readable intervals while preserving negative corrections and discrete wins', async () => {
   const { chartAxis } = await import('../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/season-data.js');
   assert.deepEqual(chartAxis([0, 267]).ticks, [0, 100, 200, 300]);

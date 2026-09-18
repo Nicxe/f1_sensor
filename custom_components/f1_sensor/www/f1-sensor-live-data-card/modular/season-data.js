@@ -12,6 +12,36 @@ const uniqueRows = rows => [...new Map(rows.filter(row => row.id).map(row => [ro
 const driverRoster = (hass, entry) => records(source(hass, entry, 'driver_list').attributes.drivers);
 const driverIdentity = (people, numberValue, code) => people.find(item => key(item.racing_number) === numberValue || Boolean(code && text(item.tla) === code)) ?? {};
 const sourceKey = module => ({ latest_race: 'last_race_results', race_results: 'season_results', sprint_results: 'sprint_results', starting_grid: 'starting_grid' })[module.options.content];
+const PROGRESSION_DRIVER_COLORS = {
+  VER: '#4781d7', PER: '#6c98ff', NOR: '#f47600', PIA: '#ff8700', LEC: '#ed1131', HAM: '#dc0000',
+  RUS: '#00d7b6', ANT: '#27f4d2', ALO: '#229971', STR: '#358c75', ALB: '#1868db', SAI: '#37bedd',
+  HUL: '#01c00e', BOR: '#52e252', LAW: '#6c98ff', HAD: '#5e8faa', TSU: '#356cac', OCO: '#b6babd',
+  BEA: '#9c9fa2', GAS: '#00a1e8', DOO: '#0090cc', COL: '#0072ff', BOT: '#52e252', ZHO: '#01c00e',
+  MAG: '#b6babd', RIC: '#6c98ff', SAR: '#1868db',
+};
+const PROGRESSION_TEAM_COLORS = {
+  red_bull: '#4781d7', redbull: '#4781d7', red_bull_racing: '#4781d7', oracle_red_bull_racing: '#4781d7',
+  mclaren: '#f47600', ferrari: '#ed1131', mercedes: '#00d7b6', aston_martin: '#229971', astonmartin: '#229971',
+  williams: '#1868db', sauber: '#01c00e', kick_sauber: '#01c00e', stake_sauber: '#01c00e', rb: '#6c98ff',
+  racing_bulls: '#6c98ff', visa_cash_app_rb: '#6c98ff', alpha_tauri: '#5e8faa', alphatauri: '#5e8faa',
+  alpine: '#00a1e8', haas: '#b6babd', audi: '#c8c8c8', cadillac: '#c7a467',
+};
+const PROGRESSION_FALLBACK_COLORS = ['#e10600', '#00d7b6', '#f47600', '#4781d7', '#ed1131', '#229971', '#1868db', '#ffb000', '#9c27b0', '#00a1e8', '#b6babd', '#8bc34a', '#ff5f5f', '#40c4ff'];
+const usableColor = value => {
+  const candidate = text(value);
+  return candidate && /^#[0-9a-f]{6}$/i.test(candidate) ? candidate.toLowerCase() : null;
+};
+const colorKey = value => key(normalizeTeamName(value) ?? value).toLocaleLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+const progressionColor = (teams, item, index) => {
+  const supplied = usableColor(item.rawColor);
+  if (!teams) {
+    const knownDriver = PROGRESSION_DRIVER_COLORS[key(item.driver).toUpperCase()];
+    if (knownDriver) return knownDriver;
+    if (supplied) return supplied;
+  }
+  const knownTeam = [item.team_id, item.team, item.id, item.name].map(value => PROGRESSION_TEAM_COLORS[colorKey(value)]).find(Boolean);
+  return knownTeam ?? supplied ?? PROGRESSION_FALLBACK_COLORS[index % PROGRESSION_FALLBACK_COLORS.length];
+};
 
 export function selectRows(rows, module, focus = {}) {
   const driver = module.driver || focus.driver, team = module.team || focus.team;
@@ -136,6 +166,7 @@ export function documentsModel(hass, entry, module) {
 export function progressionModel(hass, entry, module, focus = {}) {
   const teams = module.options.competitors === 'teams';
   const selected = source(hass, entry, teams ? 'constructor_points_progression' : 'driver_points_progression'), attrs = selected.attributes;
+  const roster = driverRoster(hass, entry);
   const seen = new Set();
   const rounds = records(attrs.rounds).map((item, index) => ({ ...item, id: positiveInteger(item.round), index })).filter(item => {
     if (!item.id || seen.has(item.id)) return false;
@@ -147,15 +178,24 @@ export function progressionModel(hass, entry, module, focus = {}) {
   const lastObservedIndex = rounds.reduce((latest, round) => competitors.some(([, item]) => number(item[module.options.metric]?.[round.index]) !== null) ? Math.max(latest, round.index) : latest, -1);
   const displayed = rounds.filter(item => (!first || item.id >= first) && (!last || item.id <= last)
     && (module.options.show_future_rounds !== false || item.index <= lastObservedIndex));
-  const allSeries = competitors.map(([id, item]) => ({ id, name: text(item.identity?.name) ?? id, driver: text(item.identity?.code) ?? id,
-    driver_id: key(item.identity?.driverId), team_id: key(item.identity?.constructorId),
-    total: number(item.totals?.points),
-    values: displayed.map(round => ({ round: round.id, value: number(item[module.options.metric]?.[round.index]) })),
-  })).sort((a, b) => (b.total ?? -1) - (a.total ?? -1) || a.id.localeCompare(b.id));
+  const allSeries = competitors.map(([id, item], index) => {
+    const identity = item.identity ?? {};
+    const driver = text(identity.code ?? item.code ?? item.tla) ?? id;
+    const name = text(item.display_name ?? item.name ?? identity.full_name ?? identity.display_name ?? identity.name) ?? id;
+    const rosterEntry = teams ? null : roster.find(person => text(person.tla)?.toUpperCase() === driver.toUpperCase()
+      || Boolean(key(identity.driverId) && [person.driver_id, person.driverId, person.reference].map(key).includes(key(identity.driverId)))
+      || Boolean(text(person.full_name ?? person.name) && text(person.full_name ?? person.name)?.toLocaleLowerCase() === name.toLocaleLowerCase()));
+    const team = text(item.team_name ?? item.team ?? identity.team_name ?? identity.team ?? identity.constructor_name ?? rosterEntry?.team) ?? (teams ? name : null);
+    const teamId = key(identity.constructorId ?? item.constructor_id ?? team);
+    const rawColor = item.color ?? item.team_color ?? identity.color ?? identity.team_color ?? item.constructor_color ?? rosterEntry?.team_color;
+    const series = { id, name, driver, driver_id: key(identity.driverId), team, team_id: teamId, team_color: usableColor(rawColor), rawColor,
+      total: number(item.totals?.points), values: displayed.map(round => ({ round: round.id, value: number(item[module.options.metric]?.[round.index]) })),
+    };
+    return { ...series, color: progressionColor(teams, series, index) };
+  }).sort((a, b) => (b.total ?? -1) - (a.total ?? -1) || a.id.localeCompare(b.id));
   const pinned = teams ? module.team || focus.team : module.driver || focus.driver;
   // Season progression identifies drivers by historical code/ID. Use a current
   // racing number only to resolve that code, never to replace historical names.
-  const roster = records(source(hass, entry, 'driver_list').attributes.drivers);
   const code = pinned && roster.find(item => key(item.racing_number) === pinned)?.tla;
   const matches = series => !pinned || [series.id, series.driver, series.driver_id, series.team_id, series.name].includes(pinned) || series.driver === code;
   const series = allSeries.filter(matches).filter(item => !module.options.selected.length || module.options.selected.includes(item.id)).slice(0, module.options.series_limit);

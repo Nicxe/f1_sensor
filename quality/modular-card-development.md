@@ -2479,3 +2479,36 @@ module's status to **Hidden now** and removed only that module from the live
 preview. The draft was cancelled, edit mode was closed without saving, and the
 browser console contained no errors. No commit, push, release or persistent
 dashboard edit was made.
+
+## 2026-09-18 — Team colors and interactive season progression
+
+Season progression now reuses the established driver and constructor colors from
+the deprecated progression card. Valid colors supplied by the season source or
+current driver roster remain available as fallbacks for unknown competitors. The
+card-level **Team accents** choice controls whether these colors or the neutral
+chart palette is used, and line patterns and marker shapes continue to provide a
+non-color distinction.
+
+Each progression legend entry is now a pressed-state button. Selecting the name
+or its chart line hides that series, marks the legend name as crossed out and
+removes its column from an open data table; selecting the legend entry again
+restores it. The wider invisible line hit area does not change the visible line.
+The temporary filter is local to the rendered card, is not saved in Lovelace and
+is bypassed when the legend is disabled or the table-only presentation is used.
+
+Validation passes with 231 frontend unit tests, 172 Chromium browser flows and
+the full 1,569-test `/Volumes/config` integration suite. The focused color and
+interaction flow also passes in Firefox and WebKit. Documentation passes its
+production build, four build checks and 15 browser checks. Automation passes 40
+Python and 47 Node tests, field-catalog validation passes, and the deterministic
+107-file release package has SHA-256
+`e43dfa845b1be75b678ad2ddab3fda05c74f4e3ea83cc03b23eb73e900c3301a`.
+
+After a cache-bypassing reload, the authenticated HAdev dashboard exposed every
+real progression line and legend entry as an accessible visible-series toggle.
+Both the Charles Leclerc legend entry and the line itself removed that series and
+changed the legend to **hidden. Show series.**; selecting the legend again
+restored both the line and pressed state. All
+delivered JavaScript files are byte-identical between the primary HAdev source,
+the bundled integration and the repository. No dashboard configuration was
+saved, and no commit, push or release was made.
