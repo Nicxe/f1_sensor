@@ -182,6 +182,7 @@ def build_feature_plan(
     *,
     live_enabled: bool,
     development_mode: bool = False,
+    legacy_race_control_events: bool = False,
 ) -> FeaturePlan:
     """Build the exact coordinator and stream plan for enabled features."""
     requested_features = frozenset(enabled_features)
@@ -199,6 +200,12 @@ def build_feature_plan(
         coordinators.update(dependency.coordinators)
         for stream in dependency.streams:
             reasons.setdefault(stream, set()).add(feature)
+
+    if live_allowed and legacy_race_control_events:
+        dependency = FEATURE_DEPENDENCIES["race_control"]
+        coordinators.update(dependency.coordinators)
+        for stream in dependency.streams:
+            reasons.setdefault(stream, set()).add("legacy_race_control_events")
 
     if reasons:
         reasons.setdefault("Heartbeat", set()).add("live_transport_health")

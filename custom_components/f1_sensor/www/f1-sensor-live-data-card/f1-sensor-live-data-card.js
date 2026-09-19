@@ -23968,6 +23968,8 @@ class F1RaceControlCard extends LitElement {
     this._displayTimer = null;
     this._messageShownAt = 0;
     this._listContextKey = null;
+    this._listConnection = null;
+    this._listReadyListener = null;
     this._listEventUnsub = null;
     this._listResetUnsub = null;
     this._listLoadToken = 0;
@@ -24043,6 +24045,7 @@ class F1RaceControlCard extends LitElement {
   }
 
   async _syncRaceControlState() {
+    if (!this.isConnected) return;
     const entityId = resolveEntityIdWithFallback(this.hass, this.config?.entity);
     const entity = getEntityStateWithFallback(this.hass, this.config?.entity);
 
@@ -24067,17 +24070,29 @@ class F1RaceControlCard extends LitElement {
     }
 
     const contextKey = `${entityId}|list`;
-    if (this._listContextKey !== contextKey) {
+    if (this._listContextKey !== contextKey || this._listConnection !== this.hass?.connection) {
       this._unsubscribeListEvents();
       this._listContextKey = contextKey;
       this._listMessages = [];
       this._listLoading = true;
       this._listError = null;
-      this._subscribeListEvents(entityId, contextKey, this._listGeneration);
-      await this._loadRaceControlLog(entity, entityId, contextKey);
+      const generation = this._listGeneration;
+      const connection = this.hass?.connection;
+      this._listConnection = connection;
+      this._listReadyListener = () => {
+        if (!this._isListContextActive(contextKey, generation)) return;
+        this._listContextKey = null;
+        this._syncRaceControlState().catch(() => {});
+      };
+      connection?.addEventListener?.('ready', this._listReadyListener);
+      // Subscribe before fetching history so messages cannot fall between them.
+      const subscribed = await this._subscribeListEvents(entityId, contextKey, generation);
+      if (!subscribed || !this._isListContextActive(contextKey, generation)) return;
+      const loaded = await this._loadRaceControlLog(entity, entityId, contextKey);
+      if (!loaded || !this._isListContextActive(contextKey, generation)) return;
     }
 
-    this._syncCurrentEntityIntoList(entity);
+    this._syncCurrentEntityIntoList(getEntityStateWithFallback(this.hass, this.config?.entity));
   }
 
   _syncLatestMessageState(entity = null) {
@@ -24093,6 +24108,9 @@ class F1RaceControlCard extends LitElement {
     this._listGeneration += 1;
     this._listLoadToken += 1;
     this._clearListRetry();
+    this._listConnection?.removeEventListener?.('ready', this._listReadyListener);
+    this._listConnection = null;
+    this._listReadyListener = null;
     this._listContextKey = null;
     this._callUnsubscribe(this._listEventUnsub);
     this._callUnsubscribe(this._listResetUnsub);
@@ -24139,7 +24157,7 @@ class F1RaceControlCard extends LitElement {
   }
 
   async _subscribeListEvents(entityId, contextKey, generation) {
-    const connection = this.hass?.connection;
+    const connection = this._listConnection;
     if (!connection || typeof connection.subscribeEvents !== 'function') {
       return;
     }
@@ -24175,10 +24193,10 @@ class F1RaceControlCard extends LitElement {
       );
       if (!this._isListContextActive(contextKey, generation)) {
         this._callUnsubscribe(resetUnsub);
+        return false;
       } else {
         this._listResetUnsub = resetUnsub;
-        this._listRetryAttempt = 0;
-        this._clearListRetry();
+        return true;
       }
     } catch (err) {
       if (!this._isListContextActive(contextKey, generation)) return;
@@ -24216,6 +24234,8 @@ class F1RaceControlCard extends LitElement {
         .filter(Boolean);
       this._listMessages = this._sortListItems([...normalized, ...this._listMessages]);
       this._listLoading = false;
+      this._listRetryAttempt = 0;
+      this._clearListRetry();
     } catch (_err) {
       if (this._listContextKey !== contextKey || loadToken !== this._listLoadToken) {
         return;
@@ -24230,7 +24250,9 @@ class F1RaceControlCard extends LitElement {
       this._listError = fallbackItems.length > 0
         ? 'Showing recent messages only'
         : 'Full saved history is unavailable';
+      this._scheduleListSubscriptionRetry(contextKey, this._listGeneration);
     }
+    return true;
   }
 
   _handleRaceControlListEvent(event, entityId) {
@@ -24252,6 +24274,7 @@ class F1RaceControlCard extends LitElement {
     if (data.entity_id && data.entity_id !== entityId) {
       return;
     }
+    this._listLoadToken += 1;
     this._listMessages = [];
     this._listLoading = false;
     this._listError = null;
