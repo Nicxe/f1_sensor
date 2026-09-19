@@ -58,6 +58,68 @@ Weather, Battles, Strategy and Replay telemetry show a collapsible **About** sec
 
 Season progression uses each driver's or team's established Formula 1 color when **Team accents** is enabled. Select a name in the legend or select its line in the chart to hide that series; select the crossed-out legend name to show it again. The data table follows the visible series. This filter is temporary and does not change the saved card configuration; hiding the legend shows every series again.
 
+## Arrange modules in columns
+
+Choose **Columns** under **Card settings → Layout and shared focus → Layout**
+to place modules beside each other inside one card. Set **Maximum columns** to
+2, 3 or 4, then select each module and set its **Module width** to 1–4 columns
+or **Full card width**.
+
+For example, use three columns with Timing at **2 columns**, Track map at
+**1 column**, and Race Control at **Full card width**. Timing and Track map share
+the first row; Race Control fills the row below them.
+
+Modules follow the order in the module list, from left to right and then onto
+the next row. If a module does not fit in the remaining space, it starts on the
+next row. Later modules do not move ahead to fill earlier gaps. Hidden modules
+do not reserve a column.
+
+### Give the card enough space
+
+1. In Home Assistant's **Sections** view settings, allow enough sections across
+   the dashboard.
+2. Edit the section containing the card and increase its width to 2, 3 or 4
+   section columns.
+3. In the card's Home Assistant **Layout** tab, enable **Full width card**.
+4. In the F1 Sensor editor, choose the module column count and widths.
+
+Home Assistant controls the outer card width. **Maximum columns** only arranges
+content inside the available space; it does not enlarge the dashboard section.
+See [Home Assistant card sizing](https://www.home-assistant.io/dashboards/cards/#resizing-a-card).
+
+The card uses fewer columns when space is limited and stacks modules on narrow
+cards. A module's width is limited to the columns that fit; **Full card width**
+always fills a row. Your saved widths return when the card becomes wider.
+Switching to **Stacked modules** or **Tabs** also keeps those width choices.
+
+Use **Preview width → Wide** or **Extra wide** to inspect larger arrangements.
+The preview can scroll horizontally inside the editor; the dashboard layout
+adapts to the actual card width. A single section remains a narrow card even on
+a wide desktop screen.
+
+<details>
+  <summary>Optional YAML example</summary>
+
+```yaml
+type: custom:f1-sensor-card
+layout: columns
+columns: 3
+grid_options:
+  columns: full
+modules:
+  - type: timing
+    column_span: 2
+  - type: map
+    column_span: 1
+  - type: race_control
+    column_span: full
+```
+
+Place this card in a section wide enough for three columns. The containing
+section's width is configured separately in Home Assistant.
+
+</details>
+
 ## Choose and lock a session
 
 Open **Layout and shared focus** to choose whether the card follows the automatic source, the live session or the loaded replay. When the integration exposes a complete stable identity, the editor also offers **Pin current live session** or **Pin loaded replay**. An Archive module can pin the event and session selected from its historical catalogue.
@@ -77,7 +139,7 @@ conditions (NOT)**.
 Every condition at the top level must match. These conditions are combined with
 the module's selected session phases. The editor shows **Visible now**, **Hidden
 now** or **Always visible**, while the saved module remains available for editing.
-Hidden modules are removed from stacked content and from the card's tab list.
+Hidden modules are removed from stacked content, column layouts and the card's tab list.
 
 For example, you can show Timing only when a helper is on and the dashboard is
 open on a tablet or desktop:

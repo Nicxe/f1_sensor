@@ -3,6 +3,46 @@ import test from 'node:test';
 import { CUSTOM_STYLE_MAX_LENGTH, normalizeConfig, applyPreset, duplicateModule, moveModule, exportConfig, exportTemplate, importConfig, importTemplate, configWarnings, resolveSelection } from '../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/config.js';
 import { MODULES, PRESETS, FIELDS } from '../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/catalog.js';
 
+test('column layout preserves module widths and HA sizing across editing and transfers', () => {
+  const source = { layout: 'columns', columns: 3, grid_options: { columns: 'full', rows: 'auto' }, modules: [
+    { id: 'wide', type: 'timing', column_span: 2 },
+    { id: 'small', type: 'map' },
+    { id: 'row', type: 'race_control', column_span: 'full' },
+  ] };
+  const config = normalizeConfig(source);
+  assert.deepEqual(configWarnings(config), []);
+  assert.equal(config.modules[1].column_span, 1);
+  assert.equal(source.modules[1].column_span, undefined);
+  assert.deepEqual(importConfig(exportConfig(config)), config);
+  assert.deepEqual(importTemplate(exportTemplate(config, 'Wide session')).card, config);
+  assert.equal(duplicateModule(config, 'wide').modules[1].column_span, 2);
+  assert.equal(moveModule(config, 'row', -1).modules[1].column_span, 'full');
+  const stacked = normalizeConfig({ ...config, layout: 'stack' });
+  const tabs = normalizeConfig({ ...stacked, layout: 'tabs' });
+  assert.deepEqual(normalizeConfig({ ...tabs, layout: 'columns' }), config);
+  assert.deepEqual(config.grid_options, source.grid_options);
+});
+
+test('column layout defaults preserve older cards and allow widths larger than the current grid', () => {
+  for (const layout of ['stack', 'tabs']) {
+    const config = normalizeConfig({ layout, modules: [{ type: 'overview' }] });
+    assert.equal(config.layout, layout);
+    assert.equal(config.columns, 2);
+    assert.equal(config.modules[0].column_span, 1);
+  }
+  const config = normalizeConfig({ layout: 'columns', columns: 2, modules: [{ type: 'overview', column_span: 4 }] });
+  assert.equal(config.modules[0].column_span, 4);
+});
+
+test('column counts and spans reject malformed values with precise error paths', () => {
+  for (const columns of [0, 1, 5, 2.5, '3', true, {}, []]) {
+    assert.throws(() => normalizeConfig({ columns }), /columns:/);
+  }
+  for (const column_span of [0, 5, 1.5, '2', 'auto', true, {}, []]) {
+    assert.throws(() => normalizeConfig({ modules: [{ type: 'overview', column_span }] }), /modules\.0\.column_span:/);
+  }
+});
+
 test('module focus behavior preserves explicit independence and rejects invalid modes', () => {
   const config = normalizeConfig({ modules: [{ type: 'timing' }, { type: 'timing', focus_mode: 'independent', driver: '16' }] });
   assert.equal(config.modules[0].focus_mode, 'inherit');

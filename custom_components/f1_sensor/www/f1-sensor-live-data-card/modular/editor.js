@@ -40,6 +40,7 @@ export class F1SensorCardEditor extends LitElement {
     .module-row .select-module[aria-pressed=true] { color:var(--f1-text); background:transparent; box-shadow:none; }
     .module-row .module-index { color:var(--f1-muted); font-variant-numeric:tabular-nums; font-size:.8em; font-weight:700; }
     .module-row .module-name { font-weight:650; }
+    .module-width { display:block; font-size:.8em; font-weight:400; color:var(--f1-muted); }
     .selected-module { margin-top:16px; padding:14px; border:1px solid color-mix(in srgb,var(--editor-module-accent) 36%,var(--f1-border)); border-radius:11px; background:color-mix(in srgb,var(--editor-module-accent) 4%,var(--f1-surface)); }
     .selected-module-heading { margin-bottom:6px; }
     label { display:block; margin:12px 0; }
@@ -306,6 +307,9 @@ export class F1SensorCardEditor extends LitElement {
     const id = `entities-${this.selected}-${title.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
     return html`<label><span>${title}</span><input list=${id} .value=${String(value ?? '')} @change=${event => change(event.target.value)}><datalist id=${id}>${Object.keys(this.hass?.states ?? {}).sort().map(entity => html`<option value=${entity}></option>`)}</datalist></label>`;
   }
+  columnWidth(span) {
+    return span === 'full' ? this.w('Full card width', 'Hela kortets bredd') : span === 1 ? this.w('1 column', '1 kolumn') : this.w(`${span} columns`, `${span} kolumner`);
+  }
   moduleSettings() {
     const saved = this.config.modules.find(module => module.id === this.selected), definition = MODULES[saved?.type];
     if (!saved) return html``;
@@ -319,6 +323,10 @@ export class F1SensorCardEditor extends LitElement {
     return html`<section class="selected-module" aria-label=${this.w('Selected module', 'Vald modul')}><div class="selected-module-heading"><span class="module-number" aria-hidden="true">${index + 1}</span><div><p class="scope-kicker">${this.w(`Editing module ${index + 1} of ${this.config.modules.length}`, `Redigerar modul ${index + 1} av ${this.config.modules.length}`)}</p><h4>${moduleTitle(module, this.language)}</h4><p class="scope-description">${this.w('Only this module is affected by the settings below.', 'Inställningarna nedan påverkar bara den här modulen.')}</p></div></div>
       ${this.input(this.w('Module title', 'Modulrubrik'), module.title, value => this.setModule('title', value))}
       ${this.check(this.w('Show module', 'Visa modulen'), module.enabled, value => this.setModule('enabled', value))}
+      ${this.config.layout === 'columns' ? html`
+        ${this.select(this.w('Module width', 'Modulbredd'), String(module.column_span), [...[1, 2, 3, 4].map(count => [String(count), this.columnWidth(count)]), ['full', this.columnWidth('full')]], value => this.setModule('column_span', value === 'full' ? value : Number(value)))}
+        <p class="muted">${this.w('Widths shrink to fit the available columns. Full card width always starts a new row.', 'Bredden begränsas till de kolumner som ryms. Hela kortets bredd börjar alltid på en ny rad.')}</p>
+      ` : ''}
       <details><summary>${this.w('Module appearance', 'Modulens utseende')}</summary>
         ${this.check(this.w('Show module title', 'Visa modulrubrik'), module.show_header, value => this.setModule('show_header', value))}
         ${['timing', 'results', 'standings', 'archive', 'tyres', 'pit_stops', 'strategy', 'battles', 'timeline', 'incidents'].includes(module.type) ? html`${this.check(this.w('Show table header', 'Visa tabellhuvud'), module.show_table_header, value => this.setModule('show_table_header', value))}<p class="muted">${this.w('Hidden column labels remain available to screen readers. Chart data tables always keep their series labels visible.', 'Dolda kolumnnamn finns kvar för skärmläsare. Diagrammens datatabeller visar alltid namnen på serierna.')}</p>` : ''}
@@ -478,7 +486,12 @@ export class F1SensorCardEditor extends LitElement {
           ${this.input(this.w('Card title', 'Kortrubrik'), this.config.title, value => this.updateConfig(config => ({ ...config, title: value })))}
           ${this.entries.length > 1 || this.config.f1_entry_id ? this.select(this.w('F1 Sensor installation', 'F1 Sensor-installation'), this.config.f1_entry_id, [['', this.w('Automatic (one installation)', 'Automatiskt (en installation)')], ...this.entries.map(entry => [entry.entry_id, entry.title])], value => this.updateConfig(config => ({ ...config, f1_entry_id: value }))) : ''}
           <details><summary>${this.w('Layout and shared focus', 'Layout och gemensamt fokus')}</summary>
-          ${this.select(this.w('Layout', 'Layout'), this.config.layout, [['stack', this.w('Stacked modules', 'Staplade moduler')], ['tabs', this.w('Tabs', 'Flikar')]], value => this.updateConfig(config => ({ ...config, layout: value })))}
+          ${this.select(this.w('Layout', 'Layout'), this.config.layout, [['stack', this.w('Stacked modules', 'Staplade moduler')], ['tabs', this.w('Tabs', 'Flikar')], ['columns', this.w('Columns', 'Kolumner')]], value => this.updateConfig(config => ({ ...config, layout: value })))}
+          ${this.config.layout === 'columns' ? html`
+            ${this.select(this.w('Maximum columns', 'Max antal kolumner'), String(this.config.columns), [2, 3, 4].map(count => [String(count), String(count)]), value => this.updateConfig(config => ({ ...config, columns: Number(value) })))}
+            <p class="muted">${this.w('Modules flow in list order, left to right, then onto the next row. Fewer columns are used when the card is narrow. Choose each module’s width below.', 'Modulerna följer listordningen, från vänster till höger och sedan på nästa rad. Smala kort använder färre kolumner. Välj varje moduls bredd nedan.')}</p>
+            <p class="muted">${this.w('For a wide card in Home Assistant Sections, increase the section width and enable Full width card in Home Assistant’s Layout tab. These columns arrange content inside the card.', 'För ett brett kort i Home Assistants sektionsvy, öka sektionens bredd och aktivera kortets fullbreddsval på Home Assistants Layout-flik. Dessa kolumner fördelar innehållet inuti kortet.')}</p>
+          ` : ''}
           ${this.focusPicker('driver', this.w('Default driver', 'Förvald förare'), this.config.context.driver, value => this.setGroup('context', 'driver', value))}
           ${this.focusPicker('team', this.w('Default team', 'Förvalt team'), this.config.context.team, value => this.setGroup('context', 'team', value))}
           ${this.selectionPicker(this.w('Card session', 'Kortets session'), this.config.context.selection, value => this.setGroup('context', 'selection', value))}
@@ -505,14 +518,14 @@ export class F1SensorCardEditor extends LitElement {
           </details>
         </section>
         <section class="scope-panel module-scope" data-scope="module" aria-labelledby="modules-title"><div class="scope-heading"><span class="scope-badge" aria-hidden="true">${this.w('Module', 'Modul')}</span><div><p class="scope-kicker">${this.w('Selected content', 'Valt innehåll')}</p><h3 id="modules-title">${this.w('Modules', 'Moduler')}</h3><p class="scope-description">${this.w('Choose a module to edit only its content, behavior and appearance.', 'Välj en modul för att redigera endast dess innehåll, beteende och utseende.')}</p></div></div>
-          <ol class="module-list">${repeat(this.config.modules, module => module.id, (module, index) => html`<li class="module-row" data-selected=${String(this.selected === module.id)}><button class="select-module" data-module=${module.id} aria-label=${`${index + 1}. ${moduleTitle(module, this.language)}`} aria-pressed=${String(this.selected === module.id)} @click=${() => { this.selected = module.id; }}><span class="module-index">${String(index + 1).padStart(2, '0')}</span><span class="module-name">${moduleTitle(module, this.language)}</span></button><button ?disabled=${index === 0} aria-label=${`${this.w('Move up', 'Flytta upp')} ${moduleTitle(module, this.language)}`} @click=${() => this.move(module.id, -1)}>↑</button><button ?disabled=${index === this.config.modules.length - 1} aria-label=${`${this.w('Move down', 'Flytta ned')} ${moduleTitle(module, this.language)}`} @click=${() => this.move(module.id, 1)}>↓</button></li>`)}</ol>
+          <ol class="module-list">${repeat(this.config.modules, module => module.id, (module, index) => html`<li class="module-row" data-selected=${String(this.selected === module.id)}><button class="select-module" data-module=${module.id} aria-label=${`${index + 1}. ${moduleTitle(module, this.language)}`} aria-pressed=${String(this.selected === module.id)} @click=${() => { this.selected = module.id; }}><span class="module-index">${String(index + 1).padStart(2, '0')}</span><span class="module-name">${moduleTitle(module, this.language)}${this.config.layout === 'columns' ? html`<small class="module-width">${this.columnWidth(module.column_span)}</small>` : ''}</span></button><button ?disabled=${index === 0} aria-label=${`${this.w('Move up', 'Flytta upp')} ${moduleTitle(module, this.language)}`} @click=${() => this.move(module.id, -1)}>↑</button><button ?disabled=${index === this.config.modules.length - 1} aria-label=${`${this.w('Move down', 'Flytta ned')} ${moduleTitle(module, this.language)}`} @click=${() => this.move(module.id, 1)}>↓</button></li>`)}</ol>
           ${this.select(this.w('Add module', 'Lägg till modul'), '', [['', this.w('Choose content…', 'Välj innehåll…')], ...Object.values(MODULES).map(module => [module.id, label(module, this.language)])], value => { if (!value) return; const module = configAPI.makeModule(value, this.config.modules); this.updateConfig(config => ({ ...config, modules: [...config.modules, module] })); this.selected = module.id; })}
           ${this.moduleSettings()}
         </section>
       </div><div class="preview"><h3>${this.w('Preview', 'Förhandsvisning')}</h3><div class="toolbar">
         ${this.select(this.w('Sample session', 'Exempelsession'), this.scene, [['before', this.w('Before a session', 'Före session')], ['practice', this.w('Practice', 'Träning')], ['qualifying', this.w('Qualifying', 'Kval')], ['sprint_qualifying', this.w('Sprint qualifying', 'Sprintkval')], ['sprint', 'Sprint'], ['race', 'Race'], ['ended', this.w('Finished', 'Avslutad')], ['replay', 'Replay'], ['missing', this.w('Missing data', 'Saknad data')]], value => { this.scene = value; })}
-        ${this.select(this.w('Preview width', 'Förhandsvisningens bredd'), this.width, [['narrow', this.w('Narrow', 'Smal')], ['normal', this.w('Normal', 'Normal')], ['wide', this.w('Wide', 'Bred')]], value => { this.width = value; })}
-      </div><div class="preview-shell" style=${`--preview-width:${this.width === 'narrow' ? '360px' : this.width === 'wide' ? '1050px' : '100%'}`}>${this.previewNode}</div></div></div>`;
+        ${this.select(this.w('Preview width', 'Förhandsvisningens bredd'), this.width, [['narrow', this.w('Narrow', 'Smal')], ['normal', this.w('Normal', 'Normal')], ['wide', this.w('Wide', 'Bred')], ['extra-wide', this.w('Extra wide', 'Extra bred')]], value => { this.width = value; })}
+      </div><div class="preview-shell" style=${`--preview-width:${this.width === 'narrow' ? '360px' : this.width === 'wide' ? '1050px' : this.width === 'extra-wide' ? '1400px' : '100%'}`}>${this.previewNode}</div></div></div>`;
   }
 }
 if (!customElements.get('f1-sensor-card-editor')) customElements.define('f1-sensor-card-editor', F1SensorCardEditor);

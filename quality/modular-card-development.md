@@ -2656,3 +2656,58 @@ Ruff/CI Ruff, 197 translation keys in ten locales, deterministic release
 packaging and git diff --check passed. No commit, push or release.
 
 Final full integration suite: 1,578 passed in 386.87 seconds. No remaining agent work for these two changes.
+
+## 2026-09-19 — Responsive columns and module widths
+
+Implemented the agreed plan in `modular-columns-plan.md`. The visual editor now
+offers Columns beside Stack and Tabs, a maximum of 2–4 columns, and per-module
+widths of 1–4 columns or Full card width. Width labels appear in the module list;
+the editor includes an Extra wide preview and explains HA's section-width and
+Full width card controls. English and Swedish are supported.
+
+The containing section and HA `grid_options` retain control over the card's outer
+size. Only the internal layout changes. A named CSS inline-size container chooses
+one, two, three or four available columns at 38/58/78 rem content widths, capped
+by the configured maximum. Normal row placement preserves source and keyboard
+order; later modules never backfill gaps ahead of earlier ones. Numeric spans
+are clamped to available columns and full-width spans always start a new row.
+The existing height observer handles reflow without a new listener or timer.
+The same module elements survive resize and layout switches.
+
+The additive configuration remains version 3: `layout: columns`, `columns`
+(default 2) and module `column_span` (default 1, or `full`). Earlier card builds
+reject the new layout value explicitly. Stack/Tabs preserve width preferences;
+duplication, reordering, editor updates and JSON/template transfers preserve them
+alongside Home Assistant's sizing configuration. No new packaged asset or backend
+change is needed.
+
+Validation: 234 frontend unit tests, 191 Chromium browser tests, 15 focused
+column/sizing tests in Firefox and WebKit, required Ruff (217 files unchanged),
+and the complete HAdev integration suite (1,578 passed in 408.41 seconds).
+The final eight column tests were also rerun in both engines after correcting
+the test/example's Track map type to `map`; a dedicated assertion now requires
+the actual `f1-track-map-view` to render. Coverage includes 2+1, equal 2/3/4,
+full rows, overflow spans, wrapping order, conditional visibility, container-only
+resize, retained module identity, layout switches, editor persistence, Swedish,
+keyboard movement, axe, and Sections height after reflow/visibility changes.
+
+Documentation build, build assertions and 15 documentation browser tests passed.
+Release packaging remained deterministic: 107 runtime files, SHA-256
+`3a89c4ccd52122377eea088ea01e1bcccd12c2ff539d23b85d6e03c9880fa5c7`.
+All 33 JavaScript files are byte-identical across primary, integration and repo
+copies. HAdev returned HTTP 200 with the exact primary bytes for all three
+changed modules. `git diff --check` passed.
+
+The authenticated HAdev editor built a temporary three-column card through the
+UI: Timing span 2, Track map span 1 and Race Control full width. Its 1050 px demo
+preview measured 663.33 px and 318.66 px on the same row, then 1007.98 px for the
+full-width row below both modules. At 360 px all modules stacked at 318 px content
+width while keeping their saved spans. The live-data preview also showed the
+narrow arrangement and explicit missing-session states. Browser warnings/errors
+were empty. Cancelled the temporary card, exited dashboard editing and reset the
+viewport without saving dashboard configuration.
+
+Physical-device checks are appended to the manual handover. No remaining local
+agent work; no commit, push or release was made for this feature. Unrelated
+issue-automation work changed HEAD from `3d1db27` to `5fe9161` during the task;
+those changes were preserved and are outside this implementation.

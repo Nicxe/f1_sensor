@@ -25,6 +25,8 @@ parity, extended live-session testing and beta feedback are still required.
   documents, map, timeline, strategy, battles and recorded-lap telemetry.
 - Visual editing of modules, order, fields, profiles, filters, focus, session
   context, style, density, typography, logos, flags, tyres and timing signals.
+- Responsive column layouts with up to four columns, individual module widths
+  and full-width rows, alongside the existing stacked and tab layouts.
 - Scoped custom CSS with documented F1 variables, stable module targets and
   public Shadow Parts, without JavaScript templates or external CSS resources.
 - Explicit missing, stale, disconnected, retained, frozen, estimated and

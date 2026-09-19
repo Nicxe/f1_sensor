@@ -85,6 +85,27 @@ async function settleFrames(page, count = 12) {
   }, count);
 }
 
+test('column layout keeps later section cards below the content after reflow and visibility changes', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 1000 });
+  await mountSections(page, { width: 1100, config: { layout: 'columns', columns: 3, modules: [
+    { id: 'timing', type: 'timing', column_span: 2 },
+    { id: 'weather', type: 'weather' },
+    { id: 'control', type: 'race_control', column_span: 'full' },
+  ] } });
+  const wide = await expectContained(page);
+  await page.locator('#sizing-section').evaluate(section => { section.style.width = '360px'; });
+  await expect.poll(async () => (await page.evaluate(() => window.sizingGeometry())).cardHeight).toBeGreaterThan(wide.cardHeight);
+  const narrow = await expectContained(page);
+  expect(narrow.slotHeight).toBeGreaterThan(wide.slotHeight);
+  await page.evaluate(() => window.fixtureCard.setConfig({ ...window.fixtureCard.config, modules: window.fixtureCard.config.modules.map(module => ({ ...module, enabled: module.id !== 'timing' })) }));
+  await expect.poll(async () => (await page.evaluate(() => window.sizingGeometry())).slotHeight).toBeLessThan(narrow.slotHeight);
+  await expectContained(page);
+  await settleFrames(page);
+  const events = await page.evaluate(() => ({ ...window.sizingEvents }));
+  await settleFrames(page);
+  expect(await page.evaluate(() => window.sizingEvents)).toEqual(events);
+});
+
 test('saved two-row sections contain every modular preset and the next editing controls', async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 1000 });
   for (const preset of ['weekend', 'weather', 'session', 'driver', 'results', 'custom']) {

@@ -70,6 +70,21 @@ export class F1SensorCard extends LitElement {
     .modules { display:grid; gap:var(--f1-module-gap,26px); }
     .modules > f1-module-view { border-top:1px solid var(--f1-divider); padding-top:var(--f1-section-space,20px); }
     .modules > f1-module-view:first-child { border-top:0; padding-top:0; }
+    ha-card[data-layout=columns] { container:f1-modules / inline-size; }
+    .modules[data-layout=columns] {
+      --_f1-available-columns:1;
+      --_f1-layout-columns:min(var(--_f1-max-columns),var(--_f1-available-columns));
+      grid-template-columns:repeat(var(--_f1-layout-columns),minmax(0,1fr));
+      grid-auto-flow:row; align-items:start;
+    }
+    .modules[data-layout=columns] > f1-module-view {
+      grid-column:span min(var(--_f1-module-span,1),var(--_f1-layout-columns));
+      min-width:0; border-top:0; padding-top:0;
+    }
+    .modules[data-layout=columns] > f1-module-view[data-column-span=full] { grid-column:1 / -1; }
+    @container f1-modules (min-width:38rem) { .modules[data-layout=columns] { --_f1-available-columns:2; } }
+    @container f1-modules (min-width:58rem) { .modules[data-layout=columns] { --_f1-available-columns:3; } }
+    @container f1-modules (min-width:78rem) { .modules[data-layout=columns] { --_f1-available-columns:4; } }
     nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
     .frozen { padding:10px 12px; margin-bottom:16px; border:1px solid currentColor; border-radius:8px; }
     .connection-status { padding:10px 12px; margin:0 0 16px; border:1px solid currentColor; border-radius:8px; }
@@ -695,11 +710,13 @@ export class F1SensorCard extends LitElement {
       node.id = `module-${module.id}`;
       node.dataset.moduleType = module.type;
       node.dataset.moduleId = module.id;
+      node.dataset.columnSpan = String(module.column_span);
+      node.style.setProperty('--_f1-module-span', String(module.column_span === 'full' ? 1 : module.column_span));
       node.setAttribute('part', 'module');
       return node;
     });
     for (const id of this.moduleNodes.keys()) if (!this.config.modules.some(module => module.id === id)) this.moduleNodes.delete(id);
-    return html`<ha-card part="card" data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>
+    return html`<ha-card data-layout=${this.config.layout} part="card" data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>
       ${this.previewData ? html`<p class="demo">${this.w('DEMO · sample data', 'DEMO · exempeldata')}</p>` : ''}
       <header part="header">${settings.appearance.show_header ? html`<div class="heading" part="title">${this.actionHeading()}<small>${this.w('Your Formula 1 view', 'Din Formel 1-vy')}</small></div>` : ''}
         <div class="tools" part="toolbar">${this.config.context.show_focus_control && drivers.length ? html`<label><span class="sr">${this.w('Driver focus', 'Förarfokus')}</span><select .value=${focusedDriver} @change=${this.chooseDriver}><option value="" .selected=${!focusedDriver}>${this.w('All drivers', 'Alla förare')}</option>${repeat(drivers, driver => String(driver.racing_number), driver => html`<option value=${String(driver.racing_number)} .selected=${focusedDriver === String(driver.racing_number)}>${driver.tla ?? driver.racing_number}</option>`)}</select></label>` : ''}
@@ -711,7 +728,7 @@ export class F1SensorCard extends LitElement {
       ${this.config.context.viewing_controls ? html`<f1-viewing-controls part="viewing-controls" .model=${data.viewingModel(this.hass, this.entry, this.config.context.spoilers)} .settings=${settings} .connection=${this.hass.connection} .readonly=${Boolean(this.preview || this.previewData || this.frozen)} .localHidden=${this.config.context.spoilers === 'hide'} .request=${this.viewingRequest?.entryId === this.entry.entry_id && this.viewingRequest.connection === this.hass.connection ? this.viewingRequest : null} @f1-viewing-action=${this.viewingAction}></f1-viewing-controls>` : ''}
       <div aria-live=${settings.accessibility.announce ? 'polite' : 'off'} aria-atomic="true">${this.frozen ? html`<p class="frozen">${this.w('Reading snapshot', 'Fryst läsvy')} · ${dateTime(this.frozenAt, settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · ${this.w('Only this card is paused', 'Endast detta kort är pausat')}${this.frozenGeneration !== this.savedSources.viewGeneration ? html`<br>${this.w('Session or playback settings have changed. This snapshot keeps its original context. Resume to show current data.', 'Sessionen eller uppspelningsinställningarna har ändrats. Läsbilden behåller sitt ursprungliga sammanhang. Välj Fortsätt för att visa aktuell data.')}` : ''}${this.focus.driver !== this.frozenFocus?.driver || this.focus.team !== this.frozenFocus?.team ? html`<br>${this.w('Group focus has changed. Resume to follow it.', 'Gruppens fokus har ändrats. Välj Fortsätt för att följa det.')}` : ''}</p>` : ''}</div>
       ${this.config.layout === 'tabs' ? html`<nav part="tabs" aria-label=${this.w('Modules', 'Moduler')}>${modules.map(module => html`<button aria-pressed=${String(active === module.id)} aria-controls=${`module-${module.id}`} @click=${() => { this.tab = module.id; }}>${module.title || models.get(module.id).title}</button>`)}</nav>` : ''}
-      ${nodes.length ? html`<div class="modules" part="modules">${nodes}</div>` : this.emptyCard()}
+      ${nodes.length ? html`<div class="modules" part="modules" data-layout=${this.config.layout} style=${`--_f1-max-columns:${this.config.columns}`}>${nodes}</div>` : this.emptyCard()}
       ${configWarnings(this.config).length ? html`<p class="muted">${this.w('Some settings need a newer card version. They are preserved in the editor.', 'Vissa inställningar kräver en nyare kortversion. De finns kvar i editorn.')}</p>` : ''}
     </ha-card>`;
   }

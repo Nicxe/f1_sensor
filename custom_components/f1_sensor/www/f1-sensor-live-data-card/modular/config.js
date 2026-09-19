@@ -147,7 +147,8 @@ export function normalizeConfig(input) {
     if (/\$\{/.test(inspected)) fail('styles', 'JavaScript templates are not supported');
   }
   config.f1_entry_id ??= ''; text(config.f1_entry_id, 'f1_entry_id');
-  config.layout ??= 'stack'; choice(config.layout, ['stack', 'tabs'], 'layout');
+  config.layout ??= 'stack'; choice(config.layout, ['stack', 'tabs', 'columns'], 'layout');
+  config.columns ??= 2; integer(config.columns, 2, 4, 'columns');
   config.appearance = { ...copyConfig(APPEARANCE), ...object(config.appearance ?? {}, 'appearance') };
   const appearance = config.appearance;
   for (const [key, values] of Object.entries({ style: ['f1', 'ha', 'minimal'], mode: ['auto', 'light', 'dark'], density: ['comfortable', 'compact', 'spacious'], font: ['auto', 'f1', 'system'], logo_style: ['auto', 'color', 'white', 'mono'], logo_size: ['small', 'normal', 'large'], accent_mode: ['style', 'neutral', 'f1', 'team', 'custom'], surface: ['style', 'framed', 'soft', 'flat'], numbers: ['tabular', 'inherit'], tyre_style: ['ring', 'image', 'text', 'both'] })) choice(appearance[key], values, `appearance.${key}`);
@@ -182,6 +183,8 @@ export function normalizeConfig(input) {
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(item.id)) fail(`${path}.id`, 'use letters, digits, hyphens or underscores');
     item.title ??= ''; text(item.title, `${path}.title`);
     item.enabled ??= true; bool(item.enabled, `${path}.enabled`);
+    item.column_span ??= 1;
+    if (item.column_span !== 'full') integer(item.column_span, 1, 4, `${path}.column_span`);
     for (const key of ['show_header', 'show_table_header']) { item[key] ??= true; bool(item[key], `${path}.${key}`); }
     item.unavailable ??= 'explain'; choice(item.unavailable, ['explain', 'retain', 'hide'], `${path}.unavailable`);
     item.focus_mode ??= 'inherit'; choice(item.focus_mode, ['inherit', 'independent'], `${path}.focus_mode`);
