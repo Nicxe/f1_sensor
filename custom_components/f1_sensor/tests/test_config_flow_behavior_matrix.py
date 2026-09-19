@@ -7,9 +7,10 @@ from unittest.mock import AsyncMock, Mock
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.f1_sensor import config_flow
+from custom_components.f1_sensor import _async_reload_entry, config_flow
 from custom_components.f1_sensor.config_flow import F1FlowHandler, F1OptionsFlow
 from custom_components.f1_sensor.const import (
+    CONF_INSTALL_DASHBOARD_CARDS,
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
     CONF_RACE_WEEK_START_DAY,
@@ -39,6 +40,7 @@ def _user_input(**updates) -> dict:
         "sensor_name": "F1",
         "enabled_sensors": ["next_race"],
         "enable_race_control": False,
+        CONF_INSTALL_DASHBOARD_CARDS: True,
         CONF_RACE_WEEK_START_DAY: RACE_WEEK_START_MONDAY,
         CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
         CONF_REPLAY_FILE: "",
@@ -88,11 +90,28 @@ def test_language_race_week_and_payload_helpers(hass, monkeypatch) -> None:
     assert flow._normalize_race_week_start({}) == RACE_WEEK_START_MONDAY
 
     data, options = config_flow._split_entry_payload(
-        {"sensor_name": "F1", "disabled_sensors": ["weather"]}
+        {
+            "sensor_name": "F1",
+            "disabled_sensors": ["weather"],
+            CONF_INSTALL_DASHBOARD_CARDS: False,
+        }
     )
     assert data == {"sensor_name": "F1"}
-    assert options == {"disabled_sensors": ["weather"]}
+    assert options == {
+        "disabled_sensors": ["weather"],
+        CONF_INSTALL_DASHBOARD_CARDS: False,
+    }
     assert isinstance(F1FlowHandler.async_get_options_flow(Mock()), F1OptionsFlow)
+
+
+async def test_options_update_reloads_the_config_entry(hass, monkeypatch) -> None:
+    entry = _entry(hass)
+    reload_entry = AsyncMock(return_value=True)
+    monkeypatch.setattr(hass.config_entries, "async_reload", reload_entry)
+
+    await _async_reload_entry(hass, entry)
+
+    reload_entry.assert_awaited_once_with(entry.entry_id)
 
 
 async def test_user_development_replay_validation_matrix(
@@ -114,6 +133,27 @@ async def test_user_development_replay_validation_matrix(
     )
     assert valid["type"] == "create_entry"
     assert valid["options"][CONF_REPLAY_FILE] == str(replay)
+
+
+async def test_dashboard_card_option_defaults_on_and_can_be_disabled(hass) -> None:
+    form = await _flow(hass).async_step_user()
+    assert _schema_default(form, CONF_INSTALL_DASHBOARD_CARDS) is True
+
+    created = await _flow(hass).async_step_user(
+        _user_input(**{CONF_INSTALL_DASHBOARD_CARDS: False})
+    )
+    assert created["type"] == "create_entry"
+    assert created["options"][CONF_INSTALL_DASHBOARD_CARDS] is False
+
+    entry = _entry(hass)
+    reconfigure = _flow(hass, "reconfigure", entry.entry_id)
+    reconfigure_form = await reconfigure.async_step_reconfigure()
+    assert _schema_default(reconfigure_form, CONF_INSTALL_DASHBOARD_CARDS) is True
+    updated = await reconfigure.async_step_reconfigure(
+        _user_input(**{CONF_INSTALL_DASHBOARD_CARDS: False})
+    )
+    assert updated["type"] == "abort"
+    assert entry.options[CONF_INSTALL_DASHBOARD_CARDS] is False
 
 
 async def test_reconfigure_development_and_legacy_sensor_defaults(
@@ -220,10 +260,12 @@ async def test_options_flow_replay_validation_and_save(
     assert form["type"] == "form"
     assert "weather" not in _schema_default(form, "enabled_sensors")
     assert CONF_OPERATION_MODE in {key.schema for key in form["data_schema"].schema}
+    assert _schema_default(form, CONF_INSTALL_DASHBOARD_CARDS) is True
 
     required = await flow.async_step_init(
         {
             "enabled_sensors": ["next_race"],
+            CONF_INSTALL_DASHBOARD_CARDS: False,
             CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
             CONF_REPLAY_FILE: "",
         }
@@ -232,6 +274,7 @@ async def test_options_flow_replay_validation_and_save(
     missing = await flow.async_step_init(
         {
             "enabled_sensors": ["next_race"],
+            CONF_INSTALL_DASHBOARD_CARDS: False,
             CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
             CONF_REPLAY_FILE: str(tmp_path / "missing"),
         }
@@ -243,12 +286,14 @@ async def test_options_flow_replay_validation_and_save(
     saved = await flow.async_step_init(
         {
             "enabled_sensors": ["next_race"],
+            CONF_INSTALL_DASHBOARD_CARDS: False,
             CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
             CONF_REPLAY_FILE: str(replay),
         }
     )
     assert saved["type"] == "create_entry"
     assert saved["data"][CONF_REPLAY_FILE] == str(replay)
+    assert saved["data"][CONF_INSTALL_DASHBOARD_CARDS] is False
 
 
 async def test_replay_file_validators_handle_executor_failures(hass, tmp_path) -> None:

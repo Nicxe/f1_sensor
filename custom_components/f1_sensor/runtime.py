@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_INSTALL_DASHBOARD_CARDS,
     CONF_LIVE_DELAY_REFERENCE,
     CONF_OPERATION_MODE,
     CONF_RACE_WEEK_START_DAY,
@@ -22,6 +23,7 @@ OPTION_KEYS = frozenset(
     {
         "disabled_sensors",
         "enable_race_control",
+        CONF_INSTALL_DASHBOARD_CARDS,
         "live_delay_seconds",
         CONF_LIVE_DELAY_REFERENCE,
         CONF_OPERATION_MODE,
