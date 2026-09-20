@@ -27,6 +27,18 @@ New cards start with the empty **Build your own** template. The template chooser
 
 A preset is a starting point. You can change its modules after selecting it. Selecting another preset shows a review before replacing the current content; changing the visual style keeps your content choices.
 
+## Preview your card
+
+Home Assistant provides the card's only preview. At the top of it, **Preview data**
+starts with **Actual data** from your installation. Choose **Sample data** to try
+practice, qualifying, sprint, race, replay or missing-data scenarios, even when no
+session is running. Sample data is clearly marked **DEMO**.
+
+This choice only affects the preview and stays selected while you edit the card.
+It is never saved in your dashboard configuration. Preview controls cannot change
+integration settings or start replay playback. On small screens, use Home
+Assistant's preview toggle to show the same preview.
+
 ## Reuse your own template
 
 Open **Reusable templates** in the visual editor, enter a name and export the template JSON. On another dashboard or device, paste the JSON or open the saved JSON file and choose **Review template**. The editor shows the current and incoming content before anything changes.
@@ -57,6 +69,37 @@ Set **Recent lap columns** under the Timing module's **Module options** to compa
 Weather, Battles, Strategy and Replay telemetry show a collapsible **About** section by default. To remove it from one module, open that module's **Module options** and clear **Show About section**. Warnings, errors and controls remain visible.
 
 Season progression uses each driver's or team's established Formula 1 color when **Team accents** is enabled. Select a name in the legend or select its line in the chart to hide that series; select the crossed-out legend name to show it again. The data table follows the visible series. This filter is temporary and does not change the saved card configuration; hiding the legend shows every series again.
+
+## Drag modules into place
+
+Open **Modules → Arrange modules** in the card editor. The layout overview
+shows each module as a named tile. Choose **Module layout → Columns** and
+**Columns in layout** for a layout with two, three or four columns.
+
+- Drag the dotted handle to move a module. A dashed outline shows where it
+  will land, and the other tiles move to show the resulting order.
+- In **Columns**, drag the arrow handle at a tile's lower right edge to change
+  its width. Widths snap to whole columns; following modules wrap to the next
+  row when needed.
+- Select a tile and use **Width of selected module → Full card width** to keep
+  that module across the entire row, even when the column count changes.
+- Use **Undo** to reverse a completed drag. Press **Escape** to cancel a drag,
+  or release a move outside the overview to leave the order unchanged.
+
+You can also use the existing move buttons and width choices. With a handle
+focused, arrow keys move or resize the module; **Home** and **End** select the
+first/last position or smallest/largest width. Stacked modules and tabs support
+reordering, while width handles are available in **Columns**.
+
+On small screens, scroll the overview sideways to reach all columns. Drag only
+from a handle; the rest of the overview supports normal touch scrolling.
+Hidden and conditional modules remain available in the overview, while the
+finished card respects their visibility rules. Tile heights in the overview
+are illustrative; module heights on the dashboard follow their content.
+
+The overview changes module order and width within the card. It does not store
+fixed row positions or intentional empty cells. Save the card in Home Assistant
+to keep the arrangement on your dashboard.
 
 ## Arrange modules in columns
 
@@ -92,10 +135,10 @@ cards. A module's width is limited to the columns that fit; **Full card width**
 always fills a row. Your saved widths return when the card becomes wider.
 Switching to **Stacked modules** or **Tabs** also keeps those width choices.
 
-Use **Preview width → Wide** or **Extra wide** to inspect larger arrangements.
-The preview can scroll horizontally inside the editor; the dashboard layout
-adapts to the actual card width. A single section remains a narrow card even on
-a wide desktop screen.
+Use **Arrange modules** to set the order and widths. Home Assistant limits the
+width of its built-in preview, so a multi-column card may appear stacked there.
+Check the final layout on the dashboard at its actual width. A single section
+remains a narrow card even on a wide desktop screen.
 
 <details>
   <summary>Optional YAML example</summary>

@@ -129,7 +129,7 @@ test('switching to stacks and tabs removes grid placement without losing module 
   expect(a.width).toBeGreaterThan(b.width * 2);
 });
 
-test('visual editor persists column count and widths, preserves HA sizing, and offers four-column preview', async ({ page }) => {
+test('visual editor persists column count and widths, preserves HA sizing, and uses the native preview', async ({ page }) => {
   await page.evaluate(() => window.mountModular({ editor: true, config: {
     grid_options: { columns: 'full' }, modules: [{ id: 'a', type: 'timing' }, { id: 'b', type: 'map' }],
   } }));
@@ -140,8 +140,8 @@ test('visual editor persists column count and widths, preserves HA sizing, and o
   const selected = editor.getByRole('region', { name: 'Selected module', exact: true });
   await selected.getByLabel('Module width', { exact: true }).selectOption('2');
   await expect(editor.locator('.module-width').first()).toHaveText('2 columns');
-  await editor.getByLabel('Preview width', { exact: true }).selectOption('extra-wide');
-  await expect(editor.locator('.preview-shell')).toHaveCSS('width', '1400px');
+  await expect(editor.getByLabel('Preview width', { exact: true })).toHaveCount(0);
+  await expect(editor.locator('f1-sensor-card')).toHaveCount(0);
   await editor.getByRole('button', { name: 'Move down Timing', exact: true }).focus();
   await page.keyboard.press('Enter');
   const saved = await page.evaluate(() => window.savedConfig);

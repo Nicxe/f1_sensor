@@ -27,6 +27,8 @@ parity, extended live-session testing and beta feedback are still required.
   context, style, density, typography, logos, flags, tyres and timing signals.
 - Responsive column layouts with up to four columns, individual module widths
   and full-width rows, alongside the existing stacked and tab layouts.
+- Visual drag arrangement and column-snapped resize handles, with a full-width
+  editor workspace, Undo, keyboard support and click/tap alternatives.
 - Scoped custom CSS with documented F1 variables, stable module targets and
   public Shadow Parts, without JavaScript templates or external CSS resources.
 - Explicit missing, stale, disconnected, retained, frozen, estimated and
@@ -61,3 +63,9 @@ legacy cards requires a separate decision after the open acceptance work.
 The public modular-card guides deliberately describe development builds and the
 same remaining limitations. The release text above must be revised if the
 delivered scope changes before a beta is published.
+
+
+The modular editor uses Home Assistant's native preview only. Actual/sample data
+and sample-session choices are temporary preview controls, never dashboard
+configuration. Arrange modules remains available for ordering and column spans;
+the native preview keeps Home Assistant's own width constraints.

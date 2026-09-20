@@ -1,10 +1,10 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ LitElement, html, css, repeat }, configAPI, { MODULES, PRESETS, FIELDS, defaultFields, fieldDefinition, moduleFields, timingFields, INCIDENT_SIGNALS, label, moduleTitle, moduleFocusKinds }, { sharedStyles, words }, { makeDemo }, { watchEntries, HistoryResources }, { visibilityMet }] = await Promise.all([
-  load('../f1-lit-3.3.2.js'), load('./config.js'), load('./catalog.js'), load('./view.js'), load('./demo.js'), load('./connection.js'), load('./visibility.js'),
+const [{ LitElement, html, css, repeat }, configAPI, { MODULES, PRESETS, FIELDS, defaultFields, fieldDefinition, moduleFields, timingFields, INCIDENT_SIGNALS, label, moduleTitle, moduleFocusKinds }, { sharedStyles, words }, { watchEntries, HistoryResources }, { visibilityMet }] = await Promise.all([
+  load('../f1-lit-3.3.2.js'), load('./config.js'), load('./catalog.js'), load('./view.js'), load('./connection.js'), load('./visibility.js'),
 ]);
-await load('./card.js');
-const { source, array, lapChartModel, spoilerState, accentTeams } = await load('./data.js');
+await load('./arranger.js');
+const { source, array, sessionContext, lapChartModel, spoilerState, accentTeams } = await load('./data.js');
 const { telemetryPlan, telemetryModel } = await load('./telemetry-data.js');
 const { replayModel } = await load('./data.js');
 const { cardAccent, PALETTES, SIGNALS } = await load('./semantics.js');
@@ -13,13 +13,11 @@ const { restoreLegacy, isLegacyConfig } = await load('./migration.js');
 const { resultChoices, resultsModel, standingsModel, progressionModel, archiveModel, archivePlan } = await load('./season-data.js');
 
 export class F1SensorCardEditor extends LitElement {
-  static properties = { hass: { attribute: false }, config: { state: true }, selected: { state: true }, error: { state: true }, pendingPreset: { state: true }, scene: { state: true }, width: { state: true }, mobilePreview: { state: true }, entries: { state: true }, transfer: { state: true }, templateName: { state: true }, pendingTemplate: { state: true }, templateEntry: { state: true }, pendingRestore: { state: true }, originalTransfer: { state: true } };
+  static properties = { hass: { attribute: false }, config: { state: true }, selected: { state: true }, error: { state: true }, pendingPreset: { state: true }, entries: { state: true }, transfer: { state: true }, templateName: { state: true }, pendingTemplate: { state: true }, templateEntry: { state: true }, pendingRestore: { state: true }, originalTransfer: { state: true }, arranging: { state: true } };
   static styles = [sharedStyles, css`
     :host { container-type:inline-size; --f1-text:var(--primary-text-color,#e9edf3); --f1-muted:var(--secondary-text-color,#b9c1ce); --f1-surface:var(--card-background-color,#17202b); --f1-border:var(--divider-color,#637083); --editor-card-accent:var(--primary-color,#03a9f4); --editor-module-accent:#e10600; }
-    .builder { display:grid; grid-template-columns:minmax(260px,1fr) minmax(300px,1fr); gap:24px; align-items:start; }
+    .builder { min-width:0; }
     .form { min-width:0; }
-    .preview { min-width:0; overflow:auto; position:sticky; top:0; }
-    .preview-shell { width:var(--preview-width,100%); margin:auto; }
     .toolbar,.module-row,.buttons { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .toolbar { justify-content:space-between; margin:12px 0; }
     .presets { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:16px; }
@@ -74,11 +72,9 @@ export class F1SensorCardEditor extends LitElement {
     .danger { color:var(--error-color,#ffb4b4); }
     .muted { font-size:.85em; }
     textarea { min-height:130px; font-family:monospace; font-size:.85em; }
-    .mobile-toggle { display:none; }
     @media(forced-colors:active) { .scope-panel,.selected-module,.module-row[data-selected=true] { border-color:CanvasText; } .scope-badge,.module-number { border-color:CanvasText; color:CanvasText; } }
-    @container(max-width:760px) { .builder { grid-template-columns:1fr; } .preview { position:static; } .mobile-toggle { display:flex; } .builder[data-mobile=edit] .preview,.builder[data-mobile=preview] .form { display:none; } }
   `];
-  constructor() { super(); this.archive = new HistoryResources(() => this.requestUpdate()); this.telemetry = new HistoryResources(() => this.requestUpdate()); this.history = []; this.entries = []; this.selected = ''; this.scene = 'race'; this.width = 'normal'; this.mobilePreview = false; this.error = ''; this.pendingPreset = ''; this.transfer = ''; this.templateName = ''; this.pendingTemplate = null; this.templateEntry = ''; }
+  constructor() { super(); this.archive = new HistoryResources(() => this.requestUpdate()); this.telemetry = new HistoryResources(() => this.requestUpdate()); this.history = []; this.entries = []; this.selected = ''; this.error = ''; this.pendingPreset = ''; this.transfer = ''; this.templateName = ''; this.pendingTemplate = null; this.templateEntry = ''; }
   setConfig(value) { this.config = configAPI.normalizeConfig(value); if (!this.selected || !this.config.modules.some(module => module.id === this.selected)) this.selected = this.config.modules[0]?.id ?? ''; }
   get language() { return this.hass?.locale?.language ?? this.hass?.language ?? 'en'; }
   w(en, sv) { return words(this.language, en, sv); }
@@ -317,7 +313,7 @@ export class F1SensorCardEditor extends LitElement {
     const protectedArchive = saved.type === 'archive' && spoilerState(this.hass, entry, this.config.context.spoilers) !== 'clear';
     const archiveState = saved.type === 'archive' ? archiveModel(saved, entry?.entry_id, query => protectedArchive ? { status: 'ready', data: null } : this.archive.read(query)) : null;
     const archiveFields = archiveState?.fields ?? null;
-    const module = saved.type === 'timing' ? { ...saved, fields: timingFields(saved, this.scene) } : archiveFields ? { ...saved, fields: archiveFields } : saved;
+    const module = saved.type === 'timing' ? { ...saved, fields: timingFields(saved, sessionContext(this.hass, entry).name) } : archiveFields ? { ...saved, fields: archiveFields } : saved;
     const available = moduleFields(module), fields = [...module.fields, ...available.filter(id => !module.fields.includes(id))];
     const index = this.config.modules.findIndex(item => item.id === module.id);
     return html`<section class="selected-module" aria-label=${this.w('Selected module', 'Vald modul')}><div class="selected-module-heading"><span class="module-number" aria-hidden="true">${index + 1}</span><div><p class="scope-kicker">${this.w(`Editing module ${index + 1} of ${this.config.modules.length}`, `Redigerar modul ${index + 1} av ${this.config.modules.length}`)}</p><h4>${moduleTitle(module, this.language)}</h4><p class="scope-description">${this.w('Only this module is affected by the settings below.', 'Inställningarna nedan påverkar bara den här modulen.')}</p></div></div>
@@ -468,15 +464,9 @@ export class F1SensorCardEditor extends LitElement {
   }
   render() {
     if (!this.config) return html``;
-    if (!this.previewNode) this.previewNode = document.createElement('f1-sensor-card');
-    const demo = makeDemo(this.scene, this.language, this.config.f1_entry_id);
-    demo.hass.themes.darkMode = this.hass?.themes?.darkMode ?? true;
-    const entry = this.config.f1_entry_id ? this.entries.find(item => item.entry_id === this.config.f1_entry_id) : this.entries.length === 1 ? this.entries[0] : null;
-    this.previewNode.previewData = { ...demo.preview, accentTeams: accentTeams(this.hass, entry) }; this.previewNode.hass = demo.hass; this.previewNode.setConfig(this.config);
     return html`<div class="toolbar"><h2>F1 Sensor</h2><button ?disabled=${!this.history.length} @click=${this.undo}>${this.w('Undo', 'Ångra')}</button></div>
-      <div class="buttons mobile-toggle"><button aria-pressed=${String(!this.mobilePreview)} @click=${() => { this.mobilePreview = false; }}>${this.w('Edit', 'Redigera')}</button><button aria-pressed=${String(this.mobilePreview)} @click=${() => { this.mobilePreview = true; }}>${this.w('Preview', 'Förhandsvisa')}</button></div>
       ${this.error ? html`<p class="danger" role="alert">${this.error}</p>` : ''}
-      <div class="builder" data-mobile=${this.mobilePreview ? 'preview' : 'edit'}><div class="form">
+      <div class="builder"><div class="form">
         <details class="starter" ?open=${!this.config.modules.length}><summary>${this.w('Start from a template', 'Börja från en mall')}</summary>
           <p class="scope-description">${this.w('Templates replace the module content but keep the card appearance.', 'Mallar ersätter modulinnehållet men behåller kortets utseende.')}</p>
           <div class="presets">${Object.entries(PRESETS).map(([id, preset]) => html`<button @click=${() => { if (this.config.modules.length) this.pendingPreset = id; else { this.updateConfig(config => configAPI.applyPreset(config, id)); this.selected = this.config.modules[0]?.id ?? ''; } }}>${label(preset, this.language)}<small>${preset.modules.map(module => moduleTitle(module, this.language)).join(' · ') || this.w('Choose your first module', 'Välj din första modul')}</small></button>`)}</div>
@@ -518,14 +508,13 @@ export class F1SensorCardEditor extends LitElement {
           </details>
         </section>
         <section class="scope-panel module-scope" data-scope="module" aria-labelledby="modules-title"><div class="scope-heading"><span class="scope-badge" aria-hidden="true">${this.w('Module', 'Modul')}</span><div><p class="scope-kicker">${this.w('Selected content', 'Valt innehåll')}</p><h3 id="modules-title">${this.w('Modules', 'Moduler')}</h3><p class="scope-description">${this.w('Choose a module to edit only its content, behavior and appearance.', 'Välj en modul för att redigera endast dess innehåll, beteende och utseende.')}</p></div></div>
+          <button aria-expanded=${String(Boolean(this.arranging))} aria-controls="module-arrangement" @click=${() => { this.arranging = !this.arranging; }}>${this.w('Arrange modules', 'Arrangera moduler')}</button>
+          ${this.arranging ? html`<div id="module-arrangement"><f1-module-arranger .config=${this.config} .language=${this.language} .selected=${this.selected} @module-selected=${event => { event.stopPropagation(); this.selected = event.detail.id; }} @arrangement-changed=${event => { event.stopPropagation(); this.updateConfig(config => ({ ...config, ...event.detail })); }}></f1-module-arranger></div>` : ''}
           <ol class="module-list">${repeat(this.config.modules, module => module.id, (module, index) => html`<li class="module-row" data-selected=${String(this.selected === module.id)}><button class="select-module" data-module=${module.id} aria-label=${`${index + 1}. ${moduleTitle(module, this.language)}`} aria-pressed=${String(this.selected === module.id)} @click=${() => { this.selected = module.id; }}><span class="module-index">${String(index + 1).padStart(2, '0')}</span><span class="module-name">${moduleTitle(module, this.language)}${this.config.layout === 'columns' ? html`<small class="module-width">${this.columnWidth(module.column_span)}</small>` : ''}</span></button><button ?disabled=${index === 0} aria-label=${`${this.w('Move up', 'Flytta upp')} ${moduleTitle(module, this.language)}`} @click=${() => this.move(module.id, -1)}>↑</button><button ?disabled=${index === this.config.modules.length - 1} aria-label=${`${this.w('Move down', 'Flytta ned')} ${moduleTitle(module, this.language)}`} @click=${() => this.move(module.id, 1)}>↓</button></li>`)}</ol>
           ${this.select(this.w('Add module', 'Lägg till modul'), '', [['', this.w('Choose content…', 'Välj innehåll…')], ...Object.values(MODULES).map(module => [module.id, label(module, this.language)])], value => { if (!value) return; const module = configAPI.makeModule(value, this.config.modules); this.updateConfig(config => ({ ...config, modules: [...config.modules, module] })); this.selected = module.id; })}
           ${this.moduleSettings()}
         </section>
-      </div><div class="preview"><h3>${this.w('Preview', 'Förhandsvisning')}</h3><div class="toolbar">
-        ${this.select(this.w('Sample session', 'Exempelsession'), this.scene, [['before', this.w('Before a session', 'Före session')], ['practice', this.w('Practice', 'Träning')], ['qualifying', this.w('Qualifying', 'Kval')], ['sprint_qualifying', this.w('Sprint qualifying', 'Sprintkval')], ['sprint', 'Sprint'], ['race', 'Race'], ['ended', this.w('Finished', 'Avslutad')], ['replay', 'Replay'], ['missing', this.w('Missing data', 'Saknad data')]], value => { this.scene = value; })}
-        ${this.select(this.w('Preview width', 'Förhandsvisningens bredd'), this.width, [['narrow', this.w('Narrow', 'Smal')], ['normal', this.w('Normal', 'Normal')], ['wide', this.w('Wide', 'Bred')], ['extra-wide', this.w('Extra wide', 'Extra bred')]], value => { this.width = value; })}
-      </div><div class="preview-shell" style=${`--preview-width:${this.width === 'narrow' ? '360px' : this.width === 'wide' ? '1050px' : this.width === 'extra-wide' ? '1400px' : '100%'}`}>${this.previewNode}</div></div></div>`;
+      </div></div>`;
   }
 }
 if (!customElements.get('f1-sensor-card-editor')) customElements.define('f1-sensor-card-editor', F1SensorCardEditor);

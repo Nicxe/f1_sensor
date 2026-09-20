@@ -2,6 +2,7 @@ const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
 
 test.beforeEach(async ({ page }) => {
+  page.on('pageerror', error => { throw error; });
   await page.goto('/frontend-tests/modular.html');
   await page.waitForFunction(() => window.modularReady);
 });
@@ -107,8 +108,8 @@ test('editor adapts to a narrow HA dialog column on a wide desktop', async ({ pa
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.evaluate(() => { window.mountModular({ editor: true }); document.querySelector('#root').style.width = '390px'; });
   const editor = page.locator('f1-sensor-card-editor');
-  await expect(editor.locator('.mobile-toggle')).toBeVisible();
-  await expect(editor.locator('.preview')).toBeHidden();
+  await expect(editor.locator('f1-sensor-card')).toHaveCount(0);
+  await expect(editor.getByLabel('Card title', { exact: true })).toBeVisible();
   expect(await editor.evaluate(node => node.scrollWidth <= 390)).toBe(true);
 });
 
@@ -210,12 +211,12 @@ test('freeze is a local reading snapshot and active spoiler protection clears a 
 test('freeze control is shown by default and can be hidden in the visual editor', async ({ page }) => {
   await page.evaluate(() => window.mountModular({ editor: true }));
   const editor = page.locator('f1-sensor-card-editor');
-  await expect(editor.getByRole('button', { name: 'Freeze view', exact: true })).toBeVisible();
+  await expect(page.locator('#native-preview').getByRole('button', { name: 'Freeze view', exact: true })).toBeVisible();
   await editor.locator('summary').filter({ hasText: /^Layout and shared focus$/ }).click();
   const control = editor.getByRole('checkbox', { name: 'Show Freeze view button', exact: true });
   await expect(control).toBeChecked();
   await control.uncheck();
-  await expect(editor.getByRole('button', { name: 'Freeze view', exact: true })).toHaveCount(0);
+  await expect(page.locator('#native-preview').getByRole('button', { name: 'Freeze view', exact: true })).toHaveCount(0);
   const saved = await page.evaluate(() => window.savedConfig);
   expect(saved.context.show_freeze_control).toBe(false);
   await page.reload();
@@ -227,7 +228,7 @@ test('freeze control is shown by default and can be hidden in the visual editor'
 test('driver focus menu uses compact TLA labels and can be hidden in the visual editor', async ({ page }) => {
   await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'timing', fields: ['driver', 'last_lap'] }] } }));
   const editor = page.locator('f1-sensor-card-editor');
-  const focus = editor.getByRole('combobox', { name: 'Driver focus', exact: true });
+  const focus = page.locator('#native-preview').getByRole('combobox', { name: 'Driver focus', exact: true });
   await expect(focus).toBeVisible();
   await expect(focus.locator('option')).toHaveText(['All drivers', 'LEC', 'NOR', 'RUS', 'VER', 'ALO']);
   await editor.locator('summary').filter({ hasText: /^Layout and shared focus$/ }).click();
@@ -246,10 +247,10 @@ test('driver focus menu uses compact TLA labels and can be hidden in the visual 
 test('timing can show a configurable number of recent laps as comparison columns', async ({ page }) => {
   await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'timing', fields: ['position', 'driver'], options: { history: 3 } }] } }));
   const editor = page.locator('f1-sensor-card-editor');
-  await expect(editor.getByRole('columnheader', { name: 'Lap 10', exact: true })).toBeVisible();
-  await expect(editor.getByRole('columnheader', { name: 'Lap 11', exact: true })).toBeVisible();
-  await expect(editor.getByRole('columnheader', { name: 'Lap 12', exact: true })).toBeVisible();
-  await expect(editor.locator('tr[data-driver="16"] .recent-lap .time')).toHaveText(['1:21.543', '1:21.100', '1:20.873']);
+  await expect(page.locator('#native-preview').getByRole('columnheader', { name: 'Lap 10', exact: true })).toBeVisible();
+  await expect(page.locator('#native-preview').getByRole('columnheader', { name: 'Lap 11', exact: true })).toBeVisible();
+  await expect(page.locator('#native-preview').getByRole('columnheader', { name: 'Lap 12', exact: true })).toBeVisible();
+  await expect(page.locator('#native-preview').locator('tr[data-driver="16"] .recent-lap .time')).toHaveText(['1:21.543', '1:21.100', '1:20.873']);
   await editor.getByText('Module options', { exact: true }).click();
   const history = editor.getByRole('spinbutton', { name: 'Recent lap columns', exact: true });
   await expect(history).toHaveValue('3');
@@ -268,12 +269,12 @@ test('timing can show a configurable number of recent laps as comparison columns
 test('About sections are shown by default and can be hidden per module', async ({ page }) => {
   await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'weather', options: { content: 'automatic_conditions' } }] } }));
   const editor = page.locator('f1-sensor-card-editor');
-  await expect(editor.getByText('About the weather data', { exact: true })).toBeVisible();
+  await expect(page.locator('#native-preview').getByText('About the weather data', { exact: true })).toBeVisible();
   await editor.getByText('Module options', { exact: true }).click();
   const control = editor.getByRole('checkbox', { name: 'Show About section', exact: true });
   await expect(control).toBeChecked();
   await control.uncheck();
-  await expect(editor.getByText('About the weather data', { exact: true })).toHaveCount(0);
+  await expect(page.locator('#native-preview').getByText('About the weather data', { exact: true })).toHaveCount(0);
   const saved = await page.evaluate(() => window.savedConfig);
   expect(saved.modules[0].options.show_explanation).toBe(false);
   await page.reload();
@@ -389,14 +390,14 @@ test('custom CSS uses stable module targets, public parts and one reusable scope
 });
 
 test('visual editor saves, previews and resets custom CSS', async ({ page }) => {
-  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'timing' }] } }));
+  await page.evaluate(() => window.mountModular({ editor: true, nativePreview: true, config: { modules: [{ type: 'timing' }] } }));
   const editor = page.locator('f1-sensor-card-editor');
   await editor.locator('summary').filter({ hasText: /^Appearance$/ }).click();
   await editor.locator('summary').filter({ hasText: /^Custom CSS \(advanced\)$/ }).click();
   const input = editor.getByLabel('Custom CSS', { exact: true });
   await input.fill('ha-card { --f1-card-radius: 27px; }');
   await expect.poll(() => page.evaluate(() => window.savedConfig?.styles)).toBe('ha-card { --f1-card-radius: 27px; }');
-  await expect.poll(() => editor.locator('f1-sensor-card').evaluate(card => getComputedStyle(card.shadowRoot.querySelector('ha-card')).borderRadius)).toBe('27px');
+  await expect.poll(() => page.locator('#native-preview f1-sensor-card').evaluate(card => card.shadowRoot.querySelector('ha-card') && getComputedStyle(card.shadowRoot.querySelector('ha-card')).borderRadius)).toBe('27px');
   await editor.getByRole('button', { name: 'Reset custom CSS', exact: true }).click();
   await expect.poll(() => page.evaluate(() => Object.hasOwn(window.savedConfig, 'styles'))).toBe(false);
   await expect(input).toHaveValue('');
@@ -405,11 +406,8 @@ test('visual editor saves, previews and resets custom CSS', async ({ page }) => 
 test('editor and preview remain operable with forced colors and enlarged text', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 950 });
   await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' });
-  await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; window.mountModular({ preset: 'session', editor: true }); });
-  await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Preview width', exact: true }).selectOption('narrow');
+  await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; window.mountModular({ preset: 'session', editor: true, nativePreview: true }); });
   await expect(page.getByText('DEMO · sample data', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await expect(page.getByRole('button', { name: '2. Timing', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
@@ -714,7 +712,7 @@ test('tyres, stops and incidents provide independent fields, semantic graphics a
 
 test('tyre editor switches starter profiles and keeps custom columns and unavailable selections', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 1000 });
-  await page.evaluate(() => { window.mountModular({ editor: true, config: { modules: [{ type: 'tyres' }] } }); window.fixtureCard.entries = window.fixtureDemo.preview.entries; });
+  await page.evaluate(() => { window.mountModular({ editor: true, nativePreview: true, config: { modules: [{ type: 'tyres' }] } }); window.fixtureCard.entries = window.fixtureDemo.preview.entries; });
   const editor = page.locator('f1-sensor-card-editor');
   await editor.getByText('Module options', { exact: true }).click();
   await editor.getByLabel('Tyre content', { exact: true }).selectOption('statistics');
@@ -724,7 +722,7 @@ test('tyre editor switches starter profiles and keeps custom columns and unavail
   await editor.getByRole('checkbox', { name: 'Fastest recorded stints', exact: true }).check();
   await editor.getByLabel('Fastest stints per compound', { exact: true }).fill('1');
   await editor.getByLabel('Fastest stints per compound', { exact: true }).press('Tab');
-  const statistics = editor.locator('f1-sensor-card').getByRole('region', { name: 'Tyres', exact: true });
+  const statistics = page.locator('#native-preview f1-sensor-card').getByRole('region', { name: 'Tyres', exact: true });
   await expect(statistics.getByRole('img', { name: 'Tyre · Soft', exact: true })).toBeVisible();
   await expect(statistics.getByText('Soft', { exact: true })).toHaveCount(0);
   await expect(statistics.locator('tbody tr').first().locator('.stint-runs li')).toHaveCount(1);
@@ -766,31 +764,32 @@ test('pit availability notice can be hidden but authentication warnings remain v
 });
 
 test('pit editor exposes status and availability choices and renders current driver status', async ({ page }) => {
-  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'pit_stops' }] } }));
+  await page.evaluate(() => window.mountModular({ editor: true, nativePreview: true, config: { modules: [{ type: 'pit_stops' }] } }));
   const editor = page.locator('f1-sensor-card-editor');
   await editor.getByText('Module options', { exact: true }).click();
   await expect(editor.getByRole('checkbox', { name: 'Status', exact: true })).toBeChecked();
   await expect(editor.getByRole('checkbox', { name: 'Explain F1TV availability', exact: true })).toBeChecked();
-  await expect(editor.locator('f1-sensor-card').getByText('On track', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('#native-preview f1-sensor-card').getByText('On track', { exact: true }).first()).toBeVisible();
   await editor.getByRole('checkbox', { name: 'Status', exact: true }).uncheck();
-  await expect(editor.locator('f1-sensor-card').getByText('On track', { exact: true })).toHaveCount(0);
+  await expect(page.locator('#native-preview f1-sensor-card').getByText('On track', { exact: true })).toHaveCount(0);
 });
 
 test('automatic timing profile follows the sample session and a column edit becomes a persistent custom choice', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 1100 });
-  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'timing' }] } }));
+  await page.evaluate(() => window.mountModular({ editor: true, nativePreview: true, scene: 'qualifying', config: { modules: [{ type: 'timing' }] } }));
+  await page.evaluate(() => { window.fixtureCard.entries = window.fixtureDemo.preview.entries; });
   const editor = page.locator('f1-sensor-card-editor');
   await editor.getByText('Module options', { exact: true }).click();
   await editor.getByLabel('Column profile', { exact: true }).selectOption('auto');
-  await editor.getByLabel('Sample session', { exact: true }).selectOption('sprint_qualifying');
-  const card = editor.locator('f1-sensor-card');
+  await page.getByLabel('Sample session', { exact: true }).selectOption('sprint_qualifying');
+  const card = page.locator('#native-preview f1-sensor-card');
   await expect(card.getByRole('columnheader', { name: 'SQ1 best', exact: true })).toBeVisible();
   await expect(card.getByText('SQ1 · eliminated', { exact: true })).toHaveCount(2);
   await editor.getByRole('checkbox', { name: 'Q3 best', exact: true }).uncheck();
   await expect(editor.getByLabel('Column profile', { exact: true })).toHaveValue('custom');
   const saved = await page.evaluate(() => window.savedConfig);
   expect(saved.modules[0].fields).toContain('q1_time'); expect(saved.modules[0].fields).not.toContain('q3_time');
-  await editor.getByLabel('Sample session', { exact: true }).selectOption('race');
+  await page.getByLabel('Sample session', { exact: true }).selectOption('race');
   await expect(card.getByRole('columnheader', { name: 'Q1 best', exact: true })).toBeVisible();
   await expect(card.getByText('Q/SQ columns are available during qualifying sessions.', { exact: false })).toBeVisible();
   expect(await page.evaluate(() => window.savedConfig.modules[0].fields)).toEqual(saved.modules[0].fields);
@@ -992,7 +991,7 @@ test('map editor controls labels and orientation and map-only mode keeps the tex
   await editor.getByText('Module options', { exact: true }).click();
   await editor.getByLabel('Driver labels', { exact: true }).selectOption('number');
   await editor.getByLabel('Orientation', { exact: true }).selectOption('raw');
-  const map = editor.locator('f1-track-map-view');
+  const map = page.locator('#native-preview f1-track-map-view');
   await expect(map.locator('.marker text').filter({ hasText: /^16$/ })).toBeVisible();
   await expect(map.locator('details')).not.toHaveAttribute('open');
   await map.locator('summary').click();
@@ -1001,6 +1000,7 @@ test('map editor controls labels and orientation and map-only mode keeps the tex
   await editor.getByLabel('Driver labels', { exact: true }).selectOption('off');
   await expect(map.locator('.marker text')).toHaveCount(0);
   await expect(map.getByText('Driver labels are hidden.', { exact: false })).toBeAttached();
+  await map.locator('summary').click();
   await expect(map.getByRole('button', { name: /16 · LEC/ })).toBeVisible();
   expect(await page.evaluate(() => window.savedConfig.modules[0].options.labels)).toBe('off');
   await editor.getByLabel('Show driver count', { exact: true }).uncheck();
@@ -1030,15 +1030,15 @@ test('battle views distinguish estimates, preserve start/end history and expose 
 
 test('battle editor switches useful starter fields and applies evidence filters without changing backend analysis', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 1000 });
-  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'battles' }] } }));
+  await page.evaluate(() => window.mountModular({ editor: true, nativePreview: true, config: { modules: [{ type: 'battles' }] } }));
   const editor = page.locator('f1-sensor-card-editor');
   await editor.getByText('Module options', { exact: true }).click();
   await editor.getByLabel('Observations', { exact: true }).selectOption('position_exchanges');
   await expect(editor.getByRole('checkbox', { name: 'Before → after', exact: true })).toBeChecked();
-  await expect(editor.locator('f1-sensor-card').getByText('LEC: 1 → 2', { exact: true })).toBeVisible();
+  await expect(page.locator('#native-preview f1-sensor-card').getByText('LEC: 1 → 2', { exact: true })).toBeVisible();
   await editor.getByLabel('Minimum evidence score (%)', { exact: true }).fill('70');
   await editor.getByLabel('Minimum evidence score (%)', { exact: true }).press('Tab');
-  await expect(editor.locator('f1-sensor-card').getByText('No matching observations for this session.', { exact: true })).toBeVisible();
+  await expect(page.locator('#native-preview f1-sensor-card').getByText('No matching observations for this session.', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.savedConfig.modules[0].options.minimum_score)).toBe(70);
 });
 
@@ -1066,17 +1066,17 @@ test('strategy comparison views preserve uncertainty, compound graphics and acce
 
 test('strategy editor exposes relevant comparison fields and quality controls while preserving the selected content', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 1000 });
-  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'strategy' }] } }));
+  await page.evaluate(() => window.mountModular({ editor: true, nativePreview: true, config: { modules: [{ type: 'strategy' }] } }));
   const editor = page.locator('f1-sensor-card-editor');
   await editor.getByText('Module options', { exact: true }).click();
   await editor.getByLabel('Minimum clean laps per row', { exact: true }).fill('10');
   await editor.getByLabel('Minimum clean laps per row', { exact: true }).press('Tab');
-  await expect(editor.locator('f1-sensor-card').getByText('No estimates meet the selected evidence and sample requirements.', { exact: true })).toBeVisible();
+  await expect(page.locator('#native-preview f1-sensor-card').getByText('No estimates meet the selected evidence and sample requirements.', { exact: true })).toBeVisible();
   await editor.getByLabel('Analysis content', { exact: true }).selectOption('crossover');
   await expect(editor.getByRole('checkbox', { name: 'Observed tyre-age range', exact: true })).toBeChecked();
   await expect(editor.getByLabel('Minimum clean laps per row', { exact: true })).toHaveCount(0);
   await expect(editor.getByLabel('Pinned driver', { exact: true })).toHaveCount(0);
-  await expect(editor.locator('f1-sensor-card').getByText('8.5 laps', { exact: true })).toBeVisible();
+  await expect(page.locator('#native-preview f1-sensor-card').getByText('8.5 laps', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.savedConfig.modules[0].options)).toMatchObject({ content: 'crossover', minimum_clean_laps: 10 });
 });
 
@@ -1105,8 +1105,8 @@ test('stint graphics use observed lap extents, show coverage without color and r
 
 test('Race Control editor offers a compact latest view and driver focus keeps global messages as an explicit choice', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 1000 });
-  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'race_control', driver: 'NOR' }] } }));
-  const editor = page.locator('f1-sensor-card-editor'), card = editor.locator('f1-sensor-card');
+  await page.evaluate(() => window.mountModular({ editor: true, nativePreview: true, config: { modules: [{ type: 'race_control', driver: 'NOR' }] } }));
+  const editor = page.locator('f1-sensor-card-editor'), card = page.locator('#native-preview f1-sensor-card');
   await editor.getByText('Module options', { exact: true }).click();
   await editor.getByLabel('Message view', { exact: true }).selectOption('latest_message');
   await expect(editor.getByLabel('Messages to show', { exact: true })).toHaveCount(0);

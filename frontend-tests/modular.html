@@ -5,16 +5,29 @@
   const base='/custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/';
   const [{makeDemo},{normalizeConfig,applyPreset}]=await Promise.all([import(base+'demo.js'),import(base+'config.js'),import(base+'card.js'),import(base+'editor.js')]);
   if(!customElements.get('ha-card'))customElements.define('ha-card',class extends HTMLElement{});
-  window.mountModular=({preset='session',config,editor=false,language='en',scene='race'}={})=>{
+  window.mountModular=({preset='session',config,editor=false,language='en',scene='race',nativePreview=true}={})=>{
     const value=config?normalizeConfig(config):applyPreset(normalizeConfig({}),preset);
     const demo=makeDemo(scene,language,value.f1_entry_id);
     const node=document.createElement(editor?'f1-sensor-card-editor':'f1-sensor-card');
     node.hass=demo.hass;
     if(!editor)node.previewData=demo.preview;
     node.setConfig(value);
-    node.addEventListener('config-changed',event=>{window.savedConfig=event.detail.config;});
+    let previewHost;
+    const rebuildPreview=async config=>{
+      const card=document.createElement('f1-sensor-card');
+      card.hass=demo.hass;card.preview=true;card.setConfig(config);
+      previewHost.replaceChildren(card);window.fixturePreview=card;
+      await card.updateComplete;
+      if(card.isConnected&&card.previewOptions?.source==='actual'){card.entries=demo.preview.entries;card.changePreview('source','sample');}
+    };
+    node.addEventListener('config-changed',event=>{window.savedConfig=event.detail.config;if(previewHost)rebuildPreview(event.detail.config);});
     document.querySelector('#root').replaceChildren(node);
     window.fixtureCard=node;window.fixtureDemo=demo;
+    if(editor&&nativePreview){
+      // Simulate HA's separate preview host and recreation on config-changed.
+      previewHost=document.createElement('hui-dialog-edit-card');previewHost.id='native-preview';
+      document.querySelector('#root').append(previewHost);rebuildPreview(value);
+    }
     return value;
   };
   window.modularReady=true;

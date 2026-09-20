@@ -32,9 +32,9 @@ test('advanced branding is progressively revealed and saved independently of con
   await page.evaluate(() => {
     const demo = window.fixtureDemo;
     demo.hass.states[demo.preview.entries[0].entities.driver_list].attributes.drivers[0].team_color = '#aa33cc';
-    window.fixtureCard.hass = { ...demo.hass };
+    window.fixtureCard.hass = { ...demo.hass }; if(window.fixturePreview)window.fixturePreview.hass = { ...demo.hass };
   });
-  await expect(editor.locator('.preview ha-card')).toHaveCSS('border-top-color', 'rgb(170, 51, 204)');
+  await expect(page.locator('#native-preview ha-card')).toHaveCSS('border-top-color', 'rgb(170, 51, 204)');
   await page.reload(); await page.waitForFunction(() => window.modularReady);
   await page.evaluate(config => window.mountModular({ config }), saved);
   await expect(page.locator('ha-card')).toHaveCSS('border-top-color', 'rgb(232, 0, 32)');
@@ -77,7 +77,7 @@ test('logo frames retain size through loading, fallback and reuse for an unknown
     window.previousLogoImage = window.fixtureCard.shadowRoot.querySelector('f1-module-view').shadowRoot.querySelector('f1-team-logo').shadowRoot.querySelector('img');
     const demo = window.fixtureDemo, entry = demo.preview.entries[0];
     for (const key of ['driver_list', 'driver_positions']) demo.hass.states[entry.entities[key]].attributes.drivers[0].team = 'Unknown Historic Team';
-    window.fixtureCard.hass = { ...demo.hass };
+    window.fixtureCard.hass = { ...demo.hass }; if(window.fixturePreview)window.fixturePreview.hass = { ...demo.hass };
   });
   await expect(logo.locator('.initials')).toHaveText('UH');
   await expect(logo.locator('.initials')).toBeVisible();

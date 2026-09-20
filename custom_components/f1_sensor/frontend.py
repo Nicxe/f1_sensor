@@ -67,6 +67,7 @@ LIVE_DATA_CARD_ASSET_FILENAMES = (
     "modular/visibility.js",
     "modular/demo.js",
     "modular/editor.js",
+    "modular/arranger.js",
     "modular/typography.js",
     "fonts/barlow-condensed-latin-700-normal.woff2",
     "fonts/barlow-condensed-LICENSE.txt",

@@ -46,8 +46,9 @@ The editor groups content, appearance, behaviour and accessibility. Module
 settings use the same catalogue as rendering. Presets can be saved immediately;
 advanced fields appear only for the selected module. Replacing content requires
 an in-editor comparison and a cancel/apply choice. All reorder operations have
-buttons, retain focus, and support undo. Preview uses the real renderer with
-isolated, labelled demonstration data and cannot issue integration actions.
+buttons, retain focus, and support undo. Home Assistant provides the only preview,
+using real data by default or isolated, labelled sample data on request. Neither
+preview mode can issue integration actions.
 
 Local driver focus and freeze do not change integration selectors, Live Delay,
 spoiler state, or replay. Optional groups are scoped to connection, entry,
@@ -2711,3 +2712,87 @@ Physical-device checks are appended to the manual handover. No remaining local
 agent work; no commit, push or release was made for this feature. Unrelated
 issue-automation work changed HEAD from `3d1db27` to `5fe9161` during the task;
 those changes were preserved and are outside this implementation.
+
+
+## 2026-09-19 — drag arrangement and column resize
+
+- Added **Modules → Arrange modules** as a full-width editor workspace, with a
+  named tile overview, pointer handles, grid-snapped widths, automatic edge
+  scrolling and a dashed drop preview. Stack/tabs retain ordering; columns use
+  the existing spans. Heights remain content-driven and no fixed coordinates
+  are stored. Disabled/conditional modules stay available in the overview.
+- Uses bundled Lit and standard Pointer Events, with no new runtime dependency
+  or private HA editor API. Forwarded asset versions and registered the new
+  `modular/arranger.js` file in the integration asset manifest.
+- Gesture state stays within the arranger until release. One completed gesture
+  emits one configuration change and one Undo entry. Escape, pointer cancellation,
+  focus loss, an outside move drop, disconnection and incoming configuration
+  changes discard previews; pointer capture and frame/listener cleanup are local.
+- Existing move/width controls remain available. Handles support arrow keys and
+  Home/End; focus survives keyed reorder. Returning a resize to its original
+  width preserves `full` or a larger saved span without a spurious Undo entry.
+- Verified: 234 frontend unit tests; 205 Chromium browser tests (14 new arrangement
+  flows); 13 arrangement tests each in Firefox and WebKit. Real touch input
+  emulation and native touch scrolling run in Chromium; that one test is skipped
+  in the other engines. Desktop/mobile axe checks pass.
+- Required runtime checks passed: Ruff (217 files unchanged), 1,578 integration
+  tests (376.17 seconds), documentation build/assertions and 15 documentation
+  browser tests. Deterministic package: 108 runtime files, SHA-256
+  `3e900fdf3724cda124890c29a122d39111983095ea091f53e6d96a7427591a48`.
+- All 34 JavaScript assets are byte-identical in primary HAdev source, bundled
+  integration and Git; `frontend.py` matches too. HAdev serves matching editor
+  and arranger bytes. Reloading the F1 entry updated its managed resource version,
+  replacing the previously cached editor; 66 entities remain available.
+- Native HAdev editor verified Timing at 2 columns beside Track map at 1, followed
+  by full-width Race Control. Drag resize changed Timing to 3; drag reorder moved
+  Timing behind Track map; Undo restored the order. Final full-width workspace
+  was visually checked. No browser warnings/errors. Temporary cards were
+  cancelled and dashboard edit mode exited. Browser debug/cache overrides reset.
+- Physical-device/Companion App and human assistive-technology acceptance remains
+  in the manual handoff. No commit, push, release or saved dashboard change.
+
+
+## 2026-09-20 — One native card preview
+
+The modular editor no longer renders its own card, width selector or mobile
+Edit/Preview buttons. Home Assistant's card dialog provides the only preview,
+with Actual data by default and explicitly labelled Sample data on request.
+The same sample session choices are available there. Arrange modules remains the
+schematic ordering/width editor; the real card still responds to its container.
+HA's preview width is unchanged and the UI explains why columns can stack there.
+
+Preview preferences belong to the native preview host in a WeakMap, so HA's
+card recreation retains the source and session without changing saved config or
+localStorage. Sample states stay separate from the incoming hass object. Source
+changes clear retained/frozen data and close old subscriptions; real data resumes
+when sample mode ends. Real team accent metadata survives card recreation.
+The HA preview flag is also used for dashboard arrangement, so sample controls
+additionally require the card-edit dialog in composed DOM ancestry. That is a
+read-only compatibility check, with no modification of HA's markup or styles.
+Both native preview modes suppress card, integration and shared-focus actions.
+
+The fixture now models HA's separate preview host and card recreation. Tests
+cover isolated sources, no-installation samples, scene changes, configuration
+preservation, preview-host isolation, exit to real dashboard data, Swedish
+labels, keyboard operation, narrow screens and accessibility. Editor tests use
+the native preview fixture instead of the removed child preview.
+
+Validation: 234 frontend unit tests, 210 Chromium tests, 18 focused Firefox and
+18 WebKit tests passed (each skips the Chromium-only touch injection case).
+Ruff passed and all 1,578 integration tests passed in 377.88 seconds. The docs
+build, build assertions and 15 docs browser tests passed. The deterministic
+release contains 108 runtime files, SHA-256
+`348ad098001fda607e19d08af2917716ad1e6798ed0f420b3fd1d808e52d5ee2`.
+
+
+HAdev verification used resource `v=c1206a69bf54`. There were zero sample selectors
+on the dashboard in arrangement mode, exactly one in the card dialog, and no card
+inside the custom editor. Sample data and qualifying stayed selected when the
+native preview was recreated after editor changes. Arrange modules retained three
+columns and a two-column module. Returning to Actual data removed DEMO and showed
+Azerbaijan data. The browser console had no warnings/errors. The temporary card
+was cancelled and dashboard edit mode exited without saving. An intermediate HA
+reload cancelled during persisted-data loading; a fresh reload was allowed to
+finish and the integration returned from Initializing to its normal F1 entry.
+All 34 JavaScript files and frontend.py match across the required copies; HAdev
+serves the same card/editor bytes. No commit, push or release was made.
