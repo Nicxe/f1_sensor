@@ -25,6 +25,8 @@ test('all legacy factories including archive alias expose conversion without pub
   });
   expect(counts).toHaveLength(24); expect(counts.every(c => c.tag === 'f1-migration-editor')).toBe(true);
   await page.evaluate(() => window.mountMigration({ type: 'custom:f1-practice-timing-card', title: 'Original', color_overall_fastest: '#123456', show_sectors: true }));
+  await expect(page.getByRole('heading', { name: 'This card is deprecated', exact: true })).toBeVisible();
+  await expect(page.getByText('Nothing changes until you apply the conversion and save in Home Assistant.', { exact: false })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Review conversion', exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.migrationEvents)).toEqual([]);
   await page.getByRole('button', { name: 'Review conversion', exact: true }).click();
@@ -174,6 +176,8 @@ test('conversion review supports keyboard, narrow widths, Swedish and forced col
     window.mountMigration({ type: 'custom:f1-weekend-hub-card', title: 'Helgen', unknown: true });
     window.migrationEditor.hass = { ...window.migrationEditor.hass, locale: { ...window.migrationEditor.hass.locale, language: 'sv' } };
   });
+  await expect(page.getByRole('heading', { name: 'Det här kortet är deprecierat', exact: true })).toBeVisible();
+  await expect(page.getByText('Ingenting ändras förrän du tillämpar konverteringen och sparar i Home Assistant.', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Granska konvertering', exact: true }).focus(); await page.keyboard.press('Enter');
   await expect(page.getByText('Ändrat beteende', { exact: false })).toBeVisible();
   const check = page.getByRole('checkbox'); await check.focus(); await page.keyboard.press('Space');

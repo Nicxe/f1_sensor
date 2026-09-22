@@ -15,7 +15,7 @@ Deprecated card types are kept only to help existing dashboards move. Do not use
 
 1. Make a dashboard backup. To compare both versions, duplicate the old card before converting the copy.
 2. Open the old card in the Home Assistant dashboard editor.
-3. In **Try the modular F1 Sensor card**, select **Review conversion**.
+3. In **This card is deprecated**, select **Review conversion**.
 4. Choose the correct F1 Sensor installation if the converter cannot identify it uniquely.
 5. Open every **Choose again or keep the original**, **Changed behavior** and **Transferred settings** section.
 6. Review the sample-data preview and accept the review statement.

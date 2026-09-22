@@ -76,8 +76,8 @@ export class F1MigrationEditor extends LitElement {
     if (!this.config) return html``;
     if (!this.proposal) return html`
       ${isLegacyConfig(this.config) ? html`<section class="migration" aria-label=${this.w('Convert this card', 'Konvertera detta kort')}>
-        <h3>${this.w('Try the modular F1 Sensor card', 'Prova det modulära F1 Sensor-kortet')}</h3>
-        <p>${this.w('Review a converted configuration with your original saved for recovery. You can cancel before applying it.', 'Granska en konverterad konfiguration med originalet sparat för återställning. Du kan avbryta innan den tillämpas.')}</p>
+        <h3>${this.w('This card is deprecated', 'Det här kortet är deprecierat')}</h3>
+        <p>${this.w('This card continues to work, but new features and documentation target the modular F1 Sensor card. Review a conversion with your original saved for recovery. Nothing changes until you apply the conversion and save in Home Assistant.', 'Kortet fortsätter att fungera, men nya funktioner och dokumentation riktas mot det modulära F1 Sensor-kortet. Granska en konvertering med originalet sparat för återställning. Ingenting ändras förrän du tillämpar konverteringen och sparar i Home Assistant.')}</p>
         <button @click=${() => this.review()}>${this.w('Review conversion', 'Granska konvertering')}</button>
       </section>` : ''}
       ${this.error ? html`<p class="error" role="alert">${this.error}</p>` : ''}${this.childEditor()}`;
