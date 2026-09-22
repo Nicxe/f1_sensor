@@ -35,7 +35,10 @@ def selected_checks(selected: set[str]) -> dict[str, bool]:
 
 def should_deploy(files: list[str] | None, event_name: str, branch: str) -> bool:
     """A full release test run does not imply that the site needs deployment."""
-    if branch != "main" or event_name not in ("push", "workflow_dispatch"):
+    if branch not in ("main", "beta") or event_name not in (
+        "push",
+        "workflow_dispatch",
+    ):
         return False
     if files is None:
         return True

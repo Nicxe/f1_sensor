@@ -105,6 +105,44 @@ async def test_telemetry_compare_not_loaded_success_and_errors(
     assert connection.errors[-1][1] == "provider_unavailable"
 
 
+@pytest.mark.asyncio
+async def test_telemetry_catalog_reads_named_session_and_explains_unavailable(
+    hass, monkeypatch
+) -> None:
+    connection = _Connection()
+    message = {"id": 44, "expected_session_id": "selected-replay"}
+    monkeypatch.setattr(ws, "_resolve_runtime", Mock(return_value=None))
+    ws._ws_replay_telemetry_catalog(hass, connection, message)
+    await hass.async_block_till_done()
+    assert connection.errors[-1][1] == "not_loaded"
+    telemetry = SimpleNamespace(
+        async_catalog=AsyncMock(
+            return_value={"session_id": "selected-replay", "drivers": []}
+        )
+    )
+    monkeypatch.setattr(
+        ws,
+        "_resolve_runtime",
+        Mock(
+            return_value=SimpleNamespace(analysis=SimpleNamespace(telemetry=telemetry))
+        ),
+    )
+    ws._ws_replay_telemetry_catalog(hass, connection, message)
+    await hass.async_block_till_done()
+    telemetry.async_catalog.assert_awaited_once_with(
+        expected_session_id="selected-replay"
+    )
+    assert connection.results[-1][1]["session_id"] == "selected-replay"
+    for error, code in [
+        (ValueError("changed"), "invalid_request"),
+        (RuntimeError("offline"), "provider_unavailable"),
+    ]:
+        telemetry.async_catalog = AsyncMock(side_effect=error)
+        ws._ws_replay_telemetry_catalog(hass, connection, message)
+        await hass.async_block_till_done()
+        assert connection.errors[-1][1] == code
+
+
 def test_runtime_resolution_and_not_loaded_payload(hass, monkeypatch) -> None:
     runtime = SimpleNamespace(analysis=None)
     monkeypatch.setattr(ws, "runtime_from_hass", Mock(return_value=runtime))

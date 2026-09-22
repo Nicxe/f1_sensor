@@ -64,6 +64,6 @@ F1TV pairing is optional. See [what works with each data mode](/features/f1tv-au
 
 Open the integration and check that its devices and selected entities appear. Schedule data should be useful even when no session is running; live entities can wait until the next session.
 
-The dashboard cards are included and registered automatically. Continue with **[Your first dashboard](/getting-started/first-dashboard)**.
+The F1 Sensor dashboard card is included and registered automatically. Continue with **[Your first dashboard](/getting-started/first-dashboard)**.
 
 If F1 Sensor is missing from Add integration, confirm the download completed, restart Home Assistant and refresh the browser. For further checks, open [troubleshooting](/help/overview).

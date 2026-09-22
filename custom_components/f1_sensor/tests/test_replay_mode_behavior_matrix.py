@@ -68,6 +68,21 @@ def test_replay_identifiers_sessions_and_seek_helpers() -> None:
     session = _session(year="2026", meeting_key="1", session_key="2")
     assert session.label == "Test GP - Race"
     assert session.unique_id == "2026_1_2"
+    manager = SimpleNamespace(
+        _selected_session=session,
+        _state=ReplayState.PAUSED,
+        _download_progress=0,
+        _download_error=None,
+        _available_sessions=[session],
+        _selected_year=2026,
+        _index_year=2026,
+        _index_status="ready",
+        _index_error=None,
+    )
+    snapshot = ReplaySessionManager._get_snapshot(manager)
+    assert snapshot["selected_session_year"] == 2026
+    assert snapshot["selected_meeting_key"] == 1
+    assert snapshot["selected_session_key"] == 2
     assert _parse_optional_utc(None) is None
     assert _parse_optional_utc("bad") is None
     assert _parse_optional_utc("2026-09-01T12:00:00").tzinfo is UTC

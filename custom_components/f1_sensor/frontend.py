@@ -16,13 +16,16 @@ from homeassistant.components.lovelace.const import (
     CONF_URL,
     DOMAIN as LOVELACE_DATA,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ID, CONF_TYPE
 from homeassistant.core import HomeAssistant, callback as ha_callback
 from homeassistant.helpers import issue_registry as ir
 
 from .const import (
     CONF_INSTALL_DASHBOARD_CARDS,
+    CONF_INSTALL_LEGACY_CARDS,
     DEFAULT_INSTALL_DASHBOARD_CARDS,
+    DEFAULT_INSTALL_LEGACY_CARDS,
     DOMAIN,
 )
 
@@ -38,10 +41,36 @@ LIVE_DATA_CARD_ASSET_FILENAMES = (
     "platform/accessibility.js",
     "platform/actions.js",
     "platform/base-card.js",
+    "platform/branding.js",
     "platform/card-registry.js",
     "platform/dashboard-context.js",
     "platform/entity-resolver.js",
     "platform/i18n.js",
+    "modular/catalog.js",
+    "modular/config.js",
+    "modular/migration.js",
+    "modular/migration-editor.js",
+    "modular/semantics.js",
+    "modular/data.js",
+    "modular/season-data.js",
+    "modular/session-data.js",
+    "modular/analysis-data.js",
+    "modular/map-data.js",
+    "modular/map-view.js",
+    "modular/chart.js",
+    "modular/telemetry-data.js",
+    "modular/telemetry-view.js",
+    "modular/connection.js",
+    "modular/view.js",
+    "modular/card.js",
+    "modular/viewing-controls.js",
+    "modular/visibility.js",
+    "modular/demo.js",
+    "modular/editor.js",
+    "modular/arranger.js",
+    "modular/typography.js",
+    "fonts/barlow-condensed-latin-700-normal.woff2",
+    "fonts/barlow-condensed-LICENSE.txt",
     "hard_tyre.png",
     "intermediate_tyre.png",
     "medium_tyre.png",
@@ -92,7 +121,9 @@ async def async_ensure_live_data_card_frontend(hass: HomeAssistant) -> None:
         return
 
     try:
-        await _async_ensure_lovelace_resource(hass, sync.cache_key)
+        await _async_ensure_lovelace_resource(
+            hass, sync.cache_key, install_legacy_cards=_legacy_cards_requested(hass)
+        )
     except Exception as err:  # noqa: BLE001
         _LOGGER.warning(
             "Could not update the F1 Sensor live data card Lovelace resource: %s",
@@ -115,21 +146,38 @@ async def async_reconcile_live_data_card_frontend(hass: HomeAssistant) -> None:
         )
 
 
-def _dashboard_cards_requested(hass: HomeAssistant) -> bool:
-    """Return whether any enabled F1 Sensor entry requests dashboard cards."""
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        if entry.disabled_by is not None:
-            continue
-        enabled = entry.options.get(
+def _entry_requests_cards(entry: ConfigEntry) -> bool:
+    """Return whether an enabled entry requests the managed frontend."""
+    return entry.disabled_by is None and bool(
+        entry.options.get(
             CONF_INSTALL_DASHBOARD_CARDS,
             entry.data.get(
-                CONF_INSTALL_DASHBOARD_CARDS,
-                DEFAULT_INSTALL_DASHBOARD_CARDS,
+                CONF_INSTALL_DASHBOARD_CARDS, DEFAULT_INSTALL_DASHBOARD_CARDS
             ),
         )
-        if bool(enabled):
-            return True
-    return False
+    )
+
+
+def _dashboard_cards_requested(hass: HomeAssistant) -> bool:
+    """Return whether any enabled F1 Sensor entry requests dashboard cards."""
+    return any(
+        _entry_requests_cards(entry)
+        for entry in hass.config_entries.async_entries(DOMAIN)
+    )
+
+
+def _legacy_cards_requested(hass: HomeAssistant) -> bool:
+    """Keep legacy cards while any enabled card installation requests them."""
+    return any(
+        _entry_requests_cards(entry)
+        and bool(
+            entry.options.get(
+                CONF_INSTALL_LEGACY_CARDS,
+                entry.data.get(CONF_INSTALL_LEGACY_CARDS, DEFAULT_INSTALL_LEGACY_CARDS),
+            )
+        )
+        for entry in hass.config_entries.async_entries(DOMAIN)
+    )
 
 
 async def _async_remove_lovelace_resources(hass: HomeAssistant) -> None:
@@ -201,6 +249,8 @@ def _sync_bundled_live_data_card_assets(
 async def _async_ensure_lovelace_resource(
     hass: HomeAssistant,
     cache_key: str,
+    *,
+    install_legacy_cards: bool = True,
 ) -> None:
     """Create or update the Lovelace module resource for the bundled card."""
     resources = _get_lovelace_resources(hass)
@@ -222,11 +272,17 @@ async def _async_ensure_lovelace_resource(
         return
 
     items = list(async_items() or [])
-    desired_url = _managed_resource_url(cache_key)
+    desired_url = _managed_resource_url(cache_key, install_legacy_cards)
     managed_item = _find_first_resource(items, _is_managed_resource_url)
     old_items = _find_old_live_data_card_resources(items)
     if managed_item is not None:
         await _async_update_resource_if_needed(resources, managed_item, desired_url)
+        # A stale duplicate must not load the legacy bundle after it is disabled.
+        for item in items:
+            if item is not managed_item and _is_managed_resource_url(
+                str(item.get(CONF_URL, ""))
+            ):
+                await _async_update_resource_if_needed(resources, item, desired_url)
         _async_update_stale_live_data_card_resource_issue(hass, len(old_items))
         return
 
@@ -344,9 +400,10 @@ def _is_old_live_data_card_resource_url(url: str) -> bool:
     return _normalize_resource_path(url) in OLD_LIVE_DATA_CARD_RESOURCE_URL_PATHS
 
 
-def _managed_resource_url(cache_key: str) -> str:
+def _managed_resource_url(cache_key: str, install_legacy_cards: bool = True) -> str:
     """Build the cache-busted Lovelace resource URL."""
-    return f"{MANAGED_LIVE_DATA_CARD_RESOURCE_URL}?v={cache_key}"
+    suffix = "" if install_legacy_cards else "&legacy=0"
+    return f"{MANAGED_LIVE_DATA_CARD_RESOURCE_URL}?v={cache_key}{suffix}"
 
 
 def _normalize_resource_path(url: str) -> str:
