@@ -79,9 +79,11 @@ class PolicyTests(unittest.TestCase):
             should_deploy(["custom_components/f1_sensor/auth.py"], "push", "main")
         )
         self.assertTrue(should_deploy(["docs/help.md"], "push", "main"))
+        self.assertTrue(should_deploy(["docs/help.md"], "push", "beta"))
         self.assertFalse(should_deploy(["docs/help.md"], "pull_request", "main"))
-        self.assertFalse(should_deploy(None, "push", "beta"))
+        self.assertTrue(should_deploy(None, "push", "beta"))
         self.assertTrue(should_deploy(None, "workflow_dispatch", "main"))
+        self.assertTrue(should_deploy(None, "workflow_dispatch", "beta"))
 
     def test_docs_do_not_require_backend_or_registry(self):
         selected = select_jobs(

@@ -33,6 +33,11 @@ Use beta when you want to validate the next release before it becomes stable.
 
 Beta builds can include new features, changed behavior, and fixes that need real Home Assistant testing. Read the release notes before updating, and be ready to collect logs or switch back to stable if something affects your setup.
 
+Read the [beta documentation](https://nicxe.github.io/f1_sensor/beta/) when you
+use this channel. It follows the `beta` branch and can describe features that
+are not available in the current stable release. The banner and navigation
+identify it as beta documentation and link back to the stable documentation.
+
 To install or update to beta through HACS:
 
 1. Open **HACS** in Home Assistant.
@@ -95,4 +100,8 @@ For older standalone dashboard resources, use the [card migration guide](/cards/
 
 ## Documentation previews
 
-A preview banner means the documentation includes features from development or a prerelease. Check your installed F1 Sensor version before following a new feature guide. The version link in the navigation opens the release on which the documentation is based.
+A beta or preview banner means the documentation includes features that are not
+in the stable release. Check your installed F1 Sensor version before following a
+new feature guide. Stable documentation is published at the main documentation
+URL, while beta documentation is published below `/beta/`. The channel link in
+the navigation lets you switch between them.

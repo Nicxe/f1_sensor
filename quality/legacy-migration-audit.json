@@ -6,8 +6,8 @@
     "custom_components/f1_sensor/www/f1-sensor-live-data-card/f1-sensor-live-data-card.js": "12910041625839dac64d7b9a9e539740851bd05f5a7ef0ab7d528a11f93bb3f7",
     "custom_components/f1_sensor/www/f1-sensor-live-data-card/platform/entity-resolver.js": "63af1a85f06deb65065b30867e9c6b3af186e96e25fa226bde2a7ea136e0b3bf",
     "custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/migration.js": "86d9aa03e09a132464223bbd5eca0a98bc6764a1a3dcadac471957800b963b85",
-    "custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/config.js": "c5ff961fb8db0cd1e3dc8602cff5e197a2e0d5d66cfa3604136cb2da293289b1",
-    "custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/catalog.js": "7c3b96cc49c89fbbc46145c342efee69c431853caa83e447dda47506c5af9299",
+    "custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/config.js": "7167408c22b90e15c742c000e1696d4eb2a537c1fe5c0f0faa9bad8477333cb3",
+    "custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/catalog.js": "4f6083c07b8933dacc9cdea66ba80ae03df2b93a554c46e2332082fc06fc8eed",
     "scripts/audit_card_migration.mjs": "713062454b64c70d2047b3ac47f141e8be15d26b4c280de5f65f71fabb7422b6",
     "scripts/inventory_card_options.cjs": "fef6f037064c314d7d11c7eaafca2ab42014e644aa55e136156887c6030b2035",
     "scripts/legacy_config_analysis.cjs": "ee21fcc752adb5be2aafed2e3559b61d64e192d83be1f5a542f362cf43f5c9ae"
