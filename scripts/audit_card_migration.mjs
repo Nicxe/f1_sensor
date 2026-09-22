@@ -117,7 +117,7 @@ const lines = [
   'Nycklarna nedan gav enbart granskningsbesked i det angivna provurvalet. De är en konkret granskningskö, inte beslut att ta bort funktionerna.', '',
   ...cards.flatMap(card => [`### ${card.name}`, '', `Korttyp: \`${card.type}\`.`, '', card.fields.filter(field => field.observed === 'review_for_all_probes').map(field => `\`${field.key}\``).join(', ') || 'Inga i detta provurval.', '']),
 ];
-const destinations = [[new URL('quality/legacy-migration-audit.json', root), `${JSON.stringify(result, null, 2)}\n`], [new URL('quality/legacy-migration-audit.md', root), `${lines.join('\n')}\n`]];
+const destinations = [[new URL('quality/legacy-migration-audit.json', root), `${JSON.stringify(result, null, 2)}\n`], [new URL('quality/legacy-migration-audit.md', root), `${lines.join('\n').replace(/\n+$/, '\n')}`]];
 if (process.argv.includes('--check')) {
   for (const [destination, rendered] of destinations) if (fs.readFileSync(destination, 'utf8') !== rendered) throw new Error(`${destination.pathname} is stale; run this script without --check`);
 } else for (const [destination, rendered] of destinations) fs.writeFileSync(destination, rendered);
