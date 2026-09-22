@@ -190,4 +190,3 @@ Inga i detta provurval.
 Korttyp: `f1-session-archive-card`.
 
 Inga i detta provurval.
-
