@@ -177,8 +177,8 @@ Each entry in `series.series` contains:
 ```
 
 </details>
-:::tip[Season progression card]
-Use this entity with the bundled [F1 Season Progression Card](/cards/season-progression) to show driver championship point progression without installing another chart card.
+:::tip[Season progression]
+Use the **Season progression** module in the [F1 Sensor card](/cards/cards-overview) to show driver championship point progression without installing another chart card.
 :::
 
 

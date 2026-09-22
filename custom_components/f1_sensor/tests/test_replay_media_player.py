@@ -22,7 +22,13 @@ from custom_components.f1_sensor.replay_mode import ReplayState
 
 
 class _SessionManager:
-    selected_session = SimpleNamespace(label="Test GP - Race", unique_id="test_race")
+    selected_session = SimpleNamespace(
+        label="Test GP - Race",
+        unique_id="test_race",
+        year=2026,
+        meeting_key=1,
+        session_key=2,
+    )
 
     def __init__(self) -> None:
         self._listeners = []
@@ -71,6 +77,9 @@ def test_replay_media_player_exposes_seek_feature() -> None:
     player = _player(_Controller())
 
     assert player.supported_features & MediaPlayerEntityFeature.SEEK
+    assert player.extra_state_attributes["selected_session_year"] == 2026
+    assert player.extra_state_attributes["selected_meeting_key"] == 1
+    assert player.extra_state_attributes["selected_session_key"] == 2
 
 
 @pytest.mark.asyncio
