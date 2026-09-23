@@ -29,6 +29,11 @@ async function upsertComment(github, issue, marker, body, legacyMatch = () => fa
   }
 }
 
+function commentLinksToRelease(body, releaseUrl) {
+  const urls = String(body || '').match(/https?:\/\/[^\s<>()\[\]]+/g) || [];
+  return urls.some(url => url.replace(/[.,;!?]+$/, '') === releaseUrl);
+}
+
 async function updateIssue({github, context}, mode) {
   const key = {...context.repo, issue_number:context.payload.issue.number};
   const {data:issue} = await github.rest.issues.get(key);
@@ -82,8 +87,8 @@ async function releasedIssues({github, context}) {
     } else if (!release.prerelease && issue.labels.some(l => (l.name || l) === 'In BETA-testing')) {
       await removeLabel(github, key, 'In BETA-testing');
     }
-    await upsertComment(github, key, `<!-- f1-release:${release.id} -->`, releaseComment(issue, release), body => body.includes(release.html_url) && /A fix for this issue is now available|This feature has been implemented|This feature is now available/.test(body));
+    await upsertComment(github, key, `<!-- f1-release:${release.id} -->`, releaseComment(issue, release), body => commentLinksToRelease(body, release.html_url) && /A fix for this issue is now available|This feature has been implemented|This feature is now available/.test(body));
   }
 }
 
-module.exports = {ensureLabel, removeLabel, upsertComment, updateIssue, releasedIssues};
+module.exports = {ensureLabel, removeLabel, upsertComment, updateIssue, releasedIssues, commentLinksToRelease};
