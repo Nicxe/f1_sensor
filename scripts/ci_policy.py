@@ -65,7 +65,13 @@ def content_only(files: list[str]) -> bool:
     """Return whether a change is limited to published documentation content."""
     return bool(files) and all(
         p.startswith(("docs/", "blueprints/", "src/", "static/", "docs-tests/"))
-        or p in ("docusaurus.config.js", "sidebars.js", "playwright.docs.config.js")
+        or p
+        in (
+            "docusaurus.config.js",
+            "sidebars.js",
+            "playwright.docs.config.js",
+            "ci_tests/documentation_channels.test.mjs",
+        )
         for p in files
     )
 
