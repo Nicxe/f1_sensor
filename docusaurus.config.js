@@ -28,13 +28,26 @@ if (!branch) {
     branch = 'unknown';
   }
 }
-const isPreview = version === 'development' || version.includes('-') || !['main', 'content'].includes(branch);
-const editBranch = isPreview ? 'dev' : 'content';
-
 const GITHUB_ORG_NAME = 'Nicxe';
 const GITHUB_REPO_NAME = 'f1_sensor';
 const GITHUB_REPO_URL = `https://github.com/${GITHUB_ORG_NAME}/${GITHUB_REPO_NAME}`;
 const DOCS_FOLDER = 'docs';
+const channel = process.env.F1_DOCS_CHANNEL
+  || (branch === 'beta' ? 'beta' : ['main', 'content'].includes(branch) ? 'stable' : 'preview');
+const baseUrl = process.env.F1_DOCS_BASE_URL || `/${GITHUB_REPO_NAME}/`;
+if (!baseUrl.startsWith('/') || !baseUrl.endsWith('/')) {
+  throw new Error('F1_DOCS_BASE_URL must start and end with a slash.');
+}
+const isBeta = channel === 'beta';
+const isPreview = channel !== 'stable';
+const editBranch = isBeta ? 'beta' : isPreview ? 'dev' : 'content';
+const stableDocsUrl = `https://${GITHUB_ORG_NAME}.github.io/${GITHUB_REPO_NAME}/`;
+const betaDocsUrl = `${stableDocsUrl}beta/`;
+const versionLabel = isBeta && !version.includes('-') ? 'Beta'
+  : version === 'development' ? 'Preview' : `v${version}`;
+const versionUrl = version === 'development' || (isBeta && !version.includes('-'))
+  ? `${GITHUB_REPO_URL}/releases`
+  : `${GITHUB_REPO_URL}/releases/tag/v${version}`;
 
 const config = {
   title: 'F1 Sensor',
@@ -44,7 +57,7 @@ const config = {
   future: { v4: true },
 
   url: `https://${GITHUB_ORG_NAME}.github.io`,
-  baseUrl: `/${GITHUB_REPO_NAME}/`,
+  baseUrl,
   organizationName: GITHUB_ORG_NAME,
   projectName: GITHUB_REPO_NAME,
 
@@ -81,8 +94,10 @@ const config = {
   themeConfig: {
     image: 'img/social-card.png',
     announcementBar: isPreview ? {
-      id: 'development-documentation',
-      content: 'Preview documentation · Includes changes awaiting a stable release. <a href="https://github.com/Nicxe/f1_sensor/releases/latest">View the current stable release</a>.',
+      id: isBeta ? 'beta-documentation' : 'development-documentation',
+      content: isBeta
+        ? `Beta documentation · Applies to the beta channel and may describe behavior not in the stable release. <a href="${stableDocsUrl}">View stable documentation</a>.`
+        : `Preview documentation · Includes changes awaiting a beta or stable release. <a href="${stableDocsUrl}">View stable documentation</a>.`,
       backgroundColor: '#182129', textColor: '#ffffff', isCloseable: true,
     } : undefined,
     navbar: {
@@ -94,7 +109,8 @@ const config = {
         { label: 'Guides', to: '/features/overview', position: 'left' },
         { label: 'Reference', to: '/reference/overview', position: 'left' },
         { label: 'Help', to: '/help/overview', position: 'left' },
-        { label: version === 'development' ? 'Preview' : `v${version}`, position: 'right', className: 'navbar-version-chip', href: `${GITHUB_REPO_URL}/releases${version === 'development' ? '' : `/tag/v${version}`}` },
+        { label: isBeta ? 'Stable docs' : 'Beta docs', position: 'right', href: isBeta ? stableDocsUrl : betaDocsUrl },
+        { label: versionLabel, position: 'right', className: 'navbar-version-chip', href: versionUrl },
         { type: 'search', position: 'right' },
         { href: `${GITHUB_REPO_URL}`, label: 'GitHub', position: 'right' },
       ],
@@ -104,7 +120,7 @@ const config = {
       links: [
         {title: 'Build your setup', items: [
           {label: 'Get started', to: '/getting-started/installation'},
-          {label: 'Dashboard cards', to: '/cards/cards-overview'},
+          {label: 'Dashboard card', to: '/cards/cards-overview'},
           {label: 'Automations', to: '/automation'},
         ]},
         {title: 'Find answers', items: [

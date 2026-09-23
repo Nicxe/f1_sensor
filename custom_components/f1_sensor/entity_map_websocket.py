@@ -33,22 +33,36 @@ async def _ws_get_entity_map(
 ) -> None:
     """Return entity IDs grouped by their F1 Sensor config entry."""
     registry = er.async_get(hass)
+    # This switch belongs to one entry in the registry but protects all entries.
+    # Discover by stable identity so renamed entities remain safe for cards.
+    spoiler_entity_id = registry.async_get_entity_id(
+        "switch", DOMAIN, "f1_sensor_no_spoiler_mode"
+    )
+    global_entities = (
+        {"no_spoiler_mode": spoiler_entity_id} if spoiler_entity_id else {}
+    )
     result: list[dict[str, Any]] = []
     for entry in hass.config_entries.async_entries(DOMAIN):
         prefix = f"{entry.entry_id}_"
         entities: dict[str, str] = {}
+        disabled_entities: list[str] = []
         for registry_entry in er.async_entries_for_config_entry(
             registry, entry.entry_id
         ):
             unique_id = registry_entry.unique_id
             if not unique_id.startswith(prefix):
                 continue
-            entities[unique_id.removeprefix(prefix)] = registry_entry.entity_id
+            suffix = unique_id.removeprefix(prefix)
+            entities[suffix] = registry_entry.entity_id
+            if registry_entry.disabled_by is not None:
+                disabled_entities.append(suffix)
         result.append(
             {
                 "entry_id": entry.entry_id,
                 "title": entry.title,
                 "entities": dict(sorted(entities.items())),
+                "global_entities": global_entities,
+                "disabled_entities": sorted(disabled_entities),
             }
         )
     connection.send_result(msg["id"], result)

@@ -75,6 +75,9 @@ async def test_number_platform_setup_and_entity_lifecycle(hass) -> None:
     controller.async_set_delay.assert_awaited_once_with(15, source="number_entity")
     entity._handle_calibration_update({"mode": "running", "elapsed": 1.26})
     assert entity.extra_state_attributes["calibration_elapsed"] == 1.3
+    assert entity.extra_state_attributes["calibration_idle_reason"] is None
+    entity._handle_calibration_update({"mode": "idle", "idle_reason": "completed"})
+    assert entity.extra_state_attributes["calibration_idle_reason"] == "completed"
     await entity.async_will_remove_from_hass()
     controller.remove.assert_called_once()
 
@@ -169,6 +172,16 @@ async def test_switch_entities_delegate_and_publish_snapshots(hass) -> None:
     entity._handle_snapshot({"mode": "waiting", "reference": "lap", "elapsed": 2})
     assert entity.is_on is True
     assert entity.extra_state_attributes["mode"] == "waiting"
+    assert entity.extra_state_attributes["idle_reason"] is None
+    entity._handle_snapshot({"mode": "idle", "idle_reason": "timeout"})
+    assert entity.is_on is False
+    assert entity.extra_state_attributes["idle_reason"] == "timeout"
+    assert entity.extra_state_attributes["last_result"] is None
+    result = {"seconds": 32, "completed_at": "2026-09-14T13:00:32Z", "source": "button"}
+    entity._handle_snapshot(
+        {"mode": "idle", "idle_reason": "completed", "last_result": result}
+    )
+    assert entity.extra_state_attributes["last_result"] == result
     await entity.async_will_remove_from_hass()
 
     no_spoiler = SimpleNamespace(

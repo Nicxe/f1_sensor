@@ -10,7 +10,7 @@ Build a standings dashboard with **custom:button-card**, a shared image helper a
 For questions about this setup, use the [original Home Assistant forum discussion](https://community.home-assistant.io/t/formula-1-racing-sensor/880842). Thank you to Boredmthfkr for sharing it.
 
 :::info[Community recipe]
-This is a third-party dashboard example. Check entity IDs, current image URLs and button-card compatibility in your own setup. For the bundled cards with maintained configuration references, start with the [card catalogue](/cards/cards-overview).
+This is a third-party dashboard example. Check entity IDs, current image URLs and button-card compatibility in your own setup. For the bundled card with maintained configuration guidance, start with the [F1 Sensor card](/cards/cards-overview).
 :::
 
 ## Prerequisites:
