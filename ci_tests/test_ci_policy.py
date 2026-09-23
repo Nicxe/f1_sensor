@@ -142,7 +142,11 @@ class PolicyTests(unittest.TestCase):
         self.assertFalse(
             branch_error(
                 pull("main", "content"),
-                ["docusaurus.config.js", "src/css/custom.css"],
+                [
+                    "docusaurus.config.js",
+                    "src/css/custom.css",
+                    "ci_tests/documentation_channels.test.mjs",
+                ],
             )
         )
         self.assertTrue(
