@@ -518,6 +518,10 @@ class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
 
         self._attrs = {
             "selected_session": snapshot.get("selected_session"),
+            "selected_session_id": snapshot.get("selected_session_id"),
+            "selected_session_year": snapshot.get("selected_session_year"),
+            "selected_meeting_key": snapshot.get("selected_meeting_key"),
+            "selected_session_key": snapshot.get("selected_session_key"),
             "download_progress": round(snapshot.get("download_progress", 0) * 100, 1),
             "download_error": snapshot.get("download_error"),
             "playback_position_s": relative_position_s,

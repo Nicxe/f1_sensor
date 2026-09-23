@@ -4,7 +4,7 @@ title: Community setups
 description: Explore an e-ink race schedule and community dashboards built with F1 Sensor data.
 ---
 
-See how other people use F1 Sensor. These community projects have their own hardware, dependencies and maintenance; the bundled [dashboard cards](/cards/cards-overview) are the quickest starting point for most installations.
+See how other people use F1 Sensor. These community projects have their own hardware, dependencies and maintenance; the bundled [F1 Sensor card](/cards/cards-overview) is the quickest starting point for most installations.
 
 ## A race schedule on your desk
 

@@ -61,8 +61,8 @@ Sprint sessions can appear in the model so the dashboard selector matches the se
 The `sessions` attribute is intentionally metadata-only and is excluded from Home Assistant Recorder by the integration. Chart-ready driver positions are delivered on demand to the bundled card and are not stored as entity state attributes.
 :::
 
-:::tip[Lap position card]
-Use this entity with the bundled [F1 Lap Position Progression Card](/cards/lap-position-progression) to show a native post-race lap position chart without installing another chart card.
+:::tip[Lap position chart]
+Use the **Historical archive** module in the [F1 Sensor card](/cards/cards-overview) with its **Lap position** view to show a native post-race position chart without installing another chart card.
 :::
 
 
