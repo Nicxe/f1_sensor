@@ -62,7 +62,12 @@ def should_deploy(files: list[str] | None, event_name: str, branch: str) -> bool
 
 
 def content_only(files: list[str]) -> bool:
-    return bool(files) and all(p.startswith(("docs/", "blueprints/")) for p in files)
+    """Return whether a change is limited to published documentation content."""
+    return bool(files) and all(
+        p.startswith(("docs/", "blueprints/", "src/", "static/", "docs-tests/"))
+        or p in ("docusaurus.config.js", "sidebars.js", "playwright.docs.config.js")
+        for p in files
+    )
 
 
 def branch_error(event: dict, files: list[str]) -> str:

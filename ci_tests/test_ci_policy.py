@@ -139,6 +139,18 @@ class PolicyTests(unittest.TestCase):
         )
         self.assertTrue(branch_error(pull("main", "content"), ["code.py"]))
         self.assertFalse(branch_error(pull("main", "content"), ["docs/help.md"]))
+        self.assertFalse(
+            branch_error(
+                pull("main", "content"),
+                ["docusaurus.config.js", "src/css/custom.css"],
+            )
+        )
+        self.assertTrue(
+            branch_error(
+                pull("main", "content"),
+                [".github/workflows/documentation.yml"],
+            )
+        )
 
     def test_gate_accepts_only_verified_reuse_and_requires_actual_skip(self):
         selected = dict.fromkeys(JOBS, False)
