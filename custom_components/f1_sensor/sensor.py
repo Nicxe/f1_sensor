@@ -3458,6 +3458,17 @@ class F1RaceTimeToThreeHourLimitSensor(F1SessionClockBaseSensor):
         return attrs
 
 
+def _session_identity_year(value: object) -> int | None:
+    """Return the UTC calendar year from a session start timestamp."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.year
+
+
 class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Live sensor reporting current session label (e.g., Practice 1, Qualifying/Q1, Sprint Qualifying/SQ1, Sprint, Race).
 
@@ -3721,6 +3732,8 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             ) or {}
             attrs.update(
                 {
+                    "season": _session_identity_year(raw.get("StartDate")),
+                    "session_key": raw.get("Key"),
                     "meeting_key": (meeting or {}).get("Key"),
                     "meeting_name": (meeting or {}).get("Name"),
                     "meeting_location": (meeting or {}).get("Location"),

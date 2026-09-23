@@ -101,6 +101,7 @@ class F1LiveDelayNumber(F1AuxEntity, NumberEntity):
     def _handle_calibration_update(self, snapshot: dict[str, Any]) -> None:
         self._attr_extra_state_attributes = {
             "calibration_mode": snapshot.get("mode"),
+            "calibration_idle_reason": snapshot.get("idle_reason"),
             "calibration_reference": snapshot.get("reference"),
             "calibration_waiting_since": snapshot.get("waiting_since"),
             "calibration_started_at": snapshot.get("started_at"),

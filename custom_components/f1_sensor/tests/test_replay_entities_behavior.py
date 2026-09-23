@@ -263,6 +263,10 @@ async def test_replay_status_sensor_reports_progress_and_planned_duration() -> N
         {
             "state": "playing",
             "selected_session": "Test GP",
+            "selected_session_id": "2026_1_2",
+            "selected_session_year": 2026,
+            "selected_meeting_key": 1,
+            "selected_session_key": 2,
             "download_progress": 0.456,
             "sessions_count": 2,
             "selected_year": 2026,
@@ -272,6 +276,10 @@ async def test_replay_status_sensor_reports_progress_and_planned_duration() -> N
     )
     assert sensor.native_value == "playing"
     assert sensor.extra_state_attributes["download_progress"] == 45.6
+    assert sensor.extra_state_attributes["selected_session_id"] == "2026_1_2"
+    assert sensor.extra_state_attributes["selected_session_year"] == 2026
+    assert sensor.extra_state_attributes["selected_meeting_key"] == 1
+    assert sensor.extra_state_attributes["selected_session_key"] == 2
     assert sensor.extra_state_attributes["playback_position_formatted"] == "00:00:30"
 
     controller.playback["duration_ms"] = 0
