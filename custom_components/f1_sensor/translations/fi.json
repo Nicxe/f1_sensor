@@ -45,7 +45,8 @@
           "race_week_start_day": "Kilpailuviikon ensimmäinen päivä",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
           "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
-          "clear_live_timing_auth_header": "Clear F1TV authorization value"
+          "clear_live_timing_auth_header": "Clear F1TV authorization value",
+          "install_legacy_cards": "Asenna vanhat kojelautakortit"
         },
         "data_description": {
           "operation_mode": "Valitse Live yhdistääksesi Formula 1 SignalR:ään tai Development toistaaksesi tallennetun tiedoston paikallisesti.",
@@ -54,7 +55,8 @@
           "install_dashboard_cards": "Rekisteröi mukana toimitetut F1 Sensor -kortit Home Assistantiin. Poista tämä käytöstä, jos käytät vain entiteettejä ja automaatioita. Nykyiset F1-hallintapaneelikortit lakkaavat toimimasta selaimen uudelleenlatauksen jälkeen.",
           "race_week_start_day": "Valitse alkaako kilpailuviikko lauantaina, sunnuntaina vai maanantaina.",
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste the full Bearer token from the F1TV Token Helper only as an advanced fallback. Leave blank to use public live timing only.",
-          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it."
+          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
+          "install_legacy_cards": "Rekisteröi myös vanhentuneet F1-kortit. Pois käytöstä uusissa asennuksissa; nykyiset asennukset säilyttävät korttinsa. Edellyttää kojelautakorttien asennusta. Lataa selain uudelleen muutoksen jälkeen. Jos poistat valinnan, vanhat kortit eivät toimi ennen siirtoa F1 Sensor -korttiin. Useissa asennuksissa vanhat kortit säilyvät käytettävissä, kun jokin käytössä oleva asennus pyytää niitä."
         }
       },
       "reconfigure": {
@@ -69,7 +71,8 @@
           "race_week_start_day": "Kilpailuviikon ensimmäinen päivä",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
           "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
-          "clear_live_timing_auth_header": "Clear F1TV authorization value"
+          "clear_live_timing_auth_header": "Clear F1TV authorization value",
+          "install_legacy_cards": "Asenna vanhat kojelautakortit"
         },
         "data_description": {
           "operation_mode": "Valitse Live yhdistääksesi Formula 1 SignalR:ään tai Development toistaaksesi tallennetun tiedoston paikallisesti.",
@@ -79,7 +82,8 @@
           "race_week_start_day": "Valitse alkaako kilpailuviikko lauantaina, sunnuntaina vai maanantaina.",
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
           "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
-          "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing only."
+          "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing only.",
+          "install_legacy_cards": "Rekisteröi myös vanhentuneet F1-kortit. Pois käytöstä uusissa asennuksissa; nykyiset asennukset säilyttävät korttinsa. Edellyttää kojelautakorttien asennusta. Lataa selain uudelleen muutoksen jälkeen. Jos poistat valinnan, vanhat kortit eivät toimi ennen siirtoa F1 Sensor -korttiin. Useissa asennuksissa vanhat kortit säilyvät käytettävissä, kun jokin käytössä oleva asennus pyytää niitä."
         }
       },
       "reauth_confirm": {
@@ -402,14 +406,16 @@
           "install_dashboard_cards": "Asenna mukana toimitetut hallintapaneelikortit",
           "race_week_start_day": "First day of race week",
           "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path"
+          "replay_file": "Replay dump path",
+          "install_legacy_cards": "Asenna vanhat kojelautakortit"
         },
         "data_description": {
           "enable_race_control": "Connect to Formula 1 Live Timing only when live features are enabled.",
           "install_dashboard_cards": "Rekisteröi mukana toimitetut F1 Sensor -kortit Home Assistantiin. Poista tämä käytöstä, jos käytät vain entiteettejä ja automaatioita. Nykyiset F1-hallintapaneelikortit lakkaavat toimimasta selaimen uudelleenlatauksen jälkeen.",
           "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
           "operation_mode": "Choose Live or local replay Development mode.",
-          "replay_file": "Absolute path to a replay dump used only in Development mode."
+          "replay_file": "Absolute path to a replay dump used only in Development mode.",
+          "install_legacy_cards": "Rekisteröi myös vanhentuneet F1-kortit. Pois käytöstä uusissa asennuksissa; nykyiset asennukset säilyttävät korttinsa. Edellyttää kojelautakorttien asennusta. Lataa selain uudelleen muutoksen jälkeen. Jos poistat valinnan, vanhat kortit eivät toimi ennen siirtoa F1 Sensor -korttiin. Useissa asennuksissa vanhat kortit säilyvät käytettävissä, kun jokin käytössä oleva asennus pyytää niitä."
         }
       }
     },

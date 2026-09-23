@@ -192,6 +192,7 @@ def test_current_session_labels_status_and_metadata(hass) -> None:
         qualifying_part=None,
     )
     raw = {
+        "Key": 9,
         "Type": "Race",
         "Name": "Race",
         "Meeting": {
@@ -207,6 +208,9 @@ def test_current_session_labels_status_and_metadata(hass) -> None:
     sensor._apply_payload(raw)
     assert sensor._attr_native_value == "Race"
     assert sensor.extra_state_attributes["active"] is True
+    assert sensor.extra_state_attributes["season"] == 2026
+    assert sensor.extra_state_attributes["meeting_key"] == 1
+    assert sensor.extra_state_attributes["session_key"] == 9
     sensor._status_coordinator.data = {"Status": "Finalised"}
     sensor._apply_payload(raw)
     assert sensor._attr_native_value is None

@@ -50,7 +50,7 @@ When validating a beta release, focus on the changed areas listed in its release
 4. Track Map behavior in live sessions and Replay Mode.
 5. Incident Detection wording, confidence, and notification timing.
 6. Replay Mode controls, including the seek bar and 30-second buttons.
-7. Bundled Live Data Cards after restart and browser reload.
+7. The bundled F1 Sensor card after restart and browser reload.
 
 ## Enable debug logging
 

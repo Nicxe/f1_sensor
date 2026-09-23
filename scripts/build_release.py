@@ -12,7 +12,7 @@ import re
 import zipfile
 
 ZIP_TIME = (2026, 8, 31, 0, 0, 0)
-TEXT_EXTENSIONS = {".json", ".py", ".yaml", ".js"}
+TEXT_EXTENSIONS = {".json", ".py", ".yaml", ".js", ".txt"}
 SECRET_PATTERNS = {
     "private key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     "GitHub token": re.compile(r"\bgh[opsu]_[A-Za-z0-9]{30,}\b"),
@@ -27,6 +27,7 @@ def _runtime_files(component: Path, policy: dict[str, object]) -> list[Path]:
     excluded_files = set(policy["excluded_files"])
     allowed_extensions = set(policy["allowed_extensions"])
     allowed_directories = set(policy["allowed_directories"])
+    allowed_files = set(policy.get("allowed_files", []))
     files: list[Path] = []
     for path in component.rglob("*"):
         if not path.is_file():
@@ -38,7 +39,10 @@ def _runtime_files(component: Path, policy: dict[str, object]) -> list[Path]:
             continue
         if path.is_symlink():
             raise ValueError(f"release cannot contain a symbolic link: {relative}")
-        if path.suffix not in allowed_extensions:
+        if (
+            path.suffix not in allowed_extensions
+            and relative.as_posix() not in allowed_files
+        ):
             raise ValueError(f"unclassified release file: {relative}")
         if len(relative.parts) > 1 and relative.parts[0] not in allowed_directories:
             raise ValueError(f"runtime file outside release allowlist: {relative}")

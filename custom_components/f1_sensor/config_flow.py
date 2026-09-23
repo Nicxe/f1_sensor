@@ -22,6 +22,7 @@ from .const import (
     CONF_ENTITY_NAME_LANGUAGE,
     CONF_ENTITY_NAME_MODE,
     CONF_INSTALL_DASHBOARD_CARDS,
+    CONF_INSTALL_LEGACY_CARDS,
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
     CONF_RACE_WEEK_START_DAY,
@@ -30,6 +31,7 @@ from .const import (
     CONF_START_F1TV_PAIRING,
     DEFAULT_ENTITY_NAME_LANGUAGE,
     DEFAULT_INSTALL_DASHBOARD_CARDS,
+    DEFAULT_INSTALL_LEGACY_CARDS,
     DEFAULT_OPERATION_MODE,
     DEFAULT_RACE_WEEK_START_DAY,
     DOMAIN,
@@ -201,6 +203,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input["disabled_sensors"] = sorted(all_keys - checked)
                 user_input[CONF_ENTITY_NAME_MODE] = ENTITY_NAME_MODE_LOCALIZED
                 user_input[CONF_ENTITY_NAME_LANGUAGE] = self._current_backend_language()
+                user_input.setdefault(CONF_INSTALL_LEGACY_CARDS, False)
                 data, options = _split_entry_payload(user_input)
                 if start_pairing and is_auth_feature_enabled():
                     self._pending_f1tv_setup_data = data
@@ -229,6 +232,10 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_INSTALL_DASHBOARD_CARDS,
                     DEFAULT_INSTALL_DASHBOARD_CARDS,
                 ),
+            ): cv.boolean,
+            vol.Optional(
+                CONF_INSTALL_LEGACY_CARDS,
+                default=current.get(CONF_INSTALL_LEGACY_CARDS, False),
             ): cv.boolean,
             vol.Optional(
                 CONF_RACE_WEEK_START_DAY,
@@ -383,6 +390,12 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 default=current.get(
                     CONF_INSTALL_DASHBOARD_CARDS,
                     DEFAULT_INSTALL_DASHBOARD_CARDS,
+                ),
+            ): cv.boolean,
+            vol.Optional(
+                CONF_INSTALL_LEGACY_CARDS,
+                default=current.get(
+                    CONF_INSTALL_LEGACY_CARDS, DEFAULT_INSTALL_LEGACY_CARDS
                 ),
             ): cv.boolean,
             vol.Optional(
@@ -630,6 +643,12 @@ class F1OptionsFlow(config_entries.OptionsFlow):
                 default=current.get(
                     CONF_INSTALL_DASHBOARD_CARDS,
                     DEFAULT_INSTALL_DASHBOARD_CARDS,
+                ),
+            ): cv.boolean,
+            vol.Optional(
+                CONF_INSTALL_LEGACY_CARDS,
+                default=current.get(
+                    CONF_INSTALL_LEGACY_CARDS, DEFAULT_INSTALL_LEGACY_CARDS
                 ),
             ): cv.boolean,
             vol.Optional(

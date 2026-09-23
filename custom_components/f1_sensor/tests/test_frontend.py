@@ -13,7 +13,11 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor import frontend
-from custom_components.f1_sensor.const import CONF_INSTALL_DASHBOARD_CARDS, DOMAIN
+from custom_components.f1_sensor.const import (
+    CONF_INSTALL_DASHBOARD_CARDS,
+    CONF_INSTALL_LEGACY_CARDS,
+    DOMAIN,
+)
 
 
 class DummyLovelaceResources:
@@ -532,3 +536,103 @@ async def test_frontend_sync_and_read_only_error_paths(
     assert frontend._get_lovelace_resources(hass) is None
     assert frontend._normalize_resource_path("") == ""
     assert frontend._normalize_resource_path("local/card.js?v=1") == "/local/card.js"
+
+
+@pytest.mark.parametrize(
+    "data,options,disabled,expected",
+    [
+        ({}, {}, False, True),
+        ({CONF_INSTALL_LEGACY_CARDS: False}, {}, False, False),
+        (
+            {CONF_INSTALL_LEGACY_CARDS: True},
+            {CONF_INSTALL_LEGACY_CARDS: False},
+            False,
+            False,
+        ),
+        (
+            {CONF_INSTALL_LEGACY_CARDS: False},
+            {CONF_INSTALL_LEGACY_CARDS: True},
+            False,
+            True,
+        ),
+        (
+            {},
+            {CONF_INSTALL_DASHBOARD_CARDS: False, CONF_INSTALL_LEGACY_CARDS: True},
+            False,
+            False,
+        ),
+        ({}, {CONF_INSTALL_LEGACY_CARDS: True}, True, False),
+    ],
+)
+def test_legacy_card_requests_respect_options_and_enabled_entries(
+    hass, data, options, disabled, expected
+):
+    from homeassistant.config_entries import ConfigEntryDisabler
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=data,
+        options=options,
+        disabled_by=ConfigEntryDisabler.USER if disabled else None,
+    )
+    entry.add_to_hass(hass)
+    assert frontend._legacy_cards_requested(hass) is expected
+
+
+async def test_legacy_card_registration_tracks_all_entries_without_duplicates(
+    hass, tmp_path, monkeypatch
+):
+    source = tmp_path / "bundled"
+    _write_bundled_assets(source, "// card")
+    monkeypatch.setattr(frontend, "BUNDLED_LIVE_DATA_CARD_DIR", source)
+    resources = DummyLovelaceResources()
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
+    first = MockConfigEntry(
+        domain=DOMAIN, data={}, options={CONF_INSTALL_LEGACY_CARDS: False}
+    )
+    first.add_to_hass(hass)
+    await frontend.async_reconcile_live_data_card_frontend(hass)
+    assert len(resources.items) == 1
+    modern_url = resources.items[0]["url"]
+    assert modern_url.endswith("&legacy=0")
+    second = MockConfigEntry(domain=DOMAIN, data={})
+    second.add_to_hass(hass)
+    await frontend.async_reconcile_live_data_card_frontend(hass)
+    assert len(resources.items) == 1
+    assert "legacy=0" not in resources.items[0]["url"]
+    hass.config_entries.async_update_entry(
+        second, options={CONF_INSTALL_DASHBOARD_CARDS: False}
+    )
+    await frontend.async_reconcile_live_data_card_frontend(hass)
+    assert resources.items[0]["url"] == modern_url
+    await frontend.async_reconcile_live_data_card_frontend(hass)
+    assert resources.created == 1
+    assert resources.updated == 2
+    hass.config_entries.async_update_entry(
+        first, options={CONF_INSTALL_DASHBOARD_CARDS: False}
+    )
+    await frontend.async_reconcile_live_data_card_frontend(hass)
+    assert resources.items == []
+
+
+async def test_disabling_legacy_cards_updates_stale_managed_duplicates(hass):
+    resources = DummyLovelaceResources(
+        [
+            {
+                "id": "first",
+                "type": "module",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=old",
+            },
+            {
+                "id": "duplicate",
+                "type": "module",
+                "url": "/local/f1-sensor-live-data-card/register.js?v=older",
+            },
+        ]
+    )
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
+    await frontend._async_ensure_lovelace_resource(
+        hass, "new", install_legacy_cards=False
+    )
+    assert all(item["url"].endswith("?v=new&legacy=0") for item in resources.items)
+    assert resources.updated == 2
