@@ -3,7 +3,7 @@ const AxeBuilder = require('@axe-core/playwright').default;
 
 const pages = [
   '', 'getting-started/installation', 'cards/cards-overview',
-  'cards/next-race', 'entities/track-status', 'help/overview',
+  'cards/modular', 'entities/track-status', 'help/overview',
 ];
 
 for (const [query, title, route] of [
@@ -54,7 +54,7 @@ for (const theme of ['light', 'dark']) {
   });
 }
 
-test('mobile navigation, skip link and gallery filters work with a keyboard', async ({page}) => {
+test('mobile navigation, skip link and card overview work with a keyboard', async ({page}) => {
   await page.setViewportSize({width: 390, height: 844});
   await page.goto('');
   await page.keyboard.press('Tab');
@@ -64,13 +64,12 @@ test('mobile navigation, skip link and gallery filters work with a keyboard', as
   await page.getByRole('button', {name: 'Back to main menu'}).click();
   await page.locator('.navbar-sidebar__item').first().getByRole('link', {name: 'Dashboards', exact: true}).click();
   await expect(page).toHaveURL(/\/cards\/cards-overview$/);
-  const filters = page.getByRole('group', {name: 'Filter dashboard cards'});
-  const firstCategory = filters.getByRole('button').nth(1);
-  await firstCategory.focus();
+  await expect(page.getByRole('heading', {level: 1, name: 'F1 Sensor dashboard card'})).toBeVisible();
+  const buildLink = page.getByRole('link', {name: 'Build and configure the card', exact: true});
+  await buildLink.focus();
   await page.keyboard.press('Enter');
-  await expect(firstCategory).toHaveAttribute('aria-pressed', 'true');
-  await filters.getByRole('button', {name: 'All cards', exact: true}).click();
-  await expect(page.getByRole('status').filter({hasText: '23 cards'})).toBeVisible();
+  await expect(page).toHaveURL(/\/cards\/modular$/);
+  await expect(page.getByRole('heading', {level: 1, name: 'Build your F1 Sensor card'})).toBeVisible();
 });
 
 test('delay illustration responds without changing the integration', async ({page}) => {

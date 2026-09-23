@@ -23,7 +23,9 @@
     "test:docs:browser": "playwright test --config playwright.docs.config.js",
     "test:docs": "npm run build && npm run test:docs:build && npm run test:docs:browser",
     "capture:docs-cards": "node docs-tests/capture-cards.cjs",
-    "test:automation": "python3 -m unittest discover -s ci_tests && node --test ci_tests/*.test.cjs",
+    "test:automation": "python3 -m unittest discover -s ci_tests && node --test ci_tests/*.test.cjs ci_tests/*.test.mjs",
+    "test:field-catalog": "node scripts/build_modular_field_catalog.mjs",
+    "build:field-catalog": "node scripts/build_modular_field_catalog.mjs --write",
     "test:frontend:unit": "node --experimental-vm-modules --test frontend-tests/unit/*.test.mjs"
   },
   "dependencies": {

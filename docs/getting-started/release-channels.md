@@ -88,7 +88,7 @@ See [Debug Logging and Logs](/help/debug-logging) before opening an issue.
 
 ## Upgrading an existing setup
 
-Read the release notes before updating. Existing entity IDs are preserved; keep your own IDs in dashboards and automations. Restart Home Assistant after installation and reload your browser to update bundled cards.
+Read the release notes before updating. Existing entity IDs are preserved; keep your own IDs in dashboards and automations. Restart Home Assistant after installation and reload your browser to update the bundled card.
 
 :::warning[Upgrading from v3 to v4]
 After updating to v4.0.0, the original single F1 Sensor device will appear empty in Home Assistant and should be removed manually from **Settings > Devices & Services > Devices**.

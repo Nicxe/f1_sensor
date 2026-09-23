@@ -2,13 +2,54 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {extractField, versionState, componentLabels, releaseIssues} = require('../.github/scripts/issue-fields.cjs');
 const releaseComment = require('../.github/scripts/release-comment.cjs');
-const {upsertComment, ensureLabel, removeLabel} = require('../.github/scripts/issue-automation.cjs');
+const {upsertComment, ensureLabel, removeLabel, releasedIssues} = require('../.github/scripts/issue-automation.cjs');
 
 test('release comments use all pages and never duplicate an earlier bot comment', async () => {
   let writes = 0;
   const github = {paginate: async () => [...Array.from({length:100}, () => ({body:'user reply', user:{login:'person'}})), {id:101, body:'<!-- marker -->\nmessage', user:{login:'github-actions[bot]'}}], rest:{issues:{listComments(){}, createComment:async()=>writes++, updateComment:async()=>writes++}}};
   await upsertComment(github, {}, '<!-- marker -->', 'message');
   assert.equal(writes, 0);
+});
+
+test('stable release comments are not confused with a beta URL prefix', async () => {
+  const created = [], removed = [];
+  const github = {
+    paginate: async () => [{
+      id: 1,
+      body: 'This feature has been implemented in https://github.com/Nicxe/f1_sensor/releases/tag/v5.6.0-beta.1',
+      user: {login:'github-actions[bot]'},
+    }],
+    rest: {issues: {
+      get: async () => ({data: {
+        title: '[Feature]: optional cards',
+        body: '### Component\n\nIntegration',
+        labels: [{name:'In BETA-testing'}, {name:'enhancement'}],
+      }}),
+      removeLabel: async ({name}) => removed.push(name),
+      listComments() {},
+      createComment: async ({body}) => created.push(body),
+      updateComment: async () => assert.fail('stable release must create its own comment'),
+    }},
+  };
+  const context = {
+    repo: {owner:'Nicxe', repo:'f1_sensor'},
+    payload: {release: {
+      id: 2,
+      draft: false,
+      prerelease: false,
+      tag_name: 'v5.6.0',
+      html_url: 'https://github.com/Nicxe/f1_sensor/releases/tag/v5.6.0',
+      body: 'Fixes #705.',
+    }},
+  };
+
+  await releasedIssues({github, context});
+
+  assert.deepEqual(removed, ['In BETA-testing']);
+  assert.equal(created.length, 1);
+  assert.match(created[0], /<!-- f1-release:2 -->/);
+  assert.match(created[0], /v5\.6\.0/);
+  assert.doesNotMatch(created[0], /beta\.1/);
 });
 
 test('permissions and service errors are not silently swallowed', async () => {

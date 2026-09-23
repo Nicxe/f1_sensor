@@ -55,4 +55,4 @@ The display configuration includes scheduled refreshes and a refresh button. Che
 
 - [Next Race sensor](/entities/static-data#next-race) — the primary data source for the display
 - [Season Calendar](/entities/static-data#season-calendar) — for full session schedule data
-- [Live Data Cards](/cards/cards-overview) — for live in-session dashboards
+- [F1 Sensor card](/cards/cards-overview) — for live in-session dashboards
