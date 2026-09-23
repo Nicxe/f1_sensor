@@ -39,7 +39,8 @@ jobs:
     if: >-
       !cancelled() && needs.checks.result == 'success' &&
       needs.checks.outputs.deploy == 'true' &&
-      github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta') &&
+      github.event_name != 'pull_request'
     permissions:
       contents: read
       pages: write

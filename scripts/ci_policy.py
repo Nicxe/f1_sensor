@@ -35,7 +35,10 @@ def selected_checks(selected: set[str]) -> dict[str, bool]:
 
 def should_deploy(files: list[str] | None, event_name: str, branch: str) -> bool:
     """A full release test run does not imply that the site needs deployment."""
-    if branch != "main" or event_name not in ("push", "workflow_dispatch"):
+    if branch not in ("main", "beta") or event_name not in (
+        "push",
+        "workflow_dispatch",
+    ):
         return False
     if files is None:
         return True
@@ -59,7 +62,12 @@ def should_deploy(files: list[str] | None, event_name: str, branch: str) -> bool
 
 
 def content_only(files: list[str]) -> bool:
-    return bool(files) and all(p.startswith(("docs/", "blueprints/")) for p in files)
+    """Return whether a change is limited to published documentation content."""
+    return bool(files) and all(
+        p.startswith(("docs/", "blueprints/", "src/", "static/", "docs-tests/"))
+        or p in ("docusaurus.config.js", "sidebars.js", "playwright.docs.config.js")
+        for p in files
+    )
 
 
 def branch_error(event: dict, files: list[str]) -> str:

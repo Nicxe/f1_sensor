@@ -79,9 +79,11 @@ class PolicyTests(unittest.TestCase):
             should_deploy(["custom_components/f1_sensor/auth.py"], "push", "main")
         )
         self.assertTrue(should_deploy(["docs/help.md"], "push", "main"))
+        self.assertTrue(should_deploy(["docs/help.md"], "push", "beta"))
         self.assertFalse(should_deploy(["docs/help.md"], "pull_request", "main"))
-        self.assertFalse(should_deploy(None, "push", "beta"))
+        self.assertTrue(should_deploy(None, "push", "beta"))
         self.assertTrue(should_deploy(None, "workflow_dispatch", "main"))
+        self.assertTrue(should_deploy(None, "workflow_dispatch", "beta"))
 
     def test_docs_do_not_require_backend_or_registry(self):
         selected = select_jobs(
@@ -137,6 +139,18 @@ class PolicyTests(unittest.TestCase):
         )
         self.assertTrue(branch_error(pull("main", "content"), ["code.py"]))
         self.assertFalse(branch_error(pull("main", "content"), ["docs/help.md"]))
+        self.assertFalse(
+            branch_error(
+                pull("main", "content"),
+                ["docusaurus.config.js", "src/css/custom.css"],
+            )
+        )
+        self.assertTrue(
+            branch_error(
+                pull("main", "content"),
+                [".github/workflows/documentation.yml"],
+            )
+        )
 
     def test_gate_accepts_only_verified_reuse_and_requires_actual_skip(self):
         selected = dict.fromkeys(JOBS, False)
