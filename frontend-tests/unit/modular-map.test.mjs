@@ -68,6 +68,18 @@ test('map focus intersects driver and team, retains malformed positions in the l
   assert.equal(mapModel(null, module).pending, true);
 });
 
+test('map removes drivers declared out by timing even when Position.z retains an on-track coordinate', () => {
+  const snapshot = { source: 'replay', track: { points: [[0, 0], [100, 100]] }, drivers: [
+    { racing_number: '41', tla: 'LIN', x: 20, y: 20, status: 'OnTrack' },
+    { racing_number: '16', tla: 'LEC', x: 80, y: 80, status: 'OnTrack' },
+  ] };
+  const module = { options: { focus: 'highlight', orientation: 'source', vertical: 'flipped' } };
+  const rows = mapModel(snapshot, module, {}, Date.now(), [
+    { racing_number: '41', tla: 'LIN', status: 'out', stopped: true },
+  ]).rows;
+  assert.deepEqual(rows.map(row => row.id), ['16']);
+});
+
 test('freshness expiry is absolute and does not schedule replay or already stale positions', () => {
   const snapshot = { source: 'live', stream_timestamp: '2026-09-13T13:00:00Z', stale_after_seconds: 10 };
   const expiry = Date.parse('2026-09-13T13:00:10Z');
