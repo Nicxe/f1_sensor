@@ -478,6 +478,15 @@ export const FRONTEND_TEXT_TRANSLATIONS = {
     Your: 'Ditt',
     no_session: 'Ingen session',
     'Formula 1 card': 'Formel 1-kort',
+    ARCHIVE: 'ARKIV',
+    'Track limits entity not found': 'Entiteten för track limits hittades inte',
+    Left: 'Kvar',
+    Remaining: 'Återstår',
+    Yes: 'Ja',
+    No: 'Nej',
+    Saved: 'Sparad',
+    'Based on live track telemetry': 'Baserat på live bantelemetri',
+    'Forecast precipitation unavailable': 'Nederbördsprognos saknas',
   },
   nl: {
     ACCESSIBILITY: 'TOEGANKELIJKHEID',
@@ -760,6 +769,15 @@ export const FRONTEND_TEXT_TRANSLATIONS = {
     Your: 'Jouw',
     no_session: 'Geen sessie',
     'Formula 1 card': 'Formule 1-kaart',
+    ARCHIVE: 'ARCHIEF',
+    'Track limits entity not found': 'Entiteit voor track limits niet gevonden',
+    Left: 'Nog',
+    Remaining: 'Resterend',
+    Yes: 'Ja',
+    No: 'Nee',
+    Saved: 'Opgeslagen',
+    'Based on live track telemetry': 'Gebaseerd op live telemetrie van de baan',
+    'Forecast precipitation unavailable': 'Neerslagverwachting niet beschikbaar',
   },
 };
 
@@ -804,12 +822,16 @@ const COUNT_PATTERNS = {
     [/^(\d+) docs$/, '$1 dokument'],
     [/^(\d+) sessions$/, '$1 sessioner'],
     [/^Idle \/ (\d+) cars$/, 'Viland / $1 bilar'],
+    [/^Measured precipitation ([\d.]+) mm$/, 'Uppmätt nederbörd $1 mm'],
+    [/^Expected precipitation ([\d.]+) mm$/, 'Förväntad nederbörd $1 mm'],
   ],
   nl: [
     [/^(\d+) cars$/, '$1 auto\'s'],
     [/^(\d+) docs$/, '$1 documenten'],
     [/^(\d+) sessions$/, '$1 sessies'],
     [/^Idle \/ (\d+) cars$/, 'Inactief / $1 auto\'s'],
+    [/^Measured precipitation ([\d.]+) mm$/, 'Gemeten neerslag $1 mm'],
+    [/^Expected precipitation ([\d.]+) mm$/, 'Verwachte neerslag $1 mm'],
   ],
 };
 
