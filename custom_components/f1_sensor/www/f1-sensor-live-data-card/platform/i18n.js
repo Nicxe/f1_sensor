@@ -487,6 +487,29 @@ export const FRONTEND_TEXT_TRANSLATIONS = {
     Saved: 'Sparad',
     'Based on live track telemetry': 'Baserat på live bantelemetri',
     'Forecast precipitation unavailable': 'Nederbördsprognos saknas',
+    Now: 'Nu',
+    'Now at circuit': 'Nu på banan',
+    'Current forecast': 'Aktuell prognos',
+    'Race start forecast': 'Prognos för racestart',
+    FORECAST: 'PROGNOS',
+    'To lights out': 'Till start',
+    'Show history': 'Visa historik',
+    'Hide history': 'Dölj historik',
+    'Defending winner': 'Regerande vinnare',
+    'Races held': 'Körda race',
+    'Pole to win': 'Pole till seger',
+    'Last five races here': 'Senaste fem racen här',
+    'Across the last five races here': 'Över de senaste fem racen här',
+    'DNF rate': 'Andel utbrutna',
+    'Next race': 'Nästa race',
+    'Live session': 'Livesession',
+    'Race live': 'Race pågår',
+    'Race session': 'Racesession',
+    TBD: 'TBA',
+    'n/a': 'saknas',
+    'Investigations & Penalties': 'Utredningar & straff',
+    'Track Limits': 'Track limits',
+    'Prediction data unavailable': 'Prognosdata saknas',
   },
   nl: {
     ACCESSIBILITY: 'TOEGANKELIJKHEID',
@@ -778,6 +801,29 @@ export const FRONTEND_TEXT_TRANSLATIONS = {
     Saved: 'Opgeslagen',
     'Based on live track telemetry': 'Gebaseerd op live telemetrie van de baan',
     'Forecast precipitation unavailable': 'Neerslagverwachting niet beschikbaar',
+    Now: 'Nu',
+    'Now at circuit': 'Nu op het circuit',
+    'Current forecast': 'Actuele verwachting',
+    'Race start forecast': 'Verwachting racestart',
+    FORECAST: 'VERWACHTING',
+    'To lights out': 'Tot de start',
+    'Show history': 'Historie tonen',
+    'Hide history': 'Historie verbergen',
+    'Defending winner': 'Winnaar vorige editie',
+    'Races held': 'Verreden races',
+    'Pole to win': 'Van pole naar winst',
+    'Last five races here': 'Laatste vijf races hier',
+    'Across the last five races here': 'Over de laatste vijf races hier',
+    'DNF rate': 'Uitvalpercentage',
+    'Next race': 'Volgende race',
+    'Live session': 'Live sessie',
+    'Race live': 'Race live',
+    'Race session': 'Racesessie',
+    TBD: 'N.t.b.',
+    'n/a': 'n.v.t.',
+    'Investigations & Penalties': 'Onderzoeken & straffen',
+    'Track Limits': 'Track limits',
+    'Prediction data unavailable': 'Prognosegegevens niet beschikbaar',
   },
 };
 
@@ -816,6 +862,10 @@ export const f1FormatDateTime = (hass, date, options = {}) => {
   }).format(date);
 };
 
+const windDirections = (names) => (_match, speed, direction, arrow) =>
+  `${speed} ${names[direction] || direction}${arrow}`;
+const WIND_PATTERN = /^([\d.,]+ \S+) (N|NE|E|SE|S|SW|W|NW)([↓↙←↖↑↗→↘]?)$/;
+
 const COUNT_PATTERNS = {
   sv: [
     [/^(\d+) cars$/, '$1 bilar'],
@@ -824,6 +874,10 @@ const COUNT_PATTERNS = {
     [/^Idle \/ (\d+) cars$/, 'Viland / $1 bilar'],
     [/^Measured precipitation ([\d.]+) mm$/, 'Uppmätt nederbörd $1 mm'],
     [/^Expected precipitation ([\d.]+) mm$/, 'Förväntad nederbörd $1 mm'],
+    [/^Round (\d+)$/, 'Omgång $1'],
+    [/^Season (\d+)$/, 'Säsong $1'],
+    [/^Open FIA document: (.+)$/, 'Öppna FIA-dokument: $1'],
+    [WIND_PATTERN, windDirections({ NE: 'NO', E: 'O', SE: 'SO', SW: 'SV', W: 'V', NW: 'NV' })],
   ],
   nl: [
     [/^(\d+) cars$/, '$1 auto\'s'],
@@ -832,6 +886,10 @@ const COUNT_PATTERNS = {
     [/^Idle \/ (\d+) cars$/, 'Inactief / $1 auto\'s'],
     [/^Measured precipitation ([\d.]+) mm$/, 'Gemeten neerslag $1 mm'],
     [/^Expected precipitation ([\d.]+) mm$/, 'Verwachte neerslag $1 mm'],
+    [/^Round (\d+)$/, 'Ronde $1'],
+    [/^Season (\d+)$/, 'Seizoen $1'],
+    [/^Open FIA document: (.+)$/, 'FIA-document openen: $1'],
+    [WIND_PATTERN, windDirections({ NE: 'NO', E: 'O', SE: 'ZO', S: 'Z', SW: 'ZW' })],
   ],
 };
 

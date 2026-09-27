@@ -33,6 +33,11 @@ test('Dutch localization translates strings, frontend texts and counts', () => {
   assert.equal(f1TranslateText(hass, 'Idle / 3 cars'), "Inactief / 3 auto's");
   assert.equal(f1TranslateText(hass, 'Measured precipitation 1.2 mm'), 'Gemeten neerslag 1.2 mm');
   assert.equal(f1TranslateText(hass, 'No'), 'Nee');
+  assert.equal(f1TranslateText(hass, 'Round 16'), 'Ronde 16');
+  assert.equal(f1TranslateText(hass, 'Show history'), 'Historie tonen');
+  assert.equal(f1TranslateText(hass, '1.1 m/s SE'), '1.1 m/s ZO');
+  assert.equal(f1TranslateText(hass, '2.0 km/h W→'), '2.0 km/h W→');
+  assert.equal(f1TranslateText({locale:{language:'sv'}}, '3.4 m/s SW↗'), '3.4 m/s SV↗');
   assert.equal(f1TranslateText({locale:{language:'sv'}}, '4 docs'), '4 dokument');
   assert.equal(f1TranslateText({locale:{language:'de'}}, '4 docs'), '4 docs');
 });
