@@ -229,6 +229,7 @@ F1_CIRCUIT_IMAGE_SLUGS: dict[str, dict[str, str]] = {
         "vegas": "lasvegas",
         "losail": "lusail",
         "yas_marina": "yasmarinacircuit",
+        "sepang": "kualalumpur",
     }
 }
 
