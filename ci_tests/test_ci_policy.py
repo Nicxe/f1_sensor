@@ -32,6 +32,8 @@ class PolicyTests(unittest.TestCase):
             "package.json",
             ".github/scripts/auto-merge.cjs",
             "scripts/ci_policy.py",
+            "scripts/check_npm_audit.py",
+            "scripts/run_npm_audit.py",
             "ci_tests/test_ci_policy.py",
         ]
         self.assertEqual(branch_error(event, files), "")
