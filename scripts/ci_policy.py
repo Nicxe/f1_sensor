@@ -103,6 +103,8 @@ def branch_error(event: dict, files: list[str]) -> str:
             ".github/dependabot.yml",
             "quality/npm-audit-allowlist.json",
             "scripts/ci_policy.py",
+            "scripts/check_npm_audit.py",
+            "scripts/run_npm_audit.py",
         )
         or p.startswith((".github/workflows/", ".github/scripts/", "ci_tests/"))
         for p in files

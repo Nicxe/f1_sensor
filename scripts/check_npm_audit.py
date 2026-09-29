@@ -68,12 +68,6 @@ def evaluate_audit(audit: object, allowlist: dict, today: date) -> list[str]:
     for finding in sorted(findings):
         if finding not in allowed:
             failures.append(f"{finding[0]}: advisory {finding[1]} is not allowed")
-    for exception in sorted(allowed):
-        if exception not in findings:
-            failures.append(
-                f"stale exception {exception[0]} advisory {exception[1]} is no longer present"
-            )
-
     return failures
 
 

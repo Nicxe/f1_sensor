@@ -49,15 +49,13 @@ class AuditTests(unittest.TestCase):
                 report({"example": {"via": ["missing"]}}), {"entries": []}, date.today()
             )
 
-    def test_stale_exception_is_only_checked_against_valid_report(self):
+    def test_stale_exception_does_not_block_a_fixed_dependency(self):
         allow = {
             "entries": [
                 {"package": "example", "advisory_ids": [123], "expires": "2026-12-01"}
             ]
         }
-        self.assertIn(
-            "stale exception", evaluate_audit(report(), allow, date(2026, 9, 4))[0]
-        )
+        self.assertEqual(evaluate_audit(report(), allow, date(2026, 9, 4)), [])
 
 
 if __name__ == "__main__":
