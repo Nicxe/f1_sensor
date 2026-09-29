@@ -1,131 +1,124 @@
 ---
 id: shared-options
-title: Shared card options
-description: Choose F1 Sensor data sources, themes, typography, spoiler protection and dashboard actions.
+title: Configure the F1 Sensor card
+description: Understand installation selection, layout, focus, sessions, appearance and saved card behavior.
 ---
 
-Use these options to keep your F1 dashboard consistent. Each [card reference](/cards/cards-overview) lists its own data sources and display controls; this page explains the behavior shared across cards.
+Use the visual editor to configure the **F1 Sensor** card. The editor writes one `custom:f1-sensor-card` configuration containing the card's modules, shared context and appearance.
 
-## Entity selection
+## Select an F1 Sensor installation
 
-Bundled cards discover the entity IDs created by F1 Sensor, including renamed IDs and suffixes such as `_2`. With one integration entry, empty and standard default data sources connect automatically to that entry.
+With one integration entry, the card discovers that installation and its entities automatically. With several entries, select the intended installation at the top of the editor.
 
-In the visual editor, open **Data Sources** and select the matching F1 Sensor entity. Its display name may be translated; the YAML key and entity ID are separate from that label.
-
-The source option is specific to the card. For example, Next Race uses `next_race_entity`, while Results uses `entity`:
+The saved `f1_entry_id` identifies an integration setup, not an entity. Do not paste a sensor entity ID into this field.
 
 ```yaml
-type: custom:f1-next-race-card
-next_race_entity: sensor.f1_next_race
+type: custom:f1-sensor-card
+f1_entry_id: 01JEXAMPLEENTRYID
 ```
 
-Keep your existing entity IDs after an upgrade. Do not rename an entity just to match an example.
+The card resolves renamed entity IDs and entry suffixes automatically. Modules then use the matching entities from the selected installation.
 
-### Multiple entries
+## Choose layout and shared focus
 
-Select one source entity from the intended F1 Sensor entry. The card uses that selection to connect its other standard sources to the same entry. Explicit custom selections remain in place.
+Choose **Stack** to show modules one after another or **Tabs** to show one module at a time. The card can also keep a shared driver or team focus so related modules follow the same selection.
 
-| Option | Default | Use |
-| --- | --- | --- |
-| `f1_entry_id` | Automatically selected | Advanced override for the integration entry used by automatic entity selection. Prefer choosing a source in the editor. |
-| `entry_id` | Card-specific | Used by Track Map and Weekend Hub for their direct connection. Their references explain `auto` and explicit entry selection. |
-| `history_entry_id` | `auto` | Used by Results for Archive requests. |
+The driver focus menu shows compact three-letter driver codes. Clear **Show driver focus menu** to hide it from the card. The menu is shown by default, and hiding it does not remove a saved default driver or a module's own driver selection.
 
-An entry ID identifies an integration setup, not an entity. If you need an explicit ID, use the F1 Sensor entry you intend to display; do not paste a sensor ID into an entry field.
+For several cards on the same dashboard view, assign the same context group to share temporary focus. You can also share temporary session selection. Group state is local to that dashboard view, browser connection and F1 Sensor installation; it does not change the integration's Favorite Driver selector, Replay Mode, Live Delay or automations.
 
-## Appearance
+Pinned cards and independently configured modules keep their own selection instead of following the group.
 
-| Option | Values | Default |
-| --- | --- | --- |
-| `theme_mode` | `dark`, `light`, `auto` | `dark` on most cards; `auto` on the progression charts |
-| `show_header` | `true`, `false` | Card-specific |
-| `show_table_header` | `true`, `false` | Card-specific |
-| `show_full_name` | `true`, `false` | Usually `false` |
-| `show_team_logo` | `true`, `false` | Card-specific |
-| `team_logo_style` | `color`, `white` | `color` where supported |
+## Follow or pin a session
 
-Use `theme_mode: auto` to follow Home Assistant. Header and column switches are available only where the card reference lists them. Replay Control uses `show_title` for its heading.
+The card can follow:
 
-Home Assistant’s dashboard editor controls the card’s grid placement and available width. The cards adapt to that space. On a phone, begin with fewer optional columns, compact driver names and a short lap-history limit.
-
-## Typography
-
-All bundled cards support `font_style`:
-
-| Value | Appearance |
+| Source | Behavior |
 | --- | --- |
-| `wide` | Original F1 Sensor typography; the default. |
-| `balanced` | F1-inspired typography with less wide lettering in dense or mobile text. |
-| `system` | Home Assistant or system font. |
+| **Automatic** | Uses the most relevant current source. |
+| **Live** | Follows the active live session. |
+| **Replay** | Follows the session currently loaded in Replay Mode. |
+| **Pinned** | Keeps the selected live, replay or archive identity. |
+
+A pin stores the session identity; it does not start live timing, load a replay or change Replay Mode. If the saved identity is unavailable, the card explains the mismatch instead of silently switching sessions.
+
+Each module can inherit the card selection, follow another source or keep its own pin. You can also show a module only **Before**, **Active or interrupted**, **Finished** or **Unknown** phases.
+
+## Control unavailable data
+
+Each module has a **When data is unavailable** setting.
+
+| Choice | Behavior |
+| --- | --- |
+| **Show explanation** | Replaces the unavailable content with an explanation and keeps the configuration. |
+| **Keep saved data** | Retains the last captured content with a notice when updates stop. |
+| **Hide module** | Hides the module until its data is available again. |
+
+Retained values are reading snapshots, not proof of a current live state. Changing installation, session, replay position, Live Delay or spoiler state clears incompatible snapshots.
+
+**Freeze view** captures the currently displayed reading in that card. **Resume** returns to current data. Freezing the card does not pause Replay Mode or change any integration setting. To remove this control from a card, open **Layout and shared focus** and clear **Show Freeze view button**. The button is shown by default.
+
+Weather, Battles, Strategy and Replay telemetry also show a collapsible **About** section by default. Clear **Show About section** under the relevant module's **Module options** to hide that explanation without hiding warnings, errors or controls.
+
+## Choose appearance
+
+Use **Appearance** to choose:
+
+- F1, Home Assistant or Minimal style
+- automatic, light or dark mode
+- comfortable, compact or spacious density
+- F1 or system typography
+- accent, surface, logo, flag, team-color and tyre presentation
+- stacked or tabbed module layout
+
+Module headings and table headers can be hidden visually while their accessible names remain available. Put important fields first and remove secondary columns for a clearer phone layout.
+
+## Keep timing meaning visible
+
+Timing states pair color with a shape or text signal. Purple with a diamond means overall fastest, green with a circle means personal best, and yellow with a square means a recorded time. Lap deltas and position changes use separate arrows and references.
+
+In a Timing module, set **Recent lap columns** to a value from 1 to 30 to show that many latest completed laps as labelled comparison columns. Keep it at 0 to hide the extra columns.
+
+Use **Accessibility and timing colors** to change the palette, enable high contrast, reduce motion and choose shape, text or both. See [card accessibility](/cards/modular-accessibility) for the complete guidance.
+
+Track Map interpolates consecutive driver positions for smoother live and replay movement. Reduced motion, stale positions, session changes and unusually large jumps are shown without animation.
+
+## Use spoilers, Live Delay and replay controls
+
+Enable **Show Live Delay and global spoiler controls** to add the optional viewing panel.
+
+- Manual Live Delay changes require **Apply live delay** and affect the selected integration entry.
+- **Calibrate with TV** keeps the existing delay until you explicitly match the moment shown on television.
+- Global spoiler protection affects all F1 Sensor installations. Local hiding can add protection but cannot override the global setting.
+- Replay controls operate the selected installation's shared Replay Mode. Separate cards are not independent replay players.
+- Archive selections retrieve historical data without loading or starting a replay.
+
+See [Live Delay](/features/live-delay), [No Spoiler Mode](/features/no-spoiler-mode) and [Replay Mode](/features/replay-mode) for the integration-wide behavior.
+
+## Export or reuse a configuration
+
+**Export and import** copies the complete card configuration as JSON. **Reusable templates** let you name and transfer the same configuration to another dashboard or Home Assistant system.
+
+An import is first applied to the editor draft and can be undone before saving. If a template references an installation that does not exist on the current system, choose its replacement explicitly.
+
+For direct YAML editing, keep the card type and configuration version:
 
 ```yaml
-type: custom:f1-next-race-card
-next_race_entity: sensor.f1_next_race
-theme_mode: auto
-font_style: balanced
+type: custom:f1-sensor-card
+version: 3
+title: Race weekend
+layout: stack
+modules:
+  - type: overview
+    id: overview-1
+  - type: calendar
+    id: calendar-1
 ```
 
-Dates, times and supported measurements follow the relevant Home Assistant locale and unit settings. This is separate from the card’s font or visual theme.
-
-## Language and time preferences
-
-Supported card and editor text follows Home Assistant's selected language. English and Swedish text is supplied; untranslated text falls back to English. Changing `theme_mode` or `font_style` does not change the language.
-
-Dates and times use Home Assistant's locale and timezone where supported. Race Control timestamps also respect the profile's 12/24-hour preference. If a time looks wrong, check the Home Assistant profile and timezone settings before changing card YAML.
-
-## Dashboard context
-
-Weekend Hub shares **Focus driver**, **Gap reference** and the dashboard spoiler selection with supported cards in the browser. Driver Lap Times highlights the selected driver and uses the shared **Ahead**, **Leader** or **Off** gap reference.
-
-These preferences are remembered in that browser. They do not set the integration's Favorite Driver selector or synchronize a television. Selecting a Results Archive event does not start a replay. Use [Favorite Driver](/features/favorite-driver) for persistent driver entities and automations, and [Replay Control](/cards/replay-control) to load historical timing.
-
-## Spoiler protection
-
-Cards that show spoiler-sensitive live or results data can use `no_spoiler_entity`. The usual default is `switch.f1_no_spoiler_mode`; Weekend Hub’s default helper differs and is listed on its reference page.
-
-When protection is active, supported cards display an overlay or mask sensitive values. Do not hide or bypass that overlay to diagnose missing data. See [No Spoiler Mode](/features/no-spoiler-mode) for the integration’s behavior and the correct viewing workflow.
-
-Weekend Hub also shares a spoiler selection with supported cards. This dashboard context is separate from the integration's No Spoiler switch.
-
-Weekend Hub defaults to `input_boolean.f1_no_spoiler_mode`. If you use that helper, create it in Home Assistant; the card does not create it. **Hide analysis** / **Reveal analysis** can toggle a configured `input_boolean` as well as the browser's shared spoiler setting. To have the card also respect the integration switch, configure `no_spoiler_entity: switch.f1_no_spoiler_mode` instead. A configured switch must be changed in Home Assistant: the card's reveal button does not turn it off. An active source still keeps the card hidden even when the browser setting is cleared.
-
-## Data availability notices
-
-| Option | Default | Use |
-| --- | --- | --- |
-| `auth_status_entity` | `sensor.f1_f1tv_token_status` | Token status for cards with F1TV enhanced data. |
-| `show_availability_notice` | `true` | Show informational notices explaining enhanced-data availability. |
-
-Setting `show_availability_notice: false` hides informational notices only. Warnings about expired, invalid or rejected F1TV access remain visible because they require attention.
-
-A card may combine public data with optional enhanced fields. Missing enhanced data does not necessarily mean that the entire card is unusable. Check the card’s **Availability** section and the [F1TV Auth guide](/features/f1tv-auth).
-
-## Card actions
-
-All bundled cards accept Home Assistant action objects:
-
-| Option | Default | Gesture |
-| --- | --- | --- |
-| `tap_action` | More-info when an action entity is available; otherwise none | Tap or keyboard activation |
-| `hold_action` | None | Hold |
-| `double_tap_action` | None | Double-tap |
-
-The card’s own buttons, selectors, links and chart controls keep their normal behavior. A tap action does not replace those controls.
-
-Example: disable the background tap action while leaving card controls available.
-
-```yaml
-type: custom:f1-driver-lap-times-card
-positions_entity: sensor.f1_driver_positions
-tap_action:
-  action: none
-```
-
-For configured actions, use Home Assistant’s action fields. The bundled cards also accept the older `call-service` form and translate it to `perform-action`.
+Prefer the visual editor for module fields and options because it validates the available choices.
 
 ## Related
 
-- [Dashboard card catalog](/cards/cards-overview)
-- [Card installation and updates](/cards/installation)
-- [No Spoiler Mode](/features/no-spoiler-mode)
-- [F1TV Auth](/features/f1tv-auth)
+- [Build the card](/cards/modular)
+- [Move from a deprecated card](/cards/modular-migration)
+- [Card installation and loading checks](/cards/installation)

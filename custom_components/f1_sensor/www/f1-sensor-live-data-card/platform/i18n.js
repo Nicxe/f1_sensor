@@ -1,5 +1,7 @@
 export const STRINGS = {
   en: {
+    'card.modular.name': 'F1 Sensor',
+    'card.modular.description': 'Build your own Formula 1 view with configurable modules, colors and accessible timing',
     'a11y.open_details': 'Open details for {title}',
     'track_map.websocket_unavailable': 'Track map websocket unavailable',
     'track_map.no_position_data': 'No position data',
@@ -63,6 +65,8 @@ export const STRINGS = {
     'card.starting_grid.description': 'Starting grid for the active Sprint or Race',
   },
   sv: {
+    'card.modular.name': 'F1 Sensor',
+    'card.modular.description': 'Bygg din egen Formel 1-vy med valbara moduler, färger och tillgänglig timing',
     'a11y.open_details': 'Öppna detaljer för {title}',
     'track_map.websocket_unavailable': 'Track Map-webbsocketen är inte tillgänglig',
     'track_map.no_position_data': 'Ingen positionsdata',

@@ -122,6 +122,8 @@ class F1DelayCalibrationSwitch(F1AuxEntity, SwitchEntity):
         next_state = mode in {"waiting", "running"}
         attrs = {
             "mode": mode,
+            "idle_reason": snapshot.get("idle_reason"),
+            "last_result": snapshot.get("last_result"),
             "reference": snapshot.get("reference"),
             "message": snapshot.get("message"),
             "waiting_since": snapshot.get("waiting_since"),

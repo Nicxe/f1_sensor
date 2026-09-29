@@ -1,0 +1,942 @@
+{
+  "production_changed": false,
+  "note": "Single exploratory runs per candidate, not validated fixes. Budgets and ordinary tests unchanged. Frame scheduling candidates add update latency.",
+  "candidates": [
+    {
+      "name": "layout-containment",
+      "change": "Host contain: layout style",
+      "passed": false,
+      "measurements": {
+        "scenarios": [
+          {
+            "name": "simple",
+            "savedModules": [
+              0
+            ],
+            "remainingSnapshots": [
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 1,
+            "renderMs": 73.29999995231628,
+            "p95UpdateMs": 34.200000047683716,
+            "longestTask": 0,
+            "requests": 1,
+            "subscriptions": 1,
+            "diagnostics": {
+              "resources": 1,
+              "consumers": 1,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              []
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "detailed",
+            "savedModules": [
+              0
+            ],
+            "remainingSnapshots": [
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 1,
+            "renderMs": 64.89999997615814,
+            "p95UpdateMs": 33.700000047683716,
+            "longestTask": 0,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 2,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "ten-shared",
+            "savedModules": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "remainingSnapshots": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 10,
+            "renderMs": 116.69999992847443,
+            "p95UpdateMs": 33.90000009536743,
+            "longestTask": 54,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 20,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "ten-retained",
+            "savedModules": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "remainingSnapshots": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 10,
+            "renderMs": 100,
+            "p95UpdateMs": 34,
+            "longestTask": 0,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 20,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          }
+        ],
+        "services": 0
+      }
+    },
+    {
+      "name": "block-time-cell",
+      "change": "Block container instead of outer flex layout for time cells",
+      "passed": false,
+      "measurements": {
+        "scenarios": [
+          {
+            "name": "simple",
+            "savedModules": [
+              0
+            ],
+            "remainingSnapshots": [
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 1,
+            "renderMs": 75,
+            "p95UpdateMs": 33.5,
+            "longestTask": 0,
+            "requests": 1,
+            "subscriptions": 1,
+            "diagnostics": {
+              "resources": 1,
+              "consumers": 1,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              []
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "detailed",
+            "savedModules": [
+              0
+            ],
+            "remainingSnapshots": [
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 1,
+            "renderMs": 82,
+            "p95UpdateMs": 33.40000009536743,
+            "longestTask": 0,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 2,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "ten-shared",
+            "savedModules": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "remainingSnapshots": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 10,
+            "renderMs": 116.70000004768372,
+            "p95UpdateMs": 34,
+            "longestTask": 54,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 20,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "ten-retained",
+            "savedModules": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "remainingSnapshots": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 10,
+            "renderMs": 100,
+            "p95UpdateMs": 34.39999997615814,
+            "longestTask": 0,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 20,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          }
+        ],
+        "services": 0
+      }
+    },
+    {
+      "name": "three-per-frame",
+      "change": "At most three card updates per animation frame",
+      "passed": true,
+      "measurements": {
+        "scenarios": [
+          {
+            "name": "simple",
+            "savedModules": [
+              0
+            ],
+            "remainingSnapshots": [
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 1,
+            "renderMs": 75.29999995231628,
+            "p95UpdateMs": 50.699999928474426,
+            "longestTask": 0,
+            "requests": 1,
+            "subscriptions": 1,
+            "diagnostics": {
+              "resources": 1,
+              "consumers": 1,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              []
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "detailed",
+            "savedModules": [
+              0
+            ],
+            "remainingSnapshots": [
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 1,
+            "renderMs": 82.89999997615814,
+            "p95UpdateMs": 51,
+            "longestTask": 0,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 2,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "ten-shared",
+            "savedModules": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "remainingSnapshots": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 10,
+            "renderMs": 166.70000004768372,
+            "p95UpdateMs": 100.19999992847443,
+            "longestTask": 0,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 20,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "ten-retained",
+            "savedModules": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "remainingSnapshots": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 10,
+            "renderMs": 149.79999995231628,
+            "p95UpdateMs": 100.69999992847443,
+            "longestTask": 0,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 20,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          }
+        ],
+        "services": 0
+      }
+    },
+    {
+      "name": "five-per-frame",
+      "change": "At most five card updates per animation frame",
+      "passed": false,
+      "measurements": {
+        "scenarios": [
+          {
+            "name": "simple",
+            "savedModules": [
+              0
+            ],
+            "remainingSnapshots": [
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 1,
+            "renderMs": 92.5,
+            "p95UpdateMs": 50.60000002384186,
+            "longestTask": 0,
+            "requests": 1,
+            "subscriptions": 1,
+            "diagnostics": {
+              "resources": 1,
+              "consumers": 1,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              []
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "detailed",
+            "savedModules": [
+              0
+            ],
+            "remainingSnapshots": [
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 1,
+            "renderMs": 115.79999995231628,
+            "p95UpdateMs": 50.299999952316284,
+            "longestTask": 58,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 2,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "ten-shared",
+            "savedModules": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "remainingSnapshots": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 10,
+            "renderMs": 149.69999992847443,
+            "p95UpdateMs": 67.5,
+            "longestTask": 0,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 20,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          },
+          {
+            "name": "ten-retained",
+            "savedModules": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "remainingSnapshots": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "fieldSize": 32,
+            "cards": 10,
+            "renderMs": 133.79999995231628,
+            "p95UpdateMs": 67.10000002384186,
+            "longestTask": 0,
+            "requests": 2,
+            "subscriptions": 3,
+            "diagnostics": {
+              "resources": 2,
+              "consumers": 20,
+              "groups": 0
+            },
+            "rowsPerCard": [
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ],
+              [
+                32
+              ]
+            ],
+            "afterRemoval": {
+              "resources": 0,
+              "consumers": 0,
+              "groups": 0
+            },
+            "activeHandlers": 0,
+            "heapBeforeUpdates": 10000000,
+            "heapAfterUpdates": 10000000
+          }
+        ],
+        "services": 0
+      }
+    }
+  ]
+}

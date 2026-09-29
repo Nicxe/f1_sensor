@@ -235,7 +235,7 @@ def test_frontend_loader_preserves_all_card_tags_and_eagerly_loads_bundle(
         re.findall(r"customElements\.define\('([^']+)'", main_source)
     )
     metadata_cards = set(re.findall(r"\['(f1-[^']+-card)'\s*,", registry_source))
-    assert metadata_cards == EXPECTED_CARD_TYPES
+    assert metadata_cards == EXPECTED_CARD_TYPES | {"f1-sensor-card"}
     assert EXPECTED_CARD_TYPES <= registered_cards
     assert {f"{card}-editor" for card in EXPECTED_CARD_TYPES} <= registered_cards
     assert DEPRECATED_CARD_TYPES <= registered_cards
@@ -246,9 +246,17 @@ def test_frontend_loader_preserves_all_card_tags_and_eagerly_loads_bundle(
         "await import(`./f1-sensor-live-data-card.js${cacheSuffix}`)" in loader_source
     )
     assert "await import(`./platform/card-registry.js${cacheSuffix}`)" in loader_source
-    assert loader_source.rstrip().endswith(
-        "await import(`./f1-sensor-live-data-card.js${cacheSuffix}`);"
-    )
+    for filename, tag in (
+        ("card", "f1-sensor-card"),
+        ("editor", "f1-sensor-card-editor"),
+    ):
+        assert (
+            f"await import(`./modular/{filename}.js${{cacheSuffix}}`);" in loader_source
+        )
+        module_source = (root / "modular" / f"{filename}.js").read_text(
+            encoding="utf-8"
+        )
+        assert f"customElements.define('{tag}'" in module_source
     assert "MutationObserver" not in loader_source
     assert "import './f1-sensor-live-data-card.js'" not in loader_source
     assert "const LitElement = F1BaseElement;" in main_source

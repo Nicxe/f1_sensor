@@ -79,6 +79,22 @@ It uses these helper entities:
 
 The [Live Delay control reference](/reference/live-delay-controls) lists calibration states, timestamps and attributes for custom dashboards. Follow the steps below for normal calibration.
 
+### Optional controls in the F1 Sensor card
+
+You can also use these controls directly in the F1 Sensor card:
+
+1. Edit the card and open **Layout and shared focus**.
+2. Enable **Show Live Delay and global spoiler controls** and save the card.
+3. Open **Viewing settings**, then **Calibrate with TV**.
+4. Choose **Calibration reference** and select **Start calibration**.
+5. Wait for the reference to be recorded. Select **Match TV and save delay** when that moment reaches your TV.
+
+The card shows the measured delay and, for lap sync, the completed lap and the next lap number to watch for on TV. **Cancel calibration** keeps the existing delay. Closing the panel or navigating away does not cancel the integration's measurement.
+
+The reference and saved delay apply to the selected F1 installation and its automations. A preview or frozen card cannot change them. Stop and clear a selected replay before calibrating live data. When spoiler protection hides the reference details, matching is unavailable; cancellation remains available in a connected, unfrozen card.
+
+For manual adjustment, enter **Delay in seconds** and select **Apply live delay**. Typing alone does not change the integration. Manual adjustment is unavailable while calibration is active.
+
 ### Choose the calibration reference
 
 Use `select.f1_live_delay_reference` to choose when the calibration timer starts:

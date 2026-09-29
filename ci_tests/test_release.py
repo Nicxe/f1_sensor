@@ -12,6 +12,18 @@ from scripts.verify_release import verify_release
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_font_license_is_packaged_without_allowing_unrelated_text_files(self):
+        policy = json.loads(Path("quality/release-allowlist.json").read_text())
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            license_path = root / policy["allowed_files"][0]
+            license_path.parent.mkdir(parents=True)
+            license_path.write_text("SIL OPEN FONT LICENSE")
+            self.assertEqual(_runtime_files(root, policy), [license_path])
+            (license_path.parent / "private-notes.txt").write_text("Unrelated")
+            with self.assertRaisesRegex(ValueError, "unclassified release file"):
+                _runtime_files(root, policy)
+
     def test_unclassified_runtime_directory_is_not_silently_omitted(self):
         policy = json.loads(Path("quality/release-allowlist.json").read_text())
         with TemporaryDirectory() as directory:
