@@ -11,4 +11,4 @@ Community user Tiidler has used the sensors from this integration to create a fu
 
 ![Tiidler’s F1 dashboard with schedule, standings and weather](https://github.com/user-attachments/assets/4ed2748c-2ae7-4529-8767-bedbaa98636f)
 
-This is an inspiration example, not a bundled card with maintained installation instructions. For ready-to-use cards, browse the [card gallery](/cards/cards-overview). Discuss community designs in the [Home Assistant topic](https://community.home-assistant.io/t/formula-1-racing-sensor/880842).
+This is an inspiration example, not the bundled card with maintained installation instructions. For a ready-to-use dashboard, configure the [F1 Sensor card](/cards/cards-overview). Discuss community designs in the [Home Assistant topic](https://community.home-assistant.io/t/formula-1-racing-sensor/880842).

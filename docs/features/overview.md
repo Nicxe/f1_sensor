@@ -27,7 +27,7 @@ For published classifications without playback, use [Results Archive](/features/
 
 ## Build your race-day setup
 
-- [Choose dashboard cards](/cards/cards-overview), from a simple next-race panel to live timing.
+- [Build the F1 Sensor card](/cards/cards-overview), from a simple next-race panel to live timing.
 - [Create your first automation](/automation), then use a blueprint for lights or notifications.
 - [Understand incident alerts](/features/incident-detection) and choose conservative notification filters.
 - [Explore Weekend Hub and results](/features/weekend-analysis) for an overview of the session and its history.

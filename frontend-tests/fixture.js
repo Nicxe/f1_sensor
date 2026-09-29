@@ -52,6 +52,7 @@ const translations = {
 };
 
 const emptyResponse = (message) => {
+  if (message?.type === 'f1_sensor/entities') return [];
   if (message?.type?.includes('/subscribe')) return undefined;
   if (message?.type?.includes('config/entity_registry/list')) return [];
   if (message?.type?.includes('config_entries/get')) return { entries: [{ entry_id: 'phase5-entry', title: 'F1 Sensor' }] };
@@ -118,7 +119,7 @@ window.mountF1Element = async ({ type, editor = false, language = 'en-GB', theme
   return { tag, config, hasCard: Boolean(element.renderRoot?.querySelector('ha-card')) };
 };
 
-window.mountF1Gallery = async ({ editor = false, language = 'en-GB', theme = 'dark' } = {}) => {
+window.mountF1Gallery = async ({ editor = false, language = 'en-GB', theme = 'dark', legacyOnly = false } = {}) => {
   mount.replaceChildren();
   mount.className = 'gallery';
   document.body.classList.toggle('light', theme === 'light');
@@ -126,6 +127,7 @@ window.mountF1Gallery = async ({ editor = false, language = 'en-GB', theme = 'da
   const hass = window.makeHass(language, theme);
   const mounted = [];
   for (const type of window.f1CardTypes()) {
+    if (legacyOnly && type === 'f1-sensor-card') continue;
     const tag = editor ? `${type}-editor` : type;
     const ElementClass = customElements.get(tag);
     if (!ElementClass) throw new Error(`Custom element ${tag} is not registered`);

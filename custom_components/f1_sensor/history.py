@@ -418,6 +418,7 @@ class HistoryService:
             )
             normalized.append(
                 {
+                    "driver_id": _text(driver.get("driverId")),
                     "driver_number": _as_int(item.get("number")),
                     "driver_name": " ".join(
                         part
@@ -429,6 +430,7 @@ class HistoryService:
                     )
                     or None,
                     "driver_acronym": _text(driver.get("code")),
+                    "constructor_id": _text(constructor.get("constructorId")),
                     "constructor_name": _text(constructor.get("name")),
                     "position": _as_int(item.get("position")),
                     "grid": _as_int(item.get("grid")),

@@ -2,11 +2,11 @@
 
 ## Your home. On race time.
 
-Turn your Home Assistant dashboard into a personal pit wall and let your home follow the action. F1 Sensor brings Formula 1 schedules, live timing, race updates and results into Home Assistant, with ready-to-use dashboard cards and automations you can make your own.
+Turn your Home Assistant dashboard into a personal pit wall and let your home follow the action. F1 Sensor brings Formula 1 schedules, live timing, race updates and results into Home Assistant, with one configurable dashboard card and automations you can make your own.
 
 See when the next session starts, follow the drivers as they race, and make your lights react when the flags change. Watching on a delayed broadcast or catching up later? Match live updates to your TV with Live Delay, or bring archived timing to life with Replay Mode.
 
-[Documentation](https://nicxe.github.io/f1_sensor/) · [Installation](https://nicxe.github.io/f1_sensor/getting-started/installation) · [Dashboard cards](https://nicxe.github.io/f1_sensor/cards/cards-overview) · [Releases](https://github.com/Nicxe/f1_sensor/releases)
+[Documentation](https://nicxe.github.io/f1_sensor/) · [Installation](https://nicxe.github.io/f1_sensor/getting-started/installation) · [Dashboard card](https://nicxe.github.io/f1_sensor/cards/cards-overview) · [Releases](https://github.com/Nicxe/f1_sensor/releases)
 
 ## Yellow flag. Yellow light.
 
@@ -22,16 +22,16 @@ Lights are just the start. Get a reminder before a session, receive selected Rac
 
 Keep the race weekend beside your TV, on a tablet, or wherever you use Home Assistant. Start with a next-race countdown and build up to a dashboard with driver positions, lap times, gaps, tyres, weather and Race Control messages.
 
-[![Example F1 Sensor dashboard with session status, driver lap times, tyres, pit stops and championship predictions](static/img/placeholder_cards_overview.png)](https://nicxe.github.io/f1_sensor/cards/cards-overview)
+[![F1 Sensor Race weekend card showing the next Grand Prix and schedule](static/img/cards/f1-sensor-race-weekend.png)](https://nicxe.github.io/f1_sensor/cards/cards-overview)
 
 | Follow the weekend | What you can do |
 | --- | --- |
 | Before the lights go out | Check the season calendar, session times, circuit weather and championship standings. |
 | During the session | Follow practice, qualifying, Sprint and Race timing, with track flags, tyre information and Race Control updates. |
 | Follow your driver | Select a [Favorite Driver](https://nicxe.github.io/f1_sensor/features/favorite-driver) for focused timing and automations based on their position and pit activity. |
-| After the chequered flag | Review results, explore the [Results Archive](https://nicxe.github.io/f1_sensor/cards/results), and see how the championship develops. |
+| After the chequered flag | Review results, explore the [Historical archive](https://nicxe.github.io/f1_sensor/features/historical-results), and see how the championship develops. |
 
-The dashboard cards are included with the integration and registered automatically. [Explore the card catalogue](https://nicxe.github.io/f1_sensor/cards/cards-overview) to choose the views that suit your setup.
+The dashboard card is included with the integration and registered automatically. [Explore its presets and modules](https://nicxe.github.io/f1_sensor/cards/cards-overview) to build the view that suits your setup.
 
 ## Watch on your time
 
@@ -53,7 +53,7 @@ Live information appears when the relevant session streams are available; schedu
 
 | I want to… | Start here |
 | --- | --- |
-| Choose a dashboard card | [Visual card catalogue](https://nicxe.github.io/f1_sensor/cards/cards-overview) |
+| Build a dashboard card | [F1 Sensor card](https://nicxe.github.io/f1_sensor/cards/cards-overview) |
 | Match updates to my TV | [Live Delay](https://nicxe.github.io/f1_sensor/features/live-delay) |
 | Watch a completed session | [Replay Mode](https://nicxe.github.io/f1_sensor/features/replay-mode) |
 | Make my lights react to flags | [Track Status Light blueprint](https://nicxe.github.io/f1_sensor/blueprints/track-status-light) |
