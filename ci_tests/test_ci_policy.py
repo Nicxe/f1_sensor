@@ -61,7 +61,7 @@ class PolicyTests(unittest.TestCase):
                 for job, enabled in select_jobs(
                     files, event, "pull_request", ""
                 ).items()
-                if job != "blueprints"
+                if job not in ("blueprints", "audit")
             )
         )
         for changed in [
@@ -104,7 +104,7 @@ class PolicyTests(unittest.TestCase):
         ]:
             self.assertEqual(
                 select_jobs(files, {}, "push", "dev"),
-                {job: job != "blueprints" for job in JOBS},
+                {job: job not in ("blueprints", "audit") for job in JOBS},
             )
 
     def test_runtime_and_blueprints(self):
@@ -117,16 +117,42 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(selected["blueprints"])
         self.assertFalse(selected["backend"])
 
-    def test_promotions_and_final_commits_always_run_all(self):
+    def test_promotions_skip_audit_but_release_commits_keep_all_checks(self):
         for base, head in [("beta", "dev"), ("main", "beta")]:
             self.assertEqual(
                 select_jobs(["docs/help.md"], pull(base, head), "pull_request", ""),
-                {job: job != "blueprints" for job in JOBS},
+                {job: job not in ("blueprints", "audit") for job in JOBS},
             )
             self.assertEqual(
                 select_jobs(["docs/help.md"], {}, "push", base),
                 {job: job != "blueprints" for job in JOBS},
             )
+
+    def test_audit_is_maintenance_only_for_prs_and_development_pushes(self):
+        for base in ("dev", "content", "beta", "main"):
+            for fork in (False, True):
+                event = pull(base, "change", fork)
+                for files in (None, ["package-lock.json"], ["unknown.config"]):
+                    for trigger in ("pull_request", "workflow_dispatch"):
+                        with self.subTest(
+                            base=base, fork=fork, files=files, trigger=trigger
+                        ):
+                            self.assertFalse(
+                                select_jobs(files, event, trigger, base)["audit"]
+                            )
+        for branch in ("dev", "content"):
+            self.assertFalse(select_jobs(None, {}, "push", branch)["audit"])
+
+    def test_release_and_maintenance_audit_selection_is_preserved(self):
+        for trigger, branch in (
+            ("push", "main"),
+            ("push", "beta"),
+            ("workflow_dispatch", "main"),
+            ("workflow_dispatch", "beta"),
+            ("schedule", "main"),
+        ):
+            with self.subTest(trigger=trigger, branch=branch):
+                self.assertTrue(select_jobs(None, {}, trigger, branch)["audit"])
 
     def test_branch_routing_including_forks_and_retarget(self):
         self.assertFalse(
