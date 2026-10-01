@@ -45,7 +45,8 @@
           "race_week_start_day": "First day of race week",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
           "clear_live_timing_auth_header": "Clear F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
+          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
+          "install_legacy_cards": "Install legacy dashboard cards"
         },
         "data_description": {
           "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
@@ -54,7 +55,8 @@
           "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
           "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste the full Bearer token from the F1TV Token Helper only as an advanced fallback. Leave blank to use public live timing only.",
-          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it."
+          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
+          "install_legacy_cards": "Also register the deprecated F1 cards. New installations leave this off; existing installations keep their previous cards. Requires dashboard card installation. Reload the browser after changing this option. Disabling it stops existing legacy cards from working unless you migrate them to the F1 Sensor card. If several F1 Sensor installations exist, legacy cards stay available while any enabled installation requests them."
         }
       },
       "reconfigure": {
@@ -69,7 +71,8 @@
           "race_week_start_day": "First day of race week",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
           "clear_live_timing_auth_header": "Clear F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
+          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
+          "install_legacy_cards": "Install legacy dashboard cards"
         },
         "data_description": {
           "operation_mode": "Choose Live to connect to Formula 1 SignalR, or Development to replay a saved dump locally.",
@@ -79,7 +82,8 @@
           "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
           "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing only.",
-          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it."
+          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
+          "install_legacy_cards": "Also register the deprecated F1 cards. New installations leave this off; existing installations keep their previous cards. Requires dashboard card installation. Reload the browser after changing this option. Disabling it stops existing legacy cards from working unless you migrate them to the F1 Sensor card. If several F1 Sensor installations exist, legacy cards stay available while any enabled installation requests them."
         }
       },
       "reauth_confirm": {
@@ -125,14 +129,16 @@
           "install_dashboard_cards": "Install bundled dashboard cards",
           "race_week_start_day": "First day of race week",
           "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path"
+          "replay_file": "Replay dump path",
+          "install_legacy_cards": "Install legacy dashboard cards"
         },
         "data_description": {
           "enable_race_control": "Connect to Formula 1 Live Timing only when live features are enabled.",
           "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
           "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
           "operation_mode": "Choose Live or local replay Development mode.",
-          "replay_file": "Absolute path to a replay dump used only in Development mode."
+          "replay_file": "Absolute path to a replay dump used only in Development mode.",
+          "install_legacy_cards": "Also register the deprecated F1 cards. New installations leave this off; existing installations keep their previous cards. Requires dashboard card installation. Reload the browser after changing this option. Disabling it stops existing legacy cards from working unless you migrate them to the F1 Sensor card. If several F1 Sensor installations exist, legacy cards stay available while any enabled installation requests them."
         }
       }
     },

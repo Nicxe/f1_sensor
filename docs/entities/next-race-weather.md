@@ -52,7 +52,7 @@ The entity supports Home Assistant's hourly, daily, and twice-daily forecast typ
 | circuit_country | string | Country |
 
 :::info[Existing weather sensor]
-The existing `sensor.f1_weather` remains available for backward compatibility and for bundled cards that compare current conditions with the race-start forecast.
+The existing `sensor.f1_weather` remains available for backward compatibility and for the F1 Sensor card's Weather modules.
 :::
 
 

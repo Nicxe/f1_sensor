@@ -29,9 +29,13 @@ class DummyCoordinator(SimpleNamespace):
 
 NODE_PROBE_SCRIPT = r"""
 const fs = require("node:fs");
+const path = require("node:path");
 
 const payload = JSON.parse(process.env.TIMING_LAYOUT_PAYLOAD || "{}");
-const source = fs.readFileSync(process.env.TIMING_LAYOUT_PATH, "utf8");
+// The helpers are delivered in a shared module now; exercise that same source
+// rather than keeping a second copy of the logo rules in this harness.
+const source = fs.readFileSync(process.env.TIMING_LAYOUT_PATH, "utf8") + "\n" +
+  fs.readFileSync(path.join(path.dirname(process.env.TIMING_LAYOUT_PATH), "platform/branding.js"), "utf8");
 
 function findMatchingBrace(text, openIndex) {
   let depth = 0;

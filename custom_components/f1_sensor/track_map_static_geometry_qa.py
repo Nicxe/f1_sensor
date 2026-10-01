@@ -8,10 +8,9 @@ from dataclasses import asdict, dataclass
 import json
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 from urllib.request import Request, urlopen
 
-from .const import F1_CIRCUIT_IMAGE_SLUGS
 from .helpers import get_circuit_map_url, get_circuit_outline_url
 from .track_map_static_geometry import (
     STATIC_TRACK_GEOMETRIES,
@@ -34,6 +33,36 @@ STATUS_UNEXPECTED_CATALOG = "unexpected_catalog"
 STATUS_NEEDS_REVIEW = "needs_review"
 STATUS_IMAGE_ERROR = "image_error"
 DEFAULT_QA_SEASON = "2026"
+
+# Circuit images can be available before Position.z telemetry has been captured
+# and the corresponding static Track Map geometry has been validated.
+STATIC_TRACK_GEOMETRY_EXPECTED_CIRCUIT_IDS: Final = (
+    "albert_park",
+    "shanghai",
+    "suzuka",
+    "bahrain",
+    "jeddah",
+    "miami",
+    "imola",
+    "villeneuve",
+    "monaco",
+    "catalunya",
+    "red_bull_ring",
+    "silverstone",
+    "spa",
+    "hungaroring",
+    "zandvoort",
+    "monza",
+    "madring",
+    "baku",
+    "marina_bay",
+    "americas",
+    "rodriguez",
+    "interlagos",
+    "vegas",
+    "losail",
+    "yas_marina",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,12 +114,8 @@ class StaticTrackGeometryQaReport:
 
 
 def expected_2025_2026_catalog_circuit_ids() -> tuple[str, ...]:
-    """Return the current 2025/2026 calendar circuit ids expected in the catalog."""
-    ids = list(F1_CIRCUIT_IMAGE_SLUGS[DEFAULT_QA_SEASON])
-    if "imola" not in ids:
-        insert_at = ids.index("villeneuve") if "villeneuve" in ids else len(ids)
-        ids.insert(insert_at, "imola")
-    return tuple(dict.fromkeys(ids))
+    """Return circuit ids expected to have validated static geometry."""
+    return STATIC_TRACK_GEOMETRY_EXPECTED_CIRCUIT_IDS
 
 
 def build_static_track_geometry_qa_report(
