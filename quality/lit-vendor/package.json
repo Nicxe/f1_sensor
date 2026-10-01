@@ -1,0 +1,17 @@
+{
+  "name": "f1-sensor-vendored-lit",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "lit": "3.3.2",
+    "lit-html": "3.3.3",
+    "lit-element": "4.2.2",
+    "@lit/reactive-element": "2.1.2",
+    "esbuild": "0.28.2"
+  },
+  "overrides": {
+    "lit-html": "3.3.3",
+    "lit-element": "4.2.2",
+    "@lit/reactive-element": "2.1.2"
+  }
+}

@@ -11,6 +11,7 @@ from custom_components.f1_sensor import _async_reload_entry, config_flow
 from custom_components.f1_sensor.config_flow import F1FlowHandler, F1OptionsFlow
 from custom_components.f1_sensor.const import (
     CONF_INSTALL_DASHBOARD_CARDS,
+    CONF_INSTALL_LEGACY_CARDS,
     CONF_LIVE_TIMING_AUTH_HEADER,
     CONF_OPERATION_MODE,
     CONF_RACE_WEEK_START_DAY,
@@ -312,3 +313,32 @@ async def test_replay_file_validators_handle_executor_failures(hass, tmp_path) -
         await config_flow._async_validate_replay_file(failing_hass, str(replay))
         is False
     )
+
+
+async def test_legacy_card_option_defaults_and_persistence(hass):
+    form = await _flow(hass).async_step_user()
+    assert _schema_default(form, CONF_INSTALL_LEGACY_CARDS) is False
+    created = await _flow(hass).async_step_user(_user_input())
+    assert created["options"][CONF_INSTALL_LEGACY_CARDS] is False
+    created = await _flow(hass).async_step_user(
+        _user_input(**{CONF_INSTALL_LEGACY_CARDS: True})
+    )
+    assert created["options"][CONF_INSTALL_LEGACY_CARDS] is True
+    entry = _entry(hass)
+    flow = _flow(hass, "reconfigure", entry.entry_id)
+    form = await flow.async_step_reconfigure()
+    assert _schema_default(form, CONF_INSTALL_LEGACY_CARDS) is True
+    result = await flow.async_step_reconfigure(
+        _user_input(**{CONF_INSTALL_LEGACY_CARDS: False})
+    )
+    assert result["type"] == "abort"
+    assert entry.options[CONF_INSTALL_LEGACY_CARDS] is False
+    options = config_flow.F1FlowHandler.async_get_options_flow(entry)
+    options.hass = hass
+    options.handler = entry.entry_id
+    form = await options.async_step_init()
+    assert _schema_default(form, CONF_INSTALL_LEGACY_CARDS) is False
+    saved = await options.async_step_init(
+        {"enabled_sensors": ["next_race"], CONF_INSTALL_LEGACY_CARDS: True}
+    )
+    assert saved["data"][CONF_INSTALL_LEGACY_CARDS] is True

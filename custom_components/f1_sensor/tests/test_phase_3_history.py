@@ -164,7 +164,10 @@ async def test_history_results_normalize_jolpica_classification(
                                     "givenName": "Lando",
                                     "familyName": "Norris",
                                 },
-                                "Constructor": {"name": "McLaren"},
+                                "Constructor": {
+                                    "constructorId": "mclaren",
+                                    "name": "McLaren",
+                                },
                                 "laps": "57",
                                 "status": "Finished",
                                 "Time": {"time": "1:31:42.123"},
@@ -188,9 +191,11 @@ async def test_history_results_normalize_jolpica_classification(
     )
 
     assert result["results"][0] == {
+        "driver_id": "norris",
         "driver_number": 4,
         "driver_name": "Lando Norris",
         "driver_acronym": "NOR",
+        "constructor_id": "mclaren",
         "constructor_name": "McLaren",
         "position": 1,
         "grid": 2,

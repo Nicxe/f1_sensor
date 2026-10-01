@@ -1,37 +1,30 @@
 import React from 'react';
 import Link from '@docusaurus/Link';
-import useBaseUrl from '@docusaurus/useBaseUrl';
 import styles from './styles.module.css';
 import FlagDemo from './FlagDemo';
 
 const paths = [
   {number: '01', title: 'Get started', text: 'Install the integration and make your first dashboard.', href: '/getting-started/installation'},
-  {number: '02', title: 'Choose your cards', text: 'Find the right view for a weekend, session or result.', href: '/cards/cards-overview'},
+  {number: '02', title: 'Build your card', text: 'Choose a preset or combine modules for the view you need.', href: '/cards/cards-overview'},
   {number: '03', title: 'Watch in sync', text: 'Match live updates or a replay to your broadcast.', href: '/features/live-delay'},
   {number: '04', title: 'Automate your home', text: 'Bring flags, session starts and notifications into your home.', href: '/automation'},
   {number: '05', title: 'Find an answer', text: 'Understand missing data, settings and common problems.', href: '/help/faq'},
 ];
 
 export default function Home() {
-  const dashboard = useBaseUrl('/img/placeholder_cards_overview.png');
   return (
     <div className={`f1-home ${styles.home}`}>
       <section className={styles.hero} aria-labelledby="your-home-in-sync-with-formula-1">
         <div className={styles.heroCopy}>
           <p className={styles.eyebrow}><span aria-hidden="true" /> Formula 1 meets Home Assistant</p>
           <h1 id="your-home-in-sync-with-formula-1">Your home.<br /><em>On race time.</em></h1>
-          <p className={styles.lead}>The race weekend, brought home. Schedules, live timing, dashboard cards and automations that follow the action.</p>
+          <p className={styles.lead}>The race weekend, brought home. Schedules, live timing, one configurable dashboard card and automations that follow the action.</p>
           <div className={styles.actions}>
             <Link className={styles.primary} to="/getting-started/installation">Install F1 Sensor <span aria-hidden="true">↗</span></Link>
-            <Link className={styles.secondary} to="/cards/cards-overview">Explore dashboard cards <span aria-hidden="true">→</span></Link>
+            <Link className={styles.secondary} to="/cards/cards-overview">Explore the F1 Sensor card <span aria-hidden="true">→</span></Link>
           </div>
           <p className={styles.optional}>Start with public live timing. <Link to="/features/f1tv-auth">F1TV Auth is optional.</Link></p>
         </div>
-        <figure className={styles.heroVisual}>
-          <div className={styles.visualHeader}><span>Your personal pit wall</span><span>Dashboard example</span></div>
-          <Link to="/cards/cards-overview" aria-label="Explore the dashboard cards shown in this example"><img src={dashboard} width="1720" height="1396" alt="Example F1 Sensor dashboard with session status, driver lap times, tyres, pit stops and championship predictions" fetchPriority="high" /></Link>
-          <figcaption>A view for every part of the weekend. Available data depends on the session and your setup.</figcaption>
-        </figure>
       </section>
 
       <FlagDemo />
