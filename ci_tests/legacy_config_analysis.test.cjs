@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const { parse } = require('@babel/parser');
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
 const { computedConfigCoverage, indirectConfigFields } = require('../scripts/legacy_config_analysis.cjs');
 const analyze = source => indirectConfigFields(parse(source).program.body[0]);
 
@@ -100,8 +102,22 @@ test('shared discovery records only explicitly installed sources and support', (
   assert.equal(sharedConfigFields(ast, 'Missing').length, 0);
 });
 
-test('checked-in legacy inventory and migration audit match current source', () => {
+test('current source passes migration checks without updating saved reports', t => {
   const root = path.resolve(__dirname, '..');
-  execFileSync(process.execPath, [path.join(root, 'scripts/inventory_card_options.cjs'), '--check'], { cwd: root, stdio: 'pipe' });
-  execFileSync(process.execPath, [path.join(root, 'scripts/audit_card_migration.mjs'), '--check'], { cwd: root, stdio: 'pipe' });
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), 'f1-migration-'));
+  t.after(() => fs.rmSync(output, { recursive: true, force: true }));
+  const reports = ['legacy-card-options.json', 'legacy-migration-audit.json', 'legacy-migration-audit.md'];
+  const saved = reports.map(name => fs.readFileSync(path.join(root, 'quality', name), 'utf8'));
+  for (const script of ['inventory_card_options.cjs', 'audit_card_migration.mjs']) {
+    execFileSync(process.execPath, [path.join(root, 'scripts', script), '--output-dir', output], { cwd: root, stdio: 'pipe' });
+  }
+  const audit = JSON.parse(fs.readFileSync(path.join(output, 'legacy-migration-audit.json'), 'utf8'));
+  assert.ok(audit.cards.length > 0);
+  for (const card of audit.cards) {
+    assert.deepEqual(card.computed_access, [], `${card.type}: unresolved configuration access`);
+    assert.ok(card.pairwise.configurations > 0);
+    assert.equal(card.pairwise.missing_rows, 0);
+    assert.equal(card.pairwise.warning_configurations, 0);
+  }
+  reports.forEach((name, index) => assert.equal(fs.readFileSync(path.join(root, 'quality', name), 'utf8'), saved[index]));
 });
