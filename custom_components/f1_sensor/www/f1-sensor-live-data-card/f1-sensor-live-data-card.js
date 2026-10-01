@@ -34627,7 +34627,7 @@ class F1WeekendHubCard extends LitElement {
       entry_id: 'auto',
       default_view: 'overview',
       show_context: true,
-      no_spoiler_entity: 'input_boolean.f1_no_spoiler_mode',
+      no_spoiler_entity: 'switch.f1_no_spoiler_mode',
       throttle_ms: 500,
       ...config,
     };
@@ -34876,6 +34876,13 @@ class F1WeekendHubCard extends LitElement {
 
   _phaseCopy() {
     const phase = this._snapshot?.phase || 'before';
+    const replayState = this._snapshot?.replay?.state;
+    if (this._snapshot?.provider === 'replay' && replayState === 'paused') {
+      return ['Replay paused', 'Analysis stays at the paused replay position'];
+    }
+    if (this._snapshot?.provider === 'replay' && replayState === 'seeking') {
+      return ['Replay seeking', 'Analysis is updating to the selected replay position'];
+    }
     if (this._snapshot?.provider === 'replay' && phase === 'live') {
       return ['Replay running', 'Timing, strategy and race events update from replay'];
     }
@@ -34897,7 +34904,7 @@ class F1WeekendHubCard extends LitElement {
     const entityId = String(this.config?.no_spoiler_entity || '').trim();
     if (!entityId || typeof this.hass?.callService !== 'function') return;
     const [domain] = entityId.split('.', 1);
-    if (domain === 'input_boolean') {
+    if (['switch', 'input_boolean'].includes(domain)) {
       await this.hass.callService(domain, active ? 'turn_off' : 'turn_on', { entity_id: entityId });
     }
   }
@@ -34931,8 +34938,10 @@ class F1WeekendHubCard extends LitElement {
 
   _renderShell(content) {
     const [kicker, subtitle] = this._phaseCopy();
-    const live = this._snapshot?.phase === 'live';
     const replay = this._snapshot?.provider === 'replay';
+    const replayState = this._snapshot?.replay?.state;
+    const live = this._snapshot?.phase === 'live'
+      && (!replay || !replayState || replayState === 'playing');
     const views = [
       ['overview', 'Overview'],
       ['timeline', 'Timeline'],
@@ -34950,7 +34959,7 @@ class F1WeekendHubCard extends LitElement {
               <div class="wh-subtitle">${this._snapshot?.session_name || subtitle}</div>
             </div>
             <div class="wh-live-badge ${live ? 'live' : ''}">
-              <span class="wh-live-dot"></span>${replay ? 'Replay' : (live ? 'Live' : (this._snapshot?.phase || 'Ready'))}
+              <span class="wh-live-dot"></span>${replay ? kicker : (live ? 'Live' : (this._snapshot?.phase || 'Ready'))}
             </div>
           </header>
           ${this.config?.show_context !== false && this._snapshot ? this._renderContext() : null}
@@ -34969,7 +34978,7 @@ class F1WeekendHubCard extends LitElement {
 
   _renderContext() {
     const drivers = Array.isArray(this._snapshot?.drivers) ? this._snapshot.drivers : [];
-    const driver = this._f1DashboardContext?.driver_number;
+    const driver = this._focusDriver();
     const gap = this._f1DashboardContext?.gap_mode || 'ahead';
     const focusedTiming = this._focusedTiming();
     const gapValue = this._gapReferenceValue(focusedTiming);
@@ -35000,8 +35009,15 @@ class F1WeekendHubCard extends LitElement {
     `;
   }
 
-  _focusedTiming() {
+  _focusDriver() {
     const driver = Number(this._f1DashboardContext?.driver_number);
+    const drivers = Array.isArray(this._snapshot?.drivers) ? this._snapshot.drivers : [];
+    // A persisted focus from another replay must not hide data from the current session.
+    return drivers.some((item) => Number(item.driver_number) === driver) ? driver : null;
+  }
+
+  _focusedTiming() {
+    const driver = this._focusDriver();
     const timing = Array.isArray(this._snapshot?.timing) ? this._snapshot.timing : [];
     return driver ? timing.find((item) => Number(item.driver_number) === driver) || null : null;
   }
@@ -35072,7 +35088,7 @@ class F1WeekendHubCard extends LitElement {
 
   _filteredEvents() {
     const events = Array.isArray(this._snapshot?.timeline?.events) ? this._snapshot.timeline.events : [];
-    const driver = Number(this._f1DashboardContext?.driver_number);
+    const driver = this._focusDriver();
     return driver
       ? events.filter((event) => !event.driver_numbers?.length || event.driver_numbers.includes(driver))
       : events;
@@ -35106,7 +35122,7 @@ class F1WeekendHubCard extends LitElement {
   _renderStrategy() {
     const strategy = this._snapshot?.strategy || {};
     const coverage = strategy.coverage || {};
-    const focus = Number(this._f1DashboardContext?.driver_number);
+    const focus = this._focusDriver();
     const stints = (strategy.stints || []).filter((item) => !focus || item.driver_number === focus);
     if (!stints.length) return html`<div class="wh-empty">Strategy analysis is waiting for clean completed laps${focus ? ' for the selected driver' : ''}.</div>`;
     const exclusionSummary = Object.entries(coverage.excluded_reason_counts || {})
@@ -35168,7 +35184,7 @@ class F1WeekendHubCard extends LitElement {
   _renderTelemetry() {
     const capability = this._snapshot?.capabilities?.telemetry_compare;
     const drivers = Array.isArray(this._snapshot?.drivers) ? this._snapshot.drivers : [];
-    const selectedDriver = this._f1DashboardContext?.driver_number || drivers[0]?.driver_number || '';
+    const selectedDriver = this._focusDriver() || drivers[0]?.driver_number || '';
     if (capability !== 'ready') {
       return html`<div class="wh-empty">Load a replay session to compare selected laps. Live raw telemetry is never exposed as Home Assistant states.</div>`;
     }
@@ -35294,7 +35310,7 @@ class F1WeekendHubCard extends LitElement {
   }
 
   _renderBattles() {
-    const focus = Number(this._f1DashboardContext?.driver_number);
+    const focus = this._focusDriver();
     const exchanges = (this._snapshot?.position_exchanges || []).filter((item) => !focus || item.driver_numbers?.includes(focus));
     const active = (this._snapshot?.battles?.active || []).filter((item) => !focus || item.driver_numbers?.includes(focus));
     const history = (this._snapshot?.battles?.history || []).filter((item) => !focus || item.driver_numbers?.includes(focus));
@@ -35360,7 +35376,7 @@ class F1WeekendHubCardEditor extends LitElement {
       entry_id: 'auto',
       default_view: 'overview',
       show_context: true,
-      no_spoiler_entity: 'input_boolean.f1_no_spoiler_mode',
+      no_spoiler_entity: 'switch.f1_no_spoiler_mode',
       throttle_ms: 500,
       ...config,
     };
@@ -35372,7 +35388,7 @@ class F1WeekendHubCardEditor extends LitElement {
       <div class="wh-editor">
         <div class="wh-editor-title">Data</div>
         ${this._field('entry_id', 'Config entry id', { text: {} }, 'Use auto when one F1 Sensor entry is loaded.')}
-        ${this._field('no_spoiler_entity', 'No Spoiler entity', { entity: { domain: 'input_boolean' } })}
+        ${this._field('no_spoiler_entity', 'No Spoiler entity', { entity: { domain: ['switch', 'input_boolean'] } })}
         ${this._field('throttle_ms', 'Websocket throttle (ms)', { number: { min: 100, max: 5000, step: 100, mode: 'box' } })}
         <div class="wh-editor-title">Display</div>
         ${renderThemeModeSelect(this)}
@@ -35552,7 +35568,11 @@ installF1EntityAutoBinding(F1TrackMapCard, {
   driver_positions_entity: 'driver_positions',
   track_status_entity: 'track_status',
 });
-installF1EntityAutoBinding(F1WeekendHubCard, {});
+installF1EntityAutoBinding(F1WeekendHubCard, {
+  // Preserve explicitly configured legacy helpers, including the old default name.
+  no_spoiler_entity: (config) => String(config.no_spoiler_entity || '').startsWith('input_boolean.')
+    ? [] : 'no_spoiler_mode',
+});
 
 installSectionsAutoHeight(F1WeekendHubCard, {
   columns: 12,
