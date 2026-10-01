@@ -2,12 +2,16 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { isDeepStrictEqual } from 'node:util';
+import { isDeepStrictEqual, parseArgs } from 'node:util';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { LEGACY_ENTITY_BINDINGS, LEGACY_MIGRATIONS, proposeMigration, restoreLegacy } from '../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/migration.js';
 import { configWarnings } from '../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/config.js';
 
 const root = new URL('../', import.meta.url);
-const read = path => fs.readFileSync(new URL(path, root), 'utf8');
+const { values: options } = parseArgs({ options: { check: { type: 'boolean' }, 'output-dir': { type: 'string' } } });
+const output = options['output-dir'] ? pathToFileURL(path.resolve(options['output-dir']) + path.sep) : new URL('quality/', root);
+const read = name => fs.readFileSync(name.startsWith('quality/') ? new URL(name.slice('quality/'.length), output) : new URL(name, root), 'utf8');
 const inventory = JSON.parse(read('quality/legacy-card-options.json'));
 const fingerprint = paths => Object.fromEntries(paths.map(path => [path, createHash('sha256').update(read(path)).digest('hex')]));
 const auditEntityId = source => `${source === 'replay_player' ? 'media_player' : source.endsWith('_select') ? 'select' : ['formation_start', 'overtake_mode'].includes(source) ? 'binary_sensor' : source === 'replay_status' || source === 'straight_mode' ? 'sensor' : 'button'}.audit_${source}`;
@@ -117,8 +121,8 @@ const lines = [
   'Nycklarna nedan gav enbart granskningsbesked i det angivna provurvalet. De är en konkret granskningskö, inte beslut att ta bort funktionerna.', '',
   ...cards.flatMap(card => [`### ${card.name}`, '', `Korttyp: \`${card.type}\`.`, '', card.fields.filter(field => field.observed === 'review_for_all_probes').map(field => `\`${field.key}\``).join(', ') || 'Inga i detta provurval.', '']),
 ];
-const destinations = [[new URL('quality/legacy-migration-audit.json', root), `${JSON.stringify(result, null, 2)}\n`], [new URL('quality/legacy-migration-audit.md', root), `${lines.join('\n').replace(/\n+$/, '\n')}`]];
-if (process.argv.includes('--check')) {
+const destinations = [[new URL('legacy-migration-audit.json', output), `${JSON.stringify(result, null, 2)}\n`], [new URL('legacy-migration-audit.md', output), `${lines.join('\n').replace(/\n+$/, '\n')}`]];
+if (options.check) {
   for (const [destination, rendered] of destinations) if (fs.readFileSync(destination, 'utf8') !== rendered) throw new Error(`${destination.pathname} is stale; run this script without --check`);
 } else for (const [destination, rendered] of destinations) fs.writeFileSync(destination, rendered);
 console.log(JSON.stringify({ cards: cards.length, keys: cards.reduce((n, card) => n + card.fields.length, 0), probes: cards.reduce((n, card) => n + card.fields.reduce((total, field) => total + field.observations.length, 0), 0), pairwiseConfigurations: cards.reduce((n, card) => n + card.pairwise.configurations, 0), reviewOnly: cards.reduce((n, card) => n + card.fields.filter(field => field.observed === 'review_for_all_probes').length, 0) }));
