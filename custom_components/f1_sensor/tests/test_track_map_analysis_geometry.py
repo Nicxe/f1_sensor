@@ -789,6 +789,7 @@ def test_static_track_geometry_qa_reports_complete_calendar_coverage() -> None:
     report = build_static_track_geometry_qa_report()
 
     assert "madring" in expected_2025_2026_catalog_circuit_ids()
+    assert "sepang" not in expected_2025_2026_catalog_circuit_ids()
     assert report.expected_count == 25
     assert report.catalog_count == 25
     assert report.covered_count == 25

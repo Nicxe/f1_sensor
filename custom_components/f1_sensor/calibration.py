@@ -105,7 +105,7 @@ class LiveDelayCalibrationManager:
         if self._reference == LIVE_DELAY_REFERENCE_LAP_SYNC:
             if not self._is_current_session_race_or_sprint():
                 message = "Lap sync is only available during race and sprint sessions."
-                self._transition_to_idle(message)
+                self._transition_to_idle(message, reason="unsupported_session")
                 self._notify_listeners()
                 self._notify_user("F1 live delay", message)
                 return self.snapshot()
@@ -117,6 +117,7 @@ class LiveDelayCalibrationManager:
         self._state.update(
             {
                 "mode": "waiting",
+                "idle_reason": None,
                 "waiting_since": now,
                 "started_at": None,
                 "elapsed": 0.0,
@@ -156,7 +157,7 @@ class LiveDelayCalibrationManager:
             "source": source,
         }
         message = f"Live delay updated to {seconds} seconds."
-        self._transition_to_idle(message)
+        self._transition_to_idle(message, reason="completed")
         self._notify_user("F1 live delay calibrated", message)
         self._notify_listeners()
         if self._reload_cb:
@@ -172,7 +173,14 @@ class LiveDelayCalibrationManager:
         """Abort the calibration flow."""
         if self._is_replay_active() and source != "replay":
             return await self.async_blocked_by_replay(source=source)
-        self._transition_to_idle("Calibration cancelled.")
+        reason = (
+            "timeout"
+            if source == "timeout"
+            else "replay"
+            if source == "replay"
+            else "cancelled"
+        )
+        self._transition_to_idle("Calibration cancelled.", reason=reason)
         self._notify_listeners()
         if source == "timeout":
             if (
@@ -191,7 +199,7 @@ class LiveDelayCalibrationManager:
     async def async_blocked_by_replay(self, *, source: str) -> dict[str, Any]:
         """Abort calibration with a replay-mode notification."""
         message = "Live delay calibration is not available in replay mode."
-        self._transition_to_idle(message)
+        self._transition_to_idle(message, reason="replay")
         self._notify_listeners()
         self._notify_user("F1 live delay", message)
         _LOGGER.debug("Calibration blocked in replay mode (source=%s)", source)
@@ -217,12 +225,16 @@ class LiveDelayCalibrationManager:
 
     def _handle_session_status(self, payload: dict) -> None:
         self._last_session_payload = payload
+        if self._state["mode"] == "running" and self._is_session_finished(payload):
+            self._transition_to_idle(
+                "Sessionen avslutades – kalibreringen stoppades.",
+                reason="session_ended",
+            )
+            self._notify_listeners()
+            return
         if self._reference == LIVE_DELAY_REFERENCE_SESSION:
             if self._state["mode"] == "waiting" and self._is_session_live(payload):
                 self._start_timer(reason="session_status_live")
-        elif self._state["mode"] == "running" and self._is_session_finished(payload):
-            self._transition_to_idle("Sessionen avslutades – kalibreringen stoppades.")
-            self._notify_listeners()
 
     def _start_timer(self, *, reason: str, started_at: Any | None = None) -> None:
         if started_at is not None:
@@ -236,6 +248,7 @@ class LiveDelayCalibrationManager:
         self._state.update(
             {
                 "mode": "running",
+                "idle_reason": None,
                 "waiting_since": None,
                 "started_at": start,
                 "elapsed": 0.0,
@@ -294,12 +307,15 @@ class LiveDelayCalibrationManager:
         _LOGGER.debug("Calibration timed out")
         self._hass.async_create_task(self.async_cancel(source="timeout"))
 
-    def _transition_to_idle(self, message: str | None) -> None:
+    def _transition_to_idle(
+        self, message: str | None, *, reason: str | None = None
+    ) -> None:
         self._cancel_handles()
         self._remove_lapcount_listener()
         self._state.update(
             {
                 "mode": "idle",
+                "idle_reason": reason,
                 "reference": self._reference,
                 "waiting_since": None,
                 "started_at": None,
@@ -332,6 +348,7 @@ class LiveDelayCalibrationManager:
     def _initial_state(self) -> dict[str, Any]:
         return {
             "mode": "idle",
+            "idle_reason": None,
             "reference": self._reference,
             "waiting_since": None,
             "started_at": None,
