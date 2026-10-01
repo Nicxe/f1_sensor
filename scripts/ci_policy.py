@@ -25,10 +25,12 @@ JOBS = (
 RUNTIME = {"lint", "backend", "frontend", "validation", "package"}
 
 
-def selected_checks(selected: set[str]) -> dict[str, bool]:
+def selected_checks(selected: set[str], *, audit: bool = True) -> dict[str, bool]:
     """Backend profiles already include the blueprint tests."""
     return {
-        job: job in selected and not (job == "blueprints" and "backend" in selected)
+        job: job in selected
+        and not (job == "blueprints" and "backend" in selected)
+        and (job != "audit" or audit)
         for job in JOBS
     }
 
@@ -157,6 +159,13 @@ def select_jobs(
     files: list[str] | None, event: dict, event_name: str, branch: str
 ) -> dict[str, bool]:
     pr = event.get("pull_request", {})
+    # Registry advisories belong to maintenance, not contributor verification.
+    # Keep stable/beta release verification and maintenance behavior unchanged.
+    audit = not (
+        pr
+        or event_name == "pull_request"
+        or (event_name == "push" and branch in ("dev", "content"))
+    )
     promotion = (
         pr.get("base", {}).get("ref") in ("beta", "main")
         and pr.get("head", {}).get("ref") != "content"
@@ -167,7 +176,7 @@ def select_jobs(
         or promotion
         or (event_name == "push" and branch in ("beta", "main"))
     ):
-        return selected_checks(set(JOBS))
+        return selected_checks(set(JOBS), audit=audit)
     selected = {"automation"}
     for path in files:
         if path.startswith(
@@ -197,7 +206,7 @@ def select_jobs(
             selected.update(JOBS)
         elif path not in ("LICENSE", ".gitignore"):
             selected.update(JOBS)
-    return selected_checks(selected)
+    return selected_checks(selected, audit=audit)
 
 
 def gate_errors(selected: dict, results: dict, reused=()) -> list[str]:
