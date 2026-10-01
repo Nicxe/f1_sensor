@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { parse } = require('@babel/parser');
+const { values: options } = require('node:util').parseArgs({ options: { check: { type: 'boolean' }, 'output-dir': { type: 'string' } } });
 const { computedConfigCoverage, indirectConfigFields, sharedConfigFields } = require('./legacy_config_analysis.cjs');
 
 const root = path.resolve(__dirname, '..');
@@ -88,9 +89,9 @@ const result = {
   aliases: [{ type: 'f1-session-archive-card', target: 'f1-last-race-results-card', class: registration.get('f1-session-archive-card'), card: analyze(classes.get(registration.get('f1-session-archive-card'))) }],
   all_config_access: analyze(ast), cards,
 };
-const destination = path.join(root, 'quality/legacy-card-options.json');
+const destination = path.join(options['output-dir'] ?? path.join(root, 'quality'), 'legacy-card-options.json');
 const rendered = `${JSON.stringify(result, null, 2)}\n`;
-if (process.argv.includes('--check')) {
+if (options.check) {
   if (fs.readFileSync(destination, 'utf8') !== rendered) throw new Error('quality/legacy-card-options.json is stale; run this script without --check');
 } else fs.writeFileSync(destination, rendered);
 const unresolvedCount = [...cards, ...result.aliases].reduce((total, card) => total + (card.card?.computed_access?.length ?? 0) + (card.editor?.computed_access?.length ?? 0), 0);
