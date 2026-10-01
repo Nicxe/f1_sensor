@@ -79,6 +79,16 @@ export function mapFreshness(snapshot, now = Date.now()) {
   return { stale: snapshot.stale === true || snapshot.status === 'stale' || (!replay && age !== null && threshold !== null && threshold >= 0 && age >= threshold), age };
 }
 
+function inactiveDriverIds(driverPositions) {
+  const inactive = new Set();
+  for (const item of drivers(driverPositions)) {
+    const status = String(item.status ?? '').trim().toLowerCase();
+    if (!item.retired && !item.stopped && !['out', 'retired'].includes(status)) continue;
+    if (item.racing_number != null) inactive.add(String(item.racing_number));
+    if (item.tla) inactive.add(String(item.tla).toUpperCase());
+  }
+  return inactive;
+}
 
 const projections = new WeakMap();
 function projectionFor(track, options) {
@@ -90,17 +100,21 @@ function projectionFor(track, options) {
   return variants.get(key);
 }
 
-export function mapModel(snapshot, module, focus = {}, now = Date.now()) {
+export function mapModel(snapshot, module, focus = {}, now = Date.now(), driverPositions = []) {
   if (!snapshot) return { pending: true, rows: [] };
   const projection = projectionFor(snapshot.track, module.options);
   const freshness = mapFreshness(snapshot, now), driver = module.driver || focus.driver, team = module.team || focus.team;
+  // Position.z can retain an OnTrack coordinate after TimingData has declared
+  // the driver out. Match the legacy card by removing stopped or retired cars.
+  const inactive = inactiveDriverIds(driverPositions);
   const rows = drivers(snapshot.drivers).map(item => {
     const id = String(item.racing_number), name = item.full_name ?? item.name ?? item.tla ?? id;
     const point = projection?.project(item.x, item.y);
     const selected = Boolean((driver || team) && (!driver || [id, item.tla].includes(String(driver))) && (!team || item.team_name === team));
     return { id, name, driver: item.tla ?? id, team: item.team_name ?? null, team_color: item.team_color ?? null,
       point: point?.every(Number.isFinite) ? point : null, timestamp: item.timestamp, status: item.status, stale: freshness.stale || item.stale === true, selected };
-  }).filter(row => module.options.focus !== 'filter' || !driver && !team || row.selected);
+  }).filter(row => !inactive.has(row.id) && !inactive.has(String(row.driver).toUpperCase()))
+    .filter(row => module.options.focus !== 'filter' || !driver && !team || row.selected);
   rows.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   return { rows, points: projection?.points ?? null, freshness, status: snapshot.status, sourceMode: snapshot.source, sessionKey: JSON.stringify([snapshot.session?.session_key, snapshot.session?.path, snapshot.session?.meeting_key]),
     context: { meeting: snapshot.session?.meeting_name, session: snapshot.session?.session_name, key: snapshot.session?.session_key, source: snapshot.source === 'replay' ? 'f1_replay' : 'f1_live', updated: snapshot.generated_at, updatedKind: 'generated' },

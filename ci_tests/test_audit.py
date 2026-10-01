@@ -57,6 +57,47 @@ class AuditTests(unittest.TestCase):
         }
         self.assertEqual(evaluate_audit(report(), allow, date(2026, 9, 4)), [])
 
+    def test_bundled_exception_does_not_allow_other_dependency_paths(self):
+        bundled = "node_modules/npm/node_modules/example"
+        allow = {
+            "entries": [
+                {
+                    "package": "example",
+                    "advisory_ids": [123],
+                    "allowed_nodes": [bundled],
+                    "expires": "2026-10-31",
+                }
+            ]
+        }
+        for nodes in ([bundled], [bundled, "node_modules/example"], [], None):
+            with self.subTest(nodes=nodes):
+                payload = report(
+                    {"example": {"via": [{"source": 123}], "nodes": nodes}}
+                )
+                failures = evaluate_audit(payload, allow, date(2026, 10, 1))
+                if nodes == [bundled]:
+                    self.assertEqual(failures, [])
+                else:
+                    self.assertIn("outside allowed nodes", failures[0])
+
+    def test_invalid_node_scope_fails_closed(self):
+        for nodes in ([], "node_modules/example", [None]):
+            with self.subTest(nodes=nodes):
+                allow = {
+                    "entries": [
+                        {
+                            "package": "example",
+                            "advisory_ids": [123],
+                            "allowed_nodes": nodes,
+                            "expires": "2026-10-31",
+                        }
+                    ]
+                }
+                self.assertIn(
+                    "invalid allowed nodes",
+                    evaluate_audit(report(), allow, date(2026, 10, 1))[0],
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

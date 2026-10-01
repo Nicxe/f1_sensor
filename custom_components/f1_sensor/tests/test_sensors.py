@@ -1264,6 +1264,10 @@ def test_get_circuit_map_url_prefers_2026_detailed_maps() -> None:
         == "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1/2026/track/2026trackmadringdetailed.webp"
     )
     assert (
+        get_circuit_map_url("sepang", "2026")
+        == "https://media.formula1.com/image/upload/f_auto,q_auto/common/f1/2026/track/2026trackkualalumpurdetailed.webp"
+    )
+    assert (
         get_circuit_map_url("imola", "2026")
         == "https://media.formula1.com/image/upload/f_auto,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Emilia_Romagna_Circuit.webp"
     )

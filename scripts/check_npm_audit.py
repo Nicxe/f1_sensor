@@ -45,6 +45,7 @@ def evaluate_audit(audit: object, allowlist: dict, today: date) -> list[str]:
                 continue
             raise AuditUnavailable(f"unresolved advisory data for {package}")
     allowed: dict[tuple[str, int], date] = {}
+    allowed_nodes: dict[tuple[str, int], set[str]] = {}
     failures: list[str] = []
 
     for entry in allowlist.get("entries", []):
@@ -55,8 +56,19 @@ def evaluate_audit(audit: object, allowlist: dict, today: date) -> list[str]:
             continue
         if expiry < today:
             failures.append(f"expired exception for {entry['package']} on {expiry}")
+        nodes = entry.get("allowed_nodes")
+        if nodes is not None and (
+            not isinstance(nodes, list)
+            or not nodes
+            or not all(isinstance(node, str) and node for node in nodes)
+        ):
+            failures.append(f"invalid allowed nodes for {entry['package']}")
+            continue
         for advisory in entry.get("advisory_ids", []):
-            allowed[(entry["package"], int(advisory))] = expiry
+            finding = (entry["package"], int(advisory))
+            allowed[finding] = expiry
+            if nodes is not None:
+                allowed_nodes[finding] = set(nodes)
 
     findings: set[tuple[str, int]] = set()
     for package, vulnerability in vulnerabilities.items():
@@ -68,6 +80,19 @@ def evaluate_audit(audit: object, allowlist: dict, today: date) -> list[str]:
     for finding in sorted(findings):
         if finding not in allowed:
             failures.append(f"{finding[0]}: advisory {finding[1]} is not allowed")
+        elif finding in allowed_nodes:
+            nodes = vulnerabilities[finding[0]].get("nodes")
+            if (
+                not isinstance(nodes, list)
+                or not nodes
+                or not all(
+                    isinstance(node, str) and node in allowed_nodes[finding]
+                    for node in nodes
+                )
+            ):
+                failures.append(
+                    f"{finding[0]}: advisory {finding[1]} is outside allowed nodes"
+                )
     return failures
 
 

@@ -583,7 +583,8 @@ export class F1SensorCard extends LitElement {
       }
       if (module.type === 'documents') Object.assign(model, season.documentsModel(viewHass, entry, effective));
       if (module.type === 'map') {
-        Object.assign(model, mapModel(this.modelPreview?.map ?? this.mapState.data?.snapshot, effective, focus, this.modelPreview?.now ?? Date.now()));
+        const driverPositions = data.source(viewHass, entry, 'driver_positions');
+        Object.assign(model, mapModel(this.modelPreview?.map ?? this.mapState.data?.snapshot, effective, focus, this.modelPreview?.now ?? Date.now(), driverPositions.status === 'available' ? data.array(driverPositions.attributes.drivers) : []));
         const laps = data.source(viewHass, entry, 'race_lap_count'), trackStatus = data.source(viewHass, entry, 'track_status');
         const currentLap = Number(laps.state), totalLaps = Number(laps.attributes.total_laps);
         model.lap = laps.status === 'available' && Number.isInteger(currentLap) && currentLap >= 0 ? currentLap : null;
