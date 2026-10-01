@@ -236,7 +236,7 @@ The media player entity lets you control replay using any media player integrati
 
 ### Dashboard card
 
-The [F1 Replay Control card](/cards/replay-control) combines the Replay Mode selectors, load/play/pause/stop controls, drag-to-seek playbar, 30-second seek buttons, refresh button, and progress display in one Lovelace card.
+Add the **Replay** module to the [F1 Sensor card](/cards/modular). It combines the Replay Mode selectors, load/play/pause/stop controls, drag-to-seek playbar, 30-second seek buttons, refresh button and progress display in one module. Add **Replay telemetry** when you also want to compare recorded driver laps.
 
 ---
 

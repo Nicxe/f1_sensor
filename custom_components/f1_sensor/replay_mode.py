@@ -632,14 +632,14 @@ class ReplaySessionManager:
 
     def _get_snapshot(self) -> dict:
         """Get current state snapshot."""
+        selected = self._selected_session
         return {
             "state": self._state.value,
-            "selected_session": self._selected_session.label
-            if self._selected_session
-            else None,
-            "selected_session_id": self._selected_session.unique_id
-            if self._selected_session
-            else None,
+            "selected_session": selected.label if selected else None,
+            "selected_session_id": selected.unique_id if selected else None,
+            "selected_session_year": selected.year if selected else None,
+            "selected_meeting_key": selected.meeting_key if selected else None,
+            "selected_session_key": selected.session_key if selected else None,
             "download_progress": self._download_progress,
             "download_error": self._download_error,
             "sessions_count": len(self._available_sessions),
