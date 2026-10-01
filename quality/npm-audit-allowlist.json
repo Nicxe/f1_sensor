@@ -1,32 +1,47 @@
 {
-  "reviewed_on": "2026-09-29",
+  "reviewed_on": "2026-10-01",
   "entries": [
     {
       "package": "brace-expansion",
-      "advisory_ids": [1130591, 1130734],
-      "scope": "Bundled inside the current npm release used only by release tooling",
-      "reason": "The current npm package bundles the affected version and cannot be overridden",
+      "advisory_ids": [
+        1240103,
+        1240107,
+        1240111
+      ],
+      "allowed_nodes": [
+        "node_modules/npm/node_modules/brace-expansion"
+      ],
+      "scope": "Bundled inside npm 12.2.0, used only by release tooling",
+      "reason": "The latest npm release still bundles the affected version; npm bundled dependencies cannot be replaced with project overrides",
       "expires": "2026-10-31"
     },
     {
       "package": "ip-address",
-      "advisory_ids": [1130722, 1130723, 1130724, 1239948, 1239949],
-      "scope": "Bundled inside the current npm release used only by release tooling",
-      "reason": "The current npm package bundles the affected version and cannot be overridden",
-      "expires": "2026-10-31"
-    },
-    {
-      "package": "tar",
-      "advisory_ids": [1145647],
-      "scope": "Bundled inside the current npm release used only by release tooling",
-      "reason": "The current npm package bundles the affected version and cannot be overridden",
+      "advisory_ids": [
+        1239948,
+        1239949,
+        1240097,
+        1240098
+      ],
+      "allowed_nodes": [
+        "node_modules/npm/node_modules/ip-address"
+      ],
+      "scope": "Bundled inside npm 12.2.0, used only by release tooling",
+      "reason": "The latest npm release still bundles the affected version; npm bundled dependencies cannot be replaced with project overrides",
       "expires": "2026-10-31"
     },
     {
       "package": "undici",
-      "advisory_ids": [1130716, 1130727, 1130732, 1239934],
-      "scope": "Bundled inside the current npm release used only by release tooling",
-      "reason": "The current npm package bundles the affected version and cannot be overridden",
+      "advisory_ids": [
+        1239934,
+        1240039,
+        1240042
+      ],
+      "allowed_nodes": [
+        "node_modules/npm/node_modules/undici"
+      ],
+      "scope": "Bundled inside npm 12.2.0, used only by release tooling",
+      "reason": "The latest npm release still bundles the affected version; npm bundled dependencies cannot be replaced with project overrides",
       "expires": "2026-10-31"
     }
   ]
