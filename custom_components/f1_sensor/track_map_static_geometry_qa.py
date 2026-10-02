@@ -55,6 +55,7 @@ STATIC_TRACK_GEOMETRY_EXPECTED_CIRCUIT_IDS: Final = (
     "monza",
     "madring",
     "baku",
+    "sepang",
     "marina_bay",
     "americas",
     "rodriguez",
