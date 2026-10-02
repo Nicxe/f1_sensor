@@ -1,7 +1,7 @@
 ---
 id: faq
 title: Frequently asked questions
-description: Short answers about setup, live data, dashboard cards, replay and optional F1TV access.
+description: Short answers about setup, live data, the F1 Sensor card, replay and optional F1TV access.
 ---
 
 Find a short answer here, or use [symptom-based troubleshooting](/help/overview) for checks in order.
@@ -22,7 +22,7 @@ Yes, through Home Assistant. F1 Sensor runs in Home Assistant; an ESPHome device
 
 ### Where are practice and qualifying times?
 
-The Next race and calendar data include the weekend schedule. Use the [Next Race card](/cards/next-race), [Season Calendar card](/cards/season-calendar), or the attributes in the [schedule reference](/entities/next-race).
+Use the **Schedule** module in the [F1 Sensor card](/cards/cards-overview) for weekend or season starts. Add **Timing** to follow an active practice or qualifying session. The same schedule data is also available through the [Next race entity](/entities/next-race).
 
 ## Live Data Questions
 
@@ -70,7 +70,7 @@ No. They are bundled with the integration. Restart Home Assistant after installa
 
 ### Why do I still see an old card after updating?
 
-The browser may have cached an older resource, or a standalone resource may remain configured. Follow [card installation and migration](/cards/installation). Keep existing dashboard configurations and verify the bundled cards before removing old resources.
+The browser may have cached an older resource, or a standalone resource may remain configured. Follow [card installation and loading checks](/cards/installation). If the dashboard still uses a deprecated card type, follow [card migration](/cards/modular-migration).
 
 ### Why does my entity name differ from the documentation?
 

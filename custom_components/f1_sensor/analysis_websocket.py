@@ -19,6 +19,7 @@ ANALYSIS_WS_MARKER = "__analysis_ws_registered__"
 ANALYSIS_GET_WS_TYPE = f"{DOMAIN}/analysis/get"
 ANALYSIS_SUBSCRIBE_WS_TYPE = f"{DOMAIN}/analysis/subscribe"
 ANALYSIS_HISTORY_TIMELINE_WS_TYPE = f"{DOMAIN}/analysis/history_timeline"
+ANALYSIS_TELEMETRY_CATALOG_WS_TYPE = f"{DOMAIN}/analysis/telemetry_catalog"
 ANALYSIS_TELEMETRY_COMPARE_WS_TYPE = f"{DOMAIN}/analysis/telemetry_compare"
 ANALYSIS_PROTOCOL_VERSION = 1
 DEFAULT_ANALYSIS_THROTTLE_MS = 500
@@ -36,6 +37,7 @@ def async_register_analysis_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_subscribe_analysis)
     websocket_api.async_register_command(hass, _ws_get_history_timeline)
     websocket_api.async_register_command(hass, _ws_compare_replay_telemetry)
+    websocket_api.async_register_command(hass, _ws_replay_telemetry_catalog)
     root[ANALYSIS_WS_MARKER] = True
 
 
@@ -146,6 +148,7 @@ async def _ws_get_history_timeline(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): ANALYSIS_TELEMETRY_COMPARE_WS_TYPE,
+        vol.Optional("expected_session_id"): vol.All(str, vol.Length(min=1, max=300)),
         vol.Required("selections"): vol.All(
             [
                 {
@@ -177,7 +180,9 @@ async def _ws_compare_replay_telemetry(
         connection.send_error(msg["id"], "not_loaded", "Replay telemetry is not loaded")
         return
     try:
-        result = await telemetry.async_compare(msg["selections"])
+        result = await telemetry.async_compare(
+            msg["selections"], expected_session_id=msg.get("expected_session_id")
+        )
     except ValueError as err:
         connection.send_error(msg["id"], "invalid_request", str(err))
     except Exception:  # noqa: BLE001
@@ -188,6 +193,39 @@ async def _ws_compare_replay_telemetry(
         )
     else:
         connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): ANALYSIS_TELEMETRY_CATALOG_WS_TYPE,
+        vol.Required("expected_session_id"): vol.All(str, vol.Length(min=1, max=300)),
+        _ENTRY_ID_SCHEMA: str,
+    }
+)
+@websocket_api.async_response
+async def _ws_replay_telemetry_catalog(
+    hass: HomeAssistant, connection: Any, msg: dict[str, Any]
+) -> None:
+    """Read selectable replay laps without retrieving remote telemetry."""
+    runtime = _resolve_runtime(hass, msg.get("entry_id"))
+    telemetry = (
+        runtime.analysis.telemetry if runtime is not None and runtime.analysis else None
+    )
+    if telemetry is None:
+        connection.send_error(msg["id"], "not_loaded", "Replay telemetry is not loaded")
+        return
+    try:
+        payload = await telemetry.async_catalog(
+            expected_session_id=msg["expected_session_id"]
+        )
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_request", str(err))
+    except Exception:  # noqa: BLE001
+        connection.send_error(
+            msg["id"], "provider_unavailable", "Replay lap catalogue is unavailable"
+        )
+    else:
+        connection.send_result(msg["id"], payload)
 
 
 def _resolve_runtime(
