@@ -1,0 +1,30 @@
+{
+  "Meeting": {
+    "Key": 1308,
+    "Name": "Bahrain Grand Prix",
+    "OfficialName": "FORMULA 1 GULF AIR BAHRAIN GRAND PRIX IN MALAYSIA 2026",
+    "Location": "Kuala Lumpur",
+    "Number": 16,
+    "Country": {
+      "Key": 36,
+      "Code": "BRN",
+      "Name": "Bahrain"
+    },
+    "Circuit": {
+      "Key": 12,
+      "ShortName": "Kuala Lumpur"
+    }
+  },
+  "SessionStatus": "Finalised",
+  "ArchiveStatus": {
+    "Status": "Generating"
+  },
+  "Key": 11727,
+  "Type": "Practice",
+  "Number": 1,
+  "Name": "Practice 1",
+  "StartDate": "2026-10-02T12:30:00",
+  "EndDate": "2026-10-02T13:30:00",
+  "GmtOffset": "08:00:00",
+  "Path": "2026/2026-10-04_Bahrain_Grand_Prix/2026-10-02_Practice_1/"
+}

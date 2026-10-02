@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 import zlib
 
 import pytest
@@ -145,7 +146,9 @@ def test_replay_window_scan_decode_distance_and_downsample(tmp_path) -> None:
         )
         == 2
     )
-    assert telemetry._time_at_distance([{"distance": 1, "time_s": 3}], 5) == 3
+    assert telemetry._time_at_distance([{"distance": 1, "time_s": 3}], 5) is None
+    assert telemetry._time_at_distance([{"distance": 1, "time_s": 3}], 1) == 3
+    assert telemetry._time_at_distance([{"distance": 1, "time_s": 3}], 0) is None
 
     invalid_frames = tmp_path / "invalid-frames.jsonl"
     invalid_frames.write_text(
@@ -161,6 +164,140 @@ def test_replay_window_scan_decode_distance_and_downsample(tmp_path) -> None:
         {},
         None,
     )
+
+
+def test_replay_windows_require_the_preceding_lap_boundary(tmp_path) -> None:
+    frames = tmp_path / "late-start.jsonl"
+    frames.write_text(
+        json.dumps(
+            {
+                "t": 600_000,
+                "s": "TimingData",
+                "p": {
+                    "Lines": {
+                        "4": {"NumberOfLaps": 40, "LastLapTime": {"Value": "1:20"}}
+                    }
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert telemetry._scan_replay_windows(frames, ((4, 40),), 0)[0] == {}
+
+
+def test_telemetry_distance_withholds_estimates_across_missing_coverage() -> None:
+    samples = telemetry._add_distance(
+        [
+            {"timestamp_ms": 0, "time_s": 0.0, "speed": 180.0},
+            {"timestamp_ms": 1000, "time_s": 1.0, "speed": 180.0},
+            {"timestamp_ms": 9000, "time_s": 9.0, "speed": 180.0},
+        ]
+    )
+    assert all(sample["distance"] is None for sample in samples)
+    assert samples[-1]["gap_before"] is True
+    late = telemetry._add_distance(
+        [{"timestamp_ms": 9000, "time_s": 9.0, "speed": 180.0}]
+    )
+    assert late[0]["distance"] is None
+    assert telemetry._time_at_distance(samples, 50) is None
+    assert telemetry._time_at_distance(samples, None) is None
+
+
+def test_telemetry_interpolation_requires_recorded_overlap() -> None:
+    samples = [{"distance": 10, "time_s": 2}, {"distance": 20, "time_s": 4}]
+    assert telemetry._time_at_distance(samples, 5) is None
+    assert telemetry._time_at_distance(samples, 25) is None
+    assert telemetry._time_at_distance(samples, 15) == 3
+
+
+async def test_replay_telemetry_catalog_is_local_bounded_and_session_scoped(
+    hass, tmp_path
+) -> None:
+    manager = _manager(tmp_path)
+    index = manager.get_loaded_index()
+    frames = [
+        {
+            "t": 0,
+            "s": "DriverList",
+            "p": {
+                "4": {
+                    "RacingNumber": "4",
+                    "Tla": "OLD",
+                    "FullName": "Historic Driver",
+                    "TeamName": "Historic Team",
+                }
+            },
+        },
+        *[
+            {
+                "t": stamp,
+                "s": "TimingData",
+                "p": {
+                    "Lines": {
+                        "4": {"NumberOfLaps": lap, "LastLapTime": {"Value": "1:20"}}
+                    }
+                },
+            }
+            for lap, stamp in [(40, 1000), (41, 2000), (43, 4000), (501, 5000)]
+        ],
+    ]
+    index.frames_file.write_text(
+        "\n".join(json.dumps(frame) for frame in frames), encoding="utf-8"
+    )
+    session = SimpleNamespace(
+        get=Mock(
+            side_effect=AssertionError("Catalog must not request remote telemetry")
+        )
+    )
+    service = telemetry.ReplayTelemetryService(hass, session, manager)
+    catalog = await service.async_catalog(expected_session_id="session")
+    assert catalog["session_id"] == "session"
+    assert catalog["drivers"] == [
+        {
+            "driver_number": 4,
+            "name": "Historic Driver",
+            "tla": "OLD",
+            "team": "Historic Team",
+            "laps": [41],
+        }
+    ]
+    assert catalog["coverage"]["telemetry"] == "checked_on_request"
+    catalog["drivers"][0]["laps"].append(99)
+    assert (await service.async_catalog(expected_session_id="session"))["drivers"][0][
+        "laps"
+    ] == [41]
+    with pytest.raises(ValueError, match="changed"):
+        await service.async_catalog(expected_session_id="another-session")
+    with pytest.raises(ValueError, match="changed"):
+        await service.async_compare(
+            [{"driver_number": 4, "lap_number": 41}],
+            expected_session_id="another-session",
+        )
+    await service.async_close()
+
+
+async def test_telemetry_catalog_close_rejects_inflight_scan(
+    hass, tmp_path, monkeypatch
+) -> None:
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def delayed_scan(*_args):
+        entered.set()
+        await release.wait()
+        return []
+
+    monkeypatch.setattr(hass, "async_add_executor_job", delayed_scan)
+    service = telemetry.ReplayTelemetryService(
+        hass, _Session(_Response(200)), _manager(tmp_path)
+    )
+    task = hass.async_create_task(service.async_catalog(expected_session_id="session"))
+    await entered.wait()
+    await service.async_close()
+    release.set()
+    with pytest.raises(ValueError, match="changed"):
+        await task
+    assert service._catalog is None
 
 
 class _Response:

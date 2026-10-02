@@ -2,6 +2,7 @@
   "component": "custom_components/f1_sensor",
   "allowed_extensions": [".json", ".py", ".yaml", ".js", ".png", ".woff2"],
   "allowed_directories": ["models", "providers", "translations", "www"],
+  "allowed_files": ["www/f1-sensor-live-data-card/fonts/barlow-condensed-LICENSE.txt"],
   "excluded_directories": ["tests", "__pycache__"],
   "excluded_files": [
     "AGENTS.md",

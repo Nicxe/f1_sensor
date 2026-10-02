@@ -26,6 +26,7 @@ export const F1_CARD_DEFINITIONS = [
   ['f1-practice-timing-card', 'F1 Free Practice Timing', 'Practice timing with sectors, tyres, and fastest laps', 'practice'],
   ['f1-race-lap-card', 'F1 Race Lap', 'Race timing with sectors, laps, tyres, and pit stops', 'race_lap'],
   ['f1-starting-grid-card', 'F1 Starting Grid', 'Starting grid for the active Sprint or Race', 'starting_grid'],
+  ['f1-sensor-card', 'F1 Sensor', 'Build your own Formula 1 view with configurable modules, colors and accessible timing', 'modular'],
 ].map(([type, name, description, translationKey]) => ({
   type,
   name,
@@ -40,11 +41,11 @@ export const F1_CARD_TAGS = new Set(F1_CARD_DEFINITIONS.flatMap(({ type }) => [
   `${type}-editor`,
 ]));
 
-export const registerF1CardMetadata = () => {
+export const registerF1CardMetadata = (includeLegacy = true) => {
   window.customCards = window.customCards || [];
   const registered = new Set(window.customCards.map((card) => card?.type));
   for (const definition of F1_CARD_DEFINITIONS) {
-    if (registered.has(definition.type)) continue;
+    if ((!includeLegacy && definition.type !== 'f1-sensor-card') || registered.has(definition.type)) continue;
     const hass = { locale: { language: navigator.language || 'en' } };
     window.customCards.push({
       ...definition,

@@ -200,7 +200,7 @@ def test_weekend_hub_registers_full_phase4_experience() -> None:
     assert "customElements.define('f1-weekend-hub-card', F1WeekendHubCard)" in source
     assert "'f1-weekend-hub-card'" in registry
     assert "platform/dashboard-context.js" in source
-    assert "installF1EntityAutoBinding(F1WeekendHubCard, {})" in source
+    assert "installF1EntityAutoBinding(F1WeekendHubCard, {" in source
     assert "setInterval(" not in source[source.index("class F1WeekendHubCard") :]
     for method in (
         "_renderOverview",
@@ -268,3 +268,114 @@ def test_dashboard_context_synchronizes_cards_and_unsubscribes(tmp_path: Path) -
     assert result["disconnectedStopped"] is True
     assert result["secondDriver"] == 81
     assert result["stored"]["driver_number"] == 81
+
+
+@pytest.mark.parametrize(
+    ("state", "label"),
+    [
+        ("paused", "Replay paused"),
+        ("seeking", "Replay seeking"),
+        ("playing", "Replay running"),
+    ],
+)
+def test_weekend_hub_replay_status_matches_playback(state: str, label: str) -> None:
+    result = _weekend_scenario(
+        f"""
+        card._snapshot = {{provider: 'replay', phase: 'live', replay: {{state: '{state}'}}}};
+        return {{copy: card._phaseCopy()[0], shell: card._renderShell('')}};
+        """
+    )
+    assert result["copy"] == label
+    assert label in result["shell"]
+    if state != "playing":
+        assert "wh-live-badge live" not in result["shell"]
+
+
+@pytest.mark.parametrize("driver", [1, 99])
+def test_weekend_hub_filters_only_drivers_in_current_session(driver: int) -> None:
+    result = _weekend_scenario(
+        f"""
+        card._f1DashboardContext = {{driver_number: {driver}}};
+        card._receiveSnapshot({{status:'ready', provider:'replay', session_id:'new',
+          drivers:[{{driver_number:1}}, {{driver_number:2}}],
+          timing:[{{driver_number:1, position:1}}],
+          timeline:{{events:[{{driver_numbers:[2], title:'Other driver'}}]}},
+          strategy:{{stints:[{{driver_number:2}}]}}, capabilities:{{telemetry_compare:'ready'}} }});
+        return {{events:card._filteredEvents().length,
+          strategyWaiting:card._renderStrategy().includes('waiting for clean completed laps'),
+          context:card._renderContext(), telemetry:card._renderTelemetry()}};
+        """
+    )
+    assert result["events"] == (0 if driver == 1 else 1)
+    assert result["strategyWaiting"] is (driver == 1)
+    if driver == 99:
+        assert "?selected=true>All drivers" in result["context"]
+        assert "value=1 ?selected=true" in result["telemetry"]
+
+
+@pytest.mark.parametrize("domain", ["switch", "input_boolean"])
+def test_weekend_hub_spoiler_calls_correct_service(domain: str) -> None:
+    result = _weekend_scenario(
+        f"""
+        const calls=[];
+        const entity='{domain}.custom_spoiler';
+        card.setConfig({{no_spoiler_entity:entity}});
+        card.hass={{states:{{[entity]:{{state:'on'}}}}, callService:async(...args)=>calls.push(args)}};
+        const hidden=card._spoilerActive();
+        await card._toggleSpoiler();
+        card.hass.states[entity].state='off';
+        await card._toggleSpoiler();
+        return {{hidden,calls}};
+        """
+    )
+    assert result["hidden"] is True
+    assert result["calls"] == [
+        [domain, "turn_off", {"entity_id": f"{domain}.custom_spoiler"}],
+        [domain, "turn_on", {"entity_id": f"{domain}.custom_spoiler"}],
+    ]
+
+
+def _weekend_scenario(body: str) -> dict:
+    script = NODE_CARD_PROBE.split("async function run()", 1)[0]
+    script += "\nconst card = new Card(); card.setConfig({});\n"
+    script += f"(async()=>{{{body}}})().then(r=>console.log(JSON.stringify(r)));"
+    completed = subprocess.run(
+        [_node(), "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={"F1_CARD_PATH": str(CARD_PATH)},
+    )
+    return json.loads(completed.stdout)
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        (None, "switch.renamed_spoiler"),
+        ("input_boolean.f1_no_spoiler_mode", "input_boolean.f1_no_spoiler_mode"),
+        ("switch.custom_spoiler", "switch.custom_spoiler"),
+    ],
+)
+def test_weekend_hub_discovers_spoiler_switch_and_preserves_helpers(
+    configured: str | None, expected: str
+) -> None:
+    result = _weekend_scenario(
+        f"""
+        const configured={json.dumps(configured)};
+        if(configured) card.setConfig({{no_spoiler_entity:configured}});
+        const bindingStart=source.indexOf('installF1EntityAutoBinding(F1WeekendHubCard, ');
+        const bindingOpen=source.indexOf('{{',bindingStart);
+        const bindingSource=source.slice(bindingOpen,findMatchingBrace(source,bindingOpen)+1);
+        const bindings=new Function('return ('+bindingSource+')')();
+        const {{pathToFileURL}}=require('node:url');
+        const {{resolveF1CardEntities}}=await import(pathToFileURL(require('node:path').join(
+          require('node:path').dirname(process.env.F1_CARD_PATH),'platform/entity-resolver.js')));
+        card.hass={{connection:{{}},callWS:async()=>[{{entry_id:'entry',entities:{{no_spoiler_mode:'switch.renamed_spoiler'}}}}]}};
+        const resolved=await resolveF1CardEntities(card.hass,card.config,bindings);
+        card.config=resolved;
+        card.hass.states={{[resolved.no_spoiler_entity]:{{state:'on'}}}};
+        return {{entity:resolved.no_spoiler_entity,hidden:card._spoilerActive()}};
+        """
+    )
+    assert result == {"entity": expected, "hidden": True}
