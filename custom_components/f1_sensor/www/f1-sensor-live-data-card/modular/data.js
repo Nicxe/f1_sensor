@@ -124,6 +124,12 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}) {
   const part = positiveInteger(positions.attributes.current_qualifying_part);
   const rawDrivers = Array.isArray(positions.attributes.drivers) ? positions.attributes.drivers
     : Object.entries(positions.attributes.drivers ?? {}).map(([rn, driver]) => ({ racing_number: rn, ...driver }));
+  // Qualifying does not publish the race-only LapCount stream, so the
+  // driver-positions entity can have an unknown main state while its live
+  // TimingData attributes already contain the complete timing table.
+  const timingSource = positions.status === 'unknown' && rawDrivers.length
+    ? { ...positions, status: 'available' }
+    : positions;
   const rows = rawDrivers.filter(driver => driver && typeof driver === 'object').map(driver => {
     const id = String(driver.racing_number ?? driver.tla ?? '');
     const person = identity.get(id) ?? {};
@@ -180,7 +186,7 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}) {
     const order = typeof x === 'string' ? x.localeCompare(String(y)) : (x ?? 0) - (y ?? 0);
     return order * (module.options.direction === 'desc' ? -1 : 1) || a.id.localeCompare(b.id, undefined, { numeric: true });
   });
-  return { rows: rows.slice(0, module.options.rows), total: rows.length, source: positions, filtered: Boolean(chosenDriver || chosenTeam), fields: timingFields(module, context.name), sessionKind: kind, currentPart: part };
+  return { rows: rows.slice(0, module.options.rows), total: rows.length, source: timingSource, filtered: Boolean(chosenDriver || chosenTeam), fields: timingFields(module, context.name), sessionKind: kind, currentPart: part };
 }
 
 export const SESSION_FIELDS = [
