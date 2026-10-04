@@ -5748,6 +5748,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 idx: cls._empty_personal_best_sector() for idx in (0, 1, 2)
             },
             "current_lap": None,
+            "pending_completed_lap": None,
             "last_completed_sector": None,
             "state": "awaiting_s1",
         }
@@ -5846,6 +5847,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 best[idx] = parsed_time if parsed_time is not None else restored_time
 
         sectors.setdefault("current_lap", None)
+        pending_completed_lap = sectors.setdefault("pending_completed_lap", None)
+        try:
+            pending_completed_lap = int(pending_completed_lap)
+        except (TypeError, ValueError):
+            pending_completed_lap = None
+        sectors["pending_completed_lap"] = (
+            pending_completed_lap
+            if pending_completed_lap is not None and pending_completed_lap > 0
+            else None
+        )
         sectors.setdefault("last_completed_sector", None)
         sectors["state"] = cls._derive_sector_progress_state(sectors)
         return sectors
@@ -5872,6 +5883,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         else:
             cls._ensure_sector_state({"sectors": sectors})
         sectors["current_lap"] = None
+        sectors["pending_completed_lap"] = None
         sectors["last_completed_sector"] = None
         sectors["state"] = "awaiting_s1"
 
@@ -5893,6 +5905,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _current_sector_lap(
         self, entry: dict[str, Any], sectors: dict[str, Any], idx: int
     ) -> int | None:
+        if idx == 2:
+            pending_completed_lap = sectors.get("pending_completed_lap")
+            try:
+                parsed_pending = int(pending_completed_lap)
+            except (TypeError, ValueError):
+                parsed_pending = None
+            if parsed_pending is not None and parsed_pending > 0:
+                return parsed_pending
         if idx in (1, 2):
             current_lap = sectors.get("current_lap")
             try:
@@ -5965,6 +5985,18 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         changed = False
         full_lap_update = set(updates) == {0, 1, 2}
+        pending_completed_lap = sectors.get("pending_completed_lap")
+        if (
+            isinstance(pending_completed_lap, int)
+            and 1 in updates
+            and isinstance(updates[1].get("lap"), int)
+            and updates[1]["lap"] > pending_completed_lap
+        ):
+            sectors["pending_completed_lap"] = None
+            if 2 in updates and updates[2].get("lap") == pending_completed_lap:
+                updates[2]["lap"] = updates[1]["lap"]
+            pending_completed_lap = None
+            changed = True
 
         # New S1 starts a lap: clear S2 and S3 from the previous lap unless
         # they are also being updated in this message (rare but possible in replay)
@@ -5980,6 +6012,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         for idx, data in updates.items():
             if current.get(idx) != data:
                 current[idx] = data
+                changed = True
+            if idx == 2 and data.get("lap") == pending_completed_lap:
+                sectors["pending_completed_lap"] = None
+                pending_completed_lap = None
                 changed = True
             if data["personal_fastest"] and (
                 best[idx] is None or data["time"] < best[idx]
@@ -6462,6 +6498,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             if sectors.get("current_lap") != lap_num:
                 sectors["current_lap"] = lap_num
                 changed = True
+            if sectors.get("pending_completed_lap") is not None:
+                sectors["pending_completed_lap"] = None
+                changed = True
             if sectors.get("state") != "lap_complete":
                 sectors["state"] = "lap_complete"
                 changed = True
@@ -6471,6 +6510,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             changed = self._clear_current_sector(sectors, idx) or changed
         if sectors.get("current_lap") is not None:
             sectors["current_lap"] = None
+            changed = True
+        if sectors.get("pending_completed_lap") != lap_num:
+            sectors["pending_completed_lap"] = lap_num
             changed = True
         state = self._derive_sector_progress_state(sectors)
         if sectors.get("state") != state:

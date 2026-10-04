@@ -66,6 +66,31 @@ process.stdout.write(JSON.stringify({
 }));
 """
 
+SECTOR_SEQUENCE_SCRIPT = r"""
+import { pathToFileURL } from 'node:url';
+
+const { SectorStore } = await import(pathToFileURL(process.env.F1_SEMANTICS_PATH));
+const store = new SectorStore();
+const steps = [
+  {
+    racing_number: '23', completed_laps: 28, sector_state: 's2_done', sector_current_lap: 29,
+    sector_1: 25.878, sector_1_lap: 29, sector_2: 34.447, sector_2_lap: 29,
+  },
+  {
+    racing_number: '23', completed_laps: 29, sector_state: 's1_done', sector_current_lap: 30,
+    sector_1: 25.501, sector_1_lap: 30, sector_2: null, sector_3: null,
+  },
+  {
+    racing_number: '23', completed_laps: 29, sector_state: 'lap_complete', sector_current_lap: 29,
+    sector_1: null, sector_2: null, sector_3: 41.458, sector_3_lap: 29,
+  },
+];
+const result = steps.map(driver => store.select('race', driver, 'latest')).at(-1);
+process.stdout.write(JSON.stringify(result.map(sector => ({
+  time: sector.time, lap: sector.lap, source: sector.source, previous_lap: sector.previous_lap,
+}))));
+"""
+
 
 def test_qualifying_timing_uses_driver_attributes_when_lap_state_is_unknown() -> None:
     """Qualifying rows remain usable without the race-only LapCount state."""
@@ -87,3 +112,30 @@ def test_qualifying_timing_uses_driver_attributes_when_lap_state_is_unknown() ->
         "drivers": ["NOR"],
         "currentPart": 2,
     }
+
+
+def test_late_completed_s3_does_not_reset_modular_sector_cache() -> None:
+    """The next lap's S1 remains visible when the previous S3 arrives late."""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", SECTOR_SEQUENCE_SCRIPT],
+        check=True,
+        capture_output=True,
+        env={**os.environ, "F1_SEMANTICS_PATH": str(SEMANTICS_PATH)},
+        text=True,
+    )
+
+    assert json.loads(result.stdout) == [
+        {"time": 25.501, "lap": 30, "source": "current", "previous_lap": False},
+        {
+            "time": 34.447,
+            "lap": 29,
+            "source": "previous_lap",
+            "previous_lap": True,
+        },
+        {
+            "time": 41.458,
+            "lap": 29,
+            "source": "previous_lap",
+            "previous_lap": True,
+        },
+    ]

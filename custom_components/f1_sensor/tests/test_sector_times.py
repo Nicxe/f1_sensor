@@ -125,6 +125,80 @@ async def test_s3_arrival_clears_s1_s2_and_marks_lap_complete(hass) -> None:
     assert sectors["last_completed_sector"]["number"] == 3
 
 
+@pytest.mark.asyncio
+async def test_late_s3_keeps_completed_lap_number(hass) -> None:
+    """S3 arriving after LastLapTime must close the completed lap."""
+    coord = _make_coord(hass)
+
+    coord._merge_timingdata(
+        {
+            "Lines": {
+                "44": {
+                    "NumberOfLaps": 28,
+                    "Sectors": {
+                        "0": {"Value": "25.878"},
+                        "1": {"Value": "34.447"},
+                    },
+                }
+            }
+        }
+    )
+    coord._merge_timingdata(
+        {
+            "Lines": {
+                "44": {
+                    "NumberOfLaps": 29,
+                    "LastLapTime": {"Value": "1:41.783"},
+                }
+            }
+        }
+    )
+    coord._merge_timingdata({"Lines": {"44": {"Sectors": {"0": {"Value": "25.501"}}}}})
+    assert coord._state["drivers"]["44"]["sectors"]["current"][0]["lap"] == 30
+    coord._merge_timingdata({"Lines": {"44": {"Sectors": {"2": {"Value": "41.458"}}}}})
+
+    driver = coord._state["drivers"]["44"]
+    sectors = driver["sectors"]
+    assert driver["lap_history"]["completed_laps"] == 29
+    assert sectors["current"][2]["lap"] == 29
+    assert sectors["current_lap"] == 29
+    assert sectors["state"] == "lap_complete"
+
+
+@pytest.mark.asyncio
+async def test_missing_s3_does_not_relabel_next_lap_s3(hass) -> None:
+    """A missing completed S3 must expire once the next lap reaches S2."""
+    coord = _make_coord(hass)
+
+    coord._merge_timingdata(
+        {
+            "Lines": {
+                "44": {
+                    "NumberOfLaps": 29,
+                    "LastLapTime": {"Value": "1:41.783"},
+                }
+            }
+        }
+    )
+    coord._merge_timingdata(
+        {
+            "Lines": {
+                "44": {
+                    "Sectors": {
+                        "0": {"Value": "25.501"},
+                        "1": {"Value": "34.102"},
+                    }
+                }
+            }
+        }
+    )
+    coord._merge_timingdata({"Lines": {"44": {"Sectors": {"2": {"Value": "41.102"}}}}})
+
+    sectors = coord._state["drivers"]["44"]["sectors"]
+    assert sectors["current"][2]["lap"] == 30
+    assert sectors["current_lap"] == 30
+
+
 # ---------------------------------------------------------------------------
 # Test 3: PersonalFastest flag updates best sector; non-personal does not
 # ---------------------------------------------------------------------------
