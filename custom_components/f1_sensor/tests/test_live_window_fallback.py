@@ -1305,6 +1305,62 @@ async def test_delayed_race_stays_live_beyond_scheduled_extension_cap(
     assert window.disconnect_at > old_cap
 
 
+def test_race_start_parser_handles_snapshot_shapes() -> None:
+    first_start = dt.datetime(2026, 10, 4, 8, 33, tzinfo=dt.UTC)
+    later_start = first_start + dt.timedelta(minutes=30)
+
+    assert live_window._session_data_race_start(None) is None
+    assert live_window._session_data_race_start({"StatusSeries": "invalid"}) is None
+    assert (
+        live_window._session_data_race_start(
+            {
+                "StatusSeries": [
+                    None,
+                    {"SessionStatus": "Inactive", "Utc": first_start.isoformat()},
+                    {"SessionStatus": "Started", "Utc": "invalid"},
+                ]
+            }
+        )
+        is None
+    )
+    assert (
+        live_window._session_data_race_start(
+            {
+                "StatusSeries": [
+                    {
+                        "SessionStatus": "Started",
+                        "Utc": later_start.isoformat(),
+                    },
+                    {
+                        "SessionStatus": "Started",
+                        "Utc": first_start.isoformat(),
+                    },
+                ]
+            }
+        )
+        == first_start
+    )
+
+
+def test_race_extension_cap_falls_back_when_actual_start_is_missing(hass) -> None:
+    scheduled_end = dt.datetime(2026, 10, 4, 9, 0, tzinfo=dt.UTC)
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    window = _mk_window(
+        session="Race",
+        start=scheduled_end - dt.timedelta(hours=2),
+        end=scheduled_end,
+    )
+
+    assert supervisor._race_extension_cap(window) == (
+        scheduled_end + live_window.PATHLESS_RACE_PROBE_HORIZON
+    )
+
+
 @pytest.mark.asyncio
 async def test_terminal_session_status_ends_live_window_despite_heartbeats(
     monkeypatch, hass
