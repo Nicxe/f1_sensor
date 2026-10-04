@@ -570,6 +570,7 @@ def test_static_track_geometry_catalog_contains_2025_2026_calendar_tracks() -> N
         "7": "Spa-Francorchamps",
         "9": "Austin",
         "10": "Melbourne",
+        "12": "Kuala Lumpur",
         "14": "Interlagos",
         "15": "Catalunya",
         "19": "Spielberg",
@@ -612,6 +613,7 @@ def test_static_track_geometry_catalog_exposes_presentation_rotation() -> None:
         "7": 96.3,
         "9": -7.4,
         "10": 48.0,
+        "12": -4.5,
         "14": -87.2,
         "15": -54.8,
         "19": 25.0,
@@ -630,6 +632,7 @@ def test_static_track_geometry_catalog_exposes_presentation_rotation() -> None:
         "150": 61.0,
         "151": 11.2,
         "152": 87.8,
+        "153": -94.3,
     }
 
     for circuit_key, rotation in expected_rotations.items():
@@ -743,11 +746,17 @@ def test_static_track_geometry_catalog_entries_have_valid_shapes() -> None:
         assert provenance["catalog_version"] == STATIC_TRACK_GEOMETRY_CATALOG_VERSION
         assert provenance["geometry_source"] == "position_z_dump"
         assert provenance["position_stream"] == "Position.z"
-        if entry["circuit_id"] == "madring":
+        if entry["circuit_id"] in {"madring", "sepang"}:
             assert provenance["source_session"] == "Practice 1"
             assert provenance["source_season"] == 2026
-            assert provenance["source_dump_path"].endswith("2026-09-11_Practice_1")
-            assert provenance["qa_artifact"].endswith("madring_review.png")
+            if entry["circuit_id"] == "madring":
+                assert provenance["source_dump_path"].endswith("2026-09-11_Practice_1")
+                assert provenance["qa_artifact"].endswith("madring_review.png")
+            else:
+                assert provenance["source_dump_path"].endswith("2026-10-02_Practice_1")
+                assert provenance["qa_artifact"].endswith(
+                    "track_map_static_catalog_qa.png"
+                )
         else:
             assert provenance["source_session"] == "Race"
             assert provenance["source_dump_path"].endswith("/Race")
@@ -785,13 +794,31 @@ def test_madring_geometry_matches_fp1_identity(short_name: str) -> None:
     assert get_static_track_geometry(circuit_short_name="Spanish").circuit_key == "15"
 
 
+@pytest.mark.parametrize(
+    "short_name", ["Sepang", "Kuala Lumpur", "KUALA-LUMPUR", "Malaysia"]
+)
+def test_sepang_geometry_matches_fp1_identity(short_name: str) -> None:
+    geometry = get_static_track_geometry(circuit_key="12")
+    assert geometry is not None
+    assert get_static_track_geometry(circuit_short_name=short_name) == geometry
+    assert geometry.source == TRACK_MAP_STATIC_GEOMETRY_SOURCE
+    assert geometry.rotation == -4.5
+    assert geometry.points[0] == geometry.points[-1]
+    provenance = get_static_track_geometry_provenance(circuit_key="12")
+    assert provenance is not None
+    assert provenance["source_season"] == 2026
+    assert provenance["source_session"] == "Practice 1"
+    assert provenance["source_dump_path"].endswith("2026-10-02_Practice_1")
+
+
 def test_static_track_geometry_qa_reports_complete_calendar_coverage() -> None:
     report = build_static_track_geometry_qa_report()
 
     assert "madring" in expected_2025_2026_catalog_circuit_ids()
-    assert report.expected_count == 25
-    assert report.catalog_count == 25
-    assert report.covered_count == 25
+    assert "sepang" in expected_2025_2026_catalog_circuit_ids()
+    assert report.expected_count == 26
+    assert report.catalog_count == 26
+    assert report.covered_count == 26
     assert report.missing_circuit_ids == ()
     assert report.unexpected_circuit_ids == ()
 
@@ -812,6 +839,15 @@ def test_static_track_geometry_qa_reports_complete_calendar_coverage() -> None:
     assert madring.image_source == "f1_detailed_map"
     assert madring.approval_status == STATIC_TRACK_GEOMETRY_APPROVAL_VISUAL_APPROVED
     assert madring.provenance["source_session"] == "Practice 1"
+
+    sepang = next(entry for entry in report.entries if entry.circuit_id == "sepang")
+    assert sepang.status == STATUS_OK
+    assert sepang.circuit_key == "12"
+    assert sepang.point_count == 91
+    assert sepang.rotation == -4.5
+    assert sepang.image_source == "f1_detailed_map"
+    assert sepang.approval_status == STATIC_TRACK_GEOMETRY_APPROVAL_VISUAL_APPROVED
+    assert sepang.provenance["source_session"] == "Practice 1"
 
 
 def test_static_track_geometry_qa_reports_missing_catalog(monkeypatch) -> None:

@@ -103,6 +103,7 @@ async def test_session_reference_prepare_complete_and_listener_lifecycle(
 
     completed = await manager.async_complete(source="button")
     controller.async_set_delay.assert_awaited_once_with(9, source="calibration")
+    assert completed["idle_reason"] == "completed"
     assert completed["last_result"]["seconds"] == 9
     assert completed["last_result"]["completed_at"] == "2026-09-01T12:00:00+00:00"
     reload_callback.assert_called_once()
@@ -158,6 +159,7 @@ async def test_lap_sync_validation_tick_and_timeout_notifications(hass) -> None:
     formation._session_name = "Practice 1"
     blocked = await manager.async_prepare()
     assert blocked["mode"] == "idle"
+    assert blocked["idle_reason"] == "unsupported_session"
     assert "only available" in blocked["message"]
 
     formation._session_type = "Sprint"
@@ -192,6 +194,7 @@ async def test_replay_blocks_calibration_and_invalid_completion(hass) -> None:
     manager, controller = _manager(hass, replay_controller=replay_controller)
     state = await manager.async_prepare(source="switch")
     assert state["mode"] == "idle"
+    assert state["idle_reason"] == "replay"
     assert "not available in replay mode" in state["message"]
     assert not controller.async_set_delay.await_count
 
@@ -219,6 +222,7 @@ async def test_internal_session_timer_and_cleanup_branches(hass, monkeypatch) ->
     manager._reference = LIVE_DELAY_REFERENCE_FORMATION
     manager._state["mode"] = "running"
     manager._handle_session_status({"Status": "Finished"})
+    assert manager.snapshot()["idle_reason"] == "session_ended"
     assert manager.snapshot()["mode"] == "idle"
     manager._on_tick()
     manager._on_timeout()
@@ -334,3 +338,47 @@ def test_replay_state_exception_and_reference_message_helpers(hass) -> None:
     manager._reference = LIVE_DELAY_REFERENCE_SESSION
     assert manager._effective_timeout() == 120
     assert manager._is_current_session_race_or_sprint() is True
+
+
+async def test_calibration_outcomes_clear_on_rearm_and_timeout_does_not_save(hass):
+    manager, controller = _manager(hass)
+    assert manager.snapshot()["idle_reason"] is None
+    await manager.async_prepare()
+    cancelled = await manager.async_cancel()
+    assert cancelled["idle_reason"] == "cancelled"
+    assert cancelled["mode"] == "idle"
+    waiting = await manager.async_prepare()
+    assert waiting["idle_reason"] is None
+    assert waiting["mode"] == "waiting"
+    manager._state["mode"] = "running"
+    timed_out = await manager.async_cancel(source="timeout")
+    assert timed_out["idle_reason"] == "timeout"
+    assert timed_out["last_result"] is None
+    controller.async_set_delay.assert_not_awaited()
+    await manager.async_prepare()
+    assert manager.snapshot()["idle_reason"] is None
+    await manager.async_close()
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        LIVE_DELAY_REFERENCE_SESSION,
+        LIVE_DELAY_REFERENCE_FORMATION,
+        LIVE_DELAY_REFERENCE_LAP_SYNC,
+    ],
+)
+async def test_session_end_stops_every_running_calibration_without_saving(
+    hass, reference
+):
+    manager, controller = _manager(hass)
+    manager._reference = reference
+    manager._start_timer(reason="test")
+    manager._handle_session_status({"Status": "Finished"})
+    snapshot = manager.snapshot()
+    assert snapshot["mode"] == "idle"
+    assert snapshot["idle_reason"] == "session_ended"
+    assert manager._tick_handle is None
+    assert manager._timeout_handle is None
+    controller.async_set_delay.assert_not_awaited()
+    await manager.async_close()

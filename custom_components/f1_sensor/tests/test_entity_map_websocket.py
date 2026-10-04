@@ -47,15 +47,52 @@ async def test_entity_map_groups_registry_entities_by_config_entry(hass) -> None
                     "entry_id": "first",
                     "title": "Living room F1",
                     "entities": {"driver_list": first_driver.entity_id},
+                    "global_entities": {},
+                    "disabled_entities": [],
                 },
                 {
                     "entry_id": "second",
                     "title": "Office F1",
                     "entities": {"driver_list": second_driver.entity_id},
+                    "global_entities": {},
+                    "disabled_entities": [],
                 },
             ],
         )
     ]
+
+
+async def test_discovery_exposes_renamed_global_spoiler_and_disabled_sources(hass):
+    first = MockConfigEntry(domain=DOMAIN, title="First", entry_id="first")
+    second = MockConfigEntry(domain=DOMAIN, title="Second", entry_id="second")
+    first.add_to_hass(hass)
+    second.add_to_hass(hass)
+    registry = er.async_get(hass)
+    spoiler = registry.async_get_or_create(
+        "switch", DOMAIN, "f1_sensor_no_spoiler_mode", config_entry=first
+    )
+    registry.async_update_entity(
+        spoiler.entity_id, new_entity_id="switch.hide_results_everywhere"
+    )
+    registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "second_driver_positions",
+        config_entry=second,
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+    connection = _Connection()
+
+    _ws_get_entity_map(hass, connection, {"id": 9, "type": "f1_sensor/entities"})
+    await hass.async_block_till_done()
+
+    entries = connection.results[0][1]
+    assert all(
+        entry["global_entities"]["no_spoiler_mode"] == "switch.hide_results_everywhere"
+        for entry in entries
+    )
+    assert entries[0]["disabled_entities"] == []
+    assert entries[1]["disabled_entities"] == ["driver_positions"]
 
 
 def test_entity_map_websocket_registration_is_idempotent(hass, monkeypatch) -> None:

@@ -47,6 +47,27 @@ def test_madring_fp1_geometry_is_used_across_weekend(session_name: str) -> None:
     assert store.diagnostics(now=BASE_TIME)["circuit_id"] == "madring"
 
 
+@pytest.mark.parametrize("session_name", ["Practice 1", "Practice 2", "Race"])
+def test_sepang_fp1_geometry_is_used_across_weekend(session_name: str) -> None:
+    payload = json.loads(
+        (
+            Path(__file__).parent / "fixtures" / "sepang_fp1_session_info.json"
+        ).read_text()
+    )
+    payload["Name"] = session_name
+    payload["Type"] = "Race" if session_name == "Race" else "Practice"
+    store = TrackMapStore("entry-1")
+    store.update_session_info(payload)
+
+    snapshot = store.snapshot(now=BASE_TIME)
+    assert snapshot["session"]["circuit_key"] == "12"
+    assert snapshot["track"]["source"] == TRACK_MAP_STATIC_GEOMETRY_SOURCE
+    assert snapshot["track"]["rotation"] == -4.5
+    assert len(snapshot["track"]["points"]) >= 50
+    assert snapshot["track"]["points"][0] == snapshot["track"]["points"][-1]
+    assert store.diagnostics(now=BASE_TIME)["circuit_id"] == "sepang"
+
+
 def _session_payload(session_key: str = "101") -> dict:
     return {
         "Key": session_key,

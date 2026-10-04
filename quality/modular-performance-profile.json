@@ -1,0 +1,242 @@
+{
+  "instrumented": true,
+  "note": "CDP CPU profiler and timeline tracing add overhead; this does not replace the uninstrumented baseline. Nested durations overlap and must not all be summed.",
+  "trace_path": "/tmp/f1-modular-trace.json",
+  "cpu_profile_path": "/tmp/f1-modular-cpu-profile.json",
+  "tasks": [
+    {
+      "task": "ThreadControllerImpl::RunTask",
+      "duration_ms": 60.817,
+      "preceding_mark": "f1:ten-shared:start",
+      "largest_nested_events": [
+        {
+          "name": "Layout",
+          "duration_ms": 29.465
+        },
+        {
+          "name": "UpdateLayoutTree",
+          "duration_ms": 18.933
+        },
+        {
+          "name": "PrePaint",
+          "duration_ms": 8.659
+        },
+        {
+          "name": "Paint",
+          "duration_ms": 2.615
+        },
+        {
+          "name": "V8.GCIncrementalMarkingStart",
+          "duration_ms": 1.512
+        },
+        {
+          "name": "V8.GC_MC_INCREMENTAL_START",
+          "duration_ms": 1.475
+        },
+        {
+          "name": "V8.GCIncrementalMarking",
+          "duration_ms": 0.934
+        },
+        {
+          "name": "V8.GC_MC_INCREMENTAL",
+          "duration_ms": 0.933
+        }
+      ]
+    },
+    {
+      "task": "ThreadControllerImpl::RunTask",
+      "duration_ms": 47.12,
+      "preceding_mark": "f1:ten-retained:start",
+      "largest_nested_events": [
+        {
+          "name": "Layout",
+          "duration_ms": 26.25
+        },
+        {
+          "name": "UpdateLayoutTree",
+          "duration_ms": 11.529
+        },
+        {
+          "name": "PrePaint",
+          "duration_ms": 6.59
+        },
+        {
+          "name": "Paint",
+          "duration_ms": 2.005
+        },
+        {
+          "name": "V8.GCIncrementalMarking",
+          "duration_ms": 0.69
+        },
+        {
+          "name": "V8.GC_MC_INCREMENTAL",
+          "duration_ms": 0.69
+        },
+        {
+          "name": "V8.GCIncrementalMarking",
+          "duration_ms": 0.126
+        },
+        {
+          "name": "V8.GC_MC_INCREMENTAL",
+          "duration_ms": 0.126
+        }
+      ]
+    },
+    {
+      "task": "ThreadControllerImpl::RunTask",
+      "duration_ms": 29.9,
+      "preceding_mark": "f1:simple:start",
+      "largest_nested_events": [
+        {
+          "name": "TimerFire",
+          "duration_ms": 29.898
+        },
+        {
+          "name": "v8.callFunction",
+          "duration_ms": 29.892
+        },
+        {
+          "name": "ParseHTML",
+          "duration_ms": 1.5
+        },
+        {
+          "name": "ParseHTML",
+          "duration_ms": 0.192
+        },
+        {
+          "name": "v8.callAsConstructor",
+          "duration_ms": 0.053
+        },
+        {
+          "name": "FunctionCall",
+          "duration_ms": 0.05
+        },
+        {
+          "name": "ParseHTML",
+          "duration_ms": 0.031
+        },
+        {
+          "name": "v8.callAsConstructor",
+          "duration_ms": 0.019
+        }
+      ]
+    },
+    {
+      "task": "ThreadControllerImpl::RunTask",
+      "duration_ms": 25.438,
+      "preceding_mark": "f1:detailed:start",
+      "largest_nested_events": [
+        {
+          "name": "Layout",
+          "duration_ms": 13.811
+        },
+        {
+          "name": "UpdateLayoutTree",
+          "duration_ms": 8.224
+        },
+        {
+          "name": "Paint",
+          "duration_ms": 1.619
+        },
+        {
+          "name": "PrePaint",
+          "duration_ms": 1.339
+        },
+        {
+          "name": "Layerize",
+          "duration_ms": 0.132
+        },
+        {
+          "name": "FireAnimationFrame",
+          "duration_ms": 0.046
+        },
+        {
+          "name": "v8.callFunction",
+          "duration_ms": 0.039
+        },
+        {
+          "name": "FunctionCall",
+          "duration_ms": 0.005
+        }
+      ]
+    },
+    {
+      "task": "ThreadControllerImpl::RunTask",
+      "duration_ms": 23.891,
+      "preceding_mark": "f1:detailed:start",
+      "largest_nested_events": [
+        {
+          "name": "TimerFire",
+          "duration_ms": 23.889
+        },
+        {
+          "name": "v8.callFunction",
+          "duration_ms": 23.875
+        },
+        {
+          "name": "MinorGC",
+          "duration_ms": 0.995
+        },
+        {
+          "name": "V8.GCScavenger",
+          "duration_ms": 0.95
+        },
+        {
+          "name": "V8.GC_SCAVENGER",
+          "duration_ms": 0.936
+        },
+        {
+          "name": "V8.GC_SCAVENGER_SCAVENGE",
+          "duration_ms": 0.922
+        },
+        {
+          "name": "ParseHTML",
+          "duration_ms": 0.404
+        },
+        {
+          "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL_PHASE",
+          "duration_ms": 0.367
+        }
+      ]
+    },
+    {
+      "task": "BlinkScheduler_PerformMicrotaskCheckpoint",
+      "duration_ms": 13.532,
+      "preceding_mark": null,
+      "largest_nested_events": [
+        {
+          "name": "MinorGC",
+          "duration_ms": 2.628
+        },
+        {
+          "name": "V8.GCScavenger",
+          "duration_ms": 2.585
+        },
+        {
+          "name": "V8.GC_SCAVENGER",
+          "duration_ms": 1.822
+        },
+        {
+          "name": "V8.GC_SCAVENGER_SCAVENGE",
+          "duration_ms": 1.809
+        },
+        {
+          "name": "v8.callFunction",
+          "duration_ms": 1.759
+        },
+        {
+          "name": "FunctionCall",
+          "duration_ms": 1.755
+        },
+        {
+          "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL_PHASE",
+          "duration_ms": 1.469
+        },
+        {
+          "name": "V8.GC_SCAVENGER_SCAVENGE_ROOTS",
+          "duration_ms": 1.251
+        }
+      ]
+    }
+  ]
+}
