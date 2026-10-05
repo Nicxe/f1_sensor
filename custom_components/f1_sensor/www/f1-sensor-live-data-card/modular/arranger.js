@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ LitElement, html, css, repeat }, { moduleTitle }] = await Promise.all([load('../f1-lit-3.3.2.js'), load('./catalog.js')]);
+const [{ LitElement, html, css, repeat }, { moduleTitle, words }] = await Promise.all([load('../f1-lit-3.3.2.js'), load('./catalog.js')]);
 
 // This editor-only overview keeps pointer previews local. A completed gesture
 // emits one change, so Home Assistant and Undo never receive partial moves.
@@ -39,7 +39,7 @@ export class F1ModuleArranger extends LitElement {
     this.cancel = () => this.finish(false);
     this.escape = event => { if (event.key === 'Escape' && this.gesture) { event.preventDefault(); event.stopPropagation(); this.finish(false); } };
   }
-  w(en, sv) { return this.language?.startsWith('sv') ? sv : en; }
+  w(en, sv) { return words(this.language, en, sv); }
   get columns() { return this.config.layout === 'columns' ? this.config.columns : 1; }
   get modules() { return this.draft ?? this.config.modules; }
   willUpdate(changed) { if (changed.has('config') && this.gesture && this.config !== this.gesture.config) this.finish(false); }

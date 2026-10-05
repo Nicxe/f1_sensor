@@ -46,6 +46,9 @@ DEFAULT_PRE_WINDOW = timedelta(minutes=60)
 DEFAULT_POST_WINDOW = timedelta(minutes=15)
 POST_WINDOW_EXTENSION_CAP = timedelta(minutes=30)
 POST_WINDOW_EXTENSION_STEP = timedelta(minutes=5)
+PATHLESS_RACE_PROBE_HORIZON = timedelta(hours=2)
+RACE_MAX_DURATION = timedelta(hours=3)
+SESSION_END_DRAIN = timedelta(seconds=60)
 SCHEDULE_RECONCILIATION_HORIZON = timedelta(hours=48)
 SCHEDULE_TIME_MISMATCH_THRESHOLD = timedelta(minutes=5)
 IDLE_REFRESH = timedelta(minutes=15)
@@ -875,6 +878,49 @@ def _session_status_running(status_payload: dict | None) -> bool:
     return status in SESSION_RUNNING_STATES or started in SESSION_RUNNING_STATES
 
 
+def _session_status_finished(status_payload: dict | None) -> bool:
+    if not isinstance(status_payload, dict):
+        return False
+    values = (
+        status_payload.get("Status"),
+        status_payload.get("Started"),
+        status_payload.get("Message"),
+    )
+    return any(str(value or "").strip() in SESSION_END_STATES for value in values)
+
+
+def _session_data_race_start(session_data: dict | None) -> datetime | None:
+    if not isinstance(session_data, dict):
+        return None
+    series = session_data.get("StatusSeries")
+    if isinstance(series, dict):
+        items = series.values()
+    elif isinstance(series, list):
+        items = series
+    else:
+        return None
+    starts: list[datetime] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("SessionStatus") or "").strip() != "Started":
+            continue
+        started_at = _to_utc(str(item.get("Utc") or ""), None)
+        if started_at is not None:
+            starts.append(started_at)
+    return min(starts) if starts else None
+
+
+def _window_identity(window: SessionWindow) -> tuple[Any, ...]:
+    if window.meeting_key is not None and window.session_key is not None:
+        return (window.meeting_key, window.session_key)
+    return (
+        window.meeting_name.casefold(),
+        window.session_name.casefold(),
+        window.start_utc,
+    )
+
+
 class LiveSessionSupervisor:
     """Coordinates when the SignalR connection should run."""
 
@@ -909,6 +955,7 @@ class LiveSessionSupervisor:
         self._fallback_active = False
         self._last_schedule_error: str | None = None
         self._last_primary_recovery_check = 0.0
+        self._terminal_sessions: set[tuple[Any, ...]] = set()
         # Throttle noisy logs (e.g. missing index at season rollover)
         self._log_throttle: dict[str, float] = {}
         # Event used to interrupt sleep cycles (e.g. after replay ends)
@@ -1067,21 +1114,40 @@ class LiveSessionSupervisor:
         if not windows:
             return None
         now = dt_util.utcnow()
-        upcoming = [w for w in windows if now <= w.disconnect_at]
+        upcoming = [
+            window
+            for window in windows
+            if now <= window.disconnect_at
+            and _window_identity(window) not in self._terminal_sessions
+        ]
         if not upcoming:
             last = windows[-1]
-            if source == "index" and last.path and await self._session_active(last):
-                extended = replace(
-                    last,
-                    connect_at=min(last.connect_at, now - timedelta(minutes=5)),
-                    disconnect_at=now + FALLBACK_WINDOW_DURATION,
-                )
-                _LOGGER.info(
-                    "Extending session window for %s until %s (SessionStatus still active)",
-                    extended.label,
-                    extended.disconnect_at.isoformat(),
-                )
-                return extended
+            if (
+                source == "index"
+                and _window_identity(last) not in self._terminal_sessions
+            ):
+                extension_reason: str | None = None
+                if last.path and await self._session_active(last):
+                    extension_reason = "SessionStatus still active"
+                elif (
+                    not last.path
+                    and "race" in last.session_name.casefold()
+                    and now <= last.end_utc + PATHLESS_RACE_PROBE_HORIZON
+                ):
+                    extension_reason = "recent Race has no archive path"
+                if extension_reason is not None:
+                    extended = replace(
+                        last,
+                        connect_at=min(last.connect_at, now - timedelta(minutes=5)),
+                        disconnect_at=now + FALLBACK_WINDOW_DURATION,
+                    )
+                    _LOGGER.info(
+                        "Extending session window for %s until %s (%s)",
+                        extended.label,
+                        extended.disconnect_at.isoformat(),
+                        extension_reason,
+                    )
+                    return extended
             if self._should_log(
                 f"all_sessions_finished_{source}", interval_seconds=1800
             ):
@@ -1407,11 +1473,29 @@ class LiveSessionSupervisor:
                         "Session index refresh failed after %s", label, exc_info=True
                     )
 
+    def _cached_bus_payload(self, stream: str) -> dict[str, Any] | None:
+        getter = getattr(self._bus, "get_last_payload", None)
+        if not callable(getter):
+            return None
+        try:
+            payload = getter(stream)
+        except Exception:  # noqa: BLE001
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _race_extension_cap(self, window: SessionWindow) -> datetime:
+        session_data = self._cached_bus_payload("SessionData")
+        actual_start = _session_data_race_start(session_data)
+        if actual_start is not None:
+            return actual_start + RACE_MAX_DURATION + self._post_window
+        return window.end_utc + PATHLESS_RACE_PROBE_HORIZON
+
     async def _monitor_window(self, window: SessionWindow, *, source: str) -> str:
         replay_generation = self._availability.replay_generation
         label = window.label
         reason = "disconnect-window-expired"
         max_disconnect_at = window.disconnect_at + POST_WINDOW_EXTENSION_CAP
+        terminal_seen_at: datetime | None = None
         while not self._stopped:
             await self._interruptible_sleep(ACTIVE_REFRESH.total_seconds())
             if (
@@ -1430,23 +1514,43 @@ class LiveSessionSupervisor:
             now = dt_util.utcnow()
             hb_age = self._bus.last_heartbeat_age()
             activity_age = self._bus.last_stream_activity_age(LIVE_ACTIVITY_STREAMS)
+            session_status = self._cached_bus_payload("SessionStatus")
+            if _session_status_finished(session_status):
+                if terminal_seen_at is None:
+                    terminal_seen_at = now
+                    _LOGGER.info(
+                        "Terminal SessionStatus received for %s; draining live updates",
+                        label,
+                    )
+                if now >= terminal_seen_at + SESSION_END_DRAIN:
+                    self._terminal_sessions.add(_window_identity(window))
+                    reason = "session-finished"
+                    break
+                continue
+            terminal_seen_at = None
+
+            fresh_activity = (
+                hb_age is not None and hb_age <= HEARTBEAT_DRAIN_SECONDS
+            ) or (activity_age is not None and activity_age <= HEARTBEAT_DRAIN_SECONDS)
+            extension_cap = max_disconnect_at
+            if "race" in window.session_name.casefold() and _session_status_running(
+                session_status
+            ):
+                extension_cap = max(
+                    extension_cap,
+                    self._race_extension_cap(window),
+                )
             session_name_l = window.session_name.lower()
             allow_post_finish_inactivity = (
                 window.end_utc <= now < window.disconnect_at
                 and ("qualifying" in session_name_l or "shootout" in session_name_l)
             )
             if now >= window.disconnect_at:
-                should_extend = window.disconnect_at < max_disconnect_at and (
-                    (hb_age is not None and hb_age <= HEARTBEAT_DRAIN_SECONDS)
-                    or (
-                        activity_age is not None
-                        and activity_age <= HEARTBEAT_DRAIN_SECONDS
-                    )
-                )
+                should_extend = window.disconnect_at < extension_cap and fresh_activity
                 if should_extend:
                     extension = min(
                         POST_WINDOW_EXTENSION_STEP,
-                        max_disconnect_at - window.disconnect_at,
+                        extension_cap - window.disconnect_at,
                     )
                     window.disconnect_at += extension
                     _LOGGER.info(
