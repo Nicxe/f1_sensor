@@ -46,6 +46,7 @@ LIVE_DATA_CARD_ASSET_FILENAMES = (
     "platform/dashboard-context.js",
     "platform/entity-resolver.js",
     "platform/i18n.js",
+    "modular/i18n.js",
     "modular/catalog.js",
     "modular/config.js",
     "modular/migration.js",
