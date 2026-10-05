@@ -1,11 +1,11 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 let chartLoading, mapLoading, telemetryLoading;
-const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label }, { formatTime, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
+const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, words }, { formatTime, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./catalog.js'), load('./semantics.js'), load('../platform/branding.js'),
 ]);
 
-export const words = (language, en, sv) => String(language).startsWith('sv') ? sv : en;
+export { words };
 export function dateTime(value, settings = {}, options = {}) {
   const date = new Date(value);
   if (value === null || value === undefined || value === '' || !Number.isFinite(date.getTime())) return '—';
@@ -262,7 +262,7 @@ export class F1ModuleView extends LitElement {
     if (!this.module || !this.model) return html``;
     const title = this.module.title || this.model.title;
     return html`<section part="module-content" aria-label=${title}>
-      ${this.module.show_header !== false || this.model.badge ? html`<div class="section-head" part="module-header"><h2 part="module-title" class=${this.module.show_header === false ? 'sr' : ''}>${title}</h2>${this.model.badge ? html`<span class="chip" part="module-badge">${this.model.badge}</span>` : ''}</div>` : html`<h2 class="sr" part="module-title">${title}</h2>`}
+      ${this.module.show_header !== false || this.model.badge ? html`<div class="section-head" part="module-header"><h2 part="module-title" class=${this.module.show_header === false ? 'sr' : ''}>${title}</h2>${this.model.badge ? html`<span class="chip" part="module-badge">${words(this.language, this.model.badge, this.model.badge)}</span>` : ''}</div>` : html`<h2 class="sr" part="module-title">${title}</h2>`}
       ${this.module.focus_mode === 'independent' && moduleFocusKinds(this.module).length ? html`<p class="muted module-focus">${this.w('Own selection', 'Eget urval')}</p>` : ''}
       ${this.model.blocked ? this.empty(this.model.blocked) : html`${this.contextLine()}${this.coverageLine()}${this.content()}`}
       ${this.module.options.show_explanation !== false && this.model.explanation ? html`<details class="analysis-explanation"><summary>${this.model.explanationTitle ?? this.w('About this analysis', 'Om analysen')}</summary><p class="muted">${this.model.explanation}</p></details>` : ''}
@@ -351,7 +351,7 @@ export class F1ModuleView extends LitElement {
   contextLine() {
     const context = this.model.context;
     if (!context) return '';
-    const details = this.module.options?.show_context === false ? [] : [context?.meeting, context?.session, context?.season, context?.round ? `${this.w('Round', 'Deltävling')} ${context.round}` : null].filter(Boolean);
+    const details = this.module.options?.show_context === false ? [] : [context?.meeting, context?.session ? words(this.language, context.session, context.session) : null, context?.season, context?.round ? `${this.w('Round', 'Deltävling')} ${context.round}` : null].filter(Boolean);
     const status = this.module.options?.show_status === false ? null : context?.status;
     const rawSource = this.module.options?.show_source ? context?.source : null;
     const sourceNames = { live_timing_gridpos: ['GridPos', 'GridPos'], live_timing_qualifying: ['Live qualifying', 'Livekval'], live_timing_archive: ['Archive', 'Arkiv'] };

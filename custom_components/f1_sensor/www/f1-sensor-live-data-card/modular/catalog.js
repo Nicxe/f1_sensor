@@ -1,7 +1,13 @@
 // Field IDs are configuration API. Labels, sources and presentation stay together.
+const version = new URL(import.meta.url).searchParams.get('v');
+const { words } = await import(`./i18n.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
+
+export { words };
 export const VERSION = 3;
 export const CARD_TYPE = 'custom:f1-sensor-card';
-export const label = (item, language = 'en') => item?.label?.[String(language).startsWith('sv') ? 'sv' : 'en'] ?? item?.id ?? '';
+export const label = (item, language = 'en') => item?.label?.en
+  ? words(language, item.label.en, item.label.sv)
+  : item?.id ?? '';
 
 const timestampsFor = source => source === 'analysis'
   ? { source: 'not_provided', received: 'subscription.received_at', updated: 'not_provided', displayed: 'snapshot' }
@@ -557,5 +563,5 @@ export function moduleTitle(module, language = 'en') {
   if (module.title) return module.title;
   const content = module.options?.content ?? MODULES[module.type]?.options?.content?.default;
   const titles = CONTENT_TITLES[module.type]?.[content];
-  return titles ? titles[String(language).startsWith('sv') ? 1 : 0] : label(MODULES[module.type], language) || module.type;
+  return titles ? words(language, ...titles) : label(MODULES[module.type], language) || module.type;
 }
