@@ -113,6 +113,23 @@ def test_sync_bundled_assets_copies_card_files_and_changes_cache_key(
     assert second.copied_files == 1
 
 
+def test_sync_bundled_assets_copies_modular_localization_dependency(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A clean runtime install includes the modular card localization module."""
+    source_dir = tmp_path / "bundled"
+    runtime_dir = tmp_path / "runtime"
+    _write_bundled_assets(source_dir, "console.log('available');")
+    localization_module = source_dir / "modular" / "i18n.js"
+    localization_module.write_text("export const words = () => '';", encoding="utf-8")
+    monkeypatch.setattr(frontend, "BUNDLED_LIVE_DATA_CARD_DIR", source_dir)
+
+    frontend._sync_bundled_live_data_card_assets(runtime_dir)
+
+    assert (runtime_dir / "modular" / "i18n.js").is_file()
+
+
 @pytest.mark.asyncio
 async def test_lovelace_resource_creation_is_idempotent(hass) -> None:
     resources = DummyLovelaceResources()
