@@ -1,5 +1,5 @@
 {
-  "reviewed_on": "2026-10-01",
+  "reviewed_on": "2026-10-05",
   "entries": [
     {
       "package": "brace-expansion",
@@ -39,6 +39,30 @@
       ],
       "allowed_nodes": [
         "node_modules/npm/node_modules/undici"
+      ],
+      "scope": "Bundled inside npm 12.2.0, used only by release tooling",
+      "reason": "The latest npm release still bundles the affected version; npm bundled dependencies cannot be replaced with project overrides",
+      "expires": "2026-10-31"
+    },
+    {
+      "package": "braces",
+      "advisory_ids": [
+        1240992
+      ],
+      "allowed_nodes": [
+        "node_modules/braces"
+      ],
+      "scope": "Used only by documentation and release build tooling",
+      "reason": "The latest published braces release remains affected and no corrected version is available; this exception is limited to the resolved development-tool dependency",
+      "expires": "2026-10-31"
+    },
+    {
+      "package": "http-cache-semantics",
+      "advisory_ids": [
+        1240991
+      ],
+      "allowed_nodes": [
+        "node_modules/npm/node_modules/http-cache-semantics"
       ],
       "scope": "Bundled inside npm 12.2.0, used only by release tooling",
       "reason": "The latest npm release still bundles the affected version; npm bundled dependencies cannot be replaced with project overrides",
