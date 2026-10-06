@@ -189,7 +189,7 @@ const module = (id, en, sv, fields, options, sources, extra = {}) => ({
 export const MODULES = {
   overview: module('overview', 'Overview', 'Översikt', ['meeting', 'circuit', 'country', 'countdown', 'circuit_map', 'circuit_history', 'session', 'session_status', 'lap_progress', 'track_status', 'session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit'], {
     layout_mode: { type: 'enum', values: ['auto', 'compact', 'full'], default: 'auto', label: { en: 'Layout mode', sv: 'Layoutläge' } },
-  }, ['next_race', 'current_session', 'session_status', 'race_lap_count', 'track_status', 'session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit'], { defaultFields: ['meeting', 'circuit', 'countdown'] }),
+  }, ['next_race', 'current_season', 'current_session', 'session_status', 'replay_status', 'replay_player', 'race_lap_count', 'track_status', 'session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit'], { defaultFields: ['meeting', 'circuit', 'countdown'] }),
   calendar: module('calendar', 'Schedule', 'Schema', ['schedule'], {
     details: { type: 'list', values: ['round', 'circuit', 'location'], default: [], label: { en: 'Event details', sv: 'Tävlingsuppgifter' } },
     past: { type: 'enum', values: ['show', 'dim', 'hide'], default: 'show', label: { en: 'Past session starts', sv: 'Passerade sessionsstarter' } },
