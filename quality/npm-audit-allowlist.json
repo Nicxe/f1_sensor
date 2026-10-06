@@ -1,5 +1,5 @@
 {
-  "reviewed_on": "2026-10-05",
+  "reviewed_on": "2026-10-06",
   "entries": [
     {
       "package": "brace-expansion",
@@ -66,6 +66,32 @@
       ],
       "scope": "Bundled inside npm 12.2.0, used only by release tooling",
       "reason": "The latest npm release still bundles the affected version; npm bundled dependencies cannot be replaced with project overrides",
+      "expires": "2026-10-31"
+    },
+    {
+      "package": "postcss-selector-parser",
+      "advisory_ids": [
+        1241232
+      ],
+      "allowed_nodes": [
+        "node_modules/npm/node_modules/postcss-selector-parser",
+        "node_modules/postcss-selector-parser"
+      ],
+      "scope": "Used only by documentation CSS processing and bundled npm release tooling",
+      "reason": "Compatible dependency updates remove every fixable instance; Docusaurus still requires the affected major version and npm bundles another affected copy",
+      "expires": "2026-10-31"
+    },
+    {
+      "package": "tinypool",
+      "advisory_ids": [
+        1241260,
+        1241261
+      ],
+      "allowed_nodes": [
+        "node_modules/tinypool"
+      ],
+      "scope": "Used only by the Docusaurus documentation build with repository-controlled inputs",
+      "reason": "The latest Docusaurus release still requires tinypool 1.x while the corrected release is 2.x; forcing the incompatible major version would bypass upstream compatibility constraints",
       "expires": "2026-10-31"
     }
   ]
