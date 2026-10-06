@@ -681,9 +681,10 @@ export class F1SensorCard extends LitElement {
         if (model.source.status !== 'available') model.capabilityMessage = weather.track ? this.w('Track weather observations are not available for this session.', 'Väderobservationer från banan saknas för den här sessionen.') : this.w('Circuit weather is currently unavailable.', 'Väderuppgifter för banan är inte tillgängliga just nu.');
       }
       if (module.type === 'overview') {
-        const next = data.source(viewHass, entry, 'next_race'), track = data.source(viewHass, entry, 'track_status'), laps = data.source(viewHass, entry, 'race_lap_count');
-        const attrs = next.attributes, start = Date.parse(attrs.race_start_utc ?? attrs.race_start), remaining = start - (this.modelPreview?.now ?? Date.now());
-        const countdown = !Number.isFinite(remaining) ? '—' : remaining <= 0 ? this.w('Scheduled start passed', 'Schemalagd start passerad') : `${Math.floor(remaining / 86400000)} ${this.w('days', 'dagar')} ${Math.floor(remaining % 86400000 / 3600000)} ${this.w('hours', 'timmar')}`;
+        const event = data.overviewEvent(viewHass, entry, selection), track = data.source(viewHass, entry, 'track_status'), laps = data.source(viewHass, entry, 'race_lap_count');
+        const attrs = event.attributes, start = Date.parse(attrs.race_start_utc ?? attrs.race_start), remaining = start - (this.modelPreview?.now ?? Date.now());
+        const countdown = event.replay ? this.w('Not available for replay', 'Inte tillgänglig för replay')
+          : !Number.isFinite(remaining) ? '—' : remaining <= 0 ? this.w('Scheduled start passed', 'Schemalagd start passerad') : `${Math.floor(remaining / 86400000)} ${this.w('days', 'dagar')} ${Math.floor(remaining % 86400000 / 3600000)} ${this.w('hours', 'timmar')}`;
         const clocks = Object.fromEntries(['session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit'].map(key => [key, data.sessionClock(viewHass, entry, key, session)]));
         const currentLap = Number(laps.state), totalLaps = Number(laps.attributes.total_laps);
         const lapProgress = laps.status === 'available' && Number.isInteger(currentLap) && currentLap >= 0 ? `${currentLap}${Number.isInteger(totalLaps) && totalLaps > 0 ? ` / ${totalLaps}` : ''}` : null;
@@ -693,6 +694,8 @@ export class F1SensorCard extends LitElement {
           session: session.name ?? this.w('Between sessions', 'Mellan sessioner'), session_status: ['unavailable', 'unknown'].includes(session.status) ? null : session.status, lap_progress: protection === 'clear' ? lapProgress : hiddenMessage, track_status: protection === 'clear' ? track.status === 'available' ? track.state : null : hiddenMessage };
         model.items = module.fields.filter(id => Object.hasOwn(values, id)).map(id => ({ id, value: values[id], flag: id === 'meeting' ? safeImageUrl(attrs.country_flag_url) : null, country: attrs.circuit_country,
           detail: clocks[id] ? protection === 'clear' ? this.clockDescription(clocks[id]) : null : id === 'track_status' && protection === 'clear' && track.status !== 'available' ? this.missingMessage(track.status) : null }));
+        if (event.replay && !event.context_available) model.notice = this.w('Waiting for event information from the loaded replay.', 'Inväntar tävlingsinformation från laddad replay.');
+        else if (event.replay && !event.calendar_match) model.notice = this.w('The replay event is not available in the loaded season calendar. Replay-provided details remain visible; unavailable calendar details are left blank.', 'Replaytävlingen finns inte i den laddade säsongskalendern. Detaljer från replayen visas fortfarande; kalenderuppgifter som saknas lämnas tomma.');
       }
       if (module.type === 'race_control') {
         const current = data.source(viewHass, entry, 'race_control'); model.source = current;

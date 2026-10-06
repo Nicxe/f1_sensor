@@ -94,6 +94,72 @@ export function selectionState(hass, entry, selection) {
   return { available, phase: available ? phase : 'unknown', reason: available ? null : 'pinned_replay_unavailable', selection, identity };
 }
 
+const eventText = value => typeof value === 'string'
+  ? value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+  : '';
+
+function sameReplayIdentity(current, replay) {
+  const keys = [
+    ['season', 'selected_session_year'],
+    ['meeting_key', 'selected_meeting_key'],
+    ['session_key', 'selected_session_key'],
+  ];
+  return keys.every(([currentKey, replayKey]) => current[currentKey] != null
+    && replay[replayKey] != null && String(current[currentKey]) === String(replay[replayKey]));
+}
+
+function replayCalendarRace(hass, entry, current, replay) {
+  const calendar = source(hass, entry, 'current_season');
+  const year = Number(replay.selected_session_year ?? current.season);
+  const meeting = eventText(current.meeting_name);
+  const locality = eventText(current.meeting_location);
+  const country = eventText(current.meeting_country);
+  return array(calendar.attributes.races).find(race => {
+    const raceYear = Number(race?.season ?? calendar.attributes.season);
+    if (!Number.isFinite(year) || raceYear !== year) return false;
+    if (meeting && eventText(race?.raceName ?? race?.race_name) === meeting) return true;
+    const location = race?.Circuit?.Location ?? {};
+    return Boolean(locality && country && eventText(location.locality) === locality && eventText(location.country) === country);
+  }) ?? null;
+}
+
+export function overviewEvent(hass, entry, selection) {
+  const next = source(hass, entry, 'next_race');
+  const replayStatus = source(hass, entry, 'replay_status');
+  const replayPlayer = source(hass, entry, 'replay_player');
+  const replayState = String(replayStatus.state ?? replayPlayer.attributes.replay_state ?? '').toLowerCase();
+  const replayActive = ['selected', 'loading', 'ready', 'seeking', 'playing', 'paused'].includes(replayState);
+  const replaySelected = selection?.source === 'replay'
+    || selection?.mode === 'follow' && selection?.source === 'auto' && replayActive;
+  if (!replaySelected) return { attributes: next.attributes, replay: false, calendar_match: false, context_available: next.status === 'available' };
+
+  const current = source(hass, entry, 'current_session');
+  const currentAttrs = current.attributes;
+  const replayAttrs = { ...replayStatus.attributes, ...replayPlayer.attributes };
+  const contextAvailable = ['ready', 'seeking', 'playing', 'paused'].includes(replayState)
+    && sameReplayIdentity(currentAttrs, replayAttrs);
+  if (!contextAvailable) return { attributes: {}, replay: true, calendar_match: false, context_available: false };
+
+  const race = replayCalendarRace(hass, entry, currentAttrs, replayAttrs);
+  const circuit = race?.Circuit ?? {};
+  const location = circuit.Location ?? {};
+  return {
+    attributes: {
+      season: currentAttrs.season ?? replayAttrs.selected_session_year ?? null,
+      race_name: currentAttrs.meeting_name ?? race?.raceName ?? null,
+      circuit_name: circuit.circuitName ?? currentAttrs.circuit_short_name ?? null,
+      circuit_locality: location.locality ?? currentAttrs.meeting_location ?? null,
+      circuit_country: location.country ?? currentAttrs.meeting_country ?? null,
+      country_flag_url: race?.country_flag_url ?? null,
+      circuit_map_url: race?.circuit_map_url ?? null,
+      race_start_utc: currentAttrs.start ?? null,
+    },
+    replay: true,
+    calendar_match: race !== null,
+    context_available: true,
+  };
+}
+
 export function sessionClock(hass, entry, key, context = sessionContext(hass, entry)) {
   const selected = source(hass, entry, key), attrs = selected.attributes;
   const raw = number(attrs.value_seconds), phase = nonempty(attrs.clock_phase), quality = nonempty(attrs.source_quality);
