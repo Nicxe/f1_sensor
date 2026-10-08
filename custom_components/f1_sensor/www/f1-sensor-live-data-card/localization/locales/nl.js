@@ -1438,7 +1438,7 @@ const messages = {
   "modular.status_signals": "Statussignalen",
   "modular.status_unavailable": "Status niet beschikbaar",
   "modular.stint": "Stint",
-  "modular.stint_change_loss_compares_the_first_lap_of_a_stint_with_the_preceding_stint": " Het stintwisselverlies vergelijkt de eerste ronde van een stint met het schone tempo van de vorige stint.",
+  "modular.stint_change_loss_compares_the_first_lap_of_a_stint_with_the_preceding_stint": "Het stintwisselverlies vergelijkt de eerste ronde van een stint met het schone tempo van de vorige stint.",
   "modular.stints": "stints",
   "modular.stop_and_clear_the_selected_replay_before_calibrating_a_live_broadcast": "Stop en wis de geselecteerde replay voordat je een live-uitzending kalibreert.",
   "modular.stop_the_loaded_replay_before_changing_its_year_session_or_start_reference": "Stop de geladen replay voordat je het jaar, de sessie of de startreferentie wijzigt.",
