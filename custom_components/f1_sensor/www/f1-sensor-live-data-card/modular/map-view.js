@@ -111,10 +111,10 @@ class F1TrackMapView extends LitElement {
   }
   w(en, sv) { return words(this.settings?.language, en, sv); }
   state(row) {
-    if (!row.point || row.point.some(value => value < 0 || value > 100)) return this.w('Position outside the available map', 'Position utanför tillgänglig karta');
-    if (row.stale) return this.w('Saved position · stale', 'Sparad position · inaktuell');
+    if (!row.point || row.point.some(value => value < 0 || value > 100)) return this.w('modular.position_outside_the_available_map');
+    if (row.stale) return this.w('modular.saved_position_stale');
     const value = String(row.status ?? '').toLowerCase();
-    return ({ ontrack: this.w('On track', 'På banan'), offtrack: this.w('Off track', 'Utanför banan') })[value] ?? row.status ?? this.w('Status unavailable', 'Status saknas');
+    return ({ ontrack: this.w('modular.on_track'), offtrack: this.w('modular.off_track') })[value] ?? row.status ?? this.w('modular.status_unavailable');
   }
   statusInfo() {
     const value = String(this.model?.trackStatus ?? '').trim();
@@ -136,32 +136,32 @@ class F1TrackMapView extends LitElement {
     const showMap = this.module.fields.includes('track_map'), showList = this.module.fields.includes('map_drivers');
     const options = this.module.options, showLabels = options.labels !== 'off';
     const status = this.statusInfo(), session = [this.model.context?.meeting, this.model.context?.session].filter(Boolean).join(' · ');
-    const lap = this.model.lap === null || this.model.lap === undefined ? null : `${this.w('Lap', 'Varv')} ${this.model.lap}${this.model.totalLaps ? ` / ${this.model.totalLaps}` : ''}`;
+    const lap = this.model.lap === null || this.model.lap === undefined ? null : `${this.w('modular.lap')} ${this.model.lap}${this.model.totalLaps ? ` / ${this.model.totalLaps}` : ''}`;
     const layout = options.layout_mode === 'auto' ? '' : options.layout_mode;
-    const source = this.model.sourceMode === 'replay' ? this.w('Recorded replay positions', 'Inspelade replaypositioner') : this.w('Live positions', 'Livepositioner');
+    const source = this.model.sourceMode === 'replay' ? this.w('modular.recorded_replay_positions') : this.w('modular.live_positions');
     const lineMode = options.track_status_line_mode ?? 'accent';
-    if (!showMap && !showList) return html`<p class="empty">${this.w('Choose map content in the editor.', 'Välj kartinnehåll i editorn.')}</p>`;
+    if (!showMap && !showList) return html`<p class="empty">${this.w('modular.choose_map_content_in_the_editor')}</p>`;
     return html`<div class="map-shell ${layout}" style=${`--track-status-color:${status?.tone ?? '#8a94a6'}`}>
-      ${this.model.freshness?.stale ? html`<p class="chip">${this.w('Saved positions · updates delayed', 'Sparade positioner · uppdateringar fördröjda')}</p>` : ''}
-      ${options.show_session_info ? html`<div class="map-meta"><strong>${session || this.w('Session information unavailable', 'Sessionsinformation saknas')}</strong><div class="map-badges">
-        ${options.show_track_status && status ? html`<span class="map-status">${this.w('Track', 'Bana')}: ${status.value}</span>` : ''}
+      ${this.model.freshness?.stale ? html`<p class="chip">${this.w('modular.saved_positions_updates_delayed')}</p>` : ''}
+      ${options.show_session_info ? html`<div class="map-meta"><strong>${session || this.w('modular.session_information_unavailable')}</strong><div class="map-badges">
+        ${options.show_track_status && status ? html`<span class="map-status">${this.w('modular.track')}: ${status.value}</span>` : ''}
         ${options.show_lap_progress && lap ? html`<span class="map-status">${lap}</span>` : ''}
         ${options.show_driver_count ? html`<span class="map-status">${rows.length} ${this.w(rows.length === 1 ? 'driver' : 'drivers', rows.length === 1 ? 'förare' : 'förare')}</span>` : ''}
       </div></div>` : ''}
       ${showMap ? this.model.points ? html`<div class="map-frame"><svg viewBox="0 0 100 100" role="img" aria-labelledby="map-title map-description">
-        <title id="map-title">${this.w('Driver positions on the track', 'Förarnas positioner på banan')}</title>
-        <desc id="map-description">${showLabels ? this.w('Labels identify each driver. A dashed outline indicates a stale position. Use the driver list for status and timestamps.', 'Etiketter identifierar varje förare. Streckad kontur betyder inaktuell position. Förarlistan visar status och tidsstämplar.') : this.w('Driver labels are hidden. A dashed outline indicates a stale position. Use the driver list to identify drivers and read status and timestamps.', 'Föraretiketter är dolda. Streckad kontur betyder inaktuell position. Använd förarlistan för att identifiera förare och läsa status och tidsstämplar.')} ${status ? `${this.w('Track status', 'Banstatus')}: ${status.value}.` : ''}</desc>
+        <title id="map-title">${this.w('modular.driver_positions_on_the_track')}</title>
+        <desc id="map-description">${showLabels ? this.w('modular.labels_identify_each_driver_a_dashed_outline_indicates_a_stale_position_use_the_driver') : this.w('modular.driver_labels_are_hidden_a_dashed_outline_indicates_a_stale_position_use_the_driver')} ${status ? `${this.w('modular.track_status')}: ${status.value}.` : ''}</desc>
         ${lineMode === 'accent' && status ? svg`<path class="track-status-accent" d=${this.path()}></path>` : ''}
         <path class="track ${lineMode === 'full' && status ? 'status-full' : ''}" d=${this.path()}></path>
         ${repeat(rows.filter(row => row.point && row.point.every(value => value >= 0 && value <= 100)), row => row.id, row => {
           const point = this.motionPoint(row);
           return svg`<g style=${`--team-accent:${this.accent(row)}`} class="marker ${row.stale ? 'stale' : ''} ${row.selected || row.id === this.selected ? 'selected' : ''}" transform=${`translate(${point[0]} ${point[1]})`}><circle r="1.6"></circle><circle class="team" r="1"></circle>${showLabels ? svg`<text x=${point[0] + 2.2 + String(this.module.options.labels === 'number' ? row.id : row.driver).length * font * .7 > 99 ? -2.2 : 2.2} text-anchor=${point[0] + 2.2 + String(this.module.options.labels === 'number' ? row.id : row.driver).length * font * .7 > 99 ? 'end' : 'start'} y=${point[1] < font + 2 ? font + 1.5 : -1.5} font-size=${font}>${this.module.options.labels === 'number' ? row.id : row.driver}</text>` : ''}</g>`;
         })}
-      </svg></div>` : html`<p class="empty">${this.w('Track geometry is not available for this session yet.', 'Bangeometri finns inte för sessionen ännu.')}</p>` : ''}
-      ${showList || showMap ? html`<details class="map-list" .open=${this.listOpen} @toggle=${event => { this.listOpen = event.target.open; }}><summary>${this.w('Driver positions and status', 'Förarpositioner och status')}${this.module.options.show_driver_count === false ? '' : ` · ${rows.length}`}</summary>
-        ${rows.length ? html`<ul class="driver-list">${repeat(rows, row => row.id, row => html`<li><button aria-pressed=${String(this.selected === row.id)} @click=${() => { this.selected = this.selected === row.id ? '' : row.id; }}><span>${row.id} · ${this.settings.appearance.full_names ? row.name : row.driver}<small>${row.team ?? ''}</small></span><span><span>${this.state(row)}</span><small>${dateTime(row.timestamp, this.settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</small></span></button></li>`)}</ul>` : html`<p class="empty">${this.w('No driver positions are available. Live positioning needs F1TV access and a supported session feed; replay can provide recorded positions.', 'Förarpositioner saknas. Livepositioner kräver F1TV-åtkomst och en sessionskälla med stöd; replay kan ge inspelade positioner.')}</p>`}
+      </svg></div>` : html`<p class="empty">${this.w('modular.track_geometry_is_not_available_for_this_session_yet')}</p>` : ''}
+      ${showList || showMap ? html`<details class="map-list" .open=${this.listOpen} @toggle=${event => { this.listOpen = event.target.open; }}><summary>${this.w('modular.driver_positions_and_status')}${this.module.options.show_driver_count === false ? '' : ` · ${rows.length}`}</summary>
+        ${rows.length ? html`<ul class="driver-list">${repeat(rows, row => row.id, row => html`<li><button aria-pressed=${String(this.selected === row.id)} @click=${() => { this.selected = this.selected === row.id ? '' : row.id; }}><span>${row.id} · ${this.settings.appearance.full_names ? row.name : row.driver}<small>${row.team ?? ''}</small></span><span><span>${this.state(row)}</span><small>${dateTime(row.timestamp, this.settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</small></span></button></li>`)}</ul>` : html`<p class="empty">${this.w('modular.no_driver_positions_are_available_live_positioning_needs_f1tv_access_and_a_supported_session')}</p>`}
       </details>` : ''}
-      ${options.show_footer ? html`<div class="map-footer"><span>${source}</span><span>${this.model.context?.updated ? dateTime(this.model.context.updated, this.settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : this.w('Update time unavailable', 'Uppdateringstid saknas')}</span></div>` : ''}
+      ${options.show_footer ? html`<div class="map-footer"><span>${source}</span><span>${this.model.context?.updated ? dateTime(this.model.context.updated, this.settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : this.w('modular.update_time_unavailable')}</span></div>` : ''}
     </div>`;
   }
 }

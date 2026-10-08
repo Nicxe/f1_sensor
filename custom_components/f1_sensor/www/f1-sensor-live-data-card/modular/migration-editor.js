@@ -49,7 +49,7 @@ export class F1MigrationEditor extends LitElement {
   childEditor() {
     const type = this.config?.type?.replace(/^custom:/, '');
     const tag = `${type === 'f1-session-archive-card' ? 'f1-last-race-results-card' : type}-editor`;
-    if (!customElements.get(tag)) return html`<p role="alert">${this.w('Reload the page to load the card editor.', 'Ladda om sidan för att hämta korteditorn.')}</p>`;
+    if (!customElements.get(tag)) return html`<p role="alert">${this.w('modular.reload_the_page_to_load_the_card_editor')}</p>`;
     if (this.child?.localName !== tag) {
       this.child = document.createElement(tag); this.childValue = '';
       this.child.addEventListener('config-changed', event => { event.stopPropagation(); this.publish(event.detail.config); });
@@ -75,30 +75,30 @@ export class F1MigrationEditor extends LitElement {
   render() {
     if (!this.config) return html``;
     if (!this.proposal) return html`
-      ${isLegacyConfig(this.config) ? html`<section class="migration" aria-label=${this.w('Convert this card', 'Konvertera detta kort')}>
-        <h3>${this.w('This card is deprecated', 'Det här kortet är deprecierat')}</h3>
-        <p>${this.w('This card continues to work, but new features and documentation target the modular F1 Sensor card. Review a conversion with your original saved for recovery. Nothing changes until you apply the conversion and save in Home Assistant.', 'Kortet fortsätter att fungera, men nya funktioner och dokumentation riktas mot det modulära F1 Sensor-kortet. Granska en konvertering med originalet sparat för återställning. Ingenting ändras förrän du tillämpar konverteringen och sparar i Home Assistant.')}</p>
-        <button @click=${() => this.review()}>${this.w('Review conversion', 'Granska konvertering')}</button>
+      ${isLegacyConfig(this.config) ? html`<section class="migration" aria-label=${this.w('modular.convert_this_card')}>
+        <h3>${this.w('modular.this_card_is_deprecated')}</h3>
+        <p>${this.w('modular.this_card_continues_to_work_but_new_features_and_documentation_target_the_modular_f1')}</p>
+        <button @click=${() => this.review()}>${this.w('modular.review_conversion')}</button>
       </section>` : ''}
       ${this.error ? html`<p class="error" role="alert">${this.error}</p>` : ''}${this.childEditor()}`;
     const rows = this.proposal.rows;
-    return html`<section class="migration" aria-label=${this.w('Review conversion', 'Granska konvertering')}>
-      <h3>${this.w('Review before replacing this card', 'Granska innan kortet ersätts')}</h3>
-      <p>${this.w('Apply changes only the card being edited. Save in Home Assistant to keep it. Its original configuration remains recoverable from the new editor, including unsupported settings.', 'Tillämpa ändrar bara kortet som redigeras. Spara i Home Assistant för att behålla det. Originalkonfigurationen kan återställas i den nya editorn, inklusive inställningar som saknar stöd.')}</p>
-      <p>${this.w('To keep both cards visible, duplicate the original in the dashboard before converting the copy.', 'För att behålla båda korten synliga, duplicera originalet i dashboarden innan du konverterar kopian.')}</p>
-      <label>${this.w('F1 Sensor installation', 'F1 Sensor-installation')}<select .value=${this.proposal.config.f1_entry_id} @change=${event => { this.entryId = event.target.value; this.review(); }}>
-        <option value="" .selected=${!this.proposal.config.f1_entry_id}>${this.w('Choose an installation', 'Välj en installation')}</option>
+    return html`<section class="migration" aria-label=${this.w('modular.review_conversion')}>
+      <h3>${this.w('modular.review_before_replacing_this_card')}</h3>
+      <p>${this.w('modular.apply_changes_only_the_card_being_edited_save_in_home_assistant_to_keep_it')}</p>
+      <p>${this.w('modular.to_keep_both_cards_visible_duplicate_the_original_in_the_dashboard_before_converting_the')}</p>
+      <label>${this.w('modular.f1_sensor_installation')}<select .value=${this.proposal.config.f1_entry_id} @change=${event => { this.entryId = event.target.value; this.review(); }}>
+        <option value="" .selected=${!this.proposal.config.f1_entry_id}>${this.w('modular.choose_an_installation')}</option>
         ${this.entries.map(entry => html`<option value=${entry.entry_id} .selected=${this.proposal.config.f1_entry_id === entry.entry_id}>${entry.title}</option>`)}
         ${this.proposal.config.f1_entry_id && !this.entries.some(e => e.entry_id === this.proposal.config.f1_entry_id) ? html`<option value=${this.proposal.config.f1_entry_id} .selected=${true}>${this.proposal.config.f1_entry_id}</option>` : ''}
       </select></label>
       ${['review', 'changed', 'mapped'].map(status => {
         const items = rows.filter(row => row.status === status); if (!items.length) return '';
-        const title = status === 'review' ? this.w('Choose again or keep the original', 'Välj igen eller behåll originalet') : status === 'changed' ? this.w('Changed behavior', 'Ändrat beteende') : this.w('Transferred settings', 'Överförda inställningar');
-        return html`<details ?open=${status === 'review'}><summary>${title} (${items.length})</summary><ul>${items.map(row => html`<li><strong>${row.path.startsWith('$') ? this.w('Card behavior', 'Kortets beteende') : row.path}</strong>${Object.hasOwn(this.config, row.path) ? html` <code>${JSON.stringify(this.config[row.path])}</code>` : ''}: ${this.w(row.message.en, row.message.sv)}</li>`)}</ul></details>`;
+        const title = status === 'review' ? this.w('modular.choose_again_or_keep_the_original') : status === 'changed' ? this.w('modular.changed_behavior') : this.w('modular.transferred_settings');
+        return html`<details ?open=${status === 'review'}><summary>${title} (${items.length})</summary><ul>${items.map(row => html`<li><strong>${row.path.startsWith('$') ? this.w('modular.card_behavior') : row.path}</strong>${Object.hasOwn(this.config, row.path) ? html` <code>${JSON.stringify(this.config[row.path])}</code>` : ''}: ${this.w(row.message.en, row.message.sv)}</li>`)}</ul></details>`;
       })}
-      <label class="check"><input type="checkbox" .checked=${this.accepted} @change=${event => { this.accepted = event.target.checked; }}>${this.w('I have reviewed the differences and settings that need to be chosen again.', 'Jag har granskat skillnaderna och inställningarna som behöver väljas igen.')}</label>
-      <div class="buttons"><button @click=${() => { this.proposal = null; this.accepted = false; }}>${this.w('Cancel conversion', 'Avbryt konvertering')}</button><button ?disabled=${!this.accepted} @click=${() => { if (this.accepted) this.publish(this.proposal.config); }}>${this.w('Apply conversion', 'Tillämpa konvertering')}</button></div>
-    </section><div class="preview"><h3>${this.w('Preview with sample data', 'Förhandsvisning med exempeldata')}</h3>${this.preview()}</div>`;
+      <label class="check"><input type="checkbox" .checked=${this.accepted} @change=${event => { this.accepted = event.target.checked; }}>${this.w('modular.i_have_reviewed_the_differences_and_settings_that_need_to_be_chosen_again')}</label>
+      <div class="buttons"><button @click=${() => { this.proposal = null; this.accepted = false; }}>${this.w('modular.cancel_conversion')}</button><button ?disabled=${!this.accepted} @click=${() => { if (this.accepted) this.publish(this.proposal.config); }}>${this.w('modular.apply_conversion')}</button></div>
+    </section><div class="preview"><h3>${this.w('modular.preview_with_sample_data')}</h3>${this.preview()}</div>`;
   }
 }
 if (!customElements.get('f1-migration-editor')) customElements.define('f1-migration-editor', F1MigrationEditor);

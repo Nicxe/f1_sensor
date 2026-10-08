@@ -276,6 +276,7 @@ def test_replay_control_card_module_loads_with_bundled_lit(tmp_path: Path) -> No
     shutil.copyfile(CARD_PATH, tmp_path / CARD_PATH.name)
     shutil.copyfile(LIT_MODULE_PATH, tmp_path / LIT_MODULE_PATH.name)
     shutil.copytree(CARD_PATH.parent / "platform", tmp_path / "platform")
+    shutil.copytree(CARD_PATH.parent / "localization", tmp_path / "localization")
     (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
 
     completed = subprocess.run(

@@ -1,8 +1,8 @@
 // Field IDs are configuration API. Labels, sources and presentation stay together.
 const version = new URL(import.meta.url).searchParams.get('v');
-const { words } = await import(`./i18n.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
+const { words, translatePlural } = await import(`./i18n.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 
-export { words };
+export { translatePlural, words };
 export const VERSION = 3;
 export const CARD_TYPE = 'custom:f1-sensor-card';
 export const label = (item, language = 'en') => item?.label?.en
