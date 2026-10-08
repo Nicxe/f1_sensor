@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { seconds, number, formatTime, lapChange, positionChange, SectorStore, timingStatus, PALETTES, statusColors, contrast, safeImageUrl, cardAccent, logoDimensions } from '../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/semantics.js';
+import { seconds, number, formatTime, formatTimingGap, lapChange, positionChange, SectorStore, timingStatus, PALETTES, statusColors, contrast, safeImageUrl, cardAccent, logoDimensions } from '../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/semantics.js';
 
 const lap = (n, times, completed = n - 1) => ({ racing_number: '16', completed_laps: completed, sector_current_lap: n, sectors: { current: Object.fromEntries(times.map((time, index) => [`sector_${index + 1}`, { time, lap: n }])) } });
 
@@ -27,6 +27,13 @@ test('timing parsing never invents a zero or accepts malformed durations', () =>
   assert.equal(seconds('1:20.750'), 80.75);
   assert.equal(formatTime(59.9996), '1:00.000');
   assert.equal(formatTime(null), '—');
+});
+
+test('lap-qualified timing gaps use the active language label without changing time gaps', () => {
+  assert.equal(formatTimingGap('LAP 9', 'Ronde'), 'Ronde 9');
+  assert.equal(formatTimingGap(' lap 10 ', 'Varv'), 'Varv 10');
+  assert.equal(formatTimingGap('+1.234', 'Ronde'), '+1.234');
+  assert.equal(formatTimingGap(null, 'Ronde'), null);
 });
 
 test('#530 lap arrows and position arrows use separate comparisons', () => {

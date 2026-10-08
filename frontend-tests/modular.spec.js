@@ -176,6 +176,19 @@ test('timing live gap toggle switches one accessible column without changing the
   expect(await page.evaluate(() => window.fixtureCard.config.modules[0].fields)).toEqual(['position', 'driver', 'interval']);
 });
 
+test('timing gap cells localize lap-qualified TimingData values', async ({ page }) => {
+  await page.evaluate(() => {
+    window.mountModular({ language: 'nl', config: { modules: [{ type: 'timing', fields: ['position', 'driver', 'gap', 'interval'] }] } });
+    const demo = window.fixtureDemo, entry = demo.preview.entries[0];
+    const drivers = demo.hass.states[entry.entities.driver_positions].attributes.drivers;
+    drivers[1].gap_to_leader = 'LAP 9';
+    drivers[1].interval_to_position_ahead = 'LAP 9';
+    window.fixtureCard.hass = { ...demo.hass };
+  });
+  await expect(page.getByText('Ronde 9', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('LAP 9', { exact: true })).toHaveCount(0);
+});
+
 test('a hidden tab is removed from visual and accessibility exposure without recreating modules', async ({ page }) => {
   await page.evaluate(() => { const config = window.mountModular(); config.layout = 'tabs'; window.mountModular({ config }); });
   await expect(page.getByRole('columnheader', { name: 'Driver', exact: true })).not.toBeVisible();

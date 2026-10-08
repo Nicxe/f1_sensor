@@ -1,7 +1,7 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 let chartLoading, mapLoading, telemetryLoading;
-const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
+const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatTimingGap, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./catalog.js'), load('./semantics.js'), load('../platform/branding.js'),
 ]);
 
@@ -657,6 +657,7 @@ export class F1ModuleView extends LitElement {
   }
   cell(row, id) {
     if (id === 'driver') return this.driverCell(row);
+    if (id === 'gap' || id === 'interval') return formatTimingGap(row[id], this.w('modular.lap'));
     if (this.field(id)?.type === 'qualifying_duration') return html`<span class="time">${formatTime(row[id]?.time)}</span><span class="provenance">${row[id]?.sprint ? 'SQ' : 'Q'}${row[id]?.part}${row[id]?.eliminated ? this.w('modular.eliminated') : ''}</span>`;
     if (id === 'theoretical_lap') return html`<span class="time">${formatTime(row[id])}</span><span class="provenance">${this.w('modular.sum_of_personal_best_sectors_may_span_laps')}</span>`;
     if (FIELDS[id]?.type === 'sector' || FIELDS[id]?.type === 'duration') return this.timeCell(row[id]);
