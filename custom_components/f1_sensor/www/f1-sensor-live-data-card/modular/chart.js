@@ -52,7 +52,7 @@ export class F1SeriesChart extends LitElement {
   disconnectedCallback() { super.disconnectedCallback(); this.observer?.disconnect(); }
   w(en, sv) { return words(this.settings?.language, en, sv); }
   value(value) { return value === null || value === undefined ? '—' : this.model?.metric === 'lap_time' ? formatTime(value) : this.model?.metric === 'lap_change' ? `${formatDelta(value)} s` : new Intl.NumberFormat(this.settings?.language ?? 'en', { maximumFractionDigits: 2 }).format(value); }
-  get metric() { return this.model?.metric === 'lap_position' ? this.w('Position at lap completion', 'Placering vid avslutat varv') : this.model?.metric === 'lap_time' ? this.w('Lap time', 'Varvtid') : this.model?.metric === 'lap_change' ? this.w('Change from previous lap', 'Skillnad mot föregående varv') : this.model?.metric === 'wins_per_round' ? this.w('Wins per round', 'Vinster per deltävling') : this.model?.metric === 'points_per_round' ? this.w('Points per round', 'Poäng per deltävling') : this.w('Total points', 'Totala poäng'); }
+  get metric() { return this.model?.metric === 'lap_position' ? this.w('modular.position_at_lap_completion') : this.model?.metric === 'lap_time' ? this.w('modular.lap_time') : this.model?.metric === 'lap_change' ? this.w('modular.change_from_previous_lap') : this.model?.metric === 'wins_per_round' ? this.w('modular.wins_per_round') : this.model?.metric === 'points_per_round' ? this.w('modular.points_per_round') : this.w('modular.total_points'); }
   seriesKey(item) { return `${this.module?.type ?? 'chart'}:${this.model?.teams ? 'teams' : 'drivers'}:${item?.id ?? ''}`; }
   isSeriesHidden(item) { return this.hiddenSeriesKeys.has(this.seriesKey(item)); }
   toggleSeries(item, event) {
@@ -70,7 +70,7 @@ export class F1SeriesChart extends LitElement {
     const palette = colors[this.settings?.mode] ?? colors.dark;
     return this.module?.type === 'progression' && this.settings?.appearance?.team_colors !== false && /^#[0-9a-f]{6}$/i.test(item?.color ?? '') ? item.color : palette[index % palette.length];
   }
-  seriesLabel(item, hidden = this.isSeriesHidden(item)) { return `${item.name}: ${hidden ? this.w('hidden. Show series.', 'dold. Visa serie.') : this.w('visible. Hide series.', 'synlig. Dölj serie.')}`; }
+  seriesLabel(item, hidden = this.isSeriesHidden(item)) { return `${item.name}: ${hidden ? this.w('modular.hidden_show_series') : this.w('modular.visible_hide_series')}`; }
   marker(index, x, y, color) {
     const style = `fill:${color};stroke:var(--f1-surface);stroke-width:1.2`;
     if (index % 4 === 1) return svg`<rect class="marker" x=${x - 3.5} y=${y - 3.5} width="7" height="7" style=${style}/>`;
@@ -88,7 +88,7 @@ export class F1SeriesChart extends LitElement {
     const x = index => rounds.length > 1 ? gutter + index * (right - gutter) / (rounds.length - 1) : (gutter + right) / 2;
     const y = value => positional ? this.textSize * 2 + ((value - low) / range) * (bottom - this.textSize * 2) : bottom - ((value - low) / range) * (bottom - this.textSize * 2);
     const interactive = this.module.type === 'progression';
-    return html`<svg class="plot" viewBox=${`0 0 ${width} ${height}`} role=${interactive ? 'group' : 'img'} aria-label=${`${this.metric}. ${this.w('Values and missing data are available in the data table.', 'Värden och saknade uppgifter finns i datatabellen.')}`}>
+    return html`<svg class="plot" viewBox=${`0 0 ${width} ${height}`} role=${interactive ? 'group' : 'img'} aria-label=${`${this.metric}. ${this.w('modular.values_and_missing_data_are_available_in_the_data_table')}`}>
       <title>${this.metric}</title>
       ${ticks.map(tick => svg`<line class="grid-line" x1=${gutter} x2=${right} y1=${y(tick)} y2=${y(tick)}/><text class="axis" x=${gutter - 8} y=${y(tick) + 4} text-anchor="end">${this.value(tick)}</text>`)}
       ${labels ? rounds.map((round, index) => index === 0 || index === rounds.length - 1 || index % Math.max(1, Math.ceil(rounds.length / Math.max(2, Math.floor((right - gutter) / (this.textSize * 3))))) === 0 ? svg`<text class="axis round-label" x=${x(index)} y=${height - this.textSize * .6} text-anchor="middle">${this.model.axisKind === 'lap' ? 'L' : 'R'}${round.id}</text>` : '') : ''}
@@ -105,15 +105,15 @@ export class F1SeriesChart extends LitElement {
     </svg>`;
   }
   table(series, rounds) {
-    return html`<div class="table-scroll" tabindex="0" role="region" aria-label=${this.model.axisKind === 'lap' ? this.w('Lap data, scroll horizontally for more drivers', 'Varvdata, rulla i sidled för fler förare') : this.w('Progression data, scroll horizontally for more competitors', 'Utvecklingsdata, rulla i sidled för fler deltagare')}><table><caption class="sr">${this.metric}</caption>
-      <thead><tr><th scope="col">${this.model.axisKind === 'lap' ? this.w('Lap', 'Varv') : this.w('Round', 'Deltävling')}</th>${series.map(item => html`<th scope="col">${item.name}</th>`)}</tr></thead>
+    return html`<div class="table-scroll" tabindex="0" role="region" aria-label=${this.model.axisKind === 'lap' ? this.w('modular.lap_data_scroll_horizontally_for_more_drivers') : this.w('modular.progression_data_scroll_horizontally_for_more_competitors')}><table><caption class="sr">${this.metric}</caption>
+      <thead><tr><th scope="col">${this.model.axisKind === 'lap' ? this.w('modular.lap') : this.w('modular.round')}</th>${series.map(item => html`<th scope="col">${item.name}</th>`)}</tr></thead>
       <tbody>${repeat(rounds, round => round.id, (round, index) => html`<tr><th scope="row">${round.id}${round.race_name ? ` · ${round.race_name}` : ''}</th>${series.map(item => html`<td>${this.value(item.values[index]?.value)}</td>`)}</tr>`)}</tbody>
     </table></div>`;
   }
   render() {
     if (!this.model || !this.module || !this.settings) return html``;
     const { series = [], rounds = [] } = this.model, presentation = this.module.options.presentation;
-    if (!series.length || !rounds.length || !series.some(item => item.values.some(point => point.value !== null))) return html`<p class="empty">${this.w('No chart data matches this selection.', 'Ingen diagramdata matchar urvalet.')}</p>`;
+    if (!series.length || !rounds.length || !series.some(item => item.values.some(point => point.value !== null))) return html`<p class="empty">${this.w('modular.no_chart_data_matches_this_selection')}</p>`;
     const showTable = presentation !== 'chart' || this.tableOpen;
     const showLegend = presentation !== 'table' && this.module.options.show_legend !== false;
     const filterable = this.module.type === 'progression' && showLegend;
@@ -121,11 +121,11 @@ export class F1SeriesChart extends LitElement {
     const legendPosition = ['left', 'right'].includes(this.module.options.legend_position) ? this.module.options.legend_position : 'bottom';
     const legend = showLegend ? html`<ul class="chart-legend">${series.map((item, index) => {
       const hidden = filterable && this.isSeriesHidden(item), color = this.seriesColor(item, index);
-      return html`<li>${filterable ? html`<button type="button" class="legend-toggle" data-hidden=${String(hidden)} aria-pressed=${String(!hidden)} aria-label=${this.seriesLabel(item, hidden)} title=${this.seriesLabel(item, hidden)} style=${`--series-color:${color}`} @click=${event => this.toggleSeries(item, event)}><svg class="sample" aria-hidden="true" viewBox="0 0 34 18"><path class="series-line" d="M1,9L33,9" style=${`stroke:${color};stroke-dasharray:${patterns[Math.floor(index / 4) % patterns.length]}`}/>${this.marker(index, 17, 9, color)}</svg><span class="legend-name">${symbols[index % 4]} ${item.name}</span>${this.module.options.show_legend_points !== false ? html`<span class="muted">${this.value(item.total)} ${this.w('pts', 'p')}</span>` : ''}</button>` : html`<svg class="sample" aria-hidden="true" viewBox="0 0 34 18"><path class="series-line" d="M1,9L33,9" style=${`stroke:${color};stroke-dasharray:${patterns[Math.floor(index / 4) % patterns.length]}`}/>${this.marker(index, 17, 9, color)}</svg><span>${symbols[index % 4]} ${item.name}</span>`}</li>`;
+      return html`<li>${filterable ? html`<button type="button" class="legend-toggle" data-hidden=${String(hidden)} aria-pressed=${String(!hidden)} aria-label=${this.seriesLabel(item, hidden)} title=${this.seriesLabel(item, hidden)} style=${`--series-color:${color}`} @click=${event => this.toggleSeries(item, event)}><svg class="sample" aria-hidden="true" viewBox="0 0 34 18"><path class="series-line" d="M1,9L33,9" style=${`stroke:${color};stroke-dasharray:${patterns[Math.floor(index / 4) % patterns.length]}`}/>${this.marker(index, 17, 9, color)}</svg><span class="legend-name">${symbols[index % 4]} ${item.name}</span>${this.module.options.show_legend_points !== false ? html`<span class="muted">${this.value(item.total)} ${this.w('modular.pts')}</span>` : ''}</button>` : html`<svg class="sample" aria-hidden="true" viewBox="0 0 34 18"><path class="series-line" d="M1,9L33,9" style=${`stroke:${color};stroke-dasharray:${patterns[Math.floor(index / 4) % patterns.length]}`}/>${this.marker(index, 17, 9, color)}</svg><span>${symbols[index % 4]} ${item.name}</span>`}</li>`;
     })}</ul>` : '';
-    return html`<div class="chart-tools"><strong>${this.metric}</strong><p class="muted">${this.w('Gaps mean data is missing.', 'Glapp betyder att data saknas.')}</p></div>
-      ${presentation !== 'table' ? html`<div class="chart-layout" data-legend=${showLegend ? legendPosition : 'none'}><div class="chart-canvas">${activeSeries.length ? this.plot(activeSeries, rounds) : html`<p class="filter-empty muted" role="status">${this.w('All series are hidden. Select a driver or team in the legend to show it.', 'Alla serier är dolda. Välj en förare eller ett team i teckenförklaringen för att visa den.')}</p>`}</div>${legend}</div>` : ''}
-      ${presentation === 'chart' ? html`<button aria-expanded=${String(showTable)} aria-controls="progression-data" @click=${() => { this.tableOpen = !this.tableOpen; }}>${showTable ? this.w('Hide data table', 'Dölj datatabell') : this.w('Show data table', 'Visa datatabell')}</button>` : ''}
+    return html`<div class="chart-tools"><strong>${this.metric}</strong><p class="muted">${this.w('modular.gaps_mean_data_is_missing')}</p></div>
+      ${presentation !== 'table' ? html`<div class="chart-layout" data-legend=${showLegend ? legendPosition : 'none'}><div class="chart-canvas">${activeSeries.length ? this.plot(activeSeries, rounds) : html`<p class="filter-empty muted" role="status">${this.w('modular.all_series_are_hidden_select_a_driver_or_team_in_the_legend_to_show')}</p>`}</div>${legend}</div>` : ''}
+      ${presentation === 'chart' ? html`<button aria-expanded=${String(showTable)} aria-controls="progression-data" @click=${() => { this.tableOpen = !this.tableOpen; }}>${showTable ? this.w('modular.hide_data_table') : this.w('modular.show_data_table')}</button>` : ''}
       <div id="progression-data" ?hidden=${!showTable}>${showTable ? this.table(activeSeries, rounds) : ''}</div>
     `;
   }

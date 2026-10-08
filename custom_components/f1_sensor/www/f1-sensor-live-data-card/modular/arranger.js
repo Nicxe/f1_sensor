@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ LitElement, html, css, repeat }, { moduleTitle, words }] = await Promise.all([load('../f1-lit-3.3.2.js'), load('./catalog.js')]);
+const [{ LitElement, html, css, repeat }, { moduleTitle, translatePlural, words }] = await Promise.all([load('../f1-lit-3.3.2.js'), load('./catalog.js')]);
 
 // This editor-only overview keeps pointer previews local. A completed gesture
 // emits one change, so Home Assistant and Undo never receive partial moves.
@@ -52,8 +52,8 @@ export class F1ModuleArranger extends LitElement {
   emit(detail) { this.dispatchEvent(new CustomEvent('arrangement-changed', { detail, bubbles: true, composed: true })); }
   choose(id) { this.dispatchEvent(new CustomEvent('module-selected', { detail: { id }, bubbles: true, composed: true })); }
   widthText(module) {
-    if (module.column_span !== 'full' && module.column_span > this.columns) return this.w(`${this.columns} of ${this.columns} columns (saved: ${module.column_span})`, `${this.columns} av ${this.columns} kolumner (sparat: ${module.column_span})`);
-    return module.column_span === 'full' ? this.w('Full card width', 'Hela kortets bredd') : this.w(`${module.column_span} of ${this.columns} columns`, `${module.column_span} av ${this.columns} kolumner`);
+    if (module.column_span !== 'full' && module.column_span > this.columns) return this.w('modular.columns_of_columns_columns_saved_columnspan', { columns: this.columns, columnSpan: module.column_span });
+    return module.column_span === 'full' ? this.w('modular.full_card_width') : this.w('modular.columnspan_of_columns_columns', { columnSpan: module.column_span, columns: this.columns });
   }
   changeWidth(id, value) {
     if (this.config.modules.find(module => module.id === id)?.column_span === value) return;
@@ -67,7 +67,7 @@ export class F1ModuleArranger extends LitElement {
     const next = Math.max(0, Math.min(this.config.modules.length - 1, target));
     if (next === index) return;
     const modules = [...this.config.modules]; modules.splice(next, 0, modules.splice(index, 1)[0]);
-    this.announcement = this.w(`Position ${next + 1} of ${modules.length}`, `Plats ${next + 1} av ${modules.length}`);
+    this.announcement = this.w('modular.position_value_of_length', { value: next + 1, length: modules.length });
     this.pendingFocus = { id, mode: 'move' };
     this.emit({ modules });
   }
@@ -115,7 +115,7 @@ export class F1ModuleArranger extends LitElement {
       this.announcement = this.widthText(this.modules.find(module => module.id === g.id));
     } else {
       this.reorderAt(g);
-      this.announcement = this.w(`Drop at position ${this.modules.findIndex(module => module.id === g.id) + 1} of ${this.modules.length}`, `Släpp på plats ${this.modules.findIndex(module => module.id === g.id) + 1} av ${this.modules.length}`);
+      this.announcement = this.w('modular.drop_at_position_value_of_length', { value: this.modules.findIndex(module => module.id === g.id) + 1, length: this.modules.length });
     }
     this.requestUpdate();
     this.frame = requestAnimationFrame(() => this.tick());
@@ -164,7 +164,7 @@ export class F1ModuleArranger extends LitElement {
     if (g.board.hasPointerCapture(g.pointer)) g.board.releasePointerCapture(g.pointer);
     const changed = modules?.some((module, i) => module.id !== this.config.modules[i]?.id || module.column_span !== this.config.modules[i]?.column_span);
     if (commit && changed) { this.pendingFocus = { id: g.id, mode: g.mode }; this.emit({ modules }); }
-    this.announcement = !g.active ? '' : commit ? this.w('Arrangement updated. You can undo this change.', 'Layouten uppdaterad. Du kan ångra ändringen.') : this.w('Change cancelled.', 'Ändringen avbruten.');
+    this.announcement = !g.active ? '' : commit ? this.w('modular.arrangement_updated_you_can_undo_this_change') : this.w('modular.change_cancelled');
     this.requestUpdate();
     if (this.isConnected && !(commit && changed)) this.updateComplete.then(() => this.focusHandle(g.id, g.mode));
   }
@@ -173,27 +173,27 @@ export class F1ModuleArranger extends LitElement {
     const selected = this.config.modules.find(module => module.id === this.selected);
     return html`
       <div class="controls">
-        <label><span>${this.w('Module layout', 'Modullayout')}</span><select aria-label=${this.w('Module layout', 'Modullayout')} .value=${this.config.layout} @change=${event => this.emit({ layout: event.target.value })}>
-          <option value="stack" ?selected=${this.config.layout === 'stack'}>${this.w('Stacked modules', 'Staplade moduler')}</option><option value="tabs" ?selected=${this.config.layout === 'tabs'}>${this.w('Tabs', 'Flikar')}</option><option value="columns" ?selected=${this.config.layout === 'columns'}>${this.w('Columns', 'Kolumner')}</option>
+        <label><span>${this.w('modular.module_layout')}</span><select aria-label=${this.w('modular.module_layout')} .value=${this.config.layout} @change=${event => this.emit({ layout: event.target.value })}>
+          <option value="stack" ?selected=${this.config.layout === 'stack'}>${this.w('modular.stacked_modules')}</option><option value="tabs" ?selected=${this.config.layout === 'tabs'}>${this.w('modular.tabs')}</option><option value="columns" ?selected=${this.config.layout === 'columns'}>${this.w('modular.columns')}</option>
         </select></label>
-        ${this.config.layout === 'columns' ? html`<label><span>${this.w('Columns in layout', 'Kolumner i layouten')}</span><select aria-label=${this.w('Columns in layout', 'Kolumner i layouten')} .value=${String(this.columns)} @change=${event => this.emit({ columns: Number(event.target.value) })}>${[2, 3, 4].map(n => html`<option value=${n} ?selected=${n === this.columns}>${n}</option>`)}</select></label>` : ''}
+        ${this.config.layout === 'columns' ? html`<label><span>${this.w('modular.columns_in_layout')}</span><select aria-label=${this.w('modular.columns_in_layout')} .value=${String(this.columns)} @change=${event => this.emit({ columns: Number(event.target.value) })}>${[2, 3, 4].map(n => html`<option value=${n} ?selected=${n === this.columns}>${n}</option>`)}</select></label>` : ''}
       </div>
-      <p id="instructions">${this.w('Drag a move handle to reorder. In columns, drag the right edge to resize. Arrow keys work on the handles; Escape cancels a drag. Move buttons and width choices remain available below.', 'Dra i flytthandtaget för att ändra ordningen. I kolumner drar du i högerkanten för att ändra bredd. Piltangenter fungerar på handtagen; Escape avbryter dragningen. Flyttknappar och breddval finns kvar nedan.')}</p>
-      <p>${this.config.layout === 'columns' ? this.w(`Layout overview in ${this.columns} columns. Scroll sideways on small screens. The finished card adapts to its available width; module heights follow their content.`, `Layoutöversikt i ${this.columns} kolumner. Scrolla i sidled på små skärmar. Det färdiga kortet anpassas till tillgänglig bredd; modulernas höjd följer innehållet.`) : this.w('This overview shows module order. Tabs show one module at a time on the dashboard.', 'Översikten visar modulernas ordning. Flikar visar en modul i taget på dashboarden.')}</p>
-      ${this.modules.some(module => !module.enabled || module.visibility?.length) ? html`<p>${this.w('Hidden and conditional modules remain in this overview so you can arrange them. Visibility rules still apply on the dashboard.', 'Dolda och villkorade moduler finns kvar i översikten så att du kan placera dem. Synlighetsreglerna gäller fortfarande på dashboarden.')}</p>` : ''}
-      ${!this.modules.length ? html`<p>${this.w('Add a module below to start arranging.', 'Lägg till en modul nedan för att börja arrangera.')}</p>` : ''}
-      <div class="scroll" tabindex="0" role="region" aria-label=${this.w('Module arrangement', 'Modulernas placering')}>
+      <p id="instructions">${this.w('modular.drag_a_move_handle_to_reorder_in_columns_drag_the_right_edge_to_resize')}</p>
+      <p>${this.config.layout === 'columns' ? this.w('modular.layout_overview_in_columns_columns_scroll_sideways_on_small_screens_the_finished_card_adapts', { columns: this.columns }) : this.w('modular.this_overview_shows_module_order_tabs_show_one_module_at_a_time_on_the')}</p>
+      ${this.modules.some(module => !module.enabled || module.visibility?.length) ? html`<p>${this.w('modular.hidden_and_conditional_modules_remain_in_this_overview_so_you_can_arrange_them_visibility')}</p>` : ''}
+      ${!this.modules.length ? html`<p>${this.w('modular.add_a_module_below_to_start_arranging')}</p>` : ''}
+      <div class="scroll" tabindex="0" role="region" aria-label=${this.w('modular.module_arrangement')}>
         <div class="board" style=${`--columns:${this.columns}`} @pointermove=${this.pointerMove} @pointerup=${this.pointerUp} @pointercancel=${this.cancel} @lostpointercapture=${this.cancel}>
           ${repeat(this.modules, module => module.id, (module, index) => html`<div class="tile" data-id=${module.id} data-selected=${String(module.id === this.selected)} data-active=${String(this.gesture?.active && this.gesture.id === module.id)} style=${`grid-column:${this.config.layout === 'columns' && module.column_span === 'full' ? '1 / -1' : `span ${this.config.layout === 'columns' ? Math.min(module.column_span, this.columns) : 1}`}`}>
-            <div class="tile-head"><button class="handle" data-handle="move" aria-label=${`${this.w('Move', 'Flytta')} ${moduleTitle(module, this.language)}`} aria-describedby="instructions" @pointerdown=${event => this.start(event, module.id, 'move')} @keydown=${event => this.moveKey(event, module.id)} @click=${() => this.choose(module.id)}>⠿</button>
-              <button class="choose" aria-pressed=${String(module.id === this.selected)} @click=${() => this.choose(module.id)}><strong><span class="position">${index + 1}.</span> ${moduleTitle(module, this.language)}</strong>${!module.enabled ? html`<small>${this.w('Hidden module', 'Dold modul')}</small>` : module.visibility?.length ? html`<small>${this.w('Conditional visibility', 'Villkorad synlighet')}</small>` : ''}</button></div>
-            <span class="width">${this.config.layout === 'columns' ? this.widthText(module) : this.w(`Position ${index + 1}`, `Plats ${index + 1}`)}</span>
-            ${this.config.layout === 'columns' ? html`<button class="handle resize" data-handle="resize" aria-label=${`${this.w('Resize', 'Ändra bredd på')} ${moduleTitle(module, this.language)}`} aria-describedby="instructions" @pointerdown=${event => this.start(event, module.id, 'resize')} @keydown=${event => this.resizeKey(event, module)}>↔</button>` : ''}
+            <div class="tile-head"><button class="handle" data-handle="move" aria-label=${`${this.w('modular.move')} ${moduleTitle(module, this.language)}`} aria-describedby="instructions" @pointerdown=${event => this.start(event, module.id, 'move')} @keydown=${event => this.moveKey(event, module.id)} @click=${() => this.choose(module.id)}>⠿</button>
+              <button class="choose" aria-pressed=${String(module.id === this.selected)} @click=${() => this.choose(module.id)}><strong><span class="position">${index + 1}.</span> ${moduleTitle(module, this.language)}</strong>${!module.enabled ? html`<small>${this.w('modular.hidden_module')}</small>` : module.visibility?.length ? html`<small>${this.w('modular.conditional_visibility')}</small>` : ''}</button></div>
+            <span class="width">${this.config.layout === 'columns' ? this.widthText(module) : this.w('modular.position_value', { value: index + 1 })}</span>
+            ${this.config.layout === 'columns' ? html`<button class="handle resize" data-handle="resize" aria-label=${`${this.w('modular.resize')} ${moduleTitle(module, this.language)}`} aria-describedby="instructions" @pointerdown=${event => this.start(event, module.id, 'resize')} @keydown=${event => this.resizeKey(event, module)}>↔</button>` : ''}
           </div>`)}
         </div>
       </div>
-      ${this.config.layout === 'columns' && selected ? html`<div class="controls"><label><span>${this.w('Width of selected module', 'Vald moduls bredd')} · ${moduleTitle(selected, this.language)}</span><select aria-label=${this.w('Width of selected module', 'Vald moduls bredd')} .value=${String(selected.column_span)} @change=${event => this.changeWidth(selected.id, event.target.value === 'full' ? 'full' : Number(event.target.value))}>${[1, 2, 3, 4].map(n => html`<option value=${n} ?selected=${selected.column_span === n}>${this.w(`${n} column${n === 1 ? '' : 's'}`, `${n} kolumn${n === 1 ? '' : 'er'}`)}</option>`)}<option value="full" ?selected=${selected.column_span === 'full'}>${this.w('Full card width', 'Hela kortets bredd')}</option></select></label></div>` : ''}
-      <p class="status" role="status" aria-live="polite">${this.announcement || this.w('Select a module to edit its settings below.', 'Välj en modul för att redigera dess inställningar nedan.')}</p>
+      ${this.config.layout === 'columns' && selected ? html`<div class="controls"><label><span>${this.w('modular.width_of_selected_module')} · ${moduleTitle(selected, this.language)}</span><select aria-label=${this.w('modular.width_of_selected_module')} .value=${String(selected.column_span)} @change=${event => this.changeWidth(selected.id, event.target.value === 'full' ? 'full' : Number(event.target.value))}>${[1, 2, 3, 4].map(n => html`<option value=${n} ?selected=${selected.column_span === n}>${translatePlural(this.language, 'modular.column_count', n)}</option>`)}<option value="full" ?selected=${selected.column_span === 'full'}>${this.w('modular.full_card_width')}</option></select></label></div>` : ''}
+      <p class="status" role="status" aria-live="polite">${this.announcement || this.w('modular.select_a_module_to_edit_its_settings_below')}</p>
       ${this.gesture?.active && this.gesture.mode === 'move' ? html`<div class="ghost" aria-hidden="true" style=${`left:${Math.min(innerWidth - 180, Math.max(8, this.gesture.x + 16))}px;top:${Math.max(8, Math.min(innerHeight - 60, this.gesture.y + 16))}px`}>${moduleTitle(this.modules.find(module => module.id === this.gesture.id), this.language)}</div>` : ''}
     `;
   }

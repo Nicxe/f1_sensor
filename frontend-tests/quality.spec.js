@@ -148,6 +148,33 @@ test('Swedish localization covers the complete card and editor gallery', async (
   ]) expect(editorText).not.toContain(untranslated);
 });
 
+test('Dutch localization covers the complete card and editor gallery', async ({ page }) => {
+  await openFixture(page);
+  await page.evaluate(() => window.mountF1Gallery({ language: 'nl-NL' }));
+  const cardText = await page.evaluate(() => [...document.querySelector('#mount').children]
+    .map((element) => element.renderRoot.textContent).join('\n'));
+  expect(cardText).toContain('Bandenstatistieken');
+  for (const untranslated of [
+    'Tyres Statistics',
+    'Driver Championship',
+    'Replay Control',
+    'Waiting for track map data',
+    'Select entities in the editor',
+  ]) expect(cardText).not.toContain(untranslated);
+
+  await page.evaluate(() => window.mountF1Gallery({ language: 'nl-NL', editor: true }));
+  const editorText = await page.evaluate(() => [...document.querySelector('#mount').children]
+    .map((element) => element.renderRoot.textContent).join('\n'));
+  expect(editorText).toContain('Gegevensbronnen');
+  for (const untranslated of [
+    'Data Sources',
+    'REQUIRED SENSORS',
+    'OPTIONAL SENSORS',
+    'Provides live session type and timing data',
+    'This sensor is required for the card to function',
+  ]) expect(editorText).not.toContain(untranslated);
+});
+
 test('card picker metadata follows the browser language with English fallback', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'language', { configurable: true, value: 'sv-SE' });
