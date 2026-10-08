@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import os
+import threading
 from unittest.mock import AsyncMock
 
 from homeassistant.util import dt as dt_util
@@ -146,6 +147,52 @@ async def test_replay_stream_download_parses_incrementally(hass, tmp_path) -> No
         '{"t":1000,"s":"SessionStatus","p":{"Status":"Started"}}',
         '{"t":2000,"s":"SessionStatus","p":{"Status":"Finished"}}',
     ]
+
+
+@pytest.mark.asyncio
+async def test_replay_stream_normalization_runs_off_event_loop(
+    hass, tmp_path, monkeypatch
+) -> None:
+    response = _StreamingResponse(
+        [
+            b'00:00:01.000{"Status":"Started"}\n',
+            b'00:00:02.000{"Status":"Finished"}\n',
+        ]
+    )
+    manager = ReplaySessionManager(
+        hass,
+        "entry-test",
+        _StreamingHttp(response),  # type: ignore[arg-type]
+        requested_streams={"SessionStatus"},
+    )
+    destination = tmp_path / "SessionStatus.jsonl"
+    event_loop_thread = threading.get_ident()
+    normalization_threads: list[int] = []
+    normalize = manager._normalize_replay_stream_line
+
+    def _record_normalization_thread(
+        raw_line: bytes,
+        stream_name: str,
+        url: str,
+    ) -> str | None:
+        normalization_threads.append(threading.get_ident())
+        return normalize(raw_line, stream_name, url)
+
+    monkeypatch.setattr(
+        manager,
+        "_normalize_replay_stream_line",
+        _record_normalization_thread,
+    )
+
+    count = await manager._download_stream_to_file(
+        "https://livetiming.formula1.com/static/test/SessionStatus.jsonStream",
+        "SessionStatus",
+        destination,
+    )
+
+    assert count == 2
+    assert normalization_threads
+    assert event_loop_thread not in normalization_threads
 
 
 @pytest.mark.asyncio

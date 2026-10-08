@@ -2644,10 +2644,13 @@
         "sv": "Översikt"
       },
       "sources": [
+        "current_season",
         "current_session",
         "next_race",
         "race_lap_count",
         "race_time_to_three_hour_limit",
+        "replay_player",
+        "replay_status",
         "session_status",
         "session_time_elapsed",
         "session_time_remaining",

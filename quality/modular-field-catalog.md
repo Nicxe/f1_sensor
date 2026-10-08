@@ -150,7 +150,7 @@ Declared sources: `current_session`, `race_lap_count`, `track_map`, `track_statu
 
 ## Overview (`overview`)
 
-Declared sources: `current_session`, `next_race`, `race_lap_count`, `race_time_to_three_hour_limit`, `session_status`, `session_time_elapsed`, `session_time_remaining`, `track_status`.
+Declared sources: `current_season`, `current_session`, `next_race`, `race_lap_count`, `race_time_to_three_hour_limit`, `replay_player`, `replay_status`, `session_status`, `session_time_elapsed`, `session_time_remaining`, `track_status`.
 
 | Field | Source and path | Coverage | Identity and time | Presentation |
 | --- | --- | --- | --- | --- |

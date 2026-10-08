@@ -34,6 +34,7 @@ class _DummyBus:
         self.heartbeat_expected = False
         self.injected_messages: list[tuple[str, Any]] = []
         self._callbacks: dict[str, list] = {}
+        self._last_payload: dict[str, dict[str, Any]] = {}
 
     async def start(self) -> None:
         self.started = True
@@ -50,6 +51,9 @@ class _DummyBus:
     def last_stream_activity_age(self, *_streams: Any) -> float:
         return 0.0
 
+    def get_last_payload(self, stream: str) -> dict[str, Any] | None:
+        return self._last_payload.get(stream)
+
     def subscribe(self, stream: str, callback):
         self._callbacks.setdefault(stream, []).append(callback)
 
@@ -62,6 +66,8 @@ class _DummyBus:
 
     def inject_message(self, stream: str, payload: Any) -> None:
         self.injected_messages.append((stream, payload))
+        if isinstance(payload, dict):
+            self._last_payload[stream] = payload
         for callback in list(self._callbacks.get(stream, [])):
             callback(payload)
 
@@ -1232,6 +1238,200 @@ async def test_event_tracker_window_extends_disconnect_on_live_activity(
         window.disconnect_at
         == original_disconnect + live_window.POST_WINDOW_EXTENSION_STEP
     )
+
+
+@pytest.mark.asyncio
+async def test_delayed_race_stays_live_beyond_scheduled_extension_cap(
+    monkeypatch, hass
+) -> None:
+    scheduled_start = dt.datetime(2026, 10, 4, 7, 0, tzinfo=dt.UTC)
+    scheduled_end = dt.datetime(2026, 10, 4, 9, 0, tzinfo=dt.UTC)
+    actual_start = dt.datetime(2026, 10, 4, 8, 33, tzinfo=dt.UTC)
+    bus = _DummyBus()
+    bus.inject_message("SessionStatus", {"Status": "Started"})
+    bus.inject_message(
+        "SessionData",
+        {
+            "StatusSeries": {
+                "21": {
+                    "Utc": actual_start.isoformat(),
+                    "SessionStatus": "Started",
+                }
+            }
+        },
+    )
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        bus,
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    window = _mk_window(
+        meeting="Bahrain Grand Prix",
+        session="Race",
+        start=scheduled_start,
+        end=scheduled_end,
+        path="",
+    )
+    original_disconnect = window.disconnect_at
+    old_cap = original_disconnect + live_window.POST_WINDOW_EXTENSION_CAP
+    current_times = iter(
+        [
+            original_disconnect + step * live_window.POST_WINDOW_EXTENSION_STEP
+            for step in range(7)
+        ]
+        + [old_cap + live_window.POST_WINDOW_EXTENSION_STEP]
+    )
+    heartbeat_ages = iter([0.0] * 7 + [80.0])
+    activity_ages = iter([0.0] * 7 + [80.0])
+    bus.last_heartbeat_age = lambda: next(heartbeat_ages, 80.0)  # type: ignore[method-assign]
+    bus.last_stream_activity_age = lambda *_streams: next(  # type: ignore[method-assign]
+        activity_ages, 80.0
+    )
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
+    monkeypatch.setattr(
+        live_window.dt_util,
+        "utcnow",
+        lambda: next(current_times, old_cap + live_window.POST_WINDOW_EXTENSION_STEP),
+    )
+
+    reason = await supervisor._monitor_window(window, source="index")
+
+    assert reason == "disconnect-window-expired"
+    assert window.disconnect_at > old_cap
+
+
+def test_race_start_parser_handles_snapshot_shapes() -> None:
+    first_start = dt.datetime(2026, 10, 4, 8, 33, tzinfo=dt.UTC)
+    later_start = first_start + dt.timedelta(minutes=30)
+
+    assert live_window._session_data_race_start(None) is None
+    assert live_window._session_data_race_start({"StatusSeries": "invalid"}) is None
+    assert (
+        live_window._session_data_race_start(
+            {
+                "StatusSeries": [
+                    None,
+                    {"SessionStatus": "Inactive", "Utc": first_start.isoformat()},
+                    {"SessionStatus": "Started", "Utc": "invalid"},
+                ]
+            }
+        )
+        is None
+    )
+    assert (
+        live_window._session_data_race_start(
+            {
+                "StatusSeries": [
+                    {
+                        "SessionStatus": "Started",
+                        "Utc": later_start.isoformat(),
+                    },
+                    {
+                        "SessionStatus": "Started",
+                        "Utc": first_start.isoformat(),
+                    },
+                ]
+            }
+        )
+        == first_start
+    )
+
+
+def test_race_extension_cap_falls_back_when_actual_start_is_missing(hass) -> None:
+    scheduled_end = dt.datetime(2026, 10, 4, 9, 0, tzinfo=dt.UTC)
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    window = _mk_window(
+        session="Race",
+        start=scheduled_end - dt.timedelta(hours=2),
+        end=scheduled_end,
+    )
+
+    assert supervisor._race_extension_cap(window) == (
+        scheduled_end + live_window.PATHLESS_RACE_PROBE_HORIZON
+    )
+
+
+@pytest.mark.asyncio
+async def test_terminal_session_status_ends_live_window_despite_heartbeats(
+    monkeypatch, hass
+) -> None:
+    now = dt.datetime(2026, 10, 4, 10, 20, 15, tzinfo=dt.UTC)
+    bus = _DummyBus()
+    bus.inject_message("SessionStatus", {"Status": "Finished"})
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        bus,
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    window = _mk_window(
+        meeting="Bahrain Grand Prix",
+        session="Race",
+        start=now - dt.timedelta(hours=2),
+        end=now + dt.timedelta(minutes=30),
+        path="",
+    )
+    current_times = iter(
+        [
+            now,
+            now + live_window.SESSION_END_DRAIN + dt.timedelta(seconds=1),
+        ]
+    )
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
+    monkeypatch.setattr(
+        live_window.dt_util,
+        "utcnow",
+        lambda: next(
+            current_times,
+            now + live_window.SESSION_END_DRAIN + dt.timedelta(seconds=1),
+        ),
+    )
+
+    reason = await supervisor._monitor_window(window, source="index")
+
+    assert reason == "session-finished"
+    assert await supervisor._select_window([window], source="index") is None
+
+
+@pytest.mark.asyncio
+async def test_recent_pathless_race_can_probe_live_feed_after_schedule(
+    monkeypatch, hass
+) -> None:
+    now = dt.datetime(2026, 10, 4, 9, 50, tzinfo=dt.UTC)
+    window = _mk_window(
+        meeting="Bahrain Grand Prix",
+        session="Race",
+        start=dt.datetime(2026, 10, 4, 7, 0, tzinfo=dt.UTC),
+        end=dt.datetime(2026, 10, 4, 9, 0, tzinfo=dt.UTC),
+        path="",
+    )
+    supervisor = LiveSessionSupervisor(
+        hass,
+        _DummySessionCoordinator({}, status=200),
+        _DummyBus(),
+        http_session=object(),  # type: ignore[arg-type]
+    )
+    monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
+
+    selected = await supervisor._select_window([window], source="index")
+
+    assert selected is not None
+    assert selected.disconnect_at == now + live_window.FALLBACK_WINDOW_DURATION
+    assert selected.path == ""
 
 
 @pytest.mark.asyncio

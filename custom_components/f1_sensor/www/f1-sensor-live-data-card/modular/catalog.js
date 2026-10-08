@@ -1,7 +1,13 @@
 // Field IDs are configuration API. Labels, sources and presentation stay together.
+const version = new URL(import.meta.url).searchParams.get('v');
+const { words, translatePlural } = await import(`./i18n.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
+
+export { translatePlural, words };
 export const VERSION = 3;
 export const CARD_TYPE = 'custom:f1-sensor-card';
-export const label = (item, language = 'en') => item?.label?.[String(language).startsWith('sv') ? 'sv' : 'en'] ?? item?.id ?? '';
+export const label = (item, language = 'en') => item?.label?.en
+  ? words(language, item.label.en, item.label.sv)
+  : item?.id ?? '';
 
 const timestampsFor = source => source === 'analysis'
   ? { source: 'not_provided', received: 'subscription.received_at', updated: 'not_provided', displayed: 'snapshot' }
@@ -183,7 +189,7 @@ const module = (id, en, sv, fields, options, sources, extra = {}) => ({
 export const MODULES = {
   overview: module('overview', 'Overview', 'Översikt', ['meeting', 'circuit', 'country', 'countdown', 'circuit_map', 'circuit_history', 'session', 'session_status', 'lap_progress', 'track_status', 'session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit'], {
     layout_mode: { type: 'enum', values: ['auto', 'compact', 'full'], default: 'auto', label: { en: 'Layout mode', sv: 'Layoutläge' } },
-  }, ['next_race', 'current_session', 'session_status', 'race_lap_count', 'track_status', 'session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit'], { defaultFields: ['meeting', 'circuit', 'countdown'] }),
+  }, ['next_race', 'current_season', 'current_session', 'session_status', 'replay_status', 'replay_player', 'race_lap_count', 'track_status', 'session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit'], { defaultFields: ['meeting', 'circuit', 'countdown'] }),
   calendar: module('calendar', 'Schedule', 'Schema', ['schedule'], {
     details: { type: 'list', values: ['round', 'circuit', 'location'], default: [], label: { en: 'Event details', sv: 'Tävlingsuppgifter' } },
     past: { type: 'enum', values: ['show', 'dim', 'hide'], default: 'show', label: { en: 'Past session starts', sv: 'Passerade sessionsstarter' } },
@@ -552,10 +558,10 @@ export const PRESETS = {
   custom: { label: { en: 'Build your own', sv: 'Bygg själv' }, modules: [] },
 };
 
-const CONTENT_TITLES = { incidents: { investigations: ['Investigations and decisions', 'Utredningar och beslut'], track_limits: ['Track limits events', 'Track limits-händelser'], track_limits_summary: ['Track limits by driver', 'Track limits per förare'] }, weather: { automatic_conditions: ['Automatic current weather', 'Automatiskt aktuellt väder'], weather_overview: ['Weather overview', 'Väderöversikt'], current_conditions: ['Current circuit weather', 'Aktuellt väder vid banan'], race_forecast: ['Race-start forecast', 'Prognos inför racestart'], track_conditions: ['Track weather observations', 'Väderobservationer från banan'] }, strategy: { stints: ['Stint pace and quality', 'Stinttempo och kvalitet'], compound_comparison: ['Compound pace comparison', 'Tempojämförelse mellan blandningar'], teammates: ['Teammate comparison', 'Jämförelse mellan teamkamrater'], crossover: ['Compound crossover estimates', 'Uppskattade skärningar mellan blandningar'], pit_outcomes: ['Observed pit-cycle outcomes', 'Observerade utfall av depåcykler'] }, battles: { active_battles: ['Current battles', 'Pågående närkamper'], battle_history: ['Battle history', 'Närkampernas historik'], position_exchanges: ['Position exchanges', 'Positionsbyten'] } };
+const CONTENT_TITLES = { incidents: { investigations: ['Incidents', 'Incidenter'], track_limits: ['Track limits events', 'Track limits-händelser'], track_limits_summary: ['Track limits by driver', 'Track limits per förare'] }, weather: { automatic_conditions: ['Automatic current weather', 'Automatiskt aktuellt väder'], weather_overview: ['Weather overview', 'Väderöversikt'], current_conditions: ['Current circuit weather', 'Aktuellt väder vid banan'], race_forecast: ['Race-start forecast', 'Prognos inför racestart'], track_conditions: ['Track weather observations', 'Väderobservationer från banan'] }, strategy: { stints: ['Stint pace and quality', 'Stinttempo och kvalitet'], compound_comparison: ['Compound pace comparison', 'Tempojämförelse mellan blandningar'], teammates: ['Teammate comparison', 'Jämförelse mellan teamkamrater'], crossover: ['Compound crossover estimates', 'Uppskattade skärningar mellan blandningar'], pit_outcomes: ['Observed pit-cycle outcomes', 'Observerade utfall av depåcykler'] }, battles: { active_battles: ['Current battles', 'Pågående närkamper'], battle_history: ['Battle history', 'Närkampernas historik'], position_exchanges: ['Position exchanges', 'Positionsbyten'] } };
 export function moduleTitle(module, language = 'en') {
   if (module.title) return module.title;
   const content = module.options?.content ?? MODULES[module.type]?.options?.content?.default;
   const titles = CONTENT_TITLES[module.type]?.[content];
-  return titles ? titles[String(language).startsWith('sv') ? 1 : 0] : label(MODULES[module.type], language) || module.type;
+  return titles ? words(language, ...titles) : label(MODULES[module.type], language) || module.type;
 }
