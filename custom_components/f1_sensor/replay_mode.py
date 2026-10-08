@@ -94,6 +94,10 @@ FORMATION_HTTP_TIMEOUT = 20
 SEEK_INDEX_INTERVAL_MS = 5_000
 SEEK_STATE_CHECKPOINT_INTERVAL_MS = 30_000
 SEEK_CHECKPOINT_MIN_FORWARD_DELTA_MS = 60_000
+# Keep executor work small enough that concurrent replay streams cannot monopolize
+# the interpreter while still amortizing file writes and executor scheduling.
+REPLAY_STREAM_BATCH_LINES = 50
+REPLAY_STREAM_BATCH_BYTES = 256 * 1024
 
 
 def _parse_replay_int(value: Any) -> int | None:
@@ -863,7 +867,24 @@ class ReplaySessionManager:
         partial = destination.with_suffix(destination.suffix + ".part")
         await self._hass.async_add_executor_job(self._unlink_if_exists, partial)
         count = 0
-        batch: list[str] = []
+        batch: list[bytes] = []
+        batch_bytes = 0
+
+        async def _flush_batch() -> None:
+            nonlocal batch, batch_bytes, count
+            if not batch:
+                return
+            pending = batch
+            batch = []
+            batch_bytes = 0
+            count += await self._hass.async_add_executor_job(
+                self._normalize_and_append_replay_stream_batch,
+                partial,
+                pending,
+                stream_name,
+                url,
+            )
+
         try:
             async with asyncio.timeout(300):
                 async with self._http.get(url) as resp:
@@ -877,41 +898,27 @@ class ReplaySessionManager:
                     readline = getattr(content, "readline", None)
                     if callable(readline):
                         while raw_line := await readline():
-                            normalized = self._normalize_replay_stream_line(
-                                raw_line,
-                                stream_name,
-                                url,
-                            )
-                            if normalized is None:
-                                continue
-                            batch.append(normalized)
-                            count += 1
-                            if len(batch) >= 250:
-                                await self._hass.async_add_executor_job(
-                                    self._append_lines_file,
-                                    partial,
-                                    batch,
-                                )
-                                batch = []
+                            batch.append(raw_line)
+                            batch_bytes += len(raw_line)
+                            if (
+                                len(batch) >= REPLAY_STREAM_BATCH_LINES
+                                or batch_bytes >= REPLAY_STREAM_BATCH_BYTES
+                            ):
+                                await _flush_batch()
                     else:
                         # Compatibility for small mocked responses. Production
                         # aiohttp responses always take the streaming branch.
                         text = await resp.text()
                         for line in text.splitlines():
-                            normalized = self._normalize_replay_stream_line(
-                                line.encode(),
-                                stream_name,
-                                url,
-                            )
-                            if normalized is not None:
-                                batch.append(normalized)
-                                count += 1
-            if batch:
-                await self._hass.async_add_executor_job(
-                    self._append_lines_file,
-                    partial,
-                    batch,
-                )
+                            raw_line = line.encode()
+                            batch.append(raw_line)
+                            batch_bytes += len(raw_line)
+                            if (
+                                len(batch) >= REPLAY_STREAM_BATCH_LINES
+                                or batch_bytes >= REPLAY_STREAM_BATCH_BYTES
+                            ):
+                                await _flush_batch()
+            await _flush_batch()
             if count:
                 await self._hass.async_add_executor_job(partial.replace, destination)
             else:
@@ -963,6 +970,29 @@ class ReplaySessionManager:
             {"t": timestamp_ms, "s": stream_name, "p": payload},
             separators=(",", ":"),
         )
+
+    def _normalize_and_append_replay_stream_batch(
+        self,
+        path: Path,
+        raw_lines: list[bytes],
+        stream_name: str,
+        url: str,
+    ) -> int:
+        normalized_lines = [
+            normalized
+            for raw_line in raw_lines
+            if (
+                normalized := self._normalize_replay_stream_line(
+                    raw_line,
+                    stream_name,
+                    url,
+                )
+            )
+            is not None
+        ]
+        if normalized_lines:
+            self._append_lines_file(path, normalized_lines)
+        return len(normalized_lines)
 
     @staticmethod
     def _unlink_if_exists(path: Path) -> None:

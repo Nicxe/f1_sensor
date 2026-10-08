@@ -97,11 +97,14 @@ export class SectorStore {
     const directLaps = direct.map(item => item.lap).filter(lap => lap !== null);
     const seenLap = directLaps.length ? Math.max(...directLaps) : explicitLap;
     let cache = this.drivers.get(key);
-    if (!cache || (seenLap !== null && cache.seenLap !== null && seenLap < cache.seenLap)) {
+    const state = String(driver?.sector_state ?? driver?.sectors?.state ?? '').toLowerCase();
+    const complete = positiveInteger(driver?.completed_laps);
+    const lateCompletedSector = cache && state === 'lap_complete' && complete !== null
+      && seenLap === complete && cache.seenLap === complete + 1;
+    if (!cache || (seenLap !== null && cache.seenLap !== null && seenLap < cache.seenLap && !lateCompletedSector)) {
       cache = { laps: new Map(), unscoped: [null, null, null], seenLap: null, selectedLap: null };
       this.drivers.set(key, cache);
     }
-    const state = String(driver?.sector_state ?? driver?.sectors?.state ?? '').toLowerCase();
     if (seenLap !== null) cache.seenLap = seenLap;
     if (state === 's1_done' && direct[0].time !== null) cache.unscoped = [null, null, null];
     direct.forEach((item, index) => {
@@ -120,7 +123,6 @@ export class SectorStore {
     while (laps.length > 3) cache.laps.delete(laps.shift());
     // No driver count assumption; bound inactive identities in malformed streams.
     if (this.drivers.size > 200) this.drivers.delete(this.drivers.keys().next().value);
-    const complete = positiveInteger(driver?.completed_laps);
     const finish = (item, lap) => {
       if (!item) return emptySector(lap);
       const previous = item.source === 'previous_lap' || (item.lap !== null && complete !== null && item.lap <= complete) || (state === 'lap_complete' && (seenLap === null || item.lap === seenLap));
