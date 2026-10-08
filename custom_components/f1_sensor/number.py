@@ -17,6 +17,7 @@ from .entity import (
     set_default_entity_id,
 )
 from .live_delay import LiveDelayController
+from .replay_mode import ReplayController
 from .runtime import F1ConfigEntry
 
 
@@ -30,17 +31,32 @@ async def async_setup_entry(
     calibration: LiveDelayCalibrationManager | None = registry.get(
         "calibration_manager"
     )
-    if controller is None:
-        return
-    entity = F1LiveDelayNumber(
-        controller=controller,
-        calibration=calibration,
-        unique_id=f"{entry.entry_id}_live_delay_number",
-        entry_id=entry.entry_id,
-        device_name=entry.data.get("sensor_name", "F1"),
-    )
-    set_default_entity_id(entity, Platform.NUMBER, default_object_id("live_delay"))
-    async_add_entities([entity])
+    name = entry.data.get("sensor_name", "F1")
+    entities: list[NumberEntity] = []
+    if controller is not None:
+        entity = F1LiveDelayNumber(
+            controller=controller,
+            calibration=calibration,
+            unique_id=f"{entry.entry_id}_live_delay_number",
+            entry_id=entry.entry_id,
+            device_name=name,
+        )
+        set_default_entity_id(entity, Platform.NUMBER, default_object_id("live_delay"))
+        entities.append(entity)
+
+    replay_controller: ReplayController | None = registry.get("replay_controller")
+    if replay_controller is not None:
+        entity = F1ReplayLapNumber(
+            controller=replay_controller,
+            unique_id=f"{entry.entry_id}_replay_lap_number",
+            entry_id=entry.entry_id,
+            device_name=name,
+        )
+        set_default_entity_id(entity, Platform.NUMBER, default_object_id("replay_lap"))
+        entities.append(entity)
+
+    if entities:
+        async_add_entities(entities)
 
 
 class F1LiveDelayNumber(F1AuxEntity, NumberEntity):
@@ -112,3 +128,34 @@ class F1LiveDelayNumber(F1AuxEntity, NumberEntity):
         }
         if self.hass:
             self.async_write_ha_state()
+
+
+class F1ReplayLapNumber(F1AuxEntity, NumberEntity):
+    """Number entity used to choose a replay lap to seek to."""
+
+    _device_category = "system"
+    _attr_native_min_value = 1
+    _attr_native_max_value = 200
+    _attr_native_step = 1
+    _attr_mode = NumberMode.BOX
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "replay_lap"
+    _attr_icon = "mdi:counter"
+
+    def __init__(
+        self,
+        controller: ReplayController,
+        unique_id: str,
+        entry_id: str,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
+        NumberEntity.__init__(self)
+        self._controller = controller
+        self._attr_native_value = controller.lap_target
+
+    async def async_set_native_value(self, value: float) -> None:
+        target = max(int(self._attr_native_min_value), int(round(value)))
+        self._controller.set_lap_target(target)
+        self._attr_native_value = target
+        self.async_write_ha_state()

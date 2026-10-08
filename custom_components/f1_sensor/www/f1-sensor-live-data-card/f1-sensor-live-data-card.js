@@ -17173,6 +17173,8 @@ const F1_REPLAY_ENTITY_DEFAULTS = {
   pause_button_entity: 'button.f1_replay_pause',
   back_button_entity: 'button.f1_replay_back_30',
   forward_button_entity: 'button.f1_replay_forward_30',
+  lap_number_entity: 'number.f1_replay_lap',
+  lap_seek_button_entity: 'button.f1_replay_seek_lap',
   stop_button_entity: 'button.f1_replay_stop',
   refresh_button_entity: 'button.f1_replay_refresh',
   player_entity: 'media_player.f1_replay_player',
@@ -17226,6 +17228,14 @@ const F1_REPLAY_ACTIONS = [
     key: 'forward_button_entity',
     label: 'Forward 30',
     icon: 'mdi:fast-forward-30',
+    className: 'secondary',
+    enabledStates: ['ready', 'playing', 'paused'],
+    seek: true,
+  },
+  {
+    key: 'lap_seek_button_entity',
+    label: 'Jump to lap',
+    icon: 'mdi:flag-checkered',
     className: 'secondary',
     enabledStates: ['ready', 'playing', 'paused'],
     seek: true,
@@ -17620,6 +17630,38 @@ class F1ReplayControlCard extends LitElement {
       font-weight: 700;
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
+    }
+
+    .rc-lap-seek {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 7px;
+      align-items: end;
+    }
+
+    .rc-lap-input {
+      width: 100%;
+      height: 38px;
+      box-sizing: border-box;
+      border: 1px solid var(--rc-divider);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--rc-panel) 76%, transparent);
+      color: var(--rc-text);
+      font: inherit;
+      font-size: 12px;
+      padding: 0 10px;
+      outline: none;
+    }
+
+    .rc-lap-input:focus {
+      border-color: color-mix(in srgb, #e10600 70%, var(--rc-divider));
+      box-shadow: 0 0 0 2px rgba(225, 6, 0, 0.16);
+    }
+
+    .rc-card.compact .rc-lap-input {
+      height: 34px;
+      border-radius: 6px;
+      font-size: 11px;
     }
 
     .rc-progress-track {
@@ -18187,6 +18229,12 @@ class F1ReplayControlCard extends LitElement {
     });
   }
 
+  async _setLap(entityId, value) {
+    const lap = Math.max(1, Math.round(Number(value)));
+    if (!entityId || !Number.isFinite(lap) || typeof this.hass?.callService !== 'function') return;
+    await this.hass.callService('number', 'set_value', { entity_id: entityId, value: lap });
+  }
+
   async _pressAction(action) {
     if (!action || this._actionBusy || typeof this.hass?.callService !== 'function') return;
     const entityId = this._configuredEntityId(action.key);
@@ -18255,6 +18303,31 @@ class F1ReplayControlCard extends LitElement {
     `;
   }
 
+  _renderLapSeek(lapEntity, state) {
+    const lapEntityId = this._configuredEntityId('lap_number_entity');
+    const value = Math.max(1, Math.round(Number(lapEntity?.state || 1)) || 1);
+    const action = F1_REPLAY_ACTIONS.find((item) => item.key === 'lap_seek_button_entity');
+    if (!action || !lapEntityId || !this._isUsableEntity(lapEntity)) return null;
+    return html`
+      <div class="rc-lap-seek">
+        <label class="rc-select-field">
+          <span class="rc-field-label">Replay lap</span>
+          <input
+            class="rc-lap-input"
+            type="number"
+            min="1"
+            step="1"
+            .value=${String(value)}
+            ?disabled=${this._isBusyState(state)}
+            aria-label="Replay lap"
+            @change=${(ev) => this._setLap(lapEntityId, ev.target.value)}
+          />
+        </label>
+        ${this._renderAction(action, state)}
+      </div>
+    `;
+  }
+
   _renderStartReferenceGroup(startReferenceEntity, state) {
     if (this.config.show_start_reference === false) {
       return html`
@@ -18308,6 +18381,7 @@ class F1ReplayControlCard extends LitElement {
     const yearEntity = this._entity('year_entity');
     const sessionEntity = this._entity('session_entity');
     const startReferenceEntity = this._entity('start_reference_entity');
+    const lapEntity = this._entity('lap_number_entity');
     const state = this._statusState(statusEntity, playerEntity);
     const statusMeta = this._statusMeta(state);
     const selectedSession = this._stateValue(sessionEntity, '')
@@ -18366,6 +18440,8 @@ class F1ReplayControlCard extends LitElement {
           </div>
 
           ${this.config.show_progress !== false ? this._renderProgress(playback, playerEntity, state) : null}
+
+          ${this.config.show_seek_controls !== false ? this._renderLapSeek(lapEntity, state) : null}
 
           <div class="rc-controls">
             ${this._visibleActions().map((action) => this._renderAction(action, state))}
@@ -18523,8 +18599,13 @@ class F1ReplayControlCardEditor extends LitElement {
         ${this._renderEntityPicker('pause_button_entity', 'Pause Button', 'button')}
         ${this._renderEntityPicker('back_button_entity', 'Back 30 Seconds Button', 'button')}
         ${this._renderEntityPicker('forward_button_entity', 'Forward 30 Seconds Button', 'button')}
+        ${this._renderEntityPicker('lap_seek_button_entity', 'Jump to Replay Lap Button', 'button')}
         ${this._renderEntityPicker('stop_button_entity', 'Stop Button', 'button')}
         ${this._renderEntityPicker('refresh_button_entity', 'Refresh Sessions Button', 'button')}
+      </div>
+      <div class="section">
+        <div class="section-header">REPLAY LAP SEEK</div>
+        ${this._renderEntityPicker('lap_number_entity', 'Replay Lap Number', 'number')}
       </div>
       <div class="section">
         <div class="section-header">OPTIONAL PLAYER</div>

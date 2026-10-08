@@ -344,6 +344,9 @@
       "replay_forward_30": {
         "name": "Forward 30 seconds"
       },
+      "replay_seek_lap": {
+        "name": "Jump to replay lap"
+      },
       "replay_stop": {
         "name": "Stop"
       },
@@ -371,6 +374,9 @@
     "number": {
       "live_delay": {
         "name": "Live delay"
+      },
+      "replay_lap": {
+        "name": "Replay lap"
       }
     },
     "media_player": {

@@ -19,6 +19,8 @@ Use these entities to select, load, and control a completed F1 session. For the 
 | `button.f1_replay_stop` | Stop playback and return to idle |
 | `button.f1_replay_back_30` | Move replay back 30 seconds |
 | `button.f1_replay_forward_30` | Move replay forward 30 seconds |
+| `number.f1_replay_lap` | Choose the race or sprint lap to jump to |
+| `button.f1_replay_seek_lap` | Jump to the recorded start of the chosen lap |
 | `button.f1_replay_refresh` | Refresh the session list |
 
 ## Media Player Entity

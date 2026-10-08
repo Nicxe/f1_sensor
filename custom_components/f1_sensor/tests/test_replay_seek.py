@@ -549,6 +549,44 @@ async def test_replay_seek_ready_updates_planned_position(hass, tmp_path: Path) 
 
 
 @pytest.mark.asyncio
+async def test_replay_seek_to_recorded_lap(hass, tmp_path: Path) -> None:
+    controller, index, _bus, _live_state = await _setup_controller(
+        hass,
+        tmp_path,
+        initial_state={"SessionInfo": {"Type": "Race", "Name": "Race"}},
+        frames=[
+            (0, "SessionInfo", {"Type": "Race", "Name": "Race"}),
+            (30_000, "LapCount", {"CurrentLap": 3, "TotalLaps": 53}),
+        ],
+        coordinators=(),
+    )
+    index.lap_start_ms = {3: 30_000}
+
+    await controller.async_seek_to_lap(3)
+
+    assert controller.get_playback_status()["position_ms"] == 30_000
+    with pytest.raises(RuntimeError, match="Lap 4 is not available"):
+        await controller.async_seek_to_lap(4)
+
+
+def test_replay_index_records_first_frame_for_each_lap(hass, tmp_path: Path) -> None:
+    manager = ReplaySessionManager(hass, ENTRY_ID, AsyncMock())
+    frames_file = _write_frames(
+        tmp_path,
+        [
+            (0, "SessionStatus", {"Status": "Started"}),
+            (10_000, "LapCount", {"CurrentLap": 1, "TotalLaps": 53}),
+            (70_000, "LapCount", {"CurrentLap": "2", "TotalLaps": 53}),
+            (70_100, "LapCount", {"CurrentLap": 2, "TotalLaps": 53}),
+        ],
+    )
+
+    scan = manager._scan_merged_frames_sync(frames_file, None)
+
+    assert scan["lap_start_ms"] == {1: 10_000, 2: 70_000}
+
+
+@pytest.mark.asyncio
 async def test_replay_seek_forward_replays_intermediate_state_changes(
     hass, tmp_path: Path
 ) -> None:

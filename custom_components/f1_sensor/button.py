@@ -43,6 +43,7 @@ from .replay_entities import (
     F1ReplayPauseButton,
     F1ReplayPlayButton,
     F1ReplayRefreshButton,
+    F1ReplaySeekLapButton,
     F1ReplayStopButton,
 )
 from .runtime import F1ConfigEntry
@@ -119,6 +120,7 @@ async def async_setup_entry(
             ("replay_pause", F1ReplayPauseButton),
             ("replay_back_30", F1ReplayBackButton),
             ("replay_forward_30", F1ReplayForwardButton),
+            ("replay_seek_lap", F1ReplaySeekLapButton),
             ("replay_stop", F1ReplayStopButton),
             ("replay_refresh", F1ReplayRefreshButton),
         )

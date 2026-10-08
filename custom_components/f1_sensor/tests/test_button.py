@@ -445,7 +445,7 @@ async def test_button_setup_includes_calibration_development_and_replay(
 
     assert any(isinstance(entity, F1MatchDelayButton) for entity in added)
     assert any(isinstance(entity, F1JolpicaUserAgentTestButton) for entity in added)
-    assert len(added) == 9
+    assert len(added) == 10
 
     empty = MockConfigEntry(domain=DOMAIN, data={})
     empty.add_to_hass(hass)

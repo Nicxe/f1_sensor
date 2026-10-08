@@ -97,6 +97,7 @@ If you pause your TV, pause the replay to stay in sync. When you resume, resume 
 - **Seek with the playbar** - Drag the playbar in the F1 Replay Control card and release it at the target position
 - **Back 30 seconds** - Press `button.f1_replay_back_30` to move replay back 30 seconds
 - **Forward 30 seconds** - Press `button.f1_replay_forward_30` to move replay forward 30 seconds
+- **Jump to lap** - Choose a lap with `number.f1_replay_lap`, then press `button.f1_replay_seek_lap`
 - **Stop** - Press `button.f1_replay_stop` to end playback and return to idle
 
 ---
@@ -107,6 +108,12 @@ Seeking backward can replay historical state changes again. Automations, notific
 :::
 
 The replay seek controls help you line up Home Assistant with the F1 broadcast you are watching. You can use the draggable playbar for larger adjustments, or the 30-second buttons for small catch-up steps.
+
+### Jumping to a lap
+
+For a race or sprint, enter the lap that starts on your recording in the **Replay lap** field and press **Jump to replay lap**. Replay Mode moves to the recorded start of that lap, making it easier to catch up after skipping a safety car or another section of the broadcast.
+
+The control is available in the F1 Replay Control card and as `number.f1_replay_lap` with `button.f1_replay_seek_lap`. A lap can only be selected after the replay has loaded and when the archive includes a matching lap marker.
 
 ### Dragging the playbar
 
@@ -136,7 +143,7 @@ When you press **Back 30 seconds**, Replay Mode restores replay state for the ne
 
 ### Best way to use it
 
-If your TV or streaming replay is slightly out of sync, pause Replay Mode and use the playbar or 30-second buttons until the on-screen action matches your Home Assistant entities again. A practical reference point is the session clock, track status, or the latest Race Control message.
+If your TV or streaming replay is slightly out of sync, pause Replay Mode and use the playbar, a lap jump, or the 30-second buttons until the on-screen action matches your Home Assistant entities again. A practical reference point is the session clock, track status, lap counter, or the latest Race Control message.
 :::info
 Seek controls are designed to preserve the visible replay state after the jump. If a session has a large amount of Track Map data, you may still see a short `seeking` period before playback resumes.
 :::

@@ -316,6 +316,9 @@
       "replay_forward_30": {
         "name": "Avanti 30 secondi"
       },
+      "replay_seek_lap": {
+        "name": "Vai al giro del replay"
+      },
       "replay_stop": {
         "name": "Stop"
       },
@@ -343,6 +346,9 @@
     "number": {
       "live_delay": {
         "name": "Ritardo diretta"
+      },
+      "replay_lap": {
+        "name": "Giro del replay"
       }
     },
     "media_player": {

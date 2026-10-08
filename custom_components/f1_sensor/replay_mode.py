@@ -88,7 +88,7 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when replay index contents change in a way that
 # requires re-downloading cached sessions.
-CACHE_VERSION = 14
+CACHE_VERSION = 15
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 SEEK_INDEX_INTERVAL_MS = 5_000
@@ -199,6 +199,7 @@ class ReplayIndex:
     formation_initial_state: dict[str, Any] | None = None
     seek_index: list[dict[str, int]] | None = None
     seek_checkpoints: list[dict[str, Any]] | None = None
+    lap_start_ms: dict[int, int] | None = None
 
 
 def _seek_offset_for_ms(
@@ -699,6 +700,9 @@ class ReplaySessionManager:
                         ),
                         seek_index=index_data.get("seek_index"),
                         seek_checkpoints=index_data.get("seek_checkpoints"),
+                        lap_start_ms=self._parse_lap_start_ms(
+                            index_data.get("lap_start_ms")
+                        ),
                     )
                 if cached_version >= 11:
                     _LOGGER.info(
@@ -740,6 +744,7 @@ class ReplaySessionManager:
                         formation_initial_state=scan["formation_initial_state"],
                         seek_index=scan["seek_index"],
                         seek_checkpoints=scan["seek_checkpoints"],
+                        lap_start_ms=scan["lap_start_ms"],
                     )
                 _LOGGER.info(
                     "Cache version mismatch for %s (cached=%d, current=%d), re-downloading",
@@ -830,6 +835,7 @@ class ReplaySessionManager:
             "formation_initial_state": scan["formation_initial_state"],
             "seek_index": scan["seek_index"],
             "seek_checkpoints": scan["seek_checkpoints"],
+            "lap_start_ms": scan["lap_start_ms"],
             "streams": list(self._download_streams),
             "created_at": dt_util.utcnow().isoformat(),
         }
@@ -855,7 +861,24 @@ class ReplaySessionManager:
             formation_initial_state=scan["formation_initial_state"],
             seek_index=scan["seek_index"],
             seek_checkpoints=scan["seek_checkpoints"],
+            lap_start_ms=scan["lap_start_ms"],
         )
+
+    @staticmethod
+    def _parse_lap_start_ms(value: Any) -> dict[int, int]:
+        """Return validated replay lap start positions from cached JSON."""
+        if not isinstance(value, dict):
+            return {}
+        result: dict[int, int] = {}
+        for raw_lap, raw_ms in value.items():
+            try:
+                lap = int(raw_lap)
+                position_ms = int(raw_ms)
+            except (TypeError, ValueError):
+                continue
+            if lap > 0 and position_ms >= 0:
+                result[lap] = position_ms
+        return result
 
     async def _download_stream_to_file(
         self,
@@ -1070,6 +1093,7 @@ class ReplaySessionManager:
         session_started_at_ms = 0
         formation_started_at_ms: int | None = None
         formation_best_delta: float | None = None
+        lap_start_ms: dict[int, int] = {}
         total_frames = 0
         duration_ms = 0
         offset = 0
@@ -1090,6 +1114,14 @@ class ReplaySessionManager:
             for frame in group:
                 first_payloads.setdefault(frame.stream, deepcopy(frame.payload))
                 self._accumulate_seek_checkpoint_frame(accumulator, frame)
+                if frame.stream == "LapCount" and isinstance(frame.payload, dict):
+                    raw_lap = frame.payload.get("CurrentLap")
+                    try:
+                        lap = int(raw_lap)
+                    except (TypeError, ValueError):
+                        lap = 0
+                    if lap > 0:
+                        lap_start_ms.setdefault(lap, group_ms)
                 if (
                     frame.stream == "SessionStatus"
                     and isinstance(frame.payload, dict)
@@ -1172,6 +1204,7 @@ class ReplaySessionManager:
             "formation_initial_state": formation_initial_state,
             "seek_index": seek_index,
             "seek_checkpoints": checkpoints,
+            "lap_start_ms": lap_start_ms,
         }
 
     async def _download_stream(self, url: str, stream_name: str) -> list[ReplayFrame]:
@@ -2632,6 +2665,7 @@ class ReplayController:
         self._playback_task: asyncio.Task | None = None
         self._listeners: list[Callable[[dict], None]] = []
         self._pending_start_ms: int | None = None
+        self._lap_target = 1
 
     @property
     def session_manager(self) -> ReplaySessionManager:
@@ -2647,6 +2681,15 @@ class ReplayController:
     def transport(self) -> ReplayTransport | None:
         """Get the current transport (for playback status)."""
         return self._transport
+
+    @property
+    def lap_target(self) -> int:
+        """Return the lap selected for a replay seek."""
+        return self._lap_target
+
+    def set_lap_target(self, lap: int) -> None:
+        """Set the lap selected for a replay seek."""
+        self._lap_target = max(1, int(lap))
 
     def _get_start_reference(self) -> str:
         if self._start_reference_controller is not None:
@@ -2903,6 +2946,18 @@ class ReplayController:
             index, log=False
         )
         await self.async_seek_to_ms(playback_start_ms + (int(position_s) * 1000))
+
+    async def async_seek_to_lap(self, lap: int | None = None) -> None:
+        """Seek to the recorded start of a race or sprint lap."""
+        index = self._session_manager.get_loaded_index()
+        if index is None:
+            raise RuntimeError("No replay index loaded")
+
+        target_lap = self._lap_target if lap is None else int(lap)
+        target_ms = (index.lap_start_ms or {}).get(target_lap)
+        if target_ms is None:
+            raise RuntimeError(f"Lap {target_lap} is not available in this replay")
+        await self.async_seek_to_ms(target_ms)
 
     async def async_seek_to_ms(self, target_ms: int) -> None:
         """Seek to an absolute millisecond position within the loaded replay."""

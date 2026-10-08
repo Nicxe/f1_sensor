@@ -344,6 +344,9 @@
       "replay_forward_30": {
         "name": "Framåt 30 sekunder"
       },
+      "replay_seek_lap": {
+        "name": "Gå till replay-varv"
+      },
       "replay_stop": {
         "name": "Stoppa"
       },
@@ -371,6 +374,9 @@
     "number": {
       "live_delay": {
         "name": "Livefördröjning"
+      },
+      "replay_lap": {
+        "name": "Replay-varv"
       }
     },
     "media_player": {

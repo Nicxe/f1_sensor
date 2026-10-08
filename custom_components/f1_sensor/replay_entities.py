@@ -446,6 +446,39 @@ class F1ReplayForwardButton(F1AuxEntity, ButtonEntity):
             await self._controller.async_seek_by(30)
 
 
+class F1ReplaySeekLapButton(F1AuxEntity, ButtonEntity):
+    """Button to seek a replay to the selected lap."""
+
+    _device_category = "system"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "replay_seek_lap"
+
+    def __init__(
+        self,
+        controller: ReplayController,
+        unique_id: str,
+        entry_id: str,
+        device_name: str,
+    ) -> None:
+        F1AuxEntity.__init__(self, unique_id, entry_id, device_name)
+        ButtonEntity.__init__(self)
+        self._controller = controller
+        self._attr_icon = "mdi:flag-checkered"
+
+    async def async_press(self) -> None:
+        """Seek to the chosen replay lap when it is available."""
+        if self._controller.state not in (
+            ReplayState.READY,
+            ReplayState.PLAYING,
+            ReplayState.PAUSED,
+        ):
+            return
+        try:
+            await self._controller.async_seek_to_lap()
+        except RuntimeError as err:
+            _LOGGER.warning("Replay lap seek failed: %s", err)
+
+
 class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
     """Sensor showing replay status and progress."""
 

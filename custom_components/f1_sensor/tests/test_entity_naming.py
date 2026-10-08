@@ -516,6 +516,7 @@ async def test_aux_platforms_use_standard_english_object_ids(hass) -> None:
     assert button_entities[f"{entry.entry_id}_replay_forward_30"] == (
         "f1_replay_forward_30"
     )
+    assert button_entities[f"{entry.entry_id}_replay_seek_lap"] == "f1_replay_seek_lap"
     assert button_entities[f"{entry.entry_id}_replay_stop"] == "f1_replay_stop"
     assert button_entities[f"{entry.entry_id}_replay_refresh"] == "f1_replay_refresh"
     assert {entity.entity_id for entity in add_button_entities.call_args[0][0]} == {
@@ -527,6 +528,7 @@ async def test_aux_platforms_use_standard_english_object_ids(hass) -> None:
         "button.f1_replay_pause",
         "button.f1_replay_play",
         "button.f1_replay_refresh",
+        "button.f1_replay_seek_lap",
         "button.f1_replay_stop",
     }
 

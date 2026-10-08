@@ -15,7 +15,7 @@ from custom_components.f1_sensor.favorite_driver import (
     FAVORITE_DRIVER_NONE,
     FavoriteDriverController,
 )
-from custom_components.f1_sensor.number import F1LiveDelayNumber
+from custom_components.f1_sensor.number import F1LiveDelayNumber, F1ReplayLapNumber
 from custom_components.f1_sensor.select import (
     F1FavoriteDriverSelect,
     F1LiveDelayReferenceSelect,
@@ -88,6 +88,18 @@ async def test_number_platform_setup_and_entity_lifecycle(hass) -> None:
     entity._controller_unsub = fail_remove
     entity._calibration_unsub = fail_remove
     await entity.async_will_remove_from_hass()
+
+
+async def test_replay_lap_number_updates_seek_target(hass) -> None:
+    controller = SimpleNamespace(lap_target=1, set_lap_target=Mock())
+    entity = F1ReplayLapNumber(controller, "uid", "entry", "F1")
+    entity.hass = hass
+    entity.async_write_ha_state = Mock()
+
+    await entity.async_set_native_value(12.4)
+
+    controller.set_lap_target.assert_called_once_with(12)
+    assert entity.native_value == 12
 
 
 async def test_select_platform_setup_and_reference_lifecycle(hass) -> None:
