@@ -180,8 +180,7 @@ export const sharedStyles = css`
   .timing-gap-toggle button { min-width:88px; }
   .minisector-cell { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
   .minisector-strip { display:inline-flex; align-items:center; gap:3px; min-height:22px; padding:2px 0; }
-  .minisector-block { width:11px; height:20px; flex:0 0 11px; display:grid; place-items:center; border:1px solid color-mix(in srgb,currentColor 45%,transparent); border-radius:2px; font-size:7px; line-height:1; font-weight:900; }
-  .minisector-block[data-status=personal] { border-radius:6px; }
+  .minisector-block { width:11px; height:20px; flex:0 0 11px; display:grid; place-items:center; border:1px solid color-mix(in srgb,currentColor 45%,transparent); border-radius:4px; font-size:7px; line-height:1; font-weight:900; }
   .minisector-block[data-status=overall] .minisector-mark { transform:rotate(45deg); }
   .minisector-block[data-status=unset],.minisector-block[data-status=special],.minisector-block[data-status=unknown] { background:var(--f1-panel)!important; color:var(--f1-muted)!important; }
   .minisector-empty { color:var(--f1-muted); }

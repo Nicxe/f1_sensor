@@ -16,6 +16,7 @@ test('status-only minisectors keep source counts, order and accessible meanings'
   await expect(row.locator('.minisector-strip').nth(1).locator('.minisector-block')).toHaveCount(7);
   await expect(row.locator('.minisector-strip').nth(2).locator('.minisector-block')).toHaveCount(9);
   await expect(row.getByLabel('Minisector 1: Overall best')).toBeVisible();
+  expect(await row.locator('.minisector-block').evaluateAll(blocks => [...new Set(blocks.map(block => getComputedStyle(block).borderRadius))])).toEqual(['4px']);
   await module.locator('.timing-legend summary').click();
   await expect(module.getByText('Minisectors show provider status only. They do not contain or estimate minisector times.', { exact: true })).toBeVisible();
   await expect(module.getByText('Special status', { exact: true })).toBeVisible();
