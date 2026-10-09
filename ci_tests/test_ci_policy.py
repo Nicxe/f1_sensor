@@ -16,9 +16,14 @@ from scripts.ci_policy import (
 def pull(base, head, fork=False):
     return {
         "pull_request": {
-            "base": {"ref": base, "repo": {"full_name": "Nicxe/f1_sensor"}},
+            "base": {
+                "ref": base,
+                "sha": "a" * 40,
+                "repo": {"full_name": "Nicxe/f1_sensor"},
+            },
             "head": {
                 "ref": head,
+                "sha": "b" * 40,
                 "repo": {"full_name": "fork/repo" if fork else "Nicxe/f1_sensor"},
             },
             "user": {"login": "contributor"},
@@ -27,13 +32,13 @@ def pull(base, head, fork=False):
 
 
 class PolicyTests(unittest.TestCase):
-    def test_owner_beta_hotfix_requires_matching_dev_files(self):
+    def test_owner_beta_hotfix_requires_commits_already_on_dev(self):
         event = pull("beta", "hotfix/issue-799-multipart-session")
         event["pull_request"]["user"]["login"] = "Nicxe"
         files = ["custom_components/f1_sensor/live_window.py"]
         with patch("scripts.ci_policy.hotfix_matches_dev", return_value=True) as check:
             self.assertEqual(branch_error(event, files), "")
-            check.assert_called_once_with(files)
+            check.assert_called_once_with(files, base_sha="a" * 40, head_sha="b" * 40)
         with patch("scripts.ci_policy.hotfix_matches_dev", return_value=False):
             self.assertTrue(branch_error(event, files))
         event["pull_request"]["user"]["login"] = "contributor"
@@ -42,24 +47,42 @@ class PolicyTests(unittest.TestCase):
         event["pull_request"]["head"]["repo"]["full_name"] = "fork/repo"
         self.assertTrue(branch_error(event, files))
 
-    def test_hotfix_file_check_rejects_missing_and_different_blobs(self):
-        self.assertFalse(hotfix_matches_dev([]))
+    def test_hotfix_check_requires_every_patch_on_dev(self):
+        base_sha, head_sha = "a" * 40, "b" * 40
+        self.assertFalse(hotfix_matches_dev([], base_sha=base_sha, head_sha=head_sha))
+        self.assertFalse(
+            hotfix_matches_dev(["file.py"], base_sha="bad", head_sha=head_sha)
+        )
         with patch("scripts.ci_policy.subprocess.run") as run:
             run.side_effect = [
-                Mock(returncode=0, stdout="same\n"),
-                Mock(returncode=0, stdout="same\n"),
+                Mock(returncode=0, stdout=f"{head_sha}\n"),
+                Mock(returncode=0, stdout=f"- {head_sha}\n"),
             ]
-            self.assertTrue(hotfix_matches_dev(["file.py"]))
+            self.assertTrue(
+                hotfix_matches_dev(["file.py"], base_sha=base_sha, head_sha=head_sha)
+            )
             self.assertEqual(run.call_count, 2)
         with patch("scripts.ci_policy.subprocess.run") as run:
             run.side_effect = [
-                Mock(returncode=0, stdout="head\n"),
-                Mock(returncode=0, stdout="dev\n"),
+                Mock(returncode=0, stdout=f"{head_sha}\n"),
+                Mock(returncode=0, stdout=f"+ {head_sha}\n"),
             ]
-            self.assertFalse(hotfix_matches_dev(["file.py"]))
+            self.assertFalse(
+                hotfix_matches_dev(["file.py"], base_sha=base_sha, head_sha=head_sha)
+            )
+        with patch("scripts.ci_policy.subprocess.run") as run:
+            run.side_effect = [
+                Mock(returncode=0, stdout=f"{head_sha}\n{'c' * 40}\n"),
+                Mock(returncode=0, stdout=f"- {head_sha}\n"),
+            ]
+            self.assertFalse(
+                hotfix_matches_dev(["file.py"], base_sha=base_sha, head_sha=head_sha)
+            )
         with patch("scripts.ci_policy.subprocess.run") as run:
             run.return_value = Mock(returncode=1)
-            self.assertFalse(hotfix_matches_dev(["file.py"]))
+            self.assertFalse(
+                hotfix_matches_dev(["file.py"], base_sha=base_sha, head_sha=head_sha)
+            )
 
     def test_owner_maintenance_can_repair_main_without_promoting_runtime_code(self):
         event = pull("main", "maintenance/dependency-ci-recovery")
