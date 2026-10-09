@@ -78,6 +78,27 @@ def content_only(files: list[str]) -> bool:
     )
 
 
+def hotfix_matches_dev(files: list[str]) -> bool:
+    """Require every file in a beta hotfix PR to match committed dev content."""
+    if not files:
+        return False
+    for path in files:
+        blobs = []
+        for ref in ("HEAD", "origin/dev"):
+            result = subprocess.run(
+                ["git", "rev-parse", f"{ref}:{path}"],
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+            if result.returncode:
+                return False
+            blobs.append(result.stdout.strip())
+        if blobs[0] != blobs[1]:
+            return False
+    return True
+
+
 def branch_error(event: dict, files: list[str]) -> str:
     pr = event.get("pull_request")
     if not pr:
@@ -150,6 +171,17 @@ def branch_error(event: dict, files: list[str]) -> str:
         (base == "beta" and head == "dev") or (base == "main" and head == "beta")
     ):
         return ""
+    if (
+        same_repo
+        and base == "beta"
+        and head.startswith("hotfix/")
+        and pr["user"]["login"] == pr["base"]["repo"]["full_name"].split("/")[0]
+    ):
+        return (
+            ""
+            if hotfix_matches_dev(files)
+            else "A beta hotfix must match files already committed to dev."
+        )
     if same_repo and base == "main" and head == "content" and content_only(files):
         return ""
     return "Code follows dev → beta → main. Standalone docs/blueprints follow content → main."
