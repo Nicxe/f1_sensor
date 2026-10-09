@@ -198,7 +198,14 @@ export function normalizeConfig(input) {
     if (item.type === 'archive' && Array.isArray(item.fields) && item.options?.profile == null) item.options = { ...item.options, profile: 'custom' };
     item.fields ??= [...defaultFields(item)];
     strings(item.fields, `${path}.fields`);
-    item.options = { ...Object.fromEntries(Object.entries(definition?.options ?? {}).map(([key, spec]) => [key, copyConfig(spec.default)])), ...object(item.options ?? {}, `${path}.options`) };
+    if (item.type === 'timing') {
+      item.detail_fields ??= [...definition.defaultDetailFields];
+      strings(item.detail_fields, `${path}.detail_fields`);
+      for (const id of item.detail_fields) if (!definition.fields.includes(id) || id === 'driver') fail(`${path}.detail_fields`, `unsupported detail field ${id}`);
+    }
+    const suppliedOptions = object(item.options ?? {}, `${path}.options`);
+    item.options = { ...Object.fromEntries(Object.entries(definition?.options ?? {}).map(([key, spec]) => [key, copyConfig(spec.default)])), ...suppliedOptions };
+    if (item.type === 'timing' && suppliedOptions.detail_laps === undefined) item.options.detail_laps = item.options.history;
     for (const [key, spec] of Object.entries(definition?.options ?? {})) {
       const optionPath = `${path}.options.${key}`;
       if (spec.type === 'enum') choice(item.options[key], spec.values, optionPath);

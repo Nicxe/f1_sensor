@@ -54,6 +54,10 @@ test('session context follows live and replay identities without archive fallbac
   assert.equal(minisectorContext(hass, entry, { mode: 'pinned', source: 'archive', session_key: '99' }), null);
   assert.equal(usesMinisectors({ type: 'timing', fields: ['driver'] }), false);
   assert.equal(usesMinisectors({ type: 'timing', fields: ['minisector_1'] }), true);
+  const detailOnly = { type: 'timing', fields: ['driver'], detail_fields: ['minisector_1'], options: { show_driver_details: true } };
+  assert.equal(usesMinisectors(detailOnly), false);
+  assert.equal(usesMinisectors(detailOnly, true), true);
+  assert.equal(usesMinisectors({ ...detailOnly, options: { show_driver_details: false } }, true), false);
 });
 
 test('matching consumers share one websocket subscription and release it after the last consumer', async () => {

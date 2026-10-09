@@ -337,7 +337,7 @@ export class F1SensorCard extends LitElement {
     }
     const minisectorContexts = new Map();
     if (entry && data.spoilerState(this.sourceHass, entry, this.config.context.spoilers) === 'clear') {
-      for (const module of this.config.modules.filter(module => usable(module) && minisectorData.usesMinisectors(module))) {
+      for (const module of this.config.modules.filter(module => usable(module) && minisectorData.usesMinisectors(module, this.moduleNodes.get(module.id)?.timingExpanded?.length > 0))) {
         const context = minisectorData.minisectorContext(this.sourceHass, entry, resolveSelection(this.config.context, module, this.groupContext));
         if (context) minisectorContexts.set(context.key, context);
       }
@@ -681,9 +681,10 @@ export class F1SensorCard extends LitElement {
         if (model.summary) model.notice = this.w('modular.only_drivers_with_recorded_track_limit_data_are_listed_a_missing_driver_is_not');
       }
       if (module.type === 'timing') {
-        const minisectors = minisectorData.usesMinisectors(module) ? this.minisectorState(effective) : null;
+        const minisectors = minisectorData.usesMinisectors(module, this.moduleNodes.get(module.id)?.timingExpanded?.length > 0) ? this.minisectorState(effective) : null;
         Object.assign(model, data.timingRows(viewHass, entry, moduleSession, this.sectors, module, focus, minisectors));
         model.context = { meeting: moduleSession.meeting, session: moduleSession.name, key: moduleSession.key, source: 'TimingData', updated: model.source.updated_at, updatedKind: 'ha_state' };
+        model.selectionGeneration = this.savedSources.viewGeneration;
         if (model.currentPart && ['qualifying', 'sprint_qualifying'].includes(model.sessionKind)) model.badge = `${model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${model.currentPart}`;
         if (model.fields.some(id => /^q[123]_/.test(id)) && !['qualifying', 'sprint_qualifying'].includes(model.sessionKind)) model.notice = this.w('modular.q_sq_columns_are_available_during_qualifying_sessions_other_columns_continue_to_show_their');
         if (minisectors && minisectors.status !== 'ready') model.notice = [model.notice, this.minisectorMessage(minisectors)].filter(Boolean).join(' ');
@@ -809,6 +810,7 @@ export class F1SensorCard extends LitElement {
         node = document.createElement('f1-module-view');
         node.addEventListener('f1-replay-action', event => this.replayAction(event));
         node.addEventListener('f1-race-control-action', event => this.raceControlAction(event));
+        node.addEventListener('f1-driver-details-change', () => { this.revision++; });
         for (const type of ['selection', 'compare', 'retry']) node.addEventListener(`f1-telemetry-${type}`, event => this.telemetryAction(event));
         node.addEventListener('f1-module-choice', event => {
           event.stopPropagation();

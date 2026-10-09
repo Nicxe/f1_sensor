@@ -359,9 +359,105 @@ test('timing rows keep driver identity, expanded details and focus across positi
       sameButton: window.retainedRow.querySelector('button.driver') === window.retainedButton,
       focused: node.shadowRoot.activeElement === window.retainedButton,
       expanded: window.retainedButton.getAttribute('aria-expanded'),
-      last: node.shadowRoot.querySelector('tr[data-driver]:last-of-type')?.dataset.driver === window.retainedRow.dataset.driver,
+      last: [...node.shadowRoot.querySelectorAll('tr[data-driver]')].at(-1)?.dataset.driver === window.retainedRow.dataset.driver,
+      adjacent: window.retainedRow.nextElementSibling?.querySelector('[part="driver-detail"]')?.id === `driver-detail-${window.retainedRow.dataset.driver}`,
     };
-  })).toMatchObject({ sameRow: true, sameButton: true, focused: true, expanded: 'true' });
+  })).toMatchObject({ sameRow: true, sameButton: true, focused: true, expanded: 'true', adjacent: true });
+});
+
+test('Timing compares multiple drivers with only chosen extra fields and clears on session change', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'timing', fields: ['position', 'driver', 'last_lap'], detail_fields: ['last_lap', 'tyre_age', 'minisector_1'], options: { detail_laps: 3 } }] } }));
+  const timing = page.getByRole('region', { name: 'Timing', exact: true });
+  const drivers = timing.locator('tbody button.driver');
+  await drivers.nth(0).click();
+  await drivers.nth(1).click();
+  const panels = timing.locator('[part="driver-detail"]');
+  await expect(panels).toHaveCount(2);
+  await expect.poll(() => drivers.nth(0).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]')?.id === `driver-detail-${button.closest('tr').dataset.driver}`)).toBe(true);
+  await expect.poll(() => drivers.nth(1).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]')?.id === `driver-detail-${button.closest('tr').dataset.driver}`)).toBe(true);
+  await expect(timing.locator('.table-scroll [part="driver-detail"]')).toHaveCount(2);
+  await expect(drivers.nth(0)).toHaveAttribute('aria-expanded', 'true');
+  await expect(drivers.nth(1)).toHaveAttribute('aria-expanded', 'true');
+  await expect(panels.first().locator('dt')).toHaveText(['Tyre age', 'S1 minisectors']);
+  await expect(panels.first().locator('.minisector-strip')).toHaveCount(1);
+  await page.evaluate(() => {
+    const node = [...window.fixtureCard.moduleNodes.values()].find(item => item.module.type === 'timing');
+    node.model = { ...node.model, rows: [...node.model.rows].reverse() };
+  });
+  await expect(panels).toHaveCount(2);
+  await page.evaluate(() => {
+    const node = [...window.fixtureCard.moduleNodes.values()].find(item => item.module.type === 'timing');
+    node.model = { ...node.model, context: { ...node.model.context, key: 'another-session' }, selectionGeneration: 'another-generation' };
+  });
+  await expect(panels).toHaveCount(0);
+});
+
+test('Timing shows hidden laps for a driver one lap behind without repeating table laps', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'timing', fields: ['driver'], detail_fields: [], options: { history: 2, detail_laps: 3 } }] } }));
+  const timing = page.getByRole('region', { name: 'Timing', exact: true });
+  const drivers = timing.locator('tbody button.driver');
+  await drivers.first().click();
+  await drivers.nth(1).click();
+  const state = await page.evaluate(async () => {
+    const node = [...window.fixtureCard.moduleNodes.values()].find(item => item.module.type === 'timing');
+    const base = node.model.rows[0].history[0];
+    const rows = node.model.rows.map((row, index) => index < 2
+      ? { ...row, history: (index === 0 ? [12, 11, 10] : [11, 10, 9]).map(lap => ({ ...base, lap })) }
+      : row);
+    node.model = { ...node.model, rows };
+    await node.updateComplete;
+    return { histories: node.model.rows.slice(0, 2).map(row => row.history.map(lap => lap.lap)), panels: [...node.shadowRoot.querySelectorAll('[part="driver-detail"]')].map(panel => panel.querySelector('ol')?.textContent) };
+  });
+  expect(state.histories).toEqual([[12, 11, 10], [11, 10, 9]]);
+  expect(state.panels).toHaveLength(2);
+  expect(state.panels[0]).toMatch(/^Lap 10:/);
+  expect(state.panels[1]).toMatch(/^Lap 10:.*Lap 9:/);
+  expect(state.panels.every(text => !text.includes('Lap 11:') && !text.includes('Lap 12:'))).toBe(true);
+  await expect(timing.getByRole('columnheader', { name: 'Lap 11', exact: true })).toBeVisible();
+  await expect(timing.getByRole('columnheader', { name: 'Lap 12', exact: true })).toBeVisible();
+  const panels = timing.locator('[part="driver-detail"]');
+  await expect(panels).toHaveCount(2);
+});
+
+test('Timing hides the driver action when no information remains and keeps expanded rows attached at every width', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'timing', fields: ['driver', 'best_lap', 'tyre_age', 'status'], detail_fields: ['best_lap', 'tyre_age', 'status'], options: { detail_laps: 0 } }] } }));
+  const timing = page.getByRole('region', { name: 'Timing', exact: true });
+  await expect(timing.locator('tbody button.driver')).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'timing', fields: ['driver'], detail_fields: ['tyre_age'] }] } }));
+  const drivers = timing.locator('tbody button.driver');
+  await drivers.nth(0).click();
+  await drivers.nth(1).click();
+  const panels = timing.locator('[part="driver-detail"]');
+  await expect(panels).toHaveCount(2);
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect.poll(() => drivers.nth(0).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]') !== null)).toBe(true);
+  await expect.poll(() => drivers.nth(1).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]') !== null)).toBe(true);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect.poll(() => drivers.nth(0).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]') !== null)).toBe(true);
+  await expect.poll(() => drivers.nth(1).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]') !== null)).toBe(true);
+  await timing.getByRole('button', { name: 'Close all driver details' }).click();
+  await expect(panels).toHaveCount(0);
+  await expect(drivers.first()).toBeFocused();
+});
+
+test('Timing editor saves detail fields and laps without changing table columns', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'timing', fields: ['driver', 'last_lap'] }] } }));
+  const editor = page.locator('f1-sensor-card-editor');
+  await editor.locator('summary').filter({ hasText: /^Driver details$/ }).click();
+  const details = editor.locator('summary').filter({ hasText: /^Driver details$/ }).locator('..');
+  await expect(details.getByRole('checkbox', { name: 'Show driver details' })).toBeChecked();
+  await details.getByRole('checkbox', { name: 'S1 minisectors' }).check();
+  const laps = details.getByRole('spinbutton', { name: 'Recent laps in driver details' });
+  await laps.fill('4');
+  await laps.blur();
+  const saved = await page.evaluate(() => window.savedConfig);
+  expect(saved.modules[0].fields).toEqual(['driver', 'last_lap']);
+  expect(saved.modules[0].detail_fields).toContain('minisector_1');
+  expect(saved.modules[0].options.detail_laps).toBe(4);
+  expect(saved.modules[0].options.history).toBe(0);
+  await details.getByRole('checkbox', { name: 'Show driver details' }).uncheck();
+  await expect(page.locator('#native-preview tbody button.driver')).toHaveCount(0);
 });
 
 test('all three styles retain timing content in light and dark themes', async ({ page }, info) => {

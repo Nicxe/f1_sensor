@@ -234,10 +234,12 @@ export const MODULES = {
     rows: { type: 'integer', min: 1, max: 100, default: 30, label: { en: 'Maximum drivers', sv: 'Max antal förare' } },
     sectors: { type: 'enum', values: ['coherent', 'latest'], default: 'coherent', label: { en: 'Sector laps', sv: 'Sektorernas varv' } },
     history: { type: 'integer', min: 0, max: 30, default: 0, label: { en: 'Recent lap columns', sv: 'Kolumner för senaste varv' } },
+    detail_laps: { type: 'integer', min: 0, max: 30, default: 0, label: { en: 'Recent laps in driver details', sv: 'Senaste varv i förardetaljer' } },
+    show_driver_details: { type: 'boolean', default: true, label: { en: 'Show driver details', sv: 'Visa förardetaljer' } },
     show_gap_toggle: { type: 'boolean', default: false, label: { en: 'Show live gap toggle', sv: 'Visa val av liveavstånd' } },
     show_time_context: { type: 'boolean', default: true, label: { en: 'Show text below times', sv: 'Visa tidstext under tider' } },
     show_time_status_icon: { type: 'boolean', default: true, label: { en: 'Show time status icon', sv: 'Visa statusikon på tider' } },
-  }, ['driver_positions', 'driver_list', 'current_tyres', 'current_session', 'session_status'], { defaultFields: ['position', 'driver', 'gap', 'last_lap', 'sector_1', 'sector_2', 'sector_3', 'tyre'] }),
+  }, ['driver_positions', 'driver_list', 'current_tyres', 'current_session', 'session_status'], { defaultFields: ['position', 'driver', 'gap', 'last_lap', 'sector_1', 'sector_2', 'sector_3', 'tyre'], defaultDetailFields: ['best_lap', 'tyre_age', 'status'] }),
   minisectors: module('minisectors', 'Minisectors', 'Minisektorer', ['position', 'driver', 'team', 'sector_1', 'sector_2', 'sector_3', ...MINISECTOR_FIELDS.map(field => field.id)], {
     sort: { type: 'enum', values: ['position', 'driver'], default: 'position', label: { en: 'Sort by', sv: 'Sortera efter' } },
     direction: { type: 'enum', values: ['asc', 'desc'], default: 'asc', label: { en: 'Direction', sv: 'Ordning' } },
