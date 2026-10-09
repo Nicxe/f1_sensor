@@ -306,6 +306,13 @@ export class F1SensorCardEditor extends LitElement {
   columnWidth(span) {
     return span === 'full' ? this.w('modular.full_card_width') : span === 1 ? this.w('modular.1_column') : this.w('modular.span_columns', { span: span });
   }
+  minisectorOverlap(module) {
+    const sectors = [1, 2, 3].filter(n => module.fields.includes(`sector_${n}_with_minisectors`)
+      && (module.fields.includes(`sector_${n}`) || module.fields.includes(`minisector_${n}`)));
+    if (!sectors.length) return '';
+    const sectorList = sectors.join(', ');
+    return this.w('modular.minisector_duplicate_fields', { sectors: sectorList });
+  }
   moduleSettings() {
     const saved = this.config.modules.find(module => module.id === this.selected), definition = MODULES[saved?.type];
     if (!saved) return html``;
@@ -323,9 +330,10 @@ export class F1SensorCardEditor extends LitElement {
         ${this.select(this.w('modular.module_width'), String(module.column_span), [...[1, 2, 3, 4].map(count => [String(count), this.columnWidth(count)]), ['full', this.columnWidth('full')]], value => this.setModule('column_span', value === 'full' ? value : Number(value)))}
         <p class="muted">${this.w('modular.widths_shrink_to_fit_the_available_columns_full_card_width_always_starts_a_new')}</p>
       ` : ''}
+      ${this.minisectorOverlap(module) ? html`<p class="notice" role="status">${this.minisectorOverlap(module)}</p>` : ''}
       <details><summary>${this.w('modular.module_appearance')}</summary>
         ${this.check(this.w('modular.show_module_title'), module.show_header, value => this.setModule('show_header', value))}
-        ${['timing', 'results', 'standings', 'archive', 'tyres', 'pit_stops', 'strategy', 'battles', 'timeline', 'incidents'].includes(module.type) ? html`${this.check(this.w('modular.show_table_header'), module.show_table_header, value => this.setModule('show_table_header', value))}<p class="muted">${this.w('modular.hidden_column_labels_remain_available_to_screen_readers_chart_data_tables_always_keep_their')}</p>` : ''}
+        ${['timing', 'minisectors', 'results', 'standings', 'archive', 'tyres', 'pit_stops', 'strategy', 'battles', 'timeline', 'incidents'].includes(module.type) ? html`${this.check(this.w('modular.show_table_header'), module.show_table_header, value => this.setModule('show_table_header', value))}<p class="muted">${this.w('modular.hidden_column_labels_remain_available_to_screen_readers_chart_data_tables_always_keep_their')}</p>` : ''}
         <p class="muted">${this.w('modular.session_details_and_status_labels_remain_visible_when_the_title_is_hidden')}</p>
       </details>
       ${['timing', 'archive'].includes(module.type) && module.options.profile !== 'custom' && (module.type !== 'archive' || module.options.content === 'classification') ? html`<p class="muted">${this.w('modular.this_profile_chooses_the_columns_changing_a_checkbox_or_order_switches_to_custom_columns')}</p>` : ''}
@@ -334,6 +342,18 @@ export class F1SensorCardEditor extends LitElement {
         ${module.fields.includes(id) ? html`<button aria-label=${`${this.w('modular.move_up')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === 0} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index - 1], fields[index]] = [fields[index], fields[index - 1]]; this.setModule('fields', fields); }}>↑</button><button aria-label=${`${this.w('modular.move_down')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === module.fields.length - 1} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index + 1], fields[index]] = [fields[index], fields[index + 1]]; this.setModule('fields', fields); }}>↓</button>` : ''}
         ${!available.includes(id) ? html`<small class="muted">${this.w('modular.saved_not_used_by_this_view')}</small>` : ''}
       </div>`)}</details>
+      ${module.type === 'timing' ? html`<details><summary>${this.w('modular.driver_details')}</summary>
+        ${this.check(this.w('modular.show_driver_details'), module.options.show_driver_details, value => this.setOption('show_driver_details', value))}
+        <p class="muted">${this.w('modular.driver_details_help')}</p>
+        ${module.options.show_driver_details ? html`
+          ${this.input(this.w('modular.recent_laps_in_driver_details'), module.options.detail_laps, value => this.setOption('detail_laps', value), 'number')}
+          ${[...module.detail_fields, ...MODULES.timing.fields.filter(id => id !== 'driver' && !module.detail_fields.includes(id))].map(id => html`<div class="field-row">
+            ${this.check(label(fieldDefinition(module, id), this.language) || id, module.detail_fields.includes(id), checked => this.setModule('detail_fields', checked ? [...module.detail_fields, id] : module.detail_fields.filter(key => key !== id)))}
+            ${module.detail_fields.includes(id) ? html`<button aria-label=${`${this.w('modular.move_up')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.detail_fields.indexOf(id) === 0} @click=${() => { const selected = [...module.detail_fields], index = selected.indexOf(id); [selected[index - 1], selected[index]] = [selected[index], selected[index - 1]]; this.setModule('detail_fields', selected); }}>↑</button><button aria-label=${`${this.w('modular.move_down')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.detail_fields.indexOf(id) === module.detail_fields.length - 1} @click=${() => { const selected = [...module.detail_fields], index = selected.indexOf(id); [selected[index + 1], selected[index]] = [selected[index], selected[index + 1]]; this.setModule('detail_fields', selected); }}>↓</button>` : ''}
+            ${module.detail_fields.includes(id) && module.fields.includes(id) ? html`<small class="muted">${this.w('modular.already_in_timing_table')}</small>` : ''}
+          </div>`)}
+        ` : ''}
+      </details>` : ''}
       <details><summary>${this.w('modular.module_options')}</summary>${Object.entries(definition?.options ?? {}).map(([key, option]) => {
         const title = module.type === 'incidents' && module.options.content === 'track_limits_summary' && key === 'rows' ? this.w('modular.maximum_drivers') : label(option, this.language), value = module.options[key];
         if (module.type === 'archive') {
@@ -352,6 +372,7 @@ export class F1SensorCardEditor extends LitElement {
         }
         if (module.type === 'incidents' && (key === 'summary_sort' && module.options.content !== 'track_limits_summary' || ['order', 'presentation'].includes(key) && module.options.content === 'track_limits_summary')) return '';
         if (module.type === 'telemetry' && key === 'session_id') return '';
+        if (module.type === 'timing' && ['show_driver_details', 'detail_laps'].includes(key)) return '';
         if (module.type === 'telemetry' && key === 'selected') return this.telemetryPicker(module);
         if (module.type === 'race_control' && ['limit', 'order'].includes(key) && module.options.presentation === 'latest_message') return '';
         if (module.type === 'strategy' && key === 'presentation' && module.options.content !== 'stints') return '';

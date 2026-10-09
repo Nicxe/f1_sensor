@@ -38,6 +38,14 @@ export function formatTime(value) {
   return minutes ? `${minutes}:${tail}` : tail;
 }
 
+// TimingData reports lap-qualified gaps as English source text such as "LAP 9".
+// Keep normal time gaps untouched while routing the visible lap label through the card locale.
+export function formatTimingGap(value, lapLabel) {
+  if (typeof value !== 'string') return value;
+  const match = /^lap\s+(\d+)$/i.exec(value.trim());
+  return match ? `${lapLabel} ${match[1]}` : value;
+}
+
 export function timingStatus(value) {
   if (value?.deleted === true) return 'deleted';
   if (value?.invalid === true) return 'invalid';

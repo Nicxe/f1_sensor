@@ -56,18 +56,22 @@ Presets are starting points, not separate card types. You can change every modul
 
 ## Combine the available modules
 
-The card provides 20 modules in one visual editor.
+The card provides 21 modules in one visual editor.
 
 | Purpose | Modules |
 | --- | --- |
 | Plan a weekend | Overview, Schedule, Weather |
-| Follow a session | Timing, Race Control, Tyres, Pit stops, Incidents |
+| Follow a session | Timing, Minisectors, Race Control, Tyres, Pit stops, Incidents |
 | Review results | Results, Championship, Historical archive, Season progression |
 | Analyse a session | Lap history chart, Session timeline, Strategy analysis, Battles and position changes, Track map |
 | Watch later | Replay, Replay telemetry |
 | Read official material | FIA documents |
 
 Modules can be reordered, duplicated, temporarily disabled or shown only during selected session phases. Each module has its own fields, filters, data-availability behavior and optional driver or team focus.
+
+Minisectors provide source status blocks for S1, S2 and S3. You can also add the
+same optional blocks below the existing sector times in Timing. The source does not
+provide a time for each minisector. See [Show minisectors](/cards/modular#show-minisectors).
 
 <Figure src="/img/cards/f1-sensor-replay-session.png" alt="F1 Sensor session card during an Abu Dhabi Practice 1 replay with overview, timing and Race Control modules" caption="The same card following a recorded session in Replay Mode." />
 
