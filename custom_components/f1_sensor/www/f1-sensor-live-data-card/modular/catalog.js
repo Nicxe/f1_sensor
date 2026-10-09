@@ -32,6 +32,33 @@ const timing = (id, en, sv, type, path, extra = {}) => ({
   mobile: 2, presentations: ['table', 'detail'], ...extra,
 });
 
+const minisector = (id, en, sv, type, path, extra = {}) => ({
+  id, label: { en, sv }, type, unit: null, source: 'minisectors', path,
+  capability: 'public_timing', modes: ['live', 'replay'],
+  sessions: ['practice', 'qualifying', 'sprint_qualifying', 'sprint', 'race'],
+  identity: ['entry', 'session', 'generation', 'driver', 'lap', 'sector', 'segment'],
+  generation: 'minisector_generation',
+  timestamps: { source: 'stream_timestamp_or_null', received: 'subscription.received_at', updated: 'generated_at', displayed: 'snapshot' },
+  freshness: 'session_delta', spoiler: true, sortable: false, filterable: false,
+  mobile: 1, presentations: ['table', 'detail', 'strip'], estimated: false,
+  comparison: 'provider_status', ...extra,
+});
+
+export const MINISECTOR_FIELDS = [
+  minisector('minisector_1', 'S1 minisectors', 'S1-minisektorer', 'minisector_status_strip', 'drivers.*.sectors.0.segments'),
+  minisector('sector_1_with_minisectors', 'S1 with minisectors', 'S1 med minisektorer', 'sector_with_minisectors', 'driver_positions.drivers[].sectors.current.sector_1 + drivers.*.sectors.0.segments', {
+    unit: 's', sortable: true, presentations: ['table', 'detail'],
+  }),
+  minisector('minisector_2', 'S2 minisectors', 'S2-minisektorer', 'minisector_status_strip', 'drivers.*.sectors.1.segments'),
+  minisector('sector_2_with_minisectors', 'S2 with minisectors', 'S2 med minisektorer', 'sector_with_minisectors', 'driver_positions.drivers[].sectors.current.sector_2 + drivers.*.sectors.1.segments', {
+    unit: 's', sortable: true, presentations: ['table', 'detail'],
+  }),
+  minisector('minisector_3', 'S3 minisectors', 'S3-minisektorer', 'minisector_status_strip', 'drivers.*.sectors.2.segments'),
+  minisector('sector_3_with_minisectors', 'S3 with minisectors', 'S3 med minisektorer', 'sector_with_minisectors', 'driver_positions.drivers[].sectors.current.sector_3 + drivers.*.sectors.2.segments', {
+    unit: 's', sortable: true, presentations: ['table', 'detail'],
+  }),
+];
+
 export const TIMING_FIELDS = [
   timing('position', 'Pos', 'Pos', 'integer', 'current_position', { mobile: 0 }),
   timing('driver', 'Driver', 'Förare', 'driver', 'racing_number', { mobile: 0, filterable: true }),
@@ -55,6 +82,7 @@ export const TIMING_FIELDS = [
   timing('tyre', 'Tyre', 'Däck', 'compound', 'compound', { source: 'current_tyres', mobile: 1 }),
   timing('tyre_age', 'Tyre age', 'Däckålder', 'integer', 'stint_laps', { source: 'current_tyres', unit: 'laps' }),
   timing('status', 'Status', 'Status', 'status', 'in_pit'),
+  ...MINISECTOR_FIELDS,
 ];
 
 const basic = (id, en, sv, source, path, type = 'text', extra = {}) => ({
@@ -208,6 +236,13 @@ export const MODULES = {
     history: { type: 'integer', min: 0, max: 30, default: 0, label: { en: 'Recent lap columns', sv: 'Kolumner för senaste varv' } },
     show_gap_toggle: { type: 'boolean', default: false, label: { en: 'Show live gap toggle', sv: 'Visa val av liveavstånd' } },
   }, ['driver_positions', 'driver_list', 'current_tyres', 'current_session', 'session_status'], { defaultFields: ['position', 'driver', 'gap', 'last_lap', 'sector_1', 'sector_2', 'sector_3', 'tyre'] }),
+  minisectors: module('minisectors', 'Minisectors', 'Minisektorer', ['position', 'driver', 'team', 'sector_1', 'sector_2', 'sector_3', ...MINISECTOR_FIELDS.map(field => field.id)], {
+    sort: { type: 'enum', values: ['position', 'driver'], default: 'position', label: { en: 'Sort by', sv: 'Sortera efter' } },
+    direction: { type: 'enum', values: ['asc', 'desc'], default: 'asc', label: { en: 'Direction', sv: 'Ordning' } },
+    rows: { type: 'integer', min: 1, max: 100, default: 30, label: { en: 'Maximum drivers', sv: 'Max antal förare' } },
+    sectors: { type: 'enum', values: ['coherent', 'latest'], default: 'coherent', label: { en: 'Sector laps', sv: 'Sektorernas varv' } },
+    show_legend: { type: 'boolean', default: true, label: { en: 'Show status legend', sv: 'Visa statusförklaring' } },
+  }, ['driver_positions', 'driver_list', 'current_session', 'session_status'], { spoiler: true, stream: 'minisectors', focus: ['driver', 'team'], defaultFields: ['driver', 'minisector_1', 'minisector_2', 'minisector_3'] }),
   race_control: module('race_control', 'Race Control', 'Race Control', ['event_time', 'message'], {
     presentation: { type: 'enum', values: ['list', 'latest_message'], default: 'list', label: { en: 'Message view', sv: 'Meddelandevy' } },
     global_messages: { type: 'enum', values: ['include', 'hide'], default: 'include', label: { en: 'Session-wide messages with driver focus', sv: 'Sessionsmeddelanden med förarfokus' } },
