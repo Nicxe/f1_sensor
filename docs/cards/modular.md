@@ -92,6 +92,8 @@ when only minisector data is unavailable.
 
 Set **Recent lap columns** under the Timing module's **Module options** to compare the latest 1–30 completed laps directly in the timing table. The default value is 0, which keeps these columns hidden. Each column is labelled with its lap number; a dash means that no usable time is available for that driver and lap.
 
+Use **Show text below times** to hide the lap number, qualifying part and other supporting text below timing values. Use **Show time status icon** to hide the arrow, dot or square in a timing value. These choices apply independently to Last lap, Best lap, sector times, combined sector and minisector fields, qualifying times and lap comparisons in that Timing module.
+
 Weather, Battles, Strategy and Replay telemetry show a collapsible **About** section by default. To remove it from one module, open that module's **Module options** and clear **Show About section**. Warnings, errors and controls remain visible.
 
 Season progression uses each driver's or team's established Formula 1 color when **Team accents** is enabled. Select a name in the legend or select its line in the chart to hide that series; select the crossed-out legend name to show it again. The data table follows the visible series. This filter is temporary and does not change the saved card configuration; hiding the legend shows every series again.

@@ -235,6 +235,8 @@ export const MODULES = {
     sectors: { type: 'enum', values: ['coherent', 'latest'], default: 'coherent', label: { en: 'Sector laps', sv: 'Sektorernas varv' } },
     history: { type: 'integer', min: 0, max: 30, default: 0, label: { en: 'Recent lap columns', sv: 'Kolumner för senaste varv' } },
     show_gap_toggle: { type: 'boolean', default: false, label: { en: 'Show live gap toggle', sv: 'Visa val av liveavstånd' } },
+    show_time_context: { type: 'boolean', default: true, label: { en: 'Show text below times', sv: 'Visa tidstext under tider' } },
+    show_time_status_icon: { type: 'boolean', default: true, label: { en: 'Show time status icon', sv: 'Visa statusikon på tider' } },
   }, ['driver_positions', 'driver_list', 'current_tyres', 'current_session', 'session_status'], { defaultFields: ['position', 'driver', 'gap', 'last_lap', 'sector_1', 'sector_2', 'sector_3', 'tyre'] }),
   minisectors: module('minisectors', 'Minisectors', 'Minisektorer', ['position', 'driver', 'team', 'sector_1', 'sector_2', 'sector_3', ...MINISECTOR_FIELDS.map(field => field.id)], {
     sort: { type: 'enum', values: ['position', 'driver'], default: 'position', label: { en: 'Sort by', sv: 'Sortera efter' } },

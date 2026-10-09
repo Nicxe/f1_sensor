@@ -68,6 +68,19 @@ test('driver focus control stays visible by default and can be hidden with a typ
   assert.throws(() => normalizeConfig({ context: { show_focus_control: 'false' } }), /show_focus_control/);
 });
 
+test('timing time details and status icons stay visible by default and accept independent choices', () => {
+  const shown = normalizeConfig({ modules: [{ type: 'timing' }] }).modules[0];
+  assert.equal(shown.options.show_time_context, true);
+  assert.equal(shown.options.show_time_status_icon, true);
+  const hidden = normalizeConfig({ modules: [{ type: 'timing', options: { show_time_context: false, show_time_status_icon: false } }] });
+  assert.equal(hidden.modules[0].options.show_time_context, false);
+  assert.equal(hidden.modules[0].options.show_time_status_icon, false);
+  assert.deepEqual(importConfig(exportConfig(hidden)), hidden);
+  for (const option of ['show_time_context', 'show_time_status_icon']) {
+    assert.throws(() => normalizeConfig({ modules: [{ type: 'timing', options: { [option]: 'false' } }] }), new RegExp(option));
+  }
+});
+
 test('About sections stay visible by default and can be hidden per supported module', () => {
   for (const type of ['weather', 'battles', 'strategy', 'telemetry']) {
     const shown = normalizeConfig({ modules: [{ type }] });
