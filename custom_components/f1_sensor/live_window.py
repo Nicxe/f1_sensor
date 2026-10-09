@@ -926,6 +926,7 @@ class _LiveSessionStatus:
     """Keep session identity with status across incremental stream updates."""
 
     session_key: int | None = None
+    multi_part: bool = False
     payload: dict[str, Any] | None = None
 
     def update_info(self, payload: Any) -> None:
@@ -935,7 +936,16 @@ class _LiveSessionStatus:
             session_key = _as_int(payload["Key"])
             if session_key != self.session_key:
                 self.session_key = session_key
+                self.multi_part = False
                 self.payload = None
+        if str(payload.get("Type") or "").strip().casefold() == "qualifying":
+            self.multi_part = True
+        meeting = payload.get("Meeting")
+        if (
+            isinstance(meeting, dict)
+            and "testing" in str(meeting.get("Name") or "").casefold()
+        ):
+            self.multi_part = True
         if "SessionStatus" in payload:
             self.payload = {"Status": payload["SessionStatus"]}
 
@@ -944,11 +954,23 @@ class _LiveSessionStatus:
 
     def finished(self, window: SessionWindow) -> bool:
         session_key = _as_int(window.session_key)
-        return (
-            session_key is not None
-            and self.session_key == session_key
-            and _session_status_finished(self.payload)
+        if session_key is None or self.session_key != session_key:
+            return False
+        session_name = window.session_name.casefold()
+        is_multi_part = (
+            self.multi_part
+            or "qualifying" in session_name
+            or "shootout" in session_name
+            or "testing" in window.meeting_name.casefold()
         )
+        if is_multi_part:
+            # Finished also marks qualifying segments and testing breaks.
+            # Only the final feed states end the whole scheduled window.
+            return isinstance(self.payload, dict) and any(
+                str(self.payload.get(field) or "").strip() in {"Finalised", "Ends"}
+                for field in ("Status", "Message", "Started")
+            )
+        return _session_status_finished(self.payload)
 
 
 class LiveSessionSupervisor:
