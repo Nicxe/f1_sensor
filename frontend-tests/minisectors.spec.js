@@ -35,6 +35,12 @@ test('timing supports separate, combined and time-only sector fields without cha
   await expect(row.locator('td').nth(2).locator('.minisector-block')).toHaveCount(6);
   await expect(row.locator('td').nth(3).locator('.time')).toHaveText('30.543');
   await expect(row.locator('td').nth(3).locator('.minisector-block')).toHaveCount(7);
+  const dimensions = await row.locator('td').nth(3).evaluate(cell => {
+    const time = cell.querySelector('.signal')?.getBoundingClientRect(), strip = cell.querySelector('.minisector-strip')?.getBoundingClientRect();
+    return time && strip ? { time: Math.round(time.width), strip: Math.round(strip.width) } : null;
+  });
+  expect(dimensions).not.toBeNull();
+  expect(dimensions.time).toBe(dimensions.strip);
 });
 
 test('independent minisector modules work on mobile and light mode', async ({ page }) => {
