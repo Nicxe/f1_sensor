@@ -13,7 +13,17 @@ from custom_components.f1_sensor.live_window import LiveSessionSupervisor, Sessi
 from custom_components.f1_sensor.signalr import LiveBus
 
 
-async def _monitor(hass, monkeypatch, initial, updates, *, source="index", key=11379):
+async def _monitor(
+    hass,
+    monkeypatch,
+    initial,
+    updates,
+    *,
+    source="index",
+    key=11379,
+    session_name="Sprint Qualifying",
+    meeting_name="Singapore Grand Prix",
+):
     """Run the real bus and supervisor with recorded-style frames and a fake clock."""
     now = datetime(2026, 10, 9, 11, 30, tzinfo=UTC)
     bus = LiveBus(hass, AsyncMock())
@@ -27,8 +37,8 @@ async def _monitor(hass, monkeypatch, initial, updates, *, source="index", key=1
     )
     supervisor._resolve_primary_window = AsyncMock(return_value=None)
     window = SessionWindow(
-        "Singapore Grand Prix",
-        "Sprint Qualifying",
+        meeting_name,
+        session_name,
         "",
         now + timedelta(hours=1),
         now + timedelta(hours=1, minutes=44),
@@ -120,7 +130,7 @@ async def test_feed_switch_clears_previous_finish(hass, monkeypatch, info_first)
 
 
 @pytest.mark.parametrize("source", ["index", "event_tracker"])
-@pytest.mark.parametrize("status", ["Finished", "Finalised", "Ends"])
+@pytest.mark.parametrize("status", ["Finalised", "Ends"])
 async def test_identified_session_finishes_after_partial_info(
     hass, monkeypatch, status, source
 ):
@@ -137,6 +147,175 @@ async def test_identified_session_finishes_after_partial_info(
     assert await supervisor._select_window([window], source="index") is None
 
 
+@pytest.mark.parametrize("source", ["index", "event_tracker"])
+@pytest.mark.parametrize("part", [1, 2])
+async def test_qualifying_segment_finish_and_break_keep_window_open(
+    hass, monkeypatch, source, part
+):
+    initial = [("SessionInfo", {"Key": 11379, "Type": "Qualifying"})]
+    updates = [
+        [("SessionData", {"Series": {"1": {"QualifyingPart": part}}})],
+        [("SessionStatus", {"Status": "Started", "Started": "Started"})],
+        [("SessionStatus", {"Status": "Finished", "Started": "Finished"})],
+        [("SessionStatus", {"Status": "Inactive", "Started": "Finished"})],
+    ] + [[]] * 5
+    reason, supervisor, window, _ = await _monitor(
+        hass, monkeypatch, initial, updates, source=source
+    )
+    assert reason == "heartbeat-timeout-80s"
+    assert await supervisor._select_window([window], source=source) is window
+
+
+async def test_qualifying_final_segment_waits_for_finalised(hass, monkeypatch):
+    initial = [("SessionInfo", {"Key": 11379, "Type": "Qualifying"})]
+    updates = [
+        [("SessionStatus", {"Status": "Started", "Started": "Started"})],
+        [("SessionStatus", {"Status": "Finished", "Started": "Finished"})],
+        [],
+        [],
+        [("SessionStatus", {"Status": "Finalised", "Started": "Finished"})],
+    ] + [[]] * 5
+    reason, supervisor, window, tick = await _monitor(
+        hass, monkeypatch, initial, updates
+    )
+    assert reason == "session-finished"
+    assert tick == 8
+    assert await supervisor._select_window([window], source="index") is None
+
+
+async def test_full_qualifying_progression_stays_live_through_two_breaks(
+    hass, monkeypatch
+):
+    initial = [("SessionInfo", {"Key": 11379, "Type": "Qualifying"})]
+    updates = [
+        [("SessionData", {"Series": {"1": {"QualifyingPart": 1}}})],
+        [("SessionStatus", {"Status": "Started", "Started": "Started"})],
+        [("SessionStatus", {"Status": "Finished", "Started": "Finished"})],
+        *([[]] * 4),
+        [("SessionStatus", {"Status": "Inactive", "Started": "Finished"})],
+        [("SessionData", {"Series": {"2": {"QualifyingPart": 2}}})],
+        [("SessionStatus", {"Status": "Started", "Started": "Started"})],
+        [("SessionStatus", {"Status": "Finished", "Started": "Finished"})],
+        *([[]] * 4),
+        [("SessionStatus", {"Status": "Inactive", "Started": "Finished"})],
+        [("SessionData", {"Series": {"3": {"QualifyingPart": 3}}})],
+        [("SessionStatus", {"Status": "Started", "Started": "Started"})],
+        [("SessionStatus", {"Status": "Finished", "Started": "Finished"})],
+        *([[]] * 4),
+        [("SessionStatus", {"Status": "Finalised", "Started": "Finished"})],
+        *([[]] * 4),
+    ]
+    reason, supervisor, window, tick = await _monitor(
+        hass, monkeypatch, initial, updates
+    )
+    assert reason == "session-finished"
+    assert tick == len(updates) - 1
+    assert await supervisor._select_window([window], source="index") is None
+
+
+@pytest.mark.parametrize(
+    "old_info",
+    [
+        {"Key": 11378, "Type": "Qualifying"},
+        {
+            "Key": 11378,
+            "Type": "Practice",
+            "Meeting": {"Name": "Pre-Season Testing"},
+        },
+    ],
+)
+async def test_new_race_key_clears_previous_multi_part_context(
+    hass, monkeypatch, old_info
+):
+    initial = [
+        ("SessionInfo", old_info),
+        ("SessionStatus", {"Status": "Finished"}),
+    ]
+    updates = [
+        [("SessionInfo", {"Key": 11379, "Type": "Race"})],
+        [("SessionStatus", {"Status": "Finished"})],
+    ] + [[]] * 5
+    reason, supervisor, window, tick = await _monitor(
+        hass, monkeypatch, initial, updates, session_name="Race"
+    )
+    assert reason == "session-finished"
+    assert tick == 5
+    assert await supervisor._select_window([window], source="index") is None
+
+
+@pytest.mark.parametrize("meeting_name", ["Pre-Season Testing", "F1"])
+@pytest.mark.parametrize("source", ["index", "event_tracker"])
+async def test_testing_day_remains_live_through_lunch_finish(
+    hass, monkeypatch, meeting_name, source
+):
+    initial = [
+        (
+            "SessionInfo",
+            {
+                "Key": 11470,
+                "Type": "Practice",
+                "Meeting": {"Name": "Pre-Season Testing"},
+            },
+        )
+    ]
+    updates = [
+        [("SessionStatus", {"Status": "Started", "Started": "Started"})],
+        [("SessionInfo", {"Meeting": {"Name": "Updated event name"}})],
+        [("SessionStatus", {"Status": "Finished", "Started": "Finished"})],
+        *([[]] * 4),
+        [("SessionStatus", {"Status": "Inactive", "Started": "Finished"})],
+        [("SessionStatus", {"Status": "Finished", "Started": "Finished"})],
+        *([[]] * 4),
+        [("SessionStatus", {"Status": "Started", "Started": "Started"})],
+        [("SessionStatus", {"Status": "Finalised", "Started": "Started"})],
+        *([[]] * 4),
+    ]
+    reason, supervisor, window, tick = await _monitor(
+        hass,
+        monkeypatch,
+        initial,
+        updates,
+        key=11470,
+        session_name="Day 1",
+        meeting_name=meeting_name,
+        source=source,
+    )
+    assert reason == "session-finished"
+    assert tick == len(updates) - 1
+    assert await supervisor._select_window([window], source=source) is None
+
+
+async def test_qualifying_reconnect_during_break_keeps_window_open(hass, monkeypatch):
+    initial = [
+        ("SessionStatus", {"Status": "Inactive", "Started": "Finished"}),
+        ("SessionInfo", {"Key": 11379, "Type": "Qualifying"}),
+    ]
+    reason, supervisor, window, _ = await _monitor(hass, monkeypatch, initial, [[]] * 6)
+    assert reason == "heartbeat-timeout-80s"
+    assert await supervisor._select_window([window], source="index") is window
+
+
+async def test_session_info_type_protects_renamed_qualifying_session(hass, monkeypatch):
+    initial = [("SessionInfo", {"Key": 11379, "Type": "Qualifying"})]
+    updates = [[("SessionStatus", {"Status": "Finished"})]] + [[]] * 5
+    reason, supervisor, window, _ = await _monitor(
+        hass, monkeypatch, initial, updates, session_name="Timed Segment"
+    )
+    assert reason == "heartbeat-timeout-80s"
+    assert await supervisor._select_window([window], source="index") is window
+
+
+async def test_practice_finish_remains_terminal(hass, monkeypatch):
+    initial = [("SessionInfo", {"Key": 11379, "Type": "Practice"})]
+    updates = [[("SessionStatus", {"Status": "Finished"})]] + [[]] * 5
+    reason, supervisor, window, tick = await _monitor(
+        hass, monkeypatch, initial, updates, session_name="Practice 1"
+    )
+    assert reason == "session-finished"
+    assert tick == 4
+    assert await supervisor._select_window([window], source="index") is None
+
+
 async def test_matching_identity_arrives_after_unknown_terminal_status(
     hass, monkeypatch
 ):
@@ -148,7 +327,7 @@ async def test_matching_identity_arrives_after_unknown_terminal_status(
         [("SessionStatus", {"Status": "Finished"})],
     ] + [[]] * 5
     reason, supervisor, window, tick = await _monitor(
-        hass, monkeypatch, initial, updates
+        hass, monkeypatch, initial, updates, session_name="Practice 1"
     )
     assert reason == "session-finished"
     assert tick == 7

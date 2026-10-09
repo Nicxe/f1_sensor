@@ -1,11 +1,13 @@
 """Acceptance cases for required checks and branch routing."""
 
 import unittest
+from unittest.mock import Mock, patch
 
 from scripts.ci_policy import (
     JOBS,
     branch_error,
     gate_errors,
+    hotfix_matches_dev,
     select_jobs,
     should_deploy,
 )
@@ -25,6 +27,40 @@ def pull(base, head, fork=False):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_owner_beta_hotfix_requires_matching_dev_files(self):
+        event = pull("beta", "hotfix/issue-799-multipart-session")
+        event["pull_request"]["user"]["login"] = "Nicxe"
+        files = ["custom_components/f1_sensor/live_window.py"]
+        with patch("scripts.ci_policy.hotfix_matches_dev", return_value=True) as check:
+            self.assertEqual(branch_error(event, files), "")
+            check.assert_called_once_with(files)
+        with patch("scripts.ci_policy.hotfix_matches_dev", return_value=False):
+            self.assertTrue(branch_error(event, files))
+        event["pull_request"]["user"]["login"] = "contributor"
+        self.assertTrue(branch_error(event, files))
+        event["pull_request"]["user"]["login"] = "Nicxe"
+        event["pull_request"]["head"]["repo"]["full_name"] = "fork/repo"
+        self.assertTrue(branch_error(event, files))
+
+    def test_hotfix_file_check_rejects_missing_and_different_blobs(self):
+        self.assertFalse(hotfix_matches_dev([]))
+        with patch("scripts.ci_policy.subprocess.run") as run:
+            run.side_effect = [
+                Mock(returncode=0, stdout="same\n"),
+                Mock(returncode=0, stdout="same\n"),
+            ]
+            self.assertTrue(hotfix_matches_dev(["file.py"]))
+            self.assertEqual(run.call_count, 2)
+        with patch("scripts.ci_policy.subprocess.run") as run:
+            run.side_effect = [
+                Mock(returncode=0, stdout="head\n"),
+                Mock(returncode=0, stdout="dev\n"),
+            ]
+            self.assertFalse(hotfix_matches_dev(["file.py"]))
+        with patch("scripts.ci_policy.subprocess.run") as run:
+            run.return_value = Mock(returncode=1)
+            self.assertFalse(hotfix_matches_dev(["file.py"]))
+
     def test_owner_maintenance_can_repair_main_without_promoting_runtime_code(self):
         event = pull("main", "maintenance/dependency-ci-recovery")
         event["pull_request"]["user"]["login"] = "Nicxe"
