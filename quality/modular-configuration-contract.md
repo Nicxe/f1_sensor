@@ -344,7 +344,7 @@ Kalenderns passerade läge gäller publicerad starttid, inte bekräftat sessions
 
 Möjliga källor: `driver_positions`, `driver_list`, `current_tyres`, `current_session`, `session_status`.
 
-Fält: `position`, `driver`, `team`, `gap`, `interval`, `last_lap`, `best_lap`, `lap_delta`, `sector_1`, `sector_2`, `sector_3`, `q1_time`, `q1_position`, `best_sector_1`, `q2_time`, `q2_position`, `best_sector_2`, `q3_time`, `q3_position`, `best_sector_3`, `theoretical_lap`, `laps`, `tyre`, `tyre_age`, `status`.
+Fält: `position`, `driver`, `team`, `gap`, `interval`, `last_lap`, `best_lap`, `lap_delta`, `sector_1`, `sector_2`, `sector_3`, `q1_time`, `q1_position`, `best_sector_1`, `q2_time`, `q2_position`, `best_sector_2`, `q3_time`, `q3_position`, `best_sector_3`, `theoretical_lap`, `laps`, `tyre`, `tyre_age`, `status`, `minisector_1`, `sector_1_with_minisectors`, `minisector_2`, `sector_2_with_minisectors`, `minisector_3`, `sector_3_with_minisectors`.
 
 Standardfält: `position`, `driver`, `gap`, `last_lap`, `sector_1`, `sector_2`, `sector_3`, `tyre`.
 
@@ -356,6 +356,24 @@ Standardfält: `position`, `driver`, `gap`, `last_lap`, `sector_1`, `sector_2`, 
 | `rows` | integer: 1–100 | `30` |
 | `sectors` | enum: `"coherent"`, `"latest"` | `"coherent"` |
 | `history` | integer: 0–30 | `0` |
+
+Minisektorfälten är valfria och läggs inte till av befintliga profiler. `minisector_1/2/3` visar endast källans statusblock. `sector_1/2/3_with_minisectors` kombinerar motsvarande befintliga sektortid med samma statusblock; ingen minsektortid beräknas. Statusen `2051` är övergripande bäst, `2049` personbäst och `2048` registrerad. Gul innebär inte belagt långsammare än föregående varv. Reset, särskild och okänd kod visas neutralt. Data levereras sessionsbundet till synliga modulära konsumenter och skapar ingen sensor eller Recorder-historik.
+
+### `minisectors` — Minisektorer
+
+Möjliga källor: `driver_positions`, `driver_list`, `current_session`, `session_status` samt den delade sessionsbundna minsektorströmmen.
+
+Fält: `position`, `driver`, `team`, `sector_1`, `sector_2`, `sector_3`, `minisector_1`, `sector_1_with_minisectors`, `minisector_2`, `sector_2_with_minisectors`, `minisector_3`, `sector_3_with_minisectors`.
+
+Standardfält: `driver`, `minisector_1`, `minisector_2`, `minisector_3`.
+
+| Alternativ under `options` | Typ och tillåtna värden | Standard |
+| --- | --- | --- |
+| `sort` | enum: `"position"`, `"driver"` | `"position"` |
+| `direction` | enum: `"asc"`, `"desc"` | `"asc"` |
+| `rows` | integer: 1–100 | `30` |
+| `sectors` | enum: `"coherent"`, `"latest"` | `"coherent"` |
+| `show_legend` | Boolesk | `true` |
 
 ### `race_control` — Race Control
 

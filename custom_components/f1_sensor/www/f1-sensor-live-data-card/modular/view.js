@@ -1,7 +1,7 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 let chartLoading, mapLoading, telemetryLoading;
-const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
+const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatTimingGap, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./catalog.js'), load('./semantics.js'), load('../platform/branding.js'),
 ]);
 
@@ -178,6 +178,17 @@ export const sharedStyles = css`
   .module-picker select { display:block; max-width:100%; width:100%; min-height:44px; font:inherit; color:inherit; background:var(--f1-surface); border:1px solid var(--f1-border); border-radius:7px; padding:8px; }
   .timing-gap-toggle { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
   .timing-gap-toggle button { min-width:88px; }
+  .minisector-cell { display:flex; flex-direction:column; align-items:stretch; gap:6px; width:max-content; }
+  .minisector-cell > .cell-stack { width:100%; align-items:stretch; }
+  .minisector-cell .signal { box-sizing:border-box; width:100%; justify-content:center; }
+  .minisector-cell .provenance { text-align:center; }
+  .minisector-strip { display:inline-flex; align-items:center; gap:3px; min-width:max-content; min-height:22px; padding:2px 0; }
+  .minisector-block { width:11px; height:20px; flex:0 0 11px; display:grid; place-items:center; border:1px solid color-mix(in srgb,currentColor 45%,transparent); border-radius:4px; font-size:7px; line-height:1; font-weight:900; }
+  .minisector-block[data-status=overall] .minisector-mark { transform:rotate(45deg); }
+  .minisector-block[data-status=unset],.minisector-block[data-status=special],.minisector-block[data-status=unknown] { background:var(--f1-panel)!important; color:var(--f1-muted)!important; }
+  .minisector-empty { color:var(--f1-muted); }
+  .minisector-legend { display:flex; flex-wrap:wrap; gap:8px 16px; margin:8px 0 0; padding:0; list-style:none; }
+  .minisector-legend li { display:flex; align-items:center; gap:6px; }
   th.recent-lap.lap-start,td.recent-lap.lap-start { border-left:2px solid var(--f1-border,#6c7480); }
   .documents { list-style:none; margin:0; padding:0; }
   .documents li { border-bottom:1px solid var(--f1-divider); padding:12px 0; overflow-wrap:anywhere; }
@@ -194,7 +205,7 @@ export const sharedStyles = css`
   .details dl { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin:0; }
   .details dd { margin:2px 0 0; }
   @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
-  @media (forced-colors:active) { :host,ha-card { --f1-surface:Canvas!important; --f1-panel:Canvas!important; --f1-text:CanvasText!important; --f1-muted:CanvasText!important; --f1-border:CanvasText!important; --f1-divider:GrayText!important; --f1-focus:Highlight!important; } :host,ha-card { color:CanvasText!important; background:Canvas!important; } .signal,.chip,.compound,.track-symbol { forced-color-adjust:auto; border-color:CanvasText!important; color:CanvasText!important; background:Canvas!important; } button { border:1px solid ButtonText; } .driver { border-left-color:CanvasText; } .muted,th,.provenance,.event-meta { color:CanvasText; } }
+  @media (forced-colors:active) { :host,ha-card { --f1-surface:Canvas!important; --f1-panel:Canvas!important; --f1-text:CanvasText!important; --f1-muted:CanvasText!important; --f1-border:CanvasText!important; --f1-divider:GrayText!important; --f1-focus:Highlight!important; } :host,ha-card { color:CanvasText!important; background:Canvas!important; } .signal,.chip,.compound,.track-symbol,.minisector-block { forced-color-adjust:auto; border-color:CanvasText!important; color:CanvasText!important; background:Canvas!important; } button { border:1px solid ButtonText; } .driver { border-left-color:CanvasText; } .muted,th,.provenance,.event-meta { color:CanvasText; } }
 `;
 
 export class F1ModuleView extends LitElement {
@@ -276,6 +287,7 @@ export class F1ModuleView extends LitElement {
       case 'weather': return this.weather();
       case 'calendar': return this.calendar();
       case 'timing': return this.timing();
+      case 'minisectors': return this.timing();
       case 'results': case 'standings': case 'tyres': case 'pit_stops': return this.results();
       case 'strategy': return this.strategy();
       case 'battles': case 'timeline': case 'incidents': return this.model.summary || this.module.options.presentation === 'table' ? this.results() : this.incidents();
@@ -621,12 +633,12 @@ export class F1ModuleView extends LitElement {
   }
   timeCell(value) {
     const status = timingStatus(value), signal = SIGNALS[status], colors = statusColors(status, this.settings.mode, this.settings.appearance.palette);
-    const signals = this.settings.accessibility.signals;
+    const signals = this.settings.accessibility.signals, contextClass = this.module.options.show_time_context !== false ? 'provenance' : 'sr';
     return html`<div class="cell-stack"><span class="signal ${status}" style=${`background:${colors.background};color:${colors.color}`}>
-      ${signals !== 'text' && status !== 'unknown' ? html`<span aria-hidden="true">${signal.symbol}</span>` : ''}
+      ${this.module.options.show_time_status_icon !== false && signals !== 'text' && status !== 'unknown' ? html`<span aria-hidden="true">${signal.symbol}</span>` : ''}
       <span class="time">${formatTime(value?.time)}</span>
       <span class=${signals === 'shape' ? 'sr' : ''}>${label(signal, this.language)}</span>
-    </span>${value?.session_part ? html`<span class="provenance">${this.model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${value.session_part}</span>` : ''}${value?.lap ? html`<span class="provenance">${this.w('modular.lap')} ${value.lap}${status === 'previous' ? this.w('modular.previous') : ''}</span>` : html`<span class="sr">${this.w('modular.lap_unknown')}</span>`}</div>`;
+    </span>${value?.session_part ? html`<span class=${contextClass}>${this.model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${value.session_part}</span>` : ''}${value?.lap ? html`<span class=${contextClass}>${this.w('modular.lap')} ${value.lap}${status === 'previous' ? this.w('modular.previous') : ''}</span>` : html`<span class="sr">${this.w('modular.lap_unknown')}</span>`}</div>`;
   }
   driverCell(row) {
     const appearance = this.settings.appearance;
@@ -655,14 +667,38 @@ export class F1ModuleView extends LitElement {
     const flag = trackSignal(value);
     return flag ? html`<span class="track-signal"><span class="track-symbol" aria-hidden="true" style=${`background:${flag.color};color:${flag.ink}`}>${flag.symbol}</span><span>${label(flag, this.language)}</span></span>` : value ?? '—';
   }
+  minisectorStatus(raw) {
+    if (raw === 2051) return { id: 'overall', timing: 'overall', symbol: '◆', key: 'modular.minisector_overall_best' };
+    if (raw === 2049) return { id: 'personal', timing: 'personal', symbol: '●', key: 'modular.minisector_personal_best' };
+    if (raw === 2048) return { id: 'recorded', timing: 'timed', symbol: '■', key: 'modular.minisector_recorded' };
+    if (raw === 0 || raw === null) return { id: 'unset', timing: 'unknown', symbol: '–', key: 'modular.minisector_not_set' };
+    if (raw === 2064) return { id: 'special', timing: 'unknown', symbol: '·', key: 'modular.minisector_special_status' };
+    return { id: 'unknown', timing: 'unknown', symbol: '?', key: 'modular.minisector_unknown_status' };
+  }
+  minisectorStrip(segments, sector = null) {
+    if (!Array.isArray(segments) || !segments.length) return html`<span class="minisector-empty" aria-label=${this.w('modular.no_minisector_status_available')}>—</span>`;
+    return html`<span class="minisector-strip" role="list" aria-label=${sector ? `${this.w('modular.sector')} ${sector}` : this.w('modular.minisectors')}>
+      ${segments.map(segment => {
+        const status = this.minisectorStatus(segment.raw), colors = statusColors(status.timing, this.settings.mode, this.settings.appearance.palette);
+        const raw = status.id === 'unknown' ? ` · ${segment.raw}` : '';
+        return html`<span class="minisector-block" role="listitem" data-status=${status.id} style=${`background:${colors.background};color:${colors.color}`} aria-label=${`${this.w('modular.minisector')} ${segment.index + 1}: ${this.w(status.key)}${raw}`}><span class="minisector-mark" aria-hidden="true">${status.symbol}</span></span>`;
+      })}
+    </span>`;
+  }
   cell(row, id) {
     if (id === 'driver') return this.driverCell(row);
-    if (this.field(id)?.type === 'qualifying_duration') return html`<span class="time">${formatTime(row[id]?.time)}</span><span class="provenance">${row[id]?.sprint ? 'SQ' : 'Q'}${row[id]?.part}${row[id]?.eliminated ? this.w('modular.eliminated') : ''}</span>`;
-    if (id === 'theoretical_lap') return html`<span class="time">${formatTime(row[id])}</span><span class="provenance">${this.w('modular.sum_of_personal_best_sectors_may_span_laps')}</span>`;
+    if (id === 'gap' || id === 'interval') return formatTimingGap(row[id], this.w('modular.lap'));
+    if (this.field(id)?.type === 'qualifying_duration') return html`<span class="time">${formatTime(row[id]?.time)}</span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${row[id]?.sprint ? 'SQ' : 'Q'}${row[id]?.part}${row[id]?.eliminated ? this.w('modular.eliminated') : ''}</span>`;
+    if (id === 'theoretical_lap') return html`<span class="time">${formatTime(row[id])}</span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${this.w('modular.sum_of_personal_best_sectors_may_span_laps')}</span>`;
+    if (/^minisector_[123]$/.test(id)) return this.minisectorStrip(row[id], Number(id.at(-1)));
+    if (/^sector_[123]_with_minisectors$/.test(id)) {
+      const sector = Number(id.match(/^sector_([123])/)[1]), value = row[id] ?? {};
+      return html`<div class="minisector-cell">${this.timeCell(value.time)}${this.minisectorStrip(value.segments, sector)}</div>`;
+    }
     if (FIELDS[id]?.type === 'sector' || FIELDS[id]?.type === 'duration') return this.timeCell(row[id]);
     if (id === 'lap_delta') {
       const delta = row[id];
-      return delta ? html`<span class="time">${delta.symbol} ${formatDelta(delta.value)}<span class="sr"> ${this.w(delta.status, { faster: 'snabbare', slower: 'långsammare', equal: 'oförändrat' }[delta.status])}</span></span><span class="provenance">${this.w('modular.vs_lap')} ${delta.reference_lap}</span>` : '—';
+      return delta ? html`<span class="time">${delta.symbol} ${formatDelta(delta.value)}<span class="sr"> ${this.w(delta.status, { faster: 'snabbare', slower: 'långsammare', equal: 'oförändrat' }[delta.status])}</span></span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${this.w('modular.vs_lap')} ${delta.reference_lap}</span>` : '—';
     }
     if (id === 'tyre') return this.tyreCell(row.tyre, this.module.type !== 'tyres' || !this.model.statistics || this.module.options.show_compound_name);
     if (id === 'status') return this.w(({ in_pit: 'In pit', pit_out: 'Pit out', retired: 'Retired', stopped: 'Stopped', on_track: 'On track' })[row.status] ?? row.status ?? '—', ({ in_pit: 'I depå', pit_out: 'Ut ur depå', retired: 'Brutit', stopped: 'Stannat', on_track: 'På banan' })[row.status] ?? row.status ?? '—');
@@ -696,9 +732,11 @@ export class F1ModuleView extends LitElement {
           <h3>${row.name} · ${row.team ?? '—'}</h3><dl>${fields.filter(id => id !== 'driver').map(id => html`<div><dt class="muted">${label(this.field(id), this.language)}</dt><dd>${this.cell(row, id)}</dd></div>`)}</dl>
           ${row.history.length ? html`<h3 style="margin-top:16px">${this.w('modular.completed_laps')}</h3><ol>${row.history.map(lap => html`<li>${this.w('modular.lap')} ${lap.lap}: ${formatTime(lap.time)}</li>`)}</ol>` : ''}
         </td></tr>` : ''}`)}</tbody>
-    </table></div>${this.timingLegend()}`;
+    </table></div>${this.timingLegend(fields)}`;
   }
-  timingLegend() {
+  timingLegend(fields = []) {
+    const hasMinisectors = fields.some(id => /^minisector_[123]$|^sector_[123]_with_minisectors$/.test(id));
+    if (this.module.type === 'minisectors' && this.module.options.show_legend === false) return '';
     const meanings = {
       overall: ['Fastest in the relevant session or qualifying part.', 'Snabbast i relevant session eller kvaldel.'],
       personal: ["This driver's best in the relevant comparison.", 'Förarens bästa i den aktuella jämförelsen.'],
@@ -708,8 +746,10 @@ export class F1ModuleView extends LitElement {
       invalid: ['The source marks this time as invalid.', 'Källan markerar tiden som ogiltig.'],
       unknown: ['No usable time is available. A dash does not mean zero.', 'Ingen användbar tid finns. Ett tankstreck betyder inte noll.'],
     };
-    return html`<details class="timing-legend"><summary data-focus="timing-legend">${this.w('modular.timing_explained')}</summary>
+    return html`<details class="timing-legend"><summary data-focus="timing-legend">${hasMinisectors ? this.w('modular.timing_and_minisector_status_explained') : this.w('modular.timing_explained')}</summary>
       <dl>${Object.entries(meanings).map(([status, explanation]) => html`<div><dt><span aria-hidden="true">${SIGNALS[status].symbol} </span><span>${label(SIGNALS[status], this.language)}</span></dt><dd>${this.w(...explanation)}</dd></div>`)}</dl>
+      ${hasMinisectors ? html`<p>${this.w('modular.minisectors_provider_status_only')}</p>
+        <ul class="minisector-legend">${[2051, 2049, 2048, 0, 2064, -1].map(raw => { const status = this.minisectorStatus(raw), colors = statusColors(status.timing, this.settings.mode, this.settings.appearance.palette); return html`<li><span class="minisector-block" data-status=${status.id} style=${`background:${colors.background};color:${colors.color}`} aria-hidden="true"><span class="minisector-mark">${status.symbol}</span></span><span>${this.w(status.key)}</span></li>`; })}</ul>` : ''}
       <p>${this.w('modular.deleted_or_invalid_status_takes_priority_over_best_time_markings_older_sectors_use_the')}</p>
       <p>${this.module.options.sectors === 'latest'
         ? this.w('modular.latest_sectors_can_come_from_different_laps_each_older_sector_is_marked_with_its')

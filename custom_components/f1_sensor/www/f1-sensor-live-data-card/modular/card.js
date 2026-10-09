@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ LitElement, html, css, repeat }, { normalizeConfig, configWarnings, resolveSelection }, { MODULES, label, moduleTitle, moduleFocusKinds }, data, { SectorStore, safeImageUrl, cardAccent }, { watchEntries, watchRaceControl, watchGroup, watchAnalysis, watchTrackMap, HistoryResources, callEntityService }, { sharedStyles, translatePlural, words, dateTime }, { visibilityMet, visibilityMediaQueries, hasTimeVisibility }] = await Promise.all([
+const [{ LitElement, html, css, repeat }, { normalizeConfig, configWarnings, resolveSelection }, { MODULES, label, moduleTitle, moduleFocusKinds }, data, { SectorStore, safeImageUrl, cardAccent }, { watchEntries, watchRaceControl, watchGroup, watchAnalysis, watchTrackMap, watchMinisectors, HistoryResources, callEntityService }, { sharedStyles, translatePlural, words, dateTime }, { visibilityMet, visibilityMediaQueries, hasTimeVisibility }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./config.js'), load('./catalog.js'), load('./data.js'), load('./semantics.js'), load('./connection.js'), load('./view.js'), load('./visibility.js'),
 ]);
 const { makeDemo } = await load('./demo.js');
@@ -12,6 +12,7 @@ await load('./viewing-controls.js');
 const season = await load('./season-data.js');
 const sessionData = await load('./session-data.js');
 const analysisData = await load('./analysis-data.js');
+const minisectorData = await load('./minisector-data.js');
 const telemetryData = await load('./telemetry-data.js');
 const { mapModel, mapExpiry } = await load('./map-data.js');
 const { hasF1Action, dispatchF1CardAction } = await load('../platform/actions.js');
@@ -106,7 +107,7 @@ export class F1SensorCard extends LitElement {
     this.savedSources = new data.RetainedSources();
     this.history = new HistoryResources(() => { this.revision++; });
     this.telemetry = new HistoryResources(() => { this.revision++; }); this.telemetryRequests = new Map();
-    this.viewingRequest = null; this.raceControlRequest = null; this.replayRequests = new Map(); this.sectors = new SectorStore(); this.choices = new Map(); this.moduleNodes = new Map(); this.eventState = { data: [], status: 'loading' }; this.analysisState = { data: null, status: 'loading' }; this.mapState = { data: null, status: 'loading' };
+    this.viewingRequest = null; this.raceControlRequest = null; this.replayRequests = new Map(); this.sectors = new SectorStore(); this.choices = new Map(); this.moduleNodes = new Map(); this.minisectorResources = new Map(); this.eventState = { data: [], status: 'loading' }; this.analysisState = { data: null, status: 'loading' }; this.mapState = { data: null, status: 'loading' };
   }
   get sourceHass() { return this.sample?.hass ?? this.hass; }
   get modelPreview() { return this.sample?.preview ?? this.previewData; }
@@ -262,6 +263,8 @@ export class F1SensorCard extends LitElement {
     this.frozen = false; this.frozenModels = null; this.frozenFocus = null; this.frozenRoster = null; this.frozenGeneration = null;
     this.history.close(); this.telemetry.close(); this.telemetryRequests.clear(); this.telemetryContext = '';
     this.stopEntries?.(); this.stopEvents?.(); this.stopAnalysis?.(); this.stopMap?.(); this.group?.close();
+    for (const resource of this.minisectorResources.values()) resource.stop?.();
+    this.minisectorResources.clear();
     this.stopEntries = this.stopEvents = this.stopAnalysis = this.stopMap = this.group = null; this.mapKey = ''; this.mapState = { data: null, status: 'loading' }; this.analysisKey = ''; this.analysisState = { data: null, status: 'loading' };
     this.connection = null; this.eventKey = ''; this.groupKey = ''; this.groupContext = {}; this.sectors.reset();
   }
@@ -331,6 +334,20 @@ export class F1SensorCard extends LitElement {
     if (analysisKey !== this.analysisKey) {
       this.stopAnalysis?.(); this.stopAnalysis = null; this.analysisKey = analysisKey; this.analysisState = { data: null, status: 'loading' };
       if (analysisKey) this.stopAnalysis = watchAnalysis(this.sourceHass, analysisKey, state => { this.analysisState = state; this.revision++; });
+    }
+    const minisectorContexts = new Map();
+    if (entry && data.spoilerState(this.sourceHass, entry, this.config.context.spoilers) === 'clear') {
+      for (const module of this.config.modules.filter(module => usable(module) && minisectorData.usesMinisectors(module))) {
+        const context = minisectorData.minisectorContext(this.sourceHass, entry, resolveSelection(this.config.context, module, this.groupContext));
+        if (context) minisectorContexts.set(context.key, context);
+      }
+    }
+    for (const [key, resource] of this.minisectorResources) if (!minisectorContexts.has(key)) { resource.stop?.(); this.minisectorResources.delete(key); }
+    for (const [key, context] of minisectorContexts) {
+      if (this.minisectorResources.has(key)) continue;
+      const resource = { context, state: { status: 'loading', data: null } };
+      this.minisectorResources.set(key, resource);
+      resource.stop = watchMinisectors(this.sourceHass, context, state => { resource.state = state; this.revision++; });
     }
     const eventKey = entry && this.config.modules.some(module => usable(module) && module.type === 'race_control') && data.spoilerState(this.sourceHass, entry, this.config.context.spoilers) === 'clear' ? entry.entities?.race_control : '';
     if (eventKey !== this.eventKey) {
@@ -496,6 +513,23 @@ export class F1SensorCard extends LitElement {
       : status === 'missing' ? this.w('modular.this_data_source_is_not_available_in_this_installation')
         : this.w('modular.no_session_data_is_currently_available_your_settings_are_kept');
   }
+  minisectorState(module) {
+    if (this.modelPreview?.minisectors) return this.modelPreview.minisectors;
+    const selection = resolveSelection(this.config.context, module, this.groupContext);
+    const context = minisectorData.minisectorContext(this.sourceHass, this.entry, selection);
+    if (!context) return { status: 'unavailable', reason: 'session_unavailable', drivers: {} };
+    const shared = this.minisectorResources.get(context.key)?.state;
+    if (!shared) return { status: 'loading', reason: null, drivers: {} };
+    if (shared.data) return { ...shared.data, transportStatus: shared.status, transportError: shared.error ?? null };
+    return { status: shared.status, reason: shared.status === 'error' ? 'subscription_unavailable' : null, drivers: {}, transportError: shared.error ?? null };
+  }
+  minisectorMessage(state) {
+    if (state.status === 'loading' || state.transportStatus === 'refreshing') return this.w('modular.minisectors_waiting_for_status_data');
+    if (state.reason === 'spoiler_protected') return this.w('modular.minisectors_hidden_by_spoiler_protection');
+    if (state.reason === 'session_unavailable') return this.w('modular.minisectors_selected_session_unavailable');
+    if (state.reason === 'source_inactive') return this.w('modular.minisectors_waiting_for_active_source');
+    return this.w('modular.minisectors_unavailable_timing_continues');
+  }
   clockDescription(clock) {
     if (clock.notApplicable) return this.w('modular.available_for_race_sessions');
     if (clock.value === null) return clock.contextMismatch ? this.w('modular.clock_belongs_to_another_session_or_qualifying_part') : clock.phase === 'idle' ? this.w('modular.session_clock_has_not_started') : this.missingMessage(clock.source.status);
@@ -647,10 +681,22 @@ export class F1SensorCard extends LitElement {
         if (model.summary) model.notice = this.w('modular.only_drivers_with_recorded_track_limit_data_are_listed_a_missing_driver_is_not');
       }
       if (module.type === 'timing') {
-        Object.assign(model, data.timingRows(viewHass, entry, moduleSession, this.sectors, module, focus));
+        const minisectors = minisectorData.usesMinisectors(module) ? this.minisectorState(effective) : null;
+        Object.assign(model, data.timingRows(viewHass, entry, moduleSession, this.sectors, module, focus, minisectors));
         model.context = { meeting: moduleSession.meeting, session: moduleSession.name, key: moduleSession.key, source: 'TimingData', updated: model.source.updated_at, updatedKind: 'ha_state' };
         if (model.currentPart && ['qualifying', 'sprint_qualifying'].includes(model.sessionKind)) model.badge = `${model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${model.currentPart}`;
         if (model.fields.some(id => /^q[123]_/.test(id)) && !['qualifying', 'sprint_qualifying'].includes(model.sessionKind)) model.notice = this.w('modular.q_sq_columns_are_available_during_qualifying_sessions_other_columns_continue_to_show_their');
+        if (minisectors && minisectors.status !== 'ready') model.notice = [model.notice, this.minisectorMessage(minisectors)].filter(Boolean).join(' ');
+      }
+      if (module.type === 'minisectors') {
+        const minisectors = this.minisectorState(effective);
+        Object.assign(model, data.timingRows(viewHass, entry, moduleSession, this.sectors, module, focus, minisectors));
+        model.context = { meeting: moduleSession.meeting, session: moduleSession.name, key: moduleSession.key, source: 'TimingData status segments', updated: minisectors.generated_at, updatedKind: 'received' };
+        model.minisectorStatus = minisectors.status;
+        if (minisectors.status !== 'ready') {
+          model.blocked = this.minisectorMessage(minisectors);
+          if (module.unavailable === 'hide' && !this.modelPreview) model.hidden = true;
+        } else if (minisectors.transportStatus && minisectors.transportStatus !== 'ready') model.notice = this.w('modular.minisectors_connection_interrupted_retained');
       }
       if (module.type === 'calendar') {
         Object.assign(model, data.scheduleRows(viewHass, entry, module, this.modelPreview?.now ?? Date.now()));
