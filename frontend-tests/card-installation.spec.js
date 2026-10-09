@@ -46,3 +46,20 @@ for (const legacy of [false, true]) {
     expect(requests.some(url => url.includes('/modular/migration-editor.js'))).toBe(legacy);
   });
 }
+
+test('managed registration resolves the localization catalog before card entrypoints', async ({ page }) => {
+  const requests = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.searchParams.get('v') === 'ios-bootstrap') requests.push(url.pathname);
+  });
+
+  await page.evaluate(async url => { await import(url); }, `${base}register.js?v=ios-bootstrap&legacy=0`);
+
+  const catalog = requests.indexOf(`${base}modular/catalog.js`);
+  const card = requests.indexOf(`${base}modular/card.js`);
+  const editor = requests.indexOf(`${base}modular/editor.js`);
+  expect(catalog).toBeGreaterThanOrEqual(0);
+  expect(card).toBeGreaterThan(catalog);
+  expect(editor).toBeGreaterThan(catalog);
+});

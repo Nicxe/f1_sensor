@@ -5,6 +5,8 @@ const { registerF1CardMetadata } = await import(`./platform/card-registry.js${ca
 const includeLegacy = new URL(import.meta.url).searchParams.get('legacy') !== '0';
 registerF1CardMetadata(includeLegacy);
 
+// Resolve localization before card entrypoints import the catalog concurrently.
+await import(`./modular/catalog.js${cacheSuffix}`);
 if (includeLegacy) await import(`./f1-sensor-live-data-card.js${cacheSuffix}`);
 await import(`./modular/card.js${cacheSuffix}`);
 await import(`./modular/editor.js${cacheSuffix}`);
