@@ -921,6 +921,58 @@ def _window_identity(window: SessionWindow) -> tuple[Any, ...]:
     )
 
 
+@dataclass
+class _LiveSessionStatus:
+    """Keep session identity with status across incremental stream updates."""
+
+    session_key: int | None = None
+    multi_part: bool = False
+    payload: dict[str, Any] | None = None
+
+    def update_info(self, payload: Any) -> None:
+        if not isinstance(payload, dict):
+            return
+        if "Key" in payload:
+            session_key = _as_int(payload["Key"])
+            if session_key != self.session_key:
+                self.session_key = session_key
+                self.multi_part = False
+                self.payload = None
+        if str(payload.get("Type") or "").strip().casefold() == "qualifying":
+            self.multi_part = True
+        meeting = payload.get("Meeting")
+        if (
+            isinstance(meeting, dict)
+            and "testing" in str(meeting.get("Name") or "").casefold()
+        ):
+            self.multi_part = True
+        if "SessionStatus" in payload:
+            self.payload = {"Status": payload["SessionStatus"]}
+
+    def update_status(self, payload: Any) -> None:
+        self.payload = payload if isinstance(payload, dict) else None
+
+    def finished(self, window: SessionWindow) -> bool:
+        session_key = _as_int(window.session_key)
+        if session_key is None or self.session_key != session_key:
+            return False
+        session_name = window.session_name.casefold()
+        is_multi_part = (
+            self.multi_part
+            or "qualifying" in session_name
+            or "shootout" in session_name
+            or "testing" in window.meeting_name.casefold()
+        )
+        if is_multi_part:
+            # Finished also marks qualifying segments and testing breaks.
+            # Only the final feed states end the whole scheduled window.
+            return isinstance(self.payload, dict) and any(
+                str(self.payload.get(field) or "").strip() in {"Finalised", "Ends"}
+                for field in ("Status", "Message", "Started")
+            )
+        return _session_status_finished(self.payload)
+
+
 class LiveSessionSupervisor:
     """Coordinates when the SignalR connection should run."""
 
@@ -1491,6 +1543,25 @@ class LiveSessionSupervisor:
         return window.end_utc + PATHLESS_RACE_PROBE_HORIZON
 
     async def _monitor_window(self, window: SessionWindow, *, source: str) -> str:
+        status = _LiveSessionStatus()
+        with contextlib.ExitStack() as subscriptions:
+            subscriptions.callback(
+                self._bus.subscribe("SessionStatus", status.update_status)
+            )
+            subscriptions.callback(
+                self._bus.subscribe("SessionInfo", status.update_info)
+            )
+            # Cached streams can belong to different sessions. Seed only from
+            # SessionInfo, where the identity and status share one payload.
+            status.payload = None
+            status.update_info(self._cached_bus_payload("SessionInfo"))
+            return await self._monitor_session_window(
+                window, source=source, status=status
+            )
+
+    async def _monitor_session_window(
+        self, window: SessionWindow, *, source: str, status: _LiveSessionStatus
+    ) -> str:
         replay_generation = self._availability.replay_generation
         label = window.label
         reason = "disconnect-window-expired"
@@ -1515,7 +1586,7 @@ class LiveSessionSupervisor:
             hb_age = self._bus.last_heartbeat_age()
             activity_age = self._bus.last_stream_activity_age(LIVE_ACTIVITY_STREAMS)
             session_status = self._cached_bus_payload("SessionStatus")
-            if _session_status_finished(session_status):
+            if status.finished(window):
                 if terminal_seen_at is None:
                     terminal_seen_at = now
                     _LOGGER.info(

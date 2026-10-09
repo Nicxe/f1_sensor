@@ -94,8 +94,13 @@ def test_safety_car_timestamp_ordering_and_terminal_context(hass) -> None:
         qualifying_part=1,
     )
     assert sensor._session_is_terminal() is False
+    sensor._session_status_coordinator.qualifying_part = None
+    assert sensor._session_is_terminal() is False
     sensor._session_status_coordinator.qualifying_part = 3
     assert sensor._session_is_terminal() is True
+    sensor._session_status_coordinator.is_qualifying_like_session = False
+    sensor._session_status_coordinator.is_testing_session = True
+    assert sensor._session_is_terminal() is False
     sensor._clear_state()
     assert sensor._forced_unavailable is True
     sensor.coordinator.available = False
