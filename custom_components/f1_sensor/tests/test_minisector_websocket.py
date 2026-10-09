@@ -16,6 +16,10 @@ from custom_components.f1_sensor.minisector_websocket import (
     MINISECTOR_PROTOCOL_V1,
     MINISECTOR_WS_MARKER,
     MINISECTOR_WS_SUBSCRIBE_TYPE,
+    _active_session_key,
+    _driver_changes,
+    _numeric_sort_key,
+    _transport_drivers,
     _ws_subscribe_minisectors,
     async_register_minisector_websocket,
 )
@@ -146,6 +150,108 @@ def test_subscription_requires_loaded_entry_and_exact_session(hass) -> None:
 
     wrong_session.subscriptions.pop(1)()
     wrong_source.subscriptions.pop(1)()
+
+
+def test_subscription_rejects_blank_context_after_store_resolution(hass) -> None:
+    """Whitespace-only context is rejected even when an entry happens to exist."""
+    _register_store(hass, entry_id="")
+    connection = FakeConnection()
+
+    _ws_subscribe_minisectors(
+        hass,
+        connection,
+        {
+            "id": 1,
+            "type": MINISECTOR_WS_SUBSCRIBE_TYPE,
+            "protocol_version": MINISECTOR_PROTOCOL_V1,
+            "entry_id": " ",
+            "source": "live",
+            "session_key": "77",
+        },
+    )
+
+    assert connection.errors == [
+        (1, "invalid_format", "entry_id and session_key must be non-empty strings")
+    ]
+
+
+def test_transport_helpers_handle_incomplete_context_and_scoped_reset(hass) -> None:
+    """Transport only serializes valid statuses and identifies scoped removals."""
+    assert _active_session_key(hass, "missing", "live") is None
+    hass.data.setdefault(DOMAIN, {})["entry"] = {
+        "replay_controller": SimpleNamespace(
+            snapshot=None,
+            _get_snapshot=lambda: {"selected_session_key": 44},
+        ),
+        "session_info_coordinator": SimpleNamespace(data={"Key": 9}),
+    }
+    assert _active_session_key(hass, "entry", "replay") == "44"
+    hass.data[DOMAIN]["entry"]["replay_controller"] = SimpleNamespace(
+        snapshot=None,
+        _get_snapshot=lambda: (_ for _ in ()).throw(RuntimeError("unavailable")),
+    )
+    assert _active_session_key(hass, "entry", "replay") == "9"
+
+    drivers = _transport_drivers(
+        {
+            "1": {"sectors": {"0": {"segments": {"0": {"raw_status": 2051}}}}},
+            "bad": object(),
+            "2": {"sectors": {"0": {"segments": {"1": {}}}}},
+        }
+    )
+    assert drivers == {
+        "1": {"sectors": {"0": {"segments": {"0": 2051}}}},
+        "2": {"sectors": {}},
+    }
+    assert _transport_drivers(None) == {}
+
+    changed, removed = _driver_changes(
+        {"2": {"sectors": {"0": {"segments": {"0": 2048, "1": 2049}}}}},
+        {
+            "1": {"sectors": {}},
+            "2": {"sectors": {"0": {"segments": {"0": 2051}}}},
+        },
+    )
+    assert changed["1"] == {"sectors": {}}
+    assert changed["2"] == {"sectors": {"0": {"segments": {"0": 2051}}}}
+    assert removed == ["2"]
+    assert sorted(["driver", "10", "2"], key=_numeric_sort_key) == ["2", "10", "driver"]
+
+
+def test_hub_and_subscription_release_pending_and_blocked_transport(hass) -> None:
+    """Pending, closed and rate-limited transport paths do not leak a subscriber."""
+    store = _register_store(hass)
+    hub = minisector_websocket._minisector_hub(hass, store)
+    store.merge_timing_data(_payload({"1": {0: {0: 2048}}}))
+    assert (
+        hub.current_snapshot()["drivers"]["1"]["sectors"]["0"]["segments"]["0"][
+            "raw_status"
+        ]
+        == 2048
+    )
+
+    connection = FakeConnection()
+    subscription = minisector_websocket._MiniSectorSubscription(
+        hass,
+        connection,
+        1,
+        hub,
+        entry_id="entry-1",
+        source="live",
+        session_key="77",
+    )
+    subscription._traffic_blocked_until = hass.loop.time() + 1
+    subscription.receive(store.snapshot())
+    assert connection.events == []
+    subscription._traffic_blocked_until = 0
+    subscription._traffic.append((hass.loop.time() - 11, 1))
+    assert subscription._send_bounded(subscription._event_base("delta", "0", 1)) is True
+    connection.subscriptions[1] = subscription.unsubscribe
+    subscription.terminate("source_inactive")
+    assert 1 not in connection.subscriptions
+    subscription.terminate("source_inactive")
+    hub.close()
+    hub._flush()
 
 
 def test_live_availability_and_global_spoiler_state_fail_closed(hass) -> None:

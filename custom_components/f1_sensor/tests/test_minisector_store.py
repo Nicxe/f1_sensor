@@ -8,7 +8,13 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from custom_components.f1_sensor import LiveDriversCoordinator
-from custom_components.f1_sensor.minisectors import MiniSectorStateStore
+from custom_components.f1_sensor.minisectors import (
+    MiniSectorStateStore,
+    _bounded_index,
+    _driver_key,
+    _raw_status,
+    _stream_int,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "minisectors"
 CASES = json.loads((FIXTURES / "cases.json").read_text())
@@ -175,6 +181,95 @@ def test_store_starts_new_generation_on_replay_lap_rewind() -> None:
     assert snapshot["last_reset_reason"] == "replay_seek"
     assert "2" not in snapshot["drivers"]["44"]["sectors"]
     assert _raw(snapshot, "44", 0, 0) == 2048
+
+
+def test_store_rejects_invalid_source_values_and_releases_listeners() -> None:
+    """Malformed stream values never create state or keep a closed store active."""
+    assert _bounded_index(True, 3) is None
+    assert _bounded_index("3", 3) is None
+    assert _bounded_index("01", 3) is None
+    assert _bounded_index("1", 3) == 1
+    assert _driver_key(False) is None
+    assert _driver_key("000") is None
+    assert _driver_key("044") == "44"
+    assert _stream_int(True) is None
+    assert _stream_int("1000000") is None
+    assert _raw_status(" x " * 20) == (" x " * 20).strip()[:32]
+    assert _raw_status({"Status": 2048}) is not None
+
+    store = MiniSectorStateStore(entry_id="entry")
+    listener = Mock()
+    store.add_listener(listener)
+    assert store.merge_timing_data({"SessionPart": 1}) is False
+    assert store.merge_timing_data({"SessionPart": 2}) is True
+    listener.assert_called_once()
+    assert store.reset_driver("invalid") is False
+    assert store.reset_driver("44") is False
+
+    store.close()
+    assert store.closed is True
+    assert store.listener_count == 0
+    assert store.merge_timing_data({"Lines": {"44": {}}}) is False
+    assert store.add_listener(Mock())() is None
+
+
+def test_store_clears_replaced_lists_and_recovers_from_listener_failures() -> None:
+    """A complete list replaces stale values and bad callbacks cannot stop updates."""
+    store = MiniSectorStateStore(entry_id="first")
+    notified = Mock()
+    store.add_listener(notified)
+    store.add_listener(Mock(side_effect=RuntimeError("test listener failure")))
+    store.merge_timing_data(
+        {
+            "Lines": {
+                "44": {
+                    "Sectors": {
+                        "0": {
+                            "Segments": [
+                                {"Status": 2048},
+                                {"Status": 2049},
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    )
+    store.merge_timing_data(
+        {
+            "Lines": {
+                "44": {
+                    "Sectors": {
+                        "0": {
+                            "Segments": [
+                                {"Status": 2051},
+                                {},
+                                {"Status": {"invalid": True}},
+                            ]
+                        },
+                        "1": {},
+                    }
+                }
+            }
+        }
+    )
+    snapshot = store.snapshot()
+    assert _raw(snapshot, "44", 0, 0) == 2051
+    assert "1" not in snapshot["drivers"]["44"]["sectors"]["0"]["segments"]
+    assert notified.call_count == 2
+
+    assert store.set_source("live") is False
+    assert store.set_source("replay") is True
+    assert store.reset("session_change", session_id="next", source="live") is True
+    assert store.snapshot()["session_id"] == "next"
+    assert store.merge_timing_data({"SessionPart": True, "Lines": {}}) is False
+    assert store.merge_timing_data({"SessionPart": True, "Lines": {}}) is False
+
+    closed = Mock()
+    store.add_close_listener(closed)
+    store.close()
+    store.close()
+    closed.assert_called_once()
 
 
 async def test_coordinator_keeps_minisectors_out_of_driver_positions_updates(
