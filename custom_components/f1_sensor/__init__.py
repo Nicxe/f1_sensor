@@ -2579,6 +2579,7 @@ async def _async_setup_entry(
             config_entry=entry,
             delay_controller=delay_controller,
             live_state=live_state,
+            live_supervisor=live_supervisor,
         )
     if feature_plan.needs("session_info"):
         session_info_coordinator = SessionInfoCoordinator(
@@ -3852,7 +3853,18 @@ class LiveModeCoordinator(DataUpdateCoordinator):
         if not isinstance(payload, dict):
             return False
         status = str(payload.get("Status") or payload.get("Message") or "").strip()
-        return status in {"Finished", "Finalised", "Ends"}
+        if status == "Finished":
+            context = self._session_status_coordinator
+            if bool(getattr(context, "is_testing_session", False)):
+                return False
+            if bool(getattr(context, "is_qualifying_like_session", False)):
+                try:
+                    part = int(getattr(context, "qualifying_part", None))
+                except (TypeError, ValueError):
+                    return False
+                return part not in (1, 2)
+            return True
+        return status in {"Finalised", "Ends"}
 
     def _clear_mode_state(self) -> None:
         self._state = {"overtake_enabled": None, "straight_mode": None}
@@ -9615,6 +9627,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         config_entry: ConfigEntry | None = None,
         delay_controller: LiveDelayController | None = None,
         live_state: LiveAvailabilityTracker | None = None,
+        live_supervisor: LiveSessionSupervisor | None = None,
     ):
         super().__init__(
             hass,
@@ -9633,7 +9646,9 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             live_state=live_state,
         )
         self._context_unsubs: list[Callable[[], None]] = []
+        self._live_supervisor = live_supervisor
         self.is_qualifying_like_session = False
+        self.is_testing_session = False
         self.qualifying_part: int | None = None
 
     async def async_close(self, *_):
@@ -9665,7 +9680,33 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
+        window_qualifying, window_testing = self._window_context()
+        self.is_qualifying_like_session |= window_qualifying
+        self.is_testing_session |= window_testing
         self._deliver(msg)
+
+    def _window_context(self) -> tuple[bool, bool]:
+        window = getattr(self._live_supervisor, "current_window", None)
+        if window is None:
+            return False, False
+        session_name = str(getattr(window, "session_name", "") or "").casefold()
+        meeting_name = str(getattr(window, "meeting_name", "") or "").casefold()
+        return (
+            "qualifying" in session_name or "shootout" in session_name,
+            "testing" in meeting_name,
+        )
+
+    def _refresh_finished_context(self) -> None:
+        if (
+            isinstance(self._last_message, dict)
+            and str(
+                self._last_message.get("Status")
+                or self._last_message.get("Message")
+                or ""
+            ).strip()
+            == "Finished"
+        ):
+            self.async_set_updated_data(self._last_message)
 
     @staticmethod
     def _iter_series_items(value: Any) -> list[dict[str, Any]]:
@@ -9700,7 +9741,28 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     def _on_session_info_context(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        self.is_qualifying_like_session = self._is_qualifying_like_session(msg)
+        window = getattr(self._live_supervisor, "current_window", None)
+        window_key = getattr(window, "session_key", None)
+        if window_key is not None and "Key" in msg:
+            if str(msg["Key"]) != str(window_key):
+                return
+        previous = (self.is_qualifying_like_session, self.is_testing_session)
+        window_qualifying, window_testing = self._window_context()
+        if "Type" in msg or "Name" in msg:
+            self.is_qualifying_like_session = (
+                self._is_qualifying_like_session(msg) or window_qualifying
+            )
+        else:
+            self.is_qualifying_like_session |= window_qualifying
+        meeting = msg.get("Meeting")
+        if isinstance(meeting, dict) and "Name" in meeting:
+            self.is_testing_session = (
+                "testing" in str(meeting.get("Name") or "").casefold() or window_testing
+            )
+        else:
+            self.is_testing_session |= window_testing
+        if previous != (self.is_qualifying_like_session, self.is_testing_session):
+            self._refresh_finished_context()
 
     def _on_session_data_context(self, msg: dict) -> None:
         if not isinstance(msg, dict):
@@ -9715,7 +9777,10 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             except (TypeError, ValueError):
                 continue
         if latest_part is not None:
+            changed = self.qualifying_part != latest_part
             self.qualifying_part = latest_part
+            if changed:
+                self._refresh_finished_context()
 
     @staticmethod
     def _parse_message(data):
@@ -9788,6 +9853,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self.available = is_live
         if not is_live:
             self.is_qualifying_like_session = False
+            self.is_testing_session = False
             self.qualifying_part = None
             _clear_delayed_ingest_state(self)
             self._last_message = None
