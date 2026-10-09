@@ -96,6 +96,7 @@ def _window(
 
 def _supervisor(hass, *, http=None, index=None, fallback=None):
     bus = SimpleNamespace(
+        subscribe=Mock(return_value=lambda: None),
         start=AsyncMock(),
         async_close=AsyncMock(),
         set_heartbeat_expectation=Mock(),

@@ -71,7 +71,10 @@ def _is_semantic_terminal_session(
         is_qualifying_like, qualifying_part = _session_status_mapping_context(
             coordinator
         )
-        return not (is_qualifying_like and qualifying_part in (1, 2))
+        return not (
+            bool(getattr(coordinator, "is_testing_session", False))
+            or (is_qualifying_like and qualifying_part in (None, 1, 2))
+        )
 
     return status in {"Finalised", "Ends"}
 

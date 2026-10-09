@@ -115,6 +115,24 @@ def test_session_status_mapping_metadata_and_track_grip(hass) -> None:
         )
         == "break"
     )
+    assert (
+        _map_session_status_payload(
+            {"Status": "Finished"}, hass, is_qualifying_like=True
+        )
+        == "break"
+    )
+    assert (
+        _map_session_status_payload(
+            {"Status": "Finished"}, hass, is_testing_session=True
+        )
+        == "break"
+    )
+    assert (
+        _map_session_status_payload(
+            {"Status": "Finished"}, hass, is_qualifying_like=True, qualifying_part=3
+        )
+        == "finished"
+    )
     assert _map_session_status_payload({"Status": "Finalised"}, hass) == "finalised"
     assert _map_session_status_payload({"Status": "Ends"}, hass) == "ended"
     assert (
