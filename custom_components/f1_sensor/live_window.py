@@ -921,6 +921,36 @@ def _window_identity(window: SessionWindow) -> tuple[Any, ...]:
     )
 
 
+@dataclass
+class _LiveSessionStatus:
+    """Keep session identity with status across incremental stream updates."""
+
+    session_key: int | None = None
+    payload: dict[str, Any] | None = None
+
+    def update_info(self, payload: Any) -> None:
+        if not isinstance(payload, dict):
+            return
+        if "Key" in payload:
+            session_key = _as_int(payload["Key"])
+            if session_key != self.session_key:
+                self.session_key = session_key
+                self.payload = None
+        if "SessionStatus" in payload:
+            self.payload = {"Status": payload["SessionStatus"]}
+
+    def update_status(self, payload: Any) -> None:
+        self.payload = payload if isinstance(payload, dict) else None
+
+    def finished(self, window: SessionWindow) -> bool:
+        session_key = _as_int(window.session_key)
+        return (
+            session_key is not None
+            and self.session_key == session_key
+            and _session_status_finished(self.payload)
+        )
+
+
 class LiveSessionSupervisor:
     """Coordinates when the SignalR connection should run."""
 
@@ -1491,6 +1521,25 @@ class LiveSessionSupervisor:
         return window.end_utc + PATHLESS_RACE_PROBE_HORIZON
 
     async def _monitor_window(self, window: SessionWindow, *, source: str) -> str:
+        status = _LiveSessionStatus()
+        with contextlib.ExitStack() as subscriptions:
+            subscriptions.callback(
+                self._bus.subscribe("SessionStatus", status.update_status)
+            )
+            subscriptions.callback(
+                self._bus.subscribe("SessionInfo", status.update_info)
+            )
+            # Cached streams can belong to different sessions. Seed only from
+            # SessionInfo, where the identity and status share one payload.
+            status.payload = None
+            status.update_info(self._cached_bus_payload("SessionInfo"))
+            return await self._monitor_session_window(
+                window, source=source, status=status
+            )
+
+    async def _monitor_session_window(
+        self, window: SessionWindow, *, source: str, status: _LiveSessionStatus
+    ) -> str:
         replay_generation = self._availability.replay_generation
         label = window.label
         reason = "disconnect-window-expired"
@@ -1515,7 +1564,7 @@ class LiveSessionSupervisor:
             hb_age = self._bus.last_heartbeat_age()
             activity_age = self._bus.last_stream_activity_age(LIVE_ACTIVITY_STREAMS)
             session_status = self._cached_bus_payload("SessionStatus")
-            if _session_status_finished(session_status):
+            if status.finished(window):
                 if terminal_seen_at is None:
                     terminal_seen_at = now
                     _LOGGER.info(
