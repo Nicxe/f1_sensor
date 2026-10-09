@@ -2618,6 +2618,9 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self.hass,
             is_qualifying_like=is_qualifying_like,
             qualifying_part=qualifying_part,
+            is_testing_session=bool(
+                getattr(self._session_status_coordinator, "is_testing_session", False)
+            ),
         )
         return mapped in {"finished", "finalised", "ended"}
 
@@ -2966,6 +2969,7 @@ def _map_session_status_payload(
     *,
     is_qualifying_like: bool = False,
     qualifying_part: int | None = None,
+    is_testing_session: bool = False,
 ) -> str | None:
     """Map raw SessionStatus payloads to semantic states."""
     if not raw:
@@ -2978,7 +2982,9 @@ def _map_session_status_payload(
         return "live"
 
     if message == "Finished":
-        if is_qualifying_like and qualifying_part in (1, 2):
+        if is_testing_session or (
+            is_qualifying_like and qualifying_part in (None, 1, 2)
+        ):
             return "break"
         return "finished"
 
@@ -3235,6 +3241,9 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self.hass,
             is_qualifying_like=is_qualifying_like,
             qualifying_part=qualifying_part,
+            is_testing_session=bool(
+                getattr(self.coordinator, "is_testing_session", False)
+            ),
         )
 
     def _handle_coordinator_update(self) -> None:
@@ -3690,6 +3699,9 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self.hass,
             is_qualifying_like=is_qualifying_like,
             qualifying_part=qualifying_part,
+            is_testing_session=bool(
+                getattr(self._status_coordinator, "is_testing_session", False)
+            ),
         )
 
     def _apply_payload(self, raw: dict, allow_clear: bool = True) -> None:

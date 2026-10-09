@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from urllib.request import Request, urlopen
@@ -78,25 +79,34 @@ def content_only(files: list[str]) -> bool:
     )
 
 
-def hotfix_matches_dev(files: list[str]) -> bool:
-    """Require every file in a beta hotfix PR to match committed dev content."""
-    if not files:
+def hotfix_matches_dev(files: list[str], *, base_sha: str, head_sha: str) -> bool:
+    """Require every beta hotfix commit to match a patch already on dev."""
+    if not files or not all(
+        isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{40}", sha)
+        for sha in (base_sha, head_sha)
+    ):
         return False
-    for path in files:
-        blobs = []
-        for ref in ("HEAD", "origin/dev"):
-            result = subprocess.run(
-                ["git", "rev-parse", f"{ref}:{path}"],
-                capture_output=True,
-                check=False,
-                text=True,
-            )
-            if result.returncode:
-                return False
-            blobs.append(result.stdout.strip())
-        if blobs[0] != blobs[1]:
-            return False
-    return True
+    commits = subprocess.run(
+        ["git", "rev-list", f"{base_sha}..{head_sha}"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    cherry = subprocess.run(
+        ["git", "cherry", "origin/dev", head_sha, base_sha],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if commits.returncode or cherry.returncode:
+        return False
+    expected = set(commits.stdout.splitlines())
+    checked = cherry.stdout.splitlines()
+    return (
+        bool(expected)
+        and len(checked) == len(expected)
+        and all(line.startswith("- ") and line[2:] in expected for line in checked)
+    )
 
 
 def branch_error(event: dict, files: list[str]) -> str:
@@ -179,8 +189,10 @@ def branch_error(event: dict, files: list[str]) -> str:
     ):
         return (
             ""
-            if hotfix_matches_dev(files)
-            else "A beta hotfix must match files already committed to dev."
+            if hotfix_matches_dev(
+                files, base_sha=pr["base"]["sha"], head_sha=pr["head"]["sha"]
+            )
+            else "Every beta hotfix commit must match a commit already on dev."
         )
     if same_repo and base == "main" and head == "content" and content_only(files):
         return ""

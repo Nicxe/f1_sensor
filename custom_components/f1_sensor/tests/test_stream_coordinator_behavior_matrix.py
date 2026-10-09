@@ -107,6 +107,11 @@ async def test_session_status_context_parsing_delivery_and_reset(
     ]
     assert coordinator._is_qualifying_like_session({"Name": "Sprint Shootout"}) is True
     coordinator._on_session_info_context({"Type": "Qualifying"})
+    coordinator._on_session_info_context({"Key": 11379})
+    assert coordinator.is_qualifying_like_session is True
+    coordinator._on_session_info_context({"Meeting": {"Name": "Pre-Season Testing"}})
+    coordinator._on_session_info_context({"Key": 11379})
+    assert coordinator.is_testing_session is True
     coordinator._on_session_data_context(
         {"Series": {"0": {"QualifyingPart": "bad"}, "1": {"QualifyingPart": 2}}}
     )
@@ -122,6 +127,7 @@ async def test_session_status_context_parsing_delivery_and_reset(
     coordinator._handle_live_state(False, "window-ended")
     assert coordinator.qualifying_part is None
     assert coordinator.is_qualifying_like_session is False
+    assert coordinator.is_testing_session is False
 
 
 async def test_top_three_full_snapshot_delta_delivery_and_reset(
@@ -570,7 +576,17 @@ async def test_live_mode_all_messages_terminal_live_and_close(
     race.data = {"Category": "Other", "Message": "ignored"}
     mode._on_race_control_update()
     status.data = {"Status": "Finished"}
+    status.is_qualifying_like_session = True
+    status.qualifying_part = None
+    assert mode.session_is_terminal is False
+    status.qualifying_part = 2
+    assert mode.session_is_terminal is False
+    status.qualifying_part = 3
     assert mode.session_is_terminal is True
+    status.is_qualifying_like_session = False
+    status.is_testing_session = True
+    assert mode.session_is_terminal is False
+    status.is_testing_session = False
     mode._handle_session_status_update()
     assert mode.data is None
     mode._handle_live_state(True, "init")

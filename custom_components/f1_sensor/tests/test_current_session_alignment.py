@@ -8,6 +8,7 @@ from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 import pytest
 
+from custom_components.f1_sensor import SessionStatusCoordinator
 from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     DOMAIN,
@@ -309,6 +310,63 @@ async def test_qualifying_finished_stays_terminal_for_final_segment(hass) -> Non
     assert current_state.attributes["live_status"] == "Finished"
     assert current_state.attributes["active"] is False
     assert current_state.attributes["last_label"] == "Qualifying"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("session_name", "meeting_name", "expected"),
+    [
+        ("Sprint Qualifying", "Singapore Grand Prix", "break"),
+        ("Day 1", "Pre-Season Testing", "break"),
+        ("Practice 1", "Singapore Grand Prix", "finished"),
+    ],
+)
+async def test_reconnect_finished_uses_live_window_before_stream_context(
+    hass, monkeypatch, session_name, meeting_name, expected
+) -> None:
+    entry_id = f"reconnect_{session_name.lower().replace(' ', '_')}"
+    window = SimpleNamespace(
+        session_name=session_name, meeting_name=meeting_name, session_key=11379
+    )
+    coordinator = SessionStatusCoordinator(
+        hass,
+        SimpleNamespace(data={}),
+        live_supervisor=SimpleNamespace(current_window=window),
+    )
+    monkeypatch.setattr(
+        "custom_components.f1_sensor._is_no_spoiler_blocked", lambda _coord: False
+    )
+    _set_live_context(hass, entry_id, status_coordinator=coordinator)
+    sensor = F1SessionStatusSensor(
+        coordinator, f"{entry_id}_session_status", entry_id, "F1"
+    )
+    await _add_sensors(hass, [sensor])
+
+    coordinator._on_session_info_context(
+        {
+            "Key": 11378,
+            "Type": "Qualifying",
+            "Meeting": {"Name": "Pre-Season Testing"},
+        }
+    )
+    if session_name == "Practice 1":
+        assert coordinator.is_qualifying_like_session is False
+        assert coordinator.is_testing_session is False
+
+    coordinator._on_bus_message({"Status": "Finished", "Started": "Finished"})
+    await hass.async_block_till_done()
+    assert hass.states.get(sensor.entity_id).state == expected
+
+    if session_name == "Sprint Qualifying":
+        coordinator._on_session_info_context({"Key": 11379})
+        assert hass.states.get(sensor.entity_id).state == "break"
+        coordinator._on_session_data_context({"Series": {"3": {"QualifyingPart": 3}}})
+        await hass.async_block_till_done()
+        assert hass.states.get(sensor.entity_id).state == "finished"
+    elif session_name == "Day 1":
+        coordinator._on_bus_message({"Status": "Finalised"})
+        await hass.async_block_till_done()
+        assert hass.states.get(sensor.entity_id).state == "finalised"
 
 
 @pytest.mark.asyncio
