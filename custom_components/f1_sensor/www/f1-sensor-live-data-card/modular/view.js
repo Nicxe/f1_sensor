@@ -178,8 +178,11 @@ export const sharedStyles = css`
   .module-picker select { display:block; max-width:100%; width:100%; min-height:44px; font:inherit; color:inherit; background:var(--f1-surface); border:1px solid var(--f1-border); border-radius:7px; padding:8px; }
   .timing-gap-toggle { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
   .timing-gap-toggle button { min-width:88px; }
-  .minisector-cell { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
-  .minisector-strip { display:inline-flex; align-items:center; gap:3px; min-height:22px; padding:2px 0; }
+  .minisector-cell { display:flex; flex-direction:column; align-items:stretch; gap:6px; width:max-content; }
+  .minisector-cell > .cell-stack { width:100%; align-items:stretch; }
+  .minisector-cell .signal { box-sizing:border-box; width:100%; justify-content:center; }
+  .minisector-cell .provenance { text-align:center; }
+  .minisector-strip { display:inline-flex; align-items:center; gap:3px; min-width:max-content; min-height:22px; padding:2px 0; }
   .minisector-block { width:11px; height:20px; flex:0 0 11px; display:grid; place-items:center; border:1px solid color-mix(in srgb,currentColor 45%,transparent); border-radius:4px; font-size:7px; line-height:1; font-weight:900; }
   .minisector-block[data-status=overall] .minisector-mark { transform:rotate(45deg); }
   .minisector-block[data-status=unset],.minisector-block[data-status=special],.minisector-block[data-status=unknown] { background:var(--f1-panel)!important; color:var(--f1-muted)!important; }
@@ -201,19 +204,43 @@ export const sharedStyles = css`
   .details { padding:14px; white-space:normal; background:var(--f1-panel,rgba(127,127,127,.07)); }
   .details dl { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin:0; }
   .details dd { margin:2px 0 0; }
+  .timing-detail-actions { display:flex; justify-content:flex-end; margin-bottom:8px; }
+  .timing-detail-row > td { padding:0; white-space:normal; background:var(--f1-panel); }
+  .timing-detail { min-width:0; padding:14px; border-left:4px solid var(--team-color,var(--f1-border)); }
+  .timing-detail-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
+  .timing-detail dl { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,135px),1fr)); gap:12px; margin:0; }
+  .timing-detail dt { color:var(--f1-muted); font-size:.85em; }
+  .timing-detail dd { margin:2px 0 0; overflow-wrap:anywhere; }
+  .timing-detail ol { margin:6px 0 0; padding-left:22px; }
   @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
   @media (forced-colors:active) { :host,ha-card { --f1-surface:Canvas!important; --f1-panel:Canvas!important; --f1-text:CanvasText!important; --f1-muted:CanvasText!important; --f1-border:CanvasText!important; --f1-divider:GrayText!important; --f1-focus:Highlight!important; } :host,ha-card { color:CanvasText!important; background:Canvas!important; } .signal,.chip,.compound,.track-symbol,.minisector-block { forced-color-adjust:auto; border-color:CanvasText!important; color:CanvasText!important; background:Canvas!important; } button { border:1px solid ButtonText; } .driver { border-left-color:CanvasText; } .muted,th,.provenance,.event-meta { color:CanvasText; } }
 `;
 
 export class F1ModuleView extends LitElement {
-  static properties = { module: { attribute: false }, model: { attribute: false }, settings: { attribute: false }, expanded: { state: true }, stintTable: { state: true }, seekDraft: { state: true }, clearConfirm: { state: true }, timingGapMode: { state: true } };
+  static properties = { module: { attribute: false }, model: { attribute: false }, settings: { attribute: false }, expanded: { state: true }, timingExpanded: { state: true }, stintTable: { state: true }, seekDraft: { state: true }, clearConfirm: { state: true }, timingGapMode: { state: true } };
   static styles = sharedStyles;
-  constructor() { super(); this.expanded = ''; this.clearConfirm = false; this.raceQueue = []; }
+  constructor() { super(); this.expanded = ''; this.timingExpanded = []; this.clearConfirm = false; this.raceQueue = []; }
   disconnectedCallback() { super.disconnectedCallback(); clearTimeout(this.raceTimer); clearTimeout(this.clearTimer); }
   get language() { return this.settings?.language ?? 'en'; }
   w(en, sv) { return words(this.language, en, sv); }
   willUpdate() {
     if (this.seekDraft && this.seekDraft.context !== this.model?.controlContext) this.seekDraft = null;
+    if (this.module?.type === 'timing') {
+      const context = JSON.stringify([this.module.id, this.model?.context?.key, this.model?.selectionGeneration]);
+      let selectionCleared = false;
+      if (context !== this.timingSelectionContext) {
+        this.timingSelectionContext = context;
+        selectionCleared = this.timingExpanded.length > 0;
+        this.timingExpanded = [];
+      }
+      const visible = new Set((this.model?.rows ?? []).map(row => row.id));
+      if (this.module.options?.show_driver_details === false || this.timingExpanded.some(id => !visible.has(id))) {
+        const kept = this.module.options?.show_driver_details === false ? [] : this.timingExpanded.filter(id => visible.has(id));
+        selectionCleared ||= kept.length !== this.timingExpanded.length;
+        this.timingExpanded = kept;
+      }
+      if (selectionCleared) queueMicrotask(() => { if (this.isConnected) this.dispatchEvent(new CustomEvent('f1-driver-details-change', { bubbles: true, composed: true })); });
+    }
     const configuredGap = this.module?.fields?.includes('interval') ? 'ahead' : this.module?.fields?.includes('gap') ? 'leader' : '';
     const timingGapContext = `${this.module?.id ?? ''}|${configuredGap}|${this.module?.options?.show_gap_toggle === true}`;
     if (timingGapContext !== this.timingGapContext) {
@@ -263,7 +290,9 @@ export class F1ModuleView extends LitElement {
   }
   updated() {
     if (this.focusKey && this.shadowRoot.activeElement?.dataset?.focus !== this.focusKey) {
-      [...this.shadowRoot.querySelectorAll('[data-focus]')].find(node => node.dataset.focus === this.focusKey)?.focus({ preventScroll: true });
+      const target = [...this.shadowRoot.querySelectorAll('[data-focus]')].find(node => node.dataset.focus === this.focusKey)
+        ?? (this.focusKey === 'timing-close-all' ? this.shadowRoot.querySelector('tbody button.driver') : null);
+      target?.focus({ preventScroll: true });
     }
   }
   render() {
@@ -642,10 +671,32 @@ export class F1ModuleView extends LitElement {
     const dimensions = logoDimensions(appearance.logo_size);
     const color = appearance.team_colors && /^#[0-9a-f]{6}$/i.test(row.team_color) ? row.team_color : 'transparent';
     const headshot = appearance.logos && !this.model.teams && this.module.options?.driver_image_type === 'headshot' ? safeImageUrl(row.headshot) : null;
-    return html`<button class="driver" data-focus=${`driver-${row.id}`} style=${`--team-color:${color};--f1-logo-frame:${dimensions.frame}px;--f1-logo-image:${dimensions.image}px`} aria-expanded=${this.expanded === row.id ? 'true' : 'false'} @click=${() => { this.expanded = this.expanded === row.id ? '' : row.id; }}>
+    const interactive = this.module.type !== 'timing' || this.timingDetailRows?.has(row.id);
+    const open = this.module.type === 'timing' ? this.timingExpanded.includes(row.id) : this.expanded === row.id;
+    const content = html`
       ${headshot ? html`<img class="driver-headshot" src=${headshot} alt="" width=${dimensions.frame} height=${dimensions.frame} @error=${event => { event.target.hidden = true; event.target.nextElementSibling.hidden = false; }}><f1-team-logo hidden aria-hidden="true" .team=${row.team} .variant=${appearance.logo_style} .mode=${this.settings.mode} .size=${appearance.logo_size}></f1-team-logo>` : appearance.logos ? html`<f1-team-logo aria-hidden="true" .team=${row.team} .variant=${appearance.logo_style} .mode=${this.settings.mode} .size=${appearance.logo_size}></f1-team-logo>` : ''}
-      <span>${appearance.full_names ? row.name : row.driver}<span class="sr"> · ${row.name} · ${row.team ?? ''} · ${this.w('modular.details')}</span></span>
-    </button>`;
+      <span>${appearance.full_names ? row.name : row.driver}<span class="sr"> · ${row.name} · ${row.team ?? ''}${interactive ? ` · ${this.w('modular.details')}` : ''}</span></span>`;
+    const style = `--team-color:${color};--f1-logo-frame:${dimensions.frame}px;--f1-logo-image:${dimensions.image}px`;
+    if (!interactive) return html`<span class="driver" style=${style}>${content}</span>`;
+    return html`<button class="driver" data-focus=${`driver-${row.id}`} style=${style} aria-expanded=${open ? 'true' : 'false'} aria-controls=${this.module.type === 'timing' && open ? `driver-detail-${row.id}` : ''} @click=${() => { if (this.module.type === 'timing') this.toggleTimingDriver(row.id); else this.expanded = open ? '' : row.id; }}>${content}</button>`;
+  }
+  toggleTimingDriver(id) {
+    this.timingExpanded = this.timingExpanded.includes(id) ? this.timingExpanded.filter(value => value !== id) : [...this.timingExpanded, id];
+    this.dispatchEvent(new CustomEvent('f1-driver-details-change', { bubbles: true, composed: true }));
+  }
+  clearTimingDrivers() {
+    if (!this.timingExpanded.length) return;
+    this.timingExpanded = [];
+    this.dispatchEvent(new CustomEvent('f1-driver-details-change', { bubbles: true, composed: true }));
+  }
+  timingDetailPanel(row, fields, detailLaps, tableLapNumbers) {
+    const color = this.settings.appearance.team_colors && /^#[0-9a-f]{6}$/i.test(row.team_color) ? row.team_color : 'var(--f1-border)';
+    const history = row.history.slice(0, detailLaps).filter(lap => !tableLapNumbers.includes(lap.lap));
+    return html`<section class="timing-detail" part="driver-detail" id=${`driver-detail-${row.id}`} style=${`--team-color:${color}`} aria-label=${`${row.name} · ${this.w('modular.details')}`}>
+      <div class="timing-detail-heading"><h3>${row.name} · ${row.team ?? '—'}</h3><button data-focus=${`driver-${row.id}`} @click=${() => this.toggleTimingDriver(row.id)} aria-label=${`${this.w('modular.close_driver_details')} · ${row.name}`}>×</button></div>
+      ${fields.length ? html`<dl>${fields.map(id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.cell(row, id)}</dd></div>`)}</dl>` : ''}
+      ${history.length ? html`<h3 style="margin-top:12px">${this.w('modular.completed_laps')}</h3><ol>${history.map(lap => html`<li>${this.w('modular.lap')} ${lap.lap}: ${formatTime(lap.time)}</li>`)}</ol>` : ''}
+    </section>`;
   }
   tyreCell(value, showName = true) {
     if (!value) return '—';
@@ -713,23 +764,29 @@ export class F1ModuleView extends LitElement {
     if (!rows.length) return this.empty(this.model.filtered ? this.w('modular.no_drivers_match_this_selection') : this.w('modular.timing_will_appear_when_session_data_is_available'));
     if (!fields.length) return this.empty(this.w('modular.choose_columns_in_the_editor'));
     const historyLimit = this.module.options.history;
+    const detailFields = this.module.type === 'timing' && this.module.options.show_driver_details !== false
+      ? (this.module.detail_fields ?? []).filter(id => FIELDS[id] && id !== 'driver' && !fields.includes(id)) : [];
+    const detailLaps = this.module.type === 'timing' && this.module.options.show_driver_details !== false ? this.module.options.detail_laps ?? 0 : 0;
     const lapNumbers = historyLimit ? [...new Set(rows.flatMap(row => row.history.map(lap => lap.lap)).filter(Number.isInteger))].sort((a, b) => a - b).slice(-historyLimit) : [];
+    this.timingDetailRows = new Set(rows.filter(row => detailFields.length > 0 || row.history.slice(0, detailLaps).some(lap => !lapNumbers.includes(lap.lap))).map(row => row.id));
     const gapToggle = showGapToggle ? html`<div class="timing-gap-toggle" part="controls" role="group" aria-label=${this.w('modular.gap_mode')}>
       <button data-focus="timing-gap-ahead" aria-pressed=${String(this.timingGapMode === 'ahead')} @click=${() => { this.timingGapMode = 'ahead'; }}>${this.w('modular.ahead')}</button>
       <button data-focus="timing-gap-leader" aria-pressed=${String(this.timingGapMode === 'leader')} @click=${() => { this.timingGapMode = 'leader'; }}>${this.w('modular.leader')}</button>
     </div>` : '';
-    return html`${gapToggle}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${this.w('modular.timing_table_scroll_horizontally_for_more_columns')}><table part="table">
+    const closeAll = this.module.type === 'timing' && this.timingExpanded.length ? html`<div class="timing-detail-actions" part="controls"><button data-focus="timing-close-all" @click=${() => this.clearTimingDrivers()}>${this.w('modular.close_all_driver_details')}</button></div>` : '';
+    return html`${gapToggle}${closeAll}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${this.w('modular.timing_table_scroll_horizontally_for_more_columns')}><table part="table">
       <caption class="sr">${this.module.title || this.model.title}</caption>
       ${this.timingHeader(fields, lapNumbers)}
       <tbody>${repeat(rows, row => row.id, row => html`<tr part="table-row" data-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${this.cell(row, id)}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
         const value = row.history.find(item => item.lap === lap);
         return html`<td part="table-cell" class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}>${this.timeCell(value ? { ...value, source: 'completed_lap', previous_lap: true } : { time: null, lap })}</td>`;
       })}</tr>
-        ${this.expanded === row.id ? html`<tr part="table-row"><td part="table-cell" class="details" colspan=${fields.length + lapNumbers.length}>
+        ${this.module.type === 'timing' && this.timingExpanded.includes(row.id) && this.timingDetailRows.has(row.id) ? html`<tr class="timing-detail-row" part="table-row driver-detail-row"><td part="table-cell" colspan=${fields.length + lapNumbers.length}>${this.timingDetailPanel(row, detailFields, detailLaps, lapNumbers)}</td></tr>` : ''}
+        ${this.module.type !== 'timing' && this.expanded === row.id ? html`<tr part="table-row"><td part="table-cell" class="details" colspan=${fields.length + lapNumbers.length}>
           <h3>${row.name} · ${row.team ?? '—'}</h3><dl>${fields.filter(id => id !== 'driver').map(id => html`<div><dt class="muted">${label(this.field(id), this.language)}</dt><dd>${this.cell(row, id)}</dd></div>`)}</dl>
           ${row.history.length ? html`<h3 style="margin-top:16px">${this.w('modular.completed_laps')}</h3><ol>${row.history.map(lap => html`<li>${this.w('modular.lap')} ${lap.lap}: ${formatTime(lap.time)}</li>`)}</ol>` : ''}
         </td></tr>` : ''}`)}</tbody>
-    </table></div>${this.timingLegend(fields)}`;
+    </table></div>${this.timingLegend([...fields, ...detailFields])}`;
   }
   timingLegend(fields = []) {
     const hasMinisectors = fields.some(id => /^minisector_[123]$|^sector_[123]_with_minisectors$/.test(id));

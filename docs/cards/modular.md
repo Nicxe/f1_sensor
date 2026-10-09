@@ -92,6 +92,14 @@ when only minisector data is unavailable.
 
 Set **Recent lap columns** under the Timing module's **Module options** to compare the latest 1–30 completed laps directly in the timing table. The default value is 0, which keeps these columns hidden. Each column is labelled with its lap number; a dash means that no usable time is available for that driver and lap.
 
+### Compare driver details
+
+Open **Driver details** in a Timing module to choose information that appears when you select a driver. These choices are independent of **Content and columns**. The initial detail fields are Best lap, Tyre age and Status. You can choose other Timing fields, including S1, S2 and S3 minisectors, without adding them to the table. Minisector data is requested only while a selected driver needs it.
+
+Select a driver to expand a detail row directly beneath that driver in the Timing table. You can open several drivers at once, and each driver's details stay attached to their row as the order changes. Select a driver again to close that row, or use **Close all driver details** above the table. Your selection is temporary and belongs to this Timing module. It does not change the card's driver focus. Changing session or replay context clears the selection.
+
+Fields already shown as table columns are omitted from the detail panels. **Recent laps in driver details** can include older completed laps without repeating the laps already shown as table columns. If the chosen detail fields and laps add nothing to the table, the driver names are not opening controls. Clear **Show driver details** to disable them explicitly. Missing values remain missing; the card does not estimate minisector times.
+
 Use **Show text below times** to hide the lap number, qualifying part and other supporting text below timing values. Use **Show time status icon** to hide the arrow, dot or square in a timing value. These choices apply independently to Last lap, Best lap, sector times, combined sector and minisector fields, qualifying times and lap comparisons in that Timing module.
 
 Weather, Battles, Strategy and Replay telemetry show a collapsible **About** section by default. To remove it from one module, open that module's **Module options** and clear **Show About section**. Warnings, errors and controls remain visible.

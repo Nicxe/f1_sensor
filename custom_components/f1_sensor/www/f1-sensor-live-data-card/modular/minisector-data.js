@@ -107,5 +107,7 @@ export function segmentStrip(driver, sector) {
   return Array.from({ length: Math.max(...indexes) + 1 }, (_, index) => ({ index, raw: integer(segments[String(index)]) }));
 }
 
-export const usesMinisectors = module => module?.type === 'minisectors'
-  || module?.type === 'timing' && module.fields?.some(id => /^(?:mini|sector_[123]_with_mini)/.test(id));
+export const usesMinisectors = (module, detailsOpen = false) => module?.type === 'minisectors'
+  || module?.type === 'timing' && [
+    ...(module.fields ?? []), ...(detailsOpen && module.options?.show_driver_details !== false ? module.detail_fields ?? [] : []),
+  ].some(id => /^(?:mini|sector_[123]_with_mini)/.test(id));

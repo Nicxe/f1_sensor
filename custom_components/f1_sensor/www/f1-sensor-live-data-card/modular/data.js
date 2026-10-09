@@ -187,6 +187,7 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
   const identity = new Map((drivers.status === 'available' ? array(drivers.attributes.drivers) : []).filter(item => item && typeof item === 'object').map(item => [String(item.racing_number), item]));
   const tyreByDriver = new Map((tyres.status === 'available' ? array(tyres.attributes.drivers) : []).filter(item => item && typeof item === 'object').map(item => [String(item.racing_number), item]));
   const chosenDriver = module.driver || focus.driver, chosenTeam = module.team || focus.team;
+  const historyDepth = Math.max(module.options.history ?? 0, module.options.show_driver_details === false ? 0 : module.options.detail_laps ?? 0);
   const kind = sessionKind(context.name), qualifying = ['qualifying', 'sprint_qualifying'].includes(kind);
   const part = positiveInteger(positions.attributes.current_qualifying_part);
   const rawDrivers = Array.isArray(positions.attributes.drivers) ? positions.attributes.drivers
@@ -237,7 +238,7 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
       sector_3_with_minisectors: { time: selectedSectors[2], segments: strips[2] },
       best_sector_1: bestSectors[0], best_sector_2: bestSectors[1], best_sector_3: bestSectors[2],
       theoretical_lap: comparable ? bestSectors.reduce((sum, item) => sum + item.time, 0) : null, ...qualifyingTimes,
-      laps: number(driver.completed_laps), history: module.options.history ? laps.slice(-module.options.history).reverse() : [],
+      laps: number(driver.completed_laps), history: historyDepth ? laps.slice(-historyDepth).reverse() : [],
       tyre: nonempty(tyre.compound_short ?? tyre.compound), tyre_age: number(tyre.stint_laps),
       status: driver.retired === true ? 'retired' : driver.in_pit === true ? 'in_pit' : driver.pit_out === true ? 'pit_out' : driver.stopped === true ? 'stopped' : nonempty(driver.status),
       updated_at: positions.updated_at,

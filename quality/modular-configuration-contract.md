@@ -348,6 +348,8 @@ Fält: `position`, `driver`, `team`, `gap`, `interval`, `last_lap`, `best_lap`, 
 
 Standardfält: `position`, `driver`, `gap`, `last_lap`, `sector_1`, `sector_2`, `sector_3`, `tyre`.
 
+`detail_fields` är en separat, ordnad lista av Timing-fält utom `driver`. Standard är `best_lap`, `tyre_age`, `status`. Fält som redan finns i de aktiva tabellkolumnerna upprepas inte i detaljpanelen. Varje vald förare får en expanderad tabellrad direkt under sin egen rad. Flera förare kan vara öppna samtidigt, och detaljraderna följer förarna vid omordning. Valet är tillfälligt och ändrar inte kortets förarfokus. Valet rensas när session eller replaygeneration ändras, vid spoilerskydd och när föraren försvinner ur den visade listan.
+
 | Alternativ under `options` | Typ och tillåtna värden | Standard |
 | --- | --- | --- |
 | `profile` | enum: `"custom"`, `"auto"`, `"practice"`, `"qualifying"`, `"sprint_qualifying"`, `"sprint"`, `"race"` | `"custom"` |
@@ -356,6 +358,10 @@ Standardfält: `position`, `driver`, `gap`, `last_lap`, `sector_1`, `sector_2`, 
 | `rows` | integer: 1–100 | `30` |
 | `sectors` | enum: `"coherent"`, `"latest"` | `"coherent"` |
 | `history` | integer: 0–30 | `0` |
+| `detail_laps` | integer: 0–30 | tidigare `history` om värdet saknas, annars oberoende val |
+| `show_driver_details` | boolean | `true` |
+
+`detail_laps` styr hur många av de senaste avslutade varven som får användas i förardetaljerna. Varv som redan visas som `history`-kolumner upprepas inte. Om varken extra fält eller extra varv återstår visas ingen öppningsknapp. En detaljkonfiguration med minisektorer startar den delade sessionsbundna prenumerationen först när en förare öppnas; tabellkolumner med minisektorer fortsätter att använda den när modulen är synlig.
 
 Minisektorfälten är valfria och läggs inte till av befintliga profiler. `minisector_1/2/3` visar endast källans statusblock. `sector_1/2/3_with_minisectors` kombinerar motsvarande befintliga sektortid med samma statusblock; ingen minsektortid beräknas. Statusen `2051` är övergripande bäst, `2049` personbäst och `2048` registrerad. Gul innebär inte belagt långsammare än föregående varv. Reset, särskild och okänd kod visas neutralt. Data levereras sessionsbundet till synliga modulära konsumenter och skapar ingen sensor eller Recorder-historik.
 
