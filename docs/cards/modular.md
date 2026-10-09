@@ -54,7 +54,7 @@ Use **Add module** to add content, then select the module to edit it. Select fie
 | Content | Available modules |
 | --- | --- |
 | Planning | Overview, Schedule and Weather. |
-| Session | Timing, Race Control, Tyres, Pit stops and Incidents. |
+| Session | Timing, Minisectors, Race Control, Tyres, Pit stops and Incidents. |
 | Results | Results, Championship, Season progression and Historical archive. |
 | Analysis | Lap history chart, Session timeline, Strategy analysis, Battles and position changes, and Track map. |
 | Watching later | Replay and Replay telemetry. |
@@ -64,7 +64,35 @@ Data availability depends on the source and session. Adding a module does not cr
 
 Timing can follow a session profile or use your selected columns. Choosing your own timing columns keeps them as a custom selection. A module pinned to a driver keeps that driver when you change the card's general focus.
 
+### Show minisectors
+
+Minisectors show the status published for each small segment of S1, S2 and S3.
+The source does not publish a time for each minisector, so the card does not
+calculate or estimate one.
+
+Choose the presentation that fits each module:
+
+| Presentation | Fields to select |
+| --- | --- |
+| Sector time only | **S1**, **S2** and **S3** in Timing. |
+| Sector time with status blocks | **S1 with minisectors**, **S2 with minisectors** and **S3 with minisectors**. |
+| Status blocks only | **S1 minisectors**, **S2 minisectors** and **S3 minisectors**, either in Timing or in a separate **Minisectors** module. |
+
+These are ordinary optional fields. You can reorder them, combine them with other
+fields and configure each Timing or Minisectors module independently. The separate
+Minisectors module starts with Driver and the three status strips. No existing
+Timing profile adds minisectors automatically.
+
+Status strips are available for live and replay practice, qualifying, sprint
+qualifying, sprint and race sessions when the source has supplied segment data.
+Different circuits can have different numbers of blocks. Before the first segment
+frame, or when a selected archive has no segment data, the module follows its
+**When data is unavailable** setting. Ordinary sector timing remains available
+when only minisector data is unavailable.
+
 Set **Recent lap columns** under the Timing module's **Module options** to compare the latest 1–30 completed laps directly in the timing table. The default value is 0, which keeps these columns hidden. Each column is labelled with its lap number; a dash means that no usable time is available for that driver and lap.
+
+Use **Show text below times** to hide the lap number, qualifying part and other supporting text below timing values. Use **Show time status icon** to hide the arrow, dot or square in a timing value. These choices apply independently to Last lap, Best lap, sector times, combined sector and minisector fields, qualifying times and lap comparisons in that Timing module.
 
 Weather, Battles, Strategy and Replay telemetry show a collapsible **About** section by default. To remove it from one module, open that module's **Module options** and clear **Show About section**. Warnings, errors and controls remain visible.
 
@@ -244,6 +272,19 @@ Open **Accessibility and timing colors** to adjust timing colors and the accompa
 | Position arrow | A position change against its stated comparison, not a change in lap time. |
 
 The default sector view keeps values from the same lap together. The **Latest sectors, with lap labels** option can mix the most recently supplied sectors; the individual lap labels matter in that view. A theoretical lap is the sum of personal-best sectors and may combine different laps.
+
+The same purple diamond, green circle and yellow square are used for minisector
+status. Yellow means that the provider marked the segment as recorded without a
+personal or overall best status. It does not prove that the segment was slower
+than the driver's preceding lap. Reset, special, missing and unrecognized source
+statuses stay neutral instead of receiving an assumed meaning. Turn on the
+Minisectors module's status legend when you want the explanation beside the data.
+
+Minisector status is short-lived dashboard data and can update several times per
+second across all drivers. It is delivered only while a visible modular card needs
+it and is not exposed as Home Assistant sensor state. This avoids filling Recorder
+or sending a complete timing grid for every small change. It also means minisector
+status is intended for the F1 Sensor card rather than entity-based automations.
 
 Custom colors can help you distinguish the timing states. Keep symbols or text available and check both light and dark themes. High contrast, reduced motion and readable text alternatives are part of the card's controls; automated checks alone do not establish compatibility with every screen reader or device.
 

@@ -176,6 +176,19 @@ test('timing live gap toggle switches one accessible column without changing the
   expect(await page.evaluate(() => window.fixtureCard.config.modules[0].fields)).toEqual(['position', 'driver', 'interval']);
 });
 
+test('timing gap cells localize lap-qualified TimingData values', async ({ page }) => {
+  await page.evaluate(() => {
+    window.mountModular({ language: 'nl', config: { modules: [{ type: 'timing', fields: ['position', 'driver', 'gap', 'interval'] }] } });
+    const demo = window.fixtureDemo, entry = demo.preview.entries[0];
+    const drivers = demo.hass.states[entry.entities.driver_positions].attributes.drivers;
+    drivers[1].gap_to_leader = 'LAP 9';
+    drivers[1].interval_to_position_ahead = 'LAP 9';
+    window.fixtureCard.hass = { ...demo.hass };
+  });
+  await expect(page.getByText('Ronde 9', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('LAP 9', { exact: true })).toHaveCount(0);
+});
+
 test('a hidden tab is removed from visual and accessibility exposure without recreating modules', async ({ page }) => {
   await page.evaluate(() => { const config = window.mountModular(); config.layout = 'tabs'; window.mountModular({ config }); });
   await expect(page.getByRole('columnheader', { name: 'Driver', exact: true })).not.toBeVisible();
@@ -264,6 +277,32 @@ test('timing can show a configurable number of recent laps as comparison columns
   await expect(page.getByRole('columnheader', { name: 'Lap 10', exact: true })).toHaveCount(0);
   await expect(page.getByRole('columnheader', { name: 'Lap 11', exact: true })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'Lap 12', exact: true })).toBeVisible();
+});
+
+test('timing can hide text below times and status icons in the visual editor', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'timing', fields: ['driver', 'last_lap', 'best_lap', 'sector_1', 'sector_2_with_minisectors'] }] } }));
+  const editor = page.locator('f1-sensor-card-editor');
+  const row = page.locator('#native-preview tr[data-driver="16"]');
+  await expect(row.locator('.provenance')).not.toHaveCount(0);
+  await expect(row.locator('.signal > span[aria-hidden="true"]')).not.toHaveCount(0);
+  await editor.getByText('Module options', { exact: true }).click();
+  const context = editor.getByRole('checkbox', { name: 'Show text below times', exact: true });
+  const icon = editor.getByRole('checkbox', { name: 'Show time status icon', exact: true });
+  await expect(context).toBeChecked();
+  await expect(icon).toBeChecked();
+  await context.uncheck();
+  await icon.uncheck();
+  await expect(row.locator('.provenance')).toHaveCount(0);
+  await expect(row.locator('.signal > span[aria-hidden="true"]')).toHaveCount(0);
+  await expect(row.locator('.sr').filter({ hasText: 'Lap 12' }).first()).toBeAttached();
+  const saved = await page.evaluate(() => window.savedConfig);
+  expect(saved.modules[0].options.show_time_context).toBe(false);
+  expect(saved.modules[0].options.show_time_status_icon).toBe(false);
+  await page.reload();
+  await page.waitForFunction(() => window.modularReady);
+  await page.evaluate(config => window.mountModular({ config }), saved);
+  await expect(page.locator('tr[data-driver="16"] .provenance')).toHaveCount(0);
+  await expect(page.locator('tr[data-driver="16"] .signal > span[aria-hidden="true"]')).toHaveCount(0);
 });
 
 test('About sections are shown by default and can be hidden per module', async ({ page }) => {
@@ -487,7 +526,8 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     };
   }, sensitive);
 
-  await expect(page.locator('f1-module-view')).toHaveCount(17);
+  const moduleCount = sensitive.length + 1;
+  await expect(page.locator('f1-module-view')).toHaveCount(moduleCount);
   expect(await page.evaluate(() => [...window.fixtureCard.moduleNodes.values()].map(node => ({
     type: node.module.type,
     blocked: node.model.blocked,
@@ -499,7 +539,7 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
     card.hass = { ...card.hass, states: { ...card.hass.states, [entity]: { state: 'unavailable', attributes: {} } } };
   });
-  await expect(page.getByText('Spoiler status cannot be verified. Refresh F1 Sensor before showing sensitive data.', { exact: true })).toHaveCount(17);
+  await expect(page.getByText('Spoiler status cannot be verified. Refresh F1 Sensor before showing sensitive data.', { exact: true })).toHaveCount(moduleCount);
   expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => call !== 'event:entity_registry_updated'))).toEqual(['ws:f1_sensor/entities']);
 
   await page.evaluate(() => {
@@ -518,7 +558,7 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
     card.hass = { ...card.hass, states: { ...card.hass.states, [entity]: { state: 'on', attributes: {} } } };
   });
-  await expect(page.getByText('Spoiler protection is active.', { exact: true })).toHaveCount(17);
+  await expect(page.getByText('Spoiler protection is active.', { exact: true })).toHaveCount(moduleCount);
   await expect.poll(() => page.evaluate(() => window.spoilerResourceStops)).toBeGreaterThanOrEqual(4);
 });
 
@@ -802,6 +842,15 @@ test('personal best sector laps and theoretical sum keep separate labels and qua
   await expect(page.getByText('Sum of personal-best sectors · may span laps', { exact: true })).toBeVisible();
   await expect(page.getByText('1:20.774', { exact: true })).toBeVisible();
   const axe = await new AxeBuilder({ page }).include('f1-sensor-card').analyze(); expect(axe.violations).toEqual([]);
+});
+
+test('timing hides qualifying and comparison context text while retaining screen-reader labels', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ scene: 'qualifying', config: { modules: [{ type: 'timing', driver: '16', fields: ['driver', 'q1_time', 'best_sector_1', 'theoretical_lap', 'lap_delta'], options: { show_time_context: false } }] } }));
+  const row = page.locator('tr[data-driver="16"]');
+  await expect(row.locator('.provenance')).toHaveCount(0);
+  await expect(row.locator('.sr').filter({ hasText: 'Lap 10' }).first()).toBeAttached();
+  await expect(row.locator('.sr').filter({ hasText: 'Sum of personal-best sectors' })).toBeAttached();
+  await expect(row.locator('.sr').filter({ hasText: 'Q1' })).toBeAttached();
 });
 
 test('timeline distinguishes estimates from source events and protects all details when spoilers activate', async ({ page }) => {
