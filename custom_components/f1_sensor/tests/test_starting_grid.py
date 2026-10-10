@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -16,6 +18,7 @@ from custom_components.f1_sensor.starting_grid import (
     STATUS_COLLECTING,
     STATUS_CONFIRMED,
     STATUS_PROVISIONAL,
+    STATUS_UNAVAILABLE,
     STATUS_WAITING_QUALIFYING,
     StartingGridCoordinator,
 )
@@ -287,7 +290,240 @@ async def test_duplicate_gridpos_ignores_line_without_pre_start_status(
         }
     )
 
-    assert [row["grid_position"] for row in coordinator.data["grid"]] == [1, 1, 3]
+    assert coordinator.data["status"] == STATUS_UNAVAILABLE
+    assert coordinator.data["grid"] == []
+
+
+@pytest.mark.asyncio
+async def test_cold_start_recovers_duplicate_from_pre_start_archive(
+    hass, monkeypatch
+) -> None:
+    coordinator = _make_coordinator(hass)
+    coordinator._on_session_info(
+        _session_info("Race", "Race", session_key=11, status="Started")
+    )
+    archives = {
+        "SessionStatus": (
+            '00:00:01.000{"Status":"Inactive"}\n00:00:30.000{"Status":"Started"}\n'
+        ),
+        "TimingAppData": (
+            '00:00:10.000{"Lines":{"1":{"Line":1,"GridPos":"1"}}}\n'
+            '00:00:20.000{"Lines":{"1":{"Line":3},'
+            '"2":{"Line":2,"GridPos":"2"},'
+            '"3":{"Line":1,"GridPos":"1"}}}\n'
+            '00:00:31.000{"Lines":{"1":{"Line":2}}}\n'
+        ),
+    }
+    fetch = AsyncMock(side_effect=lambda _path, stream, **_kwargs: archives[stream])
+    monkeypatch.setattr(coordinator, "_fetch_stream", fetch)
+
+    coordinator._on_timing_app_data(
+        {
+            "Lines": {
+                "1": {"GridPos": "1", "Line": 2},
+                "2": {"GridPos": "2", "Line": 2},
+                "3": {"GridPos": "1", "Line": 1},
+            }
+        }
+    )
+    assert coordinator.data["status"] == STATUS_UNAVAILABLE
+    assert coordinator.data["grid"] == []
+
+    await hass.async_block_till_done()
+    assert [row["racing_number"] for row in coordinator.data["grid"]] == [
+        "3",
+        "2",
+        "1",
+    ]
+    assert [row["grid_position"] for row in coordinator.data["grid"]] == [1, 2, 3]
+    assert coordinator.data["status"] == STATUS_CONFIRMED
+    assert fetch.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_cold_start_without_archive_does_not_confirm_duplicate(
+    hass, monkeypatch
+) -> None:
+    coordinator = _make_coordinator(hass)
+    coordinator._on_session_info(
+        _session_info("Race", "Race", session_key=11, status="Started")
+    )
+    fetch = AsyncMock(return_value=None)
+    monkeypatch.setattr(coordinator, "_fetch_stream", fetch)
+
+    coordinator._on_timing_app_data(
+        {"Lines": {"1": {"GridPos": "1"}, "3": {"GridPos": "1"}}}
+    )
+    await hass.async_block_till_done()
+
+    assert coordinator.data["status"] == STATUS_UNAVAILABLE
+    assert coordinator.data["grid"] == []
+    assert fetch.await_count == 2
+
+    fetch.reset_mock()
+    fetch.side_effect = lambda _path, stream, **_kwargs: (
+        '00:00:01.000{"Lines":{"1":{"Position":"1"}}}'
+        if stream == "TimingData"
+        else None
+    )
+    await coordinator._fetch_archive_context(CONTEXT_RACE, "2026/test/qualifying/")
+    assert coordinator.data["status"] == STATUS_UNAVAILABLE
+    assert coordinator.data["grid"] == []
+
+    coordinator._on_timing_app_data({"Lines": {"1": {"GridPos": "1"}}})
+    await hass.async_block_till_done()
+    assert fetch.await_count == 2
+
+    coordinator._on_timing_app_data({"Lines": {"3": {"GridPos": "3"}}})
+    assert coordinator.data["status"] == STATUS_CONFIRMED
+    assert [row["grid_position"] for row in coordinator.data["grid"]] == [1, 3]
+
+
+@pytest.mark.asyncio
+async def test_cold_start_archive_cannot_update_another_weekend(
+    hass, monkeypatch
+) -> None:
+    coordinator = _make_coordinator(hass)
+    coordinator._on_session_info(
+        _session_info("Race", "Race", session_key=11, status="Started")
+    )
+    started_fetching = asyncio.Event()
+    release_fetch = asyncio.Event()
+
+    async def delayed_fetch(_path, stream, **_kwargs):
+        started_fetching.set()
+        await release_fetch.wait()
+        return (
+            '00:00:01.000{"Status":"Inactive"}\n' if stream == "SessionStatus" else ""
+        )
+
+    monkeypatch.setattr(coordinator, "_fetch_stream", delayed_fetch)
+    coordinator._on_timing_app_data(
+        {"Lines": {"1": {"GridPos": "1"}, "3": {"GridPos": "1"}}}
+    )
+    await started_fetching.wait()
+
+    coordinator._on_session_info(
+        _session_info(
+            "Practice 1", "Practice", meeting_key=2, session_key=20, status="Started"
+        )
+    )
+    release_fetch.set()
+    await hass.async_block_till_done()
+    assert coordinator.data["weekend_key"] == "meeting:2"
+    assert coordinator.data["grid"] == []
+    assert coordinator.data["status"] == STATUS_WAITING_QUALIFYING
+
+
+def test_cold_start_requires_pre_start_status_evidence() -> None:
+    timing = '00:00:10.000{"Lines":{"1":{"GridPos":"1","Line":5}}}\n'
+    assert (
+        StartingGridCoordinator._pre_start_grid_lines(
+            '00:00:30.000{"Status":"Started"}\n', timing
+        )
+        == {}
+    )
+
+
+def test_cold_start_ignores_malformed_archive_frames() -> None:
+    statuses = (
+        '00:00:01.000{"Status":"Inactive"}\n'
+        'bad-timestamp{"Status":"Started"}\n'
+        '00:00:30.000{"Status":"Started"}\n'
+    )
+    timing = (
+        "not a frame\n"
+        'bad-timestamp{"Lines":{}}\n'
+        '00:00:02.000{"Lines":[]}\n'
+        '00:00:03.000{"Lines":{"1":[]}}\n'
+        '00:00:04.000{"Lines":{"1":{"GridPos":"1","Line":3}}}\n'
+        '00:00:05.000{"Lines":broken}\n'
+        '00:00:31.000{"Lines":{"1":{"Line":2}}}\n'
+    )
+    assert StartingGridCoordinator._pre_start_grid_lines(statuses, timing) == {
+        "1": (1, 3)
+    }
+
+
+@pytest.mark.asyncio
+async def test_cold_start_rejects_archive_with_different_grid_position(
+    hass, monkeypatch
+) -> None:
+    coordinator = _make_coordinator(hass)
+    coordinator._on_session_info(
+        _session_info("Race", "Race", session_key=11, status="Started")
+    )
+    archives = {
+        "SessionStatus": (
+            '00:00:01.000{"Status":"Inactive"}\n00:00:30.000{"Status":"Started"}\n'
+        ),
+        "TimingAppData": (
+            '00:00:20.000{"Lines":{"1":{"GridPos":"4","Line":3},'
+            '"3":{"GridPos":"1","Line":1}}}\n'
+        ),
+    }
+    monkeypatch.setattr(
+        coordinator,
+        "_fetch_stream",
+        AsyncMock(side_effect=lambda _path, stream, **_kwargs: archives[stream]),
+    )
+    coordinator._on_timing_app_data(
+        {"Lines": {"1": {"GridPos": "1"}, "3": {"GridPos": "1"}}}
+    )
+    await hass.async_block_till_done()
+    assert coordinator.data["status"] == STATUS_UNAVAILABLE
+    assert coordinator.data["grid"] == []
+
+
+@pytest.mark.asyncio
+async def test_cold_start_without_session_path_stays_unavailable(
+    hass, monkeypatch
+) -> None:
+    coordinator = _make_coordinator(hass)
+    session_info = _session_info("Race", "Race", session_key=11, status="Started")
+    session_info["Path"] = ""
+    coordinator._on_session_info(session_info)
+    fetch = AsyncMock()
+    monkeypatch.setattr(coordinator, "_fetch_stream", fetch)
+
+    coordinator._on_timing_app_data(
+        {"Lines": {"1": {"GridPos": "1"}, "3": {"GridPos": "1"}}}
+    )
+    await hass.async_block_till_done()
+    assert coordinator.data["status"] == STATUS_UNAVAILABLE
+    assert coordinator.data["grid"] == []
+    fetch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cold_start_cancels_recovery_on_close_and_reset(
+    hass, monkeypatch
+) -> None:
+    coordinator = _make_coordinator(hass)
+    coordinator._on_session_info(
+        _session_info("Race", "Race", session_key=11, status="Started")
+    )
+    started = asyncio.Event()
+
+    async def pending_fetch(_path, _stream, **_kwargs):
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(coordinator, "_fetch_stream", pending_fetch)
+    duplicate = {"Lines": {"1": {"GridPos": "1"}, "3": {"GridPos": "1"}}}
+    coordinator._on_timing_app_data(duplicate)
+    await started.wait()
+    await coordinator.async_close()
+    assert coordinator.data["status"] == STATUS_UNAVAILABLE
+
+    coordinator.reset_runtime_state()
+    coordinator._on_timing_app_data(duplicate)
+    started.clear()
+    await started.wait()
+    coordinator.reset_runtime_state()
+    await hass.async_block_till_done()
+    assert coordinator.data["grid"] == []
+    assert coordinator.data["cleared_reason"] == "runtime_reset"
 
 
 @pytest.mark.asyncio

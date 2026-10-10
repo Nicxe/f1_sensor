@@ -264,5 +264,15 @@ async def test_starting_grid_archive_fetch_failure_is_nonfatal(
     monkeypatch.setattr(grid, "fetch_text", AsyncMock(side_effect=RuntimeError("down")))
     assert await coordinator._fetch_stream("2026/test/race/", "TimingData") is None
 
-    monkeypatch.setattr(grid, "fetch_text", AsyncMock(return_value="data"))
+    fetch = AsyncMock(return_value="data")
+    monkeypatch.setattr(grid, "fetch_text", fetch)
     assert await coordinator._fetch_stream("/2026/test/race/", "TimingData") == "data"
+    assert fetch.await_args.kwargs["force_refresh"] is False
+    assert (
+        await coordinator._fetch_stream(
+            "/2026/test/race/", "TimingAppData", force_refresh=True
+        )
+        == "data"
+    )
+    assert fetch.await_args.kwargs["force_refresh"] is True
+    assert fetch.await_args.kwargs["ttl_seconds"] == 30
