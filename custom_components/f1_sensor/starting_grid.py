@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from collections.abc import Callable, Iterable
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
@@ -31,6 +32,7 @@ STATUS_WAITING_QUALIFYING = "waiting_for_qualifying"
 STATUS_COLLECTING = "collecting"
 STATUS_PROVISIONAL = "provisional"
 STATUS_CONFIRMED = "confirmed"
+STATUS_UNAVAILABLE = "unavailable"
 STATUS_COMPLETED = "completed"
 
 SOURCE_LIVE_QUALIFYING = "live_timing_qualifying"
@@ -90,6 +92,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         self._unsubs: list[Callable[[], None]] = []
         self._archive_task: asyncio.Task | None = None
         self._archive_fetch_keys: set[tuple[str, str]] = set()
+        self._grid_recovery_task: asyncio.Task | None = None
+        self._grid_recovery_keys: set[tuple[str, str]] = set()
 
         self._weekend_key: str | None = None
         self._weekend_format = WEEKEND_FORMAT_UNKNOWN
@@ -100,7 +104,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
             CONTEXT_SPRINT: {},
             CONTEXT_RACE: {},
         }
-        self._confirmed_grid_positions: dict[str, dict[str, int]] = {
+        # Racing number -> (GridPos, Line) as last seen in TimingAppData.
+        self._confirmed_grid_positions: dict[str, dict[str, tuple[int, int | None]]] = {
             CONTEXT_SPRINT: {},
             CONTEXT_RACE: {},
         }
@@ -116,6 +121,11 @@ class StartingGridCoordinator(DataUpdateCoordinator):
             with suppress(asyncio.CancelledError):
                 await self._archive_task
             self._archive_task = None
+        if self._grid_recovery_task is not None:
+            self._grid_recovery_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._grid_recovery_task
+            self._grid_recovery_task = None
 
     def reset_runtime_state(self, reason: str = "runtime_reset") -> None:
         """Clear runtime grid state while preserving the known weekend shell."""
@@ -123,9 +133,13 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         self._qualifying_entries = {CONTEXT_SPRINT: {}, CONTEXT_RACE: {}}
         self._confirmed_grid_positions = {CONTEXT_SPRINT: {}, CONTEXT_RACE: {}}
         self._archive_fetch_keys.clear()
+        self._grid_recovery_keys.clear()
         if self._archive_task is not None:
             self._archive_task.cancel()
             self._archive_task = None
+        if self._grid_recovery_task is not None:
+            self._grid_recovery_task.cancel()
+            self._grid_recovery_task = None
         status = (
             STATUS_WAITING_SPRINT_QUALIFYING
             if self._weekend_format == WEEKEND_FORMAT_SPRINT
@@ -237,6 +251,9 @@ class StartingGridCoordinator(DataUpdateCoordinator):
     ) -> None:
         if clear_context_data in (CONTEXT_SPRINT, CONTEXT_RACE):
             self._confirmed_grid_positions[clear_context_data].clear()
+            if self._grid_recovery_task is not None:
+                self._grid_recovery_task.cancel()
+                self._grid_recovery_task = None
 
         self._state.update(
             {
@@ -266,9 +283,13 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         self._qualifying_entries = {CONTEXT_SPRINT: {}, CONTEXT_RACE: {}}
         self._confirmed_grid_positions = {CONTEXT_SPRINT: {}, CONTEXT_RACE: {}}
         self._archive_fetch_keys.clear()
+        self._grid_recovery_keys.clear()
         if self._archive_task is not None:
             self._archive_task.cancel()
             self._archive_task = None
+        if self._grid_recovery_task is not None:
+            self._grid_recovery_task.cancel()
+            self._grid_recovery_task = None
 
         status = (
             STATUS_WAITING_SPRINT_QUALIFYING
@@ -411,6 +432,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                     target_session_name="Sprint",
                 )
                 self._maybe_schedule_archive_fetch(CONTEXT_SPRINT)
+                if self._state.get("status") == STATUS_UNAVAILABLE:
+                    self._build_confirmed_grid(CONTEXT_SPRINT)
                 return
             if status in FINISHED_STATUSES:
                 self._clear_active_grid(
@@ -428,6 +451,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                     target_session_name="Race",
                 )
                 self._maybe_schedule_archive_fetch(CONTEXT_RACE)
+                if self._state.get("status") == STATUS_UNAVAILABLE:
+                    self._build_confirmed_grid(CONTEXT_RACE)
                 return
             if status in FINISHED_STATUSES:
                 self._clear_active_grid(
@@ -502,12 +527,22 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         for rn, data in lines.items():
             if not isinstance(data, dict):
                 continue
-            grid_pos = self._parse_int(data.get("GridPos"))
+            rn_key = str(rn)
+            previous = positions.get(rn_key)
+            # Pre-start Line corrections arrive without GridPos, so keep the
+            # known GridPos and still take the new Line.
+            grid_pos = self._parse_int(data.get("GridPos")) or (
+                previous[0] if previous is not None else None
+            )
             if grid_pos is None:
                 continue
-            rn_key = str(rn)
-            if positions.get(rn_key) != grid_pos:
-                positions[rn_key] = grid_pos
+            line = previous[1] if previous is not None else None
+            # Line is the running order, so it only reflects the grid before
+            # the session starts; keep the last pre-start value.
+            if self._current_status == "Inactive":
+                line = self._parse_int(data.get("Line")) or line
+            if previous != (grid_pos, line):
+                positions[rn_key] = (grid_pos, line)
                 changed = True
         if changed:
             self._build_confirmed_grid(context)
@@ -618,9 +653,29 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         positions = self._confirmed_grid_positions.get(context, {})
         if not positions:
             return
+        resolved = self._resolved_grid_positions(positions)
+        if len(set(resolved.values())) != len(resolved):
+            self._state.update(
+                {
+                    "status": STATUS_UNAVAILABLE,
+                    "grid_context": context,
+                    "source_session_name": self._current_session.get("name"),
+                    "target_session_name": self._target_session_name(context),
+                    "source": None,
+                    "source_updated_at": None,
+                    "cleared_at": self._now_iso(),
+                    "cleared_reason": "ambiguous_grid_position",
+                    "grid": [],
+                    "grid_count": 0,
+                }
+            )
+            self._publish()
+            if self._current_status in STARTED_STATUSES:
+                self._maybe_schedule_grid_recovery(context)
+            return
         rows = []
         entries = self._qualifying_entries.get(context, {})
-        for rn, grid_pos in positions.items():
+        for rn, grid_pos in resolved.items():
             rows.append(
                 self._build_grid_row(
                     rn,
@@ -646,6 +701,132 @@ class StartingGridCoordinator(DataUpdateCoordinator):
             }
         )
         self._publish()
+
+    @staticmethod
+    def _resolved_grid_positions(
+        positions: dict[str, tuple[int, int | None]],
+    ) -> dict[str, int]:
+        # The live feed occasionally reports the same GridPos for two cars
+        # (e.g. car 1 sent GridPos 1 while lining up 5th). Fall back to the
+        # car's Line when that slot is otherwise empty.
+        taken = Counter(grid_pos for grid_pos, _line in positions.values())
+        resolved = {}
+        for rn, (grid_pos, line) in positions.items():
+            if (
+                taken[grid_pos] > 1
+                and line is not None
+                and line != grid_pos
+                and not taken[line]
+            ):
+                grid_pos = line
+            resolved[rn] = grid_pos
+        return resolved
+
+    def _maybe_schedule_grid_recovery(self, context: str) -> None:
+        if self._is_no_spoiler_active() or self._is_replay_active():
+            return
+        path = str(self._current_session.get("path") or "").strip("/")
+        if not path:
+            return
+        key = (context, path)
+        if key in self._grid_recovery_keys:
+            return
+        self._grid_recovery_keys.add(key)
+        session_key = self._current_session.get("key")
+        self._grid_recovery_task = self.hass.async_create_task(
+            self._recover_grid_from_archive(context, path, session_key)
+        )
+
+    async def _recover_grid_from_archive(
+        self, context: str, path: str, session_key: Any
+    ) -> None:
+        status_text, timing_text = await asyncio.gather(
+            self._fetch_stream(path, "SessionStatus", force_refresh=True),
+            self._fetch_stream(path, "TimingAppData", force_refresh=True),
+        )
+        if not status_text or not timing_text:
+            return
+        if (
+            self._is_no_spoiler_active()
+            or self._is_replay_active()
+            or self._current_session.get("path", "").strip("/") != path
+            or self._current_session.get("key") != session_key
+            or self._current_status not in STARTED_STATUSES
+        ):
+            return
+        archived = self._pre_start_grid_lines(status_text, timing_text)
+        positions = self._confirmed_grid_positions[context]
+        candidate = dict(positions)
+        for rn, (grid_pos, _line) in positions.items():
+            historical = archived.get(rn)
+            if historical is not None and historical[0] == grid_pos:
+                candidate[rn] = (grid_pos, historical[1])
+        resolved = self._resolved_grid_positions(candidate)
+        if len(set(resolved.values())) != len(resolved):
+            return
+        self._confirmed_grid_positions[context] = candidate
+        self._build_confirmed_grid(context)
+
+    @classmethod
+    def _pre_start_grid_lines(
+        cls, status_text: str, timing_text: str
+    ) -> dict[str, tuple[int, int]]:
+        statuses = list(cls._iter_timed_json_stream(status_text))
+        start = next(
+            (
+                timestamp
+                for timestamp, payload in statuses
+                if payload.get("Status") in STARTED_STATUSES
+            ),
+            None,
+        )
+        if start is None or not any(
+            timestamp < start and payload.get("Status") == "Inactive"
+            for timestamp, payload in statuses
+        ):
+            return {}
+        positions: dict[str, tuple[int | None, int | None]] = {}
+        for timestamp, payload in cls._iter_timed_json_stream(timing_text):
+            if timestamp >= start:
+                break
+            lines = payload.get("Lines")
+            if not isinstance(lines, dict):
+                continue
+            for rn, data in lines.items():
+                if not isinstance(data, dict):
+                    continue
+                old_grid, old_line = positions.get(str(rn), (None, None))
+                grid_pos = cls._parse_int(data.get("GridPos")) or old_grid
+                line = cls._parse_int(data.get("Line")) or old_line
+                positions[str(rn)] = (grid_pos, line)
+        return {
+            rn: (grid_pos, line)
+            for rn, (grid_pos, line) in positions.items()
+            if grid_pos is not None and line is not None
+        }
+
+    @staticmethod
+    def _iter_timed_json_stream(text: str) -> Iterable[tuple[int, dict[str, Any]]]:
+        for line in text.splitlines():
+            json_start = line.find("{")
+            if json_start < 0:
+                continue
+            clock = line[:json_start].strip().split(":")
+            if len(clock) != 3:
+                continue
+            try:
+                seconds, dot, fraction = clock[2].partition(".")
+                timestamp = (
+                    int(clock[0]) * 3_600_000
+                    + int(clock[1]) * 60_000
+                    + int(seconds) * 1_000
+                    + (int((fraction + "000")[:3]) if dot else 0)
+                )
+                payload = json.loads(line[json_start:])
+            except (ValueError, json.JSONDecodeError):
+                continue
+            if isinstance(payload, dict):
+                yield timestamp, payload
 
     def _build_grid_row(
         self,
@@ -725,13 +906,19 @@ class StartingGridCoordinator(DataUpdateCoordinator):
             if timing_data:
                 for payload in self._iter_json_stream(timing_data):
                     self._merge_timing_data(payload, context)
-                self._build_provisional_grid(context, source=SOURCE_ARCHIVE)
+                if self._state.get("status") not in (
+                    STATUS_CONFIRMED,
+                    STATUS_UNAVAILABLE,
+                ):
+                    self._build_provisional_grid(context, source=SOURCE_ARCHIVE)
         except asyncio.CancelledError:
             raise
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("Starting grid archive fetch failed for %s: %s", path, err)
 
-    async def _fetch_stream(self, path: str, stream: str) -> str | None:
+    async def _fetch_stream(
+        self, path: str, stream: str, *, force_refresh: bool = False
+    ) -> str | None:
         url = f"{STATIC_BASE}/{path.strip('/')}/{stream}.jsonStream"
         try:
             return await fetch_text(
@@ -739,11 +926,12 @@ class StartingGridCoordinator(DataUpdateCoordinator):
                 self._session,
                 url,
                 headers=self._headers,
-                ttl_seconds=3600,
+                ttl_seconds=30 if force_refresh else 3600,
                 cache=self._cache,
                 inflight=self._inflight,
                 persist_map=self._persist,
                 persist_save=self._persist_save,
+                force_refresh=force_refresh,
             )
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("Starting grid %s archive unavailable: %s", stream, err)

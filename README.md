@@ -8,6 +8,8 @@ See when the next session starts, follow the drivers as they race, and make your
 
 [Documentation](https://nicxe.github.io/f1_sensor/) · [Installation](https://nicxe.github.io/f1_sensor/getting-started/installation) · [Dashboard card](https://nicxe.github.io/f1_sensor/cards/cards-overview) · [Releases](https://github.com/Nicxe/f1_sensor/releases)
 
+Enjoying F1 Sensor? [Star the project](https://github.com/Nicxe/f1_sensor) to help other race fans find it. For one-time or monthly support, [sponsor the work on GitHub](https://github.com/sponsors/Nicxe). Prefer a quick thank-you? [Buy Niklas a coffee](https://buymeacoffee.com/niklasv).
+
 ## Yellow flag. Yellow light.
 
 A yellow flag on TV, a yellow light in your living room. When track conditions change, your room can follow: green for clear racing, yellow for caution, red for a red flag, and distinct colors for Safety Car and Virtual Safety Car.
@@ -66,6 +68,6 @@ Find [community dashboards](https://nicxe.github.io/f1_sensor/example/overview),
 
 The `dev` branch can include features awaiting stable release. Use the release linked by the documentation version label when matching instructions to your installation.
 
-You can also [support development](https://nicxe.github.io/f1_sensor/support) through sponsorship, documentation improvements and helping other users.
+You can also [support development](https://nicxe.github.io/f1_sensor/support) through a star, sponsorship, documentation improvements and helping other users.
 
 > F1 Sensor is an unofficial project and is not associated in any way with the Formula 1 companies. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD CHAMPIONSHIP, GRAND PRIX and related marks are trade marks of Formula One Licensing B.V.
