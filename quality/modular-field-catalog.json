@@ -2,8 +2,8 @@
   "format_version": 1,
   "configuration_version": 3,
   "generated_from": "modular/catalog.js",
-  "field_count": 137,
-  "module_count": 20,
+  "field_count": 143,
+  "module_count": 21,
   "sources": [
     "analysis",
     "analysis/telemetry_compare",
@@ -16,6 +16,7 @@
     "history/laps",
     "history/results",
     "last_race_results",
+    "minisectors",
     "next_race",
     "pitstops",
     "race_control_log",
@@ -2632,6 +2633,600 @@
               },
               "type": "list",
               "unit": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "minisectors",
+      "label": {
+        "en": "Minisectors",
+        "sv": "Minisektorer"
+      },
+      "sources": [
+        "current_session",
+        "driver_list",
+        "driver_positions",
+        "session_status"
+      ],
+      "variants": [
+        {
+          "id": "default",
+          "options": {},
+          "fields": [
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "position",
+              "identity": [
+                "entry",
+                "session",
+                "driver"
+              ],
+              "label": {
+                "en": "Pos",
+                "sv": "Pos"
+              },
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "current_position",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "driver_positions",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "integer",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": true,
+              "freshness": "session",
+              "generation": "session",
+              "id": "driver",
+              "identity": [
+                "entry",
+                "session",
+                "driver"
+              ],
+              "label": {
+                "en": "Driver",
+                "sv": "Förare"
+              },
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "racing_number",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "driver_positions",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "driver",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": true,
+              "freshness": "session",
+              "generation": "session",
+              "id": "team",
+              "identity": [
+                "entry",
+                "session",
+                "driver"
+              ],
+              "label": {
+                "en": "Team",
+                "sv": "Team"
+              },
+              "mobile": 2,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "team",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "driver_positions",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "text",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "sector_1",
+              "identity": [
+                "entry",
+                "session",
+                "driver",
+                "lap",
+                "sector"
+              ],
+              "label": {
+                "en": "S1",
+                "sv": "S1"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "sectors.current.sector_1",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "driver_positions",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "sector",
+              "unit": "s"
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "sector_2",
+              "identity": [
+                "entry",
+                "session",
+                "driver",
+                "lap",
+                "sector"
+              ],
+              "label": {
+                "en": "S2",
+                "sv": "S2"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "sectors.current.sector_2",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "driver_positions",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "sector",
+              "unit": "s"
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "sector_3",
+              "identity": [
+                "entry",
+                "session",
+                "driver",
+                "lap",
+                "sector"
+              ],
+              "label": {
+                "en": "S3",
+                "sv": "S3"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "sectors.current.sector_3",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "driver_positions",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "sector",
+              "unit": "s"
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "minisector_1",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S1 minisectors",
+                "sv": "S1-minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers.*.sectors.0.segments",
+              "presentations": [
+                "table",
+                "detail",
+                "strip"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": false,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "minisector_status_strip",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "sector_1_with_minisectors",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S1 with minisectors",
+                "sv": "S1 med minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "driver_positions.drivers[].sectors.current.sector_1 + drivers.*.sectors.0.segments",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "sector_with_minisectors",
+              "unit": "s"
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "minisector_2",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S2 minisectors",
+                "sv": "S2-minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers.*.sectors.1.segments",
+              "presentations": [
+                "table",
+                "detail",
+                "strip"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": false,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "minisector_status_strip",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "sector_2_with_minisectors",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S2 with minisectors",
+                "sv": "S2 med minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "driver_positions.drivers[].sectors.current.sector_2 + drivers.*.sectors.1.segments",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "sector_with_minisectors",
+              "unit": "s"
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "minisector_3",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S3 minisectors",
+                "sv": "S3-minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers.*.sectors.2.segments",
+              "presentations": [
+                "table",
+                "detail",
+                "strip"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": false,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "minisector_status_strip",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "sector_3_with_minisectors",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S3 with minisectors",
+                "sv": "S3 med minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "driver_positions.drivers[].sectors.current.sector_3 + drivers.*.sectors.2.segments",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "sector_with_minisectors",
+              "unit": "s"
             }
           ]
         }
@@ -10145,6 +10740,309 @@
               },
               "type": "status",
               "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "minisector_1",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S1 minisectors",
+                "sv": "S1-minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers.*.sectors.0.segments",
+              "presentations": [
+                "table",
+                "detail",
+                "strip"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": false,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "minisector_status_strip",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "sector_1_with_minisectors",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S1 with minisectors",
+                "sv": "S1 med minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "driver_positions.drivers[].sectors.current.sector_1 + drivers.*.sectors.0.segments",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "sector_with_minisectors",
+              "unit": "s"
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "minisector_2",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S2 minisectors",
+                "sv": "S2-minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers.*.sectors.1.segments",
+              "presentations": [
+                "table",
+                "detail",
+                "strip"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": false,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "minisector_status_strip",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "sector_2_with_minisectors",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S2 with minisectors",
+                "sv": "S2 med minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "driver_positions.drivers[].sectors.current.sector_2 + drivers.*.sectors.1.segments",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "sector_with_minisectors",
+              "unit": "s"
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "minisector_3",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S3 minisectors",
+                "sv": "S3-minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers.*.sectors.2.segments",
+              "presentations": [
+                "table",
+                "detail",
+                "strip"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": false,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "minisector_status_strip",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "provider_status",
+              "estimated": false,
+              "filterable": false,
+              "freshness": "session_delta",
+              "generation": "minisector_generation",
+              "id": "sector_3_with_minisectors",
+              "identity": [
+                "entry",
+                "session",
+                "generation",
+                "driver",
+                "lap",
+                "sector",
+                "segment"
+              ],
+              "label": {
+                "en": "S3 with minisectors",
+                "sv": "S3 med minisektorer"
+              },
+              "mobile": 1,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "driver_positions.drivers[].sectors.current.sector_3 + drivers.*.sectors.2.segments",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "minisectors",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp_or_null",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "sector_with_minisectors",
+              "unit": "s"
             }
           ]
         }

@@ -176,6 +176,19 @@ test('timing live gap toggle switches one accessible column without changing the
   expect(await page.evaluate(() => window.fixtureCard.config.modules[0].fields)).toEqual(['position', 'driver', 'interval']);
 });
 
+test('timing gap cells localize lap-qualified TimingData values', async ({ page }) => {
+  await page.evaluate(() => {
+    window.mountModular({ language: 'nl', config: { modules: [{ type: 'timing', fields: ['position', 'driver', 'gap', 'interval'] }] } });
+    const demo = window.fixtureDemo, entry = demo.preview.entries[0];
+    const drivers = demo.hass.states[entry.entities.driver_positions].attributes.drivers;
+    drivers[1].gap_to_leader = 'LAP 9';
+    drivers[1].interval_to_position_ahead = 'LAP 9';
+    window.fixtureCard.hass = { ...demo.hass };
+  });
+  await expect(page.getByText('Ronde 9', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('LAP 9', { exact: true })).toHaveCount(0);
+});
+
 test('a hidden tab is removed from visual and accessibility exposure without recreating modules', async ({ page }) => {
   await page.evaluate(() => { const config = window.mountModular(); config.layout = 'tabs'; window.mountModular({ config }); });
   await expect(page.getByRole('columnheader', { name: 'Driver', exact: true })).not.toBeVisible();
@@ -266,6 +279,32 @@ test('timing can show a configurable number of recent laps as comparison columns
   await expect(page.getByRole('columnheader', { name: 'Lap 12', exact: true })).toBeVisible();
 });
 
+test('timing can hide text below times and status icons in the visual editor', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'timing', fields: ['driver', 'last_lap', 'best_lap', 'sector_1', 'sector_2_with_minisectors'] }] } }));
+  const editor = page.locator('f1-sensor-card-editor');
+  const row = page.locator('#native-preview tr[data-driver="16"]');
+  await expect(row.locator('.provenance')).not.toHaveCount(0);
+  await expect(row.locator('.signal > span[aria-hidden="true"]')).not.toHaveCount(0);
+  await editor.getByText('Module options', { exact: true }).click();
+  const context = editor.getByRole('checkbox', { name: 'Show text below times', exact: true });
+  const icon = editor.getByRole('checkbox', { name: 'Show time status icon', exact: true });
+  await expect(context).toBeChecked();
+  await expect(icon).toBeChecked();
+  await context.uncheck();
+  await icon.uncheck();
+  await expect(row.locator('.provenance')).toHaveCount(0);
+  await expect(row.locator('.signal > span[aria-hidden="true"]')).toHaveCount(0);
+  await expect(row.locator('.sr').filter({ hasText: 'Lap 12' }).first()).toBeAttached();
+  const saved = await page.evaluate(() => window.savedConfig);
+  expect(saved.modules[0].options.show_time_context).toBe(false);
+  expect(saved.modules[0].options.show_time_status_icon).toBe(false);
+  await page.reload();
+  await page.waitForFunction(() => window.modularReady);
+  await page.evaluate(config => window.mountModular({ config }), saved);
+  await expect(page.locator('tr[data-driver="16"] .provenance')).toHaveCount(0);
+  await expect(page.locator('tr[data-driver="16"] .signal > span[aria-hidden="true"]')).toHaveCount(0);
+});
+
 test('About sections are shown by default and can be hidden per module', async ({ page }) => {
   await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'weather', options: { content: 'automatic_conditions' } }] } }));
   const editor = page.locator('f1-sensor-card-editor');
@@ -320,9 +359,105 @@ test('timing rows keep driver identity, expanded details and focus across positi
       sameButton: window.retainedRow.querySelector('button.driver') === window.retainedButton,
       focused: node.shadowRoot.activeElement === window.retainedButton,
       expanded: window.retainedButton.getAttribute('aria-expanded'),
-      last: node.shadowRoot.querySelector('tr[data-driver]:last-of-type')?.dataset.driver === window.retainedRow.dataset.driver,
+      last: [...node.shadowRoot.querySelectorAll('tr[data-driver]')].at(-1)?.dataset.driver === window.retainedRow.dataset.driver,
+      adjacent: window.retainedRow.nextElementSibling?.querySelector('[part="driver-detail"]')?.id === `driver-detail-${window.retainedRow.dataset.driver}`,
     };
-  })).toMatchObject({ sameRow: true, sameButton: true, focused: true, expanded: 'true' });
+  })).toMatchObject({ sameRow: true, sameButton: true, focused: true, expanded: 'true', adjacent: true });
+});
+
+test('Timing compares multiple drivers with only chosen extra fields and clears on session change', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'timing', fields: ['position', 'driver', 'last_lap'], detail_fields: ['last_lap', 'tyre_age', 'minisector_1'], options: { detail_laps: 3 } }] } }));
+  const timing = page.getByRole('region', { name: 'Timing', exact: true });
+  const drivers = timing.locator('tbody button.driver');
+  await drivers.nth(0).click();
+  await drivers.nth(1).click();
+  const panels = timing.locator('[part="driver-detail"]');
+  await expect(panels).toHaveCount(2);
+  await expect.poll(() => drivers.nth(0).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]')?.id === `driver-detail-${button.closest('tr').dataset.driver}`)).toBe(true);
+  await expect.poll(() => drivers.nth(1).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]')?.id === `driver-detail-${button.closest('tr').dataset.driver}`)).toBe(true);
+  await expect(timing.locator('.table-scroll [part="driver-detail"]')).toHaveCount(2);
+  await expect(drivers.nth(0)).toHaveAttribute('aria-expanded', 'true');
+  await expect(drivers.nth(1)).toHaveAttribute('aria-expanded', 'true');
+  await expect(panels.first().locator('dt')).toHaveText(['Tyre age', 'S1 minisectors']);
+  await expect(panels.first().locator('.minisector-strip')).toHaveCount(1);
+  await page.evaluate(() => {
+    const node = [...window.fixtureCard.moduleNodes.values()].find(item => item.module.type === 'timing');
+    node.model = { ...node.model, rows: [...node.model.rows].reverse() };
+  });
+  await expect(panels).toHaveCount(2);
+  await page.evaluate(() => {
+    const node = [...window.fixtureCard.moduleNodes.values()].find(item => item.module.type === 'timing');
+    node.model = { ...node.model, context: { ...node.model.context, key: 'another-session' }, selectionGeneration: 'another-generation' };
+  });
+  await expect(panels).toHaveCount(0);
+});
+
+test('Timing shows hidden laps for a driver one lap behind without repeating table laps', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'timing', fields: ['driver'], detail_fields: [], options: { history: 2, detail_laps: 3 } }] } }));
+  const timing = page.getByRole('region', { name: 'Timing', exact: true });
+  const drivers = timing.locator('tbody button.driver');
+  await drivers.first().click();
+  await drivers.nth(1).click();
+  const state = await page.evaluate(async () => {
+    const node = [...window.fixtureCard.moduleNodes.values()].find(item => item.module.type === 'timing');
+    const base = node.model.rows[0].history[0];
+    const rows = node.model.rows.map((row, index) => index < 2
+      ? { ...row, history: (index === 0 ? [12, 11, 10] : [11, 10, 9]).map(lap => ({ ...base, lap })) }
+      : row);
+    node.model = { ...node.model, rows };
+    await node.updateComplete;
+    return { histories: node.model.rows.slice(0, 2).map(row => row.history.map(lap => lap.lap)), panels: [...node.shadowRoot.querySelectorAll('[part="driver-detail"]')].map(panel => panel.querySelector('ol')?.textContent) };
+  });
+  expect(state.histories).toEqual([[12, 11, 10], [11, 10, 9]]);
+  expect(state.panels).toHaveLength(2);
+  expect(state.panels[0]).toMatch(/^Lap 10:/);
+  expect(state.panels[1]).toMatch(/^Lap 10:.*Lap 9:/);
+  expect(state.panels.every(text => !text.includes('Lap 11:') && !text.includes('Lap 12:'))).toBe(true);
+  await expect(timing.getByRole('columnheader', { name: 'Lap 11', exact: true })).toBeVisible();
+  await expect(timing.getByRole('columnheader', { name: 'Lap 12', exact: true })).toBeVisible();
+  const panels = timing.locator('[part="driver-detail"]');
+  await expect(panels).toHaveCount(2);
+});
+
+test('Timing hides the driver action when no information remains and keeps expanded rows attached at every width', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'timing', fields: ['driver', 'best_lap', 'tyre_age', 'status'], detail_fields: ['best_lap', 'tyre_age', 'status'], options: { detail_laps: 0 } }] } }));
+  const timing = page.getByRole('region', { name: 'Timing', exact: true });
+  await expect(timing.locator('tbody button.driver')).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'timing', fields: ['driver'], detail_fields: ['tyre_age'] }] } }));
+  const drivers = timing.locator('tbody button.driver');
+  await drivers.nth(0).click();
+  await drivers.nth(1).click();
+  const panels = timing.locator('[part="driver-detail"]');
+  await expect(panels).toHaveCount(2);
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect.poll(() => drivers.nth(0).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]') !== null)).toBe(true);
+  await expect.poll(() => drivers.nth(1).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]') !== null)).toBe(true);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect.poll(() => drivers.nth(0).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]') !== null)).toBe(true);
+  await expect.poll(() => drivers.nth(1).evaluate(button => button.closest('tr').nextElementSibling?.querySelector('[part="driver-detail"]') !== null)).toBe(true);
+  await timing.getByRole('button', { name: 'Close all driver details' }).click();
+  await expect(panels).toHaveCount(0);
+  await expect(drivers.first()).toBeFocused();
+});
+
+test('Timing editor saves detail fields and laps without changing table columns', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'timing', fields: ['driver', 'last_lap'] }] } }));
+  const editor = page.locator('f1-sensor-card-editor');
+  await editor.locator('summary').filter({ hasText: /^Driver details$/ }).click();
+  const details = editor.locator('summary').filter({ hasText: /^Driver details$/ }).locator('..');
+  await expect(details.getByRole('checkbox', { name: 'Show driver details' })).toBeChecked();
+  await details.getByRole('checkbox', { name: 'S1 minisectors' }).check();
+  const laps = details.getByRole('spinbutton', { name: 'Recent laps in driver details' });
+  await laps.fill('4');
+  await laps.blur();
+  const saved = await page.evaluate(() => window.savedConfig);
+  expect(saved.modules[0].fields).toEqual(['driver', 'last_lap']);
+  expect(saved.modules[0].detail_fields).toContain('minisector_1');
+  expect(saved.modules[0].options.detail_laps).toBe(4);
+  expect(saved.modules[0].options.history).toBe(0);
+  await details.getByRole('checkbox', { name: 'Show driver details' }).uncheck();
+  await expect(page.locator('#native-preview tbody button.driver')).toHaveCount(0);
 });
 
 test('all three styles retain timing content in light and dark themes', async ({ page }, info) => {
@@ -487,7 +622,8 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     };
   }, sensitive);
 
-  await expect(page.locator('f1-module-view')).toHaveCount(17);
+  const moduleCount = sensitive.length + 1;
+  await expect(page.locator('f1-module-view')).toHaveCount(moduleCount);
   expect(await page.evaluate(() => [...window.fixtureCard.moduleNodes.values()].map(node => ({
     type: node.module.type,
     blocked: node.model.blocked,
@@ -499,7 +635,7 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
     card.hass = { ...card.hass, states: { ...card.hass.states, [entity]: { state: 'unavailable', attributes: {} } } };
   });
-  await expect(page.getByText('Spoiler status cannot be verified. Refresh F1 Sensor before showing sensitive data.', { exact: true })).toHaveCount(17);
+  await expect(page.getByText('Spoiler status cannot be verified. Refresh F1 Sensor before showing sensitive data.', { exact: true })).toHaveCount(moduleCount);
   expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => call !== 'event:entity_registry_updated'))).toEqual(['ws:f1_sensor/entities']);
 
   await page.evaluate(() => {
@@ -518,7 +654,7 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
     card.hass = { ...card.hass, states: { ...card.hass.states, [entity]: { state: 'on', attributes: {} } } };
   });
-  await expect(page.getByText('Spoiler protection is active.', { exact: true })).toHaveCount(17);
+  await expect(page.getByText('Spoiler protection is active.', { exact: true })).toHaveCount(moduleCount);
   await expect.poll(() => page.evaluate(() => window.spoilerResourceStops)).toBeGreaterThanOrEqual(4);
 });
 
@@ -802,6 +938,15 @@ test('personal best sector laps and theoretical sum keep separate labels and qua
   await expect(page.getByText('Sum of personal-best sectors · may span laps', { exact: true })).toBeVisible();
   await expect(page.getByText('1:20.774', { exact: true })).toBeVisible();
   const axe = await new AxeBuilder({ page }).include('f1-sensor-card').analyze(); expect(axe.violations).toEqual([]);
+});
+
+test('timing hides qualifying and comparison context text while retaining screen-reader labels', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ scene: 'qualifying', config: { modules: [{ type: 'timing', driver: '16', fields: ['driver', 'q1_time', 'best_sector_1', 'theoretical_lap', 'lap_delta'], options: { show_time_context: false } }] } }));
+  const row = page.locator('tr[data-driver="16"]');
+  await expect(row.locator('.provenance')).toHaveCount(0);
+  await expect(row.locator('.sr').filter({ hasText: 'Lap 10' }).first()).toBeAttached();
+  await expect(row.locator('.sr').filter({ hasText: 'Sum of personal-best sectors' })).toBeAttached();
+  await expect(row.locator('.sr').filter({ hasText: 'Q1' })).toBeAttached();
 });
 
 test('timeline distinguishes estimates from source events and protects all details when spoilers activate', async ({ page }) => {
