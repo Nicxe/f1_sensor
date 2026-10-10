@@ -107,7 +107,7 @@ def test_modular_card_uses_dutch_for_labels_titles_and_messages() -> None:
         ),
         "dynamicColumns": "3 van 4 kolommen",
         "driverLabel": "Coureur",
-        "resultModule": "Resultaten",
+        "resultModule": "Uitslagen",
         "incidentsModule": "Incidents",
         "sessionName": "Kwalificatie",
         "swedishFallback": "Väder",

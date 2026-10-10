@@ -62,6 +62,20 @@ Use [Race Control](/entities/race-control) for messages, [Track Status](/entitie
 
 Use `sensor.f1_race_lap_count` and its `total_laps` attribute when available. The [Race Lap reference](/entities/race-lap) explains the state. Missing total laps can mean the source has not supplied them yet.
 
+### Can I show minisector times?
+
+No. The live timing source supplies a status for each minisector, but no time for
+each one. In the modular F1 Sensor card, add **S1/S2/S3 minisectors** for status
+blocks only, or **S1/S2/S3 with minisectors** to place those blocks under the
+existing full-sector time. Purple with a diamond means overall best, green with a
+circle means personal best, and yellow with a square means recorded. Yellow does
+not prove that the minisector was slower than the preceding lap.
+
+Minisectors are card data rather than Home Assistant sensors because they update
+quickly for many drivers and are useful only in the current session context. If a
+session or archive has no segment data, the card shows its configured unavailable
+state and keeps ordinary sector timing separate. See [the modular card guide](/cards/modular#show-minisectors).
+
 ## Troubleshooting
 
 ### Do I install the cards separately?

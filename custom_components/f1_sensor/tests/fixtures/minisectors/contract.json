@@ -1,0 +1,444 @@
+{
+  "format_version": 1,
+  "protocol": {
+    "version": 1,
+    "subscribe_command": "f1_sensor/minisectors/subscribe",
+    "event_types": [
+      "snapshot",
+      "delta",
+      "reset",
+      "unavailable"
+    ],
+    "event_requirements": {
+      "snapshot": ["generation", "sequence", "drivers"],
+      "delta": ["generation", "sequence", "drivers"],
+      "reset": ["generation", "sequence", "reason", "scope"],
+      "unavailable": ["generation", "sequence", "reason"]
+    },
+    "initial_event": "snapshot",
+    "sequence": {
+      "snapshot": 0,
+      "delta": "previous + 1",
+      "gap_action": "unsubscribe_and_resubscribe"
+    },
+    "resync": "Every subscription starts with a complete snapshot. A client that detects a sequence gap, reconnect, changed generation, or invalid payload discards the affected generation, unsubscribes, and subscribes again.",
+    "generation_changes": [
+      "integration_reload",
+      "session_change",
+      "qualifying_part_change",
+      "replay_session_change",
+      "replay_seek_backwards",
+      "live_delay_change",
+      "source_restart"
+    ],
+    "atomic_source_frame": true,
+    "lap_boundary": {
+      "trigger": "segment_status_reset_frame",
+      "number_of_laps_role": "metadata_only",
+      "retain_completed_strip_until_reset_frame": true,
+      "preserve_new_lap_statuses_from_reset_frame": true
+    }
+  },
+  "limits": {
+    "drivers": 32,
+    "sectors_per_driver": 3,
+    "segments_per_sector": 32,
+    "maximum_event_bytes": 32768,
+    "maximum_ui_deltas_per_second": 4,
+    "maximum_rolling_bytes_per_client_per_second": 16384,
+    "rolling_window_seconds": 10
+  },
+  "status_semantics": [
+    {
+      "raw": 0,
+      "semantic": "neutral",
+      "color": "neutral",
+      "label_en": "Not set",
+      "label_sv": "Inte registrerad",
+      "known": true
+    },
+    {
+      "raw": 2048,
+      "semantic": "recorded",
+      "color": "yellow",
+      "label_en": "Recorded",
+      "label_sv": "Registrerad",
+      "known": true
+    },
+    {
+      "raw": 2049,
+      "semantic": "personal_best",
+      "color": "green",
+      "label_en": "Personal best",
+      "label_sv": "Personbästa",
+      "known": true
+    },
+    {
+      "raw": 2051,
+      "semantic": "overall_best",
+      "color": "purple",
+      "label_en": "Overall best",
+      "label_sv": "Bäst totalt",
+      "known": true
+    },
+    {
+      "raw": 2064,
+      "semantic": "special",
+      "color": "neutral",
+      "label_en": "Special status",
+      "label_sv": "Särskild status",
+      "known": false
+    },
+    {
+      "raw": "other",
+      "semantic": "unknown",
+      "color": "neutral",
+      "label_en": "Unknown status",
+      "label_sv": "Okänd status",
+      "known": false
+    }
+  ],
+  "fields": [
+    {
+      "id": "minisector_1",
+      "label": {
+        "en": "S1 minisectors",
+        "sv": "S1-minisektorer"
+      },
+      "type": "minisector_status_strip",
+      "unit": null,
+      "source": "minisectors",
+      "path": "drivers.*.sectors.0.segments",
+      "capability": "public_timing",
+      "modes": [
+        "live",
+        "replay"
+      ],
+      "sessions": [
+        "practice",
+        "qualifying",
+        "sprint_qualifying",
+        "sprint",
+        "race"
+      ],
+      "identity": [
+        "entry",
+        "session",
+        "generation",
+        "driver",
+        "lap",
+        "sector",
+        "segment"
+      ],
+      "generation": "minisector_generation",
+      "timestamps": {
+        "source": "stream_timestamp_or_null",
+        "received": "subscription.received_at",
+        "updated": "generated_at",
+        "displayed": "snapshot"
+      },
+      "freshness": "session_delta",
+      "spoiler": true,
+      "sortable": false,
+      "filterable": false,
+      "mobile": 1,
+      "presentations": [
+        "table",
+        "detail",
+        "strip"
+      ],
+      "estimated": false,
+      "comparison": "provider_status"
+    },
+    {
+      "id": "minisector_2",
+      "label": {
+        "en": "S2 minisectors",
+        "sv": "S2-minisektorer"
+      },
+      "type": "minisector_status_strip",
+      "unit": null,
+      "source": "minisectors",
+      "path": "drivers.*.sectors.1.segments",
+      "capability": "public_timing",
+      "modes": [
+        "live",
+        "replay"
+      ],
+      "sessions": [
+        "practice",
+        "qualifying",
+        "sprint_qualifying",
+        "sprint",
+        "race"
+      ],
+      "identity": [
+        "entry",
+        "session",
+        "generation",
+        "driver",
+        "lap",
+        "sector",
+        "segment"
+      ],
+      "generation": "minisector_generation",
+      "timestamps": {
+        "source": "stream_timestamp_or_null",
+        "received": "subscription.received_at",
+        "updated": "generated_at",
+        "displayed": "snapshot"
+      },
+      "freshness": "session_delta",
+      "spoiler": true,
+      "sortable": false,
+      "filterable": false,
+      "mobile": 1,
+      "presentations": [
+        "table",
+        "detail",
+        "strip"
+      ],
+      "estimated": false,
+      "comparison": "provider_status"
+    },
+    {
+      "id": "minisector_3",
+      "label": {
+        "en": "S3 minisectors",
+        "sv": "S3-minisektorer"
+      },
+      "type": "minisector_status_strip",
+      "unit": null,
+      "source": "minisectors",
+      "path": "drivers.*.sectors.2.segments",
+      "capability": "public_timing",
+      "modes": [
+        "live",
+        "replay"
+      ],
+      "sessions": [
+        "practice",
+        "qualifying",
+        "sprint_qualifying",
+        "sprint",
+        "race"
+      ],
+      "identity": [
+        "entry",
+        "session",
+        "generation",
+        "driver",
+        "lap",
+        "sector",
+        "segment"
+      ],
+      "generation": "minisector_generation",
+      "timestamps": {
+        "source": "stream_timestamp_or_null",
+        "received": "subscription.received_at",
+        "updated": "generated_at",
+        "displayed": "snapshot"
+      },
+      "freshness": "session_delta",
+      "spoiler": true,
+      "sortable": false,
+      "filterable": false,
+      "mobile": 1,
+      "presentations": [
+        "table",
+        "detail",
+        "strip"
+      ],
+      "estimated": false,
+      "comparison": "provider_status"
+    },
+    {
+      "id": "sector_1_with_minisectors",
+      "label": {
+        "en": "S1 with minisectors",
+        "sv": "S1 med minisektorer"
+      },
+      "type": "sector_with_minisectors",
+      "unit": "s",
+      "source": "minisectors",
+      "path": "driver_positions.drivers[].sectors.current.sector_1 + drivers.*.sectors.0.segments",
+      "capability": "public_timing",
+      "modes": [
+        "live",
+        "replay"
+      ],
+      "sessions": [
+        "practice",
+        "qualifying",
+        "sprint_qualifying",
+        "sprint",
+        "race"
+      ],
+      "identity": [
+        "entry",
+        "session",
+        "generation",
+        "driver",
+        "lap",
+        "sector",
+        "segment"
+      ],
+      "generation": "minisector_generation",
+      "timestamps": {
+        "source": "stream_timestamp_or_null",
+        "received": "subscription.received_at",
+        "updated": "generated_at",
+        "displayed": "snapshot"
+      },
+      "freshness": "session_delta",
+      "spoiler": true,
+      "sortable": true,
+      "filterable": false,
+      "mobile": 1,
+      "presentations": [
+        "table",
+        "detail"
+      ],
+      "estimated": false,
+      "comparison": "provider_status"
+    },
+    {
+      "id": "sector_2_with_minisectors",
+      "label": {
+        "en": "S2 with minisectors",
+        "sv": "S2 med minisektorer"
+      },
+      "type": "sector_with_minisectors",
+      "unit": "s",
+      "source": "minisectors",
+      "path": "driver_positions.drivers[].sectors.current.sector_2 + drivers.*.sectors.1.segments",
+      "capability": "public_timing",
+      "modes": [
+        "live",
+        "replay"
+      ],
+      "sessions": [
+        "practice",
+        "qualifying",
+        "sprint_qualifying",
+        "sprint",
+        "race"
+      ],
+      "identity": [
+        "entry",
+        "session",
+        "generation",
+        "driver",
+        "lap",
+        "sector",
+        "segment"
+      ],
+      "generation": "minisector_generation",
+      "timestamps": {
+        "source": "stream_timestamp_or_null",
+        "received": "subscription.received_at",
+        "updated": "generated_at",
+        "displayed": "snapshot"
+      },
+      "freshness": "session_delta",
+      "spoiler": true,
+      "sortable": true,
+      "filterable": false,
+      "mobile": 1,
+      "presentations": [
+        "table",
+        "detail"
+      ],
+      "estimated": false,
+      "comparison": "provider_status"
+    },
+    {
+      "id": "sector_3_with_minisectors",
+      "label": {
+        "en": "S3 with minisectors",
+        "sv": "S3 med minisektorer"
+      },
+      "type": "sector_with_minisectors",
+      "unit": "s",
+      "source": "minisectors",
+      "path": "driver_positions.drivers[].sectors.current.sector_3 + drivers.*.sectors.2.segments",
+      "capability": "public_timing",
+      "modes": [
+        "live",
+        "replay"
+      ],
+      "sessions": [
+        "practice",
+        "qualifying",
+        "sprint_qualifying",
+        "sprint",
+        "race"
+      ],
+      "identity": [
+        "entry",
+        "session",
+        "generation",
+        "driver",
+        "lap",
+        "sector",
+        "segment"
+      ],
+      "generation": "minisector_generation",
+      "timestamps": {
+        "source": "stream_timestamp_or_null",
+        "received": "subscription.received_at",
+        "updated": "generated_at",
+        "displayed": "snapshot"
+      },
+      "freshness": "session_delta",
+      "spoiler": true,
+      "sortable": true,
+      "filterable": false,
+      "mobile": 1,
+      "presentations": [
+        "table",
+        "detail"
+      ],
+      "estimated": false,
+      "comparison": "provider_status"
+    }
+  ],
+  "availability": [
+    {
+      "context": "matching_live_session",
+      "result": "available_after_snapshot"
+    },
+    {
+      "context": "matching_replay_session",
+      "result": "available_after_snapshot"
+    },
+    {
+      "context": "live_before_first_segment_payload",
+      "result": "loading_then_neutral_empty"
+    },
+    {
+      "context": "spoiler_protected",
+      "result": "blocked_without_retained_segment_data"
+    },
+    {
+      "context": "live_delay_changed",
+      "result": "new_generation_from_delayed_stream"
+    },
+    {
+      "context": "replay_seek_or_session_changed",
+      "result": "discard_generation_then_snapshot"
+    },
+    {
+      "context": "locked_archive_session",
+      "result": "unavailable_without_live_fallback"
+    },
+    {
+      "context": "backend_without_minisector_capability",
+      "result": "only_minisector_fields_unavailable"
+    },
+    {
+      "context": "all_consumers_hidden_or_removed",
+      "result": "unsubscribe_and_release_resource"
+    }
+  ]
+}
