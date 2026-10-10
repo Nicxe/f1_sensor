@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from collections.abc import Callable, Iterable
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
@@ -100,7 +101,8 @@ class StartingGridCoordinator(DataUpdateCoordinator):
             CONTEXT_SPRINT: {},
             CONTEXT_RACE: {},
         }
-        self._confirmed_grid_positions: dict[str, dict[str, int]] = {
+        # Racing number -> (GridPos, Line) as last seen in TimingAppData.
+        self._confirmed_grid_positions: dict[str, dict[str, tuple[int, int | None]]] = {
             CONTEXT_SPRINT: {},
             CONTEXT_RACE: {},
         }
@@ -502,12 +504,22 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         for rn, data in lines.items():
             if not isinstance(data, dict):
                 continue
-            grid_pos = self._parse_int(data.get("GridPos"))
+            rn_key = str(rn)
+            previous = positions.get(rn_key)
+            # Pre-start Line corrections arrive without GridPos, so keep the
+            # known GridPos and still take the new Line.
+            grid_pos = self._parse_int(data.get("GridPos")) or (
+                previous[0] if previous is not None else None
+            )
             if grid_pos is None:
                 continue
-            rn_key = str(rn)
-            if positions.get(rn_key) != grid_pos:
-                positions[rn_key] = grid_pos
+            line = previous[1] if previous is not None else None
+            # Line is the running order, so it only reflects the grid before
+            # the session starts; keep the last pre-start value.
+            if self._current_status == "Inactive":
+                line = self._parse_int(data.get("Line")) or line
+            if previous != (grid_pos, line):
+                positions[rn_key] = (grid_pos, line)
                 changed = True
         if changed:
             self._build_confirmed_grid(context)
@@ -620,7 +632,18 @@ class StartingGridCoordinator(DataUpdateCoordinator):
             return
         rows = []
         entries = self._qualifying_entries.get(context, {})
-        for rn, grid_pos in positions.items():
+        # The live feed occasionally reports the same GridPos for two cars
+        # (e.g. car 1 sent GridPos 1 while lining up 5th). Fall back to the
+        # car's Line when that slot is otherwise empty.
+        taken = Counter(grid_pos for grid_pos, _line in positions.values())
+        for rn, (grid_pos, line) in positions.items():
+            if (
+                taken[grid_pos] > 1
+                and line is not None
+                and line != grid_pos
+                and not taken[line]
+            ):
+                grid_pos = line
             rows.append(
                 self._build_grid_row(
                     rn,

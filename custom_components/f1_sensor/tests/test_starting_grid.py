@@ -192,6 +192,105 @@ async def test_normal_weekend_builds_and_confirms_race_grid(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_duplicate_gridpos_falls_back_to_pre_start_line(hass) -> None:
+    coordinator = _make_coordinator(hass)
+
+    coordinator._on_session_info(_session_info("Qualifying", "Qualifying"))
+    coordinator._on_driver_list(_driver_list())
+    coordinator._on_timing_data(_timing_data())
+    coordinator._on_session_status({"Status": "Finalised"})
+    coordinator._on_session_info(
+        _session_info("Race", "Race", session_key=11, status="Inactive")
+    )
+    # The feed can send a car the same GridPos as another car while its
+    # Line still shows the real slot.
+    coordinator._on_timing_app_data(
+        {
+            "Lines": {
+                "1": {"GridPos": "1", "Line": 3},
+                "2": {"GridPos": "2", "Line": 2},
+                "3": {"GridPos": "1", "Line": 1},
+            }
+        }
+    )
+
+    grid = coordinator.data["grid"]
+    assert [row["racing_number"] for row in grid] == ["3", "2", "1"]
+    assert [row["grid_position"] for row in grid] == [1, 2, 3]
+
+    # After the start Line is the running order: a GridPos-only delta and a
+    # reconnect snapshot with new Lines must not move the grid.
+    coordinator._on_session_status({"Status": "Started"})
+    coordinator._on_timing_app_data({"Lines": {"1": {"GridPos": "1"}}})
+    coordinator._on_timing_app_data(
+        {
+            "Lines": {
+                "1": {"GridPos": "1", "Line": 1},
+                "2": {"GridPos": "2", "Line": 2},
+                "3": {"GridPos": "1", "Line": 3},
+            }
+        }
+    )
+    assert [row["racing_number"] for row in coordinator.data["grid"]] == [
+        "3",
+        "2",
+        "1",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_duplicate_gridpos_uses_line_correction_without_gridpos(
+    hass,
+) -> None:
+    coordinator = _make_coordinator(hass)
+
+    coordinator._on_session_info(
+        _session_info("Race", "Race", session_key=11, status="Inactive")
+    )
+    # Order seen before the 2026 Singapore Sprint: car 1 is placed on pole,
+    # then moved to Line 5 by a delta without GridPos, then car 3 takes pole.
+    coordinator._on_timing_app_data({"Lines": {"1": {"Line": 1, "GridPos": "1"}}})
+    coordinator._on_timing_app_data({"Lines": {"1": {"Line": 5}}})
+    coordinator._on_timing_app_data(
+        {
+            "Lines": {
+                "3": {"Line": 1, "GridPos": "1"},
+                "2": {"Line": 2, "GridPos": "2"},
+                "4": {"Line": 3, "GridPos": "3"},
+                "5": {"Line": 4, "GridPos": "4"},
+            }
+        }
+    )
+
+    grid = coordinator.data["grid"]
+    assert [row["racing_number"] for row in grid] == ["3", "2", "4", "5", "1"]
+    assert [row["grid_position"] for row in grid] == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.asyncio
+async def test_duplicate_gridpos_ignores_line_without_pre_start_status(
+    hass,
+) -> None:
+    coordinator = _make_coordinator(hass)
+
+    # Cold start mid-race: SessionInfo carries no status, Line is running order.
+    coordinator._on_session_info(
+        _session_info("Race", "Race", session_key=11, status="")
+    )
+    coordinator._on_timing_app_data(
+        {
+            "Lines": {
+                "1": {"GridPos": "1", "Line": 2},
+                "2": {"GridPos": "1", "Line": 1},
+                "3": {"GridPos": "3", "Line": 3},
+            }
+        }
+    )
+
+    assert [row["grid_position"] for row in coordinator.data["grid"]] == [1, 1, 3]
+
+
+@pytest.mark.asyncio
 async def test_sprint_grid_clears_before_race_qualifying_grid(hass) -> None:
     coordinator = _make_coordinator(hass)
 
