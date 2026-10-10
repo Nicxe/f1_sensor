@@ -4,11 +4,13 @@ from copy import deepcopy
 
 import pytest
 
+from custom_components.f1_sensor import track_map_annotation_contract as contract
 from custom_components.f1_sensor.track_map_annotation_contract import (
     annotation_binding_matches,
     annotation_context,
     bind_annotation_layers,
     geometry_fingerprint,
+    load_annotation_catalog,
 )
 
 
@@ -352,3 +354,60 @@ def test_geometry_change_invalidates_existing_binding(
     assert changed is not None
     assert not annotation_binding_matches(bound, changed)
     assert bind_annotation_layers([corner_record], changed, segment_count=3) is None
+
+
+def test_invalid_catalog_and_annotation_shapes_fail_closed(
+    monkeypatch,
+    singapore_session: dict,
+    singapore_track: dict,
+    singapore_context,
+    corner_record: dict,
+) -> None:
+    """Reject malformed bundled data before it reaches the map card."""
+    monkeypatch.setattr(
+        contract.json, "loads", lambda _text: (_ for _ in ()).throw(ValueError)
+    )
+    assert load_annotation_catalog() == []
+    assert geometry_fingerprint(None) is None
+    assert (
+        geometry_fingerprint({**singapore_track, "points": [[0, False], [1, 1]]})
+        is None
+    )
+    assert geometry_fingerprint({**singapore_track, "rotation": 10**10_000}) is None
+    assert (
+        annotation_context(
+            entry_id="entry-a",
+            session=singapore_session,
+            track=singapore_track,
+            source="live",
+            session_generation=1,
+            replay_year=2025,
+        )
+        is None
+    )
+    assert bind_annotation_layers([None], singapore_context, segment_count=3) is None
+    assert (
+        bind_annotation_layers(
+            [{**corner_record, "items": [None]}], singapore_context, segment_count=3
+        )
+        is None
+    )
+    malformed_interval = {
+        **corner_record,
+        "layer": "detection_zones",
+        "items": [
+            {
+                "id": "zone_1",
+                "kind": "interval",
+                "start": None,
+                "end": {"segment_index": 1, "fraction": 0.5},
+                "direction": "forward",
+                "wraps_start_finish": False,
+                "label": "Zone 1",
+            }
+        ],
+    }
+    assert (
+        bind_annotation_layers([malformed_interval], singapore_context, segment_count=3)
+        is None
+    )
