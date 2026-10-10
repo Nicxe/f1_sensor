@@ -504,11 +504,15 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         for rn, data in lines.items():
             if not isinstance(data, dict):
                 continue
-            grid_pos = self._parse_int(data.get("GridPos"))
-            if grid_pos is None:
-                continue
             rn_key = str(rn)
             previous = positions.get(rn_key)
+            # Pre-start Line corrections arrive without GridPos, so keep the
+            # known GridPos and still take the new Line.
+            grid_pos = self._parse_int(data.get("GridPos")) or (
+                previous[0] if previous is not None else None
+            )
+            if grid_pos is None:
+                continue
             line = previous[1] if previous is not None else None
             # Line is the running order, so it only reflects the grid before
             # the session starts; keep the last pre-start value.

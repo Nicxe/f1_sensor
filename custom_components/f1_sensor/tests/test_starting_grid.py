@@ -239,6 +239,35 @@ async def test_duplicate_gridpos_falls_back_to_pre_start_line(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_duplicate_gridpos_uses_line_correction_without_gridpos(
+    hass,
+) -> None:
+    coordinator = _make_coordinator(hass)
+
+    coordinator._on_session_info(
+        _session_info("Race", "Race", session_key=11, status="Inactive")
+    )
+    # Order seen before the 2026 Singapore Sprint: car 1 is placed on pole,
+    # then moved to Line 5 by a delta without GridPos, then car 3 takes pole.
+    coordinator._on_timing_app_data({"Lines": {"1": {"Line": 1, "GridPos": "1"}}})
+    coordinator._on_timing_app_data({"Lines": {"1": {"Line": 5}}})
+    coordinator._on_timing_app_data(
+        {
+            "Lines": {
+                "3": {"Line": 1, "GridPos": "1"},
+                "2": {"Line": 2, "GridPos": "2"},
+                "4": {"Line": 3, "GridPos": "3"},
+                "5": {"Line": 4, "GridPos": "4"},
+            }
+        }
+    )
+
+    grid = coordinator.data["grid"]
+    assert [row["racing_number"] for row in grid] == ["3", "2", "4", "5", "1"]
+    assert [row["grid_position"] for row in grid] == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.asyncio
 async def test_duplicate_gridpos_ignores_line_without_pre_start_status(
     hass,
 ) -> None:
