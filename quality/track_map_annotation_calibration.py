@@ -305,9 +305,7 @@ def main() -> None:
     args = parser.parse_args()
     if not args.catalog_out and not args.review_out:
         parser.error("Specify --catalog-out or --review-out")
-    catalog = build_catalog(
-        qa_status=args.qa_status, rights_status=args.rights_status
-    )
+    catalog = build_catalog(qa_status=args.qa_status, rights_status=args.rights_status)
     if args.catalog_out:
         args.catalog_out.parent.mkdir(parents=True, exist_ok=True)
         args.catalog_out.write_text(
