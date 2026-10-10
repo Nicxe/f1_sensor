@@ -12,7 +12,7 @@ F1 Sensor grows through useful bug reports, shared dashboards and contributions 
 
 ## Sponsor development
 
-If F1 Sensor adds something to your race weekends, you can [buy Niklas a coffee](https://www.buymeacoffee.com/NiklasV) or [become a GitHub sponsor](https://github.com/sponsors/Nicxe).
+If F1 Sensor adds something to your race weekends, [star the project](https://github.com/Nicxe/f1_sensor) to help other fans find it. The best way to fund its continued development is a [one-time or monthly GitHub sponsorship](https://github.com/sponsors/Nicxe). If you prefer a quick thank-you, you can also [buy Niklas a coffee](https://buymeacoffee.com/niklasv).
 
 <span id="2-contributing" />
 
