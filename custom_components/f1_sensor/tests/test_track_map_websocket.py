@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 import json
 from types import SimpleNamespace
@@ -29,6 +30,9 @@ from custom_components.f1_sensor.track_map import (
     TrackMapPosition,
     TrackMapRuntimeData,
     TrackMapStore,
+)
+from custom_components.f1_sensor.track_map_annotation_contract import (
+    load_annotation_catalog,
 )
 from custom_components.f1_sensor.track_map_websocket import (
     TRACK_MAP_API_STATUS_NO_GEOMETRY,
@@ -91,6 +95,15 @@ def _position(racing_number: str = "1") -> TrackMapPosition:
         z=0,
         status="OnTrack",
     )
+
+
+def _singapore_session(*, year: int = 2025, key: str = "9896") -> dict[str, Any]:
+    return {
+        "Key": key,
+        "Path": f"{year}/{year}-10-05_Singapore_Grand_Prix/{year}-10-05_Race/",
+        "StartDate": f"{year}-10-05T20:00:00",
+        "Meeting": {"Circuit": {"Key": "61", "ShortName": "Singapore"}},
+    }
 
 
 def test_track_map_payload_reports_not_loaded_without_store(hass) -> None:
@@ -264,6 +277,200 @@ def test_track_map_v2_sends_snapshot_then_small_sequenced_delta(hass) -> None:
     assert set(delta["changes"]) == {"1"}
     assert len(json.dumps(delta)) < len(json.dumps(initial)) * 0.3
     connection.subscriptions.pop(20)()
+
+
+@pytest.mark.asyncio
+async def test_v2_annotations_follow_exact_map_generation_and_resync(hass) -> None:
+    store = _store(hass)
+    records = load_annotation_catalog()
+    assert all(record["rights_status"] == "cleared" for record in records)
+    store.annotation_records = tuple(records)
+    store.update_session_info(_singapore_session())
+    connection = FakeConnection()
+    _ws_subscribe_track_map_snapshot(
+        hass,
+        connection,
+        {
+            "id": 61,
+            "type": TRACK_MAP_WS_SUBSCRIBE_TYPE,
+            "entry_id": store.entry_id,
+            "protocol_version": 2,
+            "throttle_ms": 0,
+        },
+    )
+
+    initial = connection.events[-1][1]
+    annotations = initial["snapshot"]["annotations"]
+    assert annotations["schema_version"] == 1
+    assert annotations["binding"]["source"] == "live"
+    assert annotations["binding"]["season"] == 2025
+    assert (
+        annotations["binding"]["geometry_fingerprint"]
+        == initial["snapshot"]["track"]["geometry_fingerprint"]
+    )
+    assert {layer["layer"] for layer in annotations["layers"]} == {
+        "corners",
+        "start_finish",
+        "sectors",
+        "speed_traps",
+        "detection_zones",
+    }
+    corner_layer = next(
+        layer for layer in annotations["layers"] if layer["layer"] == "corners"
+    )
+    assert len(corner_layer["items"]) == 19
+    assert corner_layer["columns"] == [
+        "id",
+        "kind",
+        "anchor",
+        "label",
+        "label_offset",
+    ]
+    raw_payload = {**initial, "snapshot": store.snapshot()}
+    added_bytes = len(json.dumps(initial, separators=(",", ":")).encode()) - len(
+        json.dumps(raw_payload, separators=(",", ":")).encode()
+    )
+    assert added_bytes <= 4096
+
+    store.update_positions([_position()], source="live")
+    delta = connection.events[-1][1]
+    assert delta["type"] == "delta"
+    assert "annotations" not in delta["patch"]
+    assert "geometry_fingerprint" not in delta["patch"].get("track", {})
+
+    _ws_resync_track_map_snapshot(
+        hass,
+        connection,
+        {
+            "id": 62,
+            "type": TRACK_MAP_WS_RESYNC_TYPE,
+            "entry_id": store.entry_id,
+            "protocol_version": 2,
+        },
+    )
+    await hass.async_block_till_done()
+    resync = connection.results[-1][1]
+    assert resync["snapshot"]["annotations"] == annotations
+
+    store.update_replay_state("seeking", session_key="9896", session_year=2025)
+    assert connection.events[-1][1]["patch"]["annotations"] is None
+    store.reset_for_replay()
+    assert connection.events[-1][1]["patch"]["track"] is None
+    store.update_session_info(_singapore_session())
+    store.update_replay_state("ready", session_key="9896", session_year=2025)
+    replay_annotations = connection.events[-1][1]["patch"]["annotations"]
+    assert replay_annotations["binding"]["source"] == "replay"
+    assert (
+        replay_annotations["binding"]["session_generation"]
+        > annotations["binding"]["session_generation"]
+    )
+    store.update_replay_state("playing", session_key="9896", session_year=2025)
+    assert "annotations" not in connection.events[-1][1]["patch"]
+
+    store.update_session_info(_singapore_session(key="other"))
+    assert connection.events[-1][1]["patch"]["annotations"] is None
+    store.update_replay_state("ready", session_key="other", session_year=2026)
+    assert "annotations" not in connection.events[-1][1]["patch"]
+
+    connection.subscriptions.pop(61)()
+    assert len(store._listeners) == 0
+
+
+def test_v2_annotations_remain_gated_by_pending_rights_status(hass) -> None:
+    store = _store(hass)
+    records = deepcopy(load_annotation_catalog())
+    for record in records:
+        record["rights_status"] = "pending"
+    store.annotation_records = tuple(records)
+    store.update_session_info(_singapore_session())
+    connection = FakeConnection()
+    _ws_subscribe_track_map_snapshot(
+        hass,
+        connection,
+        {
+            "id": 63,
+            "type": TRACK_MAP_WS_SUBSCRIBE_TYPE,
+            "entry_id": store.entry_id,
+            "protocol_version": 2,
+            "throttle_ms": 0,
+        },
+    )
+    assert connection.events[-1][1]["snapshot"]["annotations"] is None
+    connection.subscriptions.pop(63)()
+
+
+def test_v2_annotations_clear_on_geometry_rebuild_and_reconnect(hass) -> None:
+    store = _store(hass)
+    records = load_annotation_catalog()
+    store.annotation_records = tuple(records)
+    store.update_session_info(_singapore_session())
+    first = FakeConnection()
+    second = FakeConnection()
+    for connection, msg_id in ((first, 70), (second, 71)):
+        _ws_subscribe_track_map_snapshot(
+            hass,
+            connection,
+            {
+                "id": msg_id,
+                "type": TRACK_MAP_WS_SUBSCRIBE_TYPE,
+                "entry_id": store.entry_id,
+                "protocol_version": 2,
+                "throttle_ms": 0,
+            },
+        )
+    first_annotations = first.events[-1][1]["snapshot"]["annotations"]
+    assert second.events[-1][1]["snapshot"]["annotations"] == first_annotations
+    assert len(store._listeners) == 1
+
+    geometry = store.geometry
+    assert geometry is not None
+    changed_points = (*geometry.points[:-1], (9999, 9999))
+    store.set_geometry(
+        TrackGeometry(
+            points=changed_points,
+            bounds=geometry.bounds,
+            source="replay_position_z",
+            circuit_key=geometry.circuit_key,
+            rotation=geometry.rotation,
+        )
+    )
+    for connection in (first, second):
+        patch = connection.events[-1][1]["patch"]
+        assert patch["annotations"] is None
+        assert (
+            patch["track"]["geometry_fingerprint"]
+            != first_annotations["binding"]["geometry_fingerprint"]
+        )
+
+    store.set_geometry(geometry)
+    replacement = first.events[-1][1]["patch"]["annotations"]
+    assert (
+        replacement["binding"]["session_generation"]
+        > first_annotations["binding"]["session_generation"]
+    )
+    first.subscriptions.pop(70)()
+    assert len(store._listeners) == 1
+    second.subscriptions.pop(71)()
+    assert len(store._listeners) == 0
+
+    reconnected = FakeConnection()
+    _ws_subscribe_track_map_snapshot(
+        hass,
+        reconnected,
+        {
+            "id": 72,
+            "type": TRACK_MAP_WS_SUBSCRIBE_TYPE,
+            "entry_id": store.entry_id,
+            "protocol_version": 2,
+            "throttle_ms": 0,
+        },
+    )
+    after_reconnect = reconnected.events[-1][1]["snapshot"]["annotations"]
+    assert (
+        after_reconnect["binding"]["session_generation"]
+        > replacement["binding"]["session_generation"]
+    )
+    reconnected.subscriptions.pop(72)()
 
 
 def test_track_map_v1_and_v2_clients_share_one_store_broadcast(hass) -> None:

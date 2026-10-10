@@ -2968,3 +2968,34 @@ flows and all 1,645 integration tests in 388.44 seconds. HAdev reloaded the F1 e
 back to `loaded`, loaded and played the 2025 Abu Dhabi Grand Prix Race in the modular
 card without browser warnings, then stopped replay and restored the 2026 selection.
 No new minisector-related log entry appeared.
+
+## 2026-10-10 — Track Map annotations, step 6 local validation
+
+The optional Track Map layers from issue #787 are locally complete for reviewed
+Singapore and Silverstone 2025 layouts. The modular user and accessibility
+guides now describe per-module selection, car-marker control, text alternatives,
+coverage and omitted marks. The separate H12 manual handoff covers physical
+devices, assistive technologies, a full weekend, external beta and published CI.
+
+Ruff passed; 77 focused and all 1,736 integration tests passed. The 248 frontend
+unit tests and 224 Chromium flows passed. Field-catalog regeneration/checking,
+46 Python and 50 Node automation checks, the production documentation build,
+four documentation structure checks, 15 documentation browser flows and
+`git diff --check` passed. Six changed card files matched byte-for-byte across
+primary HAdev source, HAdev integration and Git; the annotation catalog and
+changed integration Python files matched HAdev and Git.
+
+In real HAdev replay, Singapore 2025 Race listed 29 marks and Silverstone 2025
+Race 26. Desktop and narrow Chrome previews showed no measured visible
+annotation-label overlaps with cars or other annotation labels in the sampled
+frames. Selecting all five layers during Singapore 2026 Sprint kept its live
+map and 22 cars and showed an explicit no-verified-markings message. Replay
+seek, browser reconnect, switching back to live, temporary integration disable/
+enable and reload worked; the F1 entry returned with 66 entities and the year
+2026. Home Assistant reported no new Core log issues and Chrome no console
+warnings/errors. All editor previews were cancelled without saving.
+
+The [step 6 QA record](track-map-step6-validation-2026-10-10.md) contains the
+exact observed sample, test matrix, catalog coverage, prior performance evidence
+and remaining limits. The work remains uncommitted on `dev`; no push, issue
+comment, PR or release was made.

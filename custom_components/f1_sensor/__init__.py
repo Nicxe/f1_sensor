@@ -194,6 +194,7 @@ from .track_map import (
     TrackMapRuntimeData,
     TrackMapStore,
 )
+from .track_map_annotation_contract import load_annotation_catalog
 from .track_map_websocket import TRACK_MAP_WS_MARKER, async_register_track_map_websocket
 
 _LOGGER = logging.getLogger(__name__)
@@ -2163,7 +2164,12 @@ async def _async_setup_entry(
     )
 
     if not feature_plan.live_required:
-        track_map_store = TrackMapStore(entry.entry_id)
+        track_map_store = TrackMapStore(
+            entry.entry_id,
+            annotation_records=await hass.async_add_executor_job(
+                load_annotation_catalog
+            ),
+        )
         transaction.track(track_map_store)
         dormant_live_bus = None
         dormant_live_state = None
@@ -2353,7 +2359,10 @@ async def _async_setup_entry(
     live_mode_coordinator = None
     top_three_coordinator = None
     starting_grid_coordinator = None
-    track_map_store = TrackMapStore(entry.entry_id)
+    track_map_store = TrackMapStore(
+        entry.entry_id,
+        annotation_records=await hass.async_add_executor_job(load_annotation_catalog),
+    )
     transaction.track(track_map_store)
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.

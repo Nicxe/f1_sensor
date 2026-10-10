@@ -1152,6 +1152,36 @@ test('map editor controls labels and orientation and map-only mode keeps the tex
   await expect(map.locator('summary')).toHaveText('Driver positions and status');
 });
 
+test('map markings yield to driver markers while their text alternatives remain available', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 900 });
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'map', fields: ['track_map', 'map_start_finish', 'map_corners'] }] } }));
+  const map = page.locator('f1-track-map-view');
+  await map.evaluate(async view => {
+    const model = structuredClone(view.model);
+    model.sessionKey = 'collision-check';
+    model.rows = [{ ...model.rows[0], point: [50, 50] }];
+    model.annotations = {
+      lines: [{ id: 'start_finish', start: [55, 55], end: [59, 55] }, { id: 'sectors:s1', layer: 'sectors', label: 'S1', start: [70, 70], end: [75, 70] }],
+      corners: [{ id: 'turn_01', label: '1', point: [50, 50], offset: [0, 0] }, { id: 'turn_02', label: '2', point: [10, 10], offset: [0, 0] }],
+      points: [{ id: 'detection_zones:drs_d1', layer: 'detection_zones', label: 'DRS D1', point: [50, 50], offset: [0, 0] }, { id: 'speed_traps:speed_trap', layer: 'speed_traps', label: 'Speed trap', point: [10, 10], offset: [0, 0] }, { id: 'detection_zones:drs_a1', layer: 'detection_zones', label: 'DRS A1', point: [85, 85], offset: [0, 0] }],
+      unavailable: [],
+    };
+    view.model = model;
+    await view.updateComplete;
+  });
+  await expect(map.locator('.annotation-line-group .annotation-line').first()).toHaveCSS('visibility', 'visible');
+  await expect(map.locator('.annotation-tag-text').first()).toBeHidden();
+  await expect(map.locator('.annotation-corner-group').first()).toBeHidden();
+  await expect(map.locator('.annotation-corner-group').last()).toBeVisible();
+  await expect(map.locator('.annotation-feature-group').first()).toBeHidden();
+  await expect(map.locator('.annotation-feature-group').nth(1)).toBeHidden();
+  await expect(map.locator('.annotation-feature-group').last()).toBeVisible();
+  await expect(map.locator('.annotation-line-group').last().locator('.annotation-tag-text')).toHaveText('S1');
+  await expect(map.locator('.annotation-summary summary')).toHaveText('Track markings · 7');
+  await map.locator('.annotation-summary summary').click();
+  await expect(map.locator('.annotation-summary li')).toHaveCount(7);
+});
+
 test('battle views distinguish estimates, preserve start/end history and expose accessible position changes', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.evaluate(() => window.mountModular({ config: { modules: [

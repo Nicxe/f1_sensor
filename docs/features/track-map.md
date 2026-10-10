@@ -26,6 +26,25 @@ If Formula 1 publishes an invalid position frame, for example a frame that place
 
 Supported circuits can show a map quickly. For newer or unsupported circuits, replay data may need enough usable position updates before the map can be drawn.
 
+## Optional circuit markings
+
+In the modular card editor, select the start/finish line, corner numbers, sector boundaries, speed trap, and detection and activation points separately. Markings are available only when the session year, circuit layout, and map geometry match a reviewed source. The card lists selected markings below the map, including labels hidden behind moving cars. It says when a selected marking has no verified position for the session.
+
+These choices belong to each Track map module. Clear **Show car markers** under
+**Module options** to show the circuit without cars, and add **Driver positions
+list** if you still want the car statuses in text. Existing cards keep their
+current car-marker behavior and gain no markings until you select a layer.
+
+| Circuit and season | Reviewed markings | Coverage note |
+| --- | --- | --- |
+| Singapore, 2025 | Start/finish, turns 1–19, S1 and S2 boundaries, speed trap, three DRS detection points, three DRS activation points | The fourth DRS activation point is omitted because its position cannot be placed confidently on the simplified map. |
+| Silverstone, 2025 | Start/finish, turns 1–18, S1 and S2 boundaries, speed trap, two DRS detection points, two DRS activation points | All listed 2025 map points are included. |
+| Singapore, 2026 | Start/finish, turns 1–19, S1 and S2 boundaries, speed trap, one Overtake activation point, and nine Straight Mode activation points | The Overtake detection point is omitted because the FIA map specifies only “Entry T17”. Straight Mode A2 has no low-grip activation point. |
+
+The start/finish line also marks the end of sector 3. Sector boundaries follow the published locations; they are not equal thirds of the lap. Speed trap markers show the measurement location, not a measured speed. DRS, Overtake and Straight Mode markers show individual detection or activation points, not full zones. For 2026 Straight Mode labels, **N** means normal grip and **L** means low grip. These markings do not change timing or incident calculations.
+
+The positions were checked against the FIA circuit maps for [Singapore 2025](https://www.fia.com/system/files/decision-document/2025_singapore_grand_prix_-_event_notes_-_circuit_map_pit_lane_emergency_exits_map_and_quarantine_zone.pdf), [Silverstone 2025](https://www.fia.com/system/files/decision-document/2025_british_grand_prix_-_event_notes_-_circuit_map_v2.pdf), and [Singapore 2026](https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf). Circuit coordinates were checked against the corresponding [Singapore 2025](https://api.multiviewer.app/api/v1/circuits/61/2025), [Silverstone 2025](https://api.multiviewer.app/api/v1/circuits/2/2025), and [Singapore 2026](https://api.multiviewer.app/api/v1/circuits/61/2026) data. Other years and layouts remain unmarked until they are reviewed separately. Car positions and the circuit outline can still appear when some or all markings are unavailable.
+
 <span id="add-the-track-map-card" />
 <span id="card-options" />
 
@@ -91,6 +110,7 @@ The card has car position data but cannot yet draw the map outline. This is more
 - Replay Track Map is best effort and depends on the archived session data.
 - The map outline may be unavailable for unknown circuits until enough replay data exists.
 - Track Map is a module in the F1 Sensor dashboard card, not a normal Home Assistant entity.
+- Circuit markings are currently limited to Singapore 2025 and 2026, and Silverstone 2025. Other seasons and layouts have no verified marks, even if their map outline and car positions are available.
 
 ## Optional demonstration
 

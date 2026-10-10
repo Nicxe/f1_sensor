@@ -57,6 +57,14 @@ Hidden visual module headings and table headers retain accessible names. Charts
 provide a data-table alternative so their values are not available only as a
 graphic.
 
+For **Track map**, expand **Track markings** below the graphic to read every
+selected, verified start/finish, corner, sector, speed-trap and DRS point in text.
+The list still includes labels hidden on the map to avoid overlap with cars or
+other markings. A selected layer without verified positions gets a text notice;
+the card does not imply that missing marks are at approximate positions. Expand
+**Driver positions and status** separately for the cars. You can clear **Show car
+markers** in the module's options if the moving cars make the map harder to read.
+
 ## Reduce motion and increase contrast
 
 The card follows the browser or operating system preference for reduced motion.
@@ -72,6 +80,10 @@ the screen reader, zoom level, theme and input method you normally use. Also tes
 portrait and landscape orientation in the Companion App. Report the exact device,
 operating system, Home Assistant version, theme, card module and expected result
 when something is not usable.
+
+The Track map text list and collision handling were checked in a desktop browser
+and a narrow browser viewport. Manual VoiceOver, TalkBack and NVDA checks on
+physical devices remain open acceptance work.
 
 See [the F1 Sensor card guide](/cards/modular) for timing semantics and [reporting
 an issue](/help/contact) for support channels.

@@ -2,7 +2,7 @@
   "format_version": 1,
   "configuration_version": 3,
   "generated_from": "modular/catalog.js",
-  "field_count": 143,
+  "field_count": 148,
   "module_count": 21,
   "sources": [
     "analysis",
@@ -2632,6 +2632,216 @@
                 "displayed": "snapshot"
               },
               "type": "list",
+              "unit": null
+            },
+            {
+              "capability": "extended_timing",
+              "filterable": false,
+              "freshness": "source",
+              "generation": "session",
+              "id": "map_start_finish",
+              "identity": [
+                "entry",
+                "source",
+                "session",
+                "session_generation",
+                "geometry"
+              ],
+              "label": {
+                "en": "Start/finish line",
+                "sv": "Start-/mållinje"
+              },
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "annotations.layers.start_finish",
+              "presentations": [
+                "map",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "track_map",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "map_annotation",
+              "unit": null
+            },
+            {
+              "capability": "extended_timing",
+              "filterable": false,
+              "freshness": "source",
+              "generation": "session",
+              "id": "map_corners",
+              "identity": [
+                "entry",
+                "source",
+                "session",
+                "session_generation",
+                "geometry"
+              ],
+              "label": {
+                "en": "Corner numbers",
+                "sv": "Kurvnummer"
+              },
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "annotations.layers.corners",
+              "presentations": [
+                "map",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "track_map",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "map_annotation",
+              "unit": null
+            },
+            {
+              "capability": "extended_timing",
+              "filterable": false,
+              "freshness": "source",
+              "generation": "session",
+              "id": "map_sectors",
+              "identity": [
+                "entry",
+                "source",
+                "session",
+                "session_generation",
+                "geometry"
+              ],
+              "label": {
+                "en": "Sector boundaries",
+                "sv": "Sektorgränser"
+              },
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "annotations.layers.sectors",
+              "presentations": [
+                "map",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "track_map",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "map_annotation",
+              "unit": null
+            },
+            {
+              "capability": "extended_timing",
+              "filterable": false,
+              "freshness": "source",
+              "generation": "session",
+              "id": "map_speed_traps",
+              "identity": [
+                "entry",
+                "source",
+                "session",
+                "session_generation",
+                "geometry"
+              ],
+              "label": {
+                "en": "Speed traps",
+                "sv": "Hastighetsmätpunkter"
+              },
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "annotations.layers.speed_traps",
+              "presentations": [
+                "map",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "track_map",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "map_annotation",
+              "unit": null
+            },
+            {
+              "capability": "extended_timing",
+              "filterable": false,
+              "freshness": "source",
+              "generation": "session",
+              "id": "map_detection_zones",
+              "identity": [
+                "entry",
+                "source",
+                "session",
+                "session_generation",
+                "geometry"
+              ],
+              "label": {
+                "en": "Detection and activation points",
+                "sv": "Detektions- och aktiveringspunkter"
+              },
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "annotations.layers.detection_zones",
+              "presentations": [
+                "map",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "track_map",
+              "spoiler": true,
+              "timestamps": {
+                "source": "stream_timestamp",
+                "received": "subscription.received_at",
+                "updated": "generated_at",
+                "displayed": "snapshot"
+              },
+              "type": "map_annotation",
               "unit": null
             }
           ]

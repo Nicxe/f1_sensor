@@ -23,6 +23,22 @@ test('column layout preserves module widths and HA sizing across editing and tra
   assert.deepEqual(config.grid_options, source.grid_options);
 });
 
+test('two map instances retain separate future annotation choices and car options', () => {
+  const config = normalizeConfig({ modules: [
+    { id: 'map-a', type: 'map', fields: ['track_map', 'map_start_finish'], options: { show_car_markers: false } },
+    { id: 'map-b', type: 'map', fields: ['track_map', 'map_corners', 'map_drivers'], options: { show_car_markers: true } },
+  ] });
+  assert.deepEqual(config.modules[0].fields, ['track_map', 'map_start_finish']);
+  assert.deepEqual(config.modules[1].fields, ['track_map', 'map_corners', 'map_drivers']);
+  assert.equal(config.modules[0].options.show_car_markers, false);
+  assert.equal(config.modules[1].options.show_car_markers, true);
+  const restored = importConfig(exportConfig(config));
+  assert.deepEqual(restored.modules.map(module => [module.id, module.fields, module.options.show_car_markers]), [
+    ['map-a', ['track_map', 'map_start_finish'], false],
+    ['map-b', ['track_map', 'map_corners', 'map_drivers'], true],
+  ]);
+});
+
 test('column layout defaults preserve older cards and allow widths larger than the current grid', () => {
   for (const layout of ['stack', 'tabs']) {
     const config = normalizeConfig({ layout, modules: [{ type: 'overview' }] });

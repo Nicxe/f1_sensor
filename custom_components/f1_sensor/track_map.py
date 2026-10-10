@@ -128,6 +128,7 @@ class TrackMapSessionMetadata:
 
     session_key: str | None = None
     path: str | None = None
+    start_date: str | None = None
     meeting_key: str | None = None
     meeting_name: str | None = None
     session_name: str | None = None
@@ -494,7 +495,11 @@ class TrackMapReplayAdapter:
             return
         state = str(snapshot.get("state") or "").strip() or None
         self._replay_state = state
-        self._store.update_replay_state(state)
+        self._store.update_replay_state(
+            state,
+            session_key=_first_text(snapshot.get("selected_session_key")),
+            session_year=snapshot.get("selected_session_year"),
+        )
         if self._should_interpolate_positions(self._interpolation_source):
             self._schedule_interpolation_tick()
         else:
@@ -763,6 +768,7 @@ class TrackMapStore:
         *,
         source: str = "runtime",
         stale_after: timedelta = DEFAULT_TRACK_MAP_STALE_AFTER,
+        annotation_records: Iterable[Mapping[str, Any]] = (),
     ) -> None:
         self.entry_id = entry_id
         self._source = source
@@ -776,6 +782,9 @@ class TrackMapStore:
         self._position_observed_at: dict[str, datetime] = {}
         self._position_data_unavailable = False
         self._replay_state: str | None = None
+        self._replay_session_key: str | None = None
+        self._replay_session_year: int | None = None
+        self.annotation_records = tuple(annotation_records)
         self._listeners: dict[int, Callable[[], None]] = {}
         self._close_listeners: list[Callable[[], Awaitable[None]]] = []
         self._next_listener_id = 0
@@ -805,7 +814,14 @@ class TrackMapStore:
             return
         old_key = self._session.session_key if self._session else None
         if old_key and session.session_key and old_key != session.session_key:
+            replay_session_key = self._replay_session_key
+            replay_session_year = self._replay_session_year
+            replay_selected = self._replay_state not in {None, "idle"}
             self._reset_session_state()
+            if replay_selected:
+                self._replay_state = "seeking"
+                self._replay_session_key = replay_session_key
+                self._replay_session_year = replay_session_year
         self._session = session
         static_geometry = get_static_track_geometry_for_session(session)
         if static_geometry is not None:
@@ -897,14 +913,26 @@ class TrackMapStore:
         self._geometry = geometry
         self._notify_listeners()
 
-    def update_replay_state(self, state: str | None) -> None:
+    def update_replay_state(
+        self,
+        state: str | None,
+        *,
+        session_key: str | None = None,
+        session_year: int | None = None,
+    ) -> None:
         """Update replay playback state metadata for websocket consumers."""
         if self._closed:
             return
         state = state or None
-        if state == self._replay_state:
+        if (
+            state == self._replay_state
+            and session_key == self._replay_session_key
+            and session_year == self._replay_session_year
+        ):
             return
         self._replay_state = state
+        self._replay_session_key = session_key
+        self._replay_session_year = session_year
         self._notify_listeners()
 
     def reset_session(self) -> None:
@@ -922,10 +950,18 @@ class TrackMapStore:
         self._position_observed_at.clear()
         self._position_data_unavailable = False
         self._replay_state = None
+        self._replay_session_key = None
+        self._replay_session_year = None
 
     def reset_for_replay(self) -> None:
         """Clear session-bound data before replay rebuild or rewind."""
-        self.reset_session()
+        session_key = self._replay_session_key
+        session_year = self._replay_session_year
+        self._reset_session_state()
+        self._replay_state = "seeking"
+        self._replay_session_key = session_key
+        self._replay_session_year = session_year
+        self._notify_listeners()
 
     def is_stale(self, now: datetime | None = None) -> bool:
         """Return whether the latest stream update is older than stale_after."""
@@ -2180,6 +2216,7 @@ def _session_metadata_from_payload(
     return TrackMapSessionMetadata(
         session_key=_first_text(payload.get("Key"), payload.get("Path")),
         path=_first_text(payload.get("Path")),
+        start_date=_first_text(payload.get("StartDate")),
         meeting_key=_first_text(meeting.get("Key")),
         meeting_name=_first_text(meeting.get("Name")),
         session_name=_first_text(payload.get("Name")),
