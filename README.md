@@ -1,75 +1,67 @@
-# F1 Sensor for Home Assistant
+# F1 Sensor 🏁
 
-## Your home. On race time.
+> Your home. On race time.
 
-Turn your Home Assistant dashboard into a personal pit wall and let your home follow the action. F1 Sensor brings Formula 1 schedules, live timing, race updates and results into Home Assistant, with one configurable dashboard card and automations you can make your own.
+[![GitHub Release](https://img.shields.io/github/v/release/Nicxe/f1_sensor?display_name=tag&sort=semver)](https://github.com/Nicxe/f1_sensor/releases)
+[![License](https://img.shields.io/github/license/Nicxe/f1_sensor)](LICENSE)
+[![Open F1 Sensor in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Nicxe&repository=f1_sensor&category=integration)
 
-See when the next session starts, follow the drivers as they race, and make your lights react when the flags change. Watching on a delayed broadcast or catching up later? Match live updates to your TV with Live Delay, or bring archived timing to life with Replay Mode.
+Hi! I'm F1 Sensor 🏎️ — a custom integration for Home Assistant that brings Formula 1 race weekends into your home.
 
-[Documentation](https://nicxe.github.io/f1_sensor/) · [Installation](https://nicxe.github.io/f1_sensor/getting-started/installation) · [Dashboard card](https://nicxe.github.io/f1_sensor/cards/cards-overview) · [Releases](https://github.com/Nicxe/f1_sensor/releases)
+Follow schedules, live timing, results, weather, Race Control messages and your favourite driver. Build a simple next-race dashboard, create a full personal pit wall, or let your lights and automations react to the action on track.
 
-Enjoying F1 Sensor? [Star the project](https://github.com/Nicxe/f1_sensor) to help other race fans find it. For one-time or monthly support, [sponsor the work on GitHub](https://github.com/sponsors/Nicxe). Prefer a quick thank-you? [Buy Niklas a coffee](https://buymeacoffee.com/niklasv).
+⭐ If F1 Sensor adds something to your race weekends, [star the project](https://github.com/Nicxe/f1_sensor) and consider a [one-time or monthly GitHub Sponsor contribution](https://github.com/sponsors/Nicxe). Prefer a quick thank-you? [Buy Niklas a coffee](https://buymeacoffee.com/niklasv).
 
-## Yellow flag. Yellow light.
+[Get started with F1 Sensor](https://nicxe.github.io/f1_sensor/getting-started/installation) · [Explore the documentation](https://nicxe.github.io/f1_sensor/) · [See the latest releases](https://github.com/Nicxe/f1_sensor/releases)
 
-A yellow flag on TV, a yellow light in your living room. When track conditions change, your room can follow: green for clear racing, yellow for caution, red for a red flag, and distinct colors for Safety Car and Virtual Safety Car.
+## Make race weekend your own
 
-![Yellow flag on TV with a lamp glowing yellow](static/img/flag-light-demo.gif)
+- **Follow the action:** See session times, live timing, flags, tyres, weather and results in Home Assistant.
+- **Build your pit wall:** Use the included dashboard card, from a simple countdown to a detailed live race view.
+- **Watch in sync:** Match updates to your TV or stream with [Live Delay](https://nicxe.github.io/f1_sensor/features/live-delay), or relive a completed session with [Replay Mode](https://nicxe.github.io/f1_sensor/features/replay-mode).
+- **Bring the race home:** Create automations for session starts, Race Control messages, track status and more.
 
-Use the [Track Status Light blueprint](https://nicxe.github.io/f1_sensor/blueprints/track-status-light) to connect an RGB light or light group in Home Assistant. Choose when it should react with presence, TV and quiet-hour conditions, or use WLED presets and playlists for your own effects. Set [Live Delay](https://nicxe.github.io/f1_sensor/features/live-delay) to align the changes with your broadcast.
+## Documentation
 
-Lights are just the start. Get a reminder before a session, receive selected Race Control messages, or trigger your own actions when your favorite driver gains a place or enters the pits. Explore the [automation guides and blueprints](https://nicxe.github.io/f1_sensor/automation) for ideas you can use at home.
+The documentation is the best place to get started, build your setup and find help.
 
-## Your personal pit wall
+- [Install F1 Sensor](https://nicxe.github.io/f1_sensor/getting-started/installation)
+- [Configure the integration](https://nicxe.github.io/f1_sensor/getting-started/add-integration)
+- [Build your first dashboard](https://nicxe.github.io/f1_sensor/getting-started/first-dashboard)
+- [Explore cards and modules](https://nicxe.github.io/f1_sensor/cards/cards-overview)
+- [Create automations and use blueprints](https://nicxe.github.io/f1_sensor/automation)
+- [Find help and troubleshoot a problem](https://nicxe.github.io/f1_sensor/help/overview)
+- [Try beta releases](https://nicxe.github.io/f1_sensor/getting-started/release-channels)
 
-Keep the race weekend beside your TV, on a tablet, or wherever you use Home Assistant. Start with a next-race countdown and build up to a dashboard with driver positions, lap times, gaps, tyres, weather and Race Control messages.
+## Join the paddock
 
-[![F1 Sensor Race weekend card showing the next Grand Prix and schedule](static/img/cards/f1-sensor-race-weekend.png)](https://nicxe.github.io/f1_sensor/cards/cards-overview)
+F1 Sensor gets better through ideas, testing, dashboards, bug reports and contributions from the community.
 
-| Follow the weekend | What you can do |
-| --- | --- |
-| Before the lights go out | Check the season calendar, session times, circuit weather and championship standings. |
-| During the session | Follow practice, qualifying, Sprint and Race timing, with track flags, tyre information and Race Control updates. |
-| Follow your driver | Select a [Favorite Driver](https://nicxe.github.io/f1_sensor/features/favorite-driver) for focused timing and automations based on their position and pit activity. |
-| After the chequered flag | Review results, explore the [Historical archive](https://nicxe.github.io/f1_sensor/features/historical-results), and see how the championship develops. |
+- Share an idea or ask a question in [GitHub Discussions](https://github.com/Nicxe/f1_sensor/discussions).
+- [Report a reproducible problem](https://github.com/Nicxe/f1_sensor/issues).
+- Help with code or documentation through the [contribution guide](CONTRIBUTING.md).
+- Share your dashboard in [Show and tell](https://github.com/Nicxe/f1_sensor/discussions/categories/show-and-tell).
 
-The dashboard card is included with the integration and registered automatically. [Explore its presets and modules](https://nicxe.github.io/f1_sensor/cards/cards-overview) to build the view that suits your setup.
+Thank you to everyone who has helped make F1 Sensor better. [Meet the contributors](https://github.com/Nicxe/f1_sensor/graphs/contributors).
 
-## Watch on your time
+## Help F1 Sensor speak your language
 
-**Watching live?** Use [Live Delay](https://nicxe.github.io/f1_sensor/features/live-delay) to match timing updates, lights and notifications to your TV or stream. Adjust the delay yourself or use guided calibration to find the offset.
+F1 Sensor is still learning new languages — and you can help without writing any code.
 
-**Watching later?** Turn on [No Spoiler Mode](https://nicxe.github.io/f1_sensor/features/no-spoiler-mode) before the session to hold back supported spoiler-sensitive updates in F1 Sensor. When archive data is available, load the completed session in [Replay Mode](https://nicxe.github.io/f1_sensor/features/replay-mode) and align it with your recording so your dashboard and automations follow along. Replay Mode plays timing data; you provide the race video.
+Translations are managed through [Hosted Weblate](https://hosted.weblate.org/engage/f1-sensor/). Choose a language, translate in your browser, and help more Home Assistant users enjoy race weekend.
 
-## Start with your next race
+[![Translation status](https://hosted.weblate.org/widgets/f1-sensor/-/integration/open-graph.png)](https://hosted.weblate.org/engage/f1-sensor/)
 
-1. [Install with HACS](https://nicxe.github.io/f1_sensor/getting-started/installation) and restart Home Assistant.
-2. [Add and configure F1 Sensor](https://nicxe.github.io/f1_sensor/getting-started/add-integration).
-3. [Build your first dashboard](https://nicxe.github.io/f1_sensor/getting-started/first-dashboard) with the Next Race card. No active session is needed.
+## Support the project
 
-Start with schedules and public live timing without F1TV authentication. Optional [F1TV Auth](https://nicxe.github.io/f1_sensor/features/f1tv-auth) adds access to extra live features such as Track Map, Pit Stops, Team Radio and Championship Prediction when the source provides the data.
+F1 Sensor is open source and free for everyone. A star, a helpful bug report, a translation, documentation improvement or shared dashboard all make a difference.
 
-Live information appears when the relevant session streams are available; schedules, standings and results have their own update cycles. Each card and feature guide explains its requirements, including which features need optional access and what is available in replay.
+Thank you for being part of the grid. 💛
 
-## Make race day your own
+## A quick note
 
-| I want to… | Start here |
-| --- | --- |
-| Build a dashboard card | [F1 Sensor card](https://nicxe.github.io/f1_sensor/cards/cards-overview) |
-| Match updates to my TV | [Live Delay](https://nicxe.github.io/f1_sensor/features/live-delay) |
-| Watch a completed session | [Replay Mode](https://nicxe.github.io/f1_sensor/features/replay-mode) |
-| Make my lights react to flags | [Track Status Light blueprint](https://nicxe.github.io/f1_sensor/blueprints/track-status-light) |
-| Understand a sensor or event | [Entity and event reference](https://nicxe.github.io/f1_sensor/reference/overview) |
-| Work out why data is missing | [Help and troubleshooting](https://nicxe.github.io/f1_sensor/help/overview) |
+F1 Sensor is an unofficial project and is not associated with the Formula 1 companies. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD CHAMPIONSHIP, GRAND PRIX and related marks are trade marks of Formula One Licensing B.V.
 
-## Community and contributions
+## License
 
-Find [community dashboards](https://nicxe.github.io/f1_sensor/example/overview), ask in [GitHub Discussions](https://github.com/Nicxe/f1_sensor/discussions), or [report a reproducible problem](https://github.com/Nicxe/f1_sensor/issues). To contribute code or documentation, start with [CONTRIBUTING](CONTRIBUTING.md).
-
-Help make F1 Sensor available in more languages by [translating it on Hosted Weblate](https://hosted.weblate.org/projects/f1-sensor/integration/). Translation changes are proposed back to the `dev` branch through pull requests.
-
-The `dev` branch can include features awaiting stable release. Use the release linked by the documentation version label when matching instructions to your installation.
-
-You can also [support development](https://nicxe.github.io/f1_sensor/support) through a star, sponsorship, documentation improvements and helping other users.
-
-> F1 Sensor is an unofficial project and is not associated in any way with the Formula 1 companies. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD CHAMPIONSHIP, GRAND PRIX and related marks are trade marks of Formula One Licensing B.V.
+F1 Sensor is released under the [MIT License](LICENSE).
