@@ -23,7 +23,12 @@
       "investigation_changed": "Stato investigazione cambiato",
       "new_team_radio": "Nuovo team radio",
       "live_timing_online": "Telemetria online",
-      "live_timing_offline": "Telemetria offline"
+      "live_timing_offline": "Telemetria offline",
+      "favorite_driver_position_gained": "Il pilota preferito ha guadagnato una posizione",
+      "favorite_driver_position_lost": "Il pilota preferito ha perso una posizione",
+      "favorite_driver_entered_pits": "Il pilota preferito è entrato ai box",
+      "favorite_driver_exited_pits": "Il pilota preferito è uscito dai box",
+      "favorite_driver_retired": "Il pilota preferito si è ritirato"
     }
   },
   "config": {
