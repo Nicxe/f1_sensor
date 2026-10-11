@@ -50,9 +50,9 @@ def _context(track: dict | None = None):
     )
 
 
-def test_catalog_has_five_geometry_bound_layers_per_reviewed_2025_layout() -> None:
+def test_catalog_has_five_geometry_bound_layers_per_reviewed_layout() -> None:
     catalog = _catalog()
-    assert len(catalog) == 15
+    assert len(catalog) == 85
     for circuit_key, season, layout in (
         ("61", 2025, "marina_bay_post_2023"),
         ("2", 2025, "silverstone_2025"),
@@ -80,14 +80,14 @@ def test_catalog_has_five_geometry_bound_layers_per_reviewed_2025_layout() -> No
         )
         assert all(record["qa_status"] == "verified" for record in records)
         assert all(record["rights_status"] == "cleared" for record in records)
-    assert len(json.dumps(catalog, separators=(",", ":")).encode()) <= 18_000
+    assert len(json.dumps(catalog, separators=(",", ":")).encode()) <= 100_000
 
 
 def test_singapore_2026_binds_only_to_its_verified_year_and_geometry() -> None:
     track = _track()
     records = _records("61", 2026)
     assert len(records) == 5
-    assert {record["source"]["checked_on"] for record in records} == {"2026-10-10"}
+    assert {record["source"]["checked_on"] for record in records} == {"2026-10-11"}
     assert all(
         "2026_singapore_grand_prix" in record["source"]["url"] for record in records
     )

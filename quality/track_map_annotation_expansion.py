@@ -1,9 +1,9 @@
-"""Rebuild reviewed 2025 and Singapore 2026 track annotations.
+"""Rebuild the reviewed 2025 pilot and 2026 track annotations.
 
-The corner coordinates below are rounded positions from the season-specific
-MultiViewer circuit API. FIA event maps supply the feature locations and
-distances. The generated coordinates are snapped to our static centreline;
-this script is an offline QA tool and is never used by Home Assistant.
+The 2025 pilot corner coordinates below are manually reviewed. The 2026 corner
+coordinates come from the checked-in API snapshot; FIA event maps supply the
+feature locations and distances. Generated coordinates are snapped to our
+static centreline. This offline QA tool is never used by Home Assistant.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ PILOT_CATALOG = runpy.run_path(
     str(ROOT / "quality/track_map_annotation_calibration.py")
 )["build_catalog"]
 CATALOG = ROOT / "custom_components/f1_sensor/track_map_annotation_catalog.json"
+COORDINATE_SNAPSHOT = ROOT / "quality/track_map_2026_coordinate_snapshot.json"
 
 SOURCES = {
     "2": {
@@ -128,6 +129,234 @@ SINGAPORE_2026_AERO_POINTS = (
     ("sm_a5_l", "SM A5 L", 15, 90),
 )
 
+# Feature positions are measured from the 2026 FIA circuit data tables. Each
+# tuple is (id, label, corner number, metres from the corner). FIA points that
+# are specified only as entry/apex/exit are omitted because this centreline is
+# simplified and cannot represent those positions precisely.
+SEASON_2026 = {
+    "10": {
+        "layout": "albert_park_2026",
+        "length_m": 5278,
+        "map": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_quarantine_zone.pdf",
+        "sectors": (("s1", "S1", 6, -120), ("s2", "S2", 9, -140)),
+        "speed": (1, -120),
+        "zones": (
+            ("ot_d1", "OT D", 13, 15),
+            ("ot_a1", "OT A", 14, 50),
+            ("sm_a1_n", "SM A1 N", 14, 50),
+            ("sm_a1_l", "SM A1 L", 14, 100),
+            ("sm_a2_n", "SM A2 N", 2, 45),
+            ("sm_a3_n", "SM A3 N", 5, 85),
+            ("sm_a3_l", "SM A3 L", 5, 125),
+            ("sm_a4_n", "SM A4 N", 8, 35),
+            ("sm_a5_n", "SM A5 N", 10, 60),
+        ),
+    },
+    "49": {
+        "layout": "shanghai_2026",
+        "length_m": 5451,
+        "map": "https://www.fia.com/system/files/decision-document/2026_chinese_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_battery_containment_area_and_red_zone.pdf",
+        "sectors": (("s1", "S1", 6, -150), ("s2", "S2", 11, -145)),
+        "speed": (14, -240),
+        "zones": (
+            ("ot_a1", "OT A", 16, 100),
+            ("sm_a1_n", "SM A1 N", 16, 100),
+            ("sm_a1_l", "SM A1 L", 16, 150),
+            ("sm_a2_n", "SM A2 N", 4, 60),
+            ("sm_a2_l", "SM A2 L", 4, 100),
+            ("sm_a3_n", "SM A3 N", 10, 100),
+            ("sm_a3_l", "SM A3 L", 10, 140),
+            ("sm_a4_n", "SM A4 N", 13, 60),
+            ("sm_a4_l", "SM A4 L", 13, 130),
+        ),
+    },
+    "46": {
+        "layout": "suzuka_2026",
+        "length_m": 5807,
+        "map": "https://www.fia.com/system/files/decision-document/2026_japanese_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_battery_containment_area_and_red_zone.pdf",
+        "sectors": (("s1", "S1", 8, -110), ("s2", "S2", 15, -270)),
+        "speed": (15, 70),
+        "zones": (("sm_a1_l", "SM A1 L", 18, 100), ("sm_a2_n", "SM A2 N", 14, 70)),
+    },
+    "151": {
+        "layout": "miami_2026",
+        "length_m": 5412,
+        "map": "https://www.fia.com/system/files/decision-document/2026_miami_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_red_zone.pdf",
+        "sectors": (("s1", "S1", 8, 110), ("s2", "S2", 16, 70)),
+        "speed": (17, -150),
+        "zones": (
+            ("ot_d1", "OT D", 17, 20),
+            ("ot_a1", "OT A", 18, 10),
+            ("sm_a1_n", "SM A1 N", 8, 165),
+            ("sm_a3_n", "SM A3 N", 16, 90),
+            ("sm_a3_l", "SM A3 L", 16, 150),
+        ),
+    },
+    "23": {
+        "layout": "montreal_2026",
+        "length_m": 4361,
+        "map": "https://www.fia.com/system/files/decision-document/2026_canadian_grand_prix_-_competition_notes_-_circuit_map_v2.pdf",
+        "sectors": (("s1", "S1", 6, -150), ("s2", "S2", 10, -190)),
+        "speed": (13, -250),
+        "zones": (
+            ("ot_a1", "OT A", 13, 70),
+            ("sm_a1_n", "SM A1 N", 14, 100),
+            ("sm_a1_l", "SM A1 L", 14, 160),
+            ("sm_a2_n", "SM A2 N", 7, 50),
+            ("sm_a2_l", "SM A2 L", 7, 110),
+            ("sm_a3_n", "SM A3 N", 9, 60),
+            ("sm_a4_n", "SM A4 N", 11, 30),
+            ("sm_a4_l", "SM A4 L", 11, 120),
+        ),
+    },
+    "22": {
+        "layout": "monaco_2026",
+        "length_m": 3337,
+        "map": "https://www.fia.com/system/files/decision-document/2026_monaco_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_red_zone.pdf",
+        "sectors": (("s1", "S1", 5, -60), ("s2", "S2", 13, -70)),
+        "speed": (10, -190),
+        "zones": (("ot_d1", "OT D", 16, 80), ("ot_a1", "OT A", 18, 40)),
+    },
+    "15": {
+        "layout": "barcelona_catalunya_2026",
+        "length_m": 4657,
+        "map": "https://www.fia.com/system/files/decision-document/2026_barcelona-catalunya_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+        "sectors": (("s1", "S1", 4, -50), ("s2", "S2", 10, -90)),
+        "speed": (1, -220),
+        "zones": (
+            ("sm_a1_n", "SM A1 N", 14, 45),
+            ("sm_a1_l", "SM A1 L", 14, 85),
+            ("sm_a3_n", "SM A3 N", 5, 90),
+            ("sm_a3_l", "SM A3 L", 5, 90),
+            ("sm_a4_n", "SM A4 N", 9, 40),
+            ("sm_a4_l", "SM A4 L", 9, 90),
+        ),
+    },
+    "19": {
+        "layout": "spielberg_2026",
+        "length_m": 4326,
+        "map": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_red_zone.pdf",
+        "sectors": (("s1", "S1", 3, -170), ("s2", "S2", 7, -60)),
+        "speed": (4, -170),
+        "zones": (
+            ("ot_d1", "OT D", 10, -50),
+            ("ot_a1", "OT A", 10, 110),
+            ("sm_a1_n", "SM A1 N", 10, 110),
+            ("sm_a1_l", "SM A1 L", 10, 160),
+            ("sm_a2_n", "SM A2 N", 1, 110),
+            ("sm_a2_l", "SM A2 L", 1, 170),
+            ("sm_a3_n", "SM A3 N", 3, 90),
+            ("sm_a3_l", "SM A3 L", 3, 160),
+            ("sm_a4_n", "SM A4 N", 8, 10),
+            ("sm_a4_l", "SM A4 L", 8, 60),
+        ),
+    },
+    "2": {
+        "layout": "silverstone_2026",
+        "length_m": 5891,
+        "map": "https://www.fia.com/system/files/decision-document/2026_british_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_red_zone.pdf",
+        "sectors": (("s1", "S1", 6, -110), ("s2", "S2", 14, 50)),
+        "speed": (15, -140),
+        "zones": (
+            ("ot_a1", "OT A", 17, 95),
+            ("sm_a1_n", "SM A1 N", 18, 65),
+            ("sm_a1_l", "SM A1 L", 18, 115),
+            ("sm_a2_n", "SM A2 N", 5, 55),
+            ("sm_a2_l", "SM A2 L", 5, 115),
+            ("sm_a3_n", "SM A3 N", 7, 155),
+            ("sm_a4_n", "SM A4 N", 14, 65),
+            ("sm_a4_l", "SM A4 L", 14, 125),
+        ),
+    },
+    "7": {
+        "layout": "spa_2026",
+        "length_m": 7004,
+        "map": "https://www.fia.com/system/files/decision-document/2026_belgian_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_red_zone.pdf",
+        "sectors": (("s1", "S1", 5, -150), ("s2", "S2", 15, -50)),
+        "speed": (4, 30),
+        "zones": (
+            ("ot_a1", "OT A", 19, 130),
+            ("sm_a1_n", "SM A1 N", 19, 190),
+            ("sm_a1_l", "SM A1 L", 19, 240),
+            ("sm_a2_n", "SM A2 N", 1, 140),
+            ("sm_a2_l", "SM A2 L", 1, 195),
+            ("sm_a3_n", "SM A3 N", 4, 60),
+            ("sm_a3_l", "SM A3 L", 4, 360),
+            ("sm_a4_n", "SM A4 N", 15, 140),
+            ("sm_a4_l", "SM A4 L", 15, 190),
+            ("sm_a5_n", "SM A5 N", 17, 80),
+            ("sm_a5_l", "SM A5 L", 17, 110),
+        ),
+    },
+    "4": {
+        "layout": "hungaroring_2026",
+        "length_m": 4381,
+        "map": "https://www.fia.com/system/files/decision-document/2026_hungarian_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_red_zone.pdf",
+        "sectors": (("s1", "S1", 4, -85), ("s2", "S2", 11, 100)),
+        "speed": (1, -310),
+        "zones": (
+            ("sm_a1_n", "SM A1 N", 14, 40),
+            ("sm_a1_l", "SM A1 L", 14, 100),
+            ("sm_a3_n", "SM A3 N", 3, 50),
+            ("sm_a3_l", "SM A3 L", 3, 80),
+            ("sm_a4_n", "SM A4 N", 11, 60),
+            ("sm_a4_l", "SM A4 L", 11, 90),
+        ),
+    },
+    "55": {
+        "layout": "zandvoort_2026",
+        "length_m": 4259,
+        "map": "https://www.fia.com/system/files/decision-document/2026_dutch_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+        "sectors": (("s1", "S1", 7, -110), ("s2", "S2", 11, -150)),
+        "speed": (1, -95),
+        "zones": (
+            ("ot_d1", "OT D", 13, -10),
+            ("sm_a1_n", "SM A1 N", 14, 20),
+            ("sm_a1_l", "SM A1 L", 14, 80),
+            ("sm_a2_n", "SM A2 N", 10, 50),
+            ("sm_a2_l", "SM A2 L", 10, 120),
+        ),
+    },
+    "39": {
+        "layout": "monza_2026",
+        "length_m": 5793,
+        "map": "https://www.fia.com/system/files/decision-document/2026_italian_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_red_zone.pdf",
+        "sectors": (("s1", "S1", 4, -230), ("s2", "S2", 8, -210)),
+        "speed": (1, -190),
+        "zones": (
+            ("sm_a2_n", "SM A2 N", 3, 70),
+            ("sm_a2_l", "SM A2 L", 3, 110),
+            ("sm_a3_n", "SM A3 N", 7, 170),
+            ("sm_a3_l", "SM A3 L", 7, 230),
+            ("sm_a4_n", "SM A4 N", 10, 130),
+            ("sm_a4_l", "SM A4 L", 10, 180),
+        ),
+    },
+    "144": {
+        "layout": "baku_2026",
+        "length_m": 6003,
+        "map": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_red_zone.pdf",
+        "sectors": (("s1", "S1", 5, -45), ("s2", "S2", 16, -55)),
+        "speed": (20, 210),
+        "zones": (
+            ("ot_d1", "OT D", 16, 90),
+            ("ot_a1", "OT A", 17, -20),
+            ("sm_a1_n", "SM A1 N", 19, 45),
+            ("sm_a1_l", "SM A1 L", 20, 45),
+            ("sm_a2_n", "SM A2 N", 2, 110),
+            ("sm_a2_l", "SM A2 L", 2, 160),
+        ),
+    },
+    "61": {
+        "layout": "marina_bay_post_2023",
+        "length_m": 4927,
+        "map": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+        "sectors": (("s1", "S1", 7, -150), ("s2", "S2", 14, -140)),
+        "speed": (1, -150),
+        "zones": SINGAPORE_2026_AERO_POINTS,
+    },
+}
+
 
 def _segments(points):
     lengths = [math.dist(a, b) for a, b in zip(points, points[1:], strict=False)]
@@ -191,6 +420,12 @@ def _point(points, lengths, cumulative, distance, label, item_id):
     }
 
 
+def _feature_arc(corner_arcs, scale, circuit_key, corner, offset_m):
+    if corner not in corner_arcs:
+        raise ValueError(f"{circuit_key} has no source coordinate for T{corner}")
+    return corner_arcs[corner] + offset_m * scale
+
+
 def _singapore_2026_records(records):
     """Bind FIA 2026 markings to the reviewed, unchanged Marina Bay geometry."""
     source = {
@@ -249,8 +484,143 @@ def _singapore_2026_records(records):
     return reviewed
 
 
+def _season_2026_records():
+    """Build verified 2026 layers from the frozen circuit and FIA sources."""
+    snapshot = json.loads(COORDINATE_SNAPSHOT.read_text(encoding="utf-8"))
+    if snapshot.get("checked_on") != "2026-10-11":
+        raise ValueError("Unexpected 2026 coordinate snapshot date")
+    records = []
+    for circuit_key, source in SEASON_2026.items():
+        api = snapshot["circuits"][circuit_key]
+        track = GEOMETRIES[circuit_key]
+        points = track["points"]
+        lengths, cumulative = _segments(points)
+        scale = cumulative[-1] / source["length_m"]
+        corners = {
+            int(item["number"]): (float(item["x"]), float(item["y"]))
+            for item in api["corners"]
+        }
+        corner_arcs = {}
+        for number, coordinate in corners.items():
+            gap, arc, _ = _nearest(points, coordinate, lengths, cumulative)
+            if gap > 500:
+                raise ValueError(
+                    f"{circuit_key} T{number} is too far from geometry: {gap:.0f}"
+                )
+            corner_arcs[number] = arc
+
+        common = {
+            "schema_version": 1,
+            "circuit_key": circuit_key,
+            "layout_key": source["layout"],
+            "valid_from_season": 2026,
+            "valid_to_season": 2026,
+            "geometry_fingerprint": FINGERPRINT(track),
+            "qa_status": "verified",
+            "rights_status": "cleared",
+            "source": {
+                "url": source["map"],
+                "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/"
+                f"{circuit_key}/2026",
+                "checked_on": "2026-10-11",
+            },
+        }
+        start_gap, start_arc, _ = _nearest(
+            points,
+            (float(api["x"][0]), float(api["y"][0])),
+            lengths,
+            cumulative,
+        )
+        if start_gap > 500:
+            raise ValueError(f"{circuit_key} start line is too far from geometry")
+        records.extend(
+            (
+                {
+                    **common,
+                    "layer": "start_finish",
+                    "items": [
+                        _line(
+                            points,
+                            lengths,
+                            cumulative,
+                            start_arc,
+                            "Start/finish",
+                            "start_finish",
+                        )
+                    ],
+                },
+                {
+                    **common,
+                    "layer": "corners",
+                    "items": [
+                        _point(
+                            points,
+                            lengths,
+                            cumulative,
+                            corner_arcs[number],
+                            str(number),
+                            f"turn_{number:02d}",
+                        )
+                        for number in sorted(corner_arcs)
+                    ],
+                },
+                {
+                    **common,
+                    "layer": "sectors",
+                    "items": [
+                        _line(
+                            points,
+                            lengths,
+                            cumulative,
+                            _feature_arc(
+                                corner_arcs, scale, circuit_key, corner, offset
+                            ),
+                            label,
+                            item_id,
+                        )
+                        for item_id, label, corner, offset in source["sectors"]
+                    ],
+                },
+                {
+                    **common,
+                    "layer": "speed_traps",
+                    "items": [
+                        _point(
+                            points,
+                            lengths,
+                            cumulative,
+                            _feature_arc(
+                                corner_arcs, scale, circuit_key, *source["speed"]
+                            ),
+                            "Speed trap",
+                            "speed_trap",
+                        )
+                    ],
+                },
+                {
+                    **common,
+                    "layer": "detection_zones",
+                    "items": [
+                        _point(
+                            points,
+                            lengths,
+                            cumulative,
+                            _feature_arc(
+                                corner_arcs, scale, circuit_key, corner, offset
+                            ),
+                            label,
+                            item_id,
+                        )
+                        for item_id, label, corner, offset in source["zones"]
+                    ],
+                },
+            )
+        )
+    return records
+
+
 def build_catalog():
-    """Return the reviewed season-specific layers for both 2025 and 2026."""
+    """Return the existing pilot records plus reviewed 2026 circuits."""
     pilot = PILOT_CATALOG(qa_status="verified", rights_status="cleared")
     records = list(pilot)
     for circuit_key, source in SOURCES.items():
@@ -330,7 +700,7 @@ def build_catalog():
                         _point(points, lengths, cumulative, arc, label, item_id)
                     )
             records.append({**common, "layer": layer, "items": items})
-    return records + _singapore_2026_records(records)
+    return records + _season_2026_records()
 
 
 if __name__ == "__main__":
