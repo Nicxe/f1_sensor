@@ -23,12 +23,7 @@
       "investigation_changed": "Stato investigazione cambiato",
       "new_team_radio": "Nuovo team radio",
       "live_timing_online": "Telemetria online",
-      "live_timing_offline": "Telemetria offline",
-      "favorite_driver_position_gained": "Favorite driver gained a position",
-      "favorite_driver_position_lost": "Favorite driver lost a position",
-      "favorite_driver_entered_pits": "Favorite driver entered the pits",
-      "favorite_driver_exited_pits": "Favorite driver exited the pits",
-      "favorite_driver_retired": "Favorite driver retired"
+      "live_timing_offline": "Telemetria offline"
     }
   },
   "config": {
@@ -45,7 +40,6 @@
           "race_week_start_day": "Primo giorno della settimana di gara",
           "live_timing_auth_header": "Backup manuale: valore di autorizzazione F1TV",
           "start_f1tv_pairing": "Consigliato: collega accesso F1TV con Token Helper",
-          "clear_live_timing_auth_header": "Clear F1TV authorization value",
           "install_legacy_cards": "Installa le vecchie schede dashboard"
         },
         "data_description": {
@@ -126,28 +120,18 @@
           "confirm": {
             "data": {
               "live_timing_auth_header": "Valore di autorizzazione F1TV",
-              "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV",
-              "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
+              "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV"
             },
             "data_description": {
               "live_timing_auth_header": "Incolla un nuovo token Bearer da F1TV Token Helper per l’accesso F1TV.",
-              "clear_live_timing_auth_header": "Rimuovi il token F1TV salvato e continua solo con la telemetria pubblica.",
-              "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually."
+              "clear_live_timing_auth_header": "Rimuovi il token F1TV salvato e continua solo con la telemetria pubblica."
             },
             "description": "Il token F1TV salvato per {name} ha bisogno di attenzione. La telemetria pubblica continua a funzionare, ma i dati live F1TV non saranno usati finché il token non verrà sostituito.",
             "title": "Aggiorna il token F1TV"
-          },
-          "f1tv_pairing": {
-            "title": "Connect F1TV access",
-            "description": "Use the F1TV Token Helper to send your token to Home Assistant. F1TV access is optional, and this pairing expires at {expires_at}."
           }
         }
       },
       "title": "Il token F1TV ha bisogno di attenzione"
-    },
-    "stale_live_data_card_resources": {
-      "description": "Home Assistant still has stale Lovelace resource entries for the old standalone F1 card ({stale_resource_count} detected). These can cause duplicate cards or keep F1 cards visible after bundled dashboard cards are disabled. Remove the old standalone HACS dashboard repository and its stale Lovelace resource entries, then restart Home Assistant or reload Lovelace resources and hard refresh the browser.",
-      "title": "Old standalone F1 live data card resources detected"
     }
   },
   "entity": {
@@ -284,12 +268,6 @@
       },
       "replay_status": {
         "name": "Stato replay"
-      },
-      "starting_grid": {
-        "name": "Starting grid"
-      },
-      "favorite_driver": {
-        "name": "Favorite driver"
       }
     },
     "weather": {
@@ -327,9 +305,6 @@
       },
       "clear_f1tv_access": {
         "name": "Rimuovi accesso F1TV"
-      },
-      "refresh_f1tv_access": {
-        "name": "Refresh F1TV access"
       }
     },
     "switch": {
@@ -362,9 +337,6 @@
       },
       "replay_start_reference": {
         "name": "Riferimento avvio sessione"
-      },
-      "favorite_driver": {
-        "name": "Favorite driver"
       }
     },
     "binary_sensor": {
@@ -399,29 +371,15 @@
   "options": {
     "step": {
       "init": {
-        "title": "Configure F1 Sensor features",
         "data": {
-          "enabled_sensors": "Enabled sensors",
-          "enable_race_control": "Enable live F1 API",
           "install_dashboard_cards": "Installa le schede dashboard incluse",
-          "race_week_start_day": "First day of race week",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
           "install_legacy_cards": "Installa le vecchie schede dashboard"
         },
         "data_description": {
-          "enable_race_control": "Connect to Formula 1 Live Timing only when live features are enabled.",
           "install_dashboard_cards": "Registra in Home Assistant le schede F1 Sensor incluse. Disattiva questa opzione se utilizzi solo entità e automazioni. Le schede F1 esistenti smetteranno di funzionare dopo aver ricaricato il browser.",
-          "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
-          "operation_mode": "Choose Live or local replay Development mode.",
-          "replay_file": "Absolute path to a replay dump used only in Development mode.",
           "install_legacy_cards": "Registra anche le schede F1 obsolete. Disattivato per le nuove installazioni; quelle esistenti mantengono le schede. Richiede l’installazione delle schede dashboard. Ricarica il browser dopo la modifica. Disattivando questa opzione, le vecchie schede smettono di funzionare senza migrazione alla scheda F1 Sensor. Con più installazioni, restano disponibili finché un’installazione attiva le richiede."
         }
       }
-    },
-    "error": {
-      "replay_required": "Select a replay dump file when Development mode is enabled.",
-      "replay_missing": "Replay dump file not found or unreadable."
     }
   }
 }
