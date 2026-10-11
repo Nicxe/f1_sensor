@@ -19,7 +19,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 On a normal race weekend, the sensor builds a Race grid from Qualifying. On a sprint weekend, it first builds a Sprint grid from Sprint Qualifying, then clears that grid after the Sprint and builds the Race grid from Qualifying.
 
 **State (enum)**
-- One of: `waiting_for_sprint_qualifying`, `waiting_for_qualifying`, `collecting`, `provisional`, `confirmed`, `completed`.
+- One of: `waiting_for_sprint_qualifying`, `waiting_for_qualifying`, `collecting`, `provisional`, `confirmed`, `unavailable`, `completed`.
 
 | Value | Description |
 | --- | --- |
@@ -28,6 +28,7 @@ On a normal race weekend, the sensor builds a Race grid from Qualifying. On a sp
 | `collecting` | Sprint Qualifying, Qualifying, Sprint, or Race is active and the sensor is collecting timing or grid-position data. `grid` can still be empty until enough data has arrived. |
 | `provisional` | A preliminary grid has been built from qualifying timing data. This follows the qualifying order and may still change because of grid penalties, pit-lane starts, or other official updates. |
 | `confirmed` | The grid has been confirmed from the live timing grid-position data for the Sprint or Race. This is the best available source and can show movement from the original qualifying order. |
+| `unavailable` | The live feed assigns the same grid position to multiple drivers, and their starting order cannot yet be verified. `grid` is empty rather than showing a misleading confirmed order. |
 | `completed` | The Race has finished or been finalised, and no active starting grid is exposed. `grid` is empty. On sprint weekends, finishing the Sprint changes the sensor back to `waiting_for_qualifying` instead of `completed`, because the Race grid is still pending. |
 
 **Example**
@@ -66,6 +67,8 @@ On a sprint weekend, the expected flow is `waiting_for_sprint_qualifying` → `c
 
 When a new race weekend is detected, the sensor clears the previous grid, resets the driver rows, and starts waiting for the relevant qualifying session. Replay Mode does not replace or clear the live Starting Grid sensor, so replaying an older session will not overwrite the current or upcoming weekend grid.
 
+If Home Assistant first connects after a Sprint or Race has started and the live feed contains duplicate grid positions, the sensor checks the session's pre-start timing history once. It returns to `confirmed` only when that history resolves the duplicate. If the history is unavailable or inconclusive, the sensor stays `unavailable` until the live feed provides an unambiguous grid.
+
 **Attributes**
 
 | Attribute | Type | Description |
@@ -76,12 +79,12 @@ When a new race weekend is detected, the sensor clears the previous grid, resets
 | weekend_format | string | `normal`, `sprint`, or `unknown` |
 | meeting_name | string | Race weekend name |
 | session_key | string | Source session identifier when available |
-| source_session_name | string | Session used to build the grid, such as `Sprint Qualifying` or `Qualifying` |
+| source_session_name | string | Session used to build the current grid, such as `Sprint Qualifying`, `Qualifying`, `Sprint`, or `Race` |
 | target_session_name | string | Session the grid applies to, such as `Sprint` or `Race` |
 | source | string | `live_timing_qualifying`, `live_timing_archive`, `live_timing_gridpos`, or `null` |
 | source_updated_at | string | ISO-8601 timestamp for the last source update |
 | cleared_at | string | ISO-8601 timestamp when the grid was cleared |
-| cleared_reason | string | Reason the grid was cleared, such as `new_weekend`, `sprint_completed`, or `race_completed` |
+| cleared_reason | string | Reason the grid was cleared, such as `new_weekend`, `sprint_completed`, `race_completed`, or `ambiguous_grid_position` |
 | grid_count | number | Number of drivers in the grid |
 | grid | list | Ordered starting grid rows |
 

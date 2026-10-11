@@ -151,6 +151,11 @@ from .live_window import (
     LiveAvailabilityTracker,
     LiveSessionSupervisor,
 )
+from .minisector_websocket import (
+    MINISECTOR_WS_MARKER,
+    async_register_minisector_websocket,
+)
+from .minisectors import MiniSectorStateStore
 from .no_spoiler import NoSpoilerModeManager
 from .providers import ProviderRegistry
 from .race_weather import F1RaceWeatherCoordinator
@@ -189,6 +194,7 @@ from .track_map import (
     TrackMapRuntimeData,
     TrackMapStore,
 )
+from .track_map_annotation_contract import load_annotation_catalog
 from .track_map_websocket import TRACK_MAP_WS_MARKER, async_register_track_map_websocket
 
 _LOGGER = logging.getLogger(__name__)
@@ -254,6 +260,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         LAP_POSITION_WS_MARKER,
         HISTORY_WS_MARKER,
         ANALYSIS_WS_MARKER,
+        MINISECTOR_WS_MARKER,
         TRACK_MAP_WS_MARKER,
         ENTITY_MAP_WS_MARKER,
     }
@@ -2157,7 +2164,12 @@ async def _async_setup_entry(
     )
 
     if not feature_plan.live_required:
-        track_map_store = TrackMapStore(entry.entry_id)
+        track_map_store = TrackMapStore(
+            entry.entry_id,
+            annotation_records=await hass.async_add_executor_job(
+                load_annotation_catalog
+            ),
+        )
         transaction.track(track_map_store)
         dormant_live_bus = None
         dormant_live_state = None
@@ -2277,6 +2289,7 @@ async def _async_setup_entry(
             async_register_lap_position_websocket(hass)
         async_register_history_websocket(hass)
         async_register_analysis_websocket(hass)
+        async_register_minisector_websocket(hass)
         async_register_track_map_websocket(hass)
         async_register_entity_map_websocket(hass)
         no_spoiler_mgr: NoSpoilerModeManager | None = hass.data.get(DOMAIN, {}).get(
@@ -2346,7 +2359,10 @@ async def _async_setup_entry(
     live_mode_coordinator = None
     top_three_coordinator = None
     starting_grid_coordinator = None
-    track_map_store = TrackMapStore(entry.entry_id)
+    track_map_store = TrackMapStore(
+        entry.entry_id,
+        annotation_records=await hass.async_add_executor_job(load_annotation_catalog),
+    )
     transaction.track(track_map_store)
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
@@ -2970,6 +2986,7 @@ async def _async_setup_entry(
         async_register_lap_position_websocket(hass)
     async_register_history_websocket(hass)
     async_register_analysis_websocket(hass)
+    async_register_minisector_websocket(hass)
     async_register_track_map_websocket(hass)
     async_register_entity_map_websocket(hass)
 
@@ -5258,9 +5275,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._bus = bus
         self._unsubs: list[Callable[[], None]] = []
         self._delay_listener: Callable[[], None] | None = None
+        self._session_unsub: Callable[[], None] | None = None
+        self._session_fingerprint: str | None = None
         _init_delayed_ingest_state(self)
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
+        entry_id = config_entry.entry_id if config_entry is not None else None
+        self._minisectors = MiniSectorStateStore(entry_id=entry_id)
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self.available = True
@@ -5295,14 +5316,66 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._delay_listener()
             self._delay_listener = None
+        if self._session_unsub:
+            with suppress(Exception):
+                self._session_unsub()
+            self._session_unsub = None
         if self._live_state_unsub:
             with suppress(Exception):
                 self._live_state_unsub()
             self._live_state_unsub = None
         _close_delayed_ingest_state(self)
+        self._minisectors.close()
 
     async def _async_update_data(self):
         return self._state
+
+    def minisector_snapshot(self) -> dict[str, Any]:
+        """Return internal segment state without adding Home Assistant state data."""
+        return self._minisectors.snapshot()
+
+    @property
+    def minisector_store(self) -> MiniSectorStateStore:
+        """Expose the entry-owned store to the shared WebSocket transport."""
+        return self._minisectors
+
+    def _current_session_fingerprint(self) -> str | None:
+        fingerprint = _compute_session_fingerprint(
+            getattr(self._session_coord, "data", None)
+        )
+        if fingerprint is None:
+            return None
+        return hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
+
+    def _on_session_index_update(self) -> None:
+        fingerprint = self._current_session_fingerprint()
+        if fingerprint is None or fingerprint == self._session_fingerprint:
+            return
+        changed = self._session_fingerprint is not None
+        self._session_fingerprint = fingerprint
+        if changed:
+            _clear_delayed_ingest_state(self)
+        self._minisectors.set_session(fingerprint)
+
+    def reset_for_replay(self) -> None:
+        """Discard replay-sensitive driver and segment state before rebuilding."""
+        _clear_delayed_ingest_state(self)
+        self._minisectors.reset(
+            "replay_reset",
+            source="replay" if self._replay_mode else "live",
+        )
+        self._state = {
+            "drivers": {},
+            "leader_rn": None,
+            "lap_current": None,
+            "lap_total": None,
+            "session_status": None,
+            "track_status": None,
+            "frozen": False,
+            "tyre_statistics": {},
+            "fastest_lap": self._empty_fastest_lap(),
+        }
+        self.async_set_updated_data(self._state)
 
     def _merge_driverlist(self, payload: dict) -> bool:
         # payload: { rn: {Tla, FullName, TeamName, TeamColour, ...}, ... }
@@ -5548,6 +5621,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
     def _merge_timingdata(self, payload: dict) -> bool:
         # payload: {"Lines": { rn: {...timing...} } }
+        self._minisectors.merge_timing_data(payload)
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
             return False
@@ -6076,6 +6150,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         # Only clear on transition INTO an SC/VSC period
         if status in _SC_VSC and prev not in _SC_VSC:
+            self._minisectors.reset("track_status_disruption", new_generation=False)
             for drv_entry in self._state["drivers"].values():
                 s = drv_entry.get("sectors")
                 if isinstance(s, dict):
@@ -6083,16 +6158,23 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             self._schedule_deliver()
 
     def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay != self._delay:
+            self._minisectors.reset("live_delay_change")
         _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
-        self._replay_mode = _is_replay_delay_reason(reason)
+        replay_mode = _is_replay_delay_reason(reason)
+        if replay_mode != self._replay_mode:
+            self._minisectors.set_source("replay" if replay_mode else "live")
+        self._replay_mode = replay_mode
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         if _is_no_spoiler_live_state(reason):
             _clear_delayed_ingest_state(self)
+            self._minisectors.reset("spoiler_protected")
             return
         self.available = is_live
         self._tyre_live_started_mono = None
@@ -6102,6 +6184,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             # Clear consolidated state so a future session window does not briefly
             # show stale driver/timing information before the first live frames.
             _clear_delayed_ingest_state(self)
+            self._minisectors.reset("source_unavailable")
             with suppress(Exception):
                 self._state = {
                     "drivers": {},
@@ -6822,8 +6905,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _merge_sessionstatus(self, payload: dict) -> None:
         previous = self._state.get("session_status")
         was_running = self._session_status_is_running(previous)
+        was_terminal = self._session_status_is_terminal(previous)
         self._state["session_status"] = payload
         is_running = self._session_status_is_running(payload)
+        if is_running and was_terminal:
+            self._minisectors.reset("session_change")
         if is_running and not was_running and not self._replay_mode:
             self._tyre_live_started_mono = time.monotonic()
             self._tyre_first_compound_logged = False
@@ -6894,6 +6980,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             self._schedule_deliver()
 
     def _on_timingdata(self, td: dict) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         if self._state.get("frozen") and not self._replay_mode:
             return
         if self._merge_timingdata(td):
@@ -7021,6 +7109,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
+        self._session_fingerprint = self._current_session_fingerprint()
+        self._minisectors.set_session(self._session_fingerprint)
+        with suppress(Exception):
+            self._session_unsub = self._session_coord.async_add_listener(
+                self._on_session_index_update
+            )
         # Subscribe to LiveBus streams
         try:
             bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")  # type: ignore[assignment]

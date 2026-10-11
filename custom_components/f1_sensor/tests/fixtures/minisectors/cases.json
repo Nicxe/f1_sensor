@@ -1,0 +1,317 @@
+{
+  "format_version": 1,
+  "provenance": {
+    "root": "/Volumes/Data/F1 Live Timing API - Dumps/2026/import_requests/Streams",
+    "method": "Reduced structural slices from timestamped TimingData.txt frames. Unrelated drivers and timing fields are removed; raw sector keys, segment keys and status values are unchanged.",
+    "captured_on": "2026-10-08"
+  },
+  "cases": [
+    {
+      "id": "initial_list_payload",
+      "source": {
+        "session": "2026-10-02_Bahrain_Grand_Prix/2026-10-03_Qualifying",
+        "timestamp": "00:00:15.427"
+      },
+      "operation": "replace",
+      "before": {},
+      "payload": {
+        "Lines": {
+          "12": {
+            "Sectors": {
+              "0": {
+                "Segments": [
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0}
+                ]
+              },
+              "1": {
+                "Segments": [
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0}
+                ]
+              },
+              "2": {
+                "Segments": [
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0},
+                  {"Status": 0}
+                ]
+              }
+            }
+          }
+        }
+      },
+      "expected_lengths": {"12": [5, 6, 9]},
+      "expected_points": [
+        {"driver": "12", "sector": 0, "segment": 0, "raw": 0},
+        {"driver": "12", "sector": 2, "segment": 8, "raw": 0}
+      ]
+    },
+    {
+      "id": "sparse_object_delta",
+      "source": {
+        "session": "2026-09-04_Italian_Grand_Prix/2026-09-04_Practice_2",
+        "timestamp": "00:13:50.952"
+      },
+      "operation": "merge",
+      "before": {"5": {"0": {"0": 2048, "1": 0, "2": 0}}},
+      "payload": {
+        "Lines": {
+          "5": {
+            "Sectors": {
+              "0": {"Segments": {"1": {"Status": 2064}}}
+            }
+          }
+        }
+      },
+      "expected_points": [
+        {"driver": "5", "sector": 0, "segment": 0, "raw": 2048},
+        {"driver": "5", "sector": 0, "segment": 1, "raw": 2064},
+        {"driver": "5", "sector": 0, "segment": 2, "raw": 0}
+      ]
+    },
+    {
+      "id": "purple_handoff_atomic",
+      "source": {
+        "session": "2026-10-02_Bahrain_Grand_Prix/2026-10-03_Qualifying",
+        "timestamp": "00:13:30.958"
+      },
+      "operation": "merge",
+      "before": {
+        "31": {"0": {"3": 2051}},
+        "87": {"0": {"3": 2049}}
+      },
+      "payload": {
+        "Lines": {
+          "31": {
+            "Sectors": {"0": {"Segments": {"3": {"Status": 2049}}}}
+          },
+          "87": {
+            "Sectors": {"0": {"Segments": {"3": {"Status": 2051}}}}
+          }
+        }
+      },
+      "expected_points": [
+        {"driver": "31", "sector": 0, "segment": 3, "raw": 2049},
+        {"driver": "87", "sector": 0, "segment": 3, "raw": 2051}
+      ],
+      "atomic": true
+    },
+    {
+      "id": "unknown_status_neutral",
+      "source": {
+        "session": "2026-09-04_Italian_Grand_Prix/2026-09-04_Practice_2",
+        "timestamp": "00:20:15.966"
+      },
+      "operation": "merge",
+      "before": {},
+      "payload": {
+        "Lines": {
+          "77": {
+            "Sectors": {"1": {"Segments": {"6": {"Status": 2050}}}}
+          }
+        }
+      },
+      "expected_points": [
+        {
+          "driver": "77",
+          "sector": 1,
+          "segment": 6,
+          "raw": 2050,
+          "semantic": "unknown",
+          "color": "neutral"
+        }
+      ]
+    },
+    {
+      "id": "large_list_reset",
+      "source": {
+        "session": "2026-09-04_Italian_Grand_Prix/2026-09-04_Practice_2",
+        "timestamp": "00:00:10.453",
+        "reduction": "One exact 6/7/9 driver slice from the 22-driver reset frame"
+      },
+      "operation": "replace_driver",
+      "before": {
+        "1": {
+          "0": {"0": 2051, "1": 2049, "2": 2048},
+          "1": {"0": 2049, "1": 2048},
+          "2": {"0": 2051, "8": 2048}
+        }
+      },
+      "payload": {
+        "Lines": {
+          "1": {
+            "Sectors": {
+              "0": {
+                "Segments": [
+                  {"Status": 0}, {"Status": 0}, {"Status": 0},
+                  {"Status": 0}, {"Status": 0}, {"Status": 0}
+                ]
+              },
+              "1": {
+                "Segments": [
+                  {"Status": 0}, {"Status": 0}, {"Status": 0},
+                  {"Status": 0}, {"Status": 0}, {"Status": 0},
+                  {"Status": 0}
+                ]
+              },
+              "2": {
+                "Segments": [
+                  {"Status": 0}, {"Status": 0}, {"Status": 0},
+                  {"Status": 0}, {"Status": 0}, {"Status": 0},
+                  {"Status": 0}, {"Status": 0}, {"Status": 0}
+                ]
+              }
+            }
+          }
+        }
+      },
+      "expected_lengths": {"1": [6, 7, 9]},
+      "expected_points": [
+        {"driver": "1", "sector": 0, "segment": 0, "raw": 0},
+        {"driver": "1", "sector": 1, "segment": 1, "raw": 0},
+        {"driver": "1", "sector": 2, "segment": 8, "raw": 0}
+      ]
+    },
+    {
+      "id": "partial_object_reset",
+      "source": {
+        "session": "2026-10-02_Bahrain_Grand_Prix/2026-10-02_Practice_1",
+        "timestamp": "00:15:36.026"
+      },
+      "operation": "merge",
+      "before": {
+        "31": {
+          "0": {"0": 2051, "1": 2048, "2": 2048, "3": 2049, "4": 2048},
+          "1": {"0": 2048, "1": 2048, "2": 2048, "3": 2048, "4": 2048, "5": 2048},
+          "2": {"0": 2048, "1": 2048, "2": 2048, "3": 2048, "4": 2048, "5": 2048, "6": 2048, "7": 2048, "8": 2048}
+        }
+      },
+      "payload": {
+        "Lines": {
+          "31": {
+            "Sectors": {
+              "0": {"Segments": {"0": {"Status": 2051}, "1": {"Status": 0}, "2": {"Status": 0}, "3": {"Status": 0}, "4": {"Status": 0}}},
+              "1": {"Segments": {"0": {"Status": 0}, "1": {"Status": 0}, "2": {"Status": 0}, "3": {"Status": 0}, "4": {"Status": 0}, "5": {"Status": 0}}},
+              "2": {"Segments": {"0": {"Status": 0}, "1": {"Status": 0}, "2": {"Status": 0}, "3": {"Status": 0}, "4": {"Status": 0}, "5": {"Status": 0}, "6": {"Status": 0}, "7": {"Status": 0}, "8": {"Status": 0}}}
+            }
+          }
+        }
+      },
+      "expected_points": [
+        {"driver": "31", "sector": 0, "segment": 0, "raw": 2051},
+        {"driver": "31", "sector": 0, "segment": 3, "raw": 0},
+        {"driver": "31", "sector": 1, "segment": 5, "raw": 0},
+        {"driver": "31", "sector": 2, "segment": 8, "raw": 0}
+      ]
+    }
+  ],
+  "protocol_scenarios": [
+    {
+      "id": "replay_seek_replaces_generation",
+      "source": {
+        "session": "2026-09-04_Italian_Grand_Prix/2026-09-06_Race",
+        "note": "Generation replacement represents a seek across the red-flag interruption at 01:01:07 and restart at 01:32:24."
+      },
+      "events": [
+        {
+          "type": "snapshot",
+          "generation": "monza-race:before-seek",
+          "sequence": 0,
+          "drivers": {"44": {"0": {"0": 2051, "1": 2049}}}
+        },
+        {
+          "type": "delta",
+          "generation": "monza-race:before-seek",
+          "sequence": 1,
+          "drivers": {"44": {"0": {"2": 2048}}}
+        },
+        {
+          "type": "snapshot",
+          "generation": "monza-race:after-seek",
+          "sequence": 0,
+          "drivers": {"44": {"0": {"0": 0, "1": 0, "2": 0}}}
+        },
+        {
+          "type": "delta",
+          "generation": "monza-race:before-seek",
+          "sequence": 2,
+          "drivers": {"44": {"0": {"3": 2051}}}
+        }
+      ],
+      "expected": {
+        "generation": "monza-race:after-seek",
+        "sequence": 0,
+        "resync_required": false,
+        "drivers": {"44": {"0": {"0": 0, "1": 0, "2": 0}}}
+      }
+    },
+    {
+      "id": "driver_lap_reset_replaces_scoped_state",
+      "events": [
+        {
+          "type": "snapshot",
+          "generation": "monza-race:lap-12",
+          "sequence": 0,
+          "drivers": {
+            "1": {"0": {"0": 2051, "1": 2049}, "1": {"0": 2048}},
+            "3": {"0": {"0": 2049}}
+          }
+        },
+        {
+          "type": "reset",
+          "generation": "monza-race:lap-12",
+          "sequence": 1,
+          "reason": "new_lap",
+          "scope": {"drivers": ["1"]},
+          "drivers": {"1": {"0": {"0": 0, "1": 0}, "1": {"0": 0}}}
+        }
+      ],
+      "expected": {
+        "generation": "monza-race:lap-12",
+        "sequence": 1,
+        "resync_required": false,
+        "drivers": {
+          "1": {"0": {"0": 0, "1": 0}, "1": {"0": 0}},
+          "3": {"0": {"0": 2049}}
+        }
+      }
+    },
+    {
+      "id": "sequence_gap_requires_resync",
+      "events": [
+        {
+          "type": "snapshot",
+          "generation": "bahrain-q1:1",
+          "sequence": 0,
+          "drivers": {"12": {"0": {"0": 2048}}}
+        },
+        {
+          "type": "delta",
+          "generation": "bahrain-q1:1",
+          "sequence": 2,
+          "drivers": {"12": {"0": {"1": 2049}}}
+        }
+      ],
+      "expected": {
+        "generation": "bahrain-q1:1",
+        "sequence": 0,
+        "resync_required": true,
+        "drivers": {"12": {"0": {"0": 2048}}}
+      }
+    }
+  ]
+}
