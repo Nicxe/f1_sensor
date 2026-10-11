@@ -66,6 +66,8 @@ Live information appears when the relevant session streams are available; schedu
 
 Find [community dashboards](https://nicxe.github.io/f1_sensor/example/overview), ask in [GitHub Discussions](https://github.com/Nicxe/f1_sensor/discussions), or [report a reproducible problem](https://github.com/Nicxe/f1_sensor/issues). To contribute code or documentation, start with [CONTRIBUTING](CONTRIBUTING.md).
 
+Help make F1 Sensor available in more languages by [translating it on Hosted Weblate](https://hosted.weblate.org/projects/f1-sensor/integration/). Translation changes are proposed back to the `dev` branch through pull requests.
+
 The `dev` branch can include features awaiting stable release. Use the release linked by the documentation version label when matching instructions to your installation.
 
 You can also [support development](https://nicxe.github.io/f1_sensor/support) through a star, sponsorship, documentation improvements and helping other users.
