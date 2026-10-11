@@ -894,6 +894,525 @@
   },
   {
     "schema_version": 1,
+    "circuit_key": "61",
+    "layout_key": "marina_bay_post_2023",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:7fcbc8eecbacafcb486b7d899bb360f9d61d5eb3bc139a0fcafea9e3688a513d",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/61/2026",
+      "checked_on": "2026-10-11"
+    },
+    "layer": "start_finish",
+    "items": [
+      {
+        "id": "start_finish",
+        "kind": "line",
+        "start": [
+          980,
+          1535
+        ],
+        "end": [
+          544,
+          1479
+        ],
+        "label": "Start/finish"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "61",
+    "layout_key": "marina_bay_post_2023",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:7fcbc8eecbacafcb486b7d899bb360f9d61d5eb3bc139a0fcafea9e3688a513d",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/61/2026",
+      "checked_on": "2026-10-11"
+    },
+    "layer": "corners",
+    "items": [
+      {
+        "id": "turn_01",
+        "kind": "point",
+        "anchor": [
+          420,
+          3464
+        ],
+        "label": "1",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_02",
+        "kind": "point",
+        "anchor": [
+          -190,
+          3735
+        ],
+        "label": "2",
+        "label_offset": [
+          6,
+          -8
+        ]
+      },
+      {
+        "id": "turn_03",
+        "kind": "point",
+        "anchor": [
+          -787,
+          4059
+        ],
+        "label": "3",
+        "label_offset": [
+          -4,
+          -4
+        ]
+      },
+      {
+        "id": "turn_04",
+        "kind": "point",
+        "anchor": [
+          -1020,
+          2755
+        ],
+        "label": "4",
+        "label_offset": [
+          -4,
+          0
+        ]
+      },
+      {
+        "id": "turn_05",
+        "kind": "point",
+        "anchor": [
+          -713,
+          313
+        ],
+        "label": "5",
+        "label_offset": [
+          4,
+          2
+        ]
+      },
+      {
+        "id": "turn_06",
+        "kind": "point",
+        "anchor": [
+          -4911,
+          462
+        ],
+        "label": "6",
+        "label_offset": [
+          0,
+          5
+        ]
+      },
+      {
+        "id": "turn_07",
+        "kind": "point",
+        "anchor": [
+          -8212,
+          2137
+        ],
+        "label": "7",
+        "label_offset": [
+          0,
+          -5
+        ]
+      },
+      {
+        "id": "turn_08",
+        "kind": "point",
+        "anchor": [
+          -9607,
+          554
+        ],
+        "label": "8",
+        "label_offset": [
+          -6,
+          4
+        ]
+      },
+      {
+        "id": "turn_09",
+        "kind": "point",
+        "anchor": [
+          -11030,
+          1624
+        ],
+        "label": "9",
+        "label_offset": [
+          -4,
+          -1
+        ]
+      },
+      {
+        "id": "turn_10",
+        "kind": "point",
+        "anchor": [
+          -13182,
+          -1886
+        ],
+        "label": "10",
+        "label_offset": [
+          0,
+          -10
+        ]
+      },
+      {
+        "id": "turn_11",
+        "kind": "point",
+        "anchor": [
+          -12250,
+          -3015
+        ],
+        "label": "11",
+        "label_offset": [
+          6,
+          -6
+        ]
+      },
+      {
+        "id": "turn_12",
+        "kind": "point",
+        "anchor": [
+          -11972,
+          -3758
+        ],
+        "label": "12",
+        "label_offset": [
+          -6,
+          10
+        ]
+      },
+      {
+        "id": "turn_13",
+        "kind": "point",
+        "anchor": [
+          -10800,
+          -4872
+        ],
+        "label": "13",
+        "label_offset": [
+          5,
+          4
+        ]
+      },
+      {
+        "id": "turn_14",
+        "kind": "point",
+        "anchor": [
+          -9095,
+          57
+        ],
+        "label": "14",
+        "label_offset": [
+          8,
+          -4
+        ]
+      },
+      {
+        "id": "turn_15",
+        "kind": "point",
+        "anchor": [
+          -7360,
+          -1268
+        ],
+        "label": "15",
+        "label_offset": [
+          0,
+          5
+        ]
+      },
+      {
+        "id": "turn_16",
+        "kind": "point",
+        "anchor": [
+          -2568,
+          -1780
+        ],
+        "label": "16",
+        "label_offset": [
+          -2,
+          -5
+        ]
+      },
+      {
+        "id": "turn_17",
+        "kind": "point",
+        "anchor": [
+          -2213,
+          -2407
+        ],
+        "label": "17",
+        "label_offset": [
+          1,
+          5
+        ]
+      },
+      {
+        "id": "turn_18",
+        "kind": "point",
+        "anchor": [
+          377,
+          -2622
+        ],
+        "label": "18",
+        "label_offset": [
+          -4,
+          8
+        ]
+      },
+      {
+        "id": "turn_19",
+        "kind": "point",
+        "anchor": [
+          1091,
+          -1829
+        ],
+        "label": "19",
+        "label_offset": [
+          -8,
+          -2
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "61",
+    "layout_key": "marina_bay_post_2023",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:7fcbc8eecbacafcb486b7d899bb360f9d61d5eb3bc139a0fcafea9e3688a513d",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/61/2026",
+      "checked_on": "2026-10-11"
+    },
+    "layer": "sectors",
+    "items": [
+      {
+        "id": "s1",
+        "kind": "line",
+        "start": [
+          -6811,
+          1624
+        ],
+        "end": [
+          -7043,
+          1250
+        ],
+        "label": "S1"
+      },
+      {
+        "id": "s2",
+        "kind": "line",
+        "start": [
+          -9628,
+          -907
+        ],
+        "end": [
+          -10052,
+          -791
+        ],
+        "label": "S2"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "61",
+    "layout_key": "marina_bay_post_2023",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:7fcbc8eecbacafcb486b7d899bb360f9d61d5eb3bc139a0fcafea9e3688a513d",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/61/2026",
+      "checked_on": "2026-10-11"
+    },
+    "layer": "speed_traps",
+    "items": [
+      {
+        "id": "speed_trap",
+        "kind": "point",
+        "anchor": [
+          699,
+          2026
+        ],
+        "label": "Speed trap",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "61",
+    "layout_key": "marina_bay_post_2023",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:7fcbc8eecbacafcb486b7d899bb360f9d61d5eb3bc139a0fcafea9e3688a513d",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/61/2026",
+      "checked_on": "2026-10-11"
+    },
+    "layer": "detection_zones",
+    "items": [
+      {
+        "id": "ot_a",
+        "kind": "point",
+        "anchor": [
+          -1948,
+          -2528
+        ],
+        "label": "OT A",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a1_n",
+        "kind": "point",
+        "anchor": [
+          1160,
+          -1542
+        ],
+        "label": "SM A1 N",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a1_l",
+        "kind": "point",
+        "anchor": [
+          1125,
+          -956
+        ],
+        "label": "SM A1 L",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a2_n",
+        "kind": "point",
+        "anchor": [
+          -1182,
+          184
+        ],
+        "label": "SM A2 N",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a3_n",
+        "kind": "point",
+        "anchor": [
+          -11527,
+          1188
+        ],
+        "label": "SM A3 N",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a3_l",
+        "kind": "point",
+        "anchor": [
+          -11755,
+          753
+        ],
+        "label": "SM A3 L",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a4_n",
+        "kind": "point",
+        "anchor": [
+          -10478,
+          -3858
+        ],
+        "label": "SM A4 N",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a4_l",
+        "kind": "point",
+        "anchor": [
+          -10396,
+          -3374
+        ],
+        "label": "SM A4 L",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a5_n",
+        "kind": "point",
+        "anchor": [
+          -6701,
+          -1431
+        ],
+        "label": "SM A5 N",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a5_l",
+        "kind": "point",
+        "anchor": [
+          -6505,
+          -1451
+        ],
+        "label": "SM A5 L",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
     "circuit_key": "10",
     "layout_key": "albert_park_2026",
     "valid_from_season": 2026,
@@ -6951,16 +7470,16 @@
   },
   {
     "schema_version": 1,
-    "circuit_key": "61",
-    "layout_key": "marina_bay_post_2023",
+    "circuit_key": "12",
+    "layout_key": "sepang_2026",
     "valid_from_season": 2026,
     "valid_to_season": 2026,
-    "geometry_fingerprint": "sha256:7fcbc8eecbacafcb486b7d899bb360f9d61d5eb3bc139a0fcafea9e3688a513d",
+    "geometry_fingerprint": "sha256:3b7901a5a289b2e6a2c96c53223af738a0a98e6f945b5176839affff68369e55",
     "qa_status": "verified",
     "rights_status": "cleared",
     "source": {
-      "url": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
-      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/61/2026",
+      "url": "https://cdn.jsdelivr.net/gh/TracingInsights/DDocs@0ac6569aba0e2fbccfd1995988ac6a7bd7ba751d/documents/2026/bahrain-grand-prix/competition-notes-circuit-map-pit-lane-drawing-emergency-exits-map-and-red-zone.pdf",
+      "coordinate_url": "https://github.com/TUMFTM/racetrack-database/blob/master/tracks/Sepang.csv",
       "checked_on": "2026-10-11"
     },
     "layer": "start_finish",
@@ -6969,12 +7488,12 @@
         "id": "start_finish",
         "kind": "line",
         "start": [
-          1269,
-          -409
+          1280,
+          -761
         ],
         "end": [
-          835,
-          -480
+          1318,
+          -1199
         ],
         "label": "Start/finish"
       }
@@ -6982,16 +7501,16 @@
   },
   {
     "schema_version": 1,
-    "circuit_key": "61",
-    "layout_key": "marina_bay_post_2023",
+    "circuit_key": "12",
+    "layout_key": "sepang_2026",
     "valid_from_season": 2026,
     "valid_to_season": 2026,
-    "geometry_fingerprint": "sha256:7fcbc8eecbacafcb486b7d899bb360f9d61d5eb3bc139a0fcafea9e3688a513d",
+    "geometry_fingerprint": "sha256:3b7901a5a289b2e6a2c96c53223af738a0a98e6f945b5176839affff68369e55",
     "qa_status": "verified",
     "rights_status": "cleared",
     "source": {
-      "url": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
-      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/61/2026",
+      "url": "https://cdn.jsdelivr.net/gh/TracingInsights/DDocs@0ac6569aba0e2fbccfd1995988ac6a7bd7ba751d/documents/2026/bahrain-grand-prix/competition-notes-circuit-map-pit-lane-drawing-emergency-exits-map-and-red-zone.pdf",
+      "coordinate_url": "https://github.com/TUMFTM/racetrack-database/blob/master/tracks/Sepang.csv",
       "checked_on": "2026-10-11"
     },
     "layer": "corners",
@@ -7000,8 +7519,8 @@
         "id": "turn_01",
         "kind": "point",
         "anchor": [
-          420,
-          3464
+          -4941,
+          -1414
         ],
         "label": "1",
         "label_offset": [
@@ -7013,8 +7532,8 @@
         "id": "turn_02",
         "kind": "point",
         "anchor": [
-          -190,
-          3735
+          -4195,
+          -758
         ],
         "label": "2",
         "label_offset": [
@@ -7026,8 +7545,8 @@
         "id": "turn_03",
         "kind": "point",
         "anchor": [
-          -787,
-          4059
+          -4087,
+          2117
         ],
         "label": "3",
         "label_offset": [
@@ -7039,8 +7558,8 @@
         "id": "turn_04",
         "kind": "point",
         "anchor": [
-          -1020,
-          2755
+          420,
+          3726
         ],
         "label": "4",
         "label_offset": [
@@ -7052,8 +7571,8 @@
         "id": "turn_05",
         "kind": "point",
         "anchor": [
-          -713,
-          313
+          1341,
+          918
         ],
         "label": "5",
         "label_offset": [
@@ -7065,8 +7584,8 @@
         "id": "turn_06",
         "kind": "point",
         "anchor": [
-          -4911,
-          462
+          3658,
+          1409
         ],
         "label": "6",
         "label_offset": [
@@ -7078,8 +7597,8 @@
         "id": "turn_07",
         "kind": "point",
         "anchor": [
-          -8212,
-          2137
+          6397,
+          -1214
         ],
         "label": "7",
         "label_offset": [
@@ -7091,8 +7610,8 @@
         "id": "turn_08",
         "kind": "point",
         "anchor": [
-          -9608,
-          554
+          4773,
+          -2233
         ],
         "label": "8",
         "label_offset": [
@@ -7104,8 +7623,8 @@
         "id": "turn_09",
         "kind": "point",
         "anchor": [
-          -11030,
-          1624
+          1318,
+          -2642
         ],
         "label": "9",
         "label_offset": [
@@ -7117,8 +7636,8 @@
         "id": "turn_10",
         "kind": "point",
         "anchor": [
-          -13182,
-          -1886
+          2213,
+          -3735
         ],
         "label": "10",
         "label_offset": [
@@ -7130,8 +7649,8 @@
         "id": "turn_11",
         "kind": "point",
         "anchor": [
-          -12250,
-          -3014
+          1629,
+          -5481
         ],
         "label": "11",
         "label_offset": [
@@ -7143,8 +7662,8 @@
         "id": "turn_12",
         "kind": "point",
         "anchor": [
-          -11972,
-          -3758
+          -1248,
+          -3721
         ],
         "label": "12",
         "label_offset": [
@@ -7156,8 +7675,8 @@
         "id": "turn_13",
         "kind": "point",
         "anchor": [
-          -10800,
-          -4872
+          -3866,
+          -3014
         ],
         "label": "13",
         "label_offset": [
@@ -7169,8 +7688,8 @@
         "id": "turn_14",
         "kind": "point",
         "anchor": [
-          -9096,
-          57
+          3759,
+          -1628
         ],
         "label": "14",
         "label_offset": [
@@ -7182,62 +7701,10 @@
         "id": "turn_15",
         "kind": "point",
         "anchor": [
-          -7360,
-          -1268
+          4631,
+          -823
         ],
         "label": "15",
-        "label_offset": [
-          3,
-          -4
-        ]
-      },
-      {
-        "id": "turn_16",
-        "kind": "point",
-        "anchor": [
-          -2569,
-          -1780
-        ],
-        "label": "16",
-        "label_offset": [
-          3,
-          -4
-        ]
-      },
-      {
-        "id": "turn_17",
-        "kind": "point",
-        "anchor": [
-          -2213,
-          -2407
-        ],
-        "label": "17",
-        "label_offset": [
-          3,
-          -4
-        ]
-      },
-      {
-        "id": "turn_18",
-        "kind": "point",
-        "anchor": [
-          377,
-          -2622
-        ],
-        "label": "18",
-        "label_offset": [
-          3,
-          -4
-        ]
-      },
-      {
-        "id": "turn_19",
-        "kind": "point",
-        "anchor": [
-          1091,
-          -1829
-        ],
-        "label": "19",
         "label_offset": [
           3,
           -4
@@ -7247,16 +7714,16 @@
   },
   {
     "schema_version": 1,
-    "circuit_key": "61",
-    "layout_key": "marina_bay_post_2023",
+    "circuit_key": "12",
+    "layout_key": "sepang_2026",
     "valid_from_season": 2026,
     "valid_to_season": 2026,
-    "geometry_fingerprint": "sha256:7fcbc8eecbacafcb486b7d899bb360f9d61d5eb3bc139a0fcafea9e3688a513d",
+    "geometry_fingerprint": "sha256:3b7901a5a289b2e6a2c96c53223af738a0a98e6f945b5176839affff68369e55",
     "qa_status": "verified",
     "rights_status": "cleared",
     "source": {
-      "url": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
-      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/61/2026",
+      "url": "https://cdn.jsdelivr.net/gh/TracingInsights/DDocs@0ac6569aba0e2fbccfd1995988ac6a7bd7ba751d/documents/2026/bahrain-grand-prix/competition-notes-circuit-map-pit-lane-drawing-emergency-exits-map-and-red-zone.pdf",
+      "coordinate_url": "https://github.com/TUMFTM/racetrack-database/blob/master/tracks/Sepang.csv",
       "checked_on": "2026-10-11"
     },
     "layer": "sectors",
@@ -7265,12 +7732,12 @@
         "id": "s1",
         "kind": "line",
         "start": [
-          -6811,
-          1624
+          -822,
+          3260
         ],
         "end": [
-          -7044,
-          1251
+          -1001,
+          3662
         ],
         "label": "S1"
       },
@@ -7278,12 +7745,12 @@
         "id": "s2",
         "kind": "line",
         "start": [
-          -9628,
-          -907
+          1996,
+          -3772
         ],
         "end": [
-          -10052,
-          -791
+          2430,
+          -3698
         ],
         "label": "S2"
       }
@@ -7291,16 +7758,16 @@
   },
   {
     "schema_version": 1,
-    "circuit_key": "61",
-    "layout_key": "marina_bay_post_2023",
+    "circuit_key": "12",
+    "layout_key": "sepang_2026",
     "valid_from_season": 2026,
     "valid_to_season": 2026,
-    "geometry_fingerprint": "sha256:7fcbc8eecbacafcb486b7d899bb360f9d61d5eb3bc139a0fcafea9e3688a513d",
+    "geometry_fingerprint": "sha256:3b7901a5a289b2e6a2c96c53223af738a0a98e6f945b5176839affff68369e55",
     "qa_status": "verified",
     "rights_status": "cleared",
     "source": {
-      "url": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
-      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/61/2026",
+      "url": "https://cdn.jsdelivr.net/gh/TracingInsights/DDocs@0ac6569aba0e2fbccfd1995988ac6a7bd7ba751d/documents/2026/bahrain-grand-prix/competition-notes-circuit-map-pit-lane-drawing-emergency-exits-map-and-red-zone.pdf",
+      "coordinate_url": "https://github.com/TUMFTM/racetrack-database/blob/master/tracks/Sepang.csv",
       "checked_on": "2026-10-11"
     },
     "layer": "speed_traps",
@@ -7309,8 +7776,8 @@
         "id": "speed_trap",
         "kind": "point",
         "anchor": [
-          699,
-          2026
+          3353,
+          -1690
         ],
         "label": "Speed trap",
         "label_offset": [
@@ -7322,26 +7789,39 @@
   },
   {
     "schema_version": 1,
-    "circuit_key": "61",
-    "layout_key": "marina_bay_post_2023",
+    "circuit_key": "12",
+    "layout_key": "sepang_2026",
     "valid_from_season": 2026,
     "valid_to_season": 2026,
-    "geometry_fingerprint": "sha256:7fcbc8eecbacafcb486b7d899bb360f9d61d5eb3bc139a0fcafea9e3688a513d",
+    "geometry_fingerprint": "sha256:3b7901a5a289b2e6a2c96c53223af738a0a98e6f945b5176839affff68369e55",
     "qa_status": "verified",
     "rights_status": "cleared",
     "source": {
-      "url": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
-      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/61/2026",
+      "url": "https://cdn.jsdelivr.net/gh/TracingInsights/DDocs@0ac6569aba0e2fbccfd1995988ac6a7bd7ba751d/documents/2026/bahrain-grand-prix/competition-notes-circuit-map-pit-lane-drawing-emergency-exits-map-and-red-zone.pdf",
+      "coordinate_url": "https://github.com/TUMFTM/racetrack-database/blob/master/tracks/Sepang.csv",
       "checked_on": "2026-10-11"
     },
     "layer": "detection_zones",
     "items": [
       {
-        "id": "ot_a",
+        "id": "ot_d1",
         "kind": "point",
         "anchor": [
-          -1948,
-          -2528
+          4780,
+          -1200
+        ],
+        "label": "OT D",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "ot_a1",
+        "kind": "point",
+        "anchor": [
+          4631,
+          -823
         ],
         "label": "OT A",
         "label_offset": [
@@ -7353,8 +7833,8 @@
         "id": "sm_a1_n",
         "kind": "point",
         "anchor": [
-          1160,
-          -1542
+          4030,
+          -742
         ],
         "label": "SM A1 N",
         "label_offset": [
@@ -7366,8 +7846,8 @@
         "id": "sm_a1_l",
         "kind": "point",
         "anchor": [
-          1125,
-          -955
+          3834,
+          -756
         ],
         "label": "SM A1 L",
         "label_offset": [
@@ -7379,10 +7859,23 @@
         "id": "sm_a2_n",
         "kind": "point",
         "anchor": [
-          -1182,
-          184
+          -4004,
+          2170
         ],
         "label": "SM A2 N",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a2_l",
+        "kind": "point",
+        "anchor": [
+          -3671,
+          2380
+        ],
+        "label": "SM A2 L",
         "label_offset": [
           3,
           -4
@@ -7392,8 +7885,8 @@
         "id": "sm_a3_n",
         "kind": "point",
         "anchor": [
-          -11527,
-          1188
+          4134,
+          -2267
         ],
         "label": "SM A3 N",
         "label_offset": [
@@ -7405,8 +7898,8 @@
         "id": "sm_a3_l",
         "kind": "point",
         "anchor": [
-          -11755,
-          753
+          3839,
+          -2286
         ],
         "label": "SM A3 L",
         "label_offset": [
@@ -7418,8 +7911,8 @@
         "id": "sm_a4_n",
         "kind": "point",
         "anchor": [
-          -10478,
-          -3858
+          4387,
+          -1508
         ],
         "label": "SM A4 N",
         "label_offset": [
@@ -7431,36 +7924,503 @@
         "id": "sm_a4_l",
         "kind": "point",
         "anchor": [
-          -10396,
-          -3374
+          4528,
+          -1472
         ],
         "label": "SM A4 L",
         "label_offset": [
           3,
           -4
         ]
-      },
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "153",
+    "layout_key": "madring_2026",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:d3e704d04bca792f2bdfabfda2a7e61e7a9ca2eecca52574396dffb728ec6e50",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2026_spanish_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+      "coordinate_url": "https://geoportal.madrid.es/fsdescargas/IDEAM_WBGEOPORTAL/CIRCUITO_F1/CIRCUITO_F1_MADRING.zip",
+      "checked_on": "2026-10-11"
+    },
+    "layer": "start_finish",
+    "items": [
       {
-        "id": "sm_a5_n",
+        "id": "start_finish",
+        "kind": "line",
+        "start": [
+          3668,
+          -1446
+        ],
+        "end": [
+          3739,
+          -1881
+        ],
+        "label": "Start/finish"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "153",
+    "layout_key": "madring_2026",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:d3e704d04bca792f2bdfabfda2a7e61e7a9ca2eecca52574396dffb728ec6e50",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2026_spanish_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+      "coordinate_url": "https://geoportal.madrid.es/fsdescargas/IDEAM_WBGEOPORTAL/CIRCUITO_F1/CIRCUITO_F1_MADRING.zip",
+      "checked_on": "2026-10-11"
+    },
+    "layer": "corners",
+    "items": [
+      {
+        "id": "turn_01",
         "kind": "point",
         "anchor": [
-          -6701,
-          -1431
+          1211,
+          -2152
         ],
-        "label": "SM A5 N",
+        "label": "1",
         "label_offset": [
           3,
           -4
         ]
       },
       {
-        "id": "sm_a5_l",
+        "id": "turn_02",
         "kind": "point",
         "anchor": [
-          -6505,
-          -1451
+          211,
+          -2709
         ],
-        "label": "SM A5 L",
+        "label": "2",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_03",
+        "kind": "point",
+        "anchor": [
+          -1446,
+          -912
+        ],
+        "label": "3",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_04",
+        "kind": "point",
+        "anchor": [
+          -2749,
+          1240
+        ],
+        "label": "4",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_05",
+        "kind": "point",
+        "anchor": [
+          -3378,
+          3276
+        ],
+        "label": "5",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_06",
+        "kind": "point",
+        "anchor": [
+          -2958,
+          5440
+        ],
+        "label": "6",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_07",
+        "kind": "point",
+        "anchor": [
+          -3964,
+          10539
+        ],
+        "label": "7",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_08",
+        "kind": "point",
+        "anchor": [
+          -3889,
+          11884
+        ],
+        "label": "8",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_09",
+        "kind": "point",
+        "anchor": [
+          -3215,
+          13047
+        ],
+        "label": "9",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_10",
+        "kind": "point",
+        "anchor": [
+          -3547,
+          14675
+        ],
+        "label": "10",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_11",
+        "kind": "point",
+        "anchor": [
+          -2970,
+          15325
+        ],
+        "label": "11",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_12",
+        "kind": "point",
+        "anchor": [
+          -1415,
+          14226
+        ],
+        "label": "12",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_13",
+        "kind": "point",
+        "anchor": [
+          -3317,
+          10686
+        ],
+        "label": "13",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_14",
+        "kind": "point",
+        "anchor": [
+          -2024,
+          9403
+        ],
+        "label": "14",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_15",
+        "kind": "point",
+        "anchor": [
+          -764,
+          7004
+        ],
+        "label": "15",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_16",
+        "kind": "point",
+        "anchor": [
+          1726,
+          6260
+        ],
+        "label": "16",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_17",
+        "kind": "point",
+        "anchor": [
+          2425,
+          5365
+        ],
+        "label": "17",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_18",
+        "kind": "point",
+        "anchor": [
+          4376,
+          4821
+        ],
+        "label": "18",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_19",
+        "kind": "point",
+        "anchor": [
+          4726,
+          3772
+        ],
+        "label": "19",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_20",
+        "kind": "point",
+        "anchor": [
+          5192,
+          1748
+        ],
+        "label": "20",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_21",
+        "kind": "point",
+        "anchor": [
+          6554,
+          1878
+        ],
+        "label": "21",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_22",
+        "kind": "point",
+        "anchor": [
+          7092,
+          -845
+        ],
+        "label": "22",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "153",
+    "layout_key": "madring_2026",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:d3e704d04bca792f2bdfabfda2a7e61e7a9ca2eecca52574396dffb728ec6e50",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2026_spanish_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+      "coordinate_url": "https://geoportal.madrid.es/fsdescargas/IDEAM_WBGEOPORTAL/CIRCUITO_F1/CIRCUITO_F1_MADRING.zip",
+      "checked_on": "2026-10-11"
+    },
+    "layer": "sectors",
+    "items": [
+      {
+        "id": "s1",
+        "kind": "line",
+        "start": [
+          -3490,
+          9864
+        ],
+        "end": [
+          -3884,
+          9667
+        ],
+        "label": "S1"
+      },
+      {
+        "id": "s2",
+        "kind": "line",
+        "start": [
+          1344,
+          6478
+        ],
+        "end": [
+          1715,
+          6715
+        ],
+        "label": "S2"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "153",
+    "layout_key": "madring_2026",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:d3e704d04bca792f2bdfabfda2a7e61e7a9ca2eecca52574396dffb728ec6e50",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2026_spanish_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+      "coordinate_url": "https://geoportal.madrid.es/fsdescargas/IDEAM_WBGEOPORTAL/CIRCUITO_F1/CIRCUITO_F1_MADRING.zip",
+      "checked_on": "2026-10-11"
+    },
+    "layer": "speed_traps",
+    "items": [
+      {
+        "id": "speed_trap",
+        "kind": "point",
+        "anchor": [
+          -3013,
+          1766
+        ],
+        "label": "Speed trap",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "153",
+    "layout_key": "madring_2026",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:d3e704d04bca792f2bdfabfda2a7e61e7a9ca2eecca52574396dffb728ec6e50",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2026_spanish_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+      "coordinate_url": "https://geoportal.madrid.es/fsdescargas/IDEAM_WBGEOPORTAL/CIRCUITO_F1/CIRCUITO_F1_MADRING.zip",
+      "checked_on": "2026-10-11"
+    },
+    "layer": "detection_zones",
+    "items": [
+      {
+        "id": "ot_a1",
+        "kind": "point",
+        "anchor": [
+          7005,
+          -1020
+        ],
+        "label": "OT A",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a1_n",
+        "kind": "point",
+        "anchor": [
+          6290,
+          -1240
+        ],
+        "label": "SM A1 N",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a1_l",
+        "kind": "point",
+        "anchor": [
+          6002,
+          -1289
+        ],
+        "label": "SM A1 L",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a2_n",
+        "kind": "point",
+        "anchor": [
+          -1651,
+          -580
+        ],
+        "label": "SM A2 N",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "sm_a2_l",
+        "kind": "point",
+        "anchor": [
+          -1910,
+          -168
+        ],
+        "label": "SM A2 L",
         "label_offset": [
           3,
           -4

@@ -52,11 +52,13 @@ def _context(track: dict | None = None):
 
 def test_catalog_has_five_geometry_bound_layers_per_reviewed_layout() -> None:
     catalog = _catalog()
-    assert len(catalog) == 85
+    assert len(catalog) == 95
     for circuit_key, season, layout in (
         ("61", 2025, "marina_bay_post_2023"),
         ("2", 2025, "silverstone_2025"),
         ("61", 2026, "marina_bay_post_2023"),
+        ("12", 2026, "sepang_2026"),
+        ("153", 2026, "madring_2026"),
     ):
         records = _records(circuit_key, season)
         track = STATIC_TRACK_GEOMETRIES[circuit_key]
@@ -74,13 +76,80 @@ def test_catalog_has_five_geometry_bound_layers_per_reviewed_layout() -> None:
         assert all(
             record["geometry_fingerprint"] == expected_fingerprint for record in records
         )
-        assert all(
-            record["source"]["url"].startswith("https://www.fia.com/")
-            for record in records
-        )
+        assert all(record["source"]["url"].startswith("https://") for record in records)
         assert all(record["qa_status"] == "verified" for record in records)
         assert all(record["rights_status"] == "cleared" for record in records)
-    assert len(json.dumps(catalog, separators=(",", ":")).encode()) <= 100_000
+    assert len(json.dumps(catalog, separators=(",", ":")).encode()) <= 120_000
+
+
+def test_sepang_and_madring_2026_bind_with_ordered_map_marks() -> None:
+    circuits = (
+        ("12", "sepang_2026", "2026-10-02_Bahrain_Grand_Prix", 15, 5543),
+        ("153", "madring_2026", "2026-09-11_Spanish_Grand_Prix", 22, 5414),
+    )
+    expected_offsets = {
+        "12": (
+            ("sectors", "S1", 4, -145),
+            ("sectors", "S2", 10, 0),
+            ("speed_traps", "Speed trap", 15, -205),
+        ),
+        "153": (
+            ("sectors", "S1", 7, -85),
+            ("sectors", "S2", 16, -40),
+            ("speed_traps", "Speed trap", 5, -160),
+        ),
+    }
+    for circuit_key, layout, event_path, turn_count, length_m in circuits:
+        track = STATIC_TRACK_GEOMETRIES[circuit_key]
+        records = _records(circuit_key, 2026)
+        assert len(records) == 5
+        assert {record["layout_key"] for record in records} == {layout}
+        assert all(record["qa_status"] == "verified" for record in records)
+        assert all(record["rights_status"] == "cleared" for record in records)
+        corners = next(record for record in records if record["layer"] == "corners")
+        assert [item["label"] for item in corners["items"]] == [
+            str(number) for number in range(1, turn_count + 1)
+        ]
+        arcs = [_arc_at(track, tuple(item["anchor"]))[0] for item in corners["items"]]
+        total = _arc_at(track, (0, 0))[1]
+        assert all(
+            0 < (right - left) % total < total / 3
+            for left, right in zip(arcs, arcs[1:], strict=False)
+        )
+        assert all(
+            min(dist(tuple(item["anchor"]), tuple(point)) for point in track["points"])
+            < 500
+            for item in corners["items"]
+        )
+
+        session = {
+            "session_key": f"{circuit_key}-fp1-2026",
+            "circuit_key": circuit_key,
+            "path": f"2026/{event_path}/Practice_1/",
+            "start_date": "2026-09-11T10:00:00",
+        }
+        context = annotation_context(
+            entry_id="test-entry",
+            session=session,
+            track=track,
+            source="replay",
+            session_generation=6,
+            replay_year=2026,
+        )
+        bound = bind_annotation_layers(records, context, segment_count=90)
+        assert bound is not None
+        assert len(bound["layers"]) == 5
+
+        by_layer = {record["layer"]: record for record in records}
+        by_corner = {int(item["label"]): item for item in corners["items"]}
+        for layer, label, turn, offset_m in expected_offsets[circuit_key]:
+            item = next(
+                item for item in by_layer[layer]["items"] if item["label"] == label
+            )
+            position, _ = _arc_at(track, _mark_position(item))
+            corner_position, _ = _arc_at(track, tuple(by_corner[turn]["anchor"]))
+            measured = (position - corner_position + total / 2) % total - total / 2
+            assert abs(measured / total * length_m - offset_m) < 2
 
 
 def test_singapore_2026_binds_only_to_its_verified_year_and_geometry() -> None:

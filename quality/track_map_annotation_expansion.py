@@ -1,9 +1,10 @@
 """Rebuild the reviewed 2025 pilot and 2026 track annotations.
 
-The 2025 pilot corner coordinates below are manually reviewed. The 2026 corner
-coordinates come from the checked-in API snapshot; FIA event maps supply the
-feature locations and distances. Generated coordinates are snapped to our
-static centreline. This offline QA tool is never used by Home Assistant.
+The 2025 pilot corner coordinates below are manually reviewed. Most 2026 corner
+coordinates come from the checked-in circuit API snapshot. Sepang and Madring
+use checked-in anchors aligned from their published centrelines. FIA event maps
+supply feature locations and distances. Generated coordinates are snapped to
+our static centreline. This offline QA tool is never used by Home Assistant.
 """
 
 from __future__ import annotations
@@ -355,6 +356,41 @@ SEASON_2026 = {
         "speed": (1, -150),
         "zones": SINGAPORE_2026_AERO_POINTS,
     },
+    "12": {
+        "layout": "sepang_2026",
+        "length_m": 5543,
+        "map": "https://cdn.jsdelivr.net/gh/TracingInsights/DDocs@0ac6569aba0e2fbccfd1995988ac6a7bd7ba751d/documents/2026/bahrain-grand-prix/competition-notes-circuit-map-pit-lane-drawing-emergency-exits-map-and-red-zone.pdf",
+        "coordinates": "https://github.com/TUMFTM/racetrack-database/blob/master/tracks/Sepang.csv",
+        "sectors": (("s1", "S1", 4, -145), ("s2", "S2", 10, 0)),
+        "speed": (15, -205),
+        "zones": (
+            ("ot_d1", "OT D", 15, -45),
+            ("ot_a1", "OT A", 15, 0),
+            ("sm_a1_n", "SM A1 N", 15, 65),
+            ("sm_a1_l", "SM A1 L", 15, 85),
+            ("sm_a2_n", "SM A2 N", 3, 10),
+            ("sm_a2_l", "SM A2 L", 3, 50),
+            ("sm_a3_n", "SM A3 N", 8, 65),
+            ("sm_a3_l", "SM A3 L", 8, 95),
+            ("sm_a4_n", "SM A4 N", 14, 65),
+            ("sm_a4_l", "SM A4 L", 14, 80),
+        ),
+    },
+    "153": {
+        "layout": "madring_2026",
+        "length_m": 5414,
+        "map": "https://www.fia.com/system/files/decision-document/2026_spanish_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_and_emergency_exits_map.pdf",
+        "coordinates": "https://geoportal.madrid.es/fsdescargas/IDEAM_WBGEOPORTAL/CIRCUITO_F1/CIRCUITO_F1_MADRING.zip",
+        "sectors": (("s1", "S1", 7, -85), ("s2", "S2", 16, -40)),
+        "speed": (5, -160),
+        "zones": (
+            ("ot_a1", "OT A", 22, 20),
+            ("sm_a1_n", "SM A1 N", 22, 100),
+            ("sm_a1_l", "SM A1 L", 22, 130),
+            ("sm_a2_n", "SM A2 N", 3, 40),
+            ("sm_a2_l", "SM A2 L", 3, 90),
+        ),
+    },
 }
 
 
@@ -431,7 +467,7 @@ def _singapore_2026_records(records):
     source = {
         "url": SINGAPORE_2026_MAP,
         "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/61/2026",
-        "checked_on": "2026-10-10",
+        "checked_on": "2026-10-11",
     }
     reviewed = [
         deepcopy(record)
@@ -491,6 +527,10 @@ def _season_2026_records():
         raise ValueError("Unexpected 2026 coordinate snapshot date")
     records = []
     for circuit_key, source in SEASON_2026.items():
+        # Singapore reuses the reviewed 2025 geometry and has a dedicated
+        # 2026 binding below; its coordinates must not be regenerated here.
+        if circuit_key == "61":
+            continue
         api = snapshot["circuits"][circuit_key]
         track = GEOMETRIES[circuit_key]
         points = track["points"]
@@ -520,16 +560,18 @@ def _season_2026_records():
             "rights_status": "cleared",
             "source": {
                 "url": source["map"],
-                "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/"
-                f"{circuit_key}/2026",
+                "coordinate_url": source.get(
+                    "coordinates",
+                    f"https://api.multiviewer.app/api/v1/circuits/{circuit_key}/2026",
+                ),
                 "checked_on": "2026-10-11",
             },
         }
+        start = api.get("start")
+        if start is None:
+            start = {"x": api["x"][0], "y": api["y"][0]}
         start_gap, start_arc, _ = _nearest(
-            points,
-            (float(api["x"][0]), float(api["y"][0])),
-            lengths,
-            cumulative,
+            points, (float(start["x"]), float(start["y"])), lengths, cumulative
         )
         if start_gap > 500:
             raise ValueError(f"{circuit_key} start line is too far from geometry")
@@ -700,7 +742,9 @@ def build_catalog():
                         _point(points, lengths, cumulative, arc, label, item_id)
                     )
             records.append({**common, "layer": layer, "items": items})
-    return records + _season_2026_records()
+    records.extend(_singapore_2026_records(records))
+    records.extend(_season_2026_records())
+    return records
 
 
 if __name__ == "__main__":

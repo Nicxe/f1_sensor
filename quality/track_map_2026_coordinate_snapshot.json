@@ -1,6 +1,6 @@
 {
   "checked_on": "2026-10-11",
-  "source": "https://api.multiviewer.app/api/v1/circuits/{circuit_key}/2026",
+  "source": "Frozen 2026 circuit coordinates; each circuit with non-API anchors records coordinate_source in its entry",
   "circuits": {
     "10": {
       "circuit_name": "Melbourne",
@@ -21890,6 +21890,250 @@
           "length": 47200.93564697259
         }
       ]
+    },
+    "12": {
+      "circuit_name": "Sepang",
+      "coordinate_source": "https://github.com/TUMFTM/racetrack-database/blob/master/tracks/Sepang.csv",
+      "start": {
+        "x": 1301.2,
+        "y": -1006.5
+      },
+      "corners": [
+        {
+          "number": 1,
+          "x": -4967.1,
+          "y": -1436.5,
+          "length": 6300
+        },
+        {
+          "number": 2,
+          "x": -4105.0,
+          "y": -798.9,
+          "length": 7940
+        },
+        {
+          "number": 3,
+          "x": -4092.3,
+          "y": 2124.7,
+          "length": 11140
+        },
+        {
+          "number": 4,
+          "x": 435.8,
+          "y": 3782.6,
+          "length": 16060
+        },
+        {
+          "number": 5,
+          "x": 1312.3,
+          "y": 855.7,
+          "length": 19180
+        },
+        {
+          "number": 6,
+          "x": 3651.1,
+          "y": 1489.6,
+          "length": 21840
+        },
+        {
+          "number": 7,
+          "x": 6444.5,
+          "y": -1192.0,
+          "length": 25840
+        },
+        {
+          "number": 8,
+          "x": 4770.3,
+          "y": -2170.4,
+          "length": 28080
+        },
+        {
+          "number": 9,
+          "x": 1289.0,
+          "y": -2607.5,
+          "length": 31600
+        },
+        {
+          "number": 10,
+          "x": 2250.2,
+          "y": -3728.6,
+          "length": 33220
+        },
+        {
+          "number": 11,
+          "x": 1644.0,
+          "y": -5544.7,
+          "length": 35220
+        },
+        {
+          "number": 12,
+          "x": -1275.4,
+          "y": -3627.8,
+          "length": 38820
+        },
+        {
+          "number": 13,
+          "x": -3908.1,
+          "y": -2977.0,
+          "length": 42480
+        },
+        {
+          "number": 14,
+          "x": 3760.1,
+          "y": -1638.0,
+          "length": 50280
+        },
+        {
+          "number": 15,
+          "x": 4672.2,
+          "y": -775.2,
+          "length": 51980
+        }
+      ],
+      "alignment_rms": 6.26
+    },
+    "153": {
+      "circuit_name": "Madring",
+      "coordinate_source": "https://geoportal.madrid.es/fsdescargas/IDEAM_WBGEGEOPORTAL/CIRCUITO_F1/CIRCUITO_F1_MADRING.zip",
+      "start": {
+        "x": 3706.6,
+        "y": -1682.9
+      },
+      "corners": [
+        {
+          "number": 1,
+          "x": 1174.0,
+          "y": -2133.3,
+          "length": 2580
+        },
+        {
+          "number": 2,
+          "x": 203.5,
+          "y": -2754.9,
+          "length": 4000
+        },
+        {
+          "number": 3,
+          "x": -1431.1,
+          "y": -902.9,
+          "length": 6560
+        },
+        {
+          "number": 4,
+          "x": -2774.2,
+          "y": 1226.4,
+          "length": 9080
+        },
+        {
+          "number": 5,
+          "x": -3413.2,
+          "y": 3274.1,
+          "length": 11240
+        },
+        {
+          "number": 6,
+          "x": -2857.6,
+          "y": 5429.1,
+          "length": 13520
+        },
+        {
+          "number": 7,
+          "x": -3968.9,
+          "y": 10538.1,
+          "length": 19240
+        },
+        {
+          "number": 8,
+          "x": -3914.2,
+          "y": 11908.1,
+          "length": 20620
+        },
+        {
+          "number": 9,
+          "x": -3113.8,
+          "y": 13036.3,
+          "length": 22080
+        },
+        {
+          "number": 10,
+          "x": -3542.7,
+          "y": 14671.5,
+          "length": 23800
+        },
+        {
+          "number": 11,
+          "x": -2970.1,
+          "y": 15321.6,
+          "length": 24700
+        },
+        {
+          "number": 12,
+          "x": -1344.8,
+          "y": 14217.8,
+          "length": 27000
+        },
+        {
+          "number": 13,
+          "x": -3375.6,
+          "y": 10633.6,
+          "length": 31220
+        },
+        {
+          "number": 14,
+          "x": -1986.9,
+          "y": 9406.5,
+          "length": 33100
+        },
+        {
+          "number": 15,
+          "x": -793.3,
+          "y": 6891.7,
+          "length": 36200
+        },
+        {
+          "number": 16,
+          "x": 1717.6,
+          "y": 6255.0,
+          "length": 39280
+        },
+        {
+          "number": 17,
+          "x": 2357.4,
+          "y": 5250.6,
+          "length": 40480
+        },
+        {
+          "number": 18,
+          "x": 4451.0,
+          "y": 4866.8,
+          "length": 42720
+        },
+        {
+          "number": 19,
+          "x": 4726.5,
+          "y": 3772.1,
+          "length": 43860
+        },
+        {
+          "number": 20,
+          "x": 5156.4,
+          "y": 1680.1,
+          "length": 46020
+        },
+        {
+          "number": 21,
+          "x": 6621.5,
+          "y": 1960.4,
+          "length": 47560
+        },
+        {
+          "number": 22,
+          "x": 7221.9,
+          "y": -909.9,
+          "length": 50520
+        }
+      ],
+      "alignment_rms": 6.6
     }
   }
 }
