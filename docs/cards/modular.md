@@ -294,6 +294,30 @@ it and is not exposed as Home Assistant sensor state. This avoids filling Record
 or sending a complete timing grid for every small change. It also means minisector
 status is intended for the F1 Sensor card rather than entity-based automations.
 
+### Mark the circuit on Track Map
+
+1. Add or select a **Track map** module in the visual editor.
+2. Under **Content and columns**, select **Start/finish line**, **Corner numbers**,
+   **Sector boundaries**, **Speed traps**, or **Detection and activation points**. Select only the
+   layers you want in that module.
+3. Under **Module options**, clear **Show car markers** if you want to see the
+   circuit and its markings without moving cars. Select **Driver positions list**
+   under **Content and columns** if you want the driver list as well.
+4. Use **Actual data** in the editor to check the selected live or replay session.
+   Review the result before saving the card.
+
+Each Track map module keeps its own layer and car-marker choices. Existing saved
+cards continue to show their usual map and car markers; circuit markings are not
+added automatically. The complete **Track markings** list below the map includes
+labels hidden visually when they would overlap a car or another marking. When a
+selected layer has no verified position for the current session, the card says so
+and keeps the available map content. **Sample data** lets you inspect the editor,
+but does not establish that a circuit has verified markings.
+
+Verified markings currently cover the reviewed Singapore 2025 and 2026 and
+Silverstone 2025 layouts. See [Track Map coverage and limitations](/features/track-map#optional-circuit-markings)
+for the exact layers and omitted points.
+
 Custom colors can help you distinguish the timing states. Keep symbols or text available and check both light and dark themes. High contrast, reduced motion and readable text alternatives are part of the card's controls; automated checks alone do not establish compatibility with every screen reader or device.
 
 Track Map moves driver markers smoothly between consecutive live or replay positions. It moves directly to the new position when reduced motion is enabled, the session changes, the position is stale or the new sample is too far from the previous one to be a continuous movement.

@@ -2,7 +2,7 @@
 
 This catalog is generated from the delivered module registry. It records the source path, data capability, supported modes and sessions, identity boundary, time provenance, freshness rule, unit and presentation for every field in every content-dependent module variant.
 
-Configuration version: 3. Modules: 21. Base field IDs: 143. Resolved sources: 32.
+Configuration version: 3. Modules: 21. Base field IDs: 148. Resolved sources: 32.
 
 A source path describes the contract consumed by the card; it is not a promise that the value is available in every session. `identity` lists the values that must still describe the same observation before fields may be combined. `timestamps` distinguishes source time, receipt time, entity update time and display snapshot time where the source supplies them.
 
@@ -147,6 +147,11 @@ Declared sources: `current_session`, `race_lap_count`, `track_map`, `track_statu
 | --- | --- | --- | --- | --- |
 | `track_map` — Track map / Bankarta | `track_map` → `track.points + drivers` | Capability: extended_timing; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, season, round; generation: session; time: source: stream_timestamp; received: subscription.received_at; updated: generated_at; displayed: snapshot | Type: map; map, list |
 | `map_drivers` — Driver positions list / Lista över förarpositioner | `track_map` → `drivers` | Capability: extended_timing; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, season, round; generation: session; time: source: stream_timestamp; received: subscription.received_at; updated: generated_at; displayed: snapshot | Type: list; list |
+| `map_start_finish` — Start/finish line / Start-/mållinje | `track_map` → `annotations.layers.start_finish` | Capability: extended_timing; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, source, session, session_generation, geometry; generation: session; time: source: stream_timestamp; received: subscription.received_at; updated: generated_at; displayed: snapshot | Type: map_annotation; map, list |
+| `map_corners` — Corner numbers / Kurvnummer | `track_map` → `annotations.layers.corners` | Capability: extended_timing; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, source, session, session_generation, geometry; generation: session; time: source: stream_timestamp; received: subscription.received_at; updated: generated_at; displayed: snapshot | Type: map_annotation; map, list |
+| `map_sectors` — Sector boundaries / Sektorgränser | `track_map` → `annotations.layers.sectors` | Capability: extended_timing; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, source, session, session_generation, geometry; generation: session; time: source: stream_timestamp; received: subscription.received_at; updated: generated_at; displayed: snapshot | Type: map_annotation; map, list |
+| `map_speed_traps` — Speed traps / Hastighetsmätpunkter | `track_map` → `annotations.layers.speed_traps` | Capability: extended_timing; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, source, session, session_generation, geometry; generation: session; time: source: stream_timestamp; received: subscription.received_at; updated: generated_at; displayed: snapshot | Type: map_annotation; map, list |
+| `map_detection_zones` — Detection and activation points / Detektions- och aktiveringspunkter | `track_map` → `annotations.layers.detection_zones` | Capability: extended_timing; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, source, session, session_generation, geometry; generation: session; time: source: stream_timestamp; received: subscription.received_at; updated: generated_at; displayed: snapshot | Type: map_annotation; map, list |
 
 ## Minisectors (`minisectors`)
 

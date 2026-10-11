@@ -1152,6 +1152,101 @@ test('map editor controls labels and orientation and map-only mode keeps the tex
   await expect(map.locator('summary')).toHaveText('Driver positions and status');
 });
 
+test('map markings stay legible when cars pass and sector starts are labelled correctly', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 900 });
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'map', fields: ['track_map', 'map_start_finish', 'map_corners'] }] } }));
+  const map = page.locator('f1-track-map-view');
+  await map.evaluate(async view => {
+    const model = structuredClone(view.model);
+    model.sessionKey = 'collision-check';
+    model.rows = [{ ...model.rows[0], point: [50, 50] }];
+    model.annotations = {
+      lines: [{ id: 'start_finish', start: [55, 55], end: [59, 55] }, { id: 'sectors:s1', layer: 'sectors', label: 'S1', start: [70, 70], end: [75, 70] }, { id: 'sectors:s2', layer: 'sectors', label: 'S2', start: [20, 20], end: [25, 20] }],
+      corners: [{ id: 'turn_01', label: '1', point: [50, 50], offset: [0, 0] }, { id: 'turn_02', label: '2', point: [10, 10], offset: [0, 0] }],
+      points: [{ id: 'detection_zones:drs_d1', layer: 'detection_zones', label: 'DRS D1', point: [50, 50], offset: [0, 0] }, { id: 'speed_traps:speed_trap', layer: 'speed_traps', label: 'Speed trap', point: [10, 10], offset: [0, 0] }, { id: 'detection_zones:drs_a1', layer: 'detection_zones', label: 'DRS A1', point: [85, 85], offset: [0, 0] }, { id: 'detection_zones:sm_a1_n', layer: 'detection_zones', label: 'SM A1 N', point: [30, 30], offset: [3, -4] }, { id: 'detection_zones:sm_a1_l', layer: 'detection_zones', label: 'SM A1 L', point: [31, 31], offset: [3, -4] }, { id: 'detection_zones:sm_a2_n', layer: 'detection_zones', label: 'SM A2 N', point: [95, 40], offset: [3, -4] }],
+      unavailable: [],
+    };
+    view.model = model;
+    await view.updateComplete;
+  });
+  await expect(map.locator('.annotation-line-group .annotation-line').first()).toHaveCSS('visibility', 'visible');
+  await expect(map.locator('.annotation-line-group').first().locator('text')).toHaveCount(0);
+  await expect(map.locator('.annotation-corner-group').first()).toBeVisible();
+  await expect(map.locator('.annotation-corner-group').last()).toBeVisible();
+  await expect(map.locator('.annotation-corner-group circle')).toHaveCount(0);
+  await expect(map.locator('.annotation-feature-group').first()).toBeVisible();
+  await expect(map.locator('.annotation-feature-group').nth(1)).toBeVisible();
+  await expect(map.locator('.annotation-feature-group').last()).toBeVisible();
+  await expect(map.locator('.annotation-tag-text')).toHaveText(['S2', 'S3']);
+  expect(await map.evaluate(view => Boolean(view.shadowRoot.querySelector('.marker').compareDocumentPosition(view.shadowRoot.querySelector('.annotation-tag-text')) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+  await expect(map.locator('.annotation-feature-group').nth(1).locator('text')).toHaveText('SPD');
+  await expect(map.locator('.annotation-feature-group').nth(3).locator('text')).toHaveText('SM1 N/L');
+  await expect(map.locator('.annotation-feature-group').nth(4).locator('text')).toHaveCount(0);
+  await expect(map.locator('.annotation-feature-group').nth(4).locator('.annotation-feature-tick')).toHaveClass(/low-grip/);
+  await expect(map.locator('.annotation-feature-group').nth(4).locator('title')).toHaveText('SM A1 L · Straight Mode activation, low grip');
+  await expect(map.locator('.annotation-feature-group').last().locator('text')).toHaveText('SM2 N');
+  await expect(map.locator('.annotation-feature-group').last().locator('text')).toHaveAttribute('text-anchor', 'end');
+  await expect(map.locator('.annotation-feature-group circle')).toHaveCount(0);
+  await expect(map.locator('.annotation-summary summary')).toHaveText('Track markings · 11');
+  await expect(map.locator('.annotation-experimental')).toHaveText('Experimental');
+  await expect(map.locator('.annotation-heading')).toContainText('Circuit markings may need corrections.');
+  await map.locator('.annotation-summary summary').click();
+  await expect(map.locator('.annotation-summary li')).toHaveCount(11);
+  await expect(map.locator('.annotation-summary')).toContainText('Sector boundaries S1/S2');
+  await expect(map.locator('.annotation-summary')).toContainText('Sector boundaries S2/S3');
+  await expect(map.locator('.annotation-summary')).toContainText('SM A1 N · Straight Mode activation, normal grip');
+  await expect(map.locator('.annotation-summary')).toContainText('SM A1 L · Straight Mode activation, low grip');
+});
+
+test('experimental label belongs to optional map markings', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'map', fields: ['track_map'] }] } }));
+  const map = page.locator('f1-track-map-view');
+  await expect(map.locator('.annotation-experimental')).toHaveCount(0);
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'map', fields: ['track_map', 'map_corners'] }] } }));
+  await expect(map.locator('.annotation-experimental')).toHaveText('Experimental');
+  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'map' }] } }));
+  await expect(page.locator('f1-sensor-card-editor').getByText('Track markings · Experimental.')).toBeVisible();
+});
+
+test('map labels avoid each other and Straight Mode ticks cross the local track', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 900 });
+  await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'map', fields: ['track_map', 'map_corners', 'map_detection_zones'] }] } }));
+  const map = page.locator('f1-track-map-view');
+  await map.evaluate(async view => {
+    view.model = {
+      ...view.model,
+      sessionKey: 'marking-layout-check',
+      rows: [],
+      points: [[12, 44], [20, 34], null, [40, 56], [60, 56]],
+      annotations: {
+        lines: [],
+        corners: [{ id: 'turn_09', label: '9', point: [18.53, 37.42], offset: [-4, -1] }, { id: 'turn_19', label: '19', point: [94.52, 58.78], offset: [-8, -2] }],
+        points: [
+          { id: 'sm_a1_n', layer: 'detection_zones', label: 'SM A1 N', point: [94.95, 56.98], offset: [3, -4] },
+          { id: 'sm_a1_l', layer: 'detection_zones', label: 'SM A1 L', point: [94.72, 53.31], offset: [3, -4] },
+          { id: 'sm_a3_n', layer: 'detection_zones', label: 'SM A3 N', point: [15.43, 40.16], offset: [3, -4] },
+          { id: 'sm_a3_l', layer: 'detection_zones', label: 'SM A3 L', point: [14.01, 42.89], offset: [3, -4] },
+          { id: 'sm_a5_n', layer: 'detection_zones', label: 'SM A5 N', point: [45.71, 56], offset: [3, -4] },
+          { id: 'sm_a5_l', layer: 'detection_zones', label: 'SM A5 L', point: [46.94, 56], offset: [3, -4] },
+        ],
+        unavailable: [],
+      },
+    };
+    await view.updateComplete;
+  });
+  const layout = await map.evaluate(view => {
+    const svg = view.shadowRoot.querySelector('.map-frame svg');
+    const boxes = Object.fromEntries([...svg.querySelectorAll('.annotation-number,.annotation-feature-text')].map(text => { const box = text.getBBox(); return [text.textContent, { x: box.x, y: box.y, width: box.width, height: box.height }]; }));
+    const sm5 = [...svg.querySelectorAll('.annotation-feature-group')].find(group => group.querySelector('title').textContent.startsWith('SM A5 N')).querySelector('.annotation-feature-tick');
+    return { boxes, tick: { x1: Number(sm5.getAttribute('x1')), y1: Number(sm5.getAttribute('y1')), x2: Number(sm5.getAttribute('x2')), y2: Number(sm5.getAttribute('y2')) } };
+  });
+  const separate = (left, right) => left.x >= right.x + right.width + .2 || right.x >= left.x + left.width + .2 || left.y >= right.y + right.height + .2 || right.y >= left.y + left.height + .2;
+  expect(separate(layout.boxes['9'], layout.boxes['SM3 N/L'])).toBe(true);
+  expect(separate(layout.boxes['19'], layout.boxes['SM1 N/L'])).toBe(true);
+  expect(Math.abs(layout.tick.x2 - layout.tick.x1)).toBeLessThan(.15);
+  expect(Math.abs(layout.tick.y2 - layout.tick.y1)).toBeGreaterThan(1.5);
+});
+
 test('battle views distinguish estimates, preserve start/end history and expose accessible position changes', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.evaluate(() => window.mountModular({ config: { modules: [

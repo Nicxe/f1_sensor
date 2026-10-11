@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from contextlib import suppress
+from itertools import count
 from typing import Any
 
 from homeassistant.components import websocket_api
@@ -15,6 +16,11 @@ from .const import DOMAIN
 from .feature_plan import TRACK_MAP_STREAMS
 from .runtime import runtime_from_hass
 from .track_map import TRACK_MAP_STATUS_ACTIVE, TrackMapStore
+from .track_map_annotation_contract import (
+    annotation_context,
+    bind_annotation_layers,
+    geometry_fingerprint,
+)
 
 TRACK_MAP_WS_MARKER = "__track_map_ws_registered__"
 TRACK_MAP_WS_GET_TYPE = f"{DOMAIN}/track_map/get"
@@ -37,6 +43,95 @@ _PROTOCOL_VERSION_SCHEMA = vol.Optional(
     default=TRACK_MAP_PROTOCOL_V1,
 )
 _TRACK_MAP_HUBS: dict[TrackMapStore, _TrackMapBroadcastHub] = {}
+_ANNOTATION_GENERATIONS = count(1)
+
+_ANNOTATION_ITEM_FIELDS = (
+    "id",
+    "kind",
+    "anchor",
+    "start",
+    "end",
+    "label",
+    "label_offset",
+    "direction",
+    "wraps_start_finish",
+)
+
+
+def _wire_annotations(bound: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Keep validated layers compact while retaining their source provenance."""
+    if bound is None:
+        return None
+    layers = []
+    for record in bound["layers"]:
+        items = record["items"]
+        columns = [
+            field
+            for field in _ANNOTATION_ITEM_FIELDS
+            if any(field in item for item in items)
+        ]
+        layers.append(
+            {
+                "layer": record["layer"],
+                "source": record["source"],
+                "columns": columns,
+                "items": [[item.get(field) for field in columns] for item in items],
+            }
+        )
+    return {**bound, "layers": layers}
+
+
+def _annotation_mode(
+    store: TrackMapStore, snapshot: dict[str, Any]
+) -> tuple[str, int | None]:
+    """Use the selected transport, even before it supplies car positions."""
+    state = snapshot.get("replay_state")
+    session = snapshot.get("session")
+    session_key = session.get("session_key") if isinstance(session, dict) else None
+    if state in {"ready", "playing", "paused"}:
+        if store._replay_session_key == session_key:
+            return "replay", store._replay_session_year
+        return "unknown", None
+    if state in {None, "idle"}:
+        return "live", None
+    return "unknown", None
+
+
+def _v2_map_snapshot(
+    store: TrackMapStore, snapshot: dict[str, Any], generation: int
+) -> dict[str, Any]:
+    """Bind optional annotations to the exact session and geometry in this frame."""
+    session = snapshot.get("session")
+    track = snapshot.get("track")
+    v2_session = (
+        {**session, "start_date": store.session.start_date}
+        if isinstance(session, dict) and store.session is not None
+        else session
+    )
+    if track is None:
+        return {**snapshot, "session": v2_session, "annotations": None}
+    fingerprint = geometry_fingerprint(track)
+    v2_track = {**track, "geometry_fingerprint": fingerprint}
+    source, replay_year = _annotation_mode(store, snapshot)
+    context = annotation_context(
+        entry_id=store.entry_id,
+        session=v2_session,
+        track=track,
+        source=source,
+        session_generation=generation,
+        replay_year=replay_year,
+    )
+    bound = bind_annotation_layers(
+        store.annotation_records,
+        context,
+        segment_count=max(0, len(track.get("points", [])) - 1),
+    )
+    return {
+        **snapshot,
+        "session": v2_session,
+        "track": v2_track,
+        "annotations": _wire_annotations(bound),
+    }
 
 
 def async_register_track_map_websocket(hass: HomeAssistant) -> None:
@@ -99,7 +194,7 @@ async def _ws_resync_track_map_snapshot(
         payload = (
             _v2_snapshot_payload(
                 store,
-                snapshot,
+                _v2_map_snapshot(store, snapshot, next(_ANNOTATION_GENERATIONS)),
                 sequence=0,
                 geometry_revision=int(snapshot.get("track") is not None),
             )
@@ -239,6 +334,14 @@ class _TrackMapBroadcastHub:
         self._runtime = runtime_from_hass(hass, store.entry_id)
         self._subscribers: set[_TrackMapSnapshotSubscription] = set()
         self._snapshot = store.snapshot()
+        self._annotation_generation = next(_ANNOTATION_GENERATIONS)
+        self._replay_identity = _annotation_mode(store, self._snapshot)
+        self._session_start_date = (
+            store.session.start_date if store.session is not None else None
+        )
+        self._v2_snapshot = _v2_map_snapshot(
+            store, self._snapshot, self._annotation_generation
+        )
         self._sequence = 0
         self._geometry_revision = int(self._snapshot.get("track") is not None)
         self._unsub_store = store.add_listener(self._broadcast_update)
@@ -337,6 +440,9 @@ class _TrackMapBroadcastHub:
         if _TRACK_MAP_HUBS.get(self._store) is self:
             _TRACK_MAP_HUBS.pop(self._store, None)
         self._snapshot = self._store.snapshot()
+        self._v2_snapshot = _v2_map_snapshot(
+            self._store, self._snapshot, next(_ANNOTATION_GENERATIONS)
+        )
         for subscriber in tuple(self._subscribers):
             payload = {
                 **self.full_payload(subscriber._protocol_version),
@@ -361,7 +467,7 @@ class _TrackMapBroadcastHub:
         if protocol_version == TRACK_MAP_PROTOCOL_V2:
             return _v2_snapshot_payload(
                 self._store,
-                self._snapshot,
+                self._v2_snapshot,
                 self._sequence,
                 self._geometry_revision,
             )
@@ -372,16 +478,41 @@ class _TrackMapBroadcastHub:
         if self.closed:
             return
         previous = self._snapshot
+        previous_v2 = self._v2_snapshot
         current = self._store.snapshot()
+        replay_identity = _annotation_mode(self._store, current)
+        start_date = (
+            self._store.session.start_date if self._store.session is not None else None
+        )
         self._sequence += 1
         if previous.get("track") != current.get("track"):
             self._geometry_revision += 1
+        context_changed = (
+            previous.get("session") != current.get("session")
+            or previous.get("track") != current.get("track")
+            or self._replay_identity != replay_identity
+            or self._session_start_date != start_date
+        )
+        if context_changed:
+            self._annotation_generation = next(_ANNOTATION_GENERATIONS)
+        self._replay_identity = replay_identity
+        self._session_start_date = start_date
         self._snapshot = current
+        self._v2_snapshot = (
+            _v2_map_snapshot(self._store, current, self._annotation_generation)
+            if context_changed
+            else {
+                **current,
+                "session": previous_v2["session"],
+                "track": previous_v2["track"],
+                "annotations": previous_v2["annotations"],
+            }
+        )
         v1_payload = _v1_payload(self._store, current)
         v2_payload = _v2_delta_payload(
             self._store,
-            previous,
-            current,
+            previous_v2,
+            self._v2_snapshot,
             self._sequence,
             self._geometry_revision,
         )
