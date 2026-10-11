@@ -57,6 +57,7 @@ LIVE_DATA_CARD_ASSET_FILENAMES = (
     "modular/migration-editor.js",
     "modular/semantics.js",
     "modular/data.js",
+    "modular/minisector-data.js",
     "modular/season-data.js",
     "modular/session-data.js",
     "modular/analysis-data.js",

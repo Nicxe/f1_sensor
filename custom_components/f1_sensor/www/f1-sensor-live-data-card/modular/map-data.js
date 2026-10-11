@@ -31,7 +31,8 @@ export class TrackMapState {
       for (const id of message.removed) mapped.delete(String(id));
       // Drivers are defined by changes/removals, never by a nested patch array.
       const { drivers: ignored, ...patch } = message.patch;
-      this.snapshot = { ...this.snapshot, ...patch, drivers: [...mapped.values()] };
+      const invalidatesAnnotations = changedSession || Object.hasOwn(patch, 'track') || ['seeking', 'loading'].includes(patch.replay_state);
+      this.snapshot = { ...this.snapshot, ...patch, annotations: Object.hasOwn(patch, 'annotations') ? patch.annotations : invalidatesAnnotations ? null : this.snapshot.annotations, drivers: [...mapped.values()] };
     } else return 'resync';
     this.sequence = message.sequence; this.geometryRevision = message.geometry_revision;
     return 'updated';
@@ -100,6 +101,78 @@ function projectionFor(track, options) {
   return variants.get(key);
 }
 
+const ANNOTATION_FIELDS = { map_start_finish: 'start_finish', map_corners: 'corners', map_sectors: 'sectors', map_speed_traps: 'speed_traps', map_detection_zones: 'detection_zones' };
+const REVIEWED_LAYOUTS = { '2:2025': 'silverstone_2025', '61:2025': 'marina_bay_post_2023', '61:2026': 'marina_bay_post_2023' };
+const pointInMap = point => Array.isArray(point) && point.length === 2 && point.every(value => Number.isFinite(value) && value >= 0 && value <= 100);
+function annotationPoint(raw, projection) {
+  if (!Array.isArray(raw) || raw.length !== 2 || raw.some(value => number(value) === null)) return null;
+  const point = projection?.project(raw[0], raw[1]);
+  return pointInMap(point) ? point : null;
+}
+
+export function mapAnnotations(snapshot, module, projection) {
+  const selected = Object.entries(ANNOTATION_FIELDS).filter(([field]) => module.fields?.includes(field));
+  const unavailable = selected.map(([field]) => field);
+  const result = { lines: [], corners: [], points: [], unavailable };
+  if (!selected.length || !projection || !snapshot || !object(snapshot.annotations)) return result;
+  const payload = snapshot.annotations, binding = payload.binding, session = snapshot.session, track = snapshot.track;
+  const season = /^(\d{4})\//.exec(session?.path ?? '')?.[1];
+  const source = snapshot.source === 'replay' ? 'replay' : snapshot.source === 'live' ? 'live' : null;
+  if (payload.schema_version !== 1 || !object(binding) || !Array.isArray(payload.layers) || payload.layers.length > 5 ||
+    !source || snapshot.replay_state === 'seeking' || snapshot.replay_state === 'loading' ||
+    binding.entry_id !== snapshot.entry_id || binding.source !== source || binding.session_key !== session?.session_key ||
+    !Number.isSafeInteger(binding.session_generation) || binding.session_generation < 0 ||
+    binding.circuit_key !== session?.circuit_key || binding.circuit_key !== track?.circuit_key ||
+    !season || binding.season !== Number(season) ||
+    (session?.start_date != null && (typeof session.start_date !== 'string' || !session.start_date.startsWith(`${season}-`))) ||
+    binding.layout_key !== REVIEWED_LAYOUTS[`${binding.circuit_key}:${season}`] ||
+    binding.geometry_fingerprint !== track?.geometry_fingerprint) return result;
+  const layers = new Map();
+  for (const layer of payload.layers) {
+    if (!object(layer) || layers.has(layer.layer)) return result;
+    layers.set(layer.layer, layer);
+  }
+  for (const [field, name] of selected) {
+    const layer = layers.get(name);
+    if (!layer || !object(layer.source) || typeof layer.source.url !== 'string' ||
+      !Array.isArray(layer.columns) || !Array.isArray(layer.items) || layer.items.length > 64) continue;
+    const columns = layer.columns;
+    if (new Set(columns).size !== columns.length || columns.some(column => typeof column !== 'string')) continue;
+    const parsed = [];
+    for (const values of layer.items) {
+      if (!Array.isArray(values) || values.length !== columns.length) { parsed.length = 0; break; }
+      const item = Object.fromEntries(columns.map((column, index) => [column, values[index]]));
+      if (typeof item.id !== 'string' || !/^[a-z0-9_]{1,64}$/.test(item.id) ||
+        typeof item.label !== 'string' || item.label.length > 24) { parsed.length = 0; break; }
+      if ((name === 'start_finish' || name === 'sectors') && item.kind === 'line' &&
+        (name !== 'sectors' || /^S[12]$/.test(item.label))) {
+        const start = annotationPoint(item.start, projection), end = annotationPoint(item.end, projection);
+        if (!start || !end) { parsed.length = 0; break; }
+        parsed.push({ id: `${name}:${item.id}`, layer: name, label: item.label, start, end });
+      } else if (name === 'corners' && item.kind === 'point' && /^\d{1,2}$/.test(item.label)) {
+        const point = annotationPoint(item.anchor, projection);
+        if (!point) { parsed.length = 0; break; }
+        const offset = Array.isArray(item.label_offset) && item.label_offset.length === 2 &&
+          item.label_offset.every(value => number(value) !== null && Math.abs(value) <= 12)
+          ? item.label_offset : [3, -4];
+        parsed.push({ id: item.id, label: item.label, point, offset });
+      } else if ((name === 'speed_traps' || name === 'detection_zones') && item.kind === 'point' &&
+        (name !== 'detection_zones' || /^(?:DRS [DA][1-4]|OT [DA]|SM A[1-5] [NL])$/.test(item.label))) {
+        const point = annotationPoint(item.anchor, projection);
+        if (!point || !Array.isArray(item.label_offset) || item.label_offset.length !== 2 ||
+          item.label_offset.some(value => number(value) === null || Math.abs(value) > 10)) { parsed.length = 0; break; }
+        parsed.push({ id: `${name}:${item.id}`, layer: name, label: item.label, point, offset: item.label_offset });
+      } else { parsed.length = 0; break; }
+    }
+    if (!parsed.length || new Set(parsed.map(item => item.id)).size !== parsed.length) continue;
+    if (name === 'start_finish' || name === 'sectors') result.lines.push(...parsed);
+    else if (name === 'corners') result.corners = parsed;
+    else result.points.push(...parsed);
+    result.unavailable = result.unavailable.filter(value => value !== field);
+  }
+  return result;
+}
+
 export function mapModel(snapshot, module, focus = {}, now = Date.now(), driverPositions = []) {
   if (!snapshot) return { pending: true, rows: [] };
   const projection = projectionFor(snapshot.track, module.options);
@@ -116,7 +189,7 @@ export function mapModel(snapshot, module, focus = {}, now = Date.now(), driverP
   }).filter(row => !inactive.has(row.id) && !inactive.has(String(row.driver).toUpperCase()))
     .filter(row => module.options.focus !== 'filter' || !driver && !team || row.selected);
   rows.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-  return { rows, points: projection?.points ?? null, freshness, status: snapshot.status, sourceMode: snapshot.source, sessionKey: JSON.stringify([snapshot.session?.session_key, snapshot.session?.path, snapshot.session?.meeting_key]),
+  return { rows, points: projection?.points ?? null, annotations: mapAnnotations(snapshot, module, projection), freshness, status: snapshot.status, sourceMode: snapshot.source, sessionKey: JSON.stringify([snapshot.session?.session_key, snapshot.session?.path, snapshot.session?.meeting_key, snapshot.annotations?.binding?.session_generation]),
     context: { meeting: snapshot.session?.meeting_name, session: snapshot.session?.session_name, key: snapshot.session?.session_key, source: snapshot.source === 'replay' ? 'f1_replay' : 'f1_live', updated: snapshot.generated_at, updatedKind: 'generated' },
   };
 }

@@ -1,0 +1,36 @@
+{
+  "format_version": 1,
+  "source": {
+    "session": "2026-09-04_Italian_Grand_Prix/2026-09-06_Race",
+    "driver": "10",
+    "completed_lap": 1,
+    "note": "Reduced exact driver frames. NumberOfLaps advances before the segment reset frame; unrelated driver fields were removed."
+  },
+  "before": {
+    "NumberOfLaps": 0,
+    "Sectors": {
+      "0": {"Segments": {"0": {"Status": 2048}, "1": {"Status": 2049}, "2": {"Status": 2051}, "3": {"Status": 2049}, "4": {"Status": 2049}, "5": {"Status": 2049}}},
+      "1": {"Segments": {"0": {"Status": 2049}, "1": {"Status": 2051}, "2": {"Status": 2049}, "3": {"Status": 2049}, "4": {"Status": 2051}, "5": {"Status": 2049}, "6": {"Status": 2049}}},
+      "2": {"Segments": {"0": {"Status": 2049}, "1": {"Status": 2051}, "2": {"Status": 2049}, "3": {"Status": 2049}, "4": {"Status": 2051}, "5": {"Status": 2049}, "6": {"Status": 2049}, "7": {"Status": 2049}, "8": {"Status": 2051}}}
+    }
+  },
+  "lap_counter_frame": {
+    "timestamp": "00:58:24.556",
+    "payload": {"Lines": {"10": {"NumberOfLaps": 1}}}
+  },
+  "segment_reset_frame": {
+    "timestamp": "00:58:28.733",
+    "payload": {
+      "Lines": {
+        "10": {
+          "Sectors": {
+            "0": {"Segments": {"0": {"Status": 2051}, "1": {"Status": 0}, "2": {"Status": 0}, "3": {"Status": 0}, "4": {"Status": 0}, "5": {"Status": 0}}},
+            "1": {"Segments": {"0": {"Status": 0}, "1": {"Status": 0}, "2": {"Status": 0}, "3": {"Status": 0}, "4": {"Status": 0}, "5": {"Status": 0}, "6": {"Status": 0}}},
+            "2": {"Segments": {"0": {"Status": 0}, "1": {"Status": 0}, "2": {"Status": 0}, "3": {"Status": 0}, "4": {"Status": 0}, "5": {"Status": 0}, "6": {"Status": 0}, "7": {"Status": 0}, "8": {"Status": 0}}}
+          }
+        }
+      }
+    }
+  },
+  "observed_delay_seconds": 4.177
+}

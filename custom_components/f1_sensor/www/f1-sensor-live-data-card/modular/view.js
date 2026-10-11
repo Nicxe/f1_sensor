@@ -1,7 +1,7 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 let chartLoading, mapLoading, telemetryLoading;
-const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
+const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatTimingGap, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./catalog.js'), load('./semantics.js'), load('../platform/branding.js'),
 ]);
 
@@ -178,6 +178,17 @@ export const sharedStyles = css`
   .module-picker select { display:block; max-width:100%; width:100%; min-height:44px; font:inherit; color:inherit; background:var(--f1-surface); border:1px solid var(--f1-border); border-radius:7px; padding:8px; }
   .timing-gap-toggle { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
   .timing-gap-toggle button { min-width:88px; }
+  .minisector-cell { display:flex; flex-direction:column; align-items:stretch; gap:6px; width:max-content; }
+  .minisector-cell > .cell-stack { width:100%; align-items:stretch; }
+  .minisector-cell .signal { box-sizing:border-box; width:100%; justify-content:center; }
+  .minisector-cell .provenance { text-align:center; }
+  .minisector-strip { display:inline-flex; align-items:center; gap:3px; min-width:max-content; min-height:22px; padding:2px 0; }
+  .minisector-block { width:11px; height:20px; flex:0 0 11px; display:grid; place-items:center; border:1px solid color-mix(in srgb,currentColor 45%,transparent); border-radius:4px; font-size:7px; line-height:1; font-weight:900; }
+  .minisector-block[data-status=overall] .minisector-mark { transform:rotate(45deg); }
+  .minisector-block[data-status=unset],.minisector-block[data-status=special],.minisector-block[data-status=unknown] { background:var(--f1-panel)!important; color:var(--f1-muted)!important; }
+  .minisector-empty { color:var(--f1-muted); }
+  .minisector-legend { display:flex; flex-wrap:wrap; gap:8px 16px; margin:8px 0 0; padding:0; list-style:none; }
+  .minisector-legend li { display:flex; align-items:center; gap:6px; }
   th.recent-lap.lap-start,td.recent-lap.lap-start { border-left:2px solid var(--f1-border,#6c7480); }
   .documents { list-style:none; margin:0; padding:0; }
   .documents li { border-bottom:1px solid var(--f1-divider); padding:12px 0; overflow-wrap:anywhere; }
@@ -193,19 +204,43 @@ export const sharedStyles = css`
   .details { padding:14px; white-space:normal; background:var(--f1-panel,rgba(127,127,127,.07)); }
   .details dl { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin:0; }
   .details dd { margin:2px 0 0; }
+  .timing-detail-actions { display:flex; justify-content:flex-end; margin-bottom:8px; }
+  .timing-detail-row > td { padding:0; white-space:normal; background:var(--f1-panel); }
+  .timing-detail { min-width:0; padding:14px; border-left:4px solid var(--team-color,var(--f1-border)); }
+  .timing-detail-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
+  .timing-detail dl { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,135px),1fr)); gap:12px; margin:0; }
+  .timing-detail dt { color:var(--f1-muted); font-size:.85em; }
+  .timing-detail dd { margin:2px 0 0; overflow-wrap:anywhere; }
+  .timing-detail ol { margin:6px 0 0; padding-left:22px; }
   @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
-  @media (forced-colors:active) { :host,ha-card { --f1-surface:Canvas!important; --f1-panel:Canvas!important; --f1-text:CanvasText!important; --f1-muted:CanvasText!important; --f1-border:CanvasText!important; --f1-divider:GrayText!important; --f1-focus:Highlight!important; } :host,ha-card { color:CanvasText!important; background:Canvas!important; } .signal,.chip,.compound,.track-symbol { forced-color-adjust:auto; border-color:CanvasText!important; color:CanvasText!important; background:Canvas!important; } button { border:1px solid ButtonText; } .driver { border-left-color:CanvasText; } .muted,th,.provenance,.event-meta { color:CanvasText; } }
+  @media (forced-colors:active) { :host,ha-card { --f1-surface:Canvas!important; --f1-panel:Canvas!important; --f1-text:CanvasText!important; --f1-muted:CanvasText!important; --f1-border:CanvasText!important; --f1-divider:GrayText!important; --f1-focus:Highlight!important; } :host,ha-card { color:CanvasText!important; background:Canvas!important; } .signal,.chip,.compound,.track-symbol,.minisector-block { forced-color-adjust:auto; border-color:CanvasText!important; color:CanvasText!important; background:Canvas!important; } button { border:1px solid ButtonText; } .driver { border-left-color:CanvasText; } .muted,th,.provenance,.event-meta { color:CanvasText; } }
 `;
 
 export class F1ModuleView extends LitElement {
-  static properties = { module: { attribute: false }, model: { attribute: false }, settings: { attribute: false }, expanded: { state: true }, stintTable: { state: true }, seekDraft: { state: true }, clearConfirm: { state: true }, timingGapMode: { state: true } };
+  static properties = { module: { attribute: false }, model: { attribute: false }, settings: { attribute: false }, expanded: { state: true }, timingExpanded: { state: true }, stintTable: { state: true }, seekDraft: { state: true }, clearConfirm: { state: true }, timingGapMode: { state: true } };
   static styles = sharedStyles;
-  constructor() { super(); this.expanded = ''; this.clearConfirm = false; this.raceQueue = []; }
+  constructor() { super(); this.expanded = ''; this.timingExpanded = []; this.clearConfirm = false; this.raceQueue = []; }
   disconnectedCallback() { super.disconnectedCallback(); clearTimeout(this.raceTimer); clearTimeout(this.clearTimer); }
   get language() { return this.settings?.language ?? 'en'; }
   w(en, sv) { return words(this.language, en, sv); }
   willUpdate() {
     if (this.seekDraft && this.seekDraft.context !== this.model?.controlContext) this.seekDraft = null;
+    if (this.module?.type === 'timing') {
+      const context = JSON.stringify([this.module.id, this.model?.context?.key, this.model?.selectionGeneration]);
+      let selectionCleared = false;
+      if (context !== this.timingSelectionContext) {
+        this.timingSelectionContext = context;
+        selectionCleared = this.timingExpanded.length > 0;
+        this.timingExpanded = [];
+      }
+      const visible = new Set((this.model?.rows ?? []).map(row => row.id));
+      if (this.module.options?.show_driver_details === false || this.timingExpanded.some(id => !visible.has(id))) {
+        const kept = this.module.options?.show_driver_details === false ? [] : this.timingExpanded.filter(id => visible.has(id));
+        selectionCleared ||= kept.length !== this.timingExpanded.length;
+        this.timingExpanded = kept;
+      }
+      if (selectionCleared) queueMicrotask(() => { if (this.isConnected) this.dispatchEvent(new CustomEvent('f1-driver-details-change', { bubbles: true, composed: true })); });
+    }
     const configuredGap = this.module?.fields?.includes('interval') ? 'ahead' : this.module?.fields?.includes('gap') ? 'leader' : '';
     const timingGapContext = `${this.module?.id ?? ''}|${configuredGap}|${this.module?.options?.show_gap_toggle === true}`;
     if (timingGapContext !== this.timingGapContext) {
@@ -255,7 +290,9 @@ export class F1ModuleView extends LitElement {
   }
   updated() {
     if (this.focusKey && this.shadowRoot.activeElement?.dataset?.focus !== this.focusKey) {
-      [...this.shadowRoot.querySelectorAll('[data-focus]')].find(node => node.dataset.focus === this.focusKey)?.focus({ preventScroll: true });
+      const target = [...this.shadowRoot.querySelectorAll('[data-focus]')].find(node => node.dataset.focus === this.focusKey)
+        ?? (this.focusKey === 'timing-close-all' ? this.shadowRoot.querySelector('tbody button.driver') : null);
+      target?.focus({ preventScroll: true });
     }
   }
   render() {
@@ -276,6 +313,7 @@ export class F1ModuleView extends LitElement {
       case 'weather': return this.weather();
       case 'calendar': return this.calendar();
       case 'timing': return this.timing();
+      case 'minisectors': return this.timing();
       case 'results': case 'standings': case 'tyres': case 'pit_stops': return this.results();
       case 'strategy': return this.strategy();
       case 'battles': case 'timeline': case 'incidents': return this.model.summary || this.module.options.presentation === 'table' ? this.results() : this.incidents();
@@ -621,22 +659,44 @@ export class F1ModuleView extends LitElement {
   }
   timeCell(value) {
     const status = timingStatus(value), signal = SIGNALS[status], colors = statusColors(status, this.settings.mode, this.settings.appearance.palette);
-    const signals = this.settings.accessibility.signals;
+    const signals = this.settings.accessibility.signals, contextClass = this.module.options.show_time_context !== false ? 'provenance' : 'sr';
     return html`<div class="cell-stack"><span class="signal ${status}" style=${`background:${colors.background};color:${colors.color}`}>
-      ${signals !== 'text' && status !== 'unknown' ? html`<span aria-hidden="true">${signal.symbol}</span>` : ''}
+      ${this.module.options.show_time_status_icon !== false && signals !== 'text' && status !== 'unknown' ? html`<span aria-hidden="true">${signal.symbol}</span>` : ''}
       <span class="time">${formatTime(value?.time)}</span>
       <span class=${signals === 'shape' ? 'sr' : ''}>${label(signal, this.language)}</span>
-    </span>${value?.session_part ? html`<span class="provenance">${this.model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${value.session_part}</span>` : ''}${value?.lap ? html`<span class="provenance">${this.w('modular.lap')} ${value.lap}${status === 'previous' ? this.w('modular.previous') : ''}</span>` : html`<span class="sr">${this.w('modular.lap_unknown')}</span>`}</div>`;
+    </span>${value?.session_part ? html`<span class=${contextClass}>${this.model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${value.session_part}</span>` : ''}${value?.lap ? html`<span class=${contextClass}>${this.w('modular.lap')} ${value.lap}${status === 'previous' ? this.w('modular.previous') : ''}</span>` : html`<span class="sr">${this.w('modular.lap_unknown')}</span>`}</div>`;
   }
   driverCell(row) {
     const appearance = this.settings.appearance;
     const dimensions = logoDimensions(appearance.logo_size);
     const color = appearance.team_colors && /^#[0-9a-f]{6}$/i.test(row.team_color) ? row.team_color : 'transparent';
     const headshot = appearance.logos && !this.model.teams && this.module.options?.driver_image_type === 'headshot' ? safeImageUrl(row.headshot) : null;
-    return html`<button class="driver" data-focus=${`driver-${row.id}`} style=${`--team-color:${color};--f1-logo-frame:${dimensions.frame}px;--f1-logo-image:${dimensions.image}px`} aria-expanded=${this.expanded === row.id ? 'true' : 'false'} @click=${() => { this.expanded = this.expanded === row.id ? '' : row.id; }}>
+    const interactive = this.module.type !== 'timing' || this.timingDetailRows?.has(row.id);
+    const open = this.module.type === 'timing' ? this.timingExpanded.includes(row.id) : this.expanded === row.id;
+    const content = html`
       ${headshot ? html`<img class="driver-headshot" src=${headshot} alt="" width=${dimensions.frame} height=${dimensions.frame} @error=${event => { event.target.hidden = true; event.target.nextElementSibling.hidden = false; }}><f1-team-logo hidden aria-hidden="true" .team=${row.team} .variant=${appearance.logo_style} .mode=${this.settings.mode} .size=${appearance.logo_size}></f1-team-logo>` : appearance.logos ? html`<f1-team-logo aria-hidden="true" .team=${row.team} .variant=${appearance.logo_style} .mode=${this.settings.mode} .size=${appearance.logo_size}></f1-team-logo>` : ''}
-      <span>${appearance.full_names ? row.name : row.driver}<span class="sr"> · ${row.name} · ${row.team ?? ''} · ${this.w('modular.details')}</span></span>
-    </button>`;
+      <span>${appearance.full_names ? row.name : row.driver}<span class="sr"> · ${row.name} · ${row.team ?? ''}${interactive ? ` · ${this.w('modular.details')}` : ''}</span></span>`;
+    const style = `--team-color:${color};--f1-logo-frame:${dimensions.frame}px;--f1-logo-image:${dimensions.image}px`;
+    if (!interactive) return html`<span class="driver" style=${style}>${content}</span>`;
+    return html`<button class="driver" data-focus=${`driver-${row.id}`} style=${style} aria-expanded=${open ? 'true' : 'false'} aria-controls=${this.module.type === 'timing' && open ? `driver-detail-${row.id}` : ''} @click=${() => { if (this.module.type === 'timing') this.toggleTimingDriver(row.id); else this.expanded = open ? '' : row.id; }}>${content}</button>`;
+  }
+  toggleTimingDriver(id) {
+    this.timingExpanded = this.timingExpanded.includes(id) ? this.timingExpanded.filter(value => value !== id) : [...this.timingExpanded, id];
+    this.dispatchEvent(new CustomEvent('f1-driver-details-change', { bubbles: true, composed: true }));
+  }
+  clearTimingDrivers() {
+    if (!this.timingExpanded.length) return;
+    this.timingExpanded = [];
+    this.dispatchEvent(new CustomEvent('f1-driver-details-change', { bubbles: true, composed: true }));
+  }
+  timingDetailPanel(row, fields, detailLaps, tableLapNumbers) {
+    const color = this.settings.appearance.team_colors && /^#[0-9a-f]{6}$/i.test(row.team_color) ? row.team_color : 'var(--f1-border)';
+    const history = row.history.slice(0, detailLaps).filter(lap => !tableLapNumbers.includes(lap.lap));
+    return html`<section class="timing-detail" part="driver-detail" id=${`driver-detail-${row.id}`} style=${`--team-color:${color}`} aria-label=${`${row.name} · ${this.w('modular.details')}`}>
+      <div class="timing-detail-heading"><h3>${row.name} · ${row.team ?? '—'}</h3><button data-focus=${`driver-${row.id}`} @click=${() => this.toggleTimingDriver(row.id)} aria-label=${`${this.w('modular.close_driver_details')} · ${row.name}`}>×</button></div>
+      ${fields.length ? html`<dl>${fields.map(id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.cell(row, id)}</dd></div>`)}</dl>` : ''}
+      ${history.length ? html`<h3 style="margin-top:12px">${this.w('modular.completed_laps')}</h3><ol>${history.map(lap => html`<li>${this.w('modular.lap')} ${lap.lap}: ${formatTime(lap.time)}</li>`)}</ol>` : ''}
+    </section>`;
   }
   tyreCell(value, showName = true) {
     if (!value) return '—';
@@ -655,14 +715,38 @@ export class F1ModuleView extends LitElement {
     const flag = trackSignal(value);
     return flag ? html`<span class="track-signal"><span class="track-symbol" aria-hidden="true" style=${`background:${flag.color};color:${flag.ink}`}>${flag.symbol}</span><span>${label(flag, this.language)}</span></span>` : value ?? '—';
   }
+  minisectorStatus(raw) {
+    if (raw === 2051) return { id: 'overall', timing: 'overall', symbol: '◆', key: 'modular.minisector_overall_best' };
+    if (raw === 2049) return { id: 'personal', timing: 'personal', symbol: '●', key: 'modular.minisector_personal_best' };
+    if (raw === 2048) return { id: 'recorded', timing: 'timed', symbol: '■', key: 'modular.minisector_recorded' };
+    if (raw === 0 || raw === null) return { id: 'unset', timing: 'unknown', symbol: '–', key: 'modular.minisector_not_set' };
+    if (raw === 2064) return { id: 'special', timing: 'unknown', symbol: '·', key: 'modular.minisector_special_status' };
+    return { id: 'unknown', timing: 'unknown', symbol: '?', key: 'modular.minisector_unknown_status' };
+  }
+  minisectorStrip(segments, sector = null) {
+    if (!Array.isArray(segments) || !segments.length) return html`<span class="minisector-empty" aria-label=${this.w('modular.no_minisector_status_available')}>—</span>`;
+    return html`<span class="minisector-strip" role="list" aria-label=${sector ? `${this.w('modular.sector')} ${sector}` : this.w('modular.minisectors')}>
+      ${segments.map(segment => {
+        const status = this.minisectorStatus(segment.raw), colors = statusColors(status.timing, this.settings.mode, this.settings.appearance.palette);
+        const raw = status.id === 'unknown' ? ` · ${segment.raw}` : '';
+        return html`<span class="minisector-block" role="listitem" data-status=${status.id} style=${`background:${colors.background};color:${colors.color}`} aria-label=${`${this.w('modular.minisector')} ${segment.index + 1}: ${this.w(status.key)}${raw}`}><span class="minisector-mark" aria-hidden="true">${status.symbol}</span></span>`;
+      })}
+    </span>`;
+  }
   cell(row, id) {
     if (id === 'driver') return this.driverCell(row);
-    if (this.field(id)?.type === 'qualifying_duration') return html`<span class="time">${formatTime(row[id]?.time)}</span><span class="provenance">${row[id]?.sprint ? 'SQ' : 'Q'}${row[id]?.part}${row[id]?.eliminated ? this.w('modular.eliminated') : ''}</span>`;
-    if (id === 'theoretical_lap') return html`<span class="time">${formatTime(row[id])}</span><span class="provenance">${this.w('modular.sum_of_personal_best_sectors_may_span_laps')}</span>`;
+    if (id === 'gap' || id === 'interval') return formatTimingGap(row[id], this.w('modular.lap'));
+    if (this.field(id)?.type === 'qualifying_duration') return html`<span class="time">${formatTime(row[id]?.time)}</span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${row[id]?.sprint ? 'SQ' : 'Q'}${row[id]?.part}${row[id]?.eliminated ? this.w('modular.eliminated') : ''}</span>`;
+    if (id === 'theoretical_lap') return html`<span class="time">${formatTime(row[id])}</span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${this.w('modular.sum_of_personal_best_sectors_may_span_laps')}</span>`;
+    if (/^minisector_[123]$/.test(id)) return this.minisectorStrip(row[id], Number(id.at(-1)));
+    if (/^sector_[123]_with_minisectors$/.test(id)) {
+      const sector = Number(id.match(/^sector_([123])/)[1]), value = row[id] ?? {};
+      return html`<div class="minisector-cell">${this.timeCell(value.time)}${this.minisectorStrip(value.segments, sector)}</div>`;
+    }
     if (FIELDS[id]?.type === 'sector' || FIELDS[id]?.type === 'duration') return this.timeCell(row[id]);
     if (id === 'lap_delta') {
       const delta = row[id];
-      return delta ? html`<span class="time">${delta.symbol} ${formatDelta(delta.value)}<span class="sr"> ${this.w(delta.status, { faster: 'snabbare', slower: 'långsammare', equal: 'oförändrat' }[delta.status])}</span></span><span class="provenance">${this.w('modular.vs_lap')} ${delta.reference_lap}</span>` : '—';
+      return delta ? html`<span class="time">${delta.symbol} ${formatDelta(delta.value)}<span class="sr"> ${this.w(delta.status, { faster: 'snabbare', slower: 'långsammare', equal: 'oförändrat' }[delta.status])}</span></span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${this.w('modular.vs_lap')} ${delta.reference_lap}</span>` : '—';
     }
     if (id === 'tyre') return this.tyreCell(row.tyre, this.module.type !== 'tyres' || !this.model.statistics || this.module.options.show_compound_name);
     if (id === 'status') return this.w(({ in_pit: 'In pit', pit_out: 'Pit out', retired: 'Retired', stopped: 'Stopped', on_track: 'On track' })[row.status] ?? row.status ?? '—', ({ in_pit: 'I depå', pit_out: 'Ut ur depå', retired: 'Brutit', stopped: 'Stannat', on_track: 'På banan' })[row.status] ?? row.status ?? '—');
@@ -680,25 +764,33 @@ export class F1ModuleView extends LitElement {
     if (!rows.length) return this.empty(this.model.filtered ? this.w('modular.no_drivers_match_this_selection') : this.w('modular.timing_will_appear_when_session_data_is_available'));
     if (!fields.length) return this.empty(this.w('modular.choose_columns_in_the_editor'));
     const historyLimit = this.module.options.history;
+    const detailFields = this.module.type === 'timing' && this.module.options.show_driver_details !== false
+      ? (this.module.detail_fields ?? []).filter(id => FIELDS[id] && id !== 'driver' && !fields.includes(id)) : [];
+    const detailLaps = this.module.type === 'timing' && this.module.options.show_driver_details !== false ? this.module.options.detail_laps ?? 0 : 0;
     const lapNumbers = historyLimit ? [...new Set(rows.flatMap(row => row.history.map(lap => lap.lap)).filter(Number.isInteger))].sort((a, b) => a - b).slice(-historyLimit) : [];
+    this.timingDetailRows = new Set(rows.filter(row => detailFields.length > 0 || row.history.slice(0, detailLaps).some(lap => !lapNumbers.includes(lap.lap))).map(row => row.id));
     const gapToggle = showGapToggle ? html`<div class="timing-gap-toggle" part="controls" role="group" aria-label=${this.w('modular.gap_mode')}>
       <button data-focus="timing-gap-ahead" aria-pressed=${String(this.timingGapMode === 'ahead')} @click=${() => { this.timingGapMode = 'ahead'; }}>${this.w('modular.ahead')}</button>
       <button data-focus="timing-gap-leader" aria-pressed=${String(this.timingGapMode === 'leader')} @click=${() => { this.timingGapMode = 'leader'; }}>${this.w('modular.leader')}</button>
     </div>` : '';
-    return html`${gapToggle}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${this.w('modular.timing_table_scroll_horizontally_for_more_columns')}><table part="table">
+    const closeAll = this.module.type === 'timing' && this.timingExpanded.length ? html`<div class="timing-detail-actions" part="controls"><button data-focus="timing-close-all" @click=${() => this.clearTimingDrivers()}>${this.w('modular.close_all_driver_details')}</button></div>` : '';
+    return html`${gapToggle}${closeAll}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${this.w('modular.timing_table_scroll_horizontally_for_more_columns')}><table part="table">
       <caption class="sr">${this.module.title || this.model.title}</caption>
       ${this.timingHeader(fields, lapNumbers)}
       <tbody>${repeat(rows, row => row.id, row => html`<tr part="table-row" data-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${this.cell(row, id)}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
         const value = row.history.find(item => item.lap === lap);
         return html`<td part="table-cell" class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}>${this.timeCell(value ? { ...value, source: 'completed_lap', previous_lap: true } : { time: null, lap })}</td>`;
       })}</tr>
-        ${this.expanded === row.id ? html`<tr part="table-row"><td part="table-cell" class="details" colspan=${fields.length + lapNumbers.length}>
+        ${this.module.type === 'timing' && this.timingExpanded.includes(row.id) && this.timingDetailRows.has(row.id) ? html`<tr class="timing-detail-row" part="table-row driver-detail-row"><td part="table-cell" colspan=${fields.length + lapNumbers.length}>${this.timingDetailPanel(row, detailFields, detailLaps, lapNumbers)}</td></tr>` : ''}
+        ${this.module.type !== 'timing' && this.expanded === row.id ? html`<tr part="table-row"><td part="table-cell" class="details" colspan=${fields.length + lapNumbers.length}>
           <h3>${row.name} · ${row.team ?? '—'}</h3><dl>${fields.filter(id => id !== 'driver').map(id => html`<div><dt class="muted">${label(this.field(id), this.language)}</dt><dd>${this.cell(row, id)}</dd></div>`)}</dl>
           ${row.history.length ? html`<h3 style="margin-top:16px">${this.w('modular.completed_laps')}</h3><ol>${row.history.map(lap => html`<li>${this.w('modular.lap')} ${lap.lap}: ${formatTime(lap.time)}</li>`)}</ol>` : ''}
         </td></tr>` : ''}`)}</tbody>
-    </table></div>${this.timingLegend()}`;
+    </table></div>${this.timingLegend([...fields, ...detailFields])}`;
   }
-  timingLegend() {
+  timingLegend(fields = []) {
+    const hasMinisectors = fields.some(id => /^minisector_[123]$|^sector_[123]_with_minisectors$/.test(id));
+    if (this.module.type === 'minisectors' && this.module.options.show_legend === false) return '';
     const meanings = {
       overall: ['Fastest in the relevant session or qualifying part.', 'Snabbast i relevant session eller kvaldel.'],
       personal: ["This driver's best in the relevant comparison.", 'Förarens bästa i den aktuella jämförelsen.'],
@@ -708,8 +800,10 @@ export class F1ModuleView extends LitElement {
       invalid: ['The source marks this time as invalid.', 'Källan markerar tiden som ogiltig.'],
       unknown: ['No usable time is available. A dash does not mean zero.', 'Ingen användbar tid finns. Ett tankstreck betyder inte noll.'],
     };
-    return html`<details class="timing-legend"><summary data-focus="timing-legend">${this.w('modular.timing_explained')}</summary>
+    return html`<details class="timing-legend"><summary data-focus="timing-legend">${hasMinisectors ? this.w('modular.timing_and_minisector_status_explained') : this.w('modular.timing_explained')}</summary>
       <dl>${Object.entries(meanings).map(([status, explanation]) => html`<div><dt><span aria-hidden="true">${SIGNALS[status].symbol} </span><span>${label(SIGNALS[status], this.language)}</span></dt><dd>${this.w(...explanation)}</dd></div>`)}</dl>
+      ${hasMinisectors ? html`<p>${this.w('modular.minisectors_provider_status_only')}</p>
+        <ul class="minisector-legend">${[2051, 2049, 2048, 0, 2064, -1].map(raw => { const status = this.minisectorStatus(raw), colors = statusColors(status.timing, this.settings.mode, this.settings.appearance.palette); return html`<li><span class="minisector-block" data-status=${status.id} style=${`background:${colors.background};color:${colors.color}`} aria-hidden="true"><span class="minisector-mark">${status.symbol}</span></span><span>${this.w(status.key)}</span></li>`; })}</ul>` : ''}
       <p>${this.w('modular.deleted_or_invalid_status_takes_priority_over_best_time_markings_older_sectors_use_the')}</p>
       <p>${this.module.options.sectors === 'latest'
         ? this.w('modular.latest_sectors_can_come_from_different_laps_each_older_sector_is_marked_with_its')
