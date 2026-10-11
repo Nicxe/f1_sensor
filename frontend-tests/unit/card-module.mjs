@@ -2,6 +2,12 @@
 import {readFile} from 'node:fs/promises';
 import {createContext, SourceTextModule, SyntheticModule} from 'node:vm';
 const root = new URL('../../custom_components/f1_sensor/www/f1-sensor-live-data-card/', import.meta.url);
+const locales = Object.fromEntries(await Promise.all(
+  ['en', 'sv', 'nl'].map(async language => [
+    language,
+    JSON.parse(await readFile(new URL(`localization/locales/${language}.json`, root), 'utf8')),
+  ]),
+));
 const registry = new Map();
 const html = (strings, ...values) => strings.reduce((text, part, i) => text + part + (values[i] == null || values[i] === false ? '' : Array.isArray(values[i]) ? values[i].join('') : values[i]), '');
 class Element extends EventTarget {
@@ -16,7 +22,7 @@ class Element extends EventTarget {
 }
 const document={querySelector:()=>null,head:{appendChild(){}},createElement:()=>({setAttribute(){}})};
 export const browserWindow = Object.assign(new EventTarget(), {customCards:[], setTimeout:(...args)=>setTimeout(...args), clearTimeout:(...args)=>clearTimeout(...args)});
-const context=createContext({console,URL,Intl,Date,Map,Set,WeakMap,WeakSet,EventTarget,Event,CustomEvent,HTMLElement:Element,document,navigator:{language:'en-GB'},window:browserWindow,customElements:{get:key=>registry.get(key),define:(key,value)=>registry.set(key,value)},setTimeout,clearTimeout,setInterval,clearInterval,requestAnimationFrame:()=>0,cancelAnimationFrame(){},ResizeObserver:class{observe(){}disconnect(){}}});
+const context=createContext({console,URL,Intl,Date,Map,Set,WeakMap,WeakSet,EventTarget,Event,CustomEvent,HTMLElement:Element,document,navigator:{language:'en-GB'},window:browserWindow,customElements:{get:key=>registry.get(key),define:(key,value)=>registry.set(key,value)},setTimeout,clearTimeout,setInterval,clearInterval,requestAnimationFrame:()=>0,cancelAnimationFrame(){},ResizeObserver:class{observe(){}disconnect(){}},__F1_SENSOR_LOCALES__:locales});
 const modules=new Map();
 async function load(url){
   url=new URL(url);url.search='';const key=url.href;

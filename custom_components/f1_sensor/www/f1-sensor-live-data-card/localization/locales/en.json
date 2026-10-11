@@ -1,4 +1,4 @@
-const messages = {
+{
   "a11y.open_details": "Open details for {title}",
   "card.calendar.description": "Full Formula 1 season calendar",
   "card.calendar.name": "F1 Season Calendar",
@@ -1615,11 +1615,4 @@ const messages = {
   "track_map.stale": "Stale",
   "track_map.waiting": "Waiting",
   "track_map.websocket_unavailable": "Track map websocket unavailable"
-};
-
-export const legacy = Object.freeze({
-  "patterns": [],
-  "windDirections": {}
-});
-
-export default Object.freeze(messages);
+}

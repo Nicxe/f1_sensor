@@ -1,4 +1,4 @@
-const messages = {
+{
   "a11y.open_details": "Öppna detaljer för {title}",
   "card.calendar.description": "Komplett kalender för Formel 1-säsongen",
   "card.calendar.name": "F1 Säsongskalender",
@@ -1615,55 +1615,4 @@ const messages = {
   "track_map.stale": "Inaktuell",
   "track_map.waiting": "Väntar",
   "track_map.websocket_unavailable": "Track Map-webbsocketen är inte tillgänglig"
-};
-
-export const legacy = Object.freeze({
-  "patterns": [
-    [
-      "^(\\d+) cars$",
-      "$1 bilar"
-    ],
-    [
-      "^(\\d+) docs$",
-      "$1 dokument"
-    ],
-    [
-      "^(\\d+) sessions$",
-      "$1 sessioner"
-    ],
-    [
-      "^Idle / (\\d+) cars$",
-      "Viland / $1 bilar"
-    ],
-    [
-      "^Measured precipitation ([\\d.]+) mm$",
-      "Uppmätt nederbörd $1 mm"
-    ],
-    [
-      "^Expected precipitation ([\\d.]+) mm$",
-      "Förväntad nederbörd $1 mm"
-    ],
-    [
-      "^Round (\\d+)$",
-      "Omgång $1"
-    ],
-    [
-      "^Season (\\d+)$",
-      "Säsong $1"
-    ],
-    [
-      "^Open FIA document: (.+)$",
-      "Öppna FIA-dokument: $1"
-    ]
-  ],
-  "windDirections": {
-    "NE": "NO",
-    "E": "O",
-    "SE": "SO",
-    "SW": "SV",
-    "W": "V",
-    "NW": "NV"
-  }
-});
-
-export default Object.freeze(messages);
+}
