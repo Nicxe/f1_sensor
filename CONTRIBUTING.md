@@ -70,6 +70,28 @@ Check a representative guide, reference table, and card page at mobile and deskt
 
 Include the changed user journey, validation performed, and any limitations in the pull request. Integration or card behavior changes also require their normal Python, frontend, and Home Assistant checks; documentation checks do not replace them.
 
+## Translation workflow
+
+The English file at `custom_components/f1_sensor/translations/en.json` is the
+source for integration translations. Other locale files are managed through
+Weblate and may omit untranslated keys; Home Assistant then uses the English
+source text. Do not copy English text into another locale merely to make its
+key set complete.
+
+Changes to English source text and translation keys follow the code path and
+target `dev`. Weblate translation pull requests also target `dev`, use `chore:`
+commit messages, and must pass the normal integration checks. Merge Weblate
+commits without squashing so its repository stays synchronized with upstream.
+
+Before submitting source-string or translation changes, run:
+
+```bash
+python3 scripts/check_translations.py custom_components/f1_sensor/translations
+```
+
+The validator accepts missing target-language values, but rejects unknown
+keys, blank values, invalid nested values, and changed placeholders.
+
 ## How to submit a pull request
 
 1. Fork the repository.
