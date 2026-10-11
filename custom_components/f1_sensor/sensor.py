@@ -5235,9 +5235,6 @@ class F1ChampionshipPredictionDriversSensor(_ChampionshipPredictionBase):
         if tla is not None:
             tla = str(tla).strip() or None
 
-        if (not force) and self._attr_native_value == tla:
-            return
-
         self._attr_native_value = tla
         self._attr_extra_state_attributes = {
             "predicted_driver_p1": pred if isinstance(pred, dict) else None,
@@ -5269,9 +5266,6 @@ class F1ChampionshipPredictionTeamsSensor(_ChampionshipPredictionBase):
             team_name = pred.get("team_name")
         if team_name is not None:
             team_name = str(team_name).strip() or None
-
-        if (not force) and self._attr_native_value == team_name:
-            return
 
         self._attr_native_value = team_name
         self._attr_extra_state_attributes = {
