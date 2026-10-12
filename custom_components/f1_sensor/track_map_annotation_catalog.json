@@ -8427,5 +8427,1757 @@
         ]
       }
     ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "9",
+    "layout_key": "americas_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:3a2cb242b5768e52e2913dbb82902279abb6c58f33c4d0afa1a25b639d9d3d9c",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_united_states_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_map_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/9/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "start_finish",
+    "items": [
+      {
+        "id": "start_finish",
+        "kind": "line",
+        "start": [
+          -1445,
+          -404
+        ],
+        "end": [
+          -1177,
+          -55
+        ],
+        "label": "Start/finish"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "9",
+    "layout_key": "americas_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:3a2cb242b5768e52e2913dbb82902279abb6c58f33c4d0afa1a25b639d9d3d9c",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_united_states_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_map_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/9/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "corners",
+    "items": [
+      {
+        "id": "turn_01",
+        "kind": "point",
+        "anchor": [
+          3731,
+          -3975
+        ],
+        "label": "1",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_02",
+        "kind": "point",
+        "anchor": [
+          3506,
+          -1724
+        ],
+        "label": "2",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_03",
+        "kind": "point",
+        "anchor": [
+          5373,
+          -39
+        ],
+        "label": "3",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_04",
+        "kind": "point",
+        "anchor": [
+          5858,
+          675
+        ],
+        "label": "4",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_05",
+        "kind": "point",
+        "anchor": [
+          6609,
+          1282
+        ],
+        "label": "5",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_06",
+        "kind": "point",
+        "anchor": [
+          7226,
+          2392
+        ],
+        "label": "6",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_07",
+        "kind": "point",
+        "anchor": [
+          9249,
+          2453
+        ],
+        "label": "7",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_08",
+        "kind": "point",
+        "anchor": [
+          10492,
+          3192
+        ],
+        "label": "8",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_09",
+        "kind": "point",
+        "anchor": [
+          11280,
+          2949
+        ],
+        "label": "9",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_10",
+        "kind": "point",
+        "anchor": [
+          13252,
+          3352
+        ],
+        "label": "10",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_11",
+        "kind": "point",
+        "anchor": [
+          15545,
+          6321
+        ],
+        "label": "11",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_12",
+        "kind": "point",
+        "anchor": [
+          4066,
+          3942
+        ],
+        "label": "12",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_13",
+        "kind": "point",
+        "anchor": [
+          4838,
+          2198
+        ],
+        "label": "13",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_14",
+        "kind": "point",
+        "anchor": [
+          4305,
+          2073
+        ],
+        "label": "14",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_15",
+        "kind": "point",
+        "anchor": [
+          2877,
+          3040
+        ],
+        "label": "15",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_16",
+        "kind": "point",
+        "anchor": [
+          3667,
+          1419
+        ],
+        "label": "16",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_17",
+        "kind": "point",
+        "anchor": [
+          3245,
+          284
+        ],
+        "label": "17",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_18",
+        "kind": "point",
+        "anchor": [
+          2011,
+          16
+        ],
+        "label": "18",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_19",
+        "kind": "point",
+        "anchor": [
+          32,
+          1868
+        ],
+        "label": "19",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_20",
+        "kind": "point",
+        "anchor": [
+          -2233,
+          732
+        ],
+        "label": "20",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "9",
+    "layout_key": "americas_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:3a2cb242b5768e52e2913dbb82902279abb6c58f33c4d0afa1a25b639d9d3d9c",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_united_states_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_map_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/9/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "sectors",
+    "items": [
+      {
+        "id": "s1",
+        "kind": "line",
+        "start": [
+          8667,
+          2257
+        ],
+        "end": [
+          8843,
+          2660
+        ],
+        "label": "S1"
+      },
+      {
+        "id": "s2",
+        "kind": "line",
+        "start": [
+          4669,
+          2608
+        ],
+        "end": [
+          5072,
+          2785
+        ],
+        "label": "S2"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "9",
+    "layout_key": "americas_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:3a2cb242b5768e52e2913dbb82902279abb6c58f33c4d0afa1a25b639d9d3d9c",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_united_states_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_map_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/9/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "speed_traps",
+    "items": [
+      {
+        "id": "speed_trap",
+        "kind": "point",
+        "anchor": [
+          5719,
+          4306
+        ],
+        "label": "Speed trap",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "65",
+    "layout_key": "rodriguez_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:97a7bf15ec00f6a4a61c50d04ce056db80f4ff3d08989da73d74ed832e9fd43e",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_mexico_city_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_quarantine_zone_area.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/65/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "start_finish",
+    "items": [
+      {
+        "id": "start_finish",
+        "kind": "line",
+        "start": [
+          -319,
+          1007
+        ],
+        "end": [
+          -271,
+          1444
+        ],
+        "label": "Start/finish"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "65",
+    "layout_key": "rodriguez_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:97a7bf15ec00f6a4a61c50d04ce056db80f4ff3d08989da73d74ed832e9fd43e",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_mexico_city_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_quarantine_zone_area.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/65/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "corners",
+    "items": [
+      {
+        "id": "turn_01",
+        "kind": "point",
+        "anchor": [
+          11537,
+          -626
+        ],
+        "label": "1",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_02",
+        "kind": "point",
+        "anchor": [
+          11605,
+          -1331
+        ],
+        "label": "2",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_03",
+        "kind": "point",
+        "anchor": [
+          11974,
+          -1773
+        ],
+        "label": "3",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_04",
+        "kind": "point",
+        "anchor": [
+          8822,
+          -7833
+        ],
+        "label": "4",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_05",
+        "kind": "point",
+        "anchor": [
+          9250,
+          -8328
+        ],
+        "label": "5",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_06",
+        "kind": "point",
+        "anchor": [
+          8190,
+          -9006
+        ],
+        "label": "6",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_07",
+        "kind": "point",
+        "anchor": [
+          8314,
+          -5805
+        ],
+        "label": "7",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_08",
+        "kind": "point",
+        "anchor": [
+          7538,
+          -5013
+        ],
+        "label": "8",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_09",
+        "kind": "point",
+        "anchor": [
+          7055,
+          -4452
+        ],
+        "label": "9",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_10",
+        "kind": "point",
+        "anchor": [
+          5342,
+          -3910
+        ],
+        "label": "10",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_11",
+        "kind": "point",
+        "anchor": [
+          4803,
+          -3060
+        ],
+        "label": "11",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_12",
+        "kind": "point",
+        "anchor": [
+          -433,
+          -1574
+        ],
+        "label": "12",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_13",
+        "kind": "point",
+        "anchor": [
+          -795,
+          57
+        ],
+        "label": "13",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_14",
+        "kind": "point",
+        "anchor": [
+          -1374,
+          -161
+        ],
+        "label": "14",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_15",
+        "kind": "point",
+        "anchor": [
+          -1810,
+          -110
+        ],
+        "label": "15",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_16",
+        "kind": "point",
+        "anchor": [
+          -2362,
+          117
+        ],
+        "label": "16",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_17",
+        "kind": "point",
+        "anchor": [
+          -1870,
+          1051
+        ],
+        "label": "17",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "65",
+    "layout_key": "rodriguez_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:97a7bf15ec00f6a4a61c50d04ce056db80f4ff3d08989da73d74ed832e9fd43e",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_mexico_city_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_quarantine_zone_area.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/65/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "sectors",
+    "items": [
+      {
+        "id": "s1",
+        "kind": "line",
+        "start": [
+          9236,
+          -6557
+        ],
+        "end": [
+          9603,
+          -6801
+        ],
+        "label": "S1"
+      },
+      {
+        "id": "s2",
+        "kind": "line",
+        "start": [
+          1905,
+          -1772
+        ],
+        "end": [
+          1852,
+          -2209
+        ],
+        "label": "S2"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "65",
+    "layout_key": "rodriguez_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:97a7bf15ec00f6a4a61c50d04ce056db80f4ff3d08989da73d74ed832e9fd43e",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_mexico_city_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_quarantine_zone_area.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/65/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "speed_traps",
+    "items": [
+      {
+        "id": "speed_trap",
+        "kind": "point",
+        "anchor": [
+          9364,
+          -90
+        ],
+        "label": "Speed trap",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "14",
+    "layout_key": "interlagos_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:1de54000ff58e22c7247bbd3051a71a0f015d5e6f2d3a9c25ab1531594fe73d2",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_sao_paulo_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_and_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/14/2025",
+      "coordinate_reference_year": 2023,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "start_finish",
+    "items": [
+      {
+        "id": "start_finish",
+        "kind": "line",
+        "start": [
+          -3646,
+          -5427
+        ],
+        "end": [
+          -3222,
+          -5311
+        ],
+        "label": "Start/finish"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "14",
+    "layout_key": "interlagos_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:1de54000ff58e22c7247bbd3051a71a0f015d5e6f2d3a9c25ab1531594fe73d2",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_sao_paulo_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_and_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/14/2025",
+      "coordinate_reference_year": 2023,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "corners",
+    "items": [
+      {
+        "id": "turn_01",
+        "kind": "point",
+        "anchor": [
+          -2403,
+          -8260
+        ],
+        "label": "1",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_02",
+        "kind": "point",
+        "anchor": [
+          -1827,
+          -7820
+        ],
+        "label": "2",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_03",
+        "kind": "point",
+        "anchor": [
+          135,
+          -7987
+        ],
+        "label": "3",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_04",
+        "kind": "point",
+        "anchor": [
+          2321,
+          -1069
+        ],
+        "label": "4",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_05",
+        "kind": "point",
+        "anchor": [
+          855,
+          -805
+        ],
+        "label": "5",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_06",
+        "kind": "point",
+        "anchor": [
+          -2031,
+          -3958
+        ],
+        "label": "6",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_07",
+        "kind": "point",
+        "anchor": [
+          -3249,
+          -3692
+        ],
+        "label": "7",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_08",
+        "kind": "point",
+        "anchor": [
+          -3494,
+          -2202
+        ],
+        "label": "8",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_09",
+        "kind": "point",
+        "anchor": [
+          -2386,
+          -2240
+        ],
+        "label": "9",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_10",
+        "kind": "point",
+        "anchor": [
+          -3049,
+          236
+        ],
+        "label": "10",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_11",
+        "kind": "point",
+        "anchor": [
+          -1369,
+          -669
+        ],
+        "label": "11",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_12",
+        "kind": "point",
+        "anchor": [
+          91,
+          1442
+        ],
+        "label": "12",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_13",
+        "kind": "point",
+        "anchor": [
+          -869,
+          1851
+        ],
+        "label": "13",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_14",
+        "kind": "point",
+        "anchor": [
+          -3188,
+          936
+        ],
+        "label": "14",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_15",
+        "kind": "point",
+        "anchor": [
+          -3945,
+          -2830
+        ],
+        "label": "15",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "14",
+    "layout_key": "interlagos_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:1de54000ff58e22c7247bbd3051a71a0f015d5e6f2d3a9c25ab1531594fe73d2",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_sao_paulo_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_and_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/14/2025",
+      "coordinate_reference_year": 2023,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "sectors",
+    "items": [
+      {
+        "id": "s1",
+        "kind": "line",
+        "start": [
+          2335,
+          -2701
+        ],
+        "end": [
+          1910,
+          -2587
+        ],
+        "label": "S1"
+      },
+      {
+        "id": "s2",
+        "kind": "line",
+        "start": [
+          211,
+          598
+        ],
+        "end": [
+          -168,
+          821
+        ],
+        "label": "S2"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "14",
+    "layout_key": "interlagos_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:1de54000ff58e22c7247bbd3051a71a0f015d5e6f2d3a9c25ab1531594fe73d2",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_sao_paulo_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_and_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/14/2025",
+      "coordinate_reference_year": 2023,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "speed_traps",
+    "items": [
+      {
+        "id": "speed_trap",
+        "kind": "point",
+        "anchor": [
+          -2833,
+          -7613
+        ],
+        "label": "Speed trap",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "150",
+    "layout_key": "losail_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:73f502dc3efb7683dadfd6723b6f574363eabf065a37f020a33bc0f900403ee3",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_qatar_grand_prix_-_event_notes_-_circuit_map._pit_lane_drawing_emergency_exits_map_ers_battery_containment_area_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/150/2025",
+      "coordinate_reference_year": 2023,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "start_finish",
+    "items": [
+      {
+        "id": "start_finish",
+        "kind": "line",
+        "start": [
+          -859,
+          -971
+        ],
+        "end": [
+          -1244,
+          -1184
+        ],
+        "label": "Start/finish"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "150",
+    "layout_key": "losail_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:73f502dc3efb7683dadfd6723b6f574363eabf065a37f020a33bc0f900403ee3",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_qatar_grand_prix_-_event_notes_-_circuit_map._pit_lane_drawing_emergency_exits_map_ers_battery_containment_area_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/150/2025",
+      "coordinate_reference_year": 2023,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "corners",
+    "items": [
+      {
+        "id": "turn_01",
+        "kind": "point",
+        "anchor": [
+          -4081,
+          5839
+        ],
+        "label": "1",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_02",
+        "kind": "point",
+        "anchor": [
+          -1503,
+          5027
+        ],
+        "label": "2",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_03",
+        "kind": "point",
+        "anchor": [
+          -1163,
+          7151
+        ],
+        "label": "3",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_04",
+        "kind": "point",
+        "anchor": [
+          1668,
+          9968
+        ],
+        "label": "4",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_05",
+        "kind": "point",
+        "anchor": [
+          2742,
+          8983
+        ],
+        "label": "5",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_06",
+        "kind": "point",
+        "anchor": [
+          1347,
+          6574
+        ],
+        "label": "6",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_07",
+        "kind": "point",
+        "anchor": [
+          4904,
+          7215
+        ],
+        "label": "7",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_08",
+        "kind": "point",
+        "anchor": [
+          4100,
+          5628
+        ],
+        "label": "8",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_09",
+        "kind": "point",
+        "anchor": [
+          3614,
+          4524
+        ],
+        "label": "9",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_10",
+        "kind": "point",
+        "anchor": [
+          1640,
+          3570
+        ],
+        "label": "10",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_11",
+        "kind": "point",
+        "anchor": [
+          4003,
+          2035
+        ],
+        "label": "11",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_12",
+        "kind": "point",
+        "anchor": [
+          6992,
+          2065
+        ],
+        "label": "12",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_13",
+        "kind": "point",
+        "anchor": [
+          7969,
+          494
+        ],
+        "label": "13",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_14",
+        "kind": "point",
+        "anchor": [
+          6895,
+          -1092
+        ],
+        "label": "14",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_15",
+        "kind": "point",
+        "anchor": [
+          4051,
+          -799
+        ],
+        "label": "15",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_16",
+        "kind": "point",
+        "anchor": [
+          1472,
+          -4577
+        ],
+        "label": "16",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "150",
+    "layout_key": "losail_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:73f502dc3efb7683dadfd6723b6f574363eabf065a37f020a33bc0f900403ee3",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_qatar_grand_prix_-_event_notes_-_circuit_map._pit_lane_drawing_emergency_exits_map_ers_battery_containment_area_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/150/2025",
+      "coordinate_reference_year": 2023,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "sectors",
+    "items": [
+      {
+        "id": "s1",
+        "kind": "line",
+        "start": [
+          1214,
+          7367
+        ],
+        "end": [
+          1544,
+          7076
+        ],
+        "label": "S1"
+      },
+      {
+        "id": "s2",
+        "kind": "line",
+        "start": [
+          6309,
+          1962
+        ],
+        "end": [
+          6288,
+          2402
+        ],
+        "label": "S2"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "150",
+    "layout_key": "losail_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:73f502dc3efb7683dadfd6723b6f574363eabf065a37f020a33bc0f900403ee3",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_qatar_grand_prix_-_event_notes_-_circuit_map._pit_lane_drawing_emergency_exits_map_ers_battery_containment_area_red_zones_map.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/150/2025",
+      "coordinate_reference_year": 2023,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "speed_traps",
+    "items": [
+      {
+        "id": "speed_trap",
+        "kind": "point",
+        "anchor": [
+          -3953,
+          4079
+        ],
+        "label": "Speed trap",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "70",
+    "layout_key": "yas_marina_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:e5d7b26a40bbc1284e5ded753c9a546f84eacf26319c9cf42a514cd4c863e776",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_abu_dhabi_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_and_red_zones.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/70/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "start_finish",
+    "items": [
+      {
+        "id": "start_finish",
+        "kind": "line",
+        "start": [
+          555,
+          1705
+        ],
+        "end": [
+          499,
+          2141
+        ],
+        "label": "Start/finish"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "70",
+    "layout_key": "yas_marina_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:e5d7b26a40bbc1284e5ded753c9a546f84eacf26319c9cf42a514cd4c863e776",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_abu_dhabi_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_and_red_zones.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/70/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "corners",
+    "items": [
+      {
+        "id": "turn_01",
+        "kind": "point",
+        "anchor": [
+          4412,
+          2785
+        ],
+        "label": "1",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_02",
+        "kind": "point",
+        "anchor": [
+          3612,
+          4779
+        ],
+        "label": "2",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_03",
+        "kind": "point",
+        "anchor": [
+          2269,
+          6197
+        ],
+        "label": "3",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_04",
+        "kind": "point",
+        "anchor": [
+          2346,
+          8058
+        ],
+        "label": "4",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_05",
+        "kind": "point",
+        "anchor": [
+          1827,
+          11758
+        ],
+        "label": "5",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_06",
+        "kind": "point",
+        "anchor": [
+          -2128,
+          713
+        ],
+        "label": "6",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_07",
+        "kind": "point",
+        "anchor": [
+          -1589,
+          556
+        ],
+        "label": "7",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_08",
+        "kind": "point",
+        "anchor": [
+          -821,
+          -1255
+        ],
+        "label": "8",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_09",
+        "kind": "point",
+        "anchor": [
+          5743,
+          -4894
+        ],
+        "label": "9",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_10",
+        "kind": "point",
+        "anchor": [
+          3130,
+          -3572
+        ],
+        "label": "10",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_11",
+        "kind": "point",
+        "anchor": [
+          1836,
+          -2770
+        ],
+        "label": "11",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_12",
+        "kind": "point",
+        "anchor": [
+          1665,
+          -1536
+        ],
+        "label": "12",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_13",
+        "kind": "point",
+        "anchor": [
+          2612,
+          -1219
+        ],
+        "label": "13",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_14",
+        "kind": "point",
+        "anchor": [
+          2471,
+          -244
+        ],
+        "label": "14",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_15",
+        "kind": "point",
+        "anchor": [
+          -48,
+          -149
+        ],
+        "label": "15",
+        "label_offset": [
+          3,
+          -4
+        ]
+      },
+      {
+        "id": "turn_16",
+        "kind": "point",
+        "anchor": [
+          -955,
+          1661
+        ],
+        "label": "16",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "70",
+    "layout_key": "yas_marina_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:e5d7b26a40bbc1284e5ded753c9a546f84eacf26319c9cf42a514cd4c863e776",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_abu_dhabi_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_and_red_zones.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/70/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "sectors",
+    "items": [
+      {
+        "id": "s1",
+        "kind": "line",
+        "start": [
+          2597,
+          9939
+        ],
+        "end": [
+          2158,
+          9906
+        ],
+        "label": "S1"
+      },
+      {
+        "id": "s2",
+        "kind": "line",
+        "start": [
+          4940,
+          -5465
+        ],
+        "end": [
+          4946,
+          -5025
+        ],
+        "label": "S2"
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "circuit_key": "70",
+    "layout_key": "yas_marina_2026_baseline",
+    "valid_from_season": 2026,
+    "valid_to_season": 2026,
+    "geometry_fingerprint": "sha256:e5d7b26a40bbc1284e5ded753c9a546f84eacf26319c9cf42a514cd4c863e776",
+    "qa_status": "verified",
+    "rights_status": "cleared",
+    "source": {
+      "url": "https://www.fia.com/system/files/decision-document/2025_abu_dhabi_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_and_red_zones.pdf",
+      "coordinate_url": "https://api.multiviewer.app/api/v1/circuits/70/2025",
+      "coordinate_reference_year": 2021,
+      "baseline_season": 2025,
+      "checked_on": "2026-10-11"
+    },
+    "layer": "speed_traps",
+    "items": [
+      {
+        "id": "speed_trap",
+        "kind": "point",
+        "anchor": [
+          -1837,
+          2095
+        ],
+        "label": "Speed trap",
+        "label_offset": [
+          3,
+          -4
+        ]
+      }
+    ]
   }
 ]

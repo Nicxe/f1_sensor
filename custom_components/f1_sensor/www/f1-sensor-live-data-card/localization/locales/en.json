@@ -989,6 +989,7 @@
   "modular.track_markings": "Track markings",
   "modular.experimental": "Experimental",
   "modular.track_markings_experimental_note": "Circuit markings may need corrections. Please report mismatches with the circuit, year and a screenshot.",
+  "modular.track_markings_previous_season_baseline": "Some markings use the previous season’s FIA map as a baseline and may differ from this season.",
   "modular.track_markings_are_listed_below_the_map": "Track markings are listed below the map.",
   "modular.straight_mode_activation": "Straight Mode activation",
   "modular.normal_grip": "normal grip",

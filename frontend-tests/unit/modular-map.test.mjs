@@ -125,6 +125,24 @@ test('Singapore 2026 renders reviewed overtake and straight-mode points only for
     items: [['drs_d1', 'point', [30, 0], 'DRS D1', [3, -4]], ['invalid', 'point', [60, 0], 'SM A6 N', [3, -4]]] }] } }, module).annotations.points, []);
 });
 
+test('2026 map baselines from 2025 sources are identified for users', () => {
+  const binding = { entry_id: 'one', source: 'replay', session_key: 'cota-race', session_generation: 2,
+    circuit_key: '9', season: 2026, layout_key: 'americas_2026_baseline', geometry_fingerprint: 'sha256:cota' };
+  const base = { entry_id: 'one', source: 'replay', replay_state: 'paused',
+    session: { session_key: 'cota-race', circuit_key: '9', path: '2026/United_States_Grand_Prix/Race', start_date: '2026-10-25' },
+    track: { circuit_key: '9', geometry_fingerprint: 'sha256:cota', points: [[0, 0], [100, 0], [100, 100]], rotation: 0 },
+    drivers: [], annotations: { schema_version: 1, binding, layers: [{ layer: 'corners',
+      source: { url: 'https://www.fia.com/2025-map.pdf', baseline_season: 2025 },
+      columns: ['id', 'kind', 'anchor', 'label', 'label_offset'], items: [['turn_01', 'point', [30, 0], '1', [3, -4]]] }] } };
+  const module = { fields: ['map_corners'], options: { orientation: 'raw', vertical: 'flipped' } };
+  const baseline = mapModel(base, module).annotations;
+  assert.equal(baseline.corners.length, 1);
+  assert.equal(baseline.previousSeasonBaseline, true);
+  const currentSeason = mapModel({ ...base, annotations: { ...base.annotations, layers: [{ ...base.annotations.layers[0],
+    source: { url: 'https://www.fia.com/2026-map.pdf' } }] } }, module).annotations;
+  assert.equal(currentSeason.previousSeasonBaseline, false);
+});
+
 test('projection accepts zero coordinates, retains geometry gaps and rejects degenerate or missing data', () => {
   const projection = trackProjection({ points: [[0, 0], [100, 0], null, [100, 50]], rotation: 0 });
   assert.ok(projection); assert.equal(projection.points[2], null); assert.deepEqual(projection.project(0, 0), [5, 72.5]);

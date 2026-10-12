@@ -102,7 +102,7 @@ function projectionFor(track, options) {
 }
 
 const ANNOTATION_FIELDS = { map_start_finish: 'start_finish', map_corners: 'corners', map_sectors: 'sectors', map_speed_traps: 'speed_traps', map_detection_zones: 'detection_zones' };
-const REVIEWED_LAYOUTS = { '2:2025': 'silverstone_2025', '61:2025': 'marina_bay_post_2023', '61:2026': 'marina_bay_post_2023' };
+const REVIEWED_LAYOUTS = { '2:2025': 'silverstone_2025', '61:2025': 'marina_bay_post_2023', '61:2026': 'marina_bay_post_2023', '9:2026': 'americas_2026_baseline', '65:2026': 'rodriguez_2026_baseline', '14:2026': 'interlagos_2026_baseline', '150:2026': 'losail_2026_baseline', '70:2026': 'yas_marina_2026_baseline' };
 const pointInMap = point => Array.isArray(point) && point.length === 2 && point.every(value => Number.isFinite(value) && value >= 0 && value <= 100);
 function annotationPoint(raw, projection) {
   if (!Array.isArray(raw) || raw.length !== 2 || raw.some(value => number(value) === null)) return null;
@@ -113,7 +113,7 @@ function annotationPoint(raw, projection) {
 export function mapAnnotations(snapshot, module, projection) {
   const selected = Object.entries(ANNOTATION_FIELDS).filter(([field]) => module.fields?.includes(field));
   const unavailable = selected.map(([field]) => field);
-  const result = { lines: [], corners: [], points: [], unavailable };
+  const result = { lines: [], corners: [], points: [], unavailable, previousSeasonBaseline: false };
   if (!selected.length || !projection || !snapshot || !object(snapshot.annotations)) return result;
   const payload = snapshot.annotations, binding = payload.binding, session = snapshot.session, track = snapshot.track;
   const season = /^(\d{4})\//.exec(session?.path ?? '')?.[1];
@@ -165,6 +165,7 @@ export function mapAnnotations(snapshot, module, projection) {
       } else { parsed.length = 0; break; }
     }
     if (!parsed.length || new Set(parsed.map(item => item.id)).size !== parsed.length) continue;
+    if (Number.isInteger(layer.source.baseline_season) && layer.source.baseline_season < Number(season)) result.previousSeasonBaseline = true;
     if (name === 'start_finish' || name === 'sectors') result.lines.push(...parsed);
     else if (name === 'corners') result.corners = parsed;
     else result.points.push(...parsed);

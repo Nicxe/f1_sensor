@@ -989,6 +989,7 @@
   "modular.track_markings": "Banmarkeringar",
   "modular.experimental": "Experimentell",
   "modular.track_markings_experimental_note": "Banmarkeringarna kan behöva korrigeras. Rapportera gärna avvikelser med bana, år och skärmbild.",
+  "modular.track_markings_previous_season_baseline": "Vissa markeringar bygger på föregående säsongs FIA-karta och kan skilja sig från årets.",
   "modular.track_markings_are_listed_below_the_map": "Banmarkeringarna listas nedanför kartan.",
   "modular.straight_mode_activation": "Aktivering av Straight Mode",
   "modular.normal_grip": "normalt grepp",

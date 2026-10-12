@@ -989,6 +989,7 @@
   "modular.track_markings": "Circuitmarkeringen",
   "modular.experimental": "Experimenteel",
   "modular.track_markings_experimental_note": "Circuitmarkeringen kunnen correcties nodig hebben. Meld afwijkingen met circuit, jaar en een schermafbeelding.",
+  "modular.track_markings_previous_season_baseline": "Sommige markeringen zijn gebaseerd op de FIA-kaart van vorig seizoen en kunnen dit seizoen afwijken.",
   "modular.track_markings_are_listed_below_the_map": "De circuitmarkeringen staan onder de kaart.",
   "modular.straight_mode_activation": "Straight Mode-activering",
   "modular.normal_grip": "normale grip",

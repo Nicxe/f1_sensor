@@ -27,6 +27,9 @@ PILOT_CATALOG = runpy.run_path(
 )["build_catalog"]
 CATALOG = ROOT / "custom_components/f1_sensor/track_map_annotation_catalog.json"
 COORDINATE_SNAPSHOT = ROOT / "quality/track_map_2026_coordinate_snapshot.json"
+BASELINE_COORDINATE_SNAPSHOT = (
+    ROOT / "quality/track_map_2025_coordinate_baseline_snapshot.json"
+)
 
 SOURCES = {
     "2": {
@@ -393,6 +396,48 @@ SEASON_2026 = {
     },
 }
 
+# The final six 2026 venues do not yet have event-specific 2026 FIA maps or
+# position dumps. Prepare the stable map layers from 2025 event maps and the
+# matching 2025 Position.z geometry. Detection/activation marks are omitted:
+# 2025 DRS positions do not establish 2026 Overtake or Straight Mode points.
+SEASON_2026_BASELINES = {
+    "9": {
+        "layout": "americas_2026_baseline",
+        "length_m": 5513,
+        "map": "https://www.fia.com/system/files/decision-document/2025_united_states_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_map_red_zones_map.pdf",
+        "sectors": (("s1", "S1", 7, -55), ("s2", "S2", 13, -65)),
+        "speed": (12, -180),
+    },
+    "65": {
+        "layout": "rodriguez_2026_baseline",
+        "length_m": 4304,
+        "map": "https://www.fia.com/system/files/decision-document/2025_mexico_city_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_quarantine_zone_area.pdf",
+        "sectors": (("s1", "S1", 4, -136), ("s2", "S2", 12, -242)),
+        "speed": (1, -234),
+    },
+    "14": {
+        "layout": "interlagos_2026_baseline",
+        "length_m": 4309,
+        "map": "https://www.fia.com/system/files/decision-document/2025_sao_paulo_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_and_red_zones_map.pdf",
+        "sectors": (("s1", "S1", 4, -168), ("s2", "S2", 12, -85)),
+        "speed": (1, -90),
+    },
+    "150": {
+        "layout": "losail_2026_baseline",
+        "length_m": 5419,
+        "map": "https://www.fia.com/system/files/decision-document/2025_qatar_grand_prix_-_event_notes_-_circuit_map._pit_lane_drawing_emergency_exits_map_ers_battery_containment_area_red_zones_map.pdf",
+        "sectors": (("s1", "S1", 6, -80), ("s2", "S2", 12, -75)),
+        "speed": (1, -205),
+    },
+    "70": {
+        "layout": "yas_marina_2026_baseline",
+        "length_m": 5281,
+        "map": "https://www.fia.com/system/files/decision-document/2025_abu_dhabi_grand_prix_-_event_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_quarantine_zone_and_red_zones.pdf",
+        "sectors": (("s1", "S1", 5, -205), ("s2", "S2", 9, -100)),
+        "speed": (6, -150),
+    },
+}
+
 
 def _segments(points):
     lengths = [math.dist(a, b) for a, b in zip(points, points[1:], strict=False)]
@@ -661,6 +706,122 @@ def _season_2026_records():
     return records
 
 
+def _season_2026_baseline_records():
+    """Build clearly labelled 2026 baseline layers from reviewed 2025 maps."""
+    snapshot = json.loads(BASELINE_COORDINATE_SNAPSHOT.read_text(encoding="utf-8"))
+    if snapshot.get("checked_on") != "2026-10-11":
+        raise ValueError("Unexpected 2025 baseline coordinate snapshot date")
+    records = []
+    for circuit_key, source in SEASON_2026_BASELINES.items():
+        api = snapshot["circuits"][circuit_key]
+        track = GEOMETRIES[circuit_key]
+        points = track["points"]
+        lengths, cumulative = _segments(points)
+        scale = cumulative[-1] / source["length_m"]
+        corner_arcs = {}
+        for item in api["corners"]:
+            number = int(item["number"])
+            gap, arc, _ = _nearest(
+                points, (float(item["x"]), float(item["y"])), lengths, cumulative
+            )
+            if gap > 500:
+                raise ValueError(
+                    f"{circuit_key} T{number} is too far from 2025 geometry: {gap:.0f}"
+                )
+            corner_arcs[number] = arc
+
+        common = {
+            "schema_version": 1,
+            "circuit_key": circuit_key,
+            "layout_key": source["layout"],
+            "valid_from_season": 2026,
+            "valid_to_season": 2026,
+            "geometry_fingerprint": FINGERPRINT(track),
+            "qa_status": "verified",
+            "rights_status": "cleared",
+            "source": {
+                "url": source["map"],
+                "coordinate_url": api["coordinate_url"],
+                "coordinate_reference_year": api["provider_data_year"],
+                "baseline_season": 2025,
+                "checked_on": "2026-10-11",
+            },
+        }
+        start = api["start"]
+        start_gap, start_arc, _ = _nearest(
+            points, (float(start["x"]), float(start["y"])), lengths, cumulative
+        )
+        if start_gap > 500:
+            raise ValueError(f"{circuit_key} start line is too far from 2025 geometry")
+        records.extend(
+            (
+                {
+                    **common,
+                    "layer": "start_finish",
+                    "items": [
+                        _line(
+                            points,
+                            lengths,
+                            cumulative,
+                            start_arc,
+                            "Start/finish",
+                            "start_finish",
+                        )
+                    ],
+                },
+                {
+                    **common,
+                    "layer": "corners",
+                    "items": [
+                        _point(
+                            points,
+                            lengths,
+                            cumulative,
+                            corner_arcs[number],
+                            str(number),
+                            f"turn_{number:02d}",
+                        )
+                        for number in sorted(corner_arcs)
+                    ],
+                },
+                {
+                    **common,
+                    "layer": "sectors",
+                    "items": [
+                        _line(
+                            points,
+                            lengths,
+                            cumulative,
+                            _feature_arc(
+                                corner_arcs, scale, circuit_key, corner, offset
+                            ),
+                            label,
+                            item_id,
+                        )
+                        for item_id, label, corner, offset in source["sectors"]
+                    ],
+                },
+                {
+                    **common,
+                    "layer": "speed_traps",
+                    "items": [
+                        _point(
+                            points,
+                            lengths,
+                            cumulative,
+                            _feature_arc(
+                                corner_arcs, scale, circuit_key, *source["speed"]
+                            ),
+                            "Speed trap",
+                            "speed_trap",
+                        )
+                    ],
+                },
+            )
+        )
+    return records
+
+
 def build_catalog():
     """Return the existing pilot records plus reviewed 2026 circuits."""
     pilot = PILOT_CATALOG(qa_status="verified", rights_status="cleared")
@@ -744,6 +905,7 @@ def build_catalog():
             records.append({**common, "layer": layer, "items": items})
     records.extend(_singapore_2026_records(records))
     records.extend(_season_2026_records())
+    records.extend(_season_2026_baseline_records())
     return records
 
 

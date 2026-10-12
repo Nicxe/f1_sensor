@@ -52,7 +52,7 @@ def _context(track: dict | None = None):
 
 def test_catalog_has_five_geometry_bound_layers_per_reviewed_layout() -> None:
     catalog = _catalog()
-    assert len(catalog) == 95
+    assert len(catalog) == 115
     for circuit_key, season, layout in (
         ("61", 2025, "marina_bay_post_2023"),
         ("2", 2025, "silverstone_2025"),
@@ -79,7 +79,7 @@ def test_catalog_has_five_geometry_bound_layers_per_reviewed_layout() -> None:
         assert all(record["source"]["url"].startswith("https://") for record in records)
         assert all(record["qa_status"] == "verified" for record in records)
         assert all(record["rights_status"] == "cleared" for record in records)
-    assert len(json.dumps(catalog, separators=(",", ":")).encode()) <= 120_000
+    assert len(json.dumps(catalog, separators=(",", ":")).encode()) <= 128_000
 
 
 def test_sepang_and_madring_2026_bind_with_ordered_map_marks() -> None:
@@ -150,6 +150,51 @@ def test_sepang_and_madring_2026_bind_with_ordered_map_marks() -> None:
             corner_position, _ = _arc_at(track, tuple(by_corner[turn]["anchor"]))
             measured = (position - corner_position + total / 2) % total - total / 2
             assert abs(measured / total * length_m - offset_m) < 2
+
+
+def test_upcoming_2026_venues_show_labeled_2025_baseline_provenance() -> None:
+    expected = {
+        "9": ("americas_2026_baseline", 20, "2025_united_states_grand_prix"),
+        "65": ("rodriguez_2026_baseline", 17, "2025_mexico_city_grand_prix"),
+        "14": ("interlagos_2026_baseline", 15, "2025_sao_paulo_grand_prix"),
+        "150": ("losail_2026_baseline", 16, "2025_qatar_grand_prix"),
+        "70": ("yas_marina_2026_baseline", 16, "2025_abu_dhabi_grand_prix"),
+    }
+    for circuit_key, (layout, turn_count, source_name) in expected.items():
+        track = STATIC_TRACK_GEOMETRIES[circuit_key]
+        records = _records(circuit_key, 2026)
+        by_layer = {record["layer"]: record for record in records}
+        assert set(by_layer) == {"start_finish", "corners", "sectors", "speed_traps"}
+        assert all(record["layout_key"] == layout for record in records)
+        assert all(record["source"]["baseline_season"] == 2025 for record in records)
+        assert all(source_name in record["source"]["url"] for record in records)
+        assert all(record["qa_status"] == "verified" for record in records)
+        assert [item["label"] for item in by_layer["corners"]["items"]] == [
+            str(number) for number in range(1, turn_count + 1)
+        ]
+        assert all(
+            min(dist(tuple(item["anchor"]), tuple(point)) for point in track["points"])
+            < 500
+            for item in by_layer["corners"]["items"]
+        )
+        context = annotation_context(
+            entry_id="test-entry",
+            session={
+                "session_key": f"{circuit_key}-race-2026",
+                "circuit_key": circuit_key,
+                "path": f"2026/2026-race-{circuit_key}/Race/",
+                "start_date": "2026-10-25T14:00:00",
+            },
+            track=track,
+            source="replay",
+            session_generation=3,
+            replay_year=2026,
+        )
+        bound = bind_annotation_layers(
+            records, context, segment_count=len(track["points"]) - 1
+        )
+        assert bound is not None
+        assert len(bound["layers"]) == 4
 
 
 def test_singapore_2026_binds_only_to_its_verified_year_and_geometry() -> None:

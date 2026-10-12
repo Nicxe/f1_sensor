@@ -42,6 +42,11 @@ ANNOTATION_LAYOUTS: dict[tuple[str, int], str] = {
     ("61", 2026): "marina_bay_post_2023",
     ("12", 2026): "sepang_2026",
     ("153", 2026): "madring_2026",
+    ("9", 2026): "americas_2026_baseline",
+    ("65", 2026): "rodriguez_2026_baseline",
+    ("14", 2026): "interlagos_2026_baseline",
+    ("150", 2026): "losail_2026_baseline",
+    ("70", 2026): "yas_marina_2026_baseline",
 }
 
 _SESSION_YEAR = re.compile(r"^(\d{4})/")
