@@ -2,11 +2,21 @@ name: Notify issues after publication
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published release tag to backfill
+        required: true
+        type: string
+      issue_numbers:
+        description: Comma-separated issue numbers to notify
+        required: true
+        type: string
 permissions:
   contents: read
   issues: write
 concurrency:
-  group: release-issues-${{ github.event.release.id }}
+  group: release-issues-${{ github.event.release.id || inputs.release_tag }}
   cancel-in-progress: false
 jobs:
   notify:
@@ -15,9 +25,25 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.repository.default_branch }}
           persist-credentials: false
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
-            await require('./.github/scripts/issue-automation.cjs').releasedIssues({github, context});
+            let release = context.payload.release;
+            let issueNumbers;
+            if (!release) {
+              const tag = core.getInput('release_tag').trim();
+              if (!tag) throw new Error('release_tag is required for a manual backfill.');
+              release = (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
+              issueNumbers = core.getInput('issue_numbers')
+                .split(/[\s,]+/)
+                .map((value) => value.replace(/^#/, ''))
+                .filter((value) => /^\d+$/.test(value))
+                .map(Number);
+              if (!issueNumbers.length) throw new Error('Provide at least one valid issue number.');
+            }
+            await require('./.github/scripts/issue-automation.cjs').releasedIssues(
+              {github, context},
+              {release, issueNumbers}
+            );

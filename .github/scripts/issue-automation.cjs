@@ -71,10 +71,10 @@ async function updateIssue({github, context}, mode) {
   await upsertComment(github, key, '<!-- f1-version-check -->', body);
 }
 
-async function releasedIssues({github, context}) {
-  const release = context.payload.release;
+async function releasedIssues({github, context}, {release: releaseOverride, issueNumbers} = {}) {
+  const release = releaseOverride || context.payload.release;
   if (!release || release.draft) return;
-  const numbers = releaseIssues(release.body, `${context.repo.owner}/${context.repo.repo}`);
+  const numbers = issueNumbers || releaseIssues(release.body, `${context.repo.owner}/${context.repo.repo}`);
   for (const number of numbers) {
     const key = {...context.repo, issue_number:number};
     let issue;
