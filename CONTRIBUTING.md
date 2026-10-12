@@ -20,6 +20,31 @@ to determine the version and generate complete release notes.
 
 The `beta` and `main` branches are managed exclusively by the maintainer. Contributor PRs must target `dev` or `content`. A routing comment explains how to change the base branch when necessary; the same PR can be kept.
 
+## Commit messages and release notes
+
+F1 Sensor uses Conventional Commits and semantic-release. Use plain English
+commit summaries without Markdown, issue numbers, pull request numbers, or
+implementation details. Use `feat:` for a new user-facing capability and
+`fix:` for a correction. Add a scope where it clarifies the affected area, for
+example `feat(card): Add selectable timing fields` or
+`fix(integration): Restore delayed race timing`.
+
+Commit bodies are included in release notes. Omit the body when the summary is
+self-explanatory; otherwise keep it to one or two user-facing sentences. When
+a commit fully resolves an issue, end its body with `Fixes #123`. This preserves
+issue closure and release notifications while letting users open the context.
+
+Use `chore(translations):`, `chore(i18n):`, `chore(accessibility):`,
+`chore(a11y):`, or `chore(compatibility):` for user-visible improvements that
+do not trigger a version on their own. Those entries appear under
+**Translations** or **Improvements** when another change releases. Internal
+chores, refactors, tests, CI, builds, branch synchronization, release tooling,
+and formatting-only work are omitted from user-facing release notes.
+
+Use `feat(blueprint):` for a new or materially expanded blueprint. For a
+breaking change, use `feat(scope)!:` or `fix(scope)!:` and include a final
+`BREAKING CHANGE:` footer explaining what stops working and how users adapt.
+
 ### Documentation and blueprint changes
 
 For changes to documentation (`docs/`) or blueprints (`blueprints/`) that are independent of any code change, use the content path:
