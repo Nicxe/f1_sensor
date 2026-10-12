@@ -49,13 +49,7 @@ LOCALE_SCRIPT = r"""
 import { pathToFileURL } from 'node:url';
 
 const localeDir = process.env.F1_LOCALE_DIR;
-const load = async language => (await import(
-  pathToFileURL(`${localeDir}/${language}.js`)
-)).default;
-const locales = Object.fromEntries(await Promise.all(
-  ['en', 'sv', 'nl'].map(async language => [language, await load(language)]),
-));
-const { translate, translatePlural } = await import(
+const { LOCALES: locales, translate, translatePlural } = await import(
   pathToFileURL(`${localeDir}/../index.js`)
 );
 const keys = Object.fromEntries(Object.entries(locales).map(
@@ -144,14 +138,24 @@ def test_frontend_locales_have_matching_keys_and_placeholders() -> None:
 
 
 def test_frontend_locales_are_in_the_runtime_asset_manifest() -> None:
-    """The runtime sync must include every locale module used by the card."""
+    """The runtime sync must include every locale asset used by the card."""
     frontend_source = (
         ROOT / "custom_components" / "f1_sensor" / "frontend.py"
     ).read_text()
 
     assert '"localization/index.js"' in frontend_source
+    assert '"localization/legacy.js"' in frontend_source
     for language in ("en", "sv", "nl"):
-        assert f'"localization/locales/{language}.js"' in frontend_source
+        assert f'"localization/locales/{language}.json"' in frontend_source
+
+
+def test_frontend_locale_json_is_weblate_compatible() -> None:
+    """Card locales use flat string mappings that Weblate can edit directly."""
+    for path in sorted(LOCALE_DIR.glob("*.json")):
+        messages = json.loads(path.read_text(encoding="utf-8"))
+        assert messages
+        assert all(isinstance(key, str) for key in messages)
+        assert all(isinstance(value, str) for value in messages.values())
 
 
 def test_modular_static_messages_use_translation_keys() -> None:

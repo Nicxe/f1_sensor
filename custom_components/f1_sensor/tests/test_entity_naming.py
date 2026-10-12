@@ -13,6 +13,7 @@ from custom_components.f1_sensor import (
     binary_sensor as binary_sensor_platform,
     button as button_platform,
     calendar as calendar_platform,
+    entity as entity_module,
     media_player as media_player_platform,
     number as number_platform,
     select as select_platform,
@@ -31,6 +32,7 @@ from custom_components.f1_sensor.const import (
     SUPPORTED_SENSOR_KEYS,
 )
 from custom_components.f1_sensor.entity import (
+    _entity_name_from_key,
     async_prepare_translation_names,
     default_object_id,
     register_entry_name_settings,
@@ -348,6 +350,32 @@ def test_aux_entity_localized_name_uses_entry_language() -> None:
 
     assert entity.name == "Livefördröjning"
     assert entity.suggested_object_id == "f1_live_delay"
+
+
+@pytest.mark.asyncio
+async def test_missing_localized_entity_name_uses_english_fallback(
+    hass, monkeypatch
+) -> None:
+    entry_id = "localized_fallback_entry"
+    register_entry_name_settings(
+        entry_id,
+        {
+            CONF_ENTITY_NAME_MODE: ENTITY_NAME_MODE_LOCALIZED,
+            CONF_ENTITY_NAME_LANGUAGE: "sv-SE",
+        },
+    )
+    await async_prepare_translation_names(hass, entry_id)
+
+    # Model a locale that has not translated this entity yet.
+    monkeypatch.delitem(
+        entity_module._TRANSLATION_NAME_CACHE["sv"],
+        "favorite_driver",
+        raising=False,
+    )
+
+    assert (
+        _entity_name_from_key("favorite_driver", entry_id=entry_id) == "Favorite driver"
+    )
 
 
 @pytest.mark.asyncio

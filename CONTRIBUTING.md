@@ -20,6 +20,31 @@ to determine the version and generate complete release notes.
 
 The `beta` and `main` branches are managed exclusively by the maintainer. Contributor PRs must target `dev` or `content`. A routing comment explains how to change the base branch when necessary; the same PR can be kept.
 
+## Commit messages and release notes
+
+F1 Sensor uses Conventional Commits and semantic-release. Use plain English
+commit summaries without Markdown, issue numbers, pull request numbers, or
+implementation details. Use `feat:` for a new user-facing capability and
+`fix:` for a correction. Add a scope where it clarifies the affected area, for
+example `feat(card): Add selectable timing fields` or
+`fix(integration): Restore delayed race timing`.
+
+Commit bodies are included in release notes. Omit the body when the summary is
+self-explanatory; otherwise keep it to one or two user-facing sentences. When
+a commit fully resolves an issue, end its body with `Fixes #123`. This preserves
+issue closure and release notifications while letting users open the context.
+
+Use `chore(translations):`, `chore(i18n):`, `chore(accessibility):`,
+`chore(a11y):`, or `chore(compatibility):` for user-visible improvements that
+do not trigger a version on their own. Those entries appear under
+**Translations** or **Improvements** when another change releases. Internal
+chores, refactors, tests, CI, builds, branch synchronization, release tooling,
+and formatting-only work are omitted from user-facing release notes.
+
+Use `feat(blueprint):` for a new or materially expanded blueprint. For a
+breaking change, use `feat(scope)!:` or `fix(scope)!:` and include a final
+`BREAKING CHANGE:` footer explaining what stops working and how users adapt.
+
 ### Documentation and blueprint changes
 
 For changes to documentation (`docs/`) or blueprints (`blueprints/`) that are independent of any code change, use the content path:
@@ -69,6 +94,28 @@ Review the resulting images before committing them. Use meaningful alt text and 
 Check a representative guide, reference table, and card page at mobile and desktop widths, in light and dark modes. Verify search, keyboard navigation, and the old links affected by the change. The Token Helper pairing page and privacy policy have stable public URLs; preserve query and fragment behavior during site changes.
 
 Include the changed user journey, validation performed, and any limitations in the pull request. Integration or card behavior changes also require their normal Python, frontend, and Home Assistant checks; documentation checks do not replace them.
+
+## Translation workflow
+
+The English file at `custom_components/f1_sensor/translations/en.json` is the
+source for integration translations. Other locale files are managed through
+Weblate and may omit untranslated keys; Home Assistant then uses the English
+source text. Do not copy English text into another locale merely to make its
+key set complete.
+
+Changes to English source text and translation keys follow the code path and
+target `dev`. Weblate translation pull requests also target `dev`, use `chore:`
+commit messages, and must pass the normal integration checks. Merge Weblate
+commits without squashing so its repository stays synchronized with upstream.
+
+Before submitting source-string or translation changes, run:
+
+```bash
+python3 scripts/check_translations.py custom_components/f1_sensor/translations
+```
+
+The validator accepts missing target-language values, but rejects unknown
+keys, blank values, invalid nested values, and changed placeholders.
 
 ## How to submit a pull request
 

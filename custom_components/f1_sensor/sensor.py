@@ -4363,7 +4363,7 @@ _PENALTY_SERVED = re.compile(
 )
 
 _WILL_BE_INVESTIGATED_AFTER = re.compile(
-    r"WILL BE INVESTIGATED AFTER THE RACE",
+    r"WILL BE INVESTIGATED AFTER THE (?:RACE|SESSION)",
     re.IGNORECASE,
 )
 
@@ -4415,6 +4415,8 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._penalties: list[dict] = []
         self._processed_ids: set[str] = set()
         self._live_state_unsub = None
+        self._session_info_coordinator = None
+        self._session_key: str | None = None
         self._session_time: datetime.datetime | None = (
             None  # Track latest message time for NFI expiry
         )
@@ -4424,6 +4426,7 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "no_further_action": [],
             "penalties": [],
             "last_update": None,
+            "session_key": None,
         }
 
     def _make_incident_key(
@@ -4478,6 +4481,19 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             except Exception:
                 self._live_state_unsub = None
 
+        self._session_info_coordinator = reg.get("session_info_coordinator")
+        if self._session_info_coordinator is not None and hasattr(
+            self._session_info_coordinator, "async_add_listener"
+        ):
+            try:
+                removal = self._session_info_coordinator.async_add_listener(
+                    self._handle_session_info_update
+                )
+                self.async_on_remove(removal)
+                self._session_key = self._current_session_key()
+            except Exception:
+                self._session_info_coordinator = None
+
         # Restore prior state first, then apply any live messages.
         stream_active = self._is_stream_active()
         if stream_active:
@@ -4494,11 +4510,23 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         last = await self.async_get_last_state()
         if not last or last.state in (None, "unknown", "unavailable"):
             return
+        attrs = dict(getattr(last, "attributes", {}) or {})
+        restored_session_key = attrs.get("session_key")
+        if restored_session_key is not None:
+            restored_session_key = str(restored_session_key).strip() or None
+        if (
+            self._session_key is not None
+            and restored_session_key is not None
+            and restored_session_key != self._session_key
+        ):
+            self._clear_state()
+            return
+        if self._session_key is None:
+            self._session_key = restored_session_key
         try:
             self._attr_native_value = int(last.state)
         except (ValueError, TypeError):
             self._attr_native_value = 0
-        attrs = dict(getattr(last, "attributes", {}) or {})
         noted = attrs.get("noted")
         under_inv = attrs.get("under_investigation")
         nfi = attrs.get("no_further_action")
@@ -4538,6 +4566,7 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 self._nfi[key] = dict(item)
         if isinstance(penalties, list):
             self._penalties = [p for p in penalties if isinstance(p, dict)]
+        attrs["session_key"] = self._session_key
         self._attr_extra_state_attributes = attrs
         last_update = attrs.get("last_update")
         if last_update:
@@ -4545,6 +4574,29 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 parsed = dt_util.parse_datetime(last_update)
                 if parsed is not None:
                     self._session_time = parsed
+
+    def _current_session_key(self) -> str | None:
+        """Return the current live-timing session identity when available."""
+        data = getattr(self._session_info_coordinator, "data", None)
+        if not isinstance(data, dict):
+            return None
+        key = data.get("Key")
+        if key is None:
+            return None
+        return str(key).strip() or None
+
+    def _handle_session_info_update(self) -> None:
+        """Reset investigation state when the live feed changes session."""
+        session_key = self._current_session_key()
+        if session_key is None or session_key == self._session_key:
+            return
+        previous_session_key = self._session_key
+        self._session_key = session_key
+        if previous_session_key is None:
+            self._attr_extra_state_attributes["session_key"] = session_key
+        else:
+            self._clear_state()
+        self._safe_write_ha_state()
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init" or is_no_spoiler_live_state(reason):
@@ -4760,7 +4812,7 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     return True
             return False
 
-        # Check for WILL BE INVESTIGATED AFTER THE RACE
+        # Check for WILL BE INVESTIGATED AFTER THE RACE/SESSION
         if _WILL_BE_INVESTIGATED_AFTER.search(message_text):
             if drivers:
                 # Find and move to under_investigation with after_race flag
@@ -4866,6 +4918,7 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "no_further_action": list(self._nfi.values()),
             "penalties": list(self._penalties),
             "last_update": dt_util.utcnow().isoformat(timespec="seconds"),
+            "session_key": self._session_key,
         }
 
     def _handle_coordinator_update(self) -> None:
@@ -4914,6 +4967,7 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             "no_further_action": [],
             "penalties": [],
             "last_update": None,
+            "session_key": self._session_key,
         }
 
 
@@ -5235,9 +5289,6 @@ class F1ChampionshipPredictionDriversSensor(_ChampionshipPredictionBase):
         if tla is not None:
             tla = str(tla).strip() or None
 
-        if (not force) and self._attr_native_value == tla:
-            return
-
         self._attr_native_value = tla
         self._attr_extra_state_attributes = {
             "predicted_driver_p1": pred if isinstance(pred, dict) else None,
@@ -5269,9 +5320,6 @@ class F1ChampionshipPredictionTeamsSensor(_ChampionshipPredictionBase):
             team_name = pred.get("team_name")
         if team_name is not None:
             team_name = str(team_name).strip() or None
-
-        if (not force) and self._attr_native_value == team_name:
-            return
 
         self._attr_native_value = team_name
         self._attr_extra_state_attributes = {
@@ -6203,6 +6251,12 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "best_lap_time": "1:30.456",
                 "best_lap_time_secs": 90.456,
                 "best_lap_lap": 40,
+                "last_lap_status": {
+                    "time": "1:30.789",
+                    "lap": 45,
+                    "overall_fastest": False,
+                    "personal_fastest": False,
+                },
                 "fastest_lap": False,
                 "fastest_lap_time": "1:29.123",
                 "fastest_lap_time_secs": 89.123,
@@ -6463,6 +6517,15 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 drv.setdefault("best_lap_time", None)
                 drv.setdefault("best_lap_time_secs", None)
                 drv.setdefault("best_lap_lap", None)
+                drv.setdefault(
+                    "last_lap_status",
+                    {
+                        "time": None,
+                        "lap": None,
+                        "overall_fastest": False,
+                        "personal_fastest": False,
+                    },
+                )
                 drv.setdefault("fastest_lap", False)
                 drv.setdefault("fastest_lap_time", None)
                 drv.setdefault("fastest_lap_time_secs", None)
@@ -6509,6 +6572,15 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             identity = info.get("identity", {})
             lap_history = info.get("lap_history", {})
             timing = info.get("timing", {})
+            last_lap_status = timing.get("last_lap_status")
+            if not isinstance(last_lap_status, dict):
+                last_lap_status = {}
+            last_lap_status = {
+                "time": last_lap_status.get("time"),
+                "lap": last_lap_status.get("lap"),
+                "overall_fastest": last_lap_status.get("overall_fastest") is True,
+                "personal_fastest": last_lap_status.get("personal_fastest") is True,
+            }
             official_best = timing.get("official_best_lap")
             if isinstance(official_best, dict):
                 best_lap_time = official_best.get("time")
@@ -6639,6 +6711,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "best_lap_time": best_lap_time,
                 "best_lap_time_secs": best_lap_seconds,
                 "best_lap_lap": best_lap_number,
+                "last_lap_status": last_lap_status,
                 "fastest_lap": is_fastest,
                 "fastest_lap_time": fastest.get("time") if is_fastest else None,
                 "fastest_lap_time_secs": (

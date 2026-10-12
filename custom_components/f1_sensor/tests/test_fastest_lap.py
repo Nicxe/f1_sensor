@@ -220,6 +220,128 @@ async def test_timingapp_only_compound_data_populates_tyres_and_statistics(
 
 
 @pytest.mark.asyncio
+async def test_timingapp_ignores_tyres_not_changed_stint_until_real_change(
+    hass,
+) -> None:
+    """Keep Singapore's phantom stint inactive until the real pit stop."""
+    coord = _make_coord(hass)
+
+    coord._merge_timingapp(
+        {
+            "Lines": {
+                "14": {
+                    "Stints": {
+                        "0": {
+                            "Compound": "SOFT",
+                            "New": "true",
+                            "TyresNotChanged": "0",
+                            "TotalLaps": 6,
+                            "StartLaps": 0,
+                        },
+                        "1": {
+                            "Compound": "SOFT",
+                            "New": "true",
+                            "TyresNotChanged": "1",
+                            "TotalLaps": 6,
+                            "StartLaps": 0,
+                        },
+                    }
+                }
+            }
+        }
+    )
+
+    driver = coord._state["drivers"]["14"]
+    assert driver["tyre_history"]["current_stint_index"] == 0
+    assert driver["tyres"] == {"compound": "SOFT", "stint_laps": 6, "new": True}
+
+    coord._merge_timingapp(
+        {
+            "Lines": {
+                "14": {
+                    "Stints": {
+                        "1": {"LapTime": "1:39.859", "LapNumber": 22},
+                    }
+                }
+            }
+        }
+    )
+    assert driver["tyre_history"]["current_stint_index"] == 0
+    assert driver["tyre_history"]["stints"][0]["best_lap_time"] == "1:39.859"
+    assert driver["tyre_history"]["stints"][1]["best_lap_time"] is None
+
+    coord._merge_timingapp({"Lines": {"14": {"Stints": {"0": {"TotalLaps": 22}}}}})
+    assert driver["tyres"]["stint_laps"] == 22
+
+    coord._merge_timingapp(
+        {
+            "Lines": {
+                "14": {
+                    "Stints": {
+                        "0": {
+                            "Compound": "SOFT",
+                            "New": "true",
+                            "TyresNotChanged": "0",
+                            "TotalLaps": 22,
+                            "StartLaps": 0,
+                        },
+                        "1": {
+                            "Compound": "SOFT",
+                            "New": "true",
+                            "TyresNotChanged": "1",
+                            "TotalLaps": 6,
+                            "StartLaps": 0,
+                            "LapTime": "1:39.859",
+                            "LapNumber": 22,
+                        },
+                    }
+                }
+            }
+        }
+    )
+    assert driver["tyres"]["stint_laps"] == 22
+    assert driver["tyre_history"]["current_stint_index"] == 0
+    assert coord._state["tyre_statistics"]["compounds"]["SOFT"]["total_laps"] == 22
+    assert coord._state["tyre_statistics"]["compounds"]["SOFT"]["sets_used_total"] == 1
+
+    coord._merge_timingapp(
+        {
+            "Lines": {
+                "14": {
+                    "Stints": {
+                        "1": {
+                            "Compound": "MEDIUM",
+                            "TyresNotChanged": "0",
+                            "TotalLaps": 0,
+                        }
+                    }
+                }
+            }
+        }
+    )
+    assert driver["tyre_history"]["current_stint_index"] == 1
+    assert driver["tyres"] == {
+        "compound": "MEDIUM",
+        "stint_laps": 0,
+        "new": True,
+    }
+
+    coord._merge_timingapp({"Lines": {"14": {"Stints": {"0": {"TotalLaps": 35}}}}})
+    assert driver["tyres"] == {
+        "compound": "MEDIUM",
+        "stint_laps": 0,
+        "new": True,
+    }
+
+    coord._merge_timingapp({"Lines": {"14": {"Stints": {"1": {"TotalLaps": 1}}}}})
+    assert driver["tyres"] == {
+        "compound": "MEDIUM",
+        "stint_laps": 1,
+        "new": True,
+    }
+
+
+@pytest.mark.asyncio
 async def test_timingapp_without_stints_is_noop(hass) -> None:
     coord = _make_coord(hass)
 

@@ -1,4 +1,4 @@
-const messages = {
+{
   "a11y.open_details": "Öppna detaljer för {title}",
   "card.calendar.description": "Komplett kalender för Formel 1-säsongen",
   "card.calendar.name": "F1 Säsongskalender",
@@ -977,6 +977,25 @@ const messages = {
   "modular.choose_curves_in_the_editor": "Välj kurvor i editorn.",
   "modular.choose_driver": "Välj förare",
   "modular.choose_fields_in_the_editor": "Välj fält i editorn.",
+  "modular.corner": "Kurva",
+  "modular.corner_numbers": "Kurvnummer",
+  "modular.detection_zones": "Detektions- och aktiveringspunkter",
+  "modular.no_verified_markings_for_this_session": "Inga verifierade markeringar finns för den här sessionen.",
+  "modular.sector_boundaries": "Sektorgränser",
+  "modular.show_car_markers": "Visa bilmarkörer",
+  "modular.speed_traps": "Hastighetsmätpunkter",
+  "modular.start_finish_line": "Start-/mållinje",
+  "modular.track_markings": "Banmarkeringar",
+  "modular.experimental": "Experimentell",
+  "modular.track_markings_experimental_note": "Banmarkeringarna kan behöva korrigeras. Rapportera gärna avvikelser med bana, år och skärmbild.",
+  "modular.track_markings_previous_season_baseline": "Vissa markeringar bygger på föregående säsongs FIA-karta och kan skilja sig från årets.",
+  "modular.track_markings_are_listed_below_the_map": "Banmarkeringarna listas nedanför kartan.",
+  "modular.straight_mode_activation": "Aktivering av Straight Mode",
+  "modular.normal_grip": "normalt grepp",
+  "modular.low_grip": "lågt grepp",
+  "modular.overtake_activation": "Aktivering av Overtake",
+  "modular.detection": "detektion",
+  "modular.activation": "aktivering",
   "modular.choose_map_content_in_the_editor": "Välj kartinnehåll i editorn.",
   "modular.choose_reference": "Välj referens…",
   "modular.choose_replay": "Välj replay",
@@ -1571,55 +1590,4 @@ const messages = {
   "track_map.stale": "Inaktuell",
   "track_map.waiting": "Väntar",
   "track_map.websocket_unavailable": "Track Map-webbsocketen är inte tillgänglig"
-};
-
-export const legacy = Object.freeze({
-  "patterns": [
-    [
-      "^(\\d+) cars$",
-      "$1 bilar"
-    ],
-    [
-      "^(\\d+) docs$",
-      "$1 dokument"
-    ],
-    [
-      "^(\\d+) sessions$",
-      "$1 sessioner"
-    ],
-    [
-      "^Idle / (\\d+) cars$",
-      "Viland / $1 bilar"
-    ],
-    [
-      "^Measured precipitation ([\\d.]+) mm$",
-      "Uppmätt nederbörd $1 mm"
-    ],
-    [
-      "^Expected precipitation ([\\d.]+) mm$",
-      "Förväntad nederbörd $1 mm"
-    ],
-    [
-      "^Round (\\d+)$",
-      "Omgång $1"
-    ],
-    [
-      "^Season (\\d+)$",
-      "Säsong $1"
-    ],
-    [
-      "^Open FIA document: (.+)$",
-      "Öppna FIA-dokument: $1"
-    ]
-  ],
-  "windDirections": {
-    "NE": "NO",
-    "E": "O",
-    "SE": "SO",
-    "SW": "SV",
-    "W": "V",
-    "NW": "NV"
-  }
-});
-
-export default Object.freeze(messages);
+}

@@ -150,6 +150,43 @@ async def test_live_driver_parsers_history_fastest_and_live_reset(
     assert await coordinator._async_update_data() is coordinator._state
 
 
+async def test_live_driver_gridpos_replaces_prestart_fallback(hass) -> None:
+    """Use the confirmed race grid instead of a stale qualifying fallback."""
+    coordinator = LiveDriversCoordinator(hass, SimpleNamespace(data={}))
+    coordinator._merge_driverlist(
+        {
+            "63": {
+                "RacingNumber": "63",
+                "Tla": "RUS",
+                "Line": 6,
+            }
+        }
+    )
+
+    history = coordinator._state["drivers"]["63"]["lap_history"]
+    assert history["grid_position"] == "6"
+
+    assert (
+        coordinator._merge_timingapp(
+            {
+                "Lines": {
+                    "63": {
+                        "RacingNumber": "63",
+                        "Line": 19,
+                        "GridPos": "19",
+                    }
+                }
+            }
+        )
+        is True
+    )
+    assert history["grid_position"] == "19"
+
+    history["completed_laps"] = 1
+    assert coordinator._merge_timingapp({"Lines": {"63": {"GridPos": "18"}}}) is False
+    assert history["grid_position"] == "19"
+
+
 async def test_live_driver_stints_sectors_and_session_transitions(
     hass, monkeypatch
 ) -> None:
@@ -265,6 +302,12 @@ async def test_timing_data_merges_all_incremental_driver_fields(hass) -> None:
         "gap_to_leader": "+0.000",
         "interval": "+0.000",
         "last_lap": "1:20.000",
+        "last_lap_status": {
+            "time": "1:20.000",
+            "lap": 2,
+            "overall_fastest": False,
+            "personal_fastest": False,
+        },
         "best_lap": "1:19.500",
         "official_best_lap": {"time": "1:19.500", "time_secs": 79.5, "lap": 2},
         "in_pit": True,

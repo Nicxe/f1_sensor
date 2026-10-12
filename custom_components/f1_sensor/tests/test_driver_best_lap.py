@@ -106,6 +106,61 @@ async def test_best_survives_omitted_deltas_and_accepts_slower_correction(live_d
     assert driver["best_lap_lap"] == 9
 
 
+async def test_last_lap_timing_status_merges_partial_source_deltas(live_driver):
+    """Preserve timing colours when LastLapTime flags arrive after its value."""
+    _, _, send = live_driver
+
+    driver = send(
+        {
+            "NumberOfLaps": 2,
+            "LastLapTime": {"Value": "1:38.722"},
+        }
+    )
+    assert driver["last_lap_status"] == {
+        "time": "1:38.722",
+        "lap": 2,
+        "overall_fastest": False,
+        "personal_fastest": False,
+    }
+
+    driver = send(
+        {
+            "BestLapTime": {"Value": "1:38.722", "Lap": 2},
+            "LastLapTime": {
+                "OverallFastest": True,
+                "PersonalFastest": True,
+            },
+        }
+    )
+    assert driver["last_lap_status"] == {
+        "time": "1:38.722",
+        "lap": 2,
+        "overall_fastest": True,
+        "personal_fastest": True,
+    }
+
+    driver = send({"LastLapTime": {"OverallFastest": False}})
+    assert driver["last_lap_status"] == {
+        "time": "1:38.722",
+        "lap": 2,
+        "overall_fastest": False,
+        "personal_fastest": True,
+    }
+
+    driver = send(
+        {
+            "NumberOfLaps": 3,
+            "LastLapTime": {"Value": "1:40.000"},
+        }
+    )
+    assert driver["last_lap_status"] == {
+        "time": "1:40.000",
+        "lap": 3,
+        "overall_fastest": False,
+        "personal_fastest": False,
+    }
+
+
 @pytest.mark.parametrize(
     "cleared",
     [None, {"Value": None}, {"Value": ""}, {"Deleted": True}],
@@ -160,6 +215,12 @@ async def test_restored_driver_keeps_stable_best_attributes(live_driver):
     assert driver["best_lap_time"] is None
     assert driver["best_lap_time_secs"] is None
     assert driver["best_lap_lap"] is None
+    assert driver["last_lap_status"] == {
+        "time": None,
+        "lap": None,
+        "overall_fastest": False,
+        "personal_fastest": False,
+    }
 
 
 @pytest.mark.parametrize("delay", [0, 30])

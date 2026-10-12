@@ -69,6 +69,11 @@ const classification = (id, en, sv, type = 'text', extra = {}) => basic(id, en, 
   modes: ['results'], identity: ['entry', 'season', 'round', 'session', 'driver'],
   spoiler: true, sortable: true, presentations: ['table', 'detail'], ...extra,
 });
+const mapAnnotation = (id, en, sv, layer) => basic(id, en, sv, 'track_map', `annotations.layers.${layer}`, 'map_annotation', {
+  modes: ['live', 'replay'], capability: 'extended_timing', spoiler: true,
+  identity: ['entry', 'source', 'session', 'session_generation', 'geometry'], generation: 'session',
+  presentations: ['map', 'list'],
+});
 export const RESULT_FIELDS = [
   classification('result_position', 'Classification', 'Klassificering', 'integer', { path: 'results[].position' }),
   classification('grid_position', 'Grid', 'Startplats', 'grid', { path: 'results[].grid' }),
@@ -173,6 +178,11 @@ export const FIELDS = Object.fromEntries([
   basic('event_time', 'Time', 'Tid', 'race_control_log', 'utc', 'datetime', { modes: ['live', 'replay'], spoiler: true, generation: 'session', presentations: ['timeline'] }),
   basic('track_map', 'Track map', 'Bankarta', 'track_map', 'track.points + drivers', 'map', { modes: ['live', 'replay'], capability: 'extended_timing', spoiler: true, generation: 'session', presentations: ['map', 'list'] }),
   basic('map_drivers', 'Driver positions list', 'Lista över förarpositioner', 'track_map', 'drivers', 'list', { modes: ['live', 'replay'], capability: 'extended_timing', spoiler: true, generation: 'session', presentations: ['list'] }),
+  mapAnnotation('map_start_finish', 'Start/finish line', 'Start-/mållinje', 'start_finish'),
+  mapAnnotation('map_corners', 'Corner numbers', 'Kurvnummer', 'corners'),
+  mapAnnotation('map_sectors', 'Sector boundaries', 'Sektorgränser', 'sectors'),
+  mapAnnotation('map_speed_traps', 'Speed traps', 'Hastighetsmätpunkter', 'speed_traps'),
+  mapAnnotation('map_detection_zones', 'Detection and activation points', 'Detektions- och aktiveringspunkter', 'detection_zones'),
   ...[['replay_selection', 'Replay selection', 'Val av replay'], ['replay_transport', 'Playback controls', 'Uppspelningskontroller'], ['replay_progress', 'Playback progress', 'Uppspelningsposition']].map(([id, en, sv]) => basic(id, en, sv, 'replay_player', 'selected_session + playback_position_s + playback_total_s', 'replay_control', { modes: ['replay'], identity: ['entry', 'replay_session'], timestamps: { source: 'not_provided', updated_position: 'media_position_updated_at', received: 'not_provided', updated: 'entity.last_updated', displayed: 'snapshot' } })),
   ...[['speed', 'Speed', 'Hastighet', 'km/h'], ['throttle', 'Throttle', 'Gas', '%'], ['brake', 'Brake signal', 'Bromssignal', null], ['gear', 'Gear', 'Växel', null], ['drs', 'DRS code', 'DRS-kod', null], ['rpm', 'Engine speed', 'Motorvarvtal', 'rpm'], ['delta_s', 'Estimated time delta', 'Uppskattat tidsdelta', 's']].map(([id, en, sv, unit]) => basic(`telemetry_${id}`, en, sv, 'analysis/telemetry_compare', `series[].samples[].${id}`, 'series', { unit, modes: ['replay'], spoiler: true, capability: 'replay_telemetry', estimated: id === 'delta_s', identity: ['entry', 'replay_session', 'driver', 'lap', 'sample'], timestamps: { source: 'not_provided', position: 'time_s', received: 'request.received_at', displayed: 'snapshot' }, presentations: ['chart', 'table'] })),
   basic('lap_series', 'Recorded lap history', 'Registrerad varvhistorik', 'driver_positions', 'drivers[].laps', 'series', { modes: ['live', 'replay'], spoiler: true, identity: ['entry', 'session', 'driver', 'lap'], presentations: ['chart', 'table'], timestamps: { source: 'not_provided', position: 'lap_number', received: 'not_provided', updated: 'entity.last_updated', displayed: 'snapshot' } }),
@@ -206,8 +216,12 @@ export const MODULES = {
     rows: { type: 'integer', min: 1, max: 100, default: 30, label: { en: 'Maximum drivers', sv: 'Max antal förare' } },
     sectors: { type: 'enum', values: ['coherent', 'latest'], default: 'coherent', label: { en: 'Sector laps', sv: 'Sektorernas varv' } },
     history: { type: 'integer', min: 0, max: 30, default: 0, label: { en: 'Recent lap columns', sv: 'Kolumner för senaste varv' } },
+    detail_laps: { type: 'integer', min: 0, max: 30, default: 0, label: { en: 'Recent laps in driver details', sv: 'Senaste varv i förardetaljer' } },
+    show_driver_details: { type: 'boolean', default: true, label: { en: 'Show driver details', sv: 'Visa förardetaljer' } },
     show_gap_toggle: { type: 'boolean', default: false, label: { en: 'Show live gap toggle', sv: 'Visa val av liveavstånd' } },
-  }, ['driver_positions', 'driver_list', 'current_tyres', 'current_session', 'session_status'], { defaultFields: ['position', 'driver', 'gap', 'last_lap', 'sector_1', 'sector_2', 'sector_3', 'tyre'] }),
+    show_time_context: { type: 'boolean', default: true, label: { en: 'Show text below times', sv: 'Visa tidstext under tider' } },
+    show_time_status_icon: { type: 'boolean', default: true, label: { en: 'Show time status icon', sv: 'Visa statusikon på tider' } },
+  }, ['driver_positions', 'driver_list', 'current_tyres', 'current_session', 'session_status'], { defaultFields: ['position', 'driver', 'gap', 'last_lap', 'sector_1', 'sector_2', 'sector_3', 'tyre'], defaultDetailFields: ['best_lap', 'tyre_age', 'status'] }),
   race_control: module('race_control', 'Race Control', 'Race Control', ['event_time', 'message'], {
     presentation: { type: 'enum', values: ['list', 'latest_message'], default: 'list', label: { en: 'Message view', sv: 'Meddelandevy' } },
     global_messages: { type: 'enum', values: ['include', 'hide'], default: 'include', label: { en: 'Session-wide messages with driver focus', sv: 'Sessionsmeddelanden med förarfokus' } },
@@ -327,8 +341,9 @@ export const MODULES = {
     show_race_context: { type: 'boolean', default: true, label: { en: 'Show race context', sv: 'Visa tävlingssammanhang' } },
     show_latest_badge: { type: 'boolean', default: true, label: { en: 'Show latest badge', sv: 'Visa senaste-markering' } },
   }, ['fia_documents'], { spoiler: true }),
-  map: module('map', 'Track map', 'Bankarta', ['track_map', 'map_drivers'], {
+  map: module('map', 'Track map', 'Bankarta', ['track_map', 'map_drivers', 'map_start_finish', 'map_corners', 'map_sectors', 'map_speed_traps', 'map_detection_zones'], {
     labels: { type: 'enum', values: ['code', 'number', 'off'], default: 'code', label: { en: 'Driver labels', sv: 'Föraretiketter' } },
+    show_car_markers: { type: 'boolean', default: true, label: { en: 'Show car markers', sv: 'Visa bilmarkörer' } },
     focus: { type: 'enum', values: ['highlight', 'filter'], default: 'highlight', label: { en: 'Driver focus', sv: 'Förarfokus' } },
     orientation: { type: 'enum', values: ['source', 'raw'], default: 'source', label: { en: 'Orientation', sv: 'Orientering' } },
     vertical: { type: 'enum', values: ['normal', 'flipped'], default: 'flipped', label: { en: 'Vertical axis', sv: 'Vertikal axel' } },
@@ -339,7 +354,7 @@ export const MODULES = {
     show_track_status: { type: 'boolean', default: true, label: { en: 'Show track status', sv: 'Visa banstatus' } },
     track_status_line_mode: { type: 'enum', values: ['accent', 'full', 'off'], default: 'accent', label: { en: 'Track-status line', sv: 'Banstatuslinje' } },
     show_driver_count: { type: 'boolean', default: true, label: { en: 'Show driver count', sv: 'Visa antal förare' } },
-  }, ['track_map', 'current_session', 'race_lap_count', 'track_status'], { spoiler: true, stream: 'track_map', focus: ['driver', 'team'] }),
+  }, ['track_map', 'current_session', 'race_lap_count', 'track_status'], { spoiler: true, stream: 'track_map', focus: ['driver', 'team'], defaultFields: ['track_map', 'map_drivers'] }),
   battles: module('battles', 'Battles and position changes', 'Närkamper och positionsbyten', ['battle_status', 'incident_drivers', 'battle_gap', 'exchange_positions', 'analysis_source', 'analysis_quality'], {
     content: { type: 'enum', values: ['active_battles', 'battle_history', 'position_exchanges'], default: 'active_battles', label: { en: 'Observations', sv: 'Observationer' } },
     presentation: { type: 'enum', values: ['list', 'table'], default: 'list', label: { en: 'Presentation', sv: 'Presentation' } },
