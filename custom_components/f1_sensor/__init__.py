@@ -6290,6 +6290,33 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         return items
 
     @staticmethod
+    def _parse_tyres_not_changed(value: Any) -> bool | None:
+        """Normalize the live timing no-change marker."""
+        normalized = str(value).strip().lower()
+        if normalized in {"1", "true"}:
+            return True
+        if normalized in {"0", "false"}:
+            return False
+        return None
+
+    @staticmethod
+    def _current_valid_stint_index(tyre_history: dict) -> int | None:
+        """Return the highest received stint that represents a tyre change."""
+        stints = tyre_history.get("stints")
+        if not isinstance(stints, list):
+            return None
+        for stint_idx in range(len(stints) - 1, -1, -1):
+            stint = stints[stint_idx]
+            if not isinstance(stint, dict):
+                continue
+            if stint.get("source_seen") is False:
+                continue
+            if stint.get("tyres_not_changed") is True:
+                continue
+            return stint_idx
+        return None
+
+    @staticmethod
     def _extract_compound_presence(payload: dict) -> tuple[int, list[str]]:
         """Return count and sample of drivers with a meaningful tyre compound."""
         lines = (payload or {}).get("Lines", {})
@@ -6432,8 +6459,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             if not stint_items:
                 continue
 
-            latest: dict[str, Any] | None = None
-
             tyres = entry["tyres"]
             tyre_history = entry["tyre_history"]
 
@@ -6441,30 +6466,34 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if self._update_stint_history(tyre_history, stint_idx, stint_data):
                     stints_changed = True
 
-                if (
-                    tyre_history["current_stint_index"] is None
-                    or stint_idx >= tyre_history["current_stint_index"]
-                ):
-                    if tyre_history["current_stint_index"] != stint_idx:
-                        tyre_history["current_stint_index"] = stint_idx
-                        stints_changed = True
+            current_stint_index = self._current_valid_stint_index(tyre_history)
+            if tyre_history["current_stint_index"] != current_stint_index:
+                tyre_history["current_stint_index"] = current_stint_index
+                stints_changed = True
 
-            latest = stint_items[-1][1]
-            if "Compound" in latest:
-                compound = self._normalize_compound(latest.get("Compound"))
+            current_delta = next(
+                (
+                    stint_data
+                    for stint_idx, stint_data in stint_items
+                    if stint_idx == current_stint_index
+                ),
+                None,
+            )
+            if current_delta is not None and "Compound" in current_delta:
+                compound = self._normalize_compound(current_delta.get("Compound"))
                 if tyres.get("compound") != compound:
                     tyres["compound"] = compound
                     stints_changed = True
-            if "TotalLaps" in latest:
-                stint_laps = latest.get("TotalLaps")
+            if current_delta is not None and "TotalLaps" in current_delta:
+                stint_laps = current_delta.get("TotalLaps")
                 stint_laps_val = (
                     int(stint_laps) if str(stint_laps or "").isdigit() else stint_laps
                 )
                 if tyres.get("stint_laps") != stint_laps_val:
                     tyres["stint_laps"] = stint_laps_val
                     stints_changed = True
-            if "New" in latest:
-                is_new = latest.get("New")
+            if current_delta is not None and "New" in current_delta:
+                is_new = current_delta.get("New")
                 s = str(is_new).lower()
                 if s == "true":
                     new_val: Any = True
@@ -6477,6 +6506,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     stints_changed = True
 
             # Extract the latest stint entry for lap time updates
+            latest = stint_items[-1][1]
             if isinstance(latest, dict):
                 lap_time = latest.get("LapTime")
                 if isinstance(lap_time, str) and lap_time:
@@ -6512,8 +6542,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             stints_list.append(
                 {
                     "stint_index": len(stints_list),
+                    "source_seen": False,
                     "compound": None,
                     "new": None,
+                    "tyres_not_changed": None,
                     "total_laps": 0,
                     "start_laps": None,
                     "best_lap_time": None,
@@ -6523,6 +6555,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             changed = True
 
         stint = stints_list[stint_idx]
+
+        if stint.get("source_seen") is not True:
+            stint["source_seen"] = True
+            changed = True
 
         # Only update fields that are present in the delta
         if "Compound" in stint_data:
@@ -6555,6 +6591,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 new_val = is_new
             if stint.get("new") != new_val:
                 stint["new"] = new_val
+                changed = True
+        if "TyresNotChanged" in stint_data:
+            tyres_not_changed = self._parse_tyres_not_changed(
+                stint_data.get("TyresNotChanged")
+            )
+            if (
+                tyres_not_changed is not None
+                and stint.get("tyres_not_changed") != tyres_not_changed
+            ):
+                stint["tyres_not_changed"] = tyres_not_changed
                 changed = True
         return changed
 
@@ -6789,6 +6835,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             team_color = identity.get("team_color")
 
             for stint in tyre_history.get("stints", []):
+                if stint.get("tyres_not_changed") is True:
+                    continue
                 compound = self._normalize_compound(stint.get("compound"))
                 if not compound or compound == "UNKNOWN":
                     continue
