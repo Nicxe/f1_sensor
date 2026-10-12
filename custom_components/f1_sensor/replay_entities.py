@@ -537,6 +537,7 @@ class F1ReplayStatusSensor(F1AuxEntity, SensorEntity):
             "index_year": snapshot.get("index_year"),
             "index_status": snapshot.get("index_status"),
             "index_error": snapshot.get("index_error"),
+            "sync_points": self._controller.get_sync_points(),
         }
         self.async_write_ha_state()
 

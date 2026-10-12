@@ -68,12 +68,18 @@ class _Controller:
             "paused": False,
         }
         self.planned = None
+        self.sync_points = [
+            {"id": "lap:2", "kind": "lap", "value": 2, "position_s": 90.25}
+        ]
 
     def get_playback_status(self):
         return self.playback
 
     def get_planned_playback_details(self):
         return self.planned
+
+    def get_sync_points(self):
+        return self.sync_points
 
 
 def _quiet(entity):
@@ -281,6 +287,7 @@ async def test_replay_status_sensor_reports_progress_and_planned_duration() -> N
     assert sensor.extra_state_attributes["selected_meeting_key"] == 1
     assert sensor.extra_state_attributes["selected_session_key"] == 2
     assert sensor.extra_state_attributes["playback_position_formatted"] == "00:00:30"
+    assert sensor.extra_state_attributes["sync_points"] == controller.sync_points
 
     controller.playback["duration_ms"] = 0
     controller.planned = {

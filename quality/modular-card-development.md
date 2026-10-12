@@ -2796,3 +2796,31 @@ reload cancelled during persisted-data loading; a fresh reload was allowed to
 finish and the integration returned from Initializing to its normal F1 entry.
 All 34 JavaScript files and frontend.py match across the required copies; HAdev
 serves the same card/editor bytes. No commit, push or release was made.
+
+## 2026-10-12 — Replay sync points for laps and qualifying parts
+
+Replay indexing now records verified race/sprint lap starts and the first
+session start for Q1–Q3 or SQ1–SQ3. It ignores pre-start lap-one deltas and does
+not replace a qualifying-part marker when the session restarts after an
+interruption. Older caches without the lap-count stream are downloaded again
+once instead of being upgraded to an incomplete marker index.
+
+The modular Replay module reads the bounded marker list from the replay status
+sensor and offers a translatable selector plus an explicit sync action. The new
+English source strings are authored locally; Swedish and Dutch use the English
+fallback until Weblate delivers their translations. Replay commands are checked
+against the current replay context and the current marker list, use
+the existing media-player seek path with millisecond precision, and preserve
+the replay's playing or paused state. Compact mode and configurations with seek
+controls disabled do not show the selector. No legacy card was changed.
+
+Archive checks produced 62 lap markers for Singapore Race 2026 and three part
+markers each for Singapore Qualifying and Sprint Qualifying. Ruff, 1,696 Python
+tests, 244 frontend unit tests, 212 Chromium flows and the Docusaurus production
+build passed. HAdev passed its configuration check, restarted successfully, and
+returned the F1 entry in `loaded` state with `sync_points` present on the idle
+replay status sensor. Served replay JavaScript and English locale bytes matched
+the canonical HAdev files. Singapore Race then loaded 62 runtime markers without
+starting playback; a standard media seek to lap 23 was accepted while ready,
+and stopping returned replay to idle with no download error. No commit, push,
+pull request or release was made.

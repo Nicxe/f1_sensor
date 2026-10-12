@@ -2,6 +2,7 @@ const version = new URL(import.meta.url).searchParams.get('v');
 const { seconds, number, positiveInteger, lapChange, safeImageUrl } = await import(`./semantics.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 
 const { sessionKind, timingFields, moduleFields, fieldDefinition } = await import(`./catalog.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
+const { segmentStrip } = await import(`./minisector-data.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 
 export const array = value => Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : [];
 const nonempty = value => typeof value === 'string' && value.trim() && !['unknown', 'unavailable', 'none', 'no_session'].includes(value.toLowerCase()) ? value.trim() : null;
@@ -179,13 +180,14 @@ export function lapHistory(driver) {
     .sort((a, b) => a.lap - b.lap);
 }
 
-export function timingRows(hass, entry, context, sectors, module, focus = {}) {
+export function timingRows(hass, entry, context, sectors, module, focus = {}, minisectors = null) {
   const positions = source(hass, entry, 'driver_positions');
   const tyres = source(hass, entry, 'current_tyres');
   const drivers = source(hass, entry, 'driver_list');
   const identity = new Map((drivers.status === 'available' ? array(drivers.attributes.drivers) : []).filter(item => item && typeof item === 'object').map(item => [String(item.racing_number), item]));
   const tyreByDriver = new Map((tyres.status === 'available' ? array(tyres.attributes.drivers) : []).filter(item => item && typeof item === 'object').map(item => [String(item.racing_number), item]));
   const chosenDriver = module.driver || focus.driver, chosenTeam = module.team || focus.team;
+  const historyDepth = Math.max(module.options.history ?? 0, module.options.show_driver_details === false ? 0 : module.options.detail_laps ?? 0);
   const kind = sessionKind(context.name), qualifying = ['qualifying', 'sprint_qualifying'].includes(kind);
   const part = positiveInteger(positions.attributes.current_qualifying_part);
   const rawDrivers = Array.isArray(positions.attributes.drivers) ? positions.attributes.drivers
@@ -212,6 +214,8 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}) {
     const best = official ? { time: seconds(driver.best_lap_time), lap: positiveInteger(driver.best_lap_lap) }
       : laps.reduce((result, item) => !result || item.time < result.time ? item : result, null);
     const selectedSectors = sectors.select(context.key, driver, module.options.sectors);
+    const minisectorDriver = minisectors?.status === 'ready' ? minisectors.drivers?.[id] : null;
+    const strips = [0, 1, 2].map(sector => segmentStrip(minisectorDriver, sector));
     const bestSectors = [1, 2, 3].map(n => {
       const detail = driver.sectors?.personal_best?.[`sector_${n}`];
       const time = seconds(detail ? detail.time : driver[`best_sector_${n}`]);
@@ -234,9 +238,13 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}) {
       best_lap: { time: best?.time ?? null, lap: best?.lap ?? null, personal_fastest: best?.time !== null && best?.time !== undefined, overall_fastest: driver.fastest_lap === true },
       lap_delta: last && previous && last.lap === previous.lap + 1 ? lapChange(last.time, previous.time, last.lap, previous.lap) : null,
       sector_1: selectedSectors[0], sector_2: selectedSectors[1], sector_3: selectedSectors[2],
+      minisector_1: strips[0], minisector_2: strips[1], minisector_3: strips[2],
+      sector_1_with_minisectors: { time: selectedSectors[0], segments: strips[0] },
+      sector_2_with_minisectors: { time: selectedSectors[1], segments: strips[1] },
+      sector_3_with_minisectors: { time: selectedSectors[2], segments: strips[2] },
       best_sector_1: bestSectors[0], best_sector_2: bestSectors[1], best_sector_3: bestSectors[2],
       theoretical_lap: comparable ? bestSectors.reduce((sum, item) => sum + item.time, 0) : null, ...qualifyingTimes,
-      laps: number(driver.completed_laps), history: module.options.history ? laps.slice(-module.options.history).reverse() : [],
+      laps: number(driver.completed_laps), history: historyDepth ? laps.slice(-historyDepth).reverse() : [],
       tyre: nonempty(tyre.compound_short ?? tyre.compound), tyre_age: number(tyre.stint_laps),
       status: driver.retired === true ? 'retired' : driver.in_pit === true ? 'in_pit' : driver.pit_out === true ? 'pit_out' : driver.stopped === true ? 'stopped' : nonempty(driver.status),
       updated_at: positions.updated_at,
@@ -331,6 +339,16 @@ export function replayModel(hass, entry) {
   const loaded = online && coherent && ['ready', 'playing', 'paused'].includes(state);
   const duration = number(player.attributes.media_duration), position = number(player.attributes.media_position);
   const validProgress = loaded && duration !== null && duration > 0 && position !== null && position >= 0 && position <= duration;
+  const syncKinds = new Set(['lap', 'qualifying_part', 'sprint_qualifying_part']), seenSyncPoints = new Set();
+  const syncPoints = array(status.attributes.sync_points).map(raw => {
+    if (!raw || typeof raw !== 'object' || !syncKinds.has(raw.kind)) return null;
+    const value = Number(raw.value), markerPosition = number(raw.position_s);
+    if (!Number.isInteger(value) || value < 1 || value > 500 || markerPosition === null || markerPosition < 0 || (duration !== null && markerPosition > duration)) return null;
+    const id = `${raw.kind}:${value}`;
+    if (seenSyncPoints.has(id)) return null;
+    seenSyncPoints.add(id);
+    return { id, kind: raw.kind, value, position: markerPosition };
+  }).filter(Boolean).sort((a, b) => a.position - b.position || a.value - b.value).slice(0, 100);
   const available = (key, domain) => {
     const id = entry?.entities?.[key], entity = id ? hass?.states?.[id] : null;
     return typeof id === 'string' && id.startsWith(`${domain}.`) && entity && entity.state !== 'unavailable' && !entry?.disabled_entities?.includes(key);
@@ -345,21 +363,23 @@ export function replayModel(hass, entry) {
     pause: loaded && state === 'playing' && available('replay_player', 'media_player'),
     stop: online && ['selected', 'ready', 'playing', 'paused'].includes(state) && available('replay_player', 'media_player'),
     seek: validProgress && available('replay_player', 'media_player'),
+    sync: validProgress && syncPoints.length > 0 && available('replay_player', 'media_player'),
   };
   if (!online && status.status === 'available') status.status = 'unavailable';
   return { source: status, playerStatus: player.status, replayState: state, selectedSession, sessionId, selectors, allowed, online, loaded, canSelect,
-    duration: validProgress ? duration : null, position: validProgress ? position : null,
+    duration: validProgress ? duration : null, position: validProgress ? position : null, syncPoints,
     download: state === 'loading' ? number(status.attributes.download_progress) : null,
     downloadError: Boolean(status.attributes.download_error), indexError: Boolean(status.attributes.index_error), indexStatus: status.attributes.index_status,
     scope: entry?.title ?? entry?.entry_id ?? '',
-    controlContext: JSON.stringify([entry?.entry_id, state, selectedSession, sessionId, selectors.year.state, selectors.session.state, selectors.reference.state]),
+    controlContext: JSON.stringify([entry?.entry_id, state, selectedSession, sessionId, selectors.year.state, selectors.session.state, selectors.reference.state,
+      syncPoints.map(point => `${point.id}@${point.position}`).join(',')]),
   };
 }
 
 export function replayCommand(hass, entry, module, action, value, expectedContext) {
   const model = replayModel(hass, entry);
   if (expectedContext !== model.controlContext || module?.type !== 'replay' || !module.enabled) return null;
-  const transport = ['play', 'pause', 'stop', 'seek'].includes(action);
+  const transport = ['play', 'pause', 'stop', 'seek', 'sync'].includes(action);
   if (!module.fields.includes(transport ? 'replay_transport' : 'replay_selection') || !model.allowed[action]) return null;
   if (['year', 'session', 'reference'].includes(action)) {
     const selected = model.selectors[action];
@@ -371,6 +391,11 @@ export function replayCommand(hass, entry, module, action, value, expectedContex
     const position = number(value);
     if (position === null || position < 0 || position > model.duration) return null;
     return { domain: 'media_player', service: 'media_seek', data: { entity_id: entry.entities.replay_player, seek_position: Math.floor(position) } };
+  }
+  if (action === 'sync') {
+    const point = model.syncPoints.find(item => item.id === value);
+    if (!point) return null;
+    return { domain: 'media_player', service: 'media_seek', data: { entity_id: entry.entities.replay_player, seek_position: point.position } };
   }
   if (['play', 'pause', 'stop'].includes(action)) return { domain: 'media_player', service: `media_${action}`, data: { entity_id: entry.entities.replay_player } };
   return null;

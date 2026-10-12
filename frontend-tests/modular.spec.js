@@ -487,7 +487,7 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     };
   }, sensitive);
 
-  await expect(page.locator('f1-module-view')).toHaveCount(17);
+  await expect(page.locator('f1-module-view')).toHaveCount(sensitive.length + 1);
   expect(await page.evaluate(() => [...window.fixtureCard.moduleNodes.values()].map(node => ({
     type: node.module.type,
     blocked: node.model.blocked,
@@ -499,7 +499,7 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
     card.hass = { ...card.hass, states: { ...card.hass.states, [entity]: { state: 'unavailable', attributes: {} } } };
   });
-  await expect(page.getByText('Spoiler status cannot be verified. Refresh F1 Sensor before showing sensitive data.', { exact: true })).toHaveCount(17);
+  await expect(page.getByText('Spoiler status cannot be verified. Refresh F1 Sensor before showing sensitive data.', { exact: true })).toHaveCount(sensitive.length + 1);
   expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => call !== 'event:entity_registry_updated'))).toEqual(['ws:f1_sensor/entities']);
 
   await page.evaluate(() => {
@@ -518,7 +518,7 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
     card.hass = { ...card.hass, states: { ...card.hass.states, [entity]: { state: 'on', attributes: {} } } };
   });
-  await expect(page.getByText('Spoiler protection is active.', { exact: true })).toHaveCount(17);
+  await expect(page.getByText('Spoiler protection is active.', { exact: true })).toHaveCount(sensitive.length + 1);
   await expect.poll(() => page.evaluate(() => window.spoilerResourceStops)).toBeGreaterThanOrEqual(4);
 });
 
@@ -1406,6 +1406,17 @@ test('replay controls are inert in previews and only explicit actions affect the
   await page.getByRole('button', { name: 'Go to replay position', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.replayCalls.length)).toBe(3);
   expect(await page.evaluate(() => window.replayCalls[2][2].seek_position)).toBe(0);
+  const syncPoint = page.getByLabel('Replay sync point', { exact: true });
+  await expect(syncPoint).toBeVisible();
+  await expect(syncPoint.locator('option')).toHaveText([
+    'Lap 1 starts · 0:00:00',
+    'Lap 23 starts · 0:30:00',
+    'Lap 24 starts · 0:31:31',
+  ]);
+  await syncPoint.selectOption('lap:24');
+  await page.getByRole('button', { name: 'Sync replay to point', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.replayCalls.length)).toBe(4);
+  expect(await page.evaluate(() => window.replayCalls[3])).toEqual(['media_player', 'media_seek', { entity_id: 'media_player.f1_demo_replay_player', seek_position: 1891.75 }]);
   await page.getByRole('button', { name: 'Freeze view', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Play replay', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Resume', exact: true }).click();
@@ -1418,7 +1429,7 @@ test('replay controls are inert in previews and only explicit actions affect the
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('replay-controls-mobile.png'), fullPage: true });
   await page.evaluate(() => { const card = window.fixtureCard; card.setConfig({ ...card.config, appearance: { ...card.config.appearance, style: 'minimal' } }); card.remove(); document.querySelector('#root').append(card); });
-  expect(await page.evaluate(() => window.replayCalls.length)).toBe(3);
+  expect(await page.evaluate(() => window.replayCalls.length)).toBe(4);
 });
 
 test('replay loading blocks duplicate clicks, reports service failures and rejects commands from a previous session', async ({ page }) => {
@@ -1455,6 +1466,8 @@ test('compact replay visibility choices retain essential accessible controls', a
   await expect(page.getByRole('button', { name: 'Back 30 s', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Forward 30 s', exact: true })).toHaveCount(0);
   await expect(page.getByRole('slider', { name: 'Replay position in seconds', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Replay sync point', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Sync replay to point', exact: true })).toHaveCount(0);
   await expect(page.getByRole('progressbar', { name: 'Replay progress', exact: true })).toBeVisible();
   await page.getByText('Choose replay', { exact: true }).click();
   await expect(page.getByLabel('Recorded session', { exact: true })).toBeVisible();

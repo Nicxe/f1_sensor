@@ -225,7 +225,7 @@ class F1ReplayMediaPlayer(F1AuxEntity, MediaPlayerEntity):
         requested_position = float(position)
         if not isfinite(requested_position):
             requested_position = 0.0
-        target_position = int(max(0, min(requested_position, duration)))
+        target_position = max(0.0, min(requested_position, float(duration)))
         try:
             await self._controller.async_seek_to_position(target_position)
         except RuntimeError as err:

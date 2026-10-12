@@ -402,6 +402,71 @@ def test_build_seek_checkpoints_and_scan_merged_file(hass, tmp_path) -> None:
     assert scan["formation_started_at_ms"] == 30_000
 
 
+def test_scan_builds_verified_replay_sync_markers(hass, tmp_path) -> None:
+    manager = _manager(hass, tmp_path)
+    frames = [
+        ReplayFrame(5_000, "LapCount", {"CurrentLap": 1}),
+        ReplayFrame(60_000, "LapCount", {"CurrentLap": 1}),
+        ReplayFrame(100_000, "SessionStatus", {"Status": "Started"}),
+        ReplayFrame(190_250, "LapCount", {"CurrentLap": 2}),
+        ReplayFrame(280_750, "LapCount", {"CurrentLap": "3"}),
+        ReplayFrame(300_000, "SessionStatus", {"Status": "Started"}),
+    ]
+    frames_file = tmp_path / "race-frames.jsonl"
+    frames_file.write_text(
+        "\n".join(
+            json.dumps({"t": frame.timestamp_ms, "s": frame.stream, "p": frame.payload})
+            for frame in frames
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    scan = manager._scan_merged_frames_sync(frames_file, None)
+
+    assert scan["lap_start_ms"] == {1: 100_000, 2: 190_250, 3: 280_750}
+    assert scan["qualifying_part_start_ms"] == {}
+
+    qualifying_frames = [
+        ReplayFrame(
+            10_000,
+            "SessionData",
+            {"Series": {"1": {"QualifyingPart": 1}}},
+        ),
+        ReplayFrame(20_000, "SessionStatus", {"Status": "Started"}),
+        ReplayFrame(40_000, "SessionStatus", {"Status": "Started"}),
+        ReplayFrame(
+            50_000,
+            "SessionData",
+            {"Series": [{"QualifyingPart": 2}]},
+        ),
+        ReplayFrame(50_000, "SessionStatus", {"Status": "Started"}),
+        ReplayFrame(
+            80_000,
+            "SessionData",
+            {"Series": {"3": {"QualifyingPart": 3}}},
+        ),
+        ReplayFrame(90_000, "SessionStatus", {"Status": "Started"}),
+    ]
+    qualifying_file = tmp_path / "qualifying-frames.jsonl"
+    qualifying_file.write_text(
+        "\n".join(
+            json.dumps({"t": frame.timestamp_ms, "s": frame.stream, "p": frame.payload})
+            for frame in qualifying_frames
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    qualifying_scan = manager._scan_merged_frames_sync(qualifying_file, None)
+
+    assert qualifying_scan["qualifying_part_start_ms"] == {
+        1: 20_000,
+        2: 50_000,
+        3: 90_000,
+    }
+
+
 def test_initial_state_fills_topthree_and_timingapp_after_start(hass, tmp_path) -> None:
     manager = _manager(hass, tmp_path)
     frames = [
