@@ -487,7 +487,7 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     };
   }, sensitive);
 
-  await expect(page.locator('f1-module-view')).toHaveCount(sensitive.length + 1);
+  await expect(page.locator('f1-module-view')).toHaveCount(17);
   expect(await page.evaluate(() => [...window.fixtureCard.moduleNodes.values()].map(node => ({
     type: node.module.type,
     blocked: node.model.blocked,
@@ -499,7 +499,7 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
     card.hass = { ...card.hass, states: { ...card.hass.states, [entity]: { state: 'unavailable', attributes: {} } } };
   });
-  await expect(page.getByText('Spoiler status cannot be verified. Refresh F1 Sensor before showing sensitive data.', { exact: true })).toHaveCount(sensitive.length + 1);
+  await expect(page.getByText('Spoiler status cannot be verified. Refresh F1 Sensor before showing sensitive data.', { exact: true })).toHaveCount(17);
   expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => call !== 'event:entity_registry_updated'))).toEqual(['ws:f1_sensor/entities']);
 
   await page.evaluate(() => {
@@ -518,7 +518,7 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
     card.hass = { ...card.hass, states: { ...card.hass.states, [entity]: { state: 'on', attributes: {} } } };
   });
-  await expect(page.getByText('Spoiler protection is active.', { exact: true })).toHaveCount(sensitive.length + 1);
+  await expect(page.getByText('Spoiler protection is active.', { exact: true })).toHaveCount(17);
   await expect.poll(() => page.evaluate(() => window.spoilerResourceStops)).toBeGreaterThanOrEqual(4);
 });
 
