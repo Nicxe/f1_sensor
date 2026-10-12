@@ -6384,9 +6384,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _merge_timingapp(self, payload: dict) -> bool:
         """Merge TimingAppData payloads.
 
-        TimingAppData is the sole source of live stint and tyre data.
+        TimingAppData supplies the confirmed starting grid plus live stint and
+        tyre data.
         """
-        # payload: {"Lines": { rn: {"Stints": { idx or list } } } }
+        # payload: {"Lines": { rn: {"GridPos": int, "Stints": {...} } } }
         self._log_tyre_stream_observability(payload)
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
@@ -6397,9 +6398,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         for rn, app in lines.items():
             if not isinstance(app, dict):
                 continue
+            grid_position = self._parse_stream_int(app.get("GridPos"))
+            has_grid_position = grid_position is not None and grid_position >= 0
             stints = app.get("Stints")
             stint_items = self._extract_stint_items(stints)
-            if not stint_items:
+            if not has_grid_position and not stint_items:
                 continue
 
             entry = drivers.setdefault(rn, {})
@@ -6419,6 +6422,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "completed_laps": 0,
                 },
             )
+            lap_history = entry["lap_history"]
+            if has_grid_position and (lap_history.get("completed_laps") or 0) == 0:
+                grid_position_text = str(grid_position)
+                if lap_history.get("grid_position") != grid_position_text:
+                    lap_history["grid_position"] = grid_position_text
+                    changed = True
+
+            if not stint_items:
+                continue
+
             latest: dict[str, Any] | None = None
 
             tyres = entry["tyres"]
