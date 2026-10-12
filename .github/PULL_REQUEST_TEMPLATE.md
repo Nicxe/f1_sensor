@@ -16,6 +16,12 @@
 
 Fixes #
 
+## Release note
+
+<!-- Write one concise user-facing sentence, or state “No user-facing release note”. The release note comes from the preserved Conventional Commit, not the merge commit. -->
+
+<!-- State the Conventional Commit that supplies it, for example: fix(card): Restore Race Control messages -->
+
 ## Type of change
 
 - [ ] 🐛 Bug fix (corrects existing behavior without breaking anything)
