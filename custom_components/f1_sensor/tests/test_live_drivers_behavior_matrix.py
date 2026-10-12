@@ -265,6 +265,12 @@ async def test_timing_data_merges_all_incremental_driver_fields(hass) -> None:
         "gap_to_leader": "+0.000",
         "interval": "+0.000",
         "last_lap": "1:20.000",
+        "last_lap_status": {
+            "time": "1:20.000",
+            "lap": 2,
+            "overall_fastest": False,
+            "personal_fastest": False,
+        },
         "best_lap": "1:19.500",
         "official_best_lap": {"time": "1:19.500", "time_secs": 79.5, "lap": 2},
         "in_pit": True,

@@ -6197,6 +6197,12 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "best_lap_time": "1:30.456",
                 "best_lap_time_secs": 90.456,
                 "best_lap_lap": 40,
+                "last_lap_status": {
+                    "time": "1:30.789",
+                    "lap": 45,
+                    "overall_fastest": False,
+                    "personal_fastest": False,
+                },
                 "fastest_lap": False,
                 "fastest_lap_time": "1:29.123",
                 "fastest_lap_time_secs": 89.123,
@@ -6457,6 +6463,15 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 drv.setdefault("best_lap_time", None)
                 drv.setdefault("best_lap_time_secs", None)
                 drv.setdefault("best_lap_lap", None)
+                drv.setdefault(
+                    "last_lap_status",
+                    {
+                        "time": None,
+                        "lap": None,
+                        "overall_fastest": False,
+                        "personal_fastest": False,
+                    },
+                )
                 drv.setdefault("fastest_lap", False)
                 drv.setdefault("fastest_lap_time", None)
                 drv.setdefault("fastest_lap_time_secs", None)
@@ -6503,6 +6518,15 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             identity = info.get("identity", {})
             lap_history = info.get("lap_history", {})
             timing = info.get("timing", {})
+            last_lap_status = timing.get("last_lap_status")
+            if not isinstance(last_lap_status, dict):
+                last_lap_status = {}
+            last_lap_status = {
+                "time": last_lap_status.get("time"),
+                "lap": last_lap_status.get("lap"),
+                "overall_fastest": last_lap_status.get("overall_fastest") is True,
+                "personal_fastest": last_lap_status.get("personal_fastest") is True,
+            }
             official_best = timing.get("official_best_lap")
             if isinstance(official_best, dict):
                 best_lap_time = official_best.get("time")
@@ -6633,6 +6657,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 "best_lap_time": best_lap_time,
                 "best_lap_time_secs": best_lap_seconds,
                 "best_lap_lap": best_lap_number,
+                "last_lap_status": last_lap_status,
                 "fastest_lap": is_fastest,
                 "fastest_lap_time": fastest.get("time") if is_fastest else None,
                 "fastest_lap_time_secs": (

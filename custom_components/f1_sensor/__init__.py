@@ -5576,6 +5576,59 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         return changed
 
+    def _merge_last_lap_status(
+        self,
+        timing: dict,
+        payload: Any,
+        lap_num: int | None,
+        lap_time: Any,
+    ) -> bool:
+        """Merge timing flags that can arrive after a completed lap value."""
+        if not isinstance(payload, dict):
+            return False
+
+        current_time = lap_time if isinstance(lap_time, str) and lap_time else None
+        if current_time is None:
+            stored_time = timing.get("last_lap")
+            current_time = (
+                stored_time if isinstance(stored_time, str) and stored_time else None
+            )
+        if current_time is None:
+            return False
+
+        previous = timing.get("last_lap_status")
+        status = (
+            dict(previous)
+            if isinstance(previous, dict)
+            else {
+                "time": None,
+                "lap": None,
+                "overall_fastest": False,
+                "personal_fastest": False,
+            }
+        )
+        is_new_lap = status.get("time") != current_time or status.get("lap") != lap_num
+        if is_new_lap:
+            status = {
+                "time": current_time,
+                "lap": lap_num,
+                "overall_fastest": False,
+                "personal_fastest": False,
+            }
+
+        for source_key, target_key in (
+            ("OverallFastest", "overall_fastest"),
+            ("PersonalFastest", "personal_fastest"),
+        ):
+            value = payload.get(source_key)
+            if isinstance(value, bool):
+                status[target_key] = value
+
+        if previous == status:
+            return False
+        timing["last_lap_status"] = status
+        return True
+
     def _merge_official_best_lap(self, timing: dict, payload: Any) -> bool:
         """Keep source corrections separate from incomplete observed lap history."""
         previous = timing.get("official_best_lap")
@@ -5690,13 +5743,20 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if timing.get("interval") != ival:
                     timing["interval"] = ival
                     changed = True
-            last_lap = self._get_value(td, "LastLapTime", "Value")
-            if last_lap is not None:
+            if "LastLapTime" in td:
+                last_lap_payload = td["LastLapTime"]
+                last_lap = self._get_value(td, "LastLapTime", "Value")
                 lap_num = number_of_laps
                 if lap_num is None:
                     completed = lap_history.get("completed_laps")
                     lap_num = completed if isinstance(completed, int) else None
-                if self._ingest_completed_lap(rn, last_lap, lap_num):
+                if last_lap is not None and self._ingest_completed_lap(
+                    rn, last_lap, lap_num
+                ):
+                    changed = True
+                if self._merge_last_lap_status(
+                    timing, last_lap_payload, lap_num, last_lap
+                ):
                     changed = True
             if "BestLapTime" in td and self._merge_official_best_lap(
                 timing, td["BestLapTime"]

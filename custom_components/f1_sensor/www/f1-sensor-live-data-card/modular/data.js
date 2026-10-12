@@ -203,6 +203,11 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
     const person = identity.get(id) ?? {};
     const tyre = tyreByDriver.get(id) ?? {};
     const laps = lapHistory(driver), last = laps.at(-1), previous = laps.at(-2);
+    const lastLapStatus = driver.last_lap_status && typeof driver.last_lap_status === 'object' ? driver.last_lap_status : {};
+    const statusMatchesLastLap = Boolean(last && positiveInteger(lastLapStatus.lap) === last.lap
+      && seconds(lastLapStatus.time) === last.time);
+    const lastLapOverall = statusMatchesLastLap && lastLapStatus.overall_fastest === true;
+    const lastLapPersonal = statusMatchesLastLap && lastLapStatus.personal_fastest === true;
     // An explicitly null official best is a correction, not permission to revive
     // an invalidated old best from the card's observed lap history.
     const official = Object.hasOwn(driver, 'best_lap_time');
@@ -228,7 +233,8 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
       id, driver: person.tla ?? driver.tla ?? id, name: person.full_name ?? person.name ?? driver.full_name ?? driver.name ?? driver.tla ?? id,
       team: person.team ?? driver.team ?? tyre.team ?? null, team_color: person.team_color ?? driver.team_color ?? tyre.team_color ?? null,
       position: positiveInteger(driver.current_position), gap: nonempty(driver.gap_to_leader), interval: nonempty(driver.interval_to_position_ahead),
-      last_lap: last ? { ...last, source: 'completed_lap', previous_lap: true } : { time: null },
+      last_lap: last ? { ...last, source: 'completed_lap', previous_lap: !lastLapOverall && !lastLapPersonal,
+        overall_fastest: lastLapOverall, personal_fastest: lastLapPersonal } : { time: null },
       best_lap: { time: best?.time ?? null, lap: best?.lap ?? null, personal_fastest: best?.time !== null && best?.time !== undefined, overall_fastest: driver.fastest_lap === true },
       lap_delta: last && previous && last.lap === previous.lap + 1 ? lapChange(last.time, previous.time, last.lap, previous.lap) : null,
       sector_1: selectedSectors[0], sector_2: selectedSectors[1], sector_3: selectedSectors[2],
