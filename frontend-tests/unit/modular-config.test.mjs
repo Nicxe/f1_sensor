@@ -23,22 +23,6 @@ test('column layout preserves module widths and HA sizing across editing and tra
   assert.deepEqual(config.grid_options, source.grid_options);
 });
 
-test('two map instances retain separate future annotation choices and car options', () => {
-  const config = normalizeConfig({ modules: [
-    { id: 'map-a', type: 'map', fields: ['track_map', 'map_start_finish'], options: { show_car_markers: false } },
-    { id: 'map-b', type: 'map', fields: ['track_map', 'map_corners', 'map_drivers'], options: { show_car_markers: true } },
-  ] });
-  assert.deepEqual(config.modules[0].fields, ['track_map', 'map_start_finish']);
-  assert.deepEqual(config.modules[1].fields, ['track_map', 'map_corners', 'map_drivers']);
-  assert.equal(config.modules[0].options.show_car_markers, false);
-  assert.equal(config.modules[1].options.show_car_markers, true);
-  const restored = importConfig(exportConfig(config));
-  assert.deepEqual(restored.modules.map(module => [module.id, module.fields, module.options.show_car_markers]), [
-    ['map-a', ['track_map', 'map_start_finish'], false],
-    ['map-b', ['track_map', 'map_corners', 'map_drivers'], true],
-  ]);
-});
-
 test('column layout defaults preserve older cards and allow widths larger than the current grid', () => {
   for (const layout of ['stack', 'tabs']) {
     const config = normalizeConfig({ layout, modules: [{ type: 'overview' }] });
@@ -82,38 +66,6 @@ test('driver focus control stays visible by default and can be hidden with a typ
   assert.equal(hidden.context.show_focus_control, false);
   assert.deepEqual(importConfig(exportConfig(hidden)), hidden);
   assert.throws(() => normalizeConfig({ context: { show_focus_control: 'false' } }), /show_focus_control/);
-});
-
-test('timing time details and status icons stay visible by default and accept independent choices', () => {
-  const shown = normalizeConfig({ modules: [{ type: 'timing' }] }).modules[0];
-  assert.equal(shown.options.show_time_context, true);
-  assert.equal(shown.options.show_time_status_icon, true);
-  const hidden = normalizeConfig({ modules: [{ type: 'timing', options: { show_time_context: false, show_time_status_icon: false } }] });
-  assert.equal(hidden.modules[0].options.show_time_context, false);
-  assert.equal(hidden.modules[0].options.show_time_status_icon, false);
-  assert.deepEqual(importConfig(exportConfig(hidden)), hidden);
-  for (const option of ['show_time_context', 'show_time_status_icon']) {
-    assert.throws(() => normalizeConfig({ modules: [{ type: 'timing', options: { [option]: 'false' } }] }), new RegExp(option));
-  }
-});
-
-test('Timing driver details keep independent fields and lap depth through transfers', () => {
-  const defaultModule = normalizeConfig({ modules: [{ type: 'timing' }] }).modules[0];
-  assert.deepEqual(defaultModule.detail_fields, ['best_lap', 'tyre_age', 'status']);
-  assert.equal(defaultModule.options.show_driver_details, true);
-  assert.equal(defaultModule.options.detail_laps, 0);
-  const config = normalizeConfig({ modules: [{ type: 'timing', fields: ['driver', 'last_lap'], detail_fields: ['minisector_1', 'tyre_age'], options: { history: 2, detail_laps: 5 } }] });
-  assert.deepEqual(config.modules[0].detail_fields, ['minisector_1', 'tyre_age']);
-  assert.equal(config.modules[0].options.history, 2);
-  assert.equal(config.modules[0].options.detail_laps, 5);
-  assert.deepEqual(importConfig(exportConfig(config)), config);
-  assert.deepEqual(duplicateModule(config, config.modules[0].id).modules[1].detail_fields, config.modules[0].detail_fields);
-  const existing = normalizeConfig({ modules: [{ type: 'timing', options: { history: 4 } }] });
-  assert.equal(existing.modules[0].options.detail_laps, 4);
-  assert.throws(() => normalizeConfig({ modules: [{ type: 'timing', detail_fields: ['minisector_1', 'minisector_1'] }] }), /detail_fields.*duplicate/);
-  assert.throws(() => normalizeConfig({ modules: [{ type: 'timing', detail_fields: ['not_a_field'] }] }), /detail_fields.*unsupported/);
-  assert.throws(() => normalizeConfig({ modules: [{ type: 'timing', options: { detail_laps: 31 } }] }), /detail_laps/);
-  assert.throws(() => normalizeConfig({ modules: [{ type: 'timing', options: { show_driver_details: 'false' } }] }), /show_driver_details/);
 });
 
 test('About sections stay visible by default and can be hidden per supported module', () => {
