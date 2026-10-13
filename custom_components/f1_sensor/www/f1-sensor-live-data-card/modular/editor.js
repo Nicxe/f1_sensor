@@ -306,6 +306,13 @@ export class F1SensorCardEditor extends LitElement {
   columnWidth(span) {
     return span === 'full' ? this.w('modular.full_card_width') : span === 1 ? this.w('modular.1_column') : this.w('modular.span_columns', { span: span });
   }
+  minisectorOverlap(module) {
+    const sectors = [1, 2, 3].filter(n => module.fields.includes(`sector_${n}_with_minisectors`)
+      && (module.fields.includes(`sector_${n}`) || module.fields.includes(`minisector_${n}`)));
+    if (!sectors.length) return '';
+    const sectorList = sectors.join(', ');
+    return this.w('modular.minisector_duplicate_fields', { sectors: sectorList });
+  }
   moduleSettings() {
     const saved = this.config.modules.find(module => module.id === this.selected), definition = MODULES[saved?.type];
     if (!saved) return html``;
@@ -323,9 +330,10 @@ export class F1SensorCardEditor extends LitElement {
         ${this.select(this.w('modular.module_width'), String(module.column_span), [...[1, 2, 3, 4].map(count => [String(count), this.columnWidth(count)]), ['full', this.columnWidth('full')]], value => this.setModule('column_span', value === 'full' ? value : Number(value)))}
         <p class="muted">${this.w('modular.widths_shrink_to_fit_the_available_columns_full_card_width_always_starts_a_new')}</p>
       ` : ''}
+      ${this.minisectorOverlap(module) ? html`<p class="notice" role="status">${this.minisectorOverlap(module)}</p>` : ''}
       <details><summary>${this.w('modular.module_appearance')}</summary>
         ${this.check(this.w('modular.show_module_title'), module.show_header, value => this.setModule('show_header', value))}
-        ${['timing', 'results', 'standings', 'archive', 'tyres', 'pit_stops', 'strategy', 'battles', 'timeline', 'incidents'].includes(module.type) ? html`${this.check(this.w('modular.show_table_header'), module.show_table_header, value => this.setModule('show_table_header', value))}<p class="muted">${this.w('modular.hidden_column_labels_remain_available_to_screen_readers_chart_data_tables_always_keep_their')}</p>` : ''}
+        ${['timing', 'minisectors', 'results', 'standings', 'archive', 'tyres', 'pit_stops', 'strategy', 'battles', 'timeline', 'incidents'].includes(module.type) ? html`${this.check(this.w('modular.show_table_header'), module.show_table_header, value => this.setModule('show_table_header', value))}<p class="muted">${this.w('modular.hidden_column_labels_remain_available_to_screen_readers_chart_data_tables_always_keep_their')}</p>` : ''}
         <p class="muted">${this.w('modular.session_details_and_status_labels_remain_visible_when_the_title_is_hidden')}</p>
       </details>
       ${['timing', 'archive'].includes(module.type) && module.options.profile !== 'custom' && (module.type !== 'archive' || module.options.content === 'classification') ? html`<p class="muted">${this.w('modular.this_profile_chooses_the_columns_changing_a_checkbox_or_order_switches_to_custom_columns')}</p>` : ''}

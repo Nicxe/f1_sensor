@@ -79,6 +79,11 @@ Timing states pair color with a shape or text signal. Purple with a diamond mean
 
 In a Timing module, set **Recent lap columns** to a value from 1 to 30 to show that many latest completed laps as labelled comparison columns. Keep it at 0 to hide the extra columns.
 
+Timing and Minisectors modules can each show status-only strips or the existing
+S1, S2 and S3 times combined with their strips. Each module keeps its own fields,
+order, driver or team focus, session source and visibility conditions. Minisector
+blocks contain provider status only; they do not contain or estimate a time.
+
 Use **Accessibility and timing colors** to change the palette, enable high contrast, reduce motion and choose shape, text or both. See [card accessibility](/cards/modular-accessibility) for the complete guidance.
 
 Track Map interpolates consecutive driver positions for smoother live and replay movement. Reduced motion, stale positions, session changes and unusually large jumps are shown without animation.

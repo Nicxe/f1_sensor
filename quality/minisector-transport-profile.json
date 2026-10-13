@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-08",
+  "method": "Synthetic bounded transport profile using the production store and WebSocket hub. Twenty-two drivers use observed 6/7/9 segment counts. Ten consumers share one store listener. Forty coalesced updates model four UI deliveries per second for ten seconds. The sensor comparison serializes the complete equivalent status payload after every update and excludes the additional Home Assistant state-event envelope.",
+  "scenario": {
+    "clients": 10,
+    "drivers": 22,
+    "source_frames": 40,
+    "ui_deltas_per_second": 4
+  },
+  "websocket": {
+    "initial_snapshot_bytes": 7420,
+    "max_event_bytes": 488,
+    "bytes_per_client_10_seconds": 11215,
+    "bytes_per_client_second": 1121.5,
+    "dispatch_p95_ms": 3.504,
+    "store_listeners_with_ten_clients": 1,
+    "store_listeners_after_last_unsubscribe": 0
+  },
+  "full_sensor_payload_prototype": {
+    "bytes_10_seconds": 288440,
+    "websocket_reduction_percent": 96.1
+  },
+  "limits": {
+    "max_event_bytes": 32768,
+    "max_bytes_per_client_10_seconds": 163840,
+    "max_dispatch_p95_ms": 25,
+    "passed": true
+  },
+  "limitations": [
+    "This is a local payload and backend dispatch comparison, not a browser rendering measurement.",
+    "Actual source-to-colour latency and frontend memory are measured when step 4 connects the modular card.",
+    "The sensor prototype comparison does not include Home Assistant state-event envelope overhead."
+  ]
+}
