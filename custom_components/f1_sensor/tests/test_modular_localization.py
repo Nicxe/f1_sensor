@@ -59,15 +59,25 @@ const placeholders = value => [...String(value).matchAll(/\{([^{}]+)\}/g)]
   .map(match => match[1]).sort();
 const mismatchedPlaceholders = keys.en.filter(key =>
   ['sv', 'nl'].some(language =>
+    locales[language][key] !== undefined &&
     JSON.stringify(placeholders(locales.en[key]))
       !== JSON.stringify(placeholders(locales[language][key])),
   ),
 );
+const unexpectedTargetKeys = Object.fromEntries(['sv', 'nl'].map(language => [
+  language,
+  keys[language].filter(key => locales.en[key] === undefined),
+]));
+const missingTargetKeysUseEnglish = ['sv', 'nl'].every(language =>
+  keys.en
+    .filter(key => locales[language][key] === undefined)
+    .every(key => translate(language, key) === locales.en[key]),
+);
 
 process.stdout.write(JSON.stringify({
-  keysMatch: JSON.stringify(keys.en) === JSON.stringify(keys.sv)
-    && JSON.stringify(keys.en) === JSON.stringify(keys.nl),
   keyCount: keys.en.length,
+  unexpectedTargetKeys,
+  missingTargetKeysUseEnglish,
   mismatchedPlaceholders,
   swedish: translate('sv-SE', 'modular.no_session_data_is_currently_available_your_settings_are_kept'),
   dutch: translate('nl-NL', 'modular.no_session_data_is_currently_available_your_settings_are_kept'),
@@ -101,7 +111,7 @@ def test_modular_card_uses_dutch_for_labels_titles_and_messages() -> None:
         ),
         "dynamicColumns": "3 van 4 kolommen",
         "driverLabel": "Coureur",
-        "resultModule": "Resultaten",
+        "resultModule": "Uitslagen",
         "incidentsModule": "Incidents",
         "sessionName": "Kwalificatie",
         "swedishFallback": "Väder",
@@ -110,8 +120,8 @@ def test_modular_card_uses_dutch_for_labels_titles_and_messages() -> None:
     }
 
 
-def test_frontend_locales_have_matching_keys_and_placeholders() -> None:
-    """Every shipped card locale is complete and uses safe replacements."""
+def test_frontend_locales_use_source_keys_fallbacks_and_safe_placeholders() -> None:
+    """Target locales remain Weblate-safe while missing keys use English."""
     result = subprocess.run(
         ["node", "--input-type=module", "--eval", LOCALE_SCRIPT],
         check=True,
@@ -121,8 +131,9 @@ def test_frontend_locales_have_matching_keys_and_placeholders() -> None:
     )
 
     payload = json.loads(result.stdout)
-    assert payload["keysMatch"] is True
     assert payload["keyCount"] >= 700
+    assert payload["unexpectedTargetKeys"] == {"sv": [], "nl": []}
+    assert payload["missingTargetKeysUseEnglish"] is True
     assert payload["mismatchedPlaceholders"] == []
     assert payload["swedish"] == (
         "Sessionsdata är inte tillgängliga just nu. Dina inställningar finns kvar."

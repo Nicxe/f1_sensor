@@ -87,9 +87,9 @@ async def test_replay_media_player_media_seek_delegates_to_controller() -> None:
     controller = _Controller()
     player = _player(controller)
 
-    await player.async_media_seek(30)
+    await player.async_media_seek(30.25)
 
-    controller.async_seek_to_position.assert_awaited_once_with(30)
+    controller.async_seek_to_position.assert_awaited_once_with(30.25)
 
 
 @pytest.mark.asyncio

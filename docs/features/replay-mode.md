@@ -126,11 +126,20 @@ That means important state changes still land correctly. If a red flag, Race Con
 
 When you press **Back 30 seconds**, Replay Mode restores replay state for the new position and then continues from there.
 
+### Syncing to a lap or qualifying part
+
+The **Replay** module can jump directly to a recorded timing marker. Choose the lap that is starting on your broadcast, or choose Q1, Q2, Q3, SQ1, SQ2, or SQ3, then press **Sync replay to point**.
+
+Race and sprint markers use the start of each lap. Qualifying and sprint qualifying markers use the first session start for each part, so a restart after a red flag does not replace the original marker. The control stays hidden when the archive does not contain a verified marker for the loaded session.
+
+The jump uses the same replay seek behavior as the playbar. If replay is paused, it stays paused after the jump. If it is playing, playback resumes after the replay state has been restored.
+
 ### What to expect
 
 - The playbar is available in the F1 Replay Control card when the replay media player supports seek
 - The playbar sends `media_player.media_seek` only after you release the slider
 - The 30-second buttons remain available for quick manual adjustments
+- Race, sprint, qualifying, and sprint qualifying sessions can expose verified sync points in the Replay module
 - The feature is intended to make manual catch-up simpler, not to guarantee perfect sync with every broadcaster
 - Rewinding can replay the same historical event again, which means automations and notifications may trigger again by design
 
@@ -236,7 +245,7 @@ The media player entity lets you control replay using any media player integrati
 
 ### Dashboard card
 
-Add the **Replay** module to the [F1 Sensor card](/cards/modular). It combines the Replay Mode selectors, load/play/pause/stop controls, drag-to-seek playbar, 30-second seek buttons, refresh button and progress display in one module. Add **Replay telemetry** when you also want to compare recorded driver laps.
+Add the **Replay** module to the [F1 Sensor card](/cards/modular). It combines the Replay Mode selectors, load/play/pause/stop controls, lap or qualifying-part sync, drag-to-seek playbar, 30-second seek buttons, refresh button and progress display in one module. Add **Replay telemetry** when you also want to compare recorded driver laps.
 
 ---
 

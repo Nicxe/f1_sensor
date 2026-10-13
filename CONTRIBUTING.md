@@ -97,11 +97,13 @@ Include the changed user journey, validation performed, and any limitations in t
 
 ## Translation workflow
 
-The English file at `custom_components/f1_sensor/translations/en.json` is the
-source for integration translations. Other locale files are managed through
-Weblate and may omit untranslated keys; Home Assistant then uses the English
-source text. Do not copy English text into another locale merely to make its
-key set complete.
+The English files at `custom_components/f1_sensor/translations/en.json` and
+`custom_components/f1_sensor/www/f1-sensor-live-data-card/localization/locales/en.json`
+are the sources for integration and Live Data Card translations. Other locale
+files are managed through Weblate and may omit untranslated keys. Home
+Assistant and the card then use the English source text. Do not copy English
+text or add a local translation to another locale merely to make its key set
+complete.
 
 Changes to English source text and translation keys follow the code path and
 target `dev`. Weblate translation pull requests also target `dev`, use `chore:`
@@ -114,8 +116,10 @@ Before submitting source-string or translation changes, run:
 python3 scripts/check_translations.py custom_components/f1_sensor/translations
 ```
 
-The validator accepts missing target-language values, but rejects unknown
-keys, blank values, invalid nested values, and changed placeholders.
+The integration validator accepts missing target-language values, but rejects
+unknown keys, blank values, invalid nested values, and changed placeholders.
+The card localization tests apply the same source-key and fallback rules to its
+flat JSON locale files.
 
 ## How to submit a pull request
 
