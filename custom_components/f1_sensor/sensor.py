@@ -6,6 +6,7 @@ import datetime
 from logging import getLogger
 import math
 import re
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from homeassistant.components.sensor import (
@@ -5081,6 +5082,25 @@ class F1TeamRadioSensor(
         except Exception:
             return None
 
+    @staticmethod
+    def _transcription_attributes(payload: dict) -> dict[str, Any]:
+        transcription = payload.get("Transcription")
+        if not isinstance(transcription, dict):
+            transcription = {}
+        segments = transcription.get("segments")
+        return {
+            "transcription_status": transcription.get("status"),
+            "transcription_text": transcription.get("text"),
+            "transcription_segments": (
+                [dict(segment) for segment in segments if isinstance(segment, dict)]
+                if isinstance(segments, list)
+                else []
+            ),
+            "transcription_ai_task_entity_id": transcription.get("ai_task_entity_id"),
+            "transcription_generated_at": transcription.get("generated_at"),
+            "transcription_error": transcription.get("error"),
+        }
+
     def _apply_payload(self, payload: dict, *, force: bool = False) -> None:
         if not isinstance(payload, dict):
             return
@@ -5091,12 +5111,24 @@ class F1TeamRadioSensor(
             or payload.get("timestamp")
         )
         utc_norm = self._normalize_utc(utc_raw)
-        if utc_norm and self._last_utc == utc_norm and not force:
-            return
-
         racing_number = self._cleanup_string(payload.get("RacingNumber"))
         path = self._cleanup_string(payload.get("Path"))
         clip_url = self._build_clip_url(payload, path)
+        transcription_attrs = self._transcription_attributes(payload)
+        if utc_norm and self._last_utc == utc_norm and not force:
+            if not isinstance(payload.get("Transcription"), dict):
+                return
+            attrs = dict(self._attr_extra_state_attributes)
+            attrs.update(transcription_attrs)
+            attrs["raw_message"] = payload
+            for item in self._history:
+                if item.get("utc") == utc_norm and item.get("path") == path:
+                    item.update(transcription_attrs)
+                    break
+            attrs["history"] = [dict(item) for item in self._history]
+            self._attr_extra_state_attributes = attrs
+            return
+
         received_at = dt_util.utcnow().isoformat(timespec="seconds")
 
         self._sequence += 1
@@ -5107,6 +5139,7 @@ class F1TeamRadioSensor(
             "racing_number": racing_number,
             "path": path,
             "clip_url": clip_url,
+            **transcription_attrs,
             "sequence": self._sequence,
             "raw_message": payload,
         }
@@ -5118,6 +5151,7 @@ class F1TeamRadioSensor(
                 "racing_number": racing_number,
                 "path": path,
                 "clip_url": clip_url,
+                **transcription_attrs,
             },
         )
         self._history = self._history[: self._history_limit]

@@ -9,3 +9,40 @@ clear_race_control_log:
       example: sensor.f1_race_control
       selector:
         text:
+
+transcribe_team_radio:
+  name: Transcribe team radio
+  description: >-
+    Experimentally transcribe the latest published team radio clip in English
+    and separate distinct voices as anonymous speakers A and B. Reuses a
+    completed result unless Force is selected. Audio is sent to the selected
+    AI Task provider and may incur provider charges.
+  fields:
+    entity_id:
+      name: Team radio entity
+      description: The F1 Sensor team radio entity whose latest clip is used.
+      required: true
+      example: sensor.f1_team_radio
+      selector:
+        entity:
+          filter:
+            - integration: f1_sensor
+              domain: sensor
+    ai_task_entity_id:
+      name: AI Task entity
+      description: >-
+        AI Task entity used for the audio transcription. The experimental path
+        is designed for a Google Gemini AI Task entity with audio support.
+      required: true
+      example: ai_task.google_ai_task
+      selector:
+        entity:
+          filter:
+            - domain: ai_task
+    force:
+      name: Force new transcription
+      description: Run the paid AI task again even if this clip is cached.
+      required: false
+      default: false
+      selector:
+        boolean:

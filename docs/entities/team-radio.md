@@ -38,6 +38,12 @@ Latest curated team radio clip with a rolling history. This is not the full raw 
 | path | string | Relative path to the audio file |
 | clip_url | string | Full URL to the audio clip when available |
 | sequence | number | Message counter for deduplication |
+| transcription_status | string | `processing`, `completed`, or `failed` after the transcription action is used |
+| transcription_text | string | Complete English transcript when available |
+| transcription_segments | list | Spoken turns labeled anonymously as speaker `A`, `B`, or `unknown` |
+| transcription_ai_task_entity_id | string | AI Task entity that produced the transcript |
+| transcription_generated_at | string | ISO-8601 timestamp when transcription completed or failed |
+| transcription_error | string | Short error message when transcription failed |
 | raw_message | object | Raw team radio capture from the timing feed |
 | history | list | Rolling list of recent radio clips, up to 20 items |
 
@@ -50,6 +56,32 @@ Each entry in `history` contains:
 | path | string | Relative path to the audio file |
 | clip_url | string | Full URL to the audio clip when available |
 
+## Experimental transcription
+
+The `f1_sensor.transcribe_team_radio` action sends the latest published clip to an AI Task entity. It keeps the original English language and separates distinct voices into anonymous speakers `A` and `B`. The action does not try to identify the driver or engineer.
+
+Configure a Google Gemini AI Task entity with your own API key, then run the action manually:
+
+```yaml
+action: f1_sensor.transcribe_team_radio
+data:
+  entity_id: sensor.f1_team_radio
+  ai_task_entity_id: ai_task.google_ai_task
+response_variable: team_radio_transcription
+```
+
+The provider may charge for each request. A completed result is cached for the current clip, so repeating the action does not create another request unless `force: true` is supplied. Audio files are removed locally after each request.
+
+The structured speaker turns can be displayed in a Markdown card:
+
+```yaml
+type: markdown
+content: |-
+  {% for segment in state_attr('sensor.f1_team_radio', 'transcription_segments') or [] %}
+  **{{ segment.speaker }}:** {{ segment.text }}
+
+  {% endfor %}
+```
 
 ## Next steps
 
