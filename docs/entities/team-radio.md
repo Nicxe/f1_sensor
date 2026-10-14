@@ -70,7 +70,7 @@ data:
 response_variable: team_radio_transcription
 ```
 
-The provider may charge for each request. A completed result is cached for the current clip, so repeating the action does not create another request unless `force: true` is supplied. Audio files are removed locally after each request.
+The provider may charge for each request. A completed result is cached for the current clip while F1 Sensor remains loaded, so repeating the action does not create another request unless `force: true` is supplied. The cache resets when the integration is reloaded or Home Assistant restarts. Audio files are removed locally after each request.
 
 The structured speaker turns can be displayed in a Markdown card:
 
