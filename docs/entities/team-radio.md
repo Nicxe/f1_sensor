@@ -8,6 +8,10 @@ Latest team radio clip and rolling history (Replay Mode or F1TV Auth live timing
 
 See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
 
+:::warning[Experimental transcription]
+Team radio transcription is experimental. It is tested with a Google Gemini AI Task entity, may change without notice, and sends audio to the AI provider only when you manually run the action. You are responsible for the provider API key, its terms, and any charges.
+:::
+
 :::info[Find your entity]
 These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
 :::
@@ -58,19 +62,33 @@ Each entry in `history` contains:
 
 ## Experimental transcription
 
-The `f1_sensor.transcribe_team_radio` action sends the latest published clip to an AI Task entity. It keeps the original English language and separates distinct voices into anonymous speakers `A` and `B`. The action does not try to identify the driver or engineer.
+The experimental `f1_sensor.transcribe_team_radio` action sends the latest published clip to an AI Task entity. It keeps the original English language and separates distinct voices into anonymous speakers `A` and `B`. It does not identify the driver or engineer.
 
-Configure a Google Gemini AI Task entity with your own API key, then run the action manually:
+### Before you start
+
+1. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey).
+2. In Home Assistant, open **Settings** > **Devices & services** > **Add integration** and add **Google Gemini**.
+3. Keep the recommended setup or create an **AI Task** subentry. Home Assistant then creates an entity similar to `ai_task.google_ai_task`.
+4. Wait for a live or replay team radio clip. Your team radio entity must have a `clip_url` attribute before it can be transcribed.
+
+Only Google Gemini AI Task is supported for this experimental implementation. Other AI Task providers can be selected in the interface, but they have not been validated for MP3 transcription.
+
+### Transcribe the latest clip
+
+Open **Developer Tools** > **Actions**, select **Experimental: Transcribe team radio**, and enter your own entity IDs:
 
 ```yaml
 action: f1_sensor.transcribe_team_radio
 data:
   entity_id: sensor.f1_team_radio
   ai_task_entity_id: ai_task.google_ai_task
-response_variable: team_radio_transcription
 ```
 
-The provider may charge for each request. A completed result is cached for the current clip while F1 Sensor remains loaded, so repeating the action does not create another request unless `force: true` is supplied. The cache resets when the integration is reloaded or Home Assistant restarts. Audio files are removed locally after each request.
+The status changes to `processing` while the request runs and then to `completed` or `failed`. If it fails, read `transcription_error` on the team radio entity.
+
+### View the result
+
+The complete transcript is stored in `transcription_text`. Individual speaker turns are available in `transcription_segments`, where speakers are labeled `A`, `B`, or `unknown`.
 
 The structured speaker turns can be displayed in a Markdown card:
 
@@ -82,6 +100,18 @@ content: |-
 
   {% endfor %}
 ```
+
+### Cost, privacy, and limitations
+
+The action is manual. F1 Sensor never sends team radio audio to an AI provider automatically. When you run it, the MP3 file is sent to the selected provider and may incur charges. Temporary local audio files are removed after the request.
+
+A completed result is cached for the current clip while F1 Sensor remains loaded. Running the action again with `force: false` does not create another AI request for that clip. `force: true` deliberately sends a new request. The cache resets when the integration reloads or Home Assistant restarts.
+
+### Troubleshooting
+
+- **No team radio clip is currently available**: wait for a new live or replay radio clip and confirm that `clip_url` is present.
+- **Select an AI Task entity**: choose the Google Gemini AI Task entity, not its conversation or speech-to-text entity.
+- **Transcription failed**: check `transcription_error`, then confirm that the Gemini API key is valid and that the configured account can use the selected model.
 
 ## Next steps
 

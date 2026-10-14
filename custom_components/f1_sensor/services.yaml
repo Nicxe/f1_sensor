@@ -11,12 +11,12 @@ clear_race_control_log:
         text:
 
 transcribe_team_radio:
-  name: Transcribe team radio
+  name: Experimental: Transcribe team radio
   description: >-
-    Experimentally transcribe the latest published team radio clip in English
-    and separate distinct voices as anonymous speakers A and B. Reuses a
-    completed result unless Force is selected. Audio is sent to the selected
-    AI Task provider and may incur provider charges.
+    Experimental feature. Transcribe the latest published team radio clip in
+    English and separate distinct voices as anonymous speakers A and B. Audio
+    is sent only when you run this action, to your selected AI Task provider,
+    and may incur provider charges.
   fields:
     entity_id:
       name: Team radio entity
@@ -31,8 +31,9 @@ transcribe_team_radio:
     ai_task_entity_id:
       name: AI Task entity
       description: >-
-        AI Task entity used for the audio transcription. The experimental path
-        is designed for a Google Gemini AI Task entity with audio support.
+        The AI Task entity used for audio transcription. This experimental
+        feature is tested with a Google Gemini AI Task entity that supports
+        audio files.
       required: true
       example: ai_task.google_ai_task
       selector:
@@ -41,7 +42,9 @@ transcribe_team_radio:
             - domain: ai_task
     force:
       name: Force new transcription
-      description: Run the paid AI task again even if this clip is cached.
+      description: >-
+        Experimental cost control. Run a new paid AI request even if this clip
+        already has a cached transcription.
       required: false
       default: false
       selector:
