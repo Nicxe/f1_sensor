@@ -11,7 +11,7 @@ clear_race_control_log:
         text:
 
 transcribe_team_radio:
-  name: Experimental: Transcribe team radio
+  name: "Experimental: Transcribe team radio"
   description: >-
     Experimental feature. Transcribe the latest published team radio clip in
     English and separate distinct voices as anonymous speakers A and B. Audio

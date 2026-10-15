@@ -7,14 +7,20 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service import async_get_cached_service_description
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor import TeamRadioCoordinator
+from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor.team_radio_transcription import (
     ATTR_AI_TASK_ENTITY_ID,
     ATTR_ENTITY_ID,
     ATTR_FORCE,
+    MAX_AUDIO_BYTES,
+    SERVICE_TRANSCRIBE_TEAM_RADIO,
+    TRANSCRIPTION_MANAGER_KEY,
     TeamRadioTranscriptionManager,
     _normalize_segments,
     async_register_team_radio_transcription_service,
@@ -62,16 +68,27 @@ class _CoordinatorState:
 
 
 class _Content:
+    def __init__(self, chunks: tuple[bytes, ...] = (b"ID3", b"radio")) -> None:
+        self._chunks = chunks
+
     async def iter_chunked(self, _size: int):
-        yield b"ID3"
-        yield b"radio"
+        for chunk in self._chunks:
+            yield chunk
 
 
 class _Response:
-    status = 200
-    content_length = 8
-    headers = {"Content-Type": "audio/mpeg"}
-    content = _Content()
+    def __init__(
+        self,
+        *,
+        status: int = 200,
+        content_length: int | None = 8,
+        content_type: str = "audio/mpeg",
+        chunks: tuple[bytes, ...] = (b"ID3", b"radio"),
+    ) -> None:
+        self.status = status
+        self.content_length = content_length
+        self.headers = {"Content-Type": content_type}
+        self.content = _Content(chunks)
 
     async def __aenter__(self):
         return self
@@ -81,8 +98,11 @@ class _Response:
 
 
 class _Session:
+    def __init__(self, response: _Response | None = None) -> None:
+        self._response = response or _Response()
+
     def get(self, *_args, **_kwargs):
-        return _Response()
+        return self._response
 
 
 @dataclass
@@ -105,6 +125,26 @@ def test_normalize_segments_maps_two_provider_labels_and_merges_turns() -> None:
         {"speaker": "B", "text": "Okay, thank you."},
         {"speaker": "unknown", "text": "Unclear background."},
     ]
+
+
+def test_normalize_segments_rejects_invalid_or_empty_results() -> None:
+    with pytest.raises(HomeAssistantError, match="invalid transcription"):
+        _normalize_segments({"segments": "not a list"})
+
+    with pytest.raises(HomeAssistantError, match="no spoken"):
+        _normalize_segments(
+            {
+                "segments": [
+                    "not a segment",
+                    {"speaker": "engineer", "text": ""},
+                    {"speaker": "unknown", "text": "   "},
+                ]
+            }
+        )
+
+    assert _normalize_segments(
+        {"segments": [{"speaker": "unknown", "text": "Stay out."}]}
+    ) == [{"speaker": "unknown", "text": "Stay out."}]
 
 
 def test_team_radio_coordinator_attaches_transcription_to_known_clip() -> None:
@@ -230,3 +270,134 @@ async def test_transcribe_records_ai_task_failure(hass, tmp_path: Path) -> None:
     assert coordinator.results[-1]["status"] == "failed"
     assert coordinator.results[-1]["error"] == "AI task unavailable"
     assert list((tmp_path / "f1_sensor" / "team_radio").iterdir()) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("response", "error"),
+    [
+        (_Response(status=503), "status 503"),
+        (_Response(content_length=MAX_AUDIO_BYTES + 1), "file is too large"),
+        (_Response(content_type="audio/wav"), "not MP3 audio"),
+        (
+            _Response(
+                content_length=None,
+                chunks=(b"x" * (MAX_AUDIO_BYTES + 1),),
+            ),
+            "file is too large",
+        ),
+        (_Response(content_length=0, chunks=()), "file is empty"),
+    ],
+)
+async def test_download_audio_rejects_invalid_provider_responses(
+    hass, response: _Response, error: str
+) -> None:
+    manager = TeamRadioTranscriptionManager(hass, _Coordinator())
+
+    with (
+        patch(
+            "custom_components.f1_sensor.team_radio_transcription.async_get_clientsession",
+            return_value=_Session(response),
+        ),
+        pytest.raises(HomeAssistantError, match=error),
+    ):
+        await manager._async_download_audio(_Coordinator().data["latest"]["clip_url"])
+
+
+@pytest.mark.asyncio
+async def test_transcription_validates_lifecycle_and_uses_capture_cache(
+    hass, tmp_path: Path
+) -> None:
+    hass.config.media_dirs = {"local": str(tmp_path)}
+    coordinator = _Coordinator()
+    manager = TeamRadioTranscriptionManager(hass, coordinator)
+
+    with pytest.raises(ServiceValidationError, match="Select an AI Task"):
+        await manager.async_transcribe(ai_task_entity_id="sensor.not_an_ai_task")
+
+    coordinator.data = {"latest": None}
+    with pytest.raises(ServiceValidationError, match="No team radio clip"):
+        await manager.async_transcribe(ai_task_entity_id="ai_task.gemini_team_radio")
+
+    coordinator = _Coordinator()
+    coordinator.data["latest"].pop("clip_url")
+    manager = TeamRadioTranscriptionManager(hass, coordinator)
+    with pytest.raises(ServiceValidationError, match="no audio URL"):
+        await manager.async_transcribe(ai_task_entity_id="ai_task.gemini_team_radio")
+
+    coordinator = _Coordinator()
+    cached = {"status": "completed", "segments": [{"speaker": "A", "text": "Box."}]}
+    coordinator.data["latest"]["Transcription"] = cached
+    manager = TeamRadioTranscriptionManager(hass, coordinator)
+    assert (
+        await manager.async_transcribe(ai_task_entity_id="ai_task.gemini_team_radio")
+        == cached
+    )
+
+    orphan = tmp_path / "orphan.mp3"
+    orphan.write_bytes(b"audio")
+    manager._temporary_files.add(orphan)
+    await manager.async_close()
+    assert orphan.exists() is False
+    with pytest.raises(ServiceValidationError, match="unavailable"):
+        await manager.async_transcribe(ai_task_entity_id="ai_task.gemini_team_radio")
+
+
+@pytest.mark.asyncio
+async def test_write_media_file_requires_media_directory(hass) -> None:
+    manager = TeamRadioTranscriptionManager(hass, _Coordinator())
+    hass.config.media_dirs = {}
+
+    with pytest.raises(HomeAssistantError, match="no local media directory"):
+        await manager._async_write_media_file("clip", b"audio")
+
+
+@pytest.mark.asyncio
+async def test_transcription_action_resolves_registered_team_radio_entity(
+    hass, tmp_path: Path
+) -> None:
+    hass.config.media_dirs = {"local": str(tmp_path)}
+    entry = MockConfigEntry(domain=DOMAIN, entry_id="team-radio-entry")
+    entry.add_to_hass(hass)
+    coordinator = _Coordinator()
+    manager = TeamRadioTranscriptionManager(hass, coordinator)
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        TRANSCRIPTION_MANAGER_KEY: manager
+    }
+    entity = er.async_get(hass).async_get_or_create(
+        "sensor", DOMAIN, f"{entry.entry_id}_team_radio", config_entry=entry
+    )
+    hass.states.async_set(
+        entity.entity_id,
+        "available",
+        {"clip_url": coordinator.data["latest"]["clip_url"]},
+    )
+    async_register_team_radio_transcription_service(hass)
+    ai_call = AsyncMock(
+        return_value=_AIResult({"segments": [{"speaker": "driver", "text": "Copy."}]})
+    )
+
+    with (
+        patch(
+            "custom_components.f1_sensor.team_radio_transcription.async_get_clientsession",
+            return_value=_Session(),
+        ),
+        patch(
+            "custom_components.f1_sensor.team_radio_transcription._async_call_ai_task",
+            ai_call,
+        ),
+    ):
+        response = await hass.services.async_call(
+            DOMAIN,
+            SERVICE_TRANSCRIBE_TEAM_RADIO,
+            {
+                ATTR_ENTITY_ID: entity.entity_id,
+                ATTR_AI_TASK_ENTITY_ID: "ai_task.gemini_team_radio",
+                ATTR_FORCE: False,
+            },
+            blocking=True,
+            return_response=True,
+        )
+
+    assert response["entity_id"] == entity.entity_id
+    assert response["transcription"]["segments"] == [{"speaker": "A", "text": "Copy."}]
