@@ -187,6 +187,12 @@ from .signalr import (
 )
 from .starting_grid import StartingGridCoordinator
 from .storage import async_remove_entry_storage
+from .team_radio_transcription import (
+    TRANSCRIPTION_MANAGER_KEY,
+    TeamRadioTranscriptionManager,
+    async_register_team_radio_transcription_service,
+    team_radio_clip_id,
+)
 from .track_map import (
     TRACK_MAP_SOURCE_LIVE,
     TRACK_MAP_SOURCE_REPLAY,
@@ -1406,6 +1412,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         domain_root[_NO_SPOILER_MANAGER_KEY] = manager
     async_setup_f1tv_auth_http(hass)
     _async_register_race_control_log_interfaces(hass)
+    async_register_team_radio_transcription_service(hass)
     return True
 
 
@@ -2754,6 +2761,7 @@ async def _async_setup_entry(
         await top_three_coordinator.async_config_entry_first_refresh()
 
     team_radio_coordinator = None
+    team_radio_transcription_manager = None
     if feature_plan.needs("team_radio"):
         team_radio_coordinator = TeamRadioCoordinator(
             hass,
@@ -2766,6 +2774,11 @@ async def _async_setup_entry(
         )
         transaction.track(team_radio_coordinator)
         await team_radio_coordinator.async_config_entry_first_refresh()
+        team_radio_transcription_manager = TeamRadioTranscriptionManager(
+            hass,
+            team_radio_coordinator,
+        )
+        transaction.track(team_radio_transcription_manager)
 
     pitstop_coordinator = None
     if feature_plan.needs("pitstops"):
@@ -2846,6 +2859,7 @@ async def _async_setup_entry(
         "lap_count_coordinator": lap_count_coordinator,
         "top_three_coordinator": top_three_coordinator,
         "team_radio_coordinator": team_radio_coordinator,
+        TRANSCRIPTION_MANAGER_KEY: team_radio_transcription_manager,
         "pitstop_coordinator": pitstop_coordinator,
         "championship_prediction_coordinator": championship_prediction_coordinator,
         "drivers_coordinator": drivers_coordinator,
@@ -4140,6 +4154,27 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._state = {"latest": None, "history": []}
         with suppress(Exception):
             self.async_set_updated_data(self._state)
+
+    def set_transcription(self, clip_id: str, result: dict[str, Any]) -> bool:
+        """Attach a transcription result to a known team radio capture."""
+        changed = False
+
+        def _updated(item: Any) -> Any:
+            nonlocal changed
+            if not isinstance(item, dict) or team_radio_clip_id(item) != clip_id:
+                return item
+            changed = True
+            updated = dict(item)
+            updated["Transcription"] = dict(result)
+            return updated
+
+        latest = _updated(self._state.get("latest"))
+        history = [_updated(item) for item in self._state.get("history") or []]
+        if not changed:
+            return False
+        self._state = {"latest": latest, "history": history}
+        self.async_set_updated_data(self._state)
+        return True
 
     @staticmethod
     def _normalize_captures(payload: dict) -> list[dict]:
