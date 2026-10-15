@@ -2,14 +2,20 @@ name: Synchronize published history
 on:
   release:
     types: [published]
-  push:
-    branches: [main]
-  workflow_run:
-    workflows: ['PR verification']
-    types: [completed]
-  schedule:
-    - cron: '17,47 * * * *'
   workflow_dispatch:
+    inputs:
+      source:
+        description: 'Published branch to synchronize'
+        required: true
+        type: choice
+        options: [main, beta]
+        default: main
+      target:
+        description: 'Target branch to synchronize'
+        required: true
+        type: choice
+        options: [content, dev]
+        default: content
 permissions:
   contents: write
   pull-requests: write

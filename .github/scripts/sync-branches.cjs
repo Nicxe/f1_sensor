@@ -1,7 +1,7 @@
 'use strict';
 const {enable} = require('./auto-merge.cjs');
 
-async function syncOne(environment, source, sha, target) {
+async function syncOne(environment, source, sha, target, {autoMerge = true} = {}) {
   const {github, context, core} = environment;
   const repo = context.repo;
   const base = (await github.rest.git.getRef({...repo, ref:`heads/${target}`})).data.object.sha;
@@ -50,7 +50,8 @@ async function syncOne(environment, source, sha, target) {
   else await github.rest.checks.create({...pending, head_sha:head, external_id:externalId});
   await github.rest.actions.createWorkflowDispatch({...repo, workflow_id:'ci.yml', ref:target,
     inputs:{release:false, pull_request:String(pr.number)}});
-  await enable(environment, pr);
+  if (autoMerge) await enable(environment, pr);
+  else core.info(`Created synchronization PR #${pr.number}; automatic merging is disabled for ${target}.`);
   // Retire only our older pending snapshots, after the replacement is queued.
   const obsolete = await github.paginate(github.rest.pulls.list, {...repo, state:'open', base:target, per_page:100});
   for (const old of obsolete) {
@@ -63,24 +64,41 @@ async function syncOne(environment, source, sha, target) {
   return 'pull-request';
 }
 
+function manualSynchronization(context) {
+  const inputs = context.payload.inputs || {};
+  const source = inputs.source;
+  const target = inputs.target;
+  if (!['main', 'beta'].includes(source) || !['content', 'dev'].includes(target)) {
+    throw new Error('Manual synchronization requires a valid source and target.');
+  }
+  if ((source === 'main' && target !== 'content') || (source === 'beta' && target !== 'dev')) {
+    throw new Error(`Unsupported manual synchronization: ${source} -> ${target}.`);
+  }
+  return {source, target};
+}
+
 async function synchronize(environment) {
   const {github, context} = environment;
   const release = context.payload.release;
-  let source = 'main';
-  let targets = ['beta', 'content', 'dev'];
+  let source;
+  let targets;
   let sha;
   if (release) {
     if (release.draft) return;
     source = release.prerelease ? 'beta' : 'main';
     if (release.target_commitish !== source) throw new Error('Unexpected release target; synchronization stopped.');
     sha = (await github.rest.repos.getCommit({...context.repo, ref:release.tag_name})).data.sha;
-    if (release.prerelease) targets = ['dev'];
+    targets = [release.prerelease ? 'dev' : 'content'];
   } else {
-    sha = (await github.rest.git.getRef({...context.repo, ref:'heads/main'})).data.object.sha;
+    const manual = manualSynchronization(context);
+    source = manual.source;
+    targets = [manual.target];
+    sha = (await github.rest.git.getRef({...context.repo, ref:`heads/${source}`})).data.object.sha;
   }
   const failures = [];
   for (const target of targets) {
-    try { await syncOne(environment, source, sha, target); }
+    const autoMerge = source === 'main' && target === 'content';
+    try { await syncOne(environment, source, sha, target, {autoMerge}); }
     catch (error) { failures.push(`${target}: ${error.message}`); }
   }
   if (failures.length) throw new Error(failures.join('\n'));
