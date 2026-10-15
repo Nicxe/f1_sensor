@@ -8,6 +8,7 @@ from scripts.ci_policy import (
     branch_error,
     gate_errors,
     hotfix_matches_dev,
+    main_promotion_release_error,
     select_jobs,
     should_deploy,
 )
@@ -70,6 +71,7 @@ class PolicyTests(unittest.TestCase):
             self.assertFalse(
                 hotfix_matches_dev(["file.py"], base_sha=base_sha, head_sha=head_sha)
             )
+
         with patch("scripts.ci_policy.subprocess.run") as run:
             run.side_effect = [
                 Mock(returncode=0, stdout=f"{head_sha}\n{'c' * 40}\n"),
@@ -83,6 +85,32 @@ class PolicyTests(unittest.TestCase):
             self.assertFalse(
                 hotfix_matches_dev(["file.py"], base_sha=base_sha, head_sha=head_sha)
             )
+
+    def test_main_promotion_rejects_release_commits_already_on_main(self):
+        event = pull("main", "beta")
+        with (
+            patch("scripts.ci_policy.latest_stable_release_tag", return_value="v5.7.3"),
+            patch(
+                "scripts.ci_policy.release_triggering_commits",
+                return_value=[
+                    ("a" * 40, "feat(card): Add an unintended stable feature"),
+                    ("b" * 40, "fix: Correct an unintended stable behavior"),
+                ],
+            ),
+        ):
+            error = main_promotion_release_error(event)
+        self.assertIn("2 unreleased feat/fix", error)
+        self.assertIn("v5.7.3", error)
+        self.assertIn("aaaaaaa", error)
+
+    def test_main_promotion_accepts_a_clean_release_boundary(self):
+        event = pull("main", "beta")
+        with (
+            patch("scripts.ci_policy.latest_stable_release_tag", return_value="v5.7.3"),
+            patch("scripts.ci_policy.release_triggering_commits", return_value=[]),
+        ):
+            self.assertEqual(main_promotion_release_error(event), "")
+        self.assertEqual(main_promotion_release_error(pull("beta", "dev")), "")
 
     def test_owner_maintenance_can_repair_main_without_promoting_runtime_code(self):
         event = pull("main", "maintenance/dependency-ci-recovery")
