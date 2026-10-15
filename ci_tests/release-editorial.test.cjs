@@ -31,6 +31,24 @@ test('selects a release tag only for the matching release branch', () => {
   assert.equal(editorial.releaseTagAtHead({branch: 'main', run}), 'v5.8.0');
 });
 
+test('retries a newly created draft release until its tag is visible', async () => {
+  const waits = [];
+  let calls = 0;
+  const release = await editorial.releaseByTag({
+    github: {rest: {repos: {getReleaseByTag: async () => {
+      calls += 1;
+      if (calls < 3) throw {status: 404};
+      return {data: {id: 42, draft: true}};
+    }}}},
+    context: {repo: {owner: 'Nicxe', repo: 'f1_sensor'}},
+    core: {info: () => {}},
+    tag: 'v5.8.0',
+    wait: async delay => waits.push(delay)
+  });
+  assert.equal(release.id, 42);
+  assert.deepEqual(waits, [1000, 2000]);
+});
+
 test('adds a promotion PR editorial to an untouched draft release', async () => {
   const updates = [];
   const github = {

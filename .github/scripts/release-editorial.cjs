@@ -63,13 +63,26 @@ async function promotionPullRequest(github, context) {
   }));
 }
 
-async function applyReleaseEditorial({github, context, core, getTag = releaseTagAtHead}) {
+async function releaseByTag({github, context, core, tag, wait = delay => new Promise(resolve => setTimeout(resolve, delay))}) {
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    try {
+      return (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
+    } catch (error) {
+      if (error.status !== 404 || attempt === 6) throw error;
+      const delay = Math.min(1000 * 2 ** (attempt - 1), 8000);
+      core.info(`${tag} is not visible yet; retrying the draft lookup in ${delay}ms.`);
+      await wait(delay);
+    }
+  }
+}
+
+async function applyReleaseEditorial({github, context, core, getTag = releaseTagAtHead, wait}) {
   const tag = getTag({branch: context.ref.replace('refs/heads/', '')});
   if (!tag) {
     core.info('No release tag points at this commit; no draft editorial is needed.');
     return false;
   }
-  const release = (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
+  const release = await releaseByTag({github, context, core, tag, wait});
   if (!release.draft) {
     core.info(`${tag} is already published; leaving its release notes unchanged.`);
     return false;
@@ -93,5 +106,5 @@ async function applyReleaseEditorial({github, context, core, getTag = releaseTag
 
 module.exports = {
   START, END, isPromotion, editorialBlock, extractEditorial, replaceEditorial,
-  releaseTagAtHead, promotionPullRequest, applyReleaseEditorial
+  releaseTagAtHead, promotionPullRequest, releaseByTag, applyReleaseEditorial
 };
