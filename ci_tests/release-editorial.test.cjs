@@ -39,7 +39,7 @@ test('retries a newly created draft release until its tag is visible', async () 
       calls += 1;
       if (calls < 3) throw {status: 404};
       return {data: {id: 42, draft: true}};
-    }}}},
+    }, listReleases: () => {}}}, paginate: async () => []},
     context: {repo: {owner: 'Nicxe', repo: 'f1_sensor'}},
     core: {info: () => {}},
     tag: 'v5.8.0',
@@ -47,6 +47,20 @@ test('retries a newly created draft release until its tag is visible', async () 
   });
   assert.equal(release.id, 42);
   assert.deepEqual(waits, [1000, 2000]);
+});
+
+test('finds a newly created draft whose tag endpoint is not available yet', async () => {
+  const release = await editorial.releaseByTag({
+    github: {rest: {repos: {
+      getReleaseByTag: async () => { throw {status: 404}; },
+      listReleases: () => {}
+    }}, paginate: async () => [{id: 42, draft: true, tag_name: 'v5.8.0'}]},
+    context: {repo: {owner: 'Nicxe', repo: 'f1_sensor'}},
+    core: {info: () => {}},
+    tag: 'v5.8.0',
+    wait: async () => assert.fail('a visible draft should not be retried')
+  });
+  assert.equal(release.id, 42);
 });
 
 test('adds a promotion PR editorial to an untouched draft release', async () => {
