@@ -3,6 +3,7 @@ const config = require("@nicxe/semantic-release-config")({
   manifestPath: "custom_components/f1_sensor/manifest.json",
   projectName: "F1 Sensor",
   repoSlug: "Nicxe/f1_sensor",
+  f1Theme: true,
   notifyIssues: false
 });
 

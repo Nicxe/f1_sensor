@@ -52,6 +52,40 @@ test('stable release comments are not confused with a beta URL prefix', async ()
   assert.doesNotMatch(created[0], /beta\.1/);
 });
 
+test('manual backfills use the supplied issues even when the published notes lack references', async () => {
+  const fetched = [], labels = [], comments = [];
+  const github = {
+    paginate: async () => [],
+    rest: {issues: {
+      get: async ({issue_number}) => {
+        fetched.push(issue_number);
+        return {data: {title: '[Bug]: session state', body: '', labels: []}};
+      },
+      getLabel: async () => ({data: {}}),
+      addLabels: async ({issue_number, labels: next}) => labels.push({issue_number, labels: next}),
+      listComments() {},
+      createComment: async ({issue_number, body}) => comments.push({issue_number, body}),
+      updateComment: async () => assert.fail('a backfill should create its release comment'),
+    }},
+  };
+  const context = {repo: {owner:'Nicxe', repo:'f1_sensor'}, payload: {}};
+  const release = {
+    id: 3,
+    draft: false,
+    prerelease: true,
+    tag_name: 'v5.8.0-beta.3',
+    html_url: 'https://github.com/Nicxe/f1_sensor/releases/tag/v5.8.0-beta.3',
+    body: 'No issue reference was rendered.',
+  };
+
+  await releasedIssues({github, context}, {release, issueNumbers: [829]});
+
+  assert.deepEqual(fetched, [829]);
+  assert.deepEqual(labels, [{issue_number: 829, labels: ['In BETA-testing']}]);
+  assert.equal(comments.length, 1);
+  assert.match(comments[0].body, /v5\.8\.0-beta\.3/);
+});
+
 test('permissions and service errors are not silently swallowed', async () => {
   for (const status of [403, 503]) {
     const github = {rest:{issues:{getLabel:async()=>{throw {status};}, removeLabel:async()=>{throw {status};}}}};
