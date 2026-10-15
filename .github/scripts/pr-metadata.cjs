@@ -1,6 +1,7 @@
 'use strict';
 const {spawnSync} = require('node:child_process');
 const {upsertComment, ensureLabel, removeLabel} = require('./issue-automation.cjs');
+const {isPromotion, extractEditorial} = require('./release-editorial.cjs');
 
 async function routing({github, context}) {
   const pr = (await github.rest.pulls.get({...context.repo, pull_number:context.payload.pull_request.number})).data;
@@ -43,4 +44,17 @@ async function conflicts({github, context, core}) {
     }
   }
 }
-module.exports = {routing, conflicts};
+
+async function releaseEditorial({github, context}) {
+  const pr = (await github.rest.pulls.get({...context.repo, pull_number:context.payload.pull_request.number})).data;
+  if (!isPromotion(pr)) return;
+  const editorial = extractEditorial(pr.body);
+  const body = editorial === null
+    ? 'The release editorial block is missing or incomplete. Restore the `release-editorial:start` and `release-editorial:end` markers from the PR template.'
+    : editorial
+      ? `### Draft release editorial\n\n${editorial}\n\nThis text will be placed in the generated draft after merge. You can still make final edits before publishing.`
+      : 'No release editorial is set. That is fine for a routine release; the generated draft will contain only the automated notes.';
+  await upsertComment(github, {...context.repo, issue_number:pr.number}, '<!-- f1-release-editorial -->', body);
+}
+
+module.exports = {routing, conflicts, releaseEditorial};
