@@ -69,6 +69,14 @@ async function releaseByTag({github, context, core, tag, wait = delay => new Pro
       return (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
     } catch (error) {
       if (error.status !== 404 || attempt === 6) throw error;
+      const drafts = await github.paginate(github.rest.repos.listReleases, {
+        ...context.repo, per_page: 100
+      });
+      const draft = drafts.find(release => release.draft && release.tag_name === tag);
+      if (draft) {
+        core.info(`${tag} is available as a draft release.`);
+        return draft;
+      }
       const delay = Math.min(1000 * 2 ** (attempt - 1), 8000);
       core.info(`${tag} is not visible yet; retrying the draft lookup in ${delay}ms.`);
       await wait(delay);
