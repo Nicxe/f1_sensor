@@ -1,54 +1,30 @@
 <!--
-  Target the correct branch:
-  - Docs or blueprint changes (standalone, no code) → `content` branch
-  - Code changes (integration, sensors, bundled card code, fixes, features, tests) → `dev` branch
-  - Code promotion is maintainer-managed: dev → beta → main with merge commits. Incorrect targets receive a comment explaining how to change the base.
-  If you are unsure whether your change fits the project direction, open an issue first.
+Target standalone documentation or blueprint work to `content`; target code to
+`dev`. Maintainers promote code with merge commits: `dev` → `beta` → `main`.
 -->
 
-## Description
+## Summary
 
-<!-- What does this PR change, and why? Be specific about what behavior changes, what was broken, or what is new. -->
+<!-- What changed, why, and how does it affect users? Keep this short. -->
 
-## Related issue
+## Release note
 
-<!-- Link to the issue this PR fixes or relates to. If there is no issue, explain why the change is needed. -->
+<!-- One user-facing sentence, or “No user-facing release note”. The preserved Conventional Commit is the release-note source. -->
 
-Fixes #
+## Release editorial (promotion PRs only)
 
-## Type of change
+<!-- Use only for `dev` → `beta` and `beta` → `main`. Leave it blank for a routine release. This text is inserted into the release draft after merge. -->
+<!-- release-editorial:start -->
+<!-- Write one to three user-facing sentences here. You can include a beta-testing focus or thank contributors. -->
+<!-- release-editorial:end -->
 
-- [ ] 🐛 Bug fix (corrects existing behavior without breaking anything)
-- [ ] 🚀 New feature (adds functionality)
-- [ ] ⚠️ Breaking change (existing automations, entities, or config will stop working or behave differently)
-- [ ] 🏎️ Bundled live data card code
-- [ ] 📋 Blueprint (new or updated blueprint)
-- [ ] 📚 Documentation only
-- [ ] 🔧 Refactoring or internal cleanup
+## Testing
 
-## How has this been tested?
-
-<!-- Describe how you tested the change. Be specific about your setup and what you verified. -->
-
-- [ ] Tested locally with a real Home Assistant instance
-- [ ] Existing automations and dashboards still work as expected after the change
+<!-- What did you verify? Add only the relevant checks. -->
 
 ## Checklist
 
-- [ ] I have read [CONTRIBUTING.md](../CONTRIBUTING.md) and am targeting the correct branch
-- [ ] Changes under `custom_components/f1_sensor/www/**` target `dev` as bundled card code, not the standalone documentation path — if applicable
-- [ ] Code is formatted and passes lint check (`ruff format` and `ruff check`) — if applicable
-- [ ] Tests have been added or updated and pass locally — if applicable
-- [ ] Translations updated if new UI strings were added — if applicable
-- [ ] No merge conflicts with the target branch
-
-<!-- Blueprint only -->
-If this adds or changes a blueprint:
-
-- [ ] The blueprint has been imported and tested in Home Assistant
-- [ ] Triggers and conditions work as expected in a live environment
-
-<!-- Breaking changes only -->
-If this is a breaking change:
-
-- [ ] I have clearly described what will break and what users need to do to adapt
+- [ ] Correct target branch and Conventional Commit
+- [ ] Relevant tests or Home Assistant checks pass
+- [ ] Translations updated when UI text changed
+- [ ] Breaking changes explain the required user action
