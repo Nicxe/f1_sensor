@@ -25,8 +25,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: '@nicxe'
+          registry-url: https://registry.npmjs.org
       - run: npm ci --no-audit --no-fund
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
@@ -41,6 +40,12 @@ jobs:
         run: node .github/scripts/run-release.cjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: Add promotion editorial to the release draft
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const editorial = require('./.github/scripts/release-editorial.cjs');
+            await editorial.applyReleaseEditorial({github, context, core});
       - name: Attest release provenance
         if: hashFiles('f1_sensor.zip') != ''
         uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
