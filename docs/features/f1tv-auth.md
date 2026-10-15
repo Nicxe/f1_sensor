@@ -1,14 +1,14 @@
 ---
 id: f1tv-auth
-title: Data availability and optional F1TV access
-description: Compare public live timing, optional authenticated features and Replay Mode before connecting F1TV access.
+title: Data availability and F1TV access
+description: Compare public live timing with authenticated live, archive media and Replay Mode before connecting F1TV access.
 ---
 
-F1 Sensor works without F1TV Auth. Optional F1TV Auth can unlock extra live timing features during an active Formula 1 session while public live timing continues to work without a token.
+F1 Sensor's public live timing continues to work without F1TV Auth. An active paid F1TV subscription is required for Replay Mode, Formula 1 archive media and additional authenticated live timing features.
 
 ## Availability matrix
 
-| Feature or data | Without F1TV Auth live | With F1TV Auth live | Replay Mode |
+| Feature or data | Without F1TV Auth live | With F1TV Auth live | Replay Mode with F1TV Auth |
 | --- | --- | --- | --- |
 | Track status, Safety Car, Race Control, weather | Works | Works | Works when replayed |
 | Driver positions and timing | Works | Works | Works when replayed |
@@ -30,9 +30,9 @@ F1 Sensor uses three separate timing modes:
 | --- | --- | --- |
 | Public live timing | Standard live mode without a token | Core live entities, dashboards, and conservative incident alerts continue to work |
 | F1TV Auth live timing | Optional live mode with a paired F1TV token | Extra live features can become available when Formula 1 provides the data |
-| Replay Mode | Historical playback from Formula 1's session archive | Some live-auth features can be replayed later from archived session data |
+| Replay Mode | Authenticated historical playback from Formula 1's session archive | Completed sessions can be downloaded and replayed when the paid F1TV token is accepted |
 
-F1TV Auth is not required for the integration, schedules, static data, race control, public live timing, or Replay Mode. If a token is missing, expired, invalid, or rejected, F1 Sensor should fall back to public live timing and only the extra live-auth features should stop updating.
+F1TV Auth is not required for the integration's schedules, standings, race control or public SignalR live timing. If a token is missing, expired, invalid or rejected, F1 Sensor falls back to public live timing. Replay discovery, replay downloads, archive telemetry and archive team radio media remain unavailable until F1TV access is restored.
 
 ## What works without F1TV Auth
 
@@ -52,7 +52,7 @@ F1TV Auth can support live features such as Track Map, Pit Stops, Team Radio, Ch
 
 ## Subscription requirement
 
-Use a Formula 1 account with access to the live timing features you need. Subscription names, entitlements and availability differ by country and can change. Check [Formula 1’s current F1 TV plans](https://f1tv.formula1.com/) for your region before subscribing; accepting a token does not guarantee that every data feed is published.
+Use a Formula 1 account with an active paid F1TV subscription. Subscription names, entitlements and availability differ by country and can change. Check [Formula 1’s current F1 TV plans](https://f1tv.formula1.com/) for your region before subscribing; accepting a token does not guarantee that every data feed is published.
 
 :::info
 F1TV tokens are short-lived, and Formula 1 can vary which extra live data is published from session to session.
@@ -81,11 +81,11 @@ Downloaded diagnostics can include redacted token health and live timing activit
 
 ## Limitations
 
-- F1TV Auth is optional.
+- F1TV Auth is optional for public live timing but required for Replay Mode and Formula 1 archive media.
 - Automatic renewal requires a usable session in the saved token. You still need Token Helper when that session expires or is revoked.
 - Extra live features are available only during suitable live sessions when Formula 1 publishes the needed data.
 - Live Track Map cannot be fully verified without an active session and a working token.
-- Replay Mode is separate from live auth and can show archived data later when the replay archive contains it.
+- Replay Mode uses the same F1TV authorization as authenticated live features and can show archived data when Formula 1 publishes it.
 
 ## Related pages
 

@@ -35,6 +35,7 @@ from .analysis_websocket import (
     ANALYSIS_WS_MARKER,
     async_register_analysis_websocket,
 )
+from .archive import F1ArchiveClient
 from .auth import (
     AUTH_REPAIR_STATUSES,
     AUTH_RUNTIME_STATUS,
@@ -187,6 +188,8 @@ from .signalr import (
 )
 from .starting_grid import StartingGridCoordinator
 from .storage import async_remove_entry_storage
+from .team_radio_common import resolve_team_radio_source_url
+from .team_radio_media import async_register_team_radio_media_view
 from .team_radio_transcription import (
     TRANSCRIPTION_MANAGER_KEY,
     TeamRadioTranscriptionManager,
@@ -1411,6 +1414,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await manager.async_load()
         domain_root[_NO_SPOILER_MANAGER_KEY] = manager
     async_setup_f1tv_auth_http(hass)
+    async_register_team_radio_media_view(hass)
     _async_register_race_control_log_interfaces(hass)
     async_register_team_radio_transcription_service(hass)
     return True
@@ -2378,7 +2382,18 @@ async def _async_setup_entry(
     live_timing_auth_status = evaluate_f1tv_auth_header(
         entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "") if auth_feature_enabled else ""
     )
-    live_timing_auth_header = live_timing_auth_status.header
+    archive_auth_header = (
+        live_timing_auth_status.header
+        if live_timing_auth_status.status not in AUTH_REPAIR_STATUSES
+        else ""
+    )
+    archive_client = F1ArchiveClient(session, archive_auth_header)
+    set_archive_client = getattr(session_coordinator, "set_archive_client", None)
+    if callable(set_archive_client):
+        set_archive_client(archive_client)
+    else:
+        session_coordinator._archive_client = archive_client  # noqa: SLF001
+    live_timing_auth_header = archive_auth_header
     auth_transport_enabled = is_auth_transport_enabled()
     auth_can_be_used = (
         operation_mode == OPERATION_MODE_LIVE
@@ -2433,6 +2448,8 @@ async def _async_setup_entry(
                                 getattr(live_state, "reason", None),
                             )
 
+    archive_client.set_auth_failed_callback(_handle_live_timing_auth_failed)
+
     live_bus = LiveBus(
         hass,
         session,
@@ -2455,6 +2472,7 @@ async def _async_setup_entry(
             session_coordinator,
             live_bus,
             http_session=session,
+            archive_client=archive_client,
             fallback_source=event_tracker_source,
         )
         transaction.track(live_supervisor)
@@ -2489,6 +2507,7 @@ async def _async_setup_entry(
         hass,
         bus=live_bus,
         http_session=session,
+        archive_client=archive_client,
         availability_guard=_formation_start_stream_active,
     )
     transaction.track(formation_tracker)
@@ -2506,6 +2525,7 @@ async def _async_setup_entry(
         start_reference_controller=replay_start_reference_controller,
         formation_tracker=formation_tracker,
         on_replay_ended=live_supervisor.wake if live_supervisor else None,
+        archive_client=archive_client,
         requested_streams=(
             feature_plan.requested_streams | LAP_ANALYSIS_STREAMS | {"Position.z"}
         ),
@@ -2546,6 +2566,7 @@ async def _async_setup_entry(
         hass,
         http_session,
         getattr(replay_controller, "session_manager", None),
+        archive_client=archive_client,
     )
     transaction.track(phase4_analysis_store, replay_telemetry_service)
 
@@ -2567,6 +2588,7 @@ async def _async_setup_entry(
             session_coordinator,
             bus=live_bus,
             session=http_session,
+            archive_client=archive_client,
             user_agent=ua_string,
             cache=http_cache,
             inflight=http_inflight,
@@ -2774,9 +2796,20 @@ async def _async_setup_entry(
         )
         transaction.track(team_radio_coordinator)
         await team_radio_coordinator.async_config_entry_first_refresh()
+
+        def _team_radio_source_url(capture: dict[str, Any]) -> str | None:
+            window = getattr(live_supervisor, "current_window", None)
+            return resolve_team_radio_source_url(
+                capture,
+                session_path=getattr(window, "path", None),
+                year=session_coordinator.year,
+            )
+
         team_radio_transcription_manager = TeamRadioTranscriptionManager(
             hass,
             team_radio_coordinator,
+            archive_client=archive_client,
+            source_url_resolver=_team_radio_source_url,
         )
         transaction.track(team_radio_transcription_manager)
 
@@ -2830,6 +2863,7 @@ async def _async_setup_entry(
 
     entry_data: dict[str, Any] = {
         "http_session": http_session,
+        "archive_client": archive_client,
         "user_agent": ua_string,
         "jolpica_client": jolpica_client,
         "http_persistent_cache": persisted,
@@ -9444,6 +9478,7 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         year: int,
         session=None,
+        archive_client: F1ArchiveClient | None = None,
         config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
@@ -9454,6 +9489,7 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
             config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
+        self._archive_client = archive_client
         self.year = year
         self._last_good_index: dict | None = None
         # Expose last HTTP status so the live window supervisor can distinguish
@@ -9479,6 +9515,10 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
     async def async_close(self, *_):
         return
 
+    def set_archive_client(self, archive_client: F1ArchiveClient) -> None:
+        """Use authenticated archive access for session discovery."""
+        self._archive_client = archive_client
+
     async def _async_update_data(self):
         payload = await self._fetch_index()
         if payload:
@@ -9496,12 +9536,16 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
         return payload
 
     async def _fetch_index(self, *, cache_bust: bool = False):
+        if self._archive_client is not None and not self._archive_client.authenticated:
+            self.last_http_status = 401
+            return None
         url = LIVETIMING_INDEX_URL.format(year=self.year)
         if cache_bust:
             url = f"{url}?t={int(time.time())}"
         try:
             async with asyncio.timeout(10):
-                async with self._session.get(url) as response:
+                request_client = self._archive_client or self._session
+                async with request_client.get(url) as response:
                     text = await response.text()
                     self.last_http_status = response.status
                     if response.status != 200:

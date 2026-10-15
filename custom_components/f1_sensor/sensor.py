@@ -67,8 +67,7 @@ from .helpers import (
 from .race_weather import legacy_weather_observation, weather_icon
 from .replay_entities import F1ReplayStatusSensor
 from .runtime import F1ConfigEntry, entry_value
-
-TEAM_RADIO_STATIC_BASE = "https://livetiming.formula1.com/static"
+from .team_radio_media import team_radio_media_url
 
 
 class _ReplayOrAuthGatedStreamMixin:
@@ -5052,35 +5051,9 @@ class F1TeamRadioSensor(
     def _build_clip_url(self, payload: dict, path: str | None) -> str | None:
         if not path:
             return None
-
-        static_root = self._cleanup_string(
-            payload.get("_static_root") or payload.get("static_root")
-        )
-        if static_root:
-            return f"{static_root.rstrip('/')}/{path.lstrip('/')}"
-
-        try:
-            reg = entry_runtime_registry(self.hass, self._entry_id)
-            live_supervisor = (
-                reg.get("live_supervisor") if isinstance(reg, dict) else None
-            )
-            window = getattr(live_supervisor, "current_window", None)
-            base_path = getattr(window, "path", None)
-            if not isinstance(base_path, str) or not base_path:
-                return None
-
-            cleaned_base = base_path.strip("/")
-            year = None
-            if isinstance(reg, dict):
-                session_coord = reg.get("session_coordinator")
-                year = getattr(session_coord, "year", None)
-            if cleaned_base and not re.match(r"^\d{4}/", f"{cleaned_base}/"):
-                if year and str(year).isdigit():
-                    cleaned_base = f"{int(year)}/{cleaned_base}"
-            root = f"{TEAM_RADIO_STATIC_BASE}/{cleaned_base}"
-            return f"{root}/{path.lstrip('/')}"
-        except Exception:
-            return None
+        capture = dict(payload)
+        capture.setdefault("Path", path)
+        return team_radio_media_url(self.hass, self._entry_id, capture)
 
     @staticmethod
     def _transcription_attributes(payload: dict) -> dict[str, Any]:

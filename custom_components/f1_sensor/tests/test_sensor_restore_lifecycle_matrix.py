@@ -207,8 +207,8 @@ async def test_race_control_and_team_radio_startup_payloads(hass) -> None:
     radio._is_stream_active = Mock(return_value=True)
     await radio.async_added_to_hass()
     assert radio.state == "2026-09-01T12:00:01+00:00"
-    assert radio.extra_state_attributes["clip_url"].endswith(
-        "/2026/test/session/NOR/clip.mp3"
+    assert radio.extra_state_attributes["clip_url"].startswith(
+        "/api/f1_sensor/team-radio/entry/"
     )
 
 

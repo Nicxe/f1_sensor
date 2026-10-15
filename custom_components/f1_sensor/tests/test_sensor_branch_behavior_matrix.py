@@ -671,14 +671,13 @@ def test_team_radio_urls_history_and_update_guards(hass) -> None:
     assert sensor._normalize_utc(None) is None
     assert sensor._normalize_utc("bad") == "bad"
     assert sensor._build_clip_url({}, None) is None
-    assert (
-        sensor._build_clip_url(
-            {"_static_root": "https://static.test/root/"}, "/clip.mp3"
-        )
-        == "https://static.test/root/clip.mp3"
+    proxy_url = sensor._build_clip_url(
+        {"_static_root": "https://livetiming.formula1.com/static/root/"},
+        "/clip.mp3",
     )
-    assert sensor._build_clip_url({}, "clip.mp3").endswith(
-        "/2026/test/session/clip.mp3"
+    assert proxy_url.startswith("/api/f1_sensor/team-radio/entry/")
+    assert sensor._build_clip_url({}, "clip.mp3").startswith(
+        "/api/f1_sensor/team-radio/entry/"
     )
 
     payload = {

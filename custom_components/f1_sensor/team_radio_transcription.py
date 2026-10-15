@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from contextlib import suppress
 from functools import partial
-import hashlib
 import logging
 import mimetypes
 from pathlib import Path
@@ -26,7 +26,9 @@ from homeassistant.helpers.service import async_set_service_schema
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
+from .archive import F1ArchiveClient
 from .const import DOMAIN
+from .team_radio_common import team_radio_clip_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -117,14 +119,6 @@ class TeamRadioCoordinatorProtocol(Protocol):
         """Attach a transcription result to one known capture."""
 
 
-def team_radio_clip_id(capture: dict[str, Any]) -> str:
-    """Return a stable ID for one published team radio clip."""
-    identity = "|".join(
-        str(capture.get(key) or "").strip() for key in ("Utc", "RacingNumber", "Path")
-    )
-    return hashlib.sha256(identity.encode()).hexdigest()[:20]
-
-
 def _safe_error_message(err: Exception) -> str:
     """Return a bounded user-facing error without request details."""
     message = str(err).strip() or err.__class__.__name__
@@ -198,9 +192,14 @@ class TeamRadioTranscriptionManager:
         self,
         hass: HomeAssistant,
         coordinator: TeamRadioCoordinatorProtocol,
+        *,
+        archive_client: F1ArchiveClient | None = None,
+        source_url_resolver: Callable[[dict[str, Any]], str | None] | None = None,
     ) -> None:
         self._hass = hass
         self._coordinator = coordinator
+        self._archive_client = archive_client
+        self._source_url_resolver = source_url_resolver
         self._lock = asyncio.Lock()
         self._closed = False
         self._temporary_files: set[Path] = set()
@@ -227,8 +226,14 @@ class TeamRadioTranscriptionManager:
         if not isinstance(capture, dict):
             raise ServiceValidationError("No team radio clip is currently available")
         capture = dict(capture)
-        if clip_url:
+        parsed_clip_url = urlparse(str(clip_url or ""))
+        if (
+            parsed_clip_url.scheme == "https"
+            and parsed_clip_url.hostname in ALLOWED_AUDIO_HOSTS
+        ):
             capture["clip_url"] = clip_url
+        elif self._source_url_resolver is not None:
+            capture["clip_url"] = self._source_url_resolver(capture)
         if not str(capture.get("clip_url") or "").strip():
             raise ServiceValidationError("The latest team radio clip has no audio URL")
         return capture
@@ -318,6 +323,19 @@ class TeamRadioTranscriptionManager:
         parsed = urlparse(clip_url)
         if parsed.scheme != "https" or parsed.hostname not in ALLOWED_AUDIO_HOSTS:
             raise ServiceValidationError("Team radio audio URL is not allowed")
+
+        if self._archive_client is not None:
+            audio, _content_type = await self._archive_client.async_get_bytes(
+                clip_url,
+                timeout_seconds=DOWNLOAD_TIMEOUT_SECONDS,
+                max_bytes=MAX_AUDIO_BYTES,
+                allowed_content_types={
+                    "audio/mpeg",
+                    "audio/mp3",
+                    "application/octet-stream",
+                },
+            )
+            return audio
 
         session = async_get_clientsession(self._hass)
         async with asyncio.timeout(DOWNLOAD_TIMEOUT_SECONDS):

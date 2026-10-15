@@ -24,6 +24,7 @@ from aiohttp import ClientSession
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from .archive import ARCHIVE_AUTH_REQUIRED_MESSAGE, F1ArchiveClient
 from .const import (
     DEFAULT_REPLAY_START_REFERENCE,
     DOMAIN,
@@ -273,13 +274,15 @@ class ReplaySessionManager:
         entry_id: str,
         http_session: ClientSession,
         *,
+        archive_client: F1ArchiveClient | None = None,
         requested_streams: set[str] | frozenset[str] | None = None,
         cache_max_bytes: int = REPLAY_CACHE_MAX_BYTES,
         cache_max_sessions: int = REPLAY_CACHE_MAX_SESSIONS,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
-        self._http = http_session
+        self._archive_client = archive_client
+        self._http = archive_client or http_session
         self._cache_dir = Path(hass.config.path(REPLAY_CACHE_DIR))
         self._state = ReplayState.IDLE
         self._selected_session: ReplaySession | None = None
@@ -411,6 +414,17 @@ class ReplaySessionManager:
         self._index_year = year
         self._index_status = None
         self._index_error = None
+
+        if self._archive_client is not None and not self._archive_client.authenticated:
+            self._index_status = INDEX_STATUS_ERROR
+            self._index_error = ARCHIVE_AUTH_REQUIRED_MESSAGE
+            if year_changed:
+                self._available_sessions = []
+                self._selected_session = None
+                self._loaded_index = None
+                self._state = ReplayState.IDLE
+            self._notify_listeners()
+            return sessions
 
         url = f"{STATIC_BASE}/{year}/Index.json"
         try:
@@ -2690,6 +2704,7 @@ class ReplayController:
         start_reference_controller: ReplayStartReferenceController | None = None,
         formation_tracker: FormationStartTracker | None = None,
         on_replay_ended: Callable[[], None] | None = None,
+        archive_client: F1ArchiveClient | None = None,
         requested_streams: set[str] | frozenset[str] | None = None,
     ) -> None:
         self._hass = hass
@@ -2701,6 +2716,7 @@ class ReplayController:
             hass,
             entry_id,
             http_session,
+            archive_client=archive_client,
             requested_streams=requested_streams,
         )
         self._start_reference_controller = start_reference_controller
