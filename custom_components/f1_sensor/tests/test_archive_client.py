@@ -9,6 +9,7 @@ import pytest
 from custom_components.f1_sensor.archive import (
     F1ArchiveAuthenticationRequired,
     F1ArchiveClient,
+    F1ArchiveResponseError,
 )
 
 
@@ -112,6 +113,20 @@ async def test_archive_client_invalidates_rejected_auth_once() -> None:
     with pytest.raises(F1ArchiveAuthenticationRequired):
         client.get(url)
 
+    client.mark_auth_rejected()
+    callback.assert_called_once_with()
+
+
+def test_archive_client_reports_rejection_after_callback_is_attached() -> None:
+    client = F1ArchiveClient(_Session(), "Bearer secret")
+    callback = Mock()
+
+    client.mark_auth_rejected()
+    client.set_auth_failed_callback(callback)
+    client.mark_auth_rejected()
+
+    callback.assert_called_once_with()
+
 
 @pytest.mark.asyncio
 async def test_archive_client_downloads_bounded_audio() -> None:
@@ -139,3 +154,40 @@ async def test_archive_client_downloads_bounded_audio() -> None:
             max_bytes=32,
             allowed_content_types={"audio/mpeg"},
         )
+
+
+@pytest.mark.asyncio
+async def test_archive_client_rejects_invalid_archive_responses() -> None:
+    url = "https://livetiming.formula1.com/static/2026/race/TeamRadio/clip.mp3"
+
+    for response, error, message, max_bytes in (
+        (_Response(503), F1ArchiveResponseError, "status 503", 32),
+        (
+            _Response(200, content_type="text/html"),
+            F1ArchiveResponseError,
+            "unexpected content type",
+            32,
+        ),
+        (
+            _Response(200, content_type="audio/mpeg", chunks=(b"123", b"456")),
+            ValueError,
+            "too large",
+            5,
+        ),
+        (
+            _Response(200, content_type="audio/mpeg", chunks=()),
+            F1ArchiveResponseError,
+            "empty",
+            32,
+        ),
+    ):
+        if message == "too large":
+            response.content_length = None
+        client = F1ArchiveClient(_Session(response), "Bearer secret")
+        with pytest.raises(error, match=message):
+            await client.async_get_bytes(
+                url,
+                timeout_seconds=5,
+                max_bytes=max_bytes,
+                allowed_content_types={"audio/mpeg"},
+            )
