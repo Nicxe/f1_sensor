@@ -26,6 +26,7 @@ jobs:
             const metadata = require('./.github/scripts/pr-metadata.cjs');
             await metadata.routing({github, context, core});
             await metadata.conflicts({github, context, core});
+            await metadata.releaseEditorial({github, context, core});
       - name: Apply component labels
         if: github.event.pull_request.base.ref == 'dev' || github.event.pull_request.base.ref == 'content'
         uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7
