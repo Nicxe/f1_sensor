@@ -22,6 +22,7 @@ from homeassistant.core import (
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.service import async_set_service_schema
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
@@ -58,6 +59,46 @@ SERVICE_SCHEMA = vol.Schema(
         vol.Optional(ATTR_FORCE, default=False): cv.boolean,
     }
 )
+
+# Register this at runtime as well as in services.yaml. Home Assistant's Actions
+# editor needs the live description cache to render fields for this custom action.
+SERVICE_DESCRIPTION = {
+    "name": "Experimental: Transcribe team radio",
+    "description": (
+        "Experimental feature. Transcribe the latest published team radio clip "
+        "in English and separate distinct voices as anonymous speakers A and B. "
+        "Audio is sent only when you run this action and may incur provider charges."
+    ),
+    "fields": {
+        ATTR_ENTITY_ID: {
+            "name": "Team radio entity",
+            "description": "The F1 Sensor team radio entity whose latest clip is used.",
+            "required": True,
+            "selector": {
+                "entity": {"filter": [{"integration": DOMAIN, "domain": "sensor"}]}
+            },
+        },
+        ATTR_AI_TASK_ENTITY_ID: {
+            "name": "AI Task entity",
+            "description": (
+                "The AI Task entity used for audio transcription. This "
+                "experimental feature is tested with Google Gemini."
+            ),
+            "required": True,
+            "selector": {"entity": {"filter": [{"domain": "ai_task"}]}},
+        },
+        ATTR_FORCE: {
+            "name": "Force new transcription",
+            "description": (
+                "Run a new paid AI request even if this clip already has a "
+                "cached transcription."
+            ),
+            "required": False,
+            "default": False,
+            "selector": {"boolean": {}},
+        },
+    },
+}
 
 _INSTRUCTIONS = """Transcribe the spoken English in this Formula 1 team radio clip.
 Return every spoken turn in chronological order. Keep the wording faithful to the
@@ -375,4 +416,10 @@ def async_register_team_radio_transcription_service(hass: HomeAssistant) -> None
         partial(_async_handle_transcribe_team_radio, hass),
         schema=SERVICE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
+    )
+    async_set_service_schema(
+        hass,
+        DOMAIN,
+        SERVICE_TRANSCRIBE_TEAM_RADIO,
+        SERVICE_DESCRIPTION,
     )

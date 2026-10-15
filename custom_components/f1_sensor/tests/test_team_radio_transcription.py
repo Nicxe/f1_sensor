@@ -7,12 +7,17 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers.service import async_get_cached_service_description
 import pytest
 
 from custom_components.f1_sensor import TeamRadioCoordinator
 from custom_components.f1_sensor.team_radio_transcription import (
+    ATTR_AI_TASK_ENTITY_ID,
+    ATTR_ENTITY_ID,
+    ATTR_FORCE,
     TeamRadioTranscriptionManager,
     _normalize_segments,
+    async_register_team_radio_transcription_service,
     team_radio_clip_id,
 )
 
@@ -118,6 +123,25 @@ def test_team_radio_coordinator_attaches_transcription_to_known_clip() -> None:
     assert coordinator._state["latest"]["Transcription"] == result
     assert coordinator._state["history"][0]["Transcription"] == result
     assert coordinator.updates == [coordinator._state]
+
+
+def test_transcription_action_registers_fields_for_actions_editor(hass) -> None:
+    async_register_team_radio_transcription_service(hass)
+
+    description = async_get_cached_service_description(
+        hass, "f1_sensor", "transcribe_team_radio"
+    )
+
+    assert description is not None
+    assert description["name"] == "Experimental: Transcribe team radio"
+    assert set(description["fields"]) == {
+        ATTR_ENTITY_ID,
+        ATTR_AI_TASK_ENTITY_ID,
+        ATTR_FORCE,
+    }
+    assert description["fields"][ATTR_ENTITY_ID]["required"] is True
+    assert description["fields"][ATTR_AI_TASK_ENTITY_ID]["required"] is True
+    assert description["fields"][ATTR_FORCE]["default"] is False
 
 
 @pytest.mark.asyncio
