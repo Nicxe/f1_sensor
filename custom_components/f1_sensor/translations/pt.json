@@ -6,12 +6,12 @@
         "data": {
           "sensor_name": "Nome do dispositivo",
           "enabled_sensors": "Sensores habilitados",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
+          "operation_mode": "Modo de operação",
+          "replay_file": "Caminho do dump de replay",
           "race_week_start_day": "Primeiro dia da semana de corrida",
-          "live_timing_auth_header": "Manual backup: F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
-          "install_dashboard_cards": "Install bundled dashboard cards",
+          "live_timing_auth_header": "Backup manual: valor de autorização do F1TV",
+          "start_f1tv_pairing": "Recomendado: Vincule o acesso ao F1TV com o Token Helper.",
+          "install_dashboard_cards": "Instalar cards de painel pré-instalados",
           "install_legacy_cards": "Instalar cartões de painel antigos"
         },
         "data_description": {
@@ -226,6 +226,29 @@
           "install_legacy_cards": "Regista também os cartões F1 descontinuados. Desativado em novas instalações; as instalações existentes mantêm os seus cartões. Requer a instalação dos cartões de painel. Recarregue o navegador após a alteração. Ao desativar, os cartões antigos deixam de funcionar sem migração para o cartão F1 Sensor. Com várias instalações, continuam disponíveis enquanto uma instalação ativa os solicitar."
         }
       }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Semana de corrida começou",
+      "race_week_ended": "Semana de corrida terminou",
+      "safety_car_deployed": "Safety car acionado",
+      "safety_car_cleared": "Safety car liberado",
+      "possible_on_track_incident_detected": "Possível incidente na pista detectado",
+      "possible_on_track_incident_cleared": "Possível incidente na pista resolvido",
+      "on_track_incident_detected": "Incidente na pista detectado",
+      "on_track_incident_cleared": "Incidente na pista resolvido",
+      "formation_start_ready": "Pronto para iniciar a formação",
+      "overtake_mode_enabled": "Modo de ultrapassagem ativado",
+      "overtake_mode_disabled": "Modo de ultrapassagem desativado",
+      "session_live": "A sessão começou",
+      "track_status_clear": "Status da pista: Livre",
+      "track_status_yellow": "Status da pista: Bandeira amarela",
+      "track_status_safety_car": "Status da pista: Safety car",
+      "track_status_vsc": "Status da pista: Safety car virtual",
+      "track_status_red_flag": "Status da pista: Bandeira vermelha",
+      "new_race_control_message": "Nova mensagem do controle de prova",
+      "new_team_radio": "Nova mensagem de rádio da equipe"
     }
   }
 }
