@@ -46,7 +46,7 @@
     "@docusaurus/faster": "3.10.2",
     "@docusaurus/module-type-aliases": "3.10.2",
     "@docusaurus/types": "3.10.2",
-    "@nicxe/semantic-release-config": "^1.4.3",
+    "@nicxe/semantic-release-config": "^1.5.1",
     "@playwright/test": "^1.63.0",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/exec": "^7.1.0",

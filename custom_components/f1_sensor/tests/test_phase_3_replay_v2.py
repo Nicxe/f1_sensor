@@ -10,6 +10,10 @@ from unittest.mock import AsyncMock
 from homeassistant.util import dt as dt_util
 import pytest
 
+from custom_components.f1_sensor.archive import (
+    ARCHIVE_AUTH_REQUIRED_MESSAGE,
+    F1ArchiveClient,
+)
 from custom_components.f1_sensor.history import LAP_ANALYSIS_STREAMS
 from custom_components.f1_sensor.replay_mode import (
     REPLAY_EARLIEST_YEAR,
@@ -92,6 +96,23 @@ async def test_replay_initialization_is_lazy_and_supports_full_archive(
     assert manager.available_sessions == []
     assert manager.year_options[0] == dt_util.utcnow().year
     assert manager.year_options[-1] == REPLAY_EARLIEST_YEAR
+
+
+@pytest.mark.asyncio
+async def test_replay_discovery_requires_f1tv_without_requesting_archive(hass) -> None:
+    http = _NoNetworkHttp()
+    manager = ReplaySessionManager(
+        hass,
+        "entry-test",
+        http,  # type: ignore[arg-type]
+        archive_client=F1ArchiveClient(http, ""),  # type: ignore[arg-type]
+    )
+
+    sessions = await manager.async_fetch_sessions(2026)
+
+    assert sessions == []
+    assert http.calls == 0
+    assert manager.index_error == ARCHIVE_AUTH_REQUIRED_MESSAGE
 
 
 def test_replay_download_plan_only_contains_requested_feature_streams(hass) -> None:

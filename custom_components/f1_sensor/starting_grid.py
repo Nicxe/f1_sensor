@@ -15,6 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
+from .archive import F1ArchiveClient
 from .const import DOMAIN
 from .helpers import fetch_text
 
@@ -65,6 +66,7 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         *,
         bus: Any | None = None,
         session=None,
+        archive_client: F1ArchiveClient | None = None,
         user_agent: str | None = None,
         cache: dict | None = None,
         inflight: dict | None = None,
@@ -82,7 +84,7 @@ class StartingGridCoordinator(DataUpdateCoordinator):
         )
         self._session_coord = session_coord
         self._bus = bus
-        self._session = session or async_get_clientsession(hass)
+        self._session = archive_client or session or async_get_clientsession(hass)
         self._headers = {"User-Agent": str(user_agent)} if user_agent else None
         self._cache = cache
         self._inflight = inflight

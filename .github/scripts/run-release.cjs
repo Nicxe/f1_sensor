@@ -5,6 +5,7 @@ const {execFileSync} = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { setReleaseContributors } = require('./release-contributors.cjs');
 const run = (command, args, options={}) => execFileSync(command,args,{encoding:'utf8',...options});
 
 async function main() {
@@ -12,12 +13,14 @@ async function main() {
   if (!['main','beta'].includes(branch)) throw new Error('Releases require beta or main');
   const tags = run('git',['tag','--points-at','HEAD']).trim().split('\n').filter(tag => /^v\d+\.\d+\.\d+(?:-beta\.\d+)?$/.test(tag) && (branch==='beta')===tag.includes('-beta.'));
   if (!tags.length) {
+    setReleaseContributors({ branch });
     run('npx',['--no-install','semantic-release'],{stdio:'inherit'});
     return;
   }
   if (tags.length !== 1) throw new Error('Ambiguous release tags on the tested commit');
   const tag = tags[0];
   const version = tag.slice(1);
+  setReleaseContributors({ branch, head: 'HEAD', excludeTag: tag });
   const directory = fs.mkdtempSync(path.join(os.tmpdir(),'f1-release-'));
   try {
     const releases = JSON.parse(run('gh',['api',`repos/${process.env.GITHUB_REPOSITORY}/releases?per_page=100`,'--paginate','--slurp'])).flat();

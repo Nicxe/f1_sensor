@@ -33,9 +33,9 @@ If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoil
 
 ## What to expect
 
-Replay Mode downloads completed session data from Formula 1's public archive and plays it back through your Home Assistant entities. By starting playback at the same moment the session begins on your TV, your dashboard and automations can follow the broadcast closely.
+Replay Mode downloads completed session data from Formula 1's authenticated archive and plays it back through your Home Assistant entities. By starting playback at the same moment the session begins on your TV, your dashboard and automations can follow the broadcast closely.
 
-You do not need a local replay dump, a developer build, or F1TV Auth. Replay Mode provides its own selectors, load controls, media player, pause, and seek support.
+You do not need a local replay dump or a developer build. You do need [F1TV Auth](/features/f1tv-auth) connected from an account with an active paid subscription. Replay Mode provides its own selectors, load controls, media player, pause, and seek support.
 
 :::info[Standard entity IDs]
 This page uses the standard Replay Mode entity IDs for new installations, such as `select.f1_replay_year` and `media_player.f1_replay_player`.
@@ -74,7 +74,7 @@ The formation lap start point is estimated. If the archive does not provide a us
 
 Press `button.f1_replay_load` to download the session data.
 
-The `sensor.f1_replay_status` shows download progress. Session data is cached locally, so loading the same session again is faster.
+The `sensor.f1_replay_status` shows download progress.
 
 ### Step 4 - Sync with your broadcast
 
@@ -155,7 +155,7 @@ Seek controls are designed to preserve the visible replay state after the jump. 
 
 ## Replay improvements
 
-Loading and seeking restore the session's accumulated timing state. Large jumps can still briefly show `seeking`; wait for that operation to finish before sending another command. Cached session data is bounded and older cached downloads can be removed automatically, so a previously watched session may need downloading again.
+Loading and seeking restore the session's accumulated timing state. Large jumps can still briefly show `seeking`; wait for that operation to finish before sending another command. A previously watched session may need downloading again.
 
 The selectors, playback buttons and media player remain the controls for Replay Mode. You do not need to recreate them after updating. Rewinding can still emit the same historical events again, so keep the notification behavior described above in mind.
 
@@ -190,7 +190,7 @@ Testing the integration with a dump supplied or captured for development? Use [D
 
 ## Replay Mode vs live F1TV Auth
 
-Replay Mode is separate from live F1TV Auth. Public live timing works without a token, optional [F1TV Auth](/features/f1tv-auth) can unlock extra live features during a real live session, and Replay Mode can use archived data after the session has completed.
+Public live timing works without a token. [F1TV Auth](/features/f1tv-auth) is used both for additional live features during a real live session and for downloading Replay Mode data after the session has completed.
 
 This means Replay Mode can sometimes show data that public live timing did not show during the live session. For example, Pit Stops, Team Radio, Championship Prediction, Track Map, and incident location context can work in replay when the archive contains the needed data.
 

@@ -15,6 +15,7 @@ from custom_components.f1_sensor.__init__ import (
     FiaDocumentsCoordinator,
     LiveSessionCoordinator,
 )
+from custom_components.f1_sensor.archive import F1ArchiveClient
 from custom_components.f1_sensor.const import (
     API_URL,
     SEASON_RESULTS_URL,
@@ -871,3 +872,20 @@ async def test_live_session_coordinator_fetch_index_timeout_returns_none(hass) -
     assert payload is None
     assert timeout_session.calls
     assert coordinator.last_http_status is None
+
+
+@pytest.mark.asyncio
+async def test_live_session_coordinator_skips_archive_without_f1tv_auth(hass) -> None:
+    timeout_session = _TimeoutSession()
+    coordinator = LiveSessionCoordinator(
+        hass,
+        2026,
+        session=timeout_session,
+        archive_client=F1ArchiveClient(timeout_session, ""),
+    )
+
+    payload = await coordinator._fetch_index()
+
+    assert payload is None
+    assert timeout_session.calls == []
+    assert coordinator.last_http_status == 401

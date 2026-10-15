@@ -147,6 +147,23 @@ def test_normalize_segments_rejects_invalid_or_empty_results() -> None:
     ) == [{"speaker": "unknown", "text": "Stay out."}]
 
 
+def test_transcription_resolves_source_behind_local_media_proxy(hass) -> None:
+    coordinator = _Coordinator()
+    source_url = coordinator.data["latest"]["clip_url"]
+    coordinator.data["latest"].pop("clip_url")
+    manager = TeamRadioTranscriptionManager(
+        hass,
+        coordinator,
+        source_url_resolver=lambda _capture: source_url,
+    )
+
+    capture = manager._latest_capture(  # noqa: SLF001
+        "/api/f1_sensor/team-radio/entry/signed"
+    )
+
+    assert capture["clip_url"] == source_url
+
+
 def test_team_radio_coordinator_attaches_transcription_to_known_clip() -> None:
     capture = _Coordinator().data["latest"]
     coordinator = _CoordinatorState(capture)

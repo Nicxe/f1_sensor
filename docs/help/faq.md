@@ -14,7 +14,7 @@ Use stable for everyday use. Beta is for testing the next release; dev is for de
 
 ### Do I need an API key or a separate weather account?
 
-No API key is required for normal setup. F1TV access is optional and only affects additional live features. Start with [installation](/getting-started/installation).
+No API key is required for normal setup or public live timing. An active paid F1TV subscription is required for Replay Mode, archive media and additional authenticated live features. Start with [installation](/getting-started/installation).
 
 ### Can I show the data on an ESPHome display?
 
@@ -28,7 +28,7 @@ Use the **Schedule** module in the [F1 Sensor card](/cards/cards-overview) for w
 
 ### Do I need F1TV Auth or an F1 TV Pro subscription?
 
-F1TV Auth is optional. Public live timing supports session status, track flags, Race Control, weather, driver timing, tyres and confirmed incident alerts. Extra live feeds may need an account with the relevant timing access. Read the [availability and subscription guidance](/features/f1tv-auth) before subscribing.
+Public live timing supports session status, track flags, Race Control, weather, driver timing, tyres and confirmed incident alerts without F1TV Auth. Replay Mode, archive media and additional authenticated live feeds require an account with an active paid F1TV subscription. Read the [availability and subscription guidance](/features/f1tv-auth) before subscribing.
 
 ### Why does Track Map work in replay but not live?
 
