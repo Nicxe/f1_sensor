@@ -70,11 +70,34 @@ test('already queued PR is left running without duplicate dispatch',async()=>{
   assert.equal(await syncOne(env,'main',source,'dev'),'queued');
   assert.ok(!env.writes.some(x=>x[0]==='ci'));
 });
-test('reconciliation checks all three branches against latest main',async()=>{
+test('published stable releases only reconcile content',async()=>{
   const env=environment('identical'),refs=[];
+  env.context.payload.release={draft:false,prerelease:false,target_commitish:'main',tag_name:'v5.7.3'};
+  env.github.rest.git.getRef=async ({ref})=>{refs.push(ref);return {data:{object:{sha:source}}};};
+  env.github.rest.repos.getCommit=async()=>({data:{sha:source}});
+  await synchronize(env);
+  assert.deepEqual(refs,['heads/content']);
+});
+test('manual synchronization requires an explicit supported pair',async()=>{
+  const env=environment('identical');
+  await assert.rejects(synchronize(env),/requires a valid source and target/);
+  env.context.payload.inputs={source:'main',target:'dev'};
+  await assert.rejects(synchronize(env),/Unsupported manual synchronization/);
+});
+test('manual synchronization reads only the requested source',async()=>{
+  const env=environment('identical'),refs=[];
+  env.context.payload.inputs={source:'beta',target:'dev'};
   env.github.rest.git.getRef=async ({ref})=>{refs.push(ref);return {data:{object:{sha:source}}};};
   await synchronize(env);
-  assert.deepEqual(refs,['heads/main','heads/beta','heads/content','heads/dev']);
+  assert.deepEqual(refs,['heads/beta','heads/dev']);
+});
+test('beta to dev synchronization does not enable automatic merging',async()=>{
+  const env=environment('ahead');
+  env.context.payload.inputs={source:'beta',target:'dev'};
+  env.github.rest.git.getRef=async ({ref})=>({data:{object:{sha:ref === 'heads/beta' ? source : base}}});
+  await synchronize(env);
+  assert.ok(!env.writes.some(x=>x[0]==='queue'));
+  assert.ok(env.writes.some(x=>x[0]==='pr'));
 });
 test('real Git snapshot retains development and published source ancestry',async()=>{
   const {mkdtempSync,writeFileSync,rmSync}=require('node:fs');
