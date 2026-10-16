@@ -119,11 +119,6 @@ async function reconcileReleaseTag({
     const releases = await github.paginate(github.rest.repos.listReleases, {
       ...context.repo, per_page: 100
     });
-    const exact = releases.find(release => release.tag_name === tag);
-    if (exact) {
-      core.info(`${tag} is available in the release list with the correct tag.`);
-      return exact;
-    }
     const mismatched = findMismatchedDraft({releases, tag, branch, assetNames});
     if (mismatched) {
       core.warning(`Repairing draft release ${mismatched.tag_name} to ${tag}.`);
