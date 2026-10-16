@@ -7,6 +7,7 @@ from scripts.ci_reuse import (
     REUSABLE,
     eligible_run,
     evidence_checks,
+    find_evidence,
     reuse_allowed,
     successful_checks,
     verify_evidence,
@@ -28,10 +29,21 @@ class ReuseTests(unittest.TestCase):
             "updated_at": self.now.isoformat(),
         }
 
-    def test_only_recent_successful_trusted_development_pushes(self):
+    def test_only_recent_successful_exact_tree_verifications(self):
         self.assertTrue(eligible_run(self.run, self.now))
+        self.assertTrue(
+            eligible_run(
+                self.run
+                | {
+                    "event": "pull_request",
+                    "path": ".github/workflows/ci.yml",
+                    "head_branch": "feature",
+                },
+                self.now,
+            )
+        )
         for changes in [
-            {"event": "pull_request"},
+            {"event": "pull_request", "path": "other.yml"},
             {"head_branch": "feature"},
             {"conclusion": "failure"},
             {"conclusion": "cancelled"},
@@ -112,6 +124,32 @@ class EvidenceTests(ReuseTests):
             evidence_checks(self.api, self.run, "tree", self.now), {"backend"}
         )
         verify_evidence(self.api, self.evidence, "tree", self.now)
+
+    def test_identical_pr_verification_is_reusable_when_no_push_run_exists(self):
+        pr_run = self.run | {
+            "event": "pull_request",
+            "path": ".github/workflows/ci.yml",
+            "head_branch": "dev",
+        }
+        outer = self
+
+        class API:
+            def get(self, path):
+                if path.startswith("actions/workflows/development.yml"):
+                    return {"workflow_runs": []}
+                if path.startswith("actions/workflows/ci.yml"):
+                    return {"workflow_runs": [pr_run]}
+                if path.startswith("git/"):
+                    return {"tree": {"sha": outer.tree}}
+                return pr_run
+
+            def jobs(self, run_id):
+                return outer.jobs
+
+        self.assertEqual(
+            find_evidence(API(), {"backend": True}, self.tree, self.now),
+            self.evidence,
+        )
 
     def test_changed_sources_workflow_or_dependencies_force_fresh_checks(self):
         self.assertEqual(
