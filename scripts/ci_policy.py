@@ -24,6 +24,8 @@ JOBS = (
     "automation",
 )
 RUNTIME = {"lint", "backend", "frontend", "validation", "package"}
+STABLE_RELEASE_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+RELEASE_TRIGGER = re.compile(r"^(?:feat|fix)(?:\([^)]+\))?!?:")
 
 
 def selected_checks(selected: set[str], *, audit: bool = True) -> dict[str, bool]:
@@ -109,6 +111,76 @@ def hotfix_matches_dev(files: list[str], *, base_sha: str, head_sha: str) -> boo
     )
 
 
+def latest_stable_release_tag(commit: str) -> str | None:
+    """Return semantic-release's latest stable tag reachable from ``commit``."""
+    result = subprocess.run(
+        ["git", "tag", "--merged", commit],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode:
+        raise RuntimeError("could not inspect release tags")
+    tags = []
+    for tag in result.stdout.splitlines():
+        match = STABLE_RELEASE_TAG.fullmatch(tag)
+        if match:
+            tags.append((tuple(map(int, match.groups())), tag))
+    return max(tags, default=(None, None))[1]
+
+
+def release_triggering_commits(commit_range: str) -> list[tuple[str, str]]:
+    """List feat/fix commits in a range, as semantic-release would consider them."""
+    result = subprocess.run(
+        ["git", "log", "--format=%H%x00%s", commit_range],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode:
+        raise RuntimeError("could not inspect release commits")
+    commits = []
+    for line in result.stdout.splitlines():
+        sha, separator, subject = line.partition("\x00")
+        if separator and RELEASE_TRIGGER.match(subject):
+            commits.append((sha, subject))
+    return commits
+
+
+def main_promotion_release_error(event: dict) -> str:
+    """Reject a beta promotion when main already has unreleased feat/fix history.
+
+    semantic-release analyzes all commits since its latest stable tag, not only
+    the pull request diff. A reverted accidental merge remains in Git history,
+    so this check makes that unsafe state visible before another beta promotion
+    can generate a misleading stable release.
+    """
+    pr = event.get("pull_request")
+    if not pr:
+        return ""
+    base, head = pr["base"], pr["head"]
+    same_repo = head.get("repo", {}).get("full_name") == base["repo"]["full_name"]
+    if not (same_repo and base["ref"] == "main" and head["ref"] == "beta"):
+        return ""
+    try:
+        tag = latest_stable_release_tag(base["sha"])
+        if tag is None:
+            return "Main has no stable semantic-release baseline tag."
+        inherited = release_triggering_commits(f"{tag}..{base['sha']}")
+    except RuntimeError as error:
+        return f"Could not verify the semantic-release boundary: {error}."
+    if not inherited:
+        return ""
+    subjects = ", ".join(f"{sha[:7]} {subject}" for sha, subject in inherited[:3])
+    extra = "" if len(inherited) <= 3 else f" (+{len(inherited) - 3} more)"
+    return (
+        f"Main already has {len(inherited)} unreleased feat/fix commit(s) since {tag} "
+        f"before this beta promotion: {subjects}{extra}. Establish or repair the "
+        "semantic-release baseline before merging so the draft contains only the "
+        "intended release changes."
+    )
+
+
 def branch_error(event: dict, files: list[str]) -> str:
     pr = event.get("pull_request")
     if not pr:
@@ -131,6 +203,8 @@ def branch_error(event: dict, files: list[str]) -> str:
     maintenance_files = bool(files) and all(
         p
         in (
+            "CONTRIBUTING.md",
+            ".github/PULL_REQUEST_TEMPLATE.md",
             "package.json",
             "package-lock.json",
             ".github/dependabot.yml",
@@ -334,7 +408,7 @@ def main() -> int:
         event = {"pull_request": pr}
         name = "pull_request"
     files = changed_files(event, name)
-    error = branch_error(event, files or [])
+    error = branch_error(event, files or []) or main_promotion_release_error(event)
     if error:
         print(error)
         return 1
