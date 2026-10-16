@@ -1,3 +1,5 @@
+const {nonReleaseRules} = require("./semantic-release-policy.json");
+
 const config = require("@nicxe/semantic-release-config")({
   componentDir: "custom_components/f1_sensor",
   manifestPath: "custom_components/f1_sensor/manifest.json",
@@ -14,18 +16,7 @@ const analyzerPlugin = config.plugins.find(
 if (analyzerPlugin?.[1]) {
   analyzerPlugin[1].releaseRules = [
     ...(analyzerPlugin[1].releaseRules || []),
-    {
-      type: "fix",
-      scope: "compatibility",
-      subject: "Verify release tags from GitHub directly",
-      release: false
-    },
-    {
-      type: "fix",
-      scope: "compatibility",
-      subject: "tolerate delayed release assets",
-      release: false
-    }
+    ...nonReleaseRules
   ];
 }
 

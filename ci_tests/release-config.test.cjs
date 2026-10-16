@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const config = require('../release.config.cjs');
 
-test('does not release the two misclassified release-workflow commits again', () => {
+test('does not release the known internal-only fixes again', () => {
   const analyzer = config.plugins.find(plugin => Array.isArray(plugin)
     && plugin[0] === '@semantic-release/commit-analyzer');
   const rules = analyzer?.[1]?.releaseRules || [];
@@ -20,6 +20,12 @@ test('does not release the two misclassified release-workflow commits again', ()
       scope: 'compatibility',
       subject: 'tolerate delayed release assets',
       release: false
+    },
+    {
+      type: 'fix',
+      scope: 'ci',
+      subject: 'wait for promotion verification registration',
+      release: false
     }
   ]);
 });
@@ -31,7 +37,8 @@ test('misclassified release-workflow history produces no semantic release', asyn
   const releaseType = await analyzeCommits(analyzer[1], {
     commits: [
       {message: 'fix(compatibility): Verify release tags from GitHub directly'},
-      {message: 'fix(compatibility): tolerate delayed release assets'}
+      {message: 'fix(compatibility): tolerate delayed release assets'},
+      {message: 'fix(ci): wait for promotion verification registration'}
     ],
     logger: {log() {}}
   });
