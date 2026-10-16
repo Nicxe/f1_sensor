@@ -90,6 +90,15 @@ def test_feature_plan_declares_exact_streams_and_reasons() -> None:
     }
 
 
+def test_team_radio_feature_plan_includes_driver_identity_stream() -> None:
+    plan = build_feature_plan({"team_radio"}, live_enabled=True)
+
+    assert plan.coordinators == frozenset({"team_radio"})
+    assert plan.requested_streams == frozenset({"DriverList", "Heartbeat", "TeamRadio"})
+    assert plan.stream_reasons["DriverList"] == ("team_radio",)
+    assert plan.stream_reasons["TeamRadio"] == ("team_radio",)
+
+
 def test_provider_sources_share_one_golden_record_contract() -> None:
     registry = ProviderRegistry()
     jolpica = registry.normalize(

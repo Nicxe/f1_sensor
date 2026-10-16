@@ -4141,6 +4141,7 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         self._history_limit = max(1, int(history_limit or 20))
+        self._driver_identities: dict[str, dict[str, str | None]] = {}
         self._state: dict[str, Any] = {"latest": None, "history": []}
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
@@ -4185,8 +4186,103 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         _apply_delay_with_queue(self, seconds)
 
     def _reset_store(self) -> None:
+        self._driver_identities = {}
         self._state = {"latest": None, "history": []}
         with suppress(Exception):
+            self.async_set_updated_data(self._state)
+
+    @staticmethod
+    def _identity_value(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @staticmethod
+    def _team_color(value: Any) -> str | None:
+        text = TeamRadioCoordinator._identity_value(value)
+        if text is None:
+            return None
+        return text if text.startswith("#") else f"#{text}"
+
+    @staticmethod
+    def _driver_tla_from_path(path: Any, racing_number: str | None) -> str | None:
+        text = TeamRadioCoordinator._identity_value(path)
+        if text is None:
+            return None
+        match = re.search(r"(?:^|/)([A-Za-z]{3})_([0-9]+)_", text)
+        if match is None:
+            return None
+        if racing_number is not None and match.group(2) != racing_number:
+            return None
+        return match.group(1).upper()
+
+    def _enrich_capture(self, capture: dict[str, Any]) -> dict[str, Any]:
+        enriched = dict(capture)
+        racing_number = self._identity_value(capture.get("RacingNumber"))
+        identity = self._driver_identities.get(racing_number or "", {})
+        enriched["driver_tla"] = (
+            identity.get("driver_tla")
+            or self._identity_value(capture.get("driver_tla"))
+            or self._driver_tla_from_path(capture.get("Path"), racing_number)
+        )
+        enriched["driver_name"] = identity.get("driver_name") or self._identity_value(
+            capture.get("driver_name")
+        )
+        enriched["team_name"] = identity.get("team_name") or self._identity_value(
+            capture.get("team_name")
+        )
+        enriched["team_color"] = identity.get("team_color") or self._team_color(
+            capture.get("team_color")
+        )
+        return enriched
+
+    def _on_driverlist(self, payload: dict) -> None:
+        """Merge driver identities and enrich radio clips already received."""
+        if not isinstance(payload, dict):
+            return
+        drivers = payload.get("Drivers")
+        if not isinstance(drivers, dict):
+            drivers = payload
+        identity_changed = False
+        for key, info in drivers.items():
+            if not isinstance(info, dict):
+                continue
+            racing_number = self._identity_value(info.get("RacingNumber") or key)
+            if racing_number is None:
+                continue
+            current = self._driver_identities.get(racing_number, {})
+            incoming = {
+                "driver_tla": self._identity_value(info.get("Tla")),
+                "driver_name": self._identity_value(
+                    info.get("FullName") or info.get("BroadcastName")
+                ),
+                "team_name": self._identity_value(info.get("TeamName")),
+                "team_color": self._team_color(
+                    info.get("TeamColour") or info.get("TeamColor")
+                ),
+            }
+            merged = {
+                field: value if value is not None else current.get(field)
+                for field, value in incoming.items()
+            }
+            if merged != current:
+                self._driver_identities[racing_number] = merged
+                identity_changed = True
+        if not identity_changed:
+            return
+
+        latest = self._state.get("latest")
+        enriched_latest = (
+            self._enrich_capture(latest) if isinstance(latest, dict) else latest
+        )
+        history = [
+            self._enrich_capture(item) if isinstance(item, dict) else item
+            for item in self._state.get("history") or []
+        ]
+        next_state = {"latest": enriched_latest, "history": history}
+        if next_state != self._state:
+            self._state = next_state
             self.async_set_updated_data(self._state)
 
     def set_transcription(self, clip_id: str, result: dict[str, Any]) -> bool:
@@ -4253,6 +4349,7 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             for item in (self._state.get("history") or [])
             if isinstance(item, dict)
         ]
+        captures = [self._enrich_capture(capture) for capture in captures]
         history.extend(captures)
         if len(history) > self._history_limit:
             history = history[-self._history_limit :]
@@ -4283,6 +4380,13 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         except Exception:
             self._session_unsub = None
         bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        with suppress(Exception):
+            self._unsubs.append(
+                bus.subscribe(
+                    "DriverList",
+                    _wrap_delayed_handler(self, self._on_driverlist),
+                )
+            )
         with suppress(Exception):
             self._unsubs.append(
                 bus.subscribe(

@@ -121,7 +121,11 @@ FEATURE_DEPENDENCIES: dict[str, FeatureDependency] = {
         coordinators=("formation_start",),
     ),
     "top_three": _dependency("TopThree", coordinators=("top_three",)),
-    "team_radio": _dependency("TeamRadio", coordinators=("team_radio",)),
+    "team_radio": _dependency(
+        "TeamRadio",
+        "DriverList",
+        coordinators=("team_radio",),
+    ),
     "pitstops": _dependency(
         "PitStopSeries",
         "DriverList",

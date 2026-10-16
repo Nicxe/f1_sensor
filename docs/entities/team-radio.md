@@ -39,6 +39,10 @@ Latest curated team radio clip with a rolling history. This is not the full raw 
 | utc | string | ISO-8601 timestamp of the radio clip |
 | received_at | string | ISO-8601 timestamp when Home Assistant received the message |
 | racing_number | string | Car number for the driver |
+| driver_tla | string | Three-letter driver code, such as `NOR` or `HAM` |
+| driver_name | string | Full driver name from the live timing feed |
+| team_name | string | Team name from the live timing feed |
+| team_color | string | Team color as a hexadecimal value beginning with `#` |
 | path | string | Relative path to the audio file |
 | clip_url | string | Full URL to the audio clip when available |
 | sequence | number | Message counter for deduplication |
@@ -57,8 +61,14 @@ Each entry in `history` contains:
 | --- | --- | --- |
 | utc | string | ISO-8601 timestamp of the radio clip |
 | racing_number | string | Car number for the driver |
+| driver_tla | string | Three-letter driver code |
+| driver_name | string | Full driver name |
+| team_name | string | Team name |
+| team_color | string | Team color as a hexadecimal value beginning with `#` |
 | path | string | Relative path to the audio file |
 | clip_url | string | Full URL to the audio clip when available |
+
+You can use `racing_number`, `driver_tla`, or `team_name` in templates and automations to select messages from a specific driver or team. The driver code can be read from the audio file name when driver details arrive late. Other identity fields remain `null` when Formula 1 does not provide them.
 
 ## Experimental transcription
 

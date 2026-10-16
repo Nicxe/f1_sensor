@@ -5074,6 +5074,17 @@ class F1TeamRadioSensor(
             "transcription_error": transcription.get("error"),
         }
 
+    def _identity_attributes(self, payload: dict) -> dict[str, str | None]:
+        team_color = self._cleanup_string(payload.get("team_color"))
+        if team_color and not team_color.startswith("#"):
+            team_color = f"#{team_color}"
+        return {
+            "driver_tla": self._cleanup_string(payload.get("driver_tla")),
+            "driver_name": self._cleanup_string(payload.get("driver_name")),
+            "team_name": self._cleanup_string(payload.get("team_name")),
+            "team_color": team_color,
+        }
+
     def _apply_payload(self, payload: dict, *, force: bool = False) -> None:
         if not isinstance(payload, dict):
             return
@@ -5087,16 +5098,26 @@ class F1TeamRadioSensor(
         racing_number = self._cleanup_string(payload.get("RacingNumber"))
         path = self._cleanup_string(payload.get("Path"))
         clip_url = self._build_clip_url(payload, path)
+        identity_attrs = self._identity_attributes(payload)
         transcription_attrs = self._transcription_attributes(payload)
         if utc_norm and self._last_utc == utc_norm and not force:
-            if not isinstance(payload.get("Transcription"), dict):
+            identity_changed = any(
+                self._attr_extra_state_attributes.get(key) != value
+                for key, value in identity_attrs.items()
+            )
+            has_transcription = isinstance(payload.get("Transcription"), dict)
+            if not identity_changed and not has_transcription:
                 return
             attrs = dict(self._attr_extra_state_attributes)
-            attrs.update(transcription_attrs)
+            attrs.update(identity_attrs)
+            if has_transcription:
+                attrs.update(transcription_attrs)
             attrs["raw_message"] = payload
             for item in self._history:
                 if item.get("utc") == utc_norm and item.get("path") == path:
-                    item.update(transcription_attrs)
+                    item.update(identity_attrs)
+                    if has_transcription:
+                        item.update(transcription_attrs)
                     break
             attrs["history"] = [dict(item) for item in self._history]
             self._attr_extra_state_attributes = attrs
@@ -5110,6 +5131,7 @@ class F1TeamRadioSensor(
             "utc": utc_norm,
             "received_at": received_at,
             "racing_number": racing_number,
+            **identity_attrs,
             "path": path,
             "clip_url": clip_url,
             **transcription_attrs,
@@ -5122,6 +5144,7 @@ class F1TeamRadioSensor(
             {
                 "utc": utc_norm,
                 "racing_number": racing_number,
+                **identity_attrs,
                 "path": path,
                 "clip_url": clip_url,
                 **transcription_attrs,

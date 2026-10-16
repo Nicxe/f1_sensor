@@ -2075,6 +2075,10 @@ async def test_team_radio_sensor_exposes_latest_clip_url(hass) -> None:
             "latest": {
                 "Utc": "2026-07-05T14:01:01.3296419Z",
                 "RacingNumber": "44",
+                "driver_tla": "HAM",
+                "driver_name": "Lewis Hamilton",
+                "team_name": "Ferrari",
+                "team_color": "E80020",
                 "Path": "TeamRadio/HAM_44_20260705_154016.mp3",
                 "_static_root": (
                     "https://livetiming.formula1.com/static/2026/"
@@ -2097,11 +2101,16 @@ async def test_team_radio_sensor_exposes_latest_clip_url(hass) -> None:
 
     assert state.state == "2026-07-05T14:01:01+00:00"
     assert state.attributes["racing_number"] == "44"
+    assert state.attributes["driver_tla"] == "HAM"
+    assert state.attributes["driver_name"] == "Lewis Hamilton"
+    assert state.attributes["team_name"] == "Ferrari"
+    assert state.attributes["team_color"] == "#E80020"
     assert state.attributes["path"] == "TeamRadio/HAM_44_20260705_154016.mp3"
     assert state.attributes["clip_url"].startswith(
         f"/api/f1_sensor/team-radio/{entry_id}/"
     )
     assert state.attributes["history"][0]["clip_url"] == state.attributes["clip_url"]
+    assert state.attributes["history"][0]["team_name"] == "Ferrari"
     assert state.attributes["transcription_status"] is None
     assert state.attributes["transcription_segments"] == []
 
@@ -2129,6 +2138,18 @@ async def test_team_radio_sensor_exposes_latest_clip_url(hass) -> None:
     ]
     assert state.attributes["history"][0]["transcription_status"] == "completed"
     assert len(state.attributes["history"]) == 1
+
+    identity_update = dict(updated)
+    identity_update["team_name"] = "Scuderia Ferrari HP"
+    coordinator.async_set_updated_data(
+        {"latest": identity_update, "history": [identity_update]}
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(sensor.entity_id)
+    assert state is not None
+    assert state.attributes["sequence"] == 1
+    assert state.attributes["team_name"] == "Scuderia Ferrari HP"
+    assert state.attributes["history"][0]["team_name"] == "Scuderia Ferrari HP"
 
 
 @pytest.mark.asyncio
