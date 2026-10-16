@@ -1,1 +1,9 @@
-{}
+{
+  "entity": {
+    "calendar": {
+      "season_calendar": {
+        "name": "Szezon naptár"
+      }
+    }
+  }
+}
