@@ -15,6 +15,20 @@ complete, require a byte-for-byte comparison of the complete integration trees
 to return no differences, excluding only runtime-generated cache artifacts such
 as `__pycache__`, `*.pyc`, and `.DS_Store`.
 
+# Local dev CI preflight
+
+Run `npm run setup:ci` once to create the isolated Python 3.14 environment used
+for local Home Assistant verification. Before considering a code change ready
+for commit, the agent must run `npm run verify:changed`; it selects the same
+applicable local checks as a push to `dev`, including the strict runtime
+coverage gate for integration changes. The agent must fix any resulting failure
+before presenting the change as ready. Before a substantial promotion, run
+`npm run verify:dev` for the complete locally reproducible suite.
+
+HACS and hassfest remain GitHub-only verification gates. Local verification is
+the agent's pre-commit quality gate; passing it does not replace the required
+remote checks after the user pushes with GitHub Desktop.
+
 If `/Volumes/config` is unavailable or unrelated changes prevent safe
 synchronization, report the limitation and do not call the code change
 complete. Source parity proves delivery to both file trees, not that Home
