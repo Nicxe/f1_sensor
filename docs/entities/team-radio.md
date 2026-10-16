@@ -96,6 +96,13 @@ data:
 
 The status changes to `processing` while the request runs and then to `completed` or `failed`. If it fails, read `transcription_error` on the team radio entity.
 
+The experimental Team Radio module in the modular F1 Sensor card can run the
+same action. Select your **AI Task entity for transcription** in the module
+options, then press the small **Transcribe** button beside **Play** on the latest
+untranscribed message. The card does not request forced retranscription, and it
+does not offer the button for older history items because the action accepts
+only the latest published clip.
+
 ### View the result
 
 The complete transcript is stored in `transcription_text`. Individual speaker turns are available in `transcription_segments`, where speakers are labeled `A`, `B`, or `unknown`.

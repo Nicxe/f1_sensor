@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-let chartLoading, mapLoading, telemetryLoading;
+let chartLoading, mapLoading, telemetryLoading, teamRadioLoading;
 const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatTimingGap, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./catalog.js'), load('./semantics.js'), load('../platform/branding.js'),
 ]);
@@ -324,6 +324,7 @@ export class F1ModuleView extends LitElement {
       case 'replay': return this.replay();
       case 'archive': return this.archive();
       case 'telemetry': return this.telemetry();
+      case 'team_radio': return this.teamRadio();
       case 'race_control': return this.events();
       default: return this.empty(this.w('modular.this_module_needs_a_newer_card_version_its_settings_are_preserved'));
     }
@@ -361,6 +362,17 @@ export class F1ModuleView extends LitElement {
     if (this.telemetryError) return this.empty(this.w('modular.telemetry_view_could_not_be_loaded_reload_the_dashboard'));
     this.telemetryNode.model = this.model; this.telemetryNode.module = this.module; this.telemetryNode.settings = this.settings;
     return this.telemetryNode;
+  }
+  teamRadio() {
+    if (!this.teamRadioNode) {
+      this.teamRadioNode = document.createElement('f1-team-radio-view');
+      this.teamRadioNode.setAttribute('part', 'team-radio');
+      teamRadioLoading ??= load('./team-radio-view.js').catch(error => { teamRadioLoading = null; throw error; });
+      teamRadioLoading.catch(() => { this.teamRadioError = true; this.requestUpdate(); });
+    }
+    if (this.teamRadioError) return this.empty(this.w('modular.team_radio_view_could_not_be_loaded_reload_the_dashboard'));
+    this.teamRadioNode.model = this.model; this.teamRadioNode.module = this.module; this.teamRadioNode.settings = this.settings;
+    return this.teamRadioNode;
   }
   archive() {
     const model = this.model, options = this.module.options;

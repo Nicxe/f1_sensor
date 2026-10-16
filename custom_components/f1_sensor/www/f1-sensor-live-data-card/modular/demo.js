@@ -56,6 +56,11 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
   put('constructor_points_progression', '4', { season: '2026', rounds, constructors: Object.fromEntries(people.map((driver, index) => [driver.team, { identity: { constructorId: driver.team, name: driver.team }, points_per_round: [43 - index * 2, 33 - index, 40 - index, null], cumulative_points: [43 - index * 2, 76 - index * 3, 116 - index * 4, null], wins_per_round: [index === 0 ? 1 : 0, index === 1 ? 1 : 0, index === 0 ? 1 : 0, null], totals: { points: 116 - index * 4 } }])) });
   put('fia_documents', '2', { race: { race_name: 'Demo Grand Prix', season: '2026', round: '14' }, documents: [{ name: 'Demo · Provisional starting grid', document_number: 20, published: '2026-09-12T15:00:00Z', url: 'https://www.fia.com/documents' }, { name: 'Demo · Event notes', document_number: 1, published: '2026-09-10T09:00:00Z', url: null }] });
   put('race_control', active ? 'TRACK CLEAR' : 'unavailable');
+  const radioHistory = active ? [
+    { utc: '2026-09-13T13:29:45Z', racing_number: '16', driver_tla: 'LEC', driver_name: 'Charles Leclerc', team_name: 'Ferrari', team_color: '#e80020', path: 'TeamRadio/LEC_16_demo.mp3', clip_url: '/api/f1_sensor/team-radio/demo/lec-demo?authSig=sample', transcription_status: 'completed', transcription_text: 'Is there a leak? A leakage of what? I have the seat full of water.', transcription_segments: [{ speaker: 'A', text: 'Is there a leak?' }, { speaker: 'B', text: 'A leakage of what?' }, { speaker: 'A', text: 'I have the seat full of water.' }] },
+    { utc: '2026-09-13T13:27:10Z', racing_number: '4', driver_tla: 'NOR', driver_name: 'Lando Norris', team_name: 'McLaren', team_color: '#ff8000', path: 'TeamRadio/NOR_4_demo.mp3', clip_url: '/api/f1_sensor/team-radio/demo/nor-demo?authSig=sample', transcription_status: null, transcription_text: null, transcription_segments: [] },
+  ] : [];
+  put('team_radio', active ? radioHistory[0].utc : 'unavailable', active ? { ...radioHistory[0], history: radioHistory } : {});
   const replaying = scene === 'replay', replayLabel = 'Demo Grand Prix · Race';
   put('replay_status', replaying ? 'paused' : 'idle', { selected_session: replaying ? replayLabel : null, selected_session_id: replaying ? 'demo-replay' : null, selected_session_year: replaying ? 2026 : null, selected_meeting_key: replaying ? 'demo-meeting' : null, selected_session_key: replaying ? 'demo-session' : null, selected_year: 2026, sessions_available: 1, index_status: 'ready', sync_points: replaying ? [{ id: 'lap:1', kind: 'lap', value: 1, position_s: 0 }, { id: 'lap:23', kind: 'lap', value: 23, position_s: 1800.25 }, { id: 'lap:24', kind: 'lap', value: 24, position_s: 1891.75 }] : [] });
   for (const [key, domain, state, attributes] of [
@@ -72,7 +77,7 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
     const entity_id = `${domain}.f1_demo_${key}`;
     entry.entities[key] = entity_id; states[entity_id] = { entity_id, state, attributes, last_updated: new Date(now).toISOString() };
   }
-  if (scene === 'missing') for (const key of ['driver_list', 'driver_positions', 'current_tyres', 'race_control', 'tyre_statistics', 'pitstops', 'investigations', 'track_limits']) { states[entry.entities[key]].state = 'unavailable'; states[entry.entities[key]].attributes = {}; }
+  if (scene === 'missing') for (const key of ['driver_list', 'driver_positions', 'current_tyres', 'race_control', 'team_radio', 'tyre_statistics', 'pitstops', 'investigations', 'track_limits']) { states[entry.entities[key]].state = 'unavailable'; states[entry.entities[key]].attributes = {}; }
   const events = active ? [
     { event_id: 'demo-2', utc: '2026-09-13T13:29:12Z', category: 'Flag', flag: 'CLEAR', message: 'TRACK CLEAR' },
     { event_id: 'demo-1', utc: '2026-09-13T13:27:31Z', category: 'Other', car_number: '4', message: 'CAR 4 · TRACK LIMITS AT TURN 7 · LAP TIME DELETED' },

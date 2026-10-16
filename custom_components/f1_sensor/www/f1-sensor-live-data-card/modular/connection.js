@@ -271,6 +271,10 @@ export async function callEntityService(hass, command, lockKey) {
   const target = lockKey ?? command.data.entity_id;
   if (active.has(target)) return false;
   active.add(target);
-  try { await hass.callService(command.domain, command.service, command.data); return true; }
+  try {
+    if (command.returnResponse === true) await hass.callService(command.domain, command.service, command.data, command.target, true);
+    else await hass.callService(command.domain, command.service, command.data);
+    return true;
+  }
   finally { active.delete(target); if (!active.size) entityCommands.delete(connection); }
 }

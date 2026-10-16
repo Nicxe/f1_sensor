@@ -219,6 +219,17 @@ export const FIELDS = Object.fromEntries([
   basic('document_time', 'Published', 'Publicerad', 'fia_documents', 'documents[].published', 'datetime', { spoiler: true }),
   basic('document_number', 'Document number', 'Dokumentnummer', 'fia_documents', 'documents[].document_number', 'integer', { spoiler: true }),
   basic('message', 'Message', 'Meddelande', 'race_control_log', 'message', 'text', { modes: ['live', 'replay'], spoiler: true, presentations: ['timeline'], filterable: true }),
+  ...[
+    ['radio_driver', 'Driver', 'Förare', 'driver'],
+    ['radio_team', 'Team', 'Team', 'text'],
+    ['radio_audio', 'Audio clip', 'Ljudklipp', 'audio'],
+    ['radio_transcript', 'Transcript', 'Transkribering', 'dialogue'],
+    ['radio_time', 'Message time', 'Meddelandetid', 'datetime'],
+  ].map(([id, en, sv, type]) => basic(id, en, sv, 'team_radio', id, type, {
+    capability: 'extended_timing', modes: ['live', 'replay'], sessions: ['practice', 'qualifying', 'sprint_qualifying', 'sprint', 'race'],
+    identity: ['entry', 'session', 'clip', ...(id === 'radio_driver' ? ['driver'] : id === 'radio_team' ? ['team'] : [])],
+    generation: 'session', spoiler: true, presentations: ['radio'],
+  })),
 ].map(field => [field.id, field]));
 
 const module = (id, en, sv, fields, options, sources, extra = {}) => ({
@@ -271,6 +282,18 @@ export const MODULES = {
     min_display_time: { type: 'integer', min: 0, max: 30, default: 0, label: { en: 'Minimum display time in seconds', sv: 'Minsta visningstid i sekunder' } },
     show_clear_button: { type: 'boolean', default: true, label: { en: 'Show clear button', sv: 'Visa tömningsknapp' } },
   }, ['race_control', 'current_session'], { stream: 'race_control' }),
+  team_radio: module('team_radio', 'Team Radio (experimental)', 'Team Radio (experimentell)', ['radio_driver', 'radio_team', 'radio_audio', 'radio_transcript', 'radio_time'], {
+    presentation: { type: 'enum', values: ['latest_message', 'recent_messages'], default: 'latest_message', label: { en: 'Radio messages', sv: 'Radiomeddelanden' } },
+    messages_to_show: { type: 'integer', min: 1, max: 10, default: 3, label: { en: 'Messages to show', sv: 'Antal meddelanden' } },
+    show_audio_controls: { type: 'boolean', default: true, label: { en: 'Show audio controls', sv: 'Visa ljudkontroller' } },
+    show_transcribe_button: { type: 'boolean', default: true, label: { en: 'Show Transcribe button', sv: 'Visa knappen Transkribera' } },
+    ai_task_entity_id: { type: 'entity', domain: 'ai_task', default: '', label: { en: 'AI Task entity for transcription', sv: 'AI Task-entitet för transkribering' } },
+    show_transcript: { type: 'boolean', default: true, label: { en: 'Show transcript', sv: 'Visa transkribering' } },
+    show_team_logo: { type: 'boolean', default: true, label: { en: 'Show team logo', sv: 'Visa teamlogga' } },
+    show_message_time: { type: 'boolean', default: true, label: { en: 'Show message time', sv: 'Visa meddelandetid' } },
+    mark_new_messages: { type: 'boolean', default: true, label: { en: 'Mark new messages', sv: 'Markera nya meddelanden' } },
+    show_transcription_status: { type: 'boolean', default: true, label: { en: 'Show transcription status', sv: 'Visa transkriberingsstatus' } },
+  }, ['team_radio', 'driver_list'], { spoiler: true, focus: ['driver', 'team'], experimental: true, defaultFields: ['radio_driver', 'radio_team', 'radio_audio', 'radio_transcript', 'radio_time'] }),
   results: module('results', 'Results', 'Resultat', ['result_position', 'driver', 'team', 'grid_position', 'position_change', 'laps', 'result_time', 'result_status', 'points', 'qualifying_position', 'qualifying_time', 'grid_delta', 'qualifying_segment', 'qualifying_delta'], {
     content: { type: 'enum', values: ['latest_race', 'race_results', 'sprint_results', 'starting_grid'], default: 'latest_race', label: { en: 'Result content', sv: 'Resultatinnehåll' } },
     round: { type: 'source_choice', default: '', label: { en: 'Round', sv: 'Deltävling' } },

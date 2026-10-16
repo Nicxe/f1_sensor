@@ -2,7 +2,7 @@
 
 This catalog is generated from the delivered module registry. It records the source path, data capability, supported modes and sessions, identity boundary, time provenance, freshness rule, unit and presentation for every field in every content-dependent module variant.
 
-Configuration version: 3. Modules: 21. Base field IDs: 148. Resolved sources: 32.
+Configuration version: 3. Modules: 22. Base field IDs: 153. Resolved sources: 33.
 
 A source path describes the contract consumed by the card; it is not a promise that the value is available in every session. `identity` lists the values that must still describe the same observation before fields may be combined. `timestamps` distinguishes source time, receipt time, entity update time and display snapshot time where the source supplies them.
 
@@ -414,6 +414,18 @@ Declared sources: `analysis`.
 | `strategy_outcome` — Observed pit-cycle outcome / Observerat utfall av depåcykel | `analysis` → `strategy.undercut_overcut_outcomes[].result` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: strategy_outcome; table, detail |
 | `analysis_quality` — Evidence score / Underlagspoäng | `analysis` → `strategy.undercut_overcut_outcomes[].confidence` | Capability: analysis; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: confidence; table, detail |
 | `analysis_source` — Source / basis / Källa / underlag | `analysis` → `strategy.undercut_overcut_outcomes[].supporting_signals` | Capability: analysis; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: text; table, detail |
+
+## Team Radio (experimental) (`team_radio`)
+
+Declared sources: `driver_list`, `team_radio`.
+
+| Field | Source and path | Coverage | Identity and time | Presentation |
+| --- | --- | --- | --- | --- |
+| `radio_driver` — Driver / Förare | `team_radio` → `radio_driver` | Capability: extended_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: source; spoiler-protected | Identity: entry, session, clip, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: driver; radio |
+| `radio_team` — Team / Team | `team_radio` → `radio_team` | Capability: extended_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: source; spoiler-protected | Identity: entry, session, clip, team; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: text; radio |
+| `radio_audio` — Audio clip / Ljudklipp | `team_radio` → `radio_audio` | Capability: extended_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: source; spoiler-protected | Identity: entry, session, clip; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: audio; radio |
+| `radio_transcript` — Transcript / Transkribering | `team_radio` → `radio_transcript` | Capability: extended_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: source; spoiler-protected | Identity: entry, session, clip; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: dialogue; radio |
+| `radio_time` — Message time / Meddelandetid | `team_radio` → `radio_time` | Capability: extended_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: source; spoiler-protected | Identity: entry, session, clip; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: datetime; radio |
 
 ## Replay telemetry (`telemetry`)
 
