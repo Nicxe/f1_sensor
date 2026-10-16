@@ -7,6 +7,28 @@ const config = require("@nicxe/semantic-release-config")({
   notifyIssues: false
 });
 
+const analyzerPlugin = config.plugins.find(
+  (plugin) => Array.isArray(plugin) && plugin[0] === "@semantic-release/commit-analyzer"
+);
+
+if (analyzerPlugin?.[1]) {
+  analyzerPlugin[1].releaseRules = [
+    ...(analyzerPlugin[1].releaseRules || []),
+    {
+      type: "fix",
+      scope: "compatibility",
+      subject: "Verify release tags from GitHub directly",
+      release: false
+    },
+    {
+      type: "fix",
+      scope: "compatibility",
+      subject: "tolerate delayed release assets",
+      release: false
+    }
+  ];
+}
+
 const githubPlugin = config.plugins.find(
   (plugin) => Array.isArray(plugin) && plugin[0] === "@semantic-release/github"
 );
