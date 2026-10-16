@@ -81,6 +81,10 @@ test('identifies only a matching untagged draft as safe to repair', () => {
     releases: [{...matching, name: 'Other release'}],
     tag: 'v5.8.0-beta.6', branch: 'beta', assetNames: ['f1_sensor.zip']
   }), undefined);
+  assert.equal(editorial.findMismatchedDraft({
+    releases: [{...matching, assets: []}],
+    tag: 'v5.8.0-beta.6', branch: 'beta', assetNames: ['f1_sensor.zip']
+  }).id, 42);
 });
 
 test('repairs a matching untagged draft and verifies the corrected tag', async () => {

@@ -67,12 +67,15 @@ function isUntaggedRelease(release) {
   return /^untagged-[0-9a-f]+$/.test(String(release?.tag_name || ''));
 }
 
-function findMismatchedDraft({releases, tag, branch, assetNames = []}) {
+function findMismatchedDraft({releases, tag, branch, commitSha}) {
   return releases.find(release => release.draft
     && isUntaggedRelease(release)
     && release.name === tag
-    && release.target_commitish === branch
-    && assetNames.every(name => release.assets?.some(asset => asset.name === name)));
+    && (release.target_commitish === branch || release.target_commitish === commitSha)
+    // GitHub can expose the draft before its uploaded assets are visible in
+    // listReleases. Assets are deliberately not part of the identity check;
+    // the tag and tested commit are the safety boundary for this repair.
+  );
 }
 
 async function releaseTagMatchesHead({
@@ -81,7 +84,7 @@ async function releaseTagMatchesHead({
   tag,
   wait = delay => new Promise(resolve => setTimeout(resolve, delay))
 }) {
-  for (let attempt = 1; attempt <= 6; attempt += 1) {
+  for (let attempt = 1; attempt <= 10; attempt += 1) {
     try {
       const commit = await github.rest.repos.getCommit({...context.repo, ref: tag});
       return commit.data.sha === context.sha;
@@ -119,7 +122,8 @@ async function reconcileReleaseTag({
     const releases = await github.paginate(github.rest.repos.listReleases, {
       ...context.repo, per_page: 100
     });
-    const mismatched = findMismatchedDraft({releases, tag, branch, assetNames});
+    core.info(`Release lookup for ${tag}: ${releases.filter(release => release.draft).map(release => `${release.name || '(unnamed)'} [${release.tag_name}]`).join(', ') || 'no drafts visible'}.`);
+    const mismatched = findMismatchedDraft({releases, tag, branch, commitSha: context.sha});
     if (mismatched) {
       core.warning(`Repairing draft release ${mismatched.tag_name} to ${tag}.`);
       const repaired = (await github.rest.repos.updateRelease({
@@ -137,7 +141,7 @@ async function reconcileReleaseTag({
       throw new Error(`GitHub did not accept the repair of release ${mismatched.id}.`);
     }
 
-    if (attempt === 6) {
+    if (attempt === 10) {
       throw new Error(`No correctly tagged release or safe matching draft found for ${tag}.`);
     }
     const delay = Math.min(1000 * 2 ** (attempt - 1), 8000);
