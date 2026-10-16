@@ -40,6 +40,23 @@ jobs:
         run: node .github/scripts/run-release.cjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: Verify and reconcile the release tag
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const editorial = require('./.github/scripts/release-editorial.cjs');
+            const tag = editorial.releaseTagAtHead({branch: context.ref.replace('refs/heads/', '')});
+            if (!tag) {
+              core.info('No release tag points at this commit; no release reconciliation is needed.');
+              return;
+            }
+            await editorial.reconcileReleaseTag({
+              github,
+              context,
+              core,
+              tag,
+              assetNames: ['f1_sensor.zip', 'f1_sensor.zip.sha256', 'f1_sensor.zip.spdx.json']
+            });
       - name: Add promotion editorial to the release draft
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
