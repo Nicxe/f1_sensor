@@ -11,6 +11,12 @@
       "scope": "compatibility",
       "subject": "tolerate delayed release assets",
       "release": false
+    },
+    {
+      "type": "fix",
+      "scope": "ci",
+      "subject": "wait for promotion verification registration",
+      "release": false
     }
   ]
 }

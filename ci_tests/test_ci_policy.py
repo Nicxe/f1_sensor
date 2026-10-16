@@ -118,7 +118,8 @@ class PolicyTests(unittest.TestCase):
             [
                 f"{'a' * 40}\x00fix(compatibility): Verify release tags from GitHub directly",
                 f"{'b' * 40}\x00fix(compatibility): tolerate delayed release assets",
-                f"{'c' * 40}\x00fix: Correct an unintended stable behavior",
+                f"{'c' * 40}\x00fix(ci): wait for promotion verification registration",
+                f"{'d' * 40}\x00fix: Correct an unintended stable behavior",
             ]
         )
         with patch(
@@ -127,7 +128,7 @@ class PolicyTests(unittest.TestCase):
         ):
             self.assertEqual(
                 release_triggering_commits("v6.0.0..main"),
-                [("c" * 40, "fix: Correct an unintended stable behavior")],
+                [("d" * 40, "fix: Correct an unintended stable behavior")],
             )
 
     def test_owner_maintenance_can_repair_main_without_promoting_runtime_code(self):
