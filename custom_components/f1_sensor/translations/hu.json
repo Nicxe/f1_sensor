@@ -4,6 +4,424 @@
       "season_calendar": {
         "name": "Szezon naptár"
       }
+    },
+    "sensor": {
+      "next_race": {
+        "name": "Következő verseny"
+      },
+      "track_time": {
+        "name": "Pályaidő"
+      },
+      "current_season": {
+        "name": "Aktuális szezon"
+      },
+      "driver_standings": {
+        "name": "Világbajnoki versenyzői pontverseny állása"
+      },
+      "constructor_standings": {
+        "name": "Konstruktőri világbajnokság állása"
+      },
+      "weather": {
+        "name": "Időjárás"
+      },
+      "track_weather": {
+        "name": "Pálya időjárása"
+      },
+      "current_session": {
+        "name": "Aktuális etap"
+      },
+      "last_race_results": {
+        "name": "Az előző verseny eredményei"
+      },
+      "season_results": {
+        "name": "Szezoneredmények"
+      },
+      "sprint_results": {
+        "name": "Sprintverseny eredményei"
+      },
+      "lap_position_progression": {
+        "name": "Helyezések körönkénti alakulása"
+      },
+      "race_control": {
+        "name": "Versenyirányítás"
+      },
+      "top_three_p1": {
+        "name": "Dobogósok (1. hely)"
+      },
+      "top_three_p2": {
+        "name": "Dobogósok (2. hely)"
+      },
+      "top_three_p3": {
+        "name": "Dobogósok (3. hely)"
+      },
+      "pitstops": {
+        "name": "Bokszkiállások"
+      },
+      "championship_prediction_drivers": {
+        "name": "Egyéni világbajnoki esélylatolgatás"
+      },
+      "championship_prediction_teams": {
+        "name": "Konstruktőri világbajnoki esélylatolgatás"
+      },
+      "fia_documents": {
+        "name": "FIA-határozatok"
+      },
+      "live_timing_mode": {
+        "name": "Élő időmérési mód"
+      },
+      "f1tv_token_status": {
+        "name": "F1TV-token állapota",
+        "state": {
+          "not_configured": "Nincs beállítva",
+          "valid": "Érvényes",
+          "expiring_soon": "Hamarosan lejár",
+          "expired": "Lejárt",
+          "invalid": "Érvénytelen",
+          "rejected": "Elutasítva"
+        }
+      },
+      "f1tv_token_expires_at": {
+        "name": "Az F1TV-token lejárati ideje"
+      },
+      "driver_positions": {
+        "name": "Versenyzői helyezések"
+      },
+      "favorite_driver": {
+        "name": "Kedvenc versenyző"
+      },
+      "starting_grid": {
+        "name": "Startfelállás"
+      },
+      "track_limits": {
+        "name": "Pályahatárok"
+      },
+      "investigations": {
+        "name": "Vizsgálatok és büntetések"
+      },
+      "straight_mode": {
+        "name": "Egyenes mód",
+        "state": {
+          "normal_grip": "Normál tapadás",
+          "low_grip": "Alacsony tapadás",
+          "disabled": "Kikapcsolva"
+        }
+      },
+      "track_status": {
+        "name": "Pályaállapot"
+      },
+      "session_status": {
+        "name": "Etap állapota"
+      },
+      "session_time_remaining": {
+        "name": "Etapból hátralévő idő"
+      },
+      "session_time_elapsed": {
+        "name": "Etapból eltelt idő"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "Hátralévő idő a háromórás időkorlátig"
+      },
+      "driver_list": {
+        "name": "Versenyzőlista"
+      },
+      "current_tyres": {
+        "name": "Jelenlegi gumikeverék"
+      },
+      "tyre_statistics": {
+        "name": "Gumistatisztikák"
+      },
+      "team_radio": {
+        "name": "Csapatrádió"
+      },
+      "race_lap_count": {
+        "name": "Versenykörök száma"
+      },
+      "driver_points_progression": {
+        "name": "Versenyzői pontok alakulása"
+      },
+      "constructor_points_progression": {
+        "name": "Konstruktőri pontok alakulása"
+      },
+      "replay_status": {
+        "name": "Visszajátszás állapota"
+      }
+    },
+    "weather": {
+      "weather": {
+        "name": "Időjárás"
+      }
+    },
+    "button": {
+      "delay_calibration_match": {
+        "name": "Élő késleltetés szinkronizálása"
+      },
+      "replay_load": {
+        "name": "Etap betöltése"
+      },
+      "replay_play": {
+        "name": "Lejátszás"
+      },
+      "replay_pause": {
+        "name": "Szünet"
+      },
+      "replay_back_30": {
+        "name": "Ugrás 30 másodperccel vissza"
+      },
+      "replay_forward_30": {
+        "name": "Ugrás 30 másodperccel előre"
+      },
+      "replay_stop": {
+        "name": "Leállítás"
+      },
+      "replay_refresh": {
+        "name": "Etapok frissítése"
+      },
+      "jolpica_ua_test": {
+        "name": "Jolpica user-agent tesztelése"
+      },
+      "clear_f1tv_access": {
+        "name": "F1TV-hozzáférés törlése"
+      },
+      "refresh_f1tv_access": {
+        "name": "F1TV-hozzáférés frissítése"
+      }
+    },
+    "switch": {
+      "delay_calibration": {
+        "name": "Késleltetés kalibrálása"
+      },
+      "no_spoiler_mode": {
+        "name": "Spoilermentes mód"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "Élő közvetítés késleltetése"
+      }
+    },
+    "media_player": {
+      "replay_player": {
+        "name": "Visszajátszó"
+      }
+    },
+    "select": {
+      "favorite_driver": {
+        "name": "Kedvenc versenyző"
+      },
+      "live_delay_reference": {
+        "name": "Élő késleltetés referenciája"
+      },
+      "replay_year": {
+        "name": "Visszajátszás éve"
+      },
+      "replay_session": {
+        "name": "Visszajátszandó etap"
+      },
+      "replay_start_reference": {
+        "name": "Visszajátszás kezdő referenciája"
+      }
+    },
+    "binary_sensor": {
+      "race_week": {
+        "name": "Versen hét"
+      },
+      "live_timing_online": {
+        "name": "Élő időmérés online"
+      },
+      "safety_car": {
+        "name": "Biztonsági autó"
+      },
+      "on_track_incident": {
+        "name": "Pályaesemény"
+      },
+      "possible_on_track_incident": {
+        "name": "Lehetséges pályaesemény"
+      },
+      "formation_start": {
+        "name": "Formációs rajt"
+      },
+      "overtake_mode": {
+        "name": "Előzési mód"
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "A versenyhét elkezdődött",
+      "race_week_ended": "A versenyhét véget ért",
+      "safety_car_deployed": "Beküldték a biztonsági autót",
+      "safety_car_cleared": "A biztonsági autó kiállt",
+      "possible_on_track_incident_detected": "Lehetséges pályaesemény észlelve",
+      "possible_on_track_incident_cleared": "A lehetséges pályaesemény megszűnt",
+      "on_track_incident_detected": "Pályaesemény észlelve",
+      "on_track_incident_cleared": "A pályaesemény megszűnt",
+      "formation_start_ready": "Felvezető kör indítható",
+      "overtake_mode_enabled": "Előzési mód engedélyezve",
+      "overtake_mode_disabled": "Előzési mód megtiltva",
+      "session_live": "Az élő közvetítés elindult",
+      "track_status_clear": "Pályaállapot: Tiszta",
+      "track_status_yellow": "Pályaállapot: Sárga zászló",
+      "track_status_safety_car": "Pályaállapot: Biztonsági autó",
+      "track_status_vsc": "Pályaállapot: Virtuális biztonsági autó",
+      "track_status_red_flag": "Pályaállapot: Piros zászló",
+      "new_race_control_message": "Új versenyirányítási üzenet",
+      "new_fia_document": "Új FIA dokumentum jelent meg",
+      "investigation_changed": "Megváltozott a vizsgálat állapota",
+      "new_team_radio": "Új csapatrádió-üzenet",
+      "favorite_driver_position_gained": "Kedvenc versenyző egy helyet javított",
+      "favorite_driver_position_lost": "Kedvenc versenyző egy helyet rontott",
+      "favorite_driver_entered_pits": "Kedvenc versenyző kihajtott a bokszutcába",
+      "favorite_driver_exited_pits": "Kedvenc versenyző elhagyta a bokszutcát",
+      "favorite_driver_retired": "Kedvenc versenyző kiesett",
+      "live_timing_online": "Élő időmérés elérhetővé vált",
+      "live_timing_offline": "Élő időmérés nem érhető el"
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "F1 Sensor beállítás",
+        "data": {
+          "sensor_name": "Eszköz neve",
+          "enabled_sensors": "Engedélyezett érzékelők",
+          "operation_mode": "Működési mód",
+          "replay_file": "Visszajátszás elérési útja",
+          "enable_race_control": "Élő F1 API engedélyezése (Versenyirányítás/Pálya/Versenyszakasz)",
+          "install_dashboard_cards": "Beépített irányítópultkártyák telepítése",
+          "race_week_start_day": "Versenyhét első napja",
+          "live_timing_auth_header": "Kézi tartalékmegoldás: F1 TV hitelesítési érték",
+          "clear_live_timing_auth_header": "F1TV hitelesítési érték törlése",
+          "start_f1tv_pairing": "Ajánlott: F1TV hozzáférés összekapcsolása Token Helperrel",
+          "install_legacy_cards": "Régi irányítópultkártyák telepítése"
+        },
+        "data_description": {
+          "operation_mode": "Válaszd az Élő módot a Formula 1 SignalR kapcsolathoz, vagy a Fejlesztői módot egy mentett adatfájl helyi visszajátszásához.",
+          "replay_file": "A rögzített SignalR adatfájl abszolút elérési útja. Csak Fejlesztői módban szükséges.",
+          "enable_race_control": "SignalR-en keresztül csatlakozik az F1 Live Timing szolgáltatáshoz az élő adatok fogadásához. Kikapcsolva az élő érzékelők nem jönnek létre.",
+          "install_dashboard_cards": "Regisztrálja a beépített F1 Sensor kártyákat Home Assistantban. Kapcsold ki, ha csak entitásokat és automatizmusokat használsz. A böngésző újratöltése után a meglévő F1 irányítópultkártyák leállnak.",
+          "race_week_start_day": "Válaszd ki, hogy a versenyhét szombaton, vasárnap vagy hétfőn kezdődjön.",
+          "live_timing_auth_header": "Manuális tartalék, ha a Token Helper párosítás nem működik. Haladó megoldásként illeszd be az F1TV Token Helper adta teljes Bearer tokent. Hagyd üresen, ha a nyilvános élő időmérést szeretnéd használni visszajátszási mód és archív tartalmak nélkül.",
+          "start_f1tv_pairing": "Ajánlott megoldás. Kapcsold össze az aktív fizetős F1TV előfizetésedet a visszajátszási mód, az archív tartalmak és a további élő adatok eléréséhez. A nyilvános élő időmérés enélkül is működik.",
+          "install_legacy_cards": "Az elavult F1 kártyákat is regisztrálja. Új telepítésnél hagyd kikapcsolva; a meglévő telepítésnél megmaradnak a korábbi kártyák. Irányítópultkártya telepítése szükséges. A beállítás módosítása után töltsd újra az oldalt. Kikapcsolásakor a régi kártyák nem működnek tovább, hacsak nem állsz át az F1 Sensor kártyára. Több F1 Sensor telepítés esetén a régi kártyák mindaddig elérhetők maradnak, amíg valamelyik engedélyezett telepítés igényli őket."
+        }
+      },
+      "reconfigure": {
+        "title": "F1 Sensor újrakonfigurálás",
+        "data": {
+          "sensor_name": "Eszköz neve",
+          "enabled_sensors": "Engedélyezett érzékelők",
+          "operation_mode": "Működési mód",
+          "replay_file": "Visszajátszási adatfájl elérési útja",
+          "enable_race_control": "Élő F1 API engedélyezése",
+          "install_dashboard_cards": "A beépített irányítópultkártyák telepítése",
+          "race_week_start_day": "A versenyhét első napja",
+          "live_timing_auth_header": "Kézi tartalékmegoldás: F1TV hitelesítési érték",
+          "clear_live_timing_auth_header": "F1TV-hitelesítési érték törlése",
+          "start_f1tv_pairing": "Ajánlott: F1TV-hozzáférés összekapcsolása a Token Helperrel",
+          "install_legacy_cards": "A régi irányítópultkártyák telepítése"
+        },
+        "data_description": {
+          "operation_mode": "Válaszd az Élő módot a Formula 1 SignalR-kapcsolathoz, vagy a Fejlesztői módot egy mentett adatfájl helyi visszajátszásához.",
+          "replay_file": "A rögzített SignalR-adatfájl abszolút elérési útja. Csak Fejlesztői módban szükséges.",
+          "enable_race_control": "Csatlakozik a Formula 1 élő időméréséhez, és valós idejű frissítéseket fogad. Kikapcsolt állapotban ezek az élő érzékelők nem jönnek létre.",
+          "install_dashboard_cards": "Regisztrálja a mellékelt F1 Sensor-kártyákat a Home Assistantban. Kapcsold ki, ha csak entitásokat és automatizmusokat használsz. A böngésző újratöltése után a meglévő F1-irányítópultkártyák leállnak.",
+          "race_week_start_day": "Válaszd ki, hogy a versenyhét szombaton, vasárnap vagy hétfőn kezdődjön.",
+          "live_timing_auth_header": "Kézi tartalékmegoldás, ha a Token Helperrel történő összekapcsolás nem működik. Haladó megoldásként illessz be egy új, teljes Bearer tokent. Hagyd üresen az aktuális érték megtartásához.",
+          "clear_live_timing_auth_header": "Törli a mentett F1TV-hitelesítési értéket, és a nyilvános élő időméréssel folytatja. A visszajátszási mód és az archív tartalmak nem lesznek elérhetők.",
+          "start_f1tv_pairing": "Ajánlott megoldás. Kapcsold össze az aktív, fizetős F1TV-előfizetésedet a visszajátszási mód, az archív tartalmak és a további élő adatok eléréséhez. A nyilvános élő időmérés enélkül is működik.",
+          "install_legacy_cards": "A már elavult F1-kártyákat is regisztrálja. Új telepítéseknél ez alapértelmezés szerint ki van kapcsolva; a meglévő telepítések megtartják korábbi kártyáikat. Ehhez telepíteni kell az irányítópultkártyákat. A beállítás módosítása után töltsd újra a böngészőt. Kikapcsolásakor a régi kártyák nem működnek tovább, hacsak nem állsz át az F1 Sensor-kártyára. Több F1 Sensor-telepítés esetén a régi kártyák mindaddig elérhetők maradnak, amíg valamelyik engedélyezett telepítés igényli őket."
+        }
+      },
+      "reauth_confirm": {
+        "title": "F1TV élő időmérési hitelesítésének frissítése",
+        "data": {
+          "live_timing_auth_header": "Kézi tartalékmegoldás: F1TV-hitelesítési érték",
+          "clear_live_timing_auth_header": "F1TV-hitelesítési érték törlése",
+          "start_f1tv_pairing": "Ajánlott: F1TV-hozzáférés összekapcsolása a Token Helperrel"
+        },
+        "data_description": {
+          "live_timing_auth_header": "Kézi tartalékmegoldás, ha a Token Helperrel történő összekapcsolás nem működik. Haladó megoldásként illessz be egy új, teljes Bearer tokent.",
+          "start_f1tv_pairing": "Ajánlott megoldás. Kapcsold össze az aktív, fizetős F1TV-előfizetésedet a visszajátszási mód, az archív tartalmak és a további élő adatok eléréséhez. A nyilvános élő időmérés enélkül is működik.",
+          "clear_live_timing_auth_header": "Törli a mentett F1TV-hitelesítési értéket, és a nyilvános élő időméréssel folytatja. A visszajátszási mód és az archív tartalmak nem lesznek elérhetők."
+        }
+      },
+      "f1tv_pairing": {
+        "title": "F1TV-hozzáférés összekapcsolása",
+        "description": "Az F1TV Token Helper segítségével kapcsolj össze egy aktív, fizetős előfizetést. A nyilvános élő időmérés továbbra is használható hitelesítés nélkül, de a visszajátszási módhoz és az archív tartalmakhoz F1TV-hozzáférés szükséges. Ez az összekapcsolás ekkor jár le: {expires_at}."
+      }
+    },
+    "abort": {
+      "reconfigure_successful": "Az F1 Sensor újrakonfigurálása sikerült.",
+      "f1tv_pairing_unavailable": "Az F1TV-összekapcsolás ebben a verzióban nem érhető el.",
+      "f1tv_pairing_failed": "Az F1TV-összekapcsolás nem fejeződött be. Indíts új összekapcsolási munkamenetet, és próbáld újra."
+    },
+    "error": {
+      "replay_required": "Fejlesztői mód esetén válassz egy visszajátszási adatfájlt.",
+      "replay_missing": "A visszajátszási adatfájl nem található vagy nem olvasható.",
+      "auth_header_required": "Add meg az F1TV-hitelesítési értéket, vagy válaszd a törlést.",
+      "invalid_auth_header": "Adj meg egy érvényes Bearer tokent.",
+      "auth_token_missing_exp": "A token nem tartalmaz lejárati időt.",
+      "auth_token_expired": "A token lejárt.",
+      "auth_token_expiring_soon": "A token hamarosan lejár. Hozz létre egy új tokent, és próbáld újra."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "F1 Sensor funkcióinak beállítása",
+        "data": {
+          "enabled_sensors": "Engedélyezett érzékelők",
+          "enable_race_control": "Élő F1 API engedélyezése",
+          "install_dashboard_cards": "A mellékelt irányítópultkártyák telepítése",
+          "race_week_start_day": "A versenyhét első napja",
+          "operation_mode": "Működési mód",
+          "replay_file": "Visszajátszási adatfájl elérési útja",
+          "install_legacy_cards": "Régi irányítópultkártyák telepítése"
+        },
+        "data_description": {
+          "enable_race_control": "Csak akkor csatlakozik a Formula 1 élő időméréséhez, ha az élő funkciók engedélyezve vannak.",
+          "install_dashboard_cards": "Regisztrálja a mellékelt F1 Sensor-kártyákat a Home Assistantban. Kapcsold ki, ha csak entitásokat és automatizmusokat használsz. A böngésző újratöltése után a meglévő F1-irányítópultkártyák nem fognak működni.",
+          "race_week_start_day": "Válaszd ki, hogy a versenyhét szombaton, vasárnap vagy hétfőn kezdődjön.",
+          "operation_mode": "Válaszd az Élő módot vagy a helyi visszajátszást biztosító Fejlesztői módot.",
+          "replay_file": "A visszajátszási adatfájl abszolút elérési útja. Csak Fejlesztői módban használható.",
+          "install_legacy_cards": "A már elavult F1-kártyákat is regisztrálja. Új telepítéseknél ez alapértelmezés szerint ki van kapcsolva; a meglévő telepítések megtartják korábbi kártyáikat. Ehhez telepíteni kell az irányítópultkártyákat. A beállítás módosítása után töltsd újra a böngészőt. Kikapcsolásakor a régi kártyák nem működnek tovább, hacsak nem állsz át az F1 Sensor-kártyára. Több F1 Sensor-telepítés esetén a régi kártyák mindaddig elérhetők maradnak, amíg valamelyik engedélyezett telepítés igényli őket."
+        }
+      }
+    },
+    "error": {
+      "replay_required": "Fejlesztői mód esetén válassz egy visszajátszási adatfájlt.",
+      "replay_missing": "A visszajátszási adatfájl nem található vagy nem olvasható."
+    }
+  },
+  "issues": {
+    "stale_live_data_card_resources": {
+      "description": "A Home Assistant rendszerben továbbra is találhatók elavult Lovelace-erőforrásbejegyzések a régi, önálló F1-kártyához ({stale_resource_count} találat). Ezek duplikált kártyákat okozhatnak, vagy a mellékelt irányítópultkártyák kikapcsolása után is láthatóvá tehetik az F1-kártyákat. Távolítsd el a régi, önálló HACS-irányítópulttárat és a hozzá tartozó elavult Lovelace-erőforrásbejegyzéseket, majd indítsd újra a Home Assistantot, vagy töltsd újra a Lovelace-erőforrásokat, és végezz teljes böngészőfrissítést.",
+      "title": "Elavult"
+    },
+    "f1tv_token_attention_required": {
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "data": {
+              "start_f1tv_pairing": "Ajánlott: F1TV-hozzáférés összekapcsolása a Token Helperrel",
+              "live_timing_auth_header": "F1TV-hitelesítési érték",
+              "clear_live_timing_auth_header": "F1TV-hitelesítési érték törlése"
+            },
+            "data_description": {
+              "start_f1tv_pairing": "Ajánlott megoldás. Indíts egy rövid élettartamú összekapcsolási munkamenetet, majd küldd el a tokent a böngészőbővítményből, kézi másolás nélkül.",
+              "live_timing_auth_header": "Illessz be egy új Bearer tokent az F1TV Token Helperből az F1TV-hozzáféréshez.",
+              "clear_live_timing_auth_header": "Töröld a mentett F1TV-tokent, és folytasd a nyilvános élő időméréssel. A visszajátszási mód és az archív tartalmak nem lesznek elérhetők."
+            },
+            "description": "A(z) {name} mentett F1TV-tokenje figyelmet igényel. A nyilvános élő időmérés továbbra is működik, de a visszajátszási módhoz, az archív tartalmakhoz és a további F1TV-élő adatokhoz új token szükséges.",
+            "title": "F1TV élő időmérési tokenjének frissítése"
+          },
+          "f1tv_pairing": {
+            "title": "F1TV-hozzáférés összekapcsolása",
+            "description": "Az F1TV Token Helper segítségével kapcsolj össze egy aktív, fizetős előfizetést. A nyilvános élő időmérés továbbra is használható hitelesítés nélkül, de a visszajátszási módhoz és az archív tartalmakhoz F1TV-hozzáférés szükséges. Ez az összekapcsolás ekkor jár le: {expires_at}."
+          }
+        }
+      },
+      "title": "Az F1TV élő időmérési tokenje figyelmet igényel"
     }
   }
 }
