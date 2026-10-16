@@ -262,7 +262,7 @@
       "favorite_driver_position_lost": "Favoriete rijder heeft een plek verloren",
       "favorite_driver_entered_pits": "Favoriete rijder is de pit ingegaan",
       "favorite_driver_exited_pits": "Favoriete rijder is de pit uitgegaan",
-      "favorite_driver_retired": "Favoriete rijder is gestopt",
+      "favorite_driver_retired": "Favoriete rijder is uitgeschakeld",
       "live_timing_online": "Live timing is online gekomen",
       "live_timing_offline": "Live timing is offline gegaan"
     }
