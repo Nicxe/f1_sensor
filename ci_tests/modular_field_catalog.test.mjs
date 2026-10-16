@@ -10,11 +10,12 @@ import {
 
 test('generated modular field catalog matches every delivered module variant', async () => {
   const catalog = buildCatalog();
-  assert.equal(catalog.module_count, 20);
+  assert.equal(catalog.module_count, 21);
   assert.ok(catalog.field_count > 100);
   assert.ok(catalog.sources.includes('analysis'));
   assert.ok(catalog.sources.includes('history/results'));
   assert.ok(catalog.sources.includes('track_map'));
+  assert.ok(catalog.sources.includes('minisectors'));
   const [json, markdown] = await Promise.all([
     readFile(new URL('../quality/modular-field-catalog.json', import.meta.url), 'utf8'),
     readFile(new URL('../quality/modular-field-catalog.md', import.meta.url), 'utf8'),

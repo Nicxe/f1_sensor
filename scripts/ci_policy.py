@@ -203,6 +203,8 @@ def branch_error(event: dict, files: list[str]) -> str:
     maintenance_files = bool(files) and all(
         p
         in (
+            "CONTRIBUTING.md",
+            ".github/PULL_REQUEST_TEMPLATE.md",
             "package.json",
             "package-lock.json",
             ".github/dependabot.yml",

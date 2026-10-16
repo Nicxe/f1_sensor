@@ -31,12 +31,20 @@ signals. The default states use both color and a distinct shape:
 | Overall fastest | Diamond |
 | Personal best | Circle |
 | Recorded time | Square |
+| Minisector reset or missing status | Neutral block |
+| Unrecognized minisector status | Neutral block with an unknown marker |
 | Faster lap delta | Down triangle and negative value |
 | Slower lap delta | Up triangle and positive value |
 
 Do not choose custom colors that are difficult to distinguish in your active
 theme. Keep symbols or text enabled when timing state matters. Position arrows
 describe a position comparison; they do not describe whether a lap was faster.
+
+Minisector strips use the same diamond, circle and square meanings as other timing
+status. The status legend explains that the blocks contain no minisector times.
+Yellow means a recorded provider status; it does not establish that the segment
+was slower than the preceding lap. Unknown and special source codes stay neutral
+so that an unverified color never becomes the only explanation.
 
 ## Use a keyboard or switch input
 

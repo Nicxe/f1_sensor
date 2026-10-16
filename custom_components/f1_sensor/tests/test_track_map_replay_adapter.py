@@ -829,9 +829,17 @@ def test_track_map_replay_adapter_updates_replay_state_metadata() -> None:
     )
     adapter.start()
 
-    listeners[0]({"state": "paused"})
+    listeners[0](
+        {
+            "state": "paused",
+            "selected_session_key": 9896,
+            "selected_session_year": 2025,
+        }
+    )
 
     assert store.snapshot(now=BASE_TIME)["replay_state"] == "paused"
+    assert store._replay_session_key == "9896"
+    assert store._replay_session_year == 2025
 
 
 @pytest.mark.asyncio

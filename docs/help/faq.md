@@ -14,7 +14,7 @@ Use stable for everyday use. Beta is for testing the next release; dev is for de
 
 ### Do I need an API key or a separate weather account?
 
-No API key is required for normal setup. F1TV access is optional and only affects additional live features. Start with [installation](/getting-started/installation).
+No API key is required for normal setup or public live timing. An active paid F1TV subscription is required for Replay Mode, archive media and additional authenticated live features. Start with [installation](/getting-started/installation).
 
 ### Can I show the data on an ESPHome display?
 
@@ -28,7 +28,7 @@ Use the **Schedule** module in the [F1 Sensor card](/cards/cards-overview) for w
 
 ### Do I need F1TV Auth or an F1 TV Pro subscription?
 
-F1TV Auth is optional. Public live timing supports session status, track flags, Race Control, weather, driver timing, tyres and confirmed incident alerts. Extra live feeds may need an account with the relevant timing access. Read the [availability and subscription guidance](/features/f1tv-auth) before subscribing.
+Public live timing supports session status, track flags, Race Control, weather, driver timing, tyres and confirmed incident alerts without F1TV Auth. Replay Mode, archive media and additional authenticated live feeds require an account with an active paid F1TV subscription. Read the [availability and subscription guidance](/features/f1tv-auth) before subscribing.
 
 ### Why does Track Map work in replay but not live?
 
@@ -61,6 +61,20 @@ Use [Race Control](/entities/race-control) for messages, [Track Status](/entitie
 ### Can I display the lap counter and total laps?
 
 Use `sensor.f1_race_lap_count` and its `total_laps` attribute when available. The [Race Lap reference](/entities/race-lap) explains the state. Missing total laps can mean the source has not supplied them yet.
+
+### Can I show minisector times?
+
+No. The live timing source supplies a status for each minisector, but no time for
+each one. In the modular F1 Sensor card, add **S1/S2/S3 minisectors** for status
+blocks only, or **S1/S2/S3 with minisectors** to place those blocks under the
+existing full-sector time. Purple with a diamond means overall best, green with a
+circle means personal best, and yellow with a square means recorded. Yellow does
+not prove that the minisector was slower than the preceding lap.
+
+Minisectors are card data rather than Home Assistant sensors because they update
+quickly for many drivers and are useful only in the current session context. If a
+session or archive has no segment data, the card shows its configured unavailable
+state and keeps ordinary sector timing separate. See [the modular card guide](/cards/modular#show-minisectors).
 
 ## Troubleshooting
 

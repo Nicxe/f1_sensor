@@ -63,6 +63,94 @@ async function promotionPullRequest(github, context) {
   }));
 }
 
+function isUntaggedRelease(release) {
+  return /^untagged-[0-9a-f]+$/.test(String(release?.tag_name || ''));
+}
+
+function findMismatchedDraft({releases, tag, branch, assetNames = []}) {
+  return releases.find(release => release.draft
+    && isUntaggedRelease(release)
+    && release.name === tag
+    && release.target_commitish === branch
+    && assetNames.every(name => release.assets?.some(asset => asset.name === name)));
+}
+
+async function releaseTagMatchesHead({
+  github,
+  context,
+  tag,
+  wait = delay => new Promise(resolve => setTimeout(resolve, delay))
+}) {
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    try {
+      const commit = await github.rest.repos.getCommit({...context.repo, ref: tag});
+      return commit.data.sha === context.sha;
+    } catch (error) {
+      if (error.status !== 404 || attempt === 6) throw error;
+      await wait(Math.min(1000 * 2 ** (attempt - 1), 8000));
+    }
+  }
+  return false;
+}
+
+async function reconcileReleaseTag({
+  github,
+  context,
+  core,
+  tag,
+  branch = context.ref.replace('refs/heads/', ''),
+  assetNames = [],
+  wait = delay => new Promise(resolve => setTimeout(resolve, delay))
+}) {
+  if (!(await releaseTagMatchesHead({github, context, tag, wait}))) {
+    throw new Error(`${tag} does not point at the tested commit ${context.sha}.`);
+  }
+
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    try {
+      const release = (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
+      if (release.tag_name !== tag) throw new Error(`GitHub returned ${release.tag_name} for ${tag}.`);
+      core.info(`${tag} is correctly associated with the release.`);
+      return release;
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
+
+    const releases = await github.paginate(github.rest.repos.listReleases, {
+      ...context.repo, per_page: 100
+    });
+    const exact = releases.find(release => release.tag_name === tag);
+    if (exact) {
+      core.info(`${tag} is available in the release list with the correct tag.`);
+      return exact;
+    }
+    const mismatched = findMismatchedDraft({releases, tag, branch, assetNames});
+    if (mismatched) {
+      core.warning(`Repairing draft release ${mismatched.tag_name} to ${tag}.`);
+      const repaired = (await github.rest.repos.updateRelease({
+        ...context.repo,
+        release_id: mismatched.id,
+        tag_name: tag,
+        name: tag,
+        target_commitish: branch,
+        draft: true
+      })).data;
+      if (repaired.tag_name === tag) {
+        core.info(`Repaired draft release ${mismatched.tag_name} to ${tag}.`);
+        continue;
+      }
+      throw new Error(`GitHub did not accept the repair of release ${mismatched.id}.`);
+    }
+
+    if (attempt === 6) {
+      throw new Error(`No correctly tagged release or safe matching draft found for ${tag}.`);
+    }
+    const delay = Math.min(1000 * 2 ** (attempt - 1), 8000);
+    core.info(`${tag} is not visible yet; retrying release verification in ${delay}ms.`);
+    await wait(delay);
+  }
+}
+
 async function releaseByTag({github, context, core, tag, wait = delay => new Promise(resolve => setTimeout(resolve, delay))}) {
   for (let attempt = 1; attempt <= 6; attempt += 1) {
     try {
@@ -114,5 +202,6 @@ async function applyReleaseEditorial({github, context, core, getTag = releaseTag
 
 module.exports = {
   START, END, isPromotion, editorialBlock, extractEditorial, replaceEditorial,
-  releaseTagAtHead, promotionPullRequest, releaseByTag, applyReleaseEditorial
+  releaseTagAtHead, promotionPullRequest, releaseByTag, applyReleaseEditorial,
+  isUntaggedRelease, findMismatchedDraft, releaseTagMatchesHead, reconcileReleaseTag
 };

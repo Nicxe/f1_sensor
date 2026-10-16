@@ -138,3 +138,34 @@ test('custom timing colors retain text and shape meaning in high-contrast graysc
   const violations = (await new AxeBuilder({ page }).include('f1-sensor-card').analyze()).violations.filter(v => ['serious', 'critical'].includes(v.impact));
   expect(violations).toEqual([]);
 });
+
+test('last lap applies source personal-best and overall-fastest timing colors', async ({ page }) => {
+  await page.evaluate(() => {
+    window.mountModular({ config: {
+      appearance: { palette: { overall: '#aa33cc', personal: '#22aa55' } },
+      accessibility: { signals: 'both' },
+      modules: [{ type: 'timing', fields: ['driver', 'last_lap'] }],
+    } });
+    const demo = window.fixtureDemo, entry = demo.preview.entries[0];
+    const driver = demo.hass.states[entry.entities.driver_positions].attributes.drivers[0];
+    const lap = Math.max(...Object.keys(driver.laps).map(Number));
+    driver.last_lap_status = { time: driver.laps[lap], lap, personal_fastest: true, overall_fastest: false };
+    window.fixtureCard.hass = { ...demo.hass };
+  });
+  const lastLap = page.locator('tbody tr').first().locator('td').nth(1).locator('.signal');
+  await expect(lastLap).toHaveClass(/personal/);
+  await expect(lastLap).toHaveCSS('background-color', 'rgb(34, 170, 85)');
+  await expect(lastLap).toContainText('●');
+  await expect(lastLap).toContainText('Personal best');
+
+  await page.evaluate(() => {
+    const demo = window.fixtureDemo, entry = demo.preview.entries[0];
+    const driver = demo.hass.states[entry.entities.driver_positions].attributes.drivers[0];
+    driver.last_lap_status.overall_fastest = true;
+    window.fixtureCard.hass = { ...demo.hass };
+  });
+  await expect(lastLap).toHaveClass(/overall/);
+  await expect(lastLap).toHaveCSS('background-color', 'rgb(170, 51, 204)');
+  await expect(lastLap).toContainText('◆');
+  await expect(lastLap).toContainText('Overall fastest');
+});

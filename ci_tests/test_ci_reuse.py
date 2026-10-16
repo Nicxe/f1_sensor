@@ -42,12 +42,11 @@ class ReuseTests(unittest.TestCase):
             with self.subTest(changes=changes):
                 self.assertFalse(eligible_run(self.run | changes, self.now))
 
-    def test_matrix_requires_every_profile_and_no_missing_jobs(self):
+    def test_backend_requires_the_current_profile(self):
         jobs = [{"name": name, "conclusion": "success"} for name in REUSABLE["backend"]]
         self.assertIn("backend", successful_checks(jobs))
-        self.assertNotIn("backend", successful_checks(jobs[:1]))
         for result in ["failure", "cancelled", "skipped", None]:
-            jobs[1]["conclusion"] = result
+            jobs[0]["conclusion"] = result
             self.assertNotIn("backend", successful_checks(jobs))
 
     def test_remote_validation_and_audit_are_never_reused(self):

@@ -76,6 +76,7 @@ The `sensor.f1_replay_status` entity tracks the current state and provides detai
 | index_year | number | Year that the session index was loaded from (best effort) |
 | index_status | string | Index status such as `ok`, `no_data`, or `error` (best effort) |
 | index_error | string | Error details when index fetch fails (best effort) |
+| sync_points | list | Verified lap or qualifying-part starts, with an ID, kind, value, and playback position in seconds |
 
 
 ## Playback position and seeking
@@ -93,6 +94,8 @@ target:
 data:
   seek_position: 90
 ```
+
+The Replay module uses `sync_points` to offer session-specific shortcuts. Race and sprint sessions can provide lap starts. Qualifying and sprint qualifying sessions can provide Q1–Q3 or SQ1–SQ3 starts. Missing markers are omitted instead of estimated.
 
 :::warning[Rewinding can repeat events]
 Historical state changes and events can be emitted again when you rewind. Replay-driven automations, lights, and notifications may run again.

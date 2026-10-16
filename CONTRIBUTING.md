@@ -95,6 +95,32 @@ Check a representative guide, reference table, and card page at mobile and deskt
 
 Include the changed user journey, validation performed, and any limitations in the pull request. Integration or card behavior changes also require their normal Python, frontend, and Home Assistant checks; documentation checks do not replace them.
 
+## Translation workflow
+
+The English files at `custom_components/f1_sensor/translations/en.json` and
+`custom_components/f1_sensor/www/f1-sensor-live-data-card/localization/locales/en.json`
+are the sources for integration and Live Data Card translations. Other locale
+files are managed through Weblate and may omit untranslated keys. Home
+Assistant and the card then use the English source text. Do not copy English
+text or add a local translation to another locale merely to make its key set
+complete.
+
+Changes to English source text and translation keys follow the code path and
+target `dev`. Weblate translation pull requests also target `dev`, use `chore:`
+commit messages, and must pass the normal integration checks. Merge Weblate
+commits without squashing so its repository stays synchronized with upstream.
+
+Before submitting source-string or translation changes, run:
+
+```bash
+python3 scripts/check_translations.py custom_components/f1_sensor/translations
+```
+
+The integration validator accepts missing target-language values, but rejects
+unknown keys, blank values, invalid nested values, and changed placeholders.
+The card localization tests apply the same source-key and fallback rules to its
+flat JSON locale files.
+
 ## How to submit a pull request
 
 1. Fork the repository.
@@ -113,7 +139,7 @@ If you are unsure whether a change fits the project direction, open an issue bef
 
 Standalone content runs documentation checks and, for blueprints, HA blueprint tests. Integration changes run Python, frontend, lint, HACS/hassfest and package checks. Dependency or workflow changes and code promotions run the complete set. Npm audit runs for dependency changes, releases and weekly maintenance; an unavailable registry is reported separately from a vulnerability.
 
-The maintainer can push directly to `dev`. Promotions use `dev → beta → main` and merge commits. No additional reviewer is required. Release drafts are created only after checks pass on the same final commit. Publishing a draft remains a manual maintainer action. Publication notifies referenced issues and synchronizes the exact released history through a fast-forward or a CI-checked synchronization PR. Conflicts are resolved normally without force-pushing either side.
+The maintainer can push directly to `dev`. Promotions use `dev → beta → main` and merge commits. No additional reviewer is required. Release drafts are created only after checks pass on the same final commit. Publishing a draft remains a manual maintainer action. A published stable release may synchronize its exact history to `content`; beta releases are not synchronized back to `dev` automatically because beta is promoted from `dev`. Normal pushes, PR verification runs and schedules do not start branch synchronization.
 
 For a release retry, run **Actions → Release verification → Run workflow**, choose `beta` or `main`, enable the release option. CI verifies that branch head again. An existing published tag is left untouched; an interrupted draft can be recovered without changing its version. Bot-created synchronization PRs use the PR-number input to explicitly check the proposed merge when `GITHUB_TOKEN` does not trigger PR workflows.
 
@@ -141,10 +167,10 @@ Development checks run on pushes to `dev` and `content`. When an existing PR ver
 
 PRs can reuse successful checks from a development push completed within the last two hours only when the complete Git tree is identical. This includes all sources, test profiles, workflows and dependency locks. The source must be a successful push in this repository on `dev` or `content`, and all jobs in each reused profile must have succeeded. CI revalidates the source run and its attempt before passing the gate. The run summary links the evidence. Registry audits and external HACS/hassfest validation always run when applicable. Release verification never reuses results and still tests the final commit before creating a draft. GitHub may continue to display earlier push checks attached to the PR head.
 
-The repository allows Actions to create synchronization PRs. This GitHub setting also technically permits review approval; these workflows never submit approval reviews, and branch rules require zero approvals.
+The repository allows Actions to create synchronization PRs. This GitHub setting also technically permits review approval; these workflows never submit approval reviews, and branch rules require zero approvals. Automatic synchronization is limited to published stable releases into `content`.
 
 ## Security updates and branch synchronization
 
 Dependabot security updates target `main`. Dependency-only PRs from Dependabot may run full CI there; automatic merging additionally requires verified Dependabot commits and a matching open security advisory. Ordinary patch/minor Dependabot updates continue to target `dev`. Both paths use merge commits and require strict, GitHub Actions-bound `CI required` protection.
 
-After changes reach `main`, automation synchronizes its history to `beta`, `content` and `dev`. Each synchronization PR preserves the exact target snapshot and merges automatically only after CI. A changed target produces a new snapshot; conflicts and failed tests remain visible for manual resolution. Synchronization runs on main pushes, after PR verification, and every 30 minutes to recover events suppressed by bot tokens. Published beta releases also synchronize to `dev`. Release publication remains manual.
+Branch synchronization is deliberately narrow. Published stable releases may create a `main → content` synchronization PR. Published beta releases do not create a `beta → dev` PR automatically because beta is promoted from dev and active development should not be interrupted by history-only synchronization PRs. If a beta-only hotfix ever needs to be brought back to `dev`, the supported `beta → dev` manual synchronization remains available; conflicts require normal manual resolution. Release publication remains manual.

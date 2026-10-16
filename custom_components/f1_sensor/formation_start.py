@@ -13,6 +13,7 @@ from aiohttp import ClientSession
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from .archive import F1ArchiveClient
 from .helpers import CARDATA_MAX_LINE_BYTES, parse_cardata_lines
 from .signalr import LiveBus
 
@@ -128,11 +129,12 @@ class FormationStartTracker:
         *,
         bus: LiveBus,
         http_session: ClientSession,
+        archive_client: F1ArchiveClient | None = None,
         availability_guard: Callable[[], bool] | None = None,
     ) -> None:
         self._hass = hass
         self._bus = bus
-        self._http = http_session
+        self._http = archive_client or http_session
         self._availability_guard = availability_guard
         self._listeners: list[Callable[[dict[str, Any]], None]] = []
         self._session_unsub: Callable[[], None] | None = None

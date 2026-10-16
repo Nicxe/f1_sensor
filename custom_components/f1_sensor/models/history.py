@@ -237,7 +237,7 @@ def _mapping(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def _ordered_mapping_values(value: object) -> list[Mapping[str, Any]]:
+def _ordered_mapping_items(value: object) -> list[tuple[int, Mapping[str, Any]]]:
     if isinstance(value, Mapping):
 
         def _sort_key(item: tuple[object, object]) -> tuple[int, str]:
@@ -245,27 +245,29 @@ def _ordered_mapping_values(value: object) -> list[Mapping[str, Any]]:
             return (int(key), key) if key.isdecimal() else (10_000, key)
 
         return [
-            item
-            for _, item in sorted(value.items(), key=_sort_key)
-            if isinstance(item, Mapping)
+            (int(key), item)
+            for key, item in sorted(value.items(), key=_sort_key)
+            if str(key).isdecimal() and isinstance(item, Mapping)
         ]
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-        return [item for item in value if isinstance(item, Mapping)]
+        return [
+            (index, item)
+            for index, item in enumerate(value)
+            if isinstance(item, Mapping)
+        ]
     return []
 
 
 def _live_sectors(
     payload: Mapping[str, Any],
 ) -> tuple[tuple[float | None, float | None, float | None], tuple[MiniSector, ...]]:
-    sector_items = _ordered_mapping_values(payload.get("Sectors"))
+    sector_items = dict(_ordered_mapping_items(payload.get("Sectors")))
     durations: list[float | None] = []
     minisectors: list[MiniSector] = []
     for sector_index in range(3):
-        sector = sector_items[sector_index] if sector_index < len(sector_items) else {}
+        sector = sector_items.get(sector_index, {})
         durations.append(_as_float(sector.get("Value")))
-        for mini_index, segment in enumerate(
-            _ordered_mapping_values(sector.get("Segments"))
-        ):
+        for mini_index, segment in _ordered_mapping_items(sector.get("Segments")):
             minisectors.append(
                 MiniSector(
                     sector=sector_index + 1,

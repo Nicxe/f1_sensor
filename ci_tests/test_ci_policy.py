@@ -117,6 +117,8 @@ class PolicyTests(unittest.TestCase):
         event["pull_request"]["user"]["login"] = "Nicxe"
         files = [
             "package.json",
+            "CONTRIBUTING.md",
+            ".github/PULL_REQUEST_TEMPLATE.md",
             ".github/scripts/auto-merge.cjs",
             "scripts/ci_policy.py",
             "scripts/check_npm_audit.py",
