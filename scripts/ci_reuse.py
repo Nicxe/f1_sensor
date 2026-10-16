@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reuse fresh, trusted push checks; never trust artifacts or PR-supplied claims."""
+"""Reuse fresh exact-tree checks; never trust artifacts or PR-supplied claims."""
 
 from datetime import UTC, datetime, timedelta
 import json
@@ -50,10 +50,16 @@ class GitHub:
 def eligible_run(run, now):
     try:
         age = now - datetime.fromisoformat(run["updated_at"].replace("Z", "+00:00"))
-        return (
+        development_push = (
             run["event"] == "push"
             and run["path"] == ".github/workflows/development.yml"
             and run["head_branch"] in ("dev", "content")
+        )
+        pr_verification = (
+            run["event"] == "pull_request" and run["path"] == ".github/workflows/ci.yml"
+        )
+        return (
+            (development_push or pr_verification)
             and re.fullmatch(r"[0-9a-f]{40}", run["head_sha"]) is not None
             and run["status"] == "completed"
             and run["conclusion"] == "success"
@@ -89,27 +95,32 @@ def evidence_checks(api, run, tree, now):
 
 
 def find_evidence(api, selected, tree, now):
-    runs = api.get(
-        "actions/workflows/development.yml/runs?"
-        + urlencode(
-            {
-                "event": "push",
-                "status": "success",
-                "per_page": 30,
-            }
-        )
-    )["workflow_runs"]
-    for run in runs:
-        checks = sorted(
-            key for key in evidence_checks(api, run, tree, now) if selected.get(key)
-        )
-        if checks:
-            return {
-                "run_id": run["id"],
-                "attempt": run["run_attempt"],
-                "head_sha": run["head_sha"],
-                "checks": checks,
-            }
+    sources = (
+        ("development.yml", "push"),
+        ("ci.yml", "pull_request"),
+    )
+    for workflow, event in sources:
+        runs = api.get(
+            f"actions/workflows/{workflow}/runs?"
+            + urlencode(
+                {
+                    "event": event,
+                    "status": "success",
+                    "per_page": 30,
+                }
+            )
+        )["workflow_runs"]
+        for run in runs:
+            checks = sorted(
+                key for key in evidence_checks(api, run, tree, now) if selected.get(key)
+            )
+            if checks:
+                return {
+                    "run_id": run["id"],
+                    "attempt": run["run_attempt"],
+                    "head_sha": run["head_sha"],
+                    "checks": checks,
+                }
     return {}
 
 
