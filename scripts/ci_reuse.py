@@ -16,6 +16,7 @@ REUSABLE = {
     "backend": ["checks / backend / HA current"],
     "frontend": ["checks / frontend / frontend"],
     "documentation": ["checks / documentation / documentation"],
+    "validation": ["checks / validation / validate"],
     "package": ["checks / package / package"],
     "automation": ["checks / automation / automation"],
 }
@@ -126,6 +127,22 @@ def verify_evidence(api, evidence, tree, now):
         raise ValueError("Reused check evidence changed or expired; rerun CI")
 
 
+def reuse_allowed(event_name: str, branch: str, enabled: bool) -> bool:
+    """Allow trusted reuse for PRs and promotion pushes only."""
+    return enabled and (
+        event_name == "pull_request"
+        or (event_name == "push" and branch in ("beta", "main"))
+    )
+
+
+def without_deployment_checks(evidence: dict, deploy: bool) -> dict:
+    """Keep documentation fresh when this run must create a Pages artifact."""
+    if not deploy:
+        return evidence
+    checks = [check for check in evidence.get("checks", []) if check != "documentation"]
+    return evidence | {"checks": checks} if checks else {}
+
+
 def main():
     tree = subprocess.check_output(
         ["git", "rev-parse", "HEAD^{tree}"], text=True
@@ -137,13 +154,22 @@ def main():
         return
     selected = json.loads(os.environ["CI_SELECTED"])
     evidence = {}
-    # Release, maintenance, forks' dispatches and manual retries run their own checks.
-    if (
-        os.environ.get("CI_ALLOW_REUSE") == "true"
-        and os.environ["GITHUB_EVENT_NAME"] == "pull_request"
+    event_name = os.environ["GITHUB_EVENT_NAME"]
+    branch = os.environ.get("GITHUB_REF_NAME", "")
+    # Promotion pushes retain target-specific audit, documentation publication and
+    # release steps, but can reuse source checks for an identical fresh tree.
+    if reuse_allowed(
+        event_name,
+        branch,
+        os.environ.get("CI_ALLOW_REUSE") == "true",
     ):
         try:
             evidence = find_evidence(api, selected, tree, now)
+            # A Pages deployment needs a freshly built artifact from this run.
+            evidence = without_deployment_checks(
+                evidence,
+                os.environ.get("CI_DEPLOY") == "true",
+            )
         except Exception as error:  # Optimization failure must never block fresh tests.
             print(
                 f"Reuse unavailable; running applicable tests: {type(error).__name__}"

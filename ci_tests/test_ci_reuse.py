@@ -7,8 +7,10 @@ from scripts.ci_reuse import (
     REUSABLE,
     eligible_run,
     evidence_checks,
+    reuse_allowed,
     successful_checks,
     verify_evidence,
+    without_deployment_checks,
 )
 
 
@@ -49,9 +51,28 @@ class ReuseTests(unittest.TestCase):
             jobs[0]["conclusion"] = result
             self.assertNotIn("backend", successful_checks(jobs))
 
-    def test_remote_validation_and_audit_are_never_reused(self):
+    def test_validation_is_reused_but_audit_is_always_fresh(self):
+        self.assertIn("validation", REUSABLE)
         self.assertNotIn("audit", REUSABLE)
-        self.assertNotIn("validation", REUSABLE)
+
+    def test_only_prs_and_promotion_pushes_can_reuse(self):
+        self.assertTrue(reuse_allowed("pull_request", "beta", True))
+        self.assertTrue(reuse_allowed("push", "beta", True))
+        self.assertTrue(reuse_allowed("push", "main", True))
+        self.assertFalse(reuse_allowed("push", "dev", True))
+        self.assertFalse(reuse_allowed("workflow_dispatch", "main", True))
+        self.assertFalse(reuse_allowed("push", "main", False))
+
+    def test_deploy_requires_a_fresh_documentation_artifact(self):
+        evidence = {"run_id": 42, "checks": ["backend", "documentation"]}
+        self.assertEqual(without_deployment_checks(evidence, False), evidence)
+        self.assertEqual(
+            without_deployment_checks(evidence, True),
+            {"run_id": 42, "checks": ["backend"]},
+        )
+        self.assertEqual(
+            without_deployment_checks({"checks": ["documentation"]}, True), {}
+        )
 
 
 class EvidenceTests(ReuseTests):
@@ -107,7 +128,7 @@ class EvidenceTests(ReuseTests):
             verify_evidence(self.api, self.evidence, "tree", self.now)
 
     def test_unknown_or_remote_checks_cannot_be_claimed(self):
-        for check in ["audit", "validation", "unknown"]:
+        for check in ["audit", "unknown"]:
             with self.subTest(check=check), self.assertRaises(ValueError):
                 verify_evidence(
                     self.api, self.evidence | {"checks": [check]}, "tree", self.now
