@@ -4,6 +4,7 @@ const {execFileSync} = require('node:child_process');
 
 const START = '<!-- release-editorial:start -->';
 const END = '<!-- release-editorial:end -->';
+const RELEASE_LOOKUP_ATTEMPTS = 10;
 
 function isPromotion(pr) {
   return (pr?.base?.ref === 'beta' && pr?.head?.ref === 'dev')
@@ -67,12 +68,15 @@ function isUntaggedRelease(release) {
   return /^untagged-[0-9a-f]+$/.test(String(release?.tag_name || ''));
 }
 
-function findMismatchedDraft({releases, tag, branch, assetNames = []}) {
+function findRepairableDraft({releases, tag, branch, commitSha}) {
   return releases.find(release => release.draft
-    && isUntaggedRelease(release)
+    && (release.tag_name === tag || isUntaggedRelease(release))
     && release.name === tag
-    && release.target_commitish === branch
-    && assetNames.every(name => release.assets?.some(asset => asset.name === name)));
+    && (release.target_commitish === branch || release.target_commitish === commitSha)
+    // GitHub can expose the draft before its uploaded assets are visible in
+    // listReleases. Assets are deliberately not part of the identity check;
+    // the tag and tested commit are the safety boundary for this repair.
+  );
 }
 
 async function releaseTagMatchesHead({
@@ -81,12 +85,12 @@ async function releaseTagMatchesHead({
   tag,
   wait = delay => new Promise(resolve => setTimeout(resolve, delay))
 }) {
-  for (let attempt = 1; attempt <= 6; attempt += 1) {
+  for (let attempt = 1; attempt <= RELEASE_LOOKUP_ATTEMPTS; attempt += 1) {
     try {
       const commit = await github.rest.repos.getCommit({...context.repo, ref: tag});
       return commit.data.sha === context.sha;
     } catch (error) {
-      if (error.status !== 404 || attempt === 6) throw error;
+      if (error.status !== 404 || attempt === RELEASE_LOOKUP_ATTEMPTS) throw error;
       await wait(Math.min(1000 * 2 ** (attempt - 1), 8000));
     }
   }
@@ -106,49 +110,60 @@ async function reconcileReleaseTag({
     throw new Error(`${tag} does not point at the tested commit ${context.sha}.`);
   }
 
-  for (let attempt = 1; attempt <= 6; attempt += 1) {
+  let confirmedReleaseId;
+  for (let attempt = 1; attempt <= RELEASE_LOOKUP_ATTEMPTS; attempt += 1) {
+    let tagVisible = false;
     try {
       const release = (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
       if (release.tag_name !== tag) throw new Error(`GitHub returned ${release.tag_name} for ${tag}.`);
-      core.info(`${tag} is correctly associated with the release.`);
-      return release;
+      if (!release.draft) {
+        core.info(`${tag} is already published and correctly associated with the release.`);
+        return release;
+      }
+      if (confirmedReleaseId === release.id) {
+        core.info(`${tag} is stably associated with draft release ${release.id}.`);
+        return release;
+      }
+      confirmedReleaseId = release.id;
+      tagVisible = true;
+      core.info(`${tag} is visible by tag; confirming the association once more.`);
     } catch (error) {
       if (error.status !== 404) throw error;
+      confirmedReleaseId = undefined;
     }
 
-    const releases = await github.paginate(github.rest.repos.listReleases, {
-      ...context.repo, per_page: 100
-    });
-    const exact = releases.find(release => release.tag_name === tag);
-    if (exact) {
-      core.info(`${tag} is available in the release list with the correct tag.`);
-      return exact;
-    }
-    const mismatched = findMismatchedDraft({releases, tag, branch, assetNames});
-    if (mismatched) {
-      core.warning(`Repairing draft release ${mismatched.tag_name} to ${tag}.`);
-      const repaired = (await github.rest.repos.updateRelease({
-        ...context.repo,
-        release_id: mismatched.id,
-        tag_name: tag,
-        name: tag,
-        target_commitish: branch,
-        draft: true
-      })).data;
-      if (repaired.tag_name === tag) {
-        core.info(`Repaired draft release ${mismatched.tag_name} to ${tag}.`);
-        continue;
+    if (!tagVisible) {
+      const releases = await github.paginate(github.rest.repos.listReleases, {
+        ...context.repo, per_page: 100
+      });
+      core.info(`Release lookup for ${tag}: ${releases.filter(release => release.draft).map(release => `${release.name || '(unnamed)'} [${release.tag_name}]`).join(', ') || 'no drafts visible'}.`);
+      const repairable = findRepairableDraft({releases, tag, branch, commitSha: context.sha});
+      if (repairable) {
+        core.warning(`Asserting ${tag} on draft release ${repairable.id} (currently ${repairable.tag_name}).`);
+        const repaired = (await github.rest.repos.updateRelease({
+          ...context.repo,
+          release_id: repairable.id,
+          tag_name: tag,
+          name: tag,
+          target_commitish: branch,
+          draft: true
+        })).data;
+        const byId = (await github.rest.repos.getRelease({
+          ...context.repo, release_id: repairable.id
+        })).data;
+        if (repaired.tag_name !== tag || byId.tag_name !== tag) {
+          throw new Error(`GitHub did not persist ${tag} on release ${repairable.id}.`);
+        }
+        core.info(`Draft release ${repairable.id} now reports ${tag} by release ID.`);
       }
-      throw new Error(`GitHub did not accept the repair of release ${mismatched.id}.`);
     }
 
-    if (attempt === 6) {
-      throw new Error(`No correctly tagged release or safe matching draft found for ${tag}.`);
-    }
+    if (attempt === RELEASE_LOOKUP_ATTEMPTS) break;
     const delay = Math.min(1000 * 2 ** (attempt - 1), 8000);
     core.info(`${tag} is not visible yet; retrying release verification in ${delay}ms.`);
     await wait(delay);
   }
+  throw new Error(`No stable correctly tagged release or safe matching draft found for ${tag}.`);
 }
 
 async function releaseByTag({github, context, core, tag, wait = delay => new Promise(resolve => setTimeout(resolve, delay))}) {
@@ -203,5 +218,6 @@ async function applyReleaseEditorial({github, context, core, getTag = releaseTag
 module.exports = {
   START, END, isPromotion, editorialBlock, extractEditorial, replaceEditorial,
   releaseTagAtHead, promotionPullRequest, releaseByTag, applyReleaseEditorial,
-  isUntaggedRelease, findMismatchedDraft, releaseTagMatchesHead, reconcileReleaseTag
+  RELEASE_LOOKUP_ATTEMPTS, isUntaggedRelease, findRepairableDraft,
+  releaseTagMatchesHead, reconcileReleaseTag
 };
