@@ -123,6 +123,30 @@ test('repairs a matching untagged draft and verifies the corrected tag', async (
   assert.match(messages.join('\n'), /Repairing draft release/);
 });
 
+test('does not trust a transient exact tag from the release list', async () => {
+  let tagLookups = 0;
+  const release = await editorial.reconcileReleaseTag({
+    github: {
+      rest: {repos: {
+        getCommit: async () => ({data: {sha: 'head-sha'}}),
+        getReleaseByTag: async () => {
+          tagLookups += 1;
+          if (tagLookups === 1) throw {status: 404};
+          return {data: {id: 42, tag_name: 'v5.8.0-beta.6', draft: true}};
+        },
+        listReleases: () => {}
+      }},
+      paginate: async () => [{id: 99, tag_name: 'v5.8.0-beta.6', draft: true}]
+    },
+    context: {repo: {owner: 'Nicxe', repo: 'f1_sensor'}, sha: 'head-sha', ref: 'refs/heads/beta'},
+    core: {info() {}, warning() {}},
+    tag: 'v5.8.0-beta.6',
+    wait: async () => {}
+  });
+  assert.equal(release.id, 42);
+  assert.equal(tagLookups, 2);
+});
+
 test('adds a promotion PR editorial to an untouched draft release', async () => {
   const updates = [];
   const github = {
