@@ -42,10 +42,7 @@
   "modules": [
     {
       "id": "archive",
-      "label": {
-        "en": "Historical archive",
-        "sv": "Historiskt arkiv"
-      },
+      "label": "Historical archive",
       "sources": [
         "history"
       ],
@@ -69,10 +66,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Classification",
-                "sv": "Klassificering"
-              },
+              "label": "Classification",
               "mobile": 0,
               "modes": [
                 "history"
@@ -109,10 +103,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "history"
@@ -153,10 +144,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "history"
@@ -197,10 +185,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Grid",
-                "sv": "Startplats"
-              },
+              "label": "Grid",
               "mobile": 0,
               "modes": [
                 "history"
@@ -238,10 +223,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Places gained",
-                "sv": "Vunna platser"
-              },
+              "label": "Places gained",
               "mobile": 0,
               "modes": [
                 "history"
@@ -278,10 +260,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Laps",
-                "sv": "Varv"
-              },
+              "label": "Laps",
               "mobile": 2,
               "modes": [
                 "history"
@@ -322,10 +301,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Time / gap",
-                "sv": "Tid / avstånd"
-              },
+              "label": "Time / gap",
               "mobile": 0,
               "modes": [
                 "history"
@@ -362,10 +338,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Classification status",
-                "sv": "Resultatstatus"
-              },
+              "label": "Classification status",
               "mobile": 0,
               "modes": [
                 "history"
@@ -402,10 +375,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Points",
-                "sv": "Poäng"
-              },
+              "label": "Points",
               "mobile": 0,
               "modes": [
                 "history"
@@ -442,10 +412,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Q1 time",
-                "sv": "Q1-tid"
-              },
+              "label": "Q1 time",
               "mobile": 2,
               "modes": [
                 "history"
@@ -483,10 +450,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Q2 time",
-                "sv": "Q2-tid"
-              },
+              "label": "Q2 time",
               "mobile": 2,
               "modes": [
                 "history"
@@ -524,10 +488,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Q3 time",
-                "sv": "Q3-tid"
-              },
+              "label": "Q3 time",
               "mobile": 2,
               "modes": [
                 "history"
@@ -574,10 +535,7 @@
                 "driver",
                 "lap"
               ],
-              "label": {
-                "en": "Recorded lap history",
-                "sv": "Registrerad varvhistorik"
-              },
+              "label": "Recorded lap history",
               "mobile": 0,
               "modes": [
                 "history"
@@ -623,10 +581,7 @@
                 "driver",
                 "lap"
               ],
-              "label": {
-                "en": "Recorded lap history",
-                "sv": "Registrerad varvhistorik"
-              },
+              "label": "Recorded lap history",
               "mobile": 0,
               "modes": [
                 "history"
@@ -656,10 +611,7 @@
     },
     {
       "id": "battles",
-      "label": {
-        "en": "Battles and position changes",
-        "sv": "Närkamper och positionsbyten"
-      },
+      "label": "Battles and position changes",
       "sources": [
         "analysis"
       ],
@@ -682,10 +634,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Observation",
-                "sv": "Observation"
-              },
+              "label": "Observation",
               "mobile": 2,
               "modes": [
                 "live",
@@ -725,10 +674,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Drivers involved",
-                "sv": "Berörda förare"
-              },
+              "label": "Drivers involved",
               "mobile": 2,
               "modes": [
                 "live",
@@ -768,10 +714,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Observed gap",
-                "sv": "Observerat avstånd"
-              },
+              "label": "Observed gap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -811,10 +754,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Source / basis",
-                "sv": "Källa / underlag"
-              },
+              "label": "Source / basis",
               "mobile": 2,
               "modes": [
                 "live",
@@ -855,10 +795,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Evidence score",
-                "sv": "Underlagspoäng"
-              },
+              "label": "Evidence score",
               "mobile": 2,
               "modes": [
                 "live",
@@ -907,10 +844,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Observation",
-                "sv": "Observation"
-              },
+              "label": "Observation",
               "mobile": 2,
               "modes": [
                 "live",
@@ -950,10 +884,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Drivers involved",
-                "sv": "Berörda förare"
-              },
+              "label": "Drivers involved",
               "mobile": 2,
               "modes": [
                 "live",
@@ -993,10 +924,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Observed gap",
-                "sv": "Observerat avstånd"
-              },
+              "label": "Observed gap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1036,10 +964,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Source / basis",
-                "sv": "Källa / underlag"
-              },
+              "label": "Source / basis",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1080,10 +1005,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Evidence score",
-                "sv": "Underlagspoäng"
-              },
+              "label": "Evidence score",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1132,10 +1054,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Observation",
-                "sv": "Observation"
-              },
+              "label": "Observation",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1175,10 +1094,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Drivers involved",
-                "sv": "Berörda förare"
-              },
+              "label": "Drivers involved",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1218,10 +1134,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Observed gap",
-                "sv": "Observerat avstånd"
-              },
+              "label": "Observed gap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1262,10 +1175,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Before → after",
-                "sv": "Före → efter"
-              },
+              "label": "Before → after",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1305,10 +1215,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Source / basis",
-                "sv": "Källa / underlag"
-              },
+              "label": "Source / basis",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1349,10 +1256,7 @@
                 "session",
                 "observation"
               ],
-              "label": {
-                "en": "Evidence score",
-                "sv": "Underlagspoäng"
-              },
+              "label": "Evidence score",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1387,10 +1291,7 @@
     },
     {
       "id": "calendar",
-      "label": {
-        "en": "Schedule",
-        "sv": "Schema"
-      },
+      "label": "Schedule",
       "sources": [
         "current_season",
         "next_race"
@@ -1411,10 +1312,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Schedule",
-                "sv": "Schema"
-              },
+              "label": "Schedule",
               "mobile": 0,
               "modes": [
                 "schedule"
@@ -1444,10 +1342,7 @@
     },
     {
       "id": "documents",
-      "label": {
-        "en": "FIA documents",
-        "sv": "FIA-dokument"
-      },
+      "label": "FIA documents",
       "sources": [
         "fia_documents"
       ],
@@ -1467,10 +1362,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Document number",
-                "sv": "Dokumentnummer"
-              },
+              "label": "Document number",
               "mobile": 0,
               "modes": [
                 "schedule"
@@ -1505,10 +1397,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Document",
-                "sv": "Dokument"
-              },
+              "label": "Document",
               "mobile": 0,
               "modes": [
                 "schedule"
@@ -1543,10 +1432,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Published",
-                "sv": "Publicerad"
-              },
+              "label": "Published",
               "mobile": 0,
               "modes": [
                 "schedule"
@@ -1576,10 +1462,7 @@
     },
     {
       "id": "incidents",
-      "label": {
-        "en": "Incidents",
-        "sv": "Incidenter"
-      },
+      "label": "Incidents",
       "sources": [
         "driver_list",
         "investigations",
@@ -1603,10 +1486,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Decision / status",
-                "sv": "Beslut / status"
-              },
+              "label": "Decision / status",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1647,10 +1527,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Drivers involved",
-                "sv": "Berörda förare"
-              },
+              "label": "Drivers involved",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1691,10 +1568,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Time",
-                "sv": "Tid"
-              },
+              "label": "Time",
               "mobile": 0,
               "modes": [
                 "live",
@@ -1730,10 +1604,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Lap",
-                "sv": "Varv"
-              },
+              "label": "Lap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1774,10 +1645,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Location",
-                "sv": "Plats"
-              },
+              "label": "Location",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1818,10 +1686,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Reason",
-                "sv": "Orsak"
-              },
+              "label": "Reason",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1862,10 +1727,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Penalty",
-                "sv": "Bestraffning"
-              },
+              "label": "Penalty",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1914,10 +1776,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Decision / status",
-                "sv": "Beslut / status"
-              },
+              "label": "Decision / status",
               "mobile": 2,
               "modes": [
                 "live",
@@ -1958,10 +1817,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Drivers involved",
-                "sv": "Berörda förare"
-              },
+              "label": "Drivers involved",
               "mobile": 2,
               "modes": [
                 "live",
@@ -2002,10 +1858,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Time",
-                "sv": "Tid"
-              },
+              "label": "Time",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2041,10 +1894,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Lap",
-                "sv": "Varv"
-              },
+              "label": "Lap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -2085,10 +1935,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Location",
-                "sv": "Plats"
-              },
+              "label": "Location",
               "mobile": 2,
               "modes": [
                 "live",
@@ -2129,10 +1976,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Reason",
-                "sv": "Orsak"
-              },
+              "label": "Reason",
               "mobile": 2,
               "modes": [
                 "live",
@@ -2173,10 +2017,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Penalty",
-                "sv": "Bestraffning"
-              },
+              "label": "Penalty",
               "mobile": 2,
               "modes": [
                 "live",
@@ -2225,10 +2066,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2269,10 +2107,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "live",
@@ -2313,10 +2148,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Deleted times",
-                "sv": "Strukna tider"
-              },
+              "label": "Deleted times",
               "mobile": 2,
               "modes": [
                 "live",
@@ -2357,10 +2189,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Warning recorded",
-                "sv": "Varning registrerad"
-              },
+              "label": "Warning recorded",
               "mobile": 2,
               "modes": [
                 "live",
@@ -2401,10 +2230,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Latest recorded penalty",
-                "sv": "Senast registrerade bestraffning"
-              },
+              "label": "Latest recorded penalty",
               "mobile": 2,
               "modes": [
                 "live",
@@ -2445,10 +2271,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Latest recorded event",
-                "sv": "Senaste registrerade händelse"
-              },
+              "label": "Latest recorded event",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2479,10 +2302,7 @@
     },
     {
       "id": "lap_chart",
-      "label": {
-        "en": "Lap history chart",
-        "sv": "Diagram över varvhistorik"
-      },
+      "label": "Lap history chart",
       "sources": [
         "current_session",
         "driver_list",
@@ -2505,10 +2325,7 @@
                 "driver",
                 "lap"
               ],
-              "label": {
-                "en": "Recorded lap history",
-                "sv": "Registrerad varvhistorik"
-              },
+              "label": "Recorded lap history",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2541,10 +2358,7 @@
     },
     {
       "id": "map",
-      "label": {
-        "en": "Track map",
-        "sv": "Bankarta"
-      },
+      "label": "Track map",
       "sources": [
         "current_session",
         "race_lap_count",
@@ -2567,10 +2381,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Track map",
-                "sv": "Bankarta"
-              },
+              "label": "Track map",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2607,10 +2418,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Driver positions list",
-                "sv": "Lista över förarpositioner"
-              },
+              "label": "Driver positions list",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2648,10 +2456,7 @@
                 "session_generation",
                 "geometry"
               ],
-              "label": {
-                "en": "Start/finish line",
-                "sv": "Start-/mållinje"
-              },
+              "label": "Start/finish line",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2690,10 +2495,7 @@
                 "session_generation",
                 "geometry"
               ],
-              "label": {
-                "en": "Corner numbers",
-                "sv": "Kurvnummer"
-              },
+              "label": "Corner numbers",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2732,10 +2534,7 @@
                 "session_generation",
                 "geometry"
               ],
-              "label": {
-                "en": "Sector boundaries",
-                "sv": "Sektorgränser"
-              },
+              "label": "Sector boundaries",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2774,10 +2573,7 @@
                 "session_generation",
                 "geometry"
               ],
-              "label": {
-                "en": "Speed traps",
-                "sv": "Hastighetsmätpunkter"
-              },
+              "label": "Speed traps",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2816,10 +2612,7 @@
                 "session_generation",
                 "geometry"
               ],
-              "label": {
-                "en": "Detection and activation points",
-                "sv": "Detektions- och aktiveringspunkter"
-              },
+              "label": "Detection and activation points",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2851,10 +2644,7 @@
     },
     {
       "id": "minisectors",
-      "label": {
-        "en": "Minisectors",
-        "sv": "Minisektorer"
-      },
+      "label": "Minisectors",
       "sources": [
         "current_session",
         "driver_list",
@@ -2877,10 +2667,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Pos",
-                "sv": "Pos"
-              },
+              "label": "Pos",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2921,10 +2708,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "live",
@@ -2965,10 +2749,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "live",
@@ -3011,10 +2792,7 @@
                 "lap",
                 "sector"
               ],
-              "label": {
-                "en": "S1",
-                "sv": "S1"
-              },
+              "label": "S1",
               "mobile": 1,
               "modes": [
                 "live",
@@ -3057,10 +2835,7 @@
                 "lap",
                 "sector"
               ],
-              "label": {
-                "en": "S2",
-                "sv": "S2"
-              },
+              "label": "S2",
               "mobile": 1,
               "modes": [
                 "live",
@@ -3103,10 +2878,7 @@
                 "lap",
                 "sector"
               ],
-              "label": {
-                "en": "S3",
-                "sv": "S3"
-              },
+              "label": "S3",
               "mobile": 1,
               "modes": [
                 "live",
@@ -3153,10 +2925,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S1 minisectors",
-                "sv": "S1-minisektorer"
-              },
+              "label": "S1 minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -3204,10 +2973,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S1 with minisectors",
-                "sv": "S1 med minisektorer"
-              },
+              "label": "S1 with minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -3254,10 +3020,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S2 minisectors",
-                "sv": "S2-minisektorer"
-              },
+              "label": "S2 minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -3305,10 +3068,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S2 with minisectors",
-                "sv": "S2 med minisektorer"
-              },
+              "label": "S2 with minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -3355,10 +3115,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S3 minisectors",
-                "sv": "S3-minisektorer"
-              },
+              "label": "S3 minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -3406,10 +3163,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S3 with minisectors",
-                "sv": "S3 med minisektorer"
-              },
+              "label": "S3 with minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -3445,10 +3199,7 @@
     },
     {
       "id": "overview",
-      "label": {
-        "en": "Overview",
-        "sv": "Översikt"
-      },
+      "label": "Overview",
       "sources": [
         "current_season",
         "current_session",
@@ -3478,10 +3229,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Grand Prix",
-                "sv": "Grand Prix"
-              },
+              "label": "Grand Prix",
               "mobile": 0,
               "modes": [
                 "schedule"
@@ -3516,10 +3264,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Circuit",
-                "sv": "Bana"
-              },
+              "label": "Circuit",
               "mobile": 0,
               "modes": [
                 "schedule"
@@ -3554,10 +3299,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Country",
-                "sv": "Land"
-              },
+              "label": "Country",
               "mobile": 0,
               "modes": [
                 "schedule"
@@ -3592,10 +3334,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Countdown",
-                "sv": "Nedräkning"
-              },
+              "label": "Countdown",
               "mobile": 0,
               "modes": [
                 "schedule"
@@ -3630,10 +3369,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Circuit map",
-                "sv": "Bankarta"
-              },
+              "label": "Circuit map",
               "mobile": 0,
               "modes": [
                 "schedule"
@@ -3668,10 +3404,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Circuit history",
-                "sv": "Banhistorik"
-              },
+              "label": "Circuit history",
               "mobile": 0,
               "modes": [
                 "schedule"
@@ -3705,10 +3438,7 @@
                 "entry",
                 "session"
               ],
-              "label": {
-                "en": "Session",
-                "sv": "Session"
-              },
+              "label": "Session",
               "mobile": 0,
               "modes": [
                 "live",
@@ -3744,10 +3474,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Session status",
-                "sv": "Sessionsstatus"
-              },
+              "label": "Session status",
               "mobile": 0,
               "modes": [
                 "live",
@@ -3782,10 +3509,7 @@
                 "entry",
                 "session"
               ],
-              "label": {
-                "en": "Lap progress",
-                "sv": "Varvförlopp"
-              },
+              "label": "Lap progress",
               "mobile": 0,
               "modes": [
                 "live",
@@ -3821,10 +3545,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Track status",
-                "sv": "Banstatus"
-              },
+              "label": "Track status",
               "mobile": 0,
               "modes": [
                 "live",
@@ -3860,10 +3581,7 @@
                 "session",
                 "part"
               ],
-              "label": {
-                "en": "Session time elapsed",
-                "sv": "Förfluten sessionstid"
-              },
+              "label": "Session time elapsed",
               "mobile": 0,
               "modes": [
                 "live",
@@ -3899,10 +3617,7 @@
                 "session",
                 "part"
               ],
-              "label": {
-                "en": "Session time remaining",
-                "sv": "Återstående sessionstid"
-              },
+              "label": "Session time remaining",
               "mobile": 0,
               "modes": [
                 "live",
@@ -3938,10 +3653,7 @@
                 "session",
                 "part"
               ],
-              "label": {
-                "en": "Time to three-hour limit",
-                "sv": "Tid till tretimmarsgränsen"
-              },
+              "label": "Time to three-hour limit",
               "mobile": 0,
               "modes": [
                 "live",
@@ -3972,10 +3684,7 @@
     },
     {
       "id": "pit_stops",
-      "label": {
-        "en": "Pit stops",
-        "sv": "Depåstopp"
-      },
+      "label": "Pit stops",
       "sources": [
         "driver_list",
         "driver_positions",
@@ -4000,10 +3709,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "live",
@@ -4044,10 +3750,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4088,10 +3791,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Status",
-                "sv": "Status"
-              },
+              "label": "Status",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4132,10 +3832,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Stops recorded",
-                "sv": "Registrerade stopp"
-              },
+              "label": "Stops recorded",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4176,10 +3873,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Stop lap",
-                "sv": "Depåvarv"
-              },
+              "label": "Stop lap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4220,10 +3914,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Stationary time",
-                "sv": "Stillastående tid"
-              },
+              "label": "Stationary time",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4264,10 +3955,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Pit lane time",
-                "sv": "Tid i depåområdet"
-              },
+              "label": "Pit lane time",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4310,10 +3998,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Estimated lap loss",
-                "sv": "Beräknad varvförlust"
-              },
+              "label": "Estimated lap loss",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4354,10 +4039,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Time",
-                "sv": "Tid"
-              },
+              "label": "Time",
               "mobile": 0,
               "modes": [
                 "live",
@@ -4401,10 +4083,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "live",
@@ -4445,10 +4124,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4489,10 +4165,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Status",
-                "sv": "Status"
-              },
+              "label": "Status",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4533,10 +4206,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Stops recorded",
-                "sv": "Registrerade stopp"
-              },
+              "label": "Stops recorded",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4577,10 +4247,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Stop lap",
-                "sv": "Depåvarv"
-              },
+              "label": "Stop lap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4621,10 +4288,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Stationary time",
-                "sv": "Stillastående tid"
-              },
+              "label": "Stationary time",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4665,10 +4329,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Pit lane time",
-                "sv": "Tid i depåområdet"
-              },
+              "label": "Pit lane time",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4711,10 +4372,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Estimated lap loss",
-                "sv": "Beräknad varvförlust"
-              },
+              "label": "Estimated lap loss",
               "mobile": 2,
               "modes": [
                 "live",
@@ -4755,10 +4413,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Time",
-                "sv": "Tid"
-              },
+              "label": "Time",
               "mobile": 0,
               "modes": [
                 "live",
@@ -4789,10 +4444,7 @@
     },
     {
       "id": "progression",
-      "label": {
-        "en": "Season progression",
-        "sv": "Säsongsutveckling"
-      },
+      "label": "Season progression",
       "sources": [
         "constructor_points_progression",
         "driver_points_progression"
@@ -4816,10 +4468,7 @@
                 "round",
                 "competitor"
               ],
-              "label": {
-                "en": "Progression",
-                "sv": "Utveckling"
-              },
+              "label": "Progression",
               "mobile": 0,
               "modes": [
                 "standings"
@@ -4864,10 +4513,7 @@
                 "round",
                 "competitor"
               ],
-              "label": {
-                "en": "Progression",
-                "sv": "Utveckling"
-              },
+              "label": "Progression",
               "mobile": 0,
               "modes": [
                 "standings"
@@ -4898,10 +4544,7 @@
     },
     {
       "id": "race_control",
-      "label": {
-        "en": "Race Control",
-        "sv": "Race Control"
-      },
+      "label": "Race Control",
       "sources": [
         "current_session",
         "race_control"
@@ -4922,10 +4565,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Time",
-                "sv": "Tid"
-              },
+              "label": "Time",
               "mobile": 0,
               "modes": [
                 "live",
@@ -4961,10 +4601,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Message",
-                "sv": "Meddelande"
-              },
+              "label": "Message",
               "mobile": 0,
               "modes": [
                 "live",
@@ -4995,10 +4632,7 @@
     },
     {
       "id": "replay",
-      "label": {
-        "en": "Replay",
-        "sv": "Replay"
-      },
+      "label": "Replay",
       "sources": [
         "replay_load",
         "replay_player",
@@ -5023,10 +4657,7 @@
                 "entry",
                 "replay_session"
               ],
-              "label": {
-                "en": "Replay selection",
-                "sv": "Val av replay"
-              },
+              "label": "Replay selection",
               "mobile": 0,
               "modes": [
                 "replay"
@@ -5061,10 +4692,7 @@
                 "entry",
                 "replay_session"
               ],
-              "label": {
-                "en": "Playback controls",
-                "sv": "Uppspelningskontroller"
-              },
+              "label": "Playback controls",
               "mobile": 0,
               "modes": [
                 "replay"
@@ -5099,10 +4727,7 @@
                 "entry",
                 "replay_session"
               ],
-              "label": {
-                "en": "Playback progress",
-                "sv": "Uppspelningsposition"
-              },
+              "label": "Playback progress",
               "mobile": 0,
               "modes": [
                 "replay"
@@ -5133,10 +4758,7 @@
     },
     {
       "id": "results",
-      "label": {
-        "en": "Results",
-        "sv": "Resultat"
-      },
+      "label": "Results",
       "sources": [
         "last_race_results",
         "season_results",
@@ -5163,10 +4785,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Classification",
-                "sv": "Klassificering"
-              },
+              "label": "Classification",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5204,10 +4823,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5249,10 +4865,7 @@
                 "session",
                 "team"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "results"
@@ -5294,10 +4907,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Grid",
-                "sv": "Startplats"
-              },
+              "label": "Grid",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5336,10 +4946,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Places gained",
-                "sv": "Vunna platser"
-              },
+              "label": "Places gained",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5375,10 +4982,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Laps",
-                "sv": "Varv"
-              },
+              "label": "Laps",
               "mobile": 2,
               "modes": [
                 "results"
@@ -5420,10 +5024,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Time / gap",
-                "sv": "Tid / avstånd"
-              },
+              "label": "Time / gap",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5461,10 +5062,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Classification status",
-                "sv": "Resultatstatus"
-              },
+              "label": "Classification status",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5502,10 +5100,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Points",
-                "sv": "Poäng"
-              },
+              "label": "Points",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5551,10 +5146,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Classification",
-                "sv": "Klassificering"
-              },
+              "label": "Classification",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5592,10 +5184,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5637,10 +5226,7 @@
                 "session",
                 "team"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "results"
@@ -5682,10 +5268,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Grid",
-                "sv": "Startplats"
-              },
+              "label": "Grid",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5724,10 +5307,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Places gained",
-                "sv": "Vunna platser"
-              },
+              "label": "Places gained",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5763,10 +5343,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Laps",
-                "sv": "Varv"
-              },
+              "label": "Laps",
               "mobile": 2,
               "modes": [
                 "results"
@@ -5808,10 +5385,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Time / gap",
-                "sv": "Tid / avstånd"
-              },
+              "label": "Time / gap",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5849,10 +5423,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Classification status",
-                "sv": "Resultatstatus"
-              },
+              "label": "Classification status",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5890,10 +5461,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Points",
-                "sv": "Poäng"
-              },
+              "label": "Points",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5939,10 +5507,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Classification",
-                "sv": "Klassificering"
-              },
+              "label": "Classification",
               "mobile": 0,
               "modes": [
                 "results"
@@ -5980,10 +5545,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6025,10 +5587,7 @@
                 "session",
                 "team"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "results"
@@ -6070,10 +5629,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Grid",
-                "sv": "Startplats"
-              },
+              "label": "Grid",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6112,10 +5668,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Places gained",
-                "sv": "Vunna platser"
-              },
+              "label": "Places gained",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6151,10 +5704,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Laps",
-                "sv": "Varv"
-              },
+              "label": "Laps",
               "mobile": 2,
               "modes": [
                 "results"
@@ -6196,10 +5746,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Time / gap",
-                "sv": "Tid / avstånd"
-              },
+              "label": "Time / gap",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6237,10 +5784,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Classification status",
-                "sv": "Resultatstatus"
-              },
+              "label": "Classification status",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6278,10 +5822,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Points",
-                "sv": "Poäng"
-              },
+              "label": "Points",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6327,10 +5868,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Grid",
-                "sv": "Startplats"
-              },
+              "label": "Grid",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6368,10 +5906,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6413,10 +5948,7 @@
                 "session",
                 "team"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "results"
@@ -6458,10 +5990,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Qualifying position",
-                "sv": "Kvalplacering"
-              },
+              "label": "Qualifying position",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6500,10 +6029,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Grid change",
-                "sv": "Förändrad startplats"
-              },
+              "label": "Grid change",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6541,10 +6067,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Qualifying segment",
-                "sv": "Kvaldel"
-              },
+              "label": "Qualifying segment",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6582,10 +6105,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Qualifying time",
-                "sv": "Kvaltid"
-              },
+              "label": "Qualifying time",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6624,10 +6144,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Qualifying gap",
-                "sv": "Kvalavstånd"
-              },
+              "label": "Qualifying gap",
               "mobile": 0,
               "modes": [
                 "results"
@@ -6658,10 +6175,7 @@
     },
     {
       "id": "standings",
-      "label": {
-        "en": "Championship",
-        "sv": "Mästerskap"
-      },
+      "label": "Championship",
       "sources": [
         "championship_prediction_drivers",
         "championship_prediction_teams",
@@ -6687,10 +6201,7 @@
                 "round",
                 "competitor"
               ],
-              "label": {
-                "en": "Position",
-                "sv": "Placering"
-              },
+              "label": "Position",
               "mobile": 0,
               "modes": [
                 "standings"
@@ -6727,10 +6238,7 @@
                 "round",
                 "competitor"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "standings"
@@ -6771,10 +6279,7 @@
                 "round",
                 "competitor"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "standings"
@@ -6815,10 +6320,7 @@
                 "round",
                 "competitor"
               ],
-              "label": {
-                "en": "Points",
-                "sv": "Poäng"
-              },
+              "label": "Points",
               "mobile": 0,
               "modes": [
                 "standings"
@@ -6855,10 +6357,7 @@
                 "round",
                 "competitor"
               ],
-              "label": {
-                "en": "Wins",
-                "sv": "Vinster"
-              },
+              "label": "Wins",
               "mobile": 0,
               "modes": [
                 "standings"
@@ -6897,10 +6396,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Projected position",
-                "sv": "Prognosplacering"
-              },
+              "label": "Projected position",
               "mobile": 0,
               "modes": [
                 "live",
@@ -6940,10 +6436,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Projected points",
-                "sv": "Prognospoäng"
-              },
+              "label": "Projected points",
               "mobile": 0,
               "modes": [
                 "live",
@@ -6984,10 +6477,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Projected change",
-                "sv": "Prognosförändring"
-              },
+              "label": "Projected change",
               "mobile": 0,
               "modes": [
                 "live",
@@ -7033,10 +6523,7 @@
                 "round",
                 "competitor"
               ],
-              "label": {
-                "en": "Position",
-                "sv": "Placering"
-              },
+              "label": "Position",
               "mobile": 0,
               "modes": [
                 "standings"
@@ -7073,10 +6560,7 @@
                 "round",
                 "competitor"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "standings"
@@ -7117,10 +6601,7 @@
                 "round",
                 "competitor"
               ],
-              "label": {
-                "en": "Points",
-                "sv": "Poäng"
-              },
+              "label": "Points",
               "mobile": 0,
               "modes": [
                 "standings"
@@ -7157,10 +6638,7 @@
                 "round",
                 "competitor"
               ],
-              "label": {
-                "en": "Wins",
-                "sv": "Vinster"
-              },
+              "label": "Wins",
               "mobile": 0,
               "modes": [
                 "standings"
@@ -7199,10 +6677,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Projected position",
-                "sv": "Prognosplacering"
-              },
+              "label": "Projected position",
               "mobile": 0,
               "modes": [
                 "live",
@@ -7242,10 +6717,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Projected points",
-                "sv": "Prognospoäng"
-              },
+              "label": "Projected points",
               "mobile": 0,
               "modes": [
                 "live",
@@ -7286,10 +6758,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Projected change",
-                "sv": "Prognosförändring"
-              },
+              "label": "Projected change",
               "mobile": 0,
               "modes": [
                 "live",
@@ -7321,10 +6790,7 @@
     },
     {
       "id": "strategy",
-      "label": {
-        "en": "Strategy analysis",
-        "sv": "Strategianalys"
-      },
+      "label": "Strategy analysis",
       "sources": [
         "analysis"
       ],
@@ -7346,10 +6812,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "live",
@@ -7390,10 +6853,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7434,10 +6894,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Tyre",
-                "sv": "Däck"
-              },
+              "label": "Tyre",
               "mobile": 1,
               "modes": [
                 "live",
@@ -7478,10 +6935,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Stint",
-                "sv": "Stint"
-              },
+              "label": "Stint",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7522,10 +6976,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "First lap",
-                "sv": "Första varv"
-              },
+              "label": "First lap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7566,10 +7017,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Last lap number",
-                "sv": "Sista varvnummer"
-              },
+              "label": "Last lap number",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7610,10 +7058,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Starting tyre age",
-                "sv": "Däckålder vid start"
-              },
+              "label": "Starting tyre age",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7655,10 +7100,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Median clean pace",
-                "sv": "Median för rena varv"
-              },
+              "label": "Median clean pace",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7699,10 +7141,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Median recorded pace",
-                "sv": "Median för registrerade varv"
-              },
+              "label": "Median recorded pace",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7744,10 +7183,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Estimated degradation",
-                "sv": "Beräknad försämring"
-              },
+              "label": "Estimated degradation",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7788,10 +7224,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Clean laps",
-                "sv": "Rena varv"
-              },
+              "label": "Clean laps",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7832,10 +7265,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Recorded laps",
-                "sv": "Registrerade varv"
-              },
+              "label": "Recorded laps",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7876,10 +7306,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Excluded laps",
-                "sv": "Uteslutna varv"
-              },
+              "label": "Excluded laps",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7920,10 +7347,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Exclusion reasons",
-                "sv": "Orsaker till uteslutning"
-              },
+              "label": "Exclusion reasons",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7966,10 +7390,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Estimated stint-change loss",
-                "sv": "Beräknad förlust vid stintbyte"
-              },
+              "label": "Estimated stint-change loss",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8011,10 +7432,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Evidence score",
-                "sv": "Underlagspoäng"
-              },
+              "label": "Evidence score",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8063,10 +7481,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Tyre",
-                "sv": "Däck"
-              },
+              "label": "Tyre",
               "mobile": 1,
               "modes": [
                 "live",
@@ -8108,10 +7523,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Median clean pace",
-                "sv": "Median för rena varv"
-              },
+              "label": "Median clean pace",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8154,10 +7566,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "To fastest compound",
-                "sv": "Till snabbaste blandning"
-              },
+              "label": "To fastest compound",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8198,10 +7607,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Clean laps",
-                "sv": "Rena varv"
-              },
+              "label": "Clean laps",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8243,10 +7649,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Evidence score",
-                "sv": "Underlagspoäng"
-              },
+              "label": "Evidence score",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8295,10 +7698,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8339,10 +7739,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Drivers involved",
-                "sv": "Berörda förare"
-              },
+              "label": "Drivers involved",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8384,10 +7781,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Median pace by driver",
-                "sv": "Mediantempo per förare"
-              },
+              "label": "Median pace by driver",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8429,10 +7823,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Pace difference",
-                "sv": "Temposkillnad"
-              },
+              "label": "Pace difference",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8474,10 +7865,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Lower median pace",
-                "sv": "Lägre mediantempo"
-              },
+              "label": "Lower median pace",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8519,10 +7907,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Evidence score",
-                "sv": "Underlagspoäng"
-              },
+              "label": "Evidence score",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8571,10 +7956,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Compounds compared",
-                "sv": "Jämförda blandningar"
-              },
+              "label": "Compounds compared",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8616,10 +7998,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Estimated crossover tyre age",
-                "sv": "Beräknad däckålder vid skärning"
-              },
+              "label": "Estimated crossover tyre age",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8660,10 +8039,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Observed tyre-age range",
-                "sv": "Observerat däckåldersintervall"
-              },
+              "label": "Observed tyre-age range",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8705,10 +8081,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Estimated pace at crossover",
-                "sv": "Beräknat tempo vid skärning"
-              },
+              "label": "Estimated pace at crossover",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8750,10 +8123,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Evidence score",
-                "sv": "Underlagspoäng"
-              },
+              "label": "Evidence score",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8802,10 +8172,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8846,10 +8213,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Drivers involved",
-                "sv": "Berörda förare"
-              },
+              "label": "Drivers involved",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8890,10 +8254,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Stop laps by driver",
-                "sv": "Depåvarv per förare"
-              },
+              "label": "Stop laps by driver",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8935,10 +8296,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Before → after",
-                "sv": "Före → efter"
-              },
+              "label": "Before → after",
               "mobile": 2,
               "modes": [
                 "live",
@@ -8980,10 +8338,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Observed pit-cycle outcome",
-                "sv": "Observerat utfall av depåcykel"
-              },
+              "label": "Observed pit-cycle outcome",
               "mobile": 2,
               "modes": [
                 "live",
@@ -9025,10 +8380,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Evidence score",
-                "sv": "Underlagspoäng"
-              },
+              "label": "Evidence score",
               "mobile": 2,
               "modes": [
                 "live",
@@ -9069,10 +8421,7 @@
                 "session",
                 "comparison"
               ],
-              "label": {
-                "en": "Source / basis",
-                "sv": "Källa / underlag"
-              },
+              "label": "Source / basis",
               "mobile": 2,
               "modes": [
                 "live",
@@ -9108,10 +8457,7 @@
     },
     {
       "id": "team_radio",
-      "label": {
-        "en": "Team Radio (experimental)",
-        "sv": "Team Radio (experimentell)"
-      },
+      "label": "Team Radio (experimental)",
       "sources": [
         "driver_list",
         "team_radio"
@@ -9133,10 +8479,7 @@
                 "clip",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "live",
@@ -9177,10 +8520,7 @@
                 "clip",
                 "team"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 0,
               "modes": [
                 "live",
@@ -9220,10 +8560,7 @@
                 "session",
                 "clip"
               ],
-              "label": {
-                "en": "Audio clip",
-                "sv": "Ljudklipp"
-              },
+              "label": "Audio clip",
               "mobile": 0,
               "modes": [
                 "live",
@@ -9263,10 +8600,7 @@
                 "session",
                 "clip"
               ],
-              "label": {
-                "en": "Transcript",
-                "sv": "Transkribering"
-              },
+              "label": "Transcript",
               "mobile": 0,
               "modes": [
                 "live",
@@ -9306,10 +8640,7 @@
                 "session",
                 "clip"
               ],
-              "label": {
-                "en": "Message time",
-                "sv": "Meddelandetid"
-              },
+              "label": "Message time",
               "mobile": 0,
               "modes": [
                 "live",
@@ -9344,10 +8675,7 @@
     },
     {
       "id": "telemetry",
-      "label": {
-        "en": "Replay telemetry",
-        "sv": "Replaytelemetri"
-      },
+      "label": "Replay telemetry",
       "sources": [
         "analysis/telemetry_catalog",
         "analysis/telemetry_compare",
@@ -9373,10 +8701,7 @@
                 "lap",
                 "sample"
               ],
-              "label": {
-                "en": "Speed",
-                "sv": "Hastighet"
-              },
+              "label": "Speed",
               "mobile": 0,
               "modes": [
                 "replay"
@@ -9415,10 +8740,7 @@
                 "lap",
                 "sample"
               ],
-              "label": {
-                "en": "Throttle",
-                "sv": "Gas"
-              },
+              "label": "Throttle",
               "mobile": 0,
               "modes": [
                 "replay"
@@ -9457,10 +8779,7 @@
                 "lap",
                 "sample"
               ],
-              "label": {
-                "en": "Brake signal",
-                "sv": "Bromssignal"
-              },
+              "label": "Brake signal",
               "mobile": 0,
               "modes": [
                 "replay"
@@ -9499,10 +8818,7 @@
                 "lap",
                 "sample"
               ],
-              "label": {
-                "en": "Gear",
-                "sv": "Växel"
-              },
+              "label": "Gear",
               "mobile": 0,
               "modes": [
                 "replay"
@@ -9541,10 +8857,7 @@
                 "lap",
                 "sample"
               ],
-              "label": {
-                "en": "DRS code",
-                "sv": "DRS-kod"
-              },
+              "label": "DRS code",
               "mobile": 0,
               "modes": [
                 "replay"
@@ -9583,10 +8896,7 @@
                 "lap",
                 "sample"
               ],
-              "label": {
-                "en": "Engine speed",
-                "sv": "Motorvarvtal"
-              },
+              "label": "Engine speed",
               "mobile": 0,
               "modes": [
                 "replay"
@@ -9625,10 +8935,7 @@
                 "lap",
                 "sample"
               ],
-              "label": {
-                "en": "Estimated time delta",
-                "sv": "Uppskattat tidsdelta"
-              },
+              "label": "Estimated time delta",
               "mobile": 0,
               "modes": [
                 "replay"
@@ -9659,10 +8966,7 @@
     },
     {
       "id": "timeline",
-      "label": {
-        "en": "Session timeline",
-        "sv": "Sessionens tidslinje"
-      },
+      "label": "Session timeline",
       "sources": [
         "analysis"
       ],
@@ -9682,10 +8986,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Time",
-                "sv": "Tid"
-              },
+              "label": "Time",
               "mobile": 0,
               "modes": [
                 "live",
@@ -9721,10 +9022,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Drivers involved",
-                "sv": "Berörda förare"
-              },
+              "label": "Drivers involved",
               "mobile": 2,
               "modes": [
                 "live",
@@ -9765,10 +9063,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Lap",
-                "sv": "Varv"
-              },
+              "label": "Lap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -9809,10 +9104,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Event",
-                "sv": "Händelse"
-              },
+              "label": "Event",
               "mobile": 2,
               "modes": [
                 "live",
@@ -9853,10 +9145,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Details",
-                "sv": "Detaljer"
-              },
+              "label": "Details",
               "mobile": 2,
               "modes": [
                 "live",
@@ -9897,10 +9186,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Category",
-                "sv": "Kategori"
-              },
+              "label": "Category",
               "mobile": 2,
               "modes": [
                 "live",
@@ -9941,10 +9227,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Source / basis",
-                "sv": "Källa / underlag"
-              },
+              "label": "Source / basis",
               "mobile": 2,
               "modes": [
                 "live",
@@ -9986,10 +9269,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Evidence score",
-                "sv": "Underlagspoäng"
-              },
+              "label": "Evidence score",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10025,10 +9305,7 @@
     },
     {
       "id": "timing",
-      "label": {
-        "en": "Timing",
-        "sv": "Timing"
-      },
+      "label": "Timing",
       "sources": [
         "current_session",
         "current_tyres",
@@ -10052,10 +9329,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Pos",
-                "sv": "Pos"
-              },
+              "label": "Pos",
               "mobile": 0,
               "modes": [
                 "live",
@@ -10096,10 +9370,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "live",
@@ -10140,10 +9411,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10184,10 +9452,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "To leader",
-                "sv": "Till ledaren"
-              },
+              "label": "To leader",
               "mobile": 1,
               "modes": [
                 "live",
@@ -10228,10 +9493,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Ahead",
-                "sv": "Framför"
-              },
+              "label": "Ahead",
               "mobile": 1,
               "modes": [
                 "live",
@@ -10273,10 +9535,7 @@
                 "driver",
                 "lap"
               ],
-              "label": {
-                "en": "Last lap",
-                "sv": "Senaste varv"
-              },
+              "label": "Last lap",
               "mobile": 1,
               "modes": [
                 "live",
@@ -10318,10 +9577,7 @@
                 "driver",
                 "lap"
               ],
-              "label": {
-                "en": "Best lap",
-                "sv": "Bästa varv"
-              },
+              "label": "Best lap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10363,10 +9619,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Lap change",
-                "sv": "Varvskillnad"
-              },
+              "label": "Lap change",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10409,10 +9662,7 @@
                 "lap",
                 "sector"
               ],
-              "label": {
-                "en": "S1",
-                "sv": "S1"
-              },
+              "label": "S1",
               "mobile": 1,
               "modes": [
                 "live",
@@ -10455,10 +9705,7 @@
                 "lap",
                 "sector"
               ],
-              "label": {
-                "en": "S2",
-                "sv": "S2"
-              },
+              "label": "S2",
               "mobile": 1,
               "modes": [
                 "live",
@@ -10501,10 +9748,7 @@
                 "lap",
                 "sector"
               ],
-              "label": {
-                "en": "S3",
-                "sv": "S3"
-              },
+              "label": "S3",
               "mobile": 1,
               "modes": [
                 "live",
@@ -10546,10 +9790,7 @@
                 "part",
                 "driver"
               ],
-              "label": {
-                "en": "Q1 best",
-                "sv": "Q1 bästa"
-              },
+              "label": "Q1 best",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10587,10 +9828,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Q1 position",
-                "sv": "Q1 placering"
-              },
+              "label": "Q1 position",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10631,10 +9869,7 @@
                 "lap",
                 "sector"
               ],
-              "label": {
-                "en": "Best S1",
-                "sv": "Bästa S1"
-              },
+              "label": "Best S1",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10676,10 +9911,7 @@
                 "part",
                 "driver"
               ],
-              "label": {
-                "en": "Q2 best",
-                "sv": "Q2 bästa"
-              },
+              "label": "Q2 best",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10717,10 +9949,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Q2 position",
-                "sv": "Q2 placering"
-              },
+              "label": "Q2 position",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10761,10 +9990,7 @@
                 "lap",
                 "sector"
               ],
-              "label": {
-                "en": "Best S2",
-                "sv": "Bästa S2"
-              },
+              "label": "Best S2",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10806,10 +10032,7 @@
                 "part",
                 "driver"
               ],
-              "label": {
-                "en": "Q3 best",
-                "sv": "Q3 bästa"
-              },
+              "label": "Q3 best",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10847,10 +10070,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Q3 position",
-                "sv": "Q3 placering"
-              },
+              "label": "Q3 position",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10891,10 +10111,7 @@
                 "lap",
                 "sector"
               ],
-              "label": {
-                "en": "Best S3",
-                "sv": "Bästa S3"
-              },
+              "label": "Best S3",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10936,10 +10153,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Current part gap",
-                "sv": "Avstånd i aktuell kvaldel"
-              },
+              "label": "Current part gap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -10979,10 +10193,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Theoretical lap",
-                "sv": "Teoretiskt varv"
-              },
+              "label": "Theoretical lap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -11023,10 +10234,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Laps",
-                "sv": "Varv"
-              },
+              "label": "Laps",
               "mobile": 2,
               "modes": [
                 "live",
@@ -11067,10 +10275,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Tyre",
-                "sv": "Däck"
-              },
+              "label": "Tyre",
               "mobile": 1,
               "modes": [
                 "live",
@@ -11111,10 +10316,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Tyre age",
-                "sv": "Däckålder"
-              },
+              "label": "Tyre age",
               "mobile": 2,
               "modes": [
                 "live",
@@ -11155,10 +10357,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Status",
-                "sv": "Status"
-              },
+              "label": "Status",
               "mobile": 2,
               "modes": [
                 "live",
@@ -11205,10 +10404,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S1 minisectors",
-                "sv": "S1-minisektorer"
-              },
+              "label": "S1 minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -11256,10 +10452,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S1 with minisectors",
-                "sv": "S1 med minisektorer"
-              },
+              "label": "S1 with minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -11306,10 +10499,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S2 minisectors",
-                "sv": "S2-minisektorer"
-              },
+              "label": "S2 minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -11357,10 +10547,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S2 with minisectors",
-                "sv": "S2 med minisektorer"
-              },
+              "label": "S2 with minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -11407,10 +10594,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S3 minisectors",
-                "sv": "S3-minisektorer"
-              },
+              "label": "S3 minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -11458,10 +10642,7 @@
                 "sector",
                 "segment"
               ],
-              "label": {
-                "en": "S3 with minisectors",
-                "sv": "S3 med minisektorer"
-              },
+              "label": "S3 with minisectors",
               "mobile": 1,
               "modes": [
                 "live",
@@ -11497,10 +10678,7 @@
     },
     {
       "id": "tyres",
-      "label": {
-        "en": "Tyres",
-        "sv": "Däck"
-      },
+      "label": "Tyres",
       "sources": [
         "current_tyres",
         "driver_list",
@@ -11524,10 +10702,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Pos",
-                "sv": "Pos"
-              },
+              "label": "Pos",
               "mobile": 0,
               "modes": [
                 "live",
@@ -11568,10 +10743,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Driver",
-                "sv": "Förare"
-              },
+              "label": "Driver",
               "mobile": 0,
               "modes": [
                 "live",
@@ -11612,10 +10784,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Team",
-                "sv": "Team"
-              },
+              "label": "Team",
               "mobile": 2,
               "modes": [
                 "live",
@@ -11656,10 +10825,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Tyre",
-                "sv": "Däck"
-              },
+              "label": "Tyre",
               "mobile": 1,
               "modes": [
                 "live",
@@ -11700,10 +10866,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Tyre age",
-                "sv": "Däckålder"
-              },
+              "label": "Tyre age",
               "mobile": 2,
               "modes": [
                 "live",
@@ -11744,10 +10907,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "New set",
-                "sv": "Nytt set"
-              },
+              "label": "New set",
               "mobile": 2,
               "modes": [
                 "live",
@@ -11796,10 +10956,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Tyre",
-                "sv": "Däck"
-              },
+              "label": "Tyre",
               "mobile": 1,
               "modes": [
                 "live",
@@ -11840,10 +10997,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Best recorded lap",
-                "sv": "Bästa registrerade varv"
-              },
+              "label": "Best recorded lap",
               "mobile": 2,
               "modes": [
                 "live",
@@ -11885,10 +11039,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "To fastest compound",
-                "sv": "Till snabbaste blandning"
-              },
+              "label": "To fastest compound",
               "mobile": 2,
               "modes": [
                 "live",
@@ -11929,10 +11080,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Total laps",
-                "sv": "Totalt antal varv"
-              },
+              "label": "Total laps",
               "mobile": 2,
               "modes": [
                 "live",
@@ -11973,10 +11121,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "New sets used",
-                "sv": "Nya set använda"
-              },
+              "label": "New sets used",
               "mobile": 2,
               "modes": [
                 "live",
@@ -12017,10 +11162,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Stints recorded",
-                "sv": "Registrerade stintar"
-              },
+              "label": "Stints recorded",
               "mobile": 2,
               "modes": [
                 "live",
@@ -12061,10 +11203,7 @@
                 "session",
                 "driver"
               ],
-              "label": {
-                "en": "Fastest recorded stints",
-                "sv": "Snabbaste registrerade stintar"
-              },
+              "label": "Fastest recorded stints",
               "mobile": 2,
               "modes": [
                 "live",
@@ -12100,10 +11239,7 @@
     },
     {
       "id": "weather",
-      "label": {
-        "en": "Weather",
-        "sv": "Väder"
-      },
+      "label": "Weather",
       "sources": [
         "track_weather",
         "weather"
@@ -12128,10 +11264,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Air temperature",
-                "sv": "Lufttemperatur"
-              },
+              "label": "Air temperature",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12169,10 +11302,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Conditions",
-                "sv": "Väderförhållanden"
-              },
+              "label": "Conditions",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12210,10 +11340,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Humidity",
-                "sv": "Luftfuktighet"
-              },
+              "label": "Humidity",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12251,10 +11378,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Wind speed",
-                "sv": "Vindhastighet"
-              },
+              "label": "Wind speed",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12292,10 +11416,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Wind from",
-                "sv": "Vind från"
-              },
+              "label": "Wind from",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12333,10 +11454,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Wind gusts",
-                "sv": "Vindbyar"
-              },
+              "label": "Wind gusts",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12374,10 +11492,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Cloud cover",
-                "sv": "Molntäcke"
-              },
+              "label": "Cloud cover",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12415,10 +11530,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Visibility",
-                "sv": "Sikt"
-              },
+              "label": "Visibility",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12456,10 +11568,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Rain probability",
-                "sv": "Regnrisk"
-              },
+              "label": "Rain probability",
               "mobile": 0,
               "modes": [
                 "forecast"
@@ -12497,10 +11606,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Precipitation amount",
-                "sv": "Nederbördsmängd"
-              },
+              "label": "Precipitation amount",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12546,10 +11652,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Air temperature",
-                "sv": "Lufttemperatur"
-              },
+              "label": "Air temperature",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12587,10 +11690,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Conditions",
-                "sv": "Väderförhållanden"
-              },
+              "label": "Conditions",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12628,10 +11728,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Humidity",
-                "sv": "Luftfuktighet"
-              },
+              "label": "Humidity",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12669,10 +11766,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Wind speed",
-                "sv": "Vindhastighet"
-              },
+              "label": "Wind speed",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12710,10 +11804,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Wind from",
-                "sv": "Vind från"
-              },
+              "label": "Wind from",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12751,10 +11842,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Wind gusts",
-                "sv": "Vindbyar"
-              },
+              "label": "Wind gusts",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12792,10 +11880,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Cloud cover",
-                "sv": "Molntäcke"
-              },
+              "label": "Cloud cover",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12833,10 +11918,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Visibility",
-                "sv": "Sikt"
-              },
+              "label": "Visibility",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12874,10 +11956,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Rain probability",
-                "sv": "Regnrisk"
-              },
+              "label": "Rain probability",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12915,10 +11994,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Precipitation amount",
-                "sv": "Nederbördsmängd"
-              },
+              "label": "Precipitation amount",
               "mobile": 0,
               "modes": [
                 "weather"
@@ -12955,10 +12031,7 @@
               "alternatives": [
                 {
                   "id": "temperature",
-                  "label": {
-                    "en": "Air temperature",
-                    "sv": "Lufttemperatur"
-                  },
+                  "label": "Air temperature",
                   "source": "weather",
                   "path": "current_temperature",
                   "type": "number",
@@ -12996,10 +12069,7 @@
                 },
                 {
                   "id": "temperature",
-                  "label": {
-                    "en": "Air temperature",
-                    "sv": "Lufttemperatur"
-                  },
+                  "label": "Air temperature",
                   "source": "track_weather",
                   "path": "air_temperature",
                   "type": "number",
@@ -13045,10 +12115,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Air temperature",
-                "sv": "Lufttemperatur"
-              },
+              "label": "Air temperature",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -13078,10 +12145,7 @@
               "alternatives": [
                 {
                   "id": "track_temperature",
-                  "label": {
-                    "en": "Track temperature",
-                    "sv": "Bantemperatur"
-                  },
+                  "label": "Track temperature",
                   "source": "track_weather",
                   "path": "track_temperature",
                   "type": "number",
@@ -13127,10 +12191,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Track temperature",
-                "sv": "Bantemperatur"
-              },
+              "label": "Track temperature",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -13160,10 +12221,7 @@
               "alternatives": [
                 {
                   "id": "weather_condition",
-                  "label": {
-                    "en": "Conditions",
-                    "sv": "Väderförhållanden"
-                  },
+                  "label": "Conditions",
                   "source": "weather",
                   "path": "current_weather_code",
                   "type": "weather_condition",
@@ -13210,10 +12268,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Conditions",
-                "sv": "Väderförhållanden"
-              },
+              "label": "Conditions",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -13243,10 +12298,7 @@
               "alternatives": [
                 {
                   "id": "humidity",
-                  "label": {
-                    "en": "Humidity",
-                    "sv": "Luftfuktighet"
-                  },
+                  "label": "Humidity",
                   "source": "weather",
                   "path": "current_humidity",
                   "type": "number",
@@ -13284,10 +12336,7 @@
                 },
                 {
                   "id": "humidity",
-                  "label": {
-                    "en": "Humidity",
-                    "sv": "Luftfuktighet"
-                  },
+                  "label": "Humidity",
                   "source": "track_weather",
                   "path": "humidity",
                   "type": "number",
@@ -13333,10 +12382,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Humidity",
-                "sv": "Luftfuktighet"
-              },
+              "label": "Humidity",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -13366,10 +12412,7 @@
               "alternatives": [
                 {
                   "id": "wind",
-                  "label": {
-                    "en": "Wind speed",
-                    "sv": "Vindhastighet"
-                  },
+                  "label": "Wind speed",
                   "source": "weather",
                   "path": "current_wind_speed",
                   "type": "number",
@@ -13407,10 +12450,7 @@
                 },
                 {
                   "id": "wind",
-                  "label": {
-                    "en": "Wind speed",
-                    "sv": "Vindhastighet"
-                  },
+                  "label": "Wind speed",
                   "source": "track_weather",
                   "path": "wind_speed",
                   "type": "number",
@@ -13456,10 +12496,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Wind speed",
-                "sv": "Vindhastighet"
-              },
+              "label": "Wind speed",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -13489,10 +12526,7 @@
               "alternatives": [
                 {
                   "id": "wind_direction",
-                  "label": {
-                    "en": "Wind from",
-                    "sv": "Vind från"
-                  },
+                  "label": "Wind from",
                   "source": "weather",
                   "path": "current_wind_from_direction_degrees",
                   "type": "bearing",
@@ -13530,10 +12564,7 @@
                 },
                 {
                   "id": "wind_direction",
-                  "label": {
-                    "en": "Wind from",
-                    "sv": "Vind från"
-                  },
+                  "label": "Wind from",
                   "source": "track_weather",
                   "path": "wind_from_direction_degrees",
                   "type": "bearing",
@@ -13579,10 +12610,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Wind from",
-                "sv": "Vind från"
-              },
+              "label": "Wind from",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -13612,10 +12640,7 @@
               "alternatives": [
                 {
                   "id": "wind_gusts",
-                  "label": {
-                    "en": "Wind gusts",
-                    "sv": "Vindbyar"
-                  },
+                  "label": "Wind gusts",
                   "source": "weather",
                   "path": "current_wind_gusts",
                   "type": "number",
@@ -13662,10 +12687,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Wind gusts",
-                "sv": "Vindbyar"
-              },
+              "label": "Wind gusts",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -13695,10 +12717,7 @@
               "alternatives": [
                 {
                   "id": "cloud_cover",
-                  "label": {
-                    "en": "Cloud cover",
-                    "sv": "Molntäcke"
-                  },
+                  "label": "Cloud cover",
                   "source": "weather",
                   "path": "current_cloud_cover",
                   "type": "number",
@@ -13745,10 +12764,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Cloud cover",
-                "sv": "Molntäcke"
-              },
+              "label": "Cloud cover",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -13778,10 +12794,7 @@
               "alternatives": [
                 {
                   "id": "visibility",
-                  "label": {
-                    "en": "Visibility",
-                    "sv": "Sikt"
-                  },
+                  "label": "Visibility",
                   "source": "weather",
                   "path": "current_visibility",
                   "type": "number",
@@ -13828,10 +12841,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Visibility",
-                "sv": "Sikt"
-              },
+              "label": "Visibility",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -13861,10 +12871,7 @@
               "alternatives": [
                 {
                   "id": "pressure",
-                  "label": {
-                    "en": "Air pressure",
-                    "sv": "Lufttryck"
-                  },
+                  "label": "Air pressure",
                   "source": "track_weather",
                   "path": "pressure",
                   "type": "number",
@@ -13910,10 +12917,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Air pressure",
-                "sv": "Lufttryck"
-              },
+              "label": "Air pressure",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -13943,10 +12947,7 @@
               "alternatives": [
                 {
                   "id": "rain_probability",
-                  "label": {
-                    "en": "Rain probability",
-                    "sv": "Regnrisk"
-                  },
+                  "label": "Rain probability",
                   "source": "weather",
                   "path": "current_precipitation_probability",
                   "type": "number",
@@ -13993,10 +12994,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Rain probability",
-                "sv": "Regnrisk"
-              },
+              "label": "Rain probability",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -14026,10 +13024,7 @@
               "alternatives": [
                 {
                   "id": "precipitation",
-                  "label": {
-                    "en": "Precipitation amount",
-                    "sv": "Nederbördsmängd"
-                  },
+                  "label": "Precipitation amount",
                   "source": "weather",
                   "path": "current_precipitation",
                   "type": "number",
@@ -14076,10 +13071,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Precipitation amount",
-                "sv": "Nederbördsmängd"
-              },
+              "label": "Precipitation amount",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -14109,10 +13101,7 @@
               "alternatives": [
                 {
                   "id": "rainfall",
-                  "label": {
-                    "en": "Rain detected",
-                    "sv": "Regn registrerat"
-                  },
+                  "label": "Rain detected",
                   "source": "track_weather",
                   "path": "rainfall",
                   "type": "rain_indicator",
@@ -14158,10 +13147,7 @@
                 "season",
                 "round"
               ],
-              "label": {
-                "en": "Rain detected",
-                "sv": "Regn registrerat"
-              },
+              "label": "Rain detected",
               "mobile": 0,
               "modes": [
                 "weather",
@@ -14208,10 +13194,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Air temperature",
-                "sv": "Lufttemperatur"
-              },
+              "label": "Air temperature",
               "mobile": 0,
               "modes": [
                 "forecast"
@@ -14249,10 +13232,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Conditions",
-                "sv": "Väderförhållanden"
-              },
+              "label": "Conditions",
               "mobile": 0,
               "modes": [
                 "forecast"
@@ -14290,10 +13270,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Humidity",
-                "sv": "Luftfuktighet"
-              },
+              "label": "Humidity",
               "mobile": 0,
               "modes": [
                 "forecast"
@@ -14331,10 +13308,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Wind speed",
-                "sv": "Vindhastighet"
-              },
+              "label": "Wind speed",
               "mobile": 0,
               "modes": [
                 "forecast"
@@ -14372,10 +13346,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Wind from",
-                "sv": "Vind från"
-              },
+              "label": "Wind from",
               "mobile": 0,
               "modes": [
                 "forecast"
@@ -14413,10 +13384,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Wind gusts",
-                "sv": "Vindbyar"
-              },
+              "label": "Wind gusts",
               "mobile": 0,
               "modes": [
                 "forecast"
@@ -14454,10 +13422,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Cloud cover",
-                "sv": "Molntäcke"
-              },
+              "label": "Cloud cover",
               "mobile": 0,
               "modes": [
                 "forecast"
@@ -14495,10 +13460,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Visibility",
-                "sv": "Sikt"
-              },
+              "label": "Visibility",
               "mobile": 0,
               "modes": [
                 "forecast"
@@ -14536,10 +13498,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Rain probability",
-                "sv": "Regnrisk"
-              },
+              "label": "Rain probability",
               "mobile": 0,
               "modes": [
                 "forecast"
@@ -14577,10 +13536,7 @@
                 "round",
                 "circuit"
               ],
-              "label": {
-                "en": "Precipitation amount",
-                "sv": "Nederbördsmängd"
-              },
+              "label": "Precipitation amount",
               "mobile": 0,
               "modes": [
                 "forecast"
@@ -14624,10 +13580,7 @@
                 "entry",
                 "session"
               ],
-              "label": {
-                "en": "Air temperature",
-                "sv": "Lufttemperatur"
-              },
+              "label": "Air temperature",
               "mobile": 0,
               "modes": [
                 "live",
@@ -14664,10 +13617,7 @@
                 "entry",
                 "session"
               ],
-              "label": {
-                "en": "Track temperature",
-                "sv": "Bantemperatur"
-              },
+              "label": "Track temperature",
               "mobile": 0,
               "modes": [
                 "live",
@@ -14704,10 +13654,7 @@
                 "entry",
                 "session"
               ],
-              "label": {
-                "en": "Humidity",
-                "sv": "Luftfuktighet"
-              },
+              "label": "Humidity",
               "mobile": 0,
               "modes": [
                 "live",
@@ -14744,10 +13691,7 @@
                 "entry",
                 "session"
               ],
-              "label": {
-                "en": "Wind speed",
-                "sv": "Vindhastighet"
-              },
+              "label": "Wind speed",
               "mobile": 0,
               "modes": [
                 "live",
@@ -14784,10 +13728,7 @@
                 "entry",
                 "session"
               ],
-              "label": {
-                "en": "Wind from",
-                "sv": "Vind från"
-              },
+              "label": "Wind from",
               "mobile": 0,
               "modes": [
                 "live",
@@ -14824,10 +13765,7 @@
                 "entry",
                 "session"
               ],
-              "label": {
-                "en": "Air pressure",
-                "sv": "Lufttryck"
-              },
+              "label": "Air pressure",
               "mobile": 0,
               "modes": [
                 "live",
@@ -14864,10 +13802,7 @@
                 "entry",
                 "session"
               ],
-              "label": {
-                "en": "Rain detected",
-                "sv": "Regn registrerat"
-              },
+              "label": "Rain detected",
               "mobile": 0,
               "modes": [
                 "live",

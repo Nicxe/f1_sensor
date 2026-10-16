@@ -32,15 +32,14 @@ process.stdout.write(JSON.stringify({
   statusMessage: words(
     'nl',
     'No session data is currently available. Your settings are kept.',
-    'Sessionsdata är inte tillgängliga just nu. Dina inställningar finns kvar.',
   ),
-  dynamicColumns: words('nl', '3 of 4 columns', '3 av 4 kolumner'),
-  driverLabel: words('nl', 'Driver', 'Förare'),
+  dynamicColumns: words('nl', '3 of 4 columns'),
+  driverLabel: words('nl', 'Driver'),
   resultModule: moduleTitle({ type: 'results' }, 'nl'),
   incidentsModule: moduleTitle({ type: 'incidents' }, 'en'),
-  sessionName: words('nl', 'Qualifying', 'Kval'),
-  swedishFallback: words('sv-SE', 'Weather', 'Väder'),
-  unknownFallback: words('de-DE', 'Weather', 'Väder'),
+  sessionName: words('nl', 'Qualifying'),
+  swedishFallback: words('sv-SE', 'Weather'),
+  unknownFallback: words('de-DE', 'Weather'),
   englishModule: label(MODULES.weather, 'en'),
 }));
 """
@@ -55,20 +54,21 @@ const { LOCALES: locales, translate, translatePlural } = await import(
 const keys = Object.fromEntries(Object.entries(locales).map(
   ([language, messages]) => [language, Object.keys(messages).sort()],
 ));
+const targetLanguages = Object.keys(locales).filter(language => language !== 'en');
 const placeholders = value => [...String(value).matchAll(/\{([^{}]+)\}/g)]
   .map(match => match[1]).sort();
 const mismatchedPlaceholders = keys.en.filter(key =>
-  ['sv', 'nl'].some(language =>
+  targetLanguages.some(language =>
     locales[language][key] !== undefined &&
     JSON.stringify(placeholders(locales.en[key]))
       !== JSON.stringify(placeholders(locales[language][key])),
   ),
 );
-const unexpectedTargetKeys = Object.fromEntries(['sv', 'nl'].map(language => [
+const unexpectedTargetKeys = Object.fromEntries(targetLanguages.map(language => [
   language,
   keys[language].filter(key => locales.en[key] === undefined),
 ]));
-const missingTargetKeysUseEnglish = ['sv', 'nl'].every(language =>
+const missingTargetKeysUseEnglish = targetLanguages.every(language =>
   keys.en
     .filter(key => locales[language][key] === undefined)
     .every(key => translate(language, key) === locales.en[key]),
@@ -132,7 +132,10 @@ def test_frontend_locales_use_source_keys_fallbacks_and_safe_placeholders() -> N
 
     payload = json.loads(result.stdout)
     assert payload["keyCount"] >= 700
-    assert payload["unexpectedTargetKeys"] == {"sv": [], "nl": []}
+    assert payload["unexpectedTargetKeys"] == {
+        language: []
+        for language in ("da", "de", "fi", "fr", "it", "nl", "no", "pl", "pt", "sv")
+    }
     assert payload["missingTargetKeysUseEnglish"] is True
     assert payload["mismatchedPlaceholders"] == []
     assert payload["swedish"] == (
@@ -156,15 +159,16 @@ def test_frontend_locales_are_in_the_runtime_asset_manifest() -> None:
 
     assert '"localization/index.js"' in frontend_source
     assert '"localization/legacy.js"' in frontend_source
-    for language in ("en", "sv", "nl"):
-        assert f'"localization/locales/{language}.json"' in frontend_source
+    assert 'glob("*.json")' in frontend_source
+    assert "LIVE_DATA_CARD_LOCALE_MANIFEST" in frontend_source
 
 
 def test_frontend_locale_json_is_weblate_compatible() -> None:
     """Card locales use flat string mappings that Weblate can edit directly."""
     for path in sorted(LOCALE_DIR.glob("*.json")):
         messages = json.loads(path.read_text(encoding="utf-8"))
-        assert messages
+        if path.stem == "en":
+            assert messages
         assert all(isinstance(key, str) for key in messages)
         assert all(isinstance(value, str) for value in messages.values())
 
@@ -177,3 +181,5 @@ def test_modular_static_messages_use_translation_keys() -> None:
             continue
         source = path.read_text()
         assert bilingual_call.search(source) is None
+        assert re.search(r"[åäöÅÄÖ]", source) is None
+        assert re.search(r"\bsv\b", source) is None

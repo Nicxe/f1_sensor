@@ -20,7 +20,7 @@ export class F1MigrationEditor extends LitElement {
   `];
   constructor() { super(); this.entries = []; this.entryId = ''; this.error = ''; this.accepted = false; }
   get language() { return this.hass?.locale?.language ?? this.hass?.language ?? 'en'; }
-  w(en, sv) { return words(this.language, en, sv); }
+  w(source, replacements = {}) { return words(this.language, source, replacements); }
   setConfig(value) {
     const next = copyConfig(value);
     if (JSON.stringify(next) !== JSON.stringify(this.config)) { this.proposal = null; this.accepted = false; this.entryId = ''; }
@@ -94,7 +94,7 @@ export class F1MigrationEditor extends LitElement {
       ${['review', 'changed', 'mapped'].map(status => {
         const items = rows.filter(row => row.status === status); if (!items.length) return '';
         const title = status === 'review' ? this.w('modular.choose_again_or_keep_the_original') : status === 'changed' ? this.w('modular.changed_behavior') : this.w('modular.transferred_settings');
-        return html`<details ?open=${status === 'review'}><summary>${title} (${items.length})</summary><ul>${items.map(row => html`<li><strong>${row.path.startsWith('$') ? this.w('modular.card_behavior') : row.path}</strong>${Object.hasOwn(this.config, row.path) ? html` <code>${JSON.stringify(this.config[row.path])}</code>` : ''}: ${this.w(row.message.en, row.message.sv)}</li>`)}</ul></details>`;
+        return html`<details ?open=${status === 'review'}><summary>${title} (${items.length})</summary><ul>${items.map(row => html`<li><strong>${row.path.startsWith('$') ? this.w('modular.card_behavior') : row.path}</strong>${Object.hasOwn(this.config, row.path) ? html` <code>${JSON.stringify(this.config[row.path])}</code>` : ''}: ${this.w(row.message)}</li>`)}</ul></details>`;
       })}
       <label class="check"><input type="checkbox" .checked=${this.accepted} @change=${event => { this.accepted = event.target.checked; }}>${this.w('modular.i_have_reviewed_the_differences_and_settings_that_need_to_be_chosen_again')}</label>
       <div class="buttons"><button @click=${() => { this.proposal = null; this.accepted = false; }}>${this.w('modular.cancel_conversion')}</button><button ?disabled=${!this.accepted} @click=${() => { if (this.accepted) this.publish(this.proposal.config); }}>${this.w('modular.apply_conversion')}</button></div>

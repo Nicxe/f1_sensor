@@ -270,7 +270,7 @@ export class F1SensorCard extends LitElement {
     this.connection = null; this.eventKey = ''; this.groupKey = ''; this.groupContext = {}; this.sectors.reset();
   }
   get language() { return this.sourceHass?.locale?.language ?? this.sourceHass?.language ?? 'en'; }
-  w(en, sv) { return words(this.language, en, sv); }
+  w(source, replacements = {}) { return words(this.language, source, replacements); }
   get entry() {
     const entries = this.modelPreview?.entries ?? this.entries;
     return this.config?.f1_entry_id ? entries.find(entry => entry.entry_id === this.config.f1_entry_id) : entries.length === 1 ? entries[0] : null;
@@ -552,8 +552,8 @@ export class F1SensorCard extends LitElement {
     if (clock.notApplicable) return this.w('modular.available_for_race_sessions');
     if (clock.value === null) return clock.contextMismatch ? this.w('modular.clock_belongs_to_another_session_or_qualifying_part') : clock.phase === 'idle' ? this.w('modular.session_clock_has_not_started') : this.missingMessage(clock.source.status);
     if (clock.cap) return [this.w('modular.from_race_start_includes_session_interruptions'), ['paused', 'seeking'].includes(clock.replay) ? this.w('modular.replay_paused') : null].filter(Boolean).join(' · ');
-    const phases = { running: ['Running', 'Pågår'], paused: ['Paused', 'Pausad'], finished: ['Finished', 'Avslutad'], overtime: ['Time expired', 'Tiden har löpt ut'] };
-    const qualities = { official: ['Official clock', 'Officiell klocka'], official_no_heartbeat: ['Clock without heartbeat confirmation', 'Klocka utan bekräftande heartbeat'], sessiondata_fallback: ['Estimated from session events', 'Beräknad från sessionshändelser'] };
+    const phases = { running: ['Running'], paused: ['Paused'], finished: ['Finished'], overtime: ['Time expired'] };
+    const qualities = { official: ['Official clock', 'Officiell klocka'], official_no_heartbeat: ['Clock without heartbeat confirmation'], sessiondata_fallback: ['Estimated from session events'] };
     return [phases[clock.phase] ? this.w(...phases[clock.phase]) : this.w('modular.clock_status_unknown'), qualities[clock.quality] ? this.w(...qualities[clock.quality]) : this.w('modular.clock_source_uncertain'), clock.part ? `${this.w('modular.part')} ${clock.part}` : null].filter(Boolean).join(' · ');
   }
   buildModels() {

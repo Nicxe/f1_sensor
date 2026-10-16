@@ -1,9 +1,13 @@
 /** Load complete delivered modules; only the browser/Lit boundary is simulated. */
-import {readFile} from 'node:fs/promises';
+import {readFile, readdir} from 'node:fs/promises';
 import {createContext, SourceTextModule, SyntheticModule} from 'node:vm';
 const root = new URL('../../custom_components/f1_sensor/www/f1-sensor-live-data-card/', import.meta.url);
+const localeLanguages = (await readdir(new URL('localization/locales/', root)))
+  .filter(filename => filename.endsWith('.json'))
+  .map(filename => filename.slice(0, -5))
+  .sort();
 const locales = Object.fromEntries(await Promise.all(
-  ['en', 'sv', 'nl'].map(async language => [
+  localeLanguages.map(async language => [
     language,
     JSON.parse(await readFile(new URL(`localization/locales/${language}.json`, root), 'utf8')),
   ]),

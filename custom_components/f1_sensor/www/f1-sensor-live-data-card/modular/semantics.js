@@ -1,11 +1,11 @@
 export const SIGNALS = {
-  overall: { symbol: '◆', label: { en: 'Overall fastest', sv: 'Snabbast totalt' } },
-  personal: { symbol: '●', label: { en: 'Personal best', sv: 'Personbästa' } },
-  timed: { symbol: '■', label: { en: 'Recorded time', sv: 'Registrerad tid' } },
-  previous: { symbol: '↶', label: { en: 'Previous lap', sv: 'Föregående varv' } },
-  deleted: { symbol: '×', label: { en: 'Deleted time', sv: 'Raderad tid' } },
-  invalid: { symbol: '!', label: { en: 'Invalid time', sv: 'Ogiltig tid' } },
-  unknown: { symbol: '–', label: { en: 'Not available', sv: 'Uppgift saknas' } },
+  overall: { symbol: '◆', label: 'Overall fastest' },
+  personal: { symbol: '●', label: 'Personal best' },
+  timed: { symbol: '■', label: 'Recorded time' },
+  previous: { symbol: '↶', label: 'Previous lap' },
+  deleted: { symbol: '×', label: 'Deleted time' },
+  invalid: { symbol: '!', label: 'Invalid time' },
+  unknown: { symbol: '–', label: 'Not available' },
 };
 export const PALETTES = {
   dark: { overall: '#c59aff', personal: '#75dc94', timed: '#f6d65c', previous: '#bdc3ce', deleted: '#ffb3b3', invalid: '#ffb3b3', unknown: '#bdc3ce' },
@@ -185,27 +185,27 @@ export function safeImageUrl(value) {
 
 
 const COMPOUNDS = {
-  SOFT: { letter: 'S', color: '#ff3b30', label: { en: 'Soft', sv: 'Mjukt' }, asset: 'soft_tyre.png' },
-  MEDIUM: { letter: 'M', color: '#ffd60a', label: { en: 'Medium', sv: 'Medium' }, asset: 'medium_tyre.png' },
-  HARD: { letter: 'H', color: '#e5e5e5', label: { en: 'Hard', sv: 'Hårt' }, asset: 'hard_tyre.png' },
-  INTERMEDIATE: { letter: 'I', color: '#34c759', label: { en: 'Intermediate', sv: 'Intermediate' }, asset: 'intermediate_tyre.png' },
-  WET: { letter: 'W', color: '#0a84ff', label: { en: 'Wet', sv: 'Regndäck' }, asset: 'wet_tyre.png' },
+  SOFT: { letter: 'S', color: '#ff3b30', label: 'Soft', asset: 'soft_tyre.png' },
+  MEDIUM: { letter: 'M', color: '#ffd60a', label: 'Medium', asset: 'medium_tyre.png' },
+  HARD: { letter: 'H', color: '#e5e5e5', label: 'Hard', asset: 'hard_tyre.png' },
+  INTERMEDIATE: { letter: 'I', color: '#34c759', label: 'Intermediate', asset: 'intermediate_tyre.png' },
+  WET: { letter: 'W', color: '#0a84ff', label: 'Wet', asset: 'wet_tyre.png' },
 };
 export function compoundMeta(value) {
   const raw = typeof value === 'string' ? value.trim().toUpperCase() : '';
   const key = ({ S: 'SOFT', M: 'MEDIUM', H: 'HARD', I: 'INTERMEDIATE', INTER: 'INTERMEDIATE', W: 'WET', 'FULL WET': 'WET', FULLWET: 'WET' })[raw] ?? raw;
   // Never invent a compound or silently make an unknown compound a hard tyre.
-  return COMPOUNDS[key] ? { key, ...COMPOUNDS[key] } : { key: null, letter: '?', color: null, asset: null, label: { en: raw || 'Unknown compound', sv: raw || 'Okänd compound' } };
+  return COMPOUNDS[key] ? { key, ...COMPOUNDS[key] } : { key: null, letter: '?', color: null, asset: null, label: raw || 'Unknown compound' };
 }
 const TRACK_SIGNALS = {
-  CLEAR: { symbol: '✓', color: '#238644', label: { en: 'Track clear', sv: 'Banan fri' } },
-  YELLOW: { symbol: '⚑', color: '#f0c632', label: { en: 'Yellow flag', sv: 'Gul flagg' } },
-  DOUBLE_YELLOW: { symbol: '⚑⚑', color: '#f0c632', label: { en: 'Double yellow flags', sv: 'Dubbla gula flaggor' } },
-  RED: { symbol: '⚑', color: '#d93636', label: { en: 'Red flag', sv: 'Röd flagg' } },
-  SC: { symbol: 'SC', color: '#f0c632', label: { en: 'Safety Car', sv: 'Safety Car' } },
-  VSC: { symbol: 'VSC', color: '#f0c632', label: { en: 'Virtual Safety Car', sv: 'Virtuell Safety Car' } },
-  BLUE: { symbol: '⚑', color: '#3978d5', label: { en: 'Blue flag', sv: 'Blå flagg' } },
-  CHEQUERED: { symbol: '▦', color: '#ffffff', label: { en: 'Chequered flag', sv: 'Målflagg' } },
+  CLEAR: { symbol: '✓', color: '#238644', label: 'Track clear' },
+  YELLOW: { symbol: '⚑', color: '#f0c632', label: 'Yellow flag' },
+  DOUBLE_YELLOW: { symbol: '⚑⚑', color: '#f0c632', label: 'Double yellow flags' },
+  RED: { symbol: '⚑', color: '#d93636', label: 'Red flag' },
+  SC: { symbol: 'SC', color: '#f0c632', label: 'Safety Car' },
+  VSC: { symbol: 'VSC', color: '#f0c632', label: 'Virtual Safety Car' },
+  BLUE: { symbol: '⚑', color: '#3978d5', label: 'Blue flag' },
+  CHEQUERED: { symbol: '▦', color: '#ffffff', label: 'Chequered flag' },
 };
 export function trackSignal(value) {
   const raw = typeof value === 'string' ? value.trim().toUpperCase().replaceAll(' ', '_') : '';

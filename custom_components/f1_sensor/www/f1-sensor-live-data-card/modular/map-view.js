@@ -127,7 +127,7 @@ class F1TrackMapView extends LitElement {
     const value = String(row.team_color ?? '').replace(/^#/, '');
     return this.settings.appearance.team_colors && /^[0-9a-f]{6}$/i.test(value) ? `#${value}` : 'transparent';
   }
-  w(en, sv) { return words(this.settings?.language, en, sv); }
+  w(source, replacements = {}) { return words(this.settings?.language, source, replacements); }
   state(row) {
     if (!row.point || row.point.some(value => value < 0 || value > 100)) return this.w('modular.position_outside_the_available_map');
     if (row.stale) return this.w('modular.saved_position_stale');
@@ -248,7 +248,7 @@ class F1TrackMapView extends LitElement {
       ${options.show_session_info ? html`<div class="map-meta"><strong>${session || this.w('modular.session_information_unavailable')}</strong><div class="map-badges">
         ${options.show_track_status && status ? html`<span class="map-status">${this.w('modular.track')}: ${status.value}</span>` : ''}
         ${options.show_lap_progress && lap ? html`<span class="map-status">${lap}</span>` : ''}
-        ${options.show_driver_count ? html`<span class="map-status">${rows.length} ${this.w(rows.length === 1 ? 'driver' : 'drivers', rows.length === 1 ? 'förare' : 'förare')}</span>` : ''}
+        ${options.show_driver_count ? html`<span class="map-status">${rows.length} ${this.w(rows.length === 1 ? 'driver' : 'drivers')}</span>` : ''}
       </div></div>` : ''}
       ${showMap ? this.model.points ? html`<div class="map-frame"><svg viewBox="0 0 100 100" role="img" aria-labelledby="map-title map-description">
         <title id="map-title">${this.w('modular.driver_positions_on_the_track')}</title>

@@ -80,7 +80,7 @@ class F1TeamRadioView extends LitElement {
   }
 
   get language() { return this.settings?.language ?? 'en'; }
-  w(en, sv) { return words(this.language, en, sv); }
+  w(source, replacements = {}) { return words(this.language, source, replacements); }
 
   willUpdate() {
     const first = this.model?.clips?.[0]?.id ?? null;
