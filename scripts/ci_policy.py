@@ -26,6 +26,7 @@ JOBS = (
 RUNTIME = {"lint", "backend", "frontend", "validation", "package"}
 STABLE_RELEASE_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 RELEASE_TRIGGER = re.compile(r"^(?:feat|fix)(?:\([^)]+\))?!?:")
+RELEASE_POLICY_PATH = Path(__file__).parents[1] / "semantic-release-policy.json"
 
 
 def selected_checks(selected: set[str], *, audit: bool = True) -> dict[str, bool]:
@@ -129,6 +130,28 @@ def latest_stable_release_tag(commit: str) -> str | None:
     return max(tags, default=(None, None))[1]
 
 
+def non_releasing_commit_headers() -> set[str]:
+    """Read the exact semantic-release exclusions used by release.config.cjs."""
+    try:
+        policy = json.loads(RELEASE_POLICY_PATH.read_text())
+        rules = policy["nonReleaseRules"]
+        if not isinstance(rules, list):
+            raise TypeError("nonReleaseRules is not a list")
+        headers = {
+            f"{rule['type']}({rule['scope']}): {rule['subject']}"
+            for rule in rules
+            if rule.get("release") is False
+            and isinstance(rule.get("type"), str)
+            and isinstance(rule.get("scope"), str)
+            and isinstance(rule.get("subject"), str)
+        }
+    except (KeyError, OSError, TypeError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            f"could not read semantic-release policy: {error}"
+        ) from error
+    return headers
+
+
 def release_triggering_commits(commit_range: str) -> list[tuple[str, str]]:
     """List feat/fix commits in a range, as semantic-release would consider them."""
     result = subprocess.run(
@@ -139,10 +162,15 @@ def release_triggering_commits(commit_range: str) -> list[tuple[str, str]]:
     )
     if result.returncode:
         raise RuntimeError("could not inspect release commits")
+    excluded_headers = non_releasing_commit_headers()
     commits = []
     for line in result.stdout.splitlines():
         sha, separator, subject = line.partition("\x00")
-        if separator and RELEASE_TRIGGER.match(subject):
+        if (
+            separator
+            and RELEASE_TRIGGER.match(subject)
+            and subject not in excluded_headers
+        ):
             commits.append((sha, subject))
     return commits
 

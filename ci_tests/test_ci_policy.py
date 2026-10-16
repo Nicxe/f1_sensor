@@ -9,6 +9,7 @@ from scripts.ci_policy import (
     gate_errors,
     hotfix_matches_dev,
     main_promotion_release_error,
+    release_triggering_commits,
     select_jobs,
     should_deploy,
 )
@@ -111,6 +112,23 @@ class PolicyTests(unittest.TestCase):
         ):
             self.assertEqual(main_promotion_release_error(event), "")
         self.assertEqual(main_promotion_release_error(pull("beta", "dev")), "")
+
+    def test_release_boundary_uses_semantic_release_exclusions(self):
+        output = "\n".join(
+            [
+                f"{'a' * 40}\x00fix(compatibility): Verify release tags from GitHub directly",
+                f"{'b' * 40}\x00fix(compatibility): tolerate delayed release assets",
+                f"{'c' * 40}\x00fix: Correct an unintended stable behavior",
+            ]
+        )
+        with patch(
+            "scripts.ci_policy.subprocess.run",
+            return_value=Mock(returncode=0, stdout=output),
+        ):
+            self.assertEqual(
+                release_triggering_commits("v6.0.0..main"),
+                [("c" * 40, "fix: Correct an unintended stable behavior")],
+            )
 
     def test_owner_maintenance_can_repair_main_without_promoting_runtime_code(self):
         event = pull("main", "maintenance/dependency-ci-recovery")
