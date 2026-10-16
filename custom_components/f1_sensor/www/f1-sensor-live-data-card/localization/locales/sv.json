@@ -1705,5 +1705,6 @@
   "modular.timing_states_always_include_symbols_or_text_lap_arrows_keep_down_for_faster_and_up_for_slower": "Timingstatus får alltid symboler eller text. Varvpilar behåller nedåt för snabbare och uppåt för långsammare.",
   "modular.title_visibility_is_applied_to_the_card_and_its_modules_session_details_status_labels_and_controls_remain_avai": "Rubrikvisningen överförs till kortet och dess moduler. Sessionsuppgifter, statusmarkeringar och kontroller finns kvar.",
   "modular.unknown": "Okänd",
-  "modular.uses_f1_sensor_modules_with_a_new_layout_and_defaults_this_is_a_starting_point_for_review_not_an_exact_copy_of": "Använder F1 Sensor-moduler med ny layout och nya standardval. Detta är ett underlag för granskning, inte en exakt kopia av alla äldre funktioner."
+  "modular.uses_f1_sensor_modules_with_a_new_layout_and_defaults_this_is_a_starting_point_for_review_not_an_exact_copy_of": "Använder F1 Sensor-moduler med ny layout och nya standardval. Detta är ett underlag för granskning, inte en exakt kopia av alla äldre funktioner.",
+  "modular.lap_number_starts": "Varv startar"
 }
