@@ -125,6 +125,8 @@ depending on private class names:
 | `table-header` | Table heading group |
 | `table-row` | Table row |
 | `table-cell` | Table heading or value cell |
+| `driver-detail-row` | Expanded Timing table row beneath a selected driver |
+| `driver-detail` | Content inside one expanded driver's row |
 | `result-grid` | Result grid instead of a table |
 | `result-card` | One result in a result grid |
 | `metrics` | Overview metric collection |

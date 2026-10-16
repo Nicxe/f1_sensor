@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 from aiohttp import ClientSession
 from homeassistant.util import dt as dt_util
 
+from .archive import F1ArchiveClient
 from .const import (
     DOMAIN,
     EVENT_TRACKER_ACTIVE_CACHE_TTL,
@@ -983,6 +984,7 @@ class LiveSessionSupervisor:
         bus: LiveBus,
         *,
         http_session: ClientSession,
+        archive_client: F1ArchiveClient | None = None,
         index_source: LiveScheduleSource | None = None,
         fallback_source: LiveScheduleSource | None = None,
         pre_window: timedelta = DEFAULT_PRE_WINDOW,
@@ -992,6 +994,7 @@ class LiveSessionSupervisor:
         self._session_coord = session_coord
         self._bus = bus
         self._http = http_session
+        self._archive_client = archive_client
         self._index_source = index_source or IndexScheduleSource(session_coord)
         self._fallback_source = fallback_source
         self._pre_window = pre_window
@@ -1682,7 +1685,8 @@ class LiveSessionSupervisor:
 
     async def _fetch_json(self, url: str) -> Any:
         async with asyncio.timeout(10):
-            async with self._http.get(url) as resp:
+            request_client = self._archive_client or self._http
+            async with request_client.get(url) as resp:
                 if resp.status == 404:
                     return None
                 resp.raise_for_status()

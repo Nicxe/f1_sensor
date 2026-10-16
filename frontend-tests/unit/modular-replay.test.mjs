@@ -47,6 +47,22 @@ test('replay seek keeps zero valid, rejects invalid or out-of-range targets and 
   assert.equal(read(d).playerStatus, 'disabled');
 });
 
+test('replay sync uses only validated markers from the active loaded session', () => {
+  const d = fixture(), model = read(d);
+  assert.deepEqual(model.syncPoints, [
+    { id: 'lap:1', kind: 'lap', value: 1, position: 0 },
+    { id: 'lap:23', kind: 'lap', value: 23, position: 1800.25 },
+    { id: 'lap:24', kind: 'lap', value: 24, position: 1891.75 },
+  ]);
+  assert.deepEqual(command(d, 'sync', 'lap:24'), {
+    domain: 'media_player', service: 'media_seek', data: { entity_id: d.entry.entities.replay_player, seek_position: 1891.75 },
+  });
+  assert.equal(command(d, 'sync', 'lap:99'), null);
+  const context = model.controlContext;
+  d.hass.states[d.entry.entities.replay_status].attributes.sync_points[2].position_s = 2000;
+  assert.equal(command(d, 'sync', 'lap:24', context), null);
+});
+
 test('a never-pressed load button is usable, and session selectors require real available sessions', () => {
   const d = fixture('race'), state = d.hass.states[d.entry.entities.replay_status];
   assert.equal(command(d, 'refresh').service, 'press');

@@ -24,6 +24,7 @@ from aiohttp import ClientSession
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from .archive import ARCHIVE_AUTH_REQUIRED_MESSAGE, F1ArchiveClient
 from .const import (
     DEFAULT_REPLAY_START_REFERENCE,
     DOMAIN,
@@ -71,6 +72,7 @@ REPLAY_CORE_STREAMS = frozenset(
         "DriverList",
         "ExtrapolatedClock",
         "Heartbeat",
+        "LapCount",
         "SessionData",
         "SessionInfo",
         "SessionStatus",
@@ -88,7 +90,7 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Cache version - bump this when replay index contents change in a way that
 # requires re-downloading cached sessions.
-CACHE_VERSION = 14
+CACHE_VERSION = 15
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
 SEEK_INDEX_INTERVAL_MS = 5_000
@@ -111,6 +113,20 @@ def _parse_replay_int(value: Any) -> int | None:
     else:
         return None
     return parsed if parsed >= 0 else None
+
+
+def _parse_replay_marker_map(value: Any) -> dict[int, int]:
+    """Return validated replay marker timestamps from cached JSON data."""
+    if not isinstance(value, dict):
+        return {}
+    parsed: dict[int, int] = {}
+    for marker, timestamp_ms in value.items():
+        marker_value = _parse_replay_int(marker)
+        timestamp_value = _parse_replay_int(timestamp_ms)
+        if marker_value is None or marker_value <= 0 or timestamp_value is None:
+            continue
+        parsed[marker_value] = timestamp_value
+    return dict(sorted(parsed.items()))
 
 
 class ReplayState(Enum):
@@ -199,6 +215,8 @@ class ReplayIndex:
     formation_initial_state: dict[str, Any] | None = None
     seek_index: list[dict[str, int]] | None = None
     seek_checkpoints: list[dict[str, Any]] | None = None
+    lap_start_ms: dict[int, int] | None = None
+    qualifying_part_start_ms: dict[int, int] | None = None
 
 
 def _seek_offset_for_ms(
@@ -256,13 +274,15 @@ class ReplaySessionManager:
         entry_id: str,
         http_session: ClientSession,
         *,
+        archive_client: F1ArchiveClient | None = None,
         requested_streams: set[str] | frozenset[str] | None = None,
         cache_max_bytes: int = REPLAY_CACHE_MAX_BYTES,
         cache_max_sessions: int = REPLAY_CACHE_MAX_SESSIONS,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
-        self._http = http_session
+        self._archive_client = archive_client
+        self._http = archive_client or http_session
         self._cache_dir = Path(hass.config.path(REPLAY_CACHE_DIR))
         self._state = ReplayState.IDLE
         self._selected_session: ReplaySession | None = None
@@ -394,6 +414,17 @@ class ReplaySessionManager:
         self._index_year = year
         self._index_status = None
         self._index_error = None
+
+        if self._archive_client is not None and not self._archive_client.authenticated:
+            self._index_status = INDEX_STATUS_ERROR
+            self._index_error = ARCHIVE_AUTH_REQUIRED_MESSAGE
+            if year_changed:
+                self._available_sessions = []
+                self._selected_session = None
+                self._loaded_index = None
+                self._state = ReplayState.IDLE
+            self._notify_listeners()
+            return sessions
 
         url = f"{STATIC_BASE}/{year}/Index.json"
         try:
@@ -699,8 +730,18 @@ class ReplaySessionManager:
                         ),
                         seek_index=index_data.get("seek_index"),
                         seek_checkpoints=index_data.get("seek_checkpoints"),
+                        lap_start_ms=_parse_replay_marker_map(
+                            index_data.get("lap_start_ms")
+                        ),
+                        qualifying_part_start_ms=_parse_replay_marker_map(
+                            index_data.get("qualifying_part_start_ms")
+                        ),
                     )
-                if cached_version >= 11:
+                cached_streams = index_data.get("streams")
+                can_build_sync_markers = (
+                    isinstance(cached_streams, list) and "LapCount" in cached_streams
+                )
+                if cached_version >= 11 and can_build_sync_markers:
                     _LOGGER.info(
                         "Upgrading cached replay index for %s with streaming scan",
                         session.unique_id,
@@ -740,6 +781,14 @@ class ReplaySessionManager:
                         formation_initial_state=scan["formation_initial_state"],
                         seek_index=scan["seek_index"],
                         seek_checkpoints=scan["seek_checkpoints"],
+                        lap_start_ms=scan["lap_start_ms"],
+                        qualifying_part_start_ms=scan["qualifying_part_start_ms"],
+                    )
+                if cached_version >= 11 and not can_build_sync_markers:
+                    _LOGGER.info(
+                        "Cached replay for %s has no lap stream; downloading it again "
+                        "to add replay sync points",
+                        session.unique_id,
                     )
                 _LOGGER.info(
                     "Cache version mismatch for %s (cached=%d, current=%d), re-downloading",
@@ -830,6 +879,8 @@ class ReplaySessionManager:
             "formation_initial_state": scan["formation_initial_state"],
             "seek_index": scan["seek_index"],
             "seek_checkpoints": scan["seek_checkpoints"],
+            "lap_start_ms": scan["lap_start_ms"],
+            "qualifying_part_start_ms": scan["qualifying_part_start_ms"],
             "streams": list(self._download_streams),
             "created_at": dt_util.utcnow().isoformat(),
         }
@@ -855,6 +906,8 @@ class ReplaySessionManager:
             formation_initial_state=scan["formation_initial_state"],
             seek_index=scan["seek_index"],
             seek_checkpoints=scan["seek_checkpoints"],
+            lap_start_ms=scan["lap_start_ms"],
+            qualifying_part_start_ms=scan["qualifying_part_start_ms"],
         )
 
     async def _download_stream_to_file(
@@ -1075,6 +1128,9 @@ class ReplaySessionManager:
         offset = 0
         current_group_ms: int | None = None
         group: list[ReplayFrame] = []
+        lap_start_ms: dict[int, int] = {}
+        qualifying_part_start_ms: dict[int, int] = {}
+        current_qualifying_part: int | None = None
 
         def _flush_group() -> None:
             nonlocal initial_state
@@ -1083,10 +1139,31 @@ class ReplaySessionManager:
             nonlocal formation_started_at_ms
             nonlocal formation_best_delta
             nonlocal next_state_ms
+            nonlocal current_qualifying_part
             if not group:
                 return
             group_ms = group[0].timestamp_ms
             started_here = False
+
+            # SessionData can announce a qualifying segment in the same timestamp
+            # group as SessionStatus. Read it first so the start marker is exact.
+            for frame in group:
+                if frame.stream != "SessionData" or not isinstance(frame.payload, dict):
+                    continue
+                series = frame.payload.get("Series")
+                if isinstance(series, dict):
+                    entries = series.values()
+                elif isinstance(series, list):
+                    entries = series
+                else:
+                    entries = ()
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    part = _parse_replay_int(entry.get("QualifyingPart"))
+                    if part is not None and 1 <= part <= 3:
+                        current_qualifying_part = part
+
             for frame in group:
                 first_payloads.setdefault(frame.stream, deepcopy(frame.payload))
                 self._accumulate_seek_checkpoint_frame(accumulator, frame)
@@ -1094,9 +1171,13 @@ class ReplaySessionManager:
                     frame.stream == "SessionStatus"
                     and isinstance(frame.payload, dict)
                     and frame.payload.get("Status") == "Started"
-                    and initial_state is None
                 ):
-                    started_here = True
+                    if initial_state is None:
+                        started_here = True
+                    if current_qualifying_part is not None:
+                        qualifying_part_start_ms.setdefault(
+                            current_qualifying_part, group_ms
+                        )
                 if formation_start_utc is not None:
                     frame_utc = self._extract_frame_utc(frame.payload)
                     if frame_utc is not None:
@@ -1110,6 +1191,17 @@ class ReplaySessionManager:
             if started_here and initial_state is None:
                 session_started_at_ms = group_ms
                 initial_state = self._seek_checkpoint_state(accumulator)
+                lap_start_ms[1] = group_ms
+
+            if initial_state is not None or started_here:
+                for frame in group:
+                    if frame.stream != "LapCount" or not isinstance(
+                        frame.payload, dict
+                    ):
+                        continue
+                    current_lap = _parse_replay_int(frame.payload.get("CurrentLap"))
+                    if current_lap is not None and current_lap > 1:
+                        lap_start_ms.setdefault(current_lap, group_ms)
             if group_ms >= next_state_ms:
                 checkpoints.append(
                     {"t": group_ms, "state": self._seek_checkpoint_state(accumulator)}
@@ -1172,6 +1264,8 @@ class ReplaySessionManager:
             "formation_initial_state": formation_initial_state,
             "seek_index": seek_index,
             "seek_checkpoints": checkpoints,
+            "lap_start_ms": lap_start_ms,
+            "qualifying_part_start_ms": qualifying_part_start_ms,
         }
 
     async def _download_stream(self, url: str, stream_name: str) -> list[ReplayFrame]:
@@ -2610,6 +2704,7 @@ class ReplayController:
         start_reference_controller: ReplayStartReferenceController | None = None,
         formation_tracker: FormationStartTracker | None = None,
         on_replay_ended: Callable[[], None] | None = None,
+        archive_client: F1ArchiveClient | None = None,
         requested_streams: set[str] | frozenset[str] | None = None,
     ) -> None:
         self._hass = hass
@@ -2621,6 +2716,7 @@ class ReplayController:
             hass,
             entry_id,
             http_session,
+            archive_client=archive_client,
             requested_streams=requested_streams,
         )
         self._start_reference_controller = start_reference_controller
@@ -2894,7 +2990,7 @@ class ReplayController:
         target_ms = self._current_or_pending_position_ms(index) + (int(seconds) * 1000)
         await self.async_seek_to_ms(target_ms)
 
-    async def async_seek_to_position(self, position_s: int) -> None:
+    async def async_seek_to_position(self, position_s: float) -> None:
         """Seek to an absolute position in seconds from the replay start reference."""
         index = self._session_manager.get_loaded_index()
         if index is None:
@@ -2902,7 +2998,7 @@ class ReplayController:
         playback_start_ms, _initial_state = self._resolve_playback_start(
             index, log=False
         )
-        await self.async_seek_to_ms(playback_start_ms + (int(position_s) * 1000))
+        await self.async_seek_to_ms(playback_start_ms + round(float(position_s) * 1000))
 
     async def async_seek_to_ms(self, target_ms: int) -> None:
         """Seek to an absolute millisecond position within the loaded replay."""
@@ -3206,6 +3302,44 @@ class ReplayController:
 
                 # Clean up cache
                 await self._session_manager.async_unload()
+
+    def get_sync_points(self) -> list[dict[str, int | float | str]]:
+        """Return exact lap or qualifying starts relative to the replay baseline."""
+        index = self._session_manager.get_loaded_index()
+        session = self._session_manager.selected_session
+        if index is None or session is None:
+            return []
+
+        session_kind = f"{session.session_type} {session.session_name}".lower()
+        if "qualifying" in session_kind:
+            marker_kind = (
+                "sprint_qualifying_part"
+                if "sprint" in session_kind
+                else "qualifying_part"
+            )
+            markers = index.qualifying_part_start_ms or {}
+        elif "race" in session_kind or "sprint" in session_kind:
+            marker_kind = "lap"
+            markers = index.lap_start_ms or {}
+        else:
+            return []
+
+        playback_start_ms, _initial_state = self._resolve_playback_start(
+            index, log=False
+        )
+        sync_points: list[dict[str, int | float | str]] = []
+        for marker, timestamp_ms in sorted(markers.items()):
+            if timestamp_ms < playback_start_ms or timestamp_ms > index.duration_ms:
+                continue
+            sync_points.append(
+                {
+                    "id": f"{marker_kind}:{marker}",
+                    "kind": marker_kind,
+                    "value": marker,
+                    "position_s": round((timestamp_ms - playback_start_ms) / 1000, 3),
+                }
+            )
+        return sync_points
 
     def get_planned_playback_details(self) -> dict[str, int]:
         """Return playback offsets/duration for the loaded index (if any)."""

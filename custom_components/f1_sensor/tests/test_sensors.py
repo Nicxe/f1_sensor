@@ -2098,12 +2098,11 @@ async def test_team_radio_sensor_exposes_latest_clip_url(hass) -> None:
     assert state.state == "2026-07-05T14:01:01+00:00"
     assert state.attributes["racing_number"] == "44"
     assert state.attributes["path"] == "TeamRadio/HAM_44_20260705_154016.mp3"
-    assert state.attributes["clip_url"] == (
-        "https://livetiming.formula1.com/static/2026/"
-        "2026-07-05_British_Grand_Prix/2026-07-05_Race/"
-        "TeamRadio/HAM_44_20260705_154016.mp3"
+    assert state.attributes["clip_url"].startswith(
+        f"/api/f1_sensor/team-radio/{entry_id}/"
     )
     assert state.attributes["history"][0]["clip_url"] == state.attributes["clip_url"]
+    assert not any(key.startswith("transcription_") for key in state.attributes)
 
 
 @pytest.mark.asyncio

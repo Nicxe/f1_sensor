@@ -1,21 +1,41 @@
 const cacheSuffix = new URL(import.meta.url).search;
+const injectedLocales = new URL(import.meta.url).protocol === 'file:'
+  ? globalThis.__F1_SENSOR_LOCALES__
+  : undefined;
 
-const [englishModule, swedishModule, dutchModule] = await Promise.all([
-  import(`./locales/en.js${cacheSuffix}`),
-  import(`./locales/sv.js${cacheSuffix}`),
-  import(`./locales/nl.js${cacheSuffix}`),
+const localeUrl = language => {
+  const url = new URL(`./locales/${language}.json`, import.meta.url);
+  url.search = cacheSuffix;
+  return url;
+};
+
+const loadMessages = async language => {
+  if (injectedLocales?.[language]) return injectedLocales[language];
+  const url = localeUrl(language);
+  if (url.protocol === 'file:') {
+    const { readFile } = await import('node:fs/promises');
+    const fileUrl = new URL(url);
+    fileUrl.search = '';
+    return JSON.parse(await readFile(fileUrl, 'utf8'));
+  }
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Could not load F1 Sensor ${language} translations (${response.status})`);
+  }
+  return response.json();
+};
+
+const [englishMessages, swedishMessages, dutchMessages, { LEGACY }] = await Promise.all([
+  loadMessages('en'),
+  loadMessages('sv'),
+  loadMessages('nl'),
+  import(`./legacy.js${cacheSuffix}`),
 ]);
 
 export const LOCALES = Object.freeze({
-  en: englishModule.default,
-  sv: swedishModule.default,
-  nl: dutchModule.default,
-});
-
-const LEGACY = Object.freeze({
-  en: englishModule.legacy,
-  sv: swedishModule.legacy,
-  nl: dutchModule.legacy,
+  en: Object.freeze(englishMessages),
+  sv: Object.freeze(swedishMessages),
+  nl: Object.freeze(dutchMessages),
 });
 
 export const languageCode = language => String(language || 'en')

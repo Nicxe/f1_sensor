@@ -108,12 +108,12 @@ button.f1_clear_f1tv_access
 ```
 
 Use `button.f1_refresh_f1tv_access` to request renewal. If a new browser sign-in is needed, it opens the existing Token Helper pairing notification. Temporary failures are retried automatically without asking you to sign in again.
-Use `button.f1_clear_f1tv_access` to remove the saved token and return to public live timing only.
+Use `button.f1_clear_f1tv_access` to remove the saved token and return to public live timing. Replay Mode and Formula 1 archive media remain unavailable until access is connected again.
 
 The saved token is part of the Home Assistant config entry and normally follows it into Home Assistant backups. Treat shared backups as credentials. If you suspect exposure, clear the saved token and revoke the Formula 1 browser session before pairing again.
 
 When the token expires or is rejected, public live timing should continue to work.
-Only the F1TV-authenticated live data needs a fresh token.
+Replay Mode, Formula 1 archive media and additional authenticated live data need a fresh token.
 
 ## Step 4 - Verify public fallback first
 

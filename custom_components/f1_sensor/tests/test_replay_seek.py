@@ -644,6 +644,7 @@ async def test_replay_cached_index_upgrades_seek_checkpoints(
                 "session_started_at_ms": 0,
                 "initial_state": {"SessionInfo": {"Type": "Race", "Name": "Race"}},
                 "seek_index": [{"t": 0, "offset": 0}],
+                "streams": ["LapCount"],
             }
         ),
         encoding="utf-8",

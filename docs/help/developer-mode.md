@@ -45,7 +45,7 @@ The rest of the integration can still use network-based schedule and static data
 | Question | Replay Mode | Developer mode |
 | --- | --- | --- |
 | Who should use it? | Anyone watching a completed session | Maintainers and contributors testing the integration |
-| Where does data come from? | Formula 1's completed session archive | A local replay dump file |
+| Where does data come from? | Formula 1's authenticated completed-session archive | A local replay dump file |
 | How does it start? | You select, load, and play a session | It starts when the integration loads in Developer mode |
 | Can you pause or seek? | Yes, with replay controls and the replay media player | No Developer mode playback controls |
 | Does it follow a TV replay? | Yes, this is the intended use | No, it is intended to reproduce recorded input |

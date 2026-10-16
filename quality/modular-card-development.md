@@ -2796,3 +2796,233 @@ reload cancelled during persisted-data loading; a fresh reload was allowed to
 finish and the integration returned from Initializing to its normal F1 entry.
 All 34 JavaScript files and frontend.py match across the required copies; HAdev
 serves the same card/editor bytes. No commit, push or release was made.
+
+## 2026-10-12 — Replay sync points for laps and qualifying parts
+
+Replay indexing now records verified race/sprint lap starts and the first
+session start for Q1–Q3 or SQ1–SQ3. It ignores pre-start lap-one deltas and does
+not replace a qualifying-part marker when the session restarts after an
+interruption. Older caches without the lap-count stream are downloaded again
+once instead of being upgraded to an incomplete marker index.
+
+The modular Replay module reads the bounded marker list from the replay status
+sensor and offers a translatable selector plus an explicit sync action. The new
+English source strings are authored locally; Swedish and Dutch use the English
+fallback until Weblate delivers their translations. Replay commands are checked
+against the current replay context and the current marker list, use
+the existing media-player seek path with millisecond precision, and preserve
+the replay's playing or paused state. Compact mode and configurations with seek
+controls disabled do not show the selector. No legacy card was changed.
+
+Archive checks produced 62 lap markers for Singapore Race 2026 and three part
+markers each for Singapore Qualifying and Sprint Qualifying. Ruff, 1,696 Python
+tests, 244 frontend unit tests, 212 Chromium flows and the Docusaurus production
+build passed. HAdev passed its configuration check, restarted successfully, and
+returned the F1 entry in `loaded` state with `sync_points` present on the idle
+replay status sensor. Served replay JavaScript and English locale bytes matched
+the canonical HAdev files. Singapore Race then loaded 62 runtime markers without
+starting playback; a standard media seek to lap 23 was accepted while ready,
+and stopping returned replay to idle with no download error. No commit, push,
+pull request or release was made.
+
+## 2026-10-08 — Minisector data contract and pre-implementation gates
+
+Step 1 of the separate minisector plan is complete on `dev`. Reduced fixtures from
+the 2026 stream archive cover an initial list, sparse object indexes, an atomic
+purple handoff, unknown status codes, full and partial resets, a sequence gap and
+a replay seek. They are checked into the integration test tree and do not depend
+on the archive volume or a network connection.
+
+The [minisector contract](./minisector-contract.md) defines raw index retention,
+neutral fallback, snapshot/delta/reset generations, reconnect and resync behavior,
+resource bounds, lifecycle availability and full metadata for six future modular
+fields. The source has status codes but no minisector times, so the product must
+never calculate or imply such times. The production catalog and UI remain unchanged
+until the bounded source and subscription exist.
+
+Seven contract tests pass. Three strict expected failures retain executable gates
+for live segment delivery, sparse raw indexes and future catalog registration; an
+explicit `--runxfail` run produces exactly those three failures. Ruff passes and
+the full suite reports 1,618 passed and 3 expected failures in 389.51 seconds.
+The test and fixture copies are byte-identical between HAdev and this repository.
+No product code, dashboard, commit, push or release was changed.
+
+
+## 2026-10-08 — Minisector bounded session state
+
+Step 2 adds `MiniSectorStateStore` behind the existing `LiveDriversCoordinator`
+TimingData path. The store is bounded to 32 drivers, three sectors and 32 segments
+per sector. It performs no I/O, creates no subscription and never updates Home
+Assistant state. `driver_positions` keeps its existing public structure.
+
+The merge retains sparse raw indexes, treats source lists as sector replacement and
+applies every source frame synchronously before a snapshot can be read. Driver state
+is cleared at a new lap. Qualifying part, session identity, replay rewind, source,
+Live Delay and spoiler boundaries start clean generations; SC/VSC/red-flag entry
+clears current blocks without changing generation. Existing replay reset and unload
+paths discard the state. The history normalizer now also preserves sparse raw sector
+and segment indexes.
+
+Validation: 17 focused minisector tests passed with the single step 4 catalog gate
+expected to fail. A broader set of 70 live-driver, sector, delay and replay tests
+passed with that same expected failure. Ruff passed. The full suite reports 1,628
+passed and 1 expected failure in 388.10 seconds. Changed Python and test files are
+byte-identical between HAdev and Git. HAdev Core restarted with the F1 entry returning
+to `loaded`; the post-start log inspection contained no `f1_sensor` errors. No
+WebSocket command, card field, dashboard, commit, push or release was created.
+
+
+## 2026-10-08 — Minisector shared WebSocket transport
+
+Step 3 of the minisector plan adds the authenticated
+`f1_sensor/minisectors/subscribe` protocol without changing the modular card or any
+legacy card. Subscriptions are bound to an exact integration entry, live/replay
+source and selected session key. The first available event is a complete snapshot;
+later delivery uses sequenced sparse deltas, scoped same-generation resets and clean
+generation snapshots. Resubscription is the defined resync path.
+
+A shared entry hub owns one bounded-store listener and one 250 ms coalescing timer
+for one or many card consumers. It releases both when the last consumer leaves or
+the integration unloads. Global spoiler mode, inactive sources and mismatched
+sessions fail closed without segment state. Per-event and rolling traffic limits
+enforce the 32 KiB and 16 KiB/s contract.
+
+The 22-driver, ten-client transport profile measured 7,420 bytes for the initial
+snapshot, 488 bytes for the largest delta, 11,215 bytes per client over a modeled ten
+seconds and 3.504 ms dispatch p95. The equivalent full-payload sensor prototype used
+288,440 bytes over the same updates. The comparison covers serialized status
+payloads; it does not include the extra Home Assistant state-event envelope or claim
+browser rendering latency before step 4 connects the card.
+
+Focused transport, bounded-store and contract validation passed 32 tests with the
+single strict step 4 catalog gate still expected to fail. Coverage includes dense
+atomic handoff, rate limiting, reconnect, source/session/entry isolation, lifecycle
+cleanup, resets, spoiler blocking and payload bounds. No frontend file, dashboard,
+sensor schema, commit, push or release was changed. Ruff passed and the complete
+integration suite reported 1,643 passed and one expected failure in 387.72 seconds.
+HAdev Core restarted successfully, the F1 entry loaded with 66 entities and the log
+view reported no new issues. Changed Python and test files are byte-identical between
+HAdev and the Git checkout.
+
+
+## 2026-10-08 — Minisector modular card and optional presentation
+
+Step 4 adds six optional fields to the ordinary modular catalog: three status-only
+strips and three combined fields that place the existing S1, S2 or S3 time above its
+status strip. Existing timing fields, automatic profiles and saved configurations
+remain unchanged. A new `minisectors` module is available in the same
+`custom:f1-sensor-card`; it starts with driver and separate S1–S3 strips and uses the
+platform's existing ordering, width, visibility, session and driver/team focus
+controls.
+
+The frontend reducer preserves sparse indexes, generation and sequence boundaries.
+Visible consumers share one WebSocket resource only for the same connection, entry,
+source and session key; the last consumer releases it. Hidden modules do not keep the
+resource open, editor sample data stays local, and minisector unavailability does not
+remove ordinary timing data. Preview, freeze and retain remain local card behavior.
+
+Purple, green and yellow use diamond, circle and square markers in addition to color.
+Reset, special, missing and unknown states remain neutral; unknown labels include the
+raw source code. The source count determines each strip length. The legend explicitly
+states that statuses contain no minisector time and no time is estimated. No blue
+meaning from the inspiration image is introduced.
+
+Frontend validation passed 242 unit tests and 216 Chromium browser flows. Coverage
+includes 6/7/9 source lengths, separate and combined fields, independent module
+instances, mobile light mode, dark and full-grid regression matrices, keyboard and
+screen-reader meaning, forced colors, editor overlap guidance, exact context sharing
+and final cleanup. Field-catalog generation/checks, 50 automation checks and the
+deterministic 116-file release package passed; its SHA-256 was
+`6d308d21ea52ca53d30033b11683c3a4de4f3473817f109cb7172f4720fa2e9b`.
+
+HAdev Core restarted successfully. A fresh authenticated frontend instance exposed
+the Minisectors module and all six fields. Sample data rendered 6/7/9 blocks in
+source order with accessible labels. The temporary module was undone before closing
+the editor, dashboard edit mode exited without saving a change, and the log view
+reported no new issues. The eight changed modular JavaScript files and three locale
+files are byte-identical between the primary HAdev source, bundled HAdev integration
+and Git checkout; `frontend.py` also matches between HAdev and Git. Ruff passed. The
+full integration suite reported 1,644 passed in 393.68 seconds. No legacy card, commit, push or
+release was changed.
+
+
+## 2026-10-08 — Minisector full local delivery validation
+
+Step 5 completes the locally executable minisector plan. User documentation now
+covers all three presentations, provider status meanings, the yellow limitation,
+missing segment data, accessible non-color signals and the reason fast current-lap
+segment updates remain outside Home Assistant sensor state. The earlier deferred
+assessment and modular configuration contract now match the implementation.
+
+Focused validation passed 51 Python tests for contract, store, WebSocket, replay
+lifecycle and integration reload, 18 frontend unit tests for minisectors, replay
+and realtime lifecycle, and 15 Chromium flows for minisectors, replay concurrency,
+selection and reconnect. The complete frontend unit suite passed 242 tests. Field
+catalog regeneration/checking and all 44 Python plus 50 Node automation checks
+passed. Ruff passed, `git diff --check` passed, and the full integration suite
+reported 1,644 passed in 388.83 seconds. The production documentation built and
+passed four structure tests plus 15 browser flows.
+
+The HAdev F1 entry completed a reload cycle and returned with 66 entities. The 2025
+Abu Dhabi Grand Prix Race loaded and played through Replay Mode; the ordinary saved
+modular dashboard followed its session data. Reloading the browser reconnected to
+the running replay without console warnings. Replay was stopped afterward and the
+Home Assistant log view reported no new issues. No dashboard edit was saved.
+
+All 11 changed card files are byte-identical across the primary HAdev source, the
+bundled HAdev integration and this checkout. All 11 changed integration and test
+files also match their HAdev copies. No legacy-card or automation file appears in
+the diff. Physical-device performance, manual VoiceOver/NVDA, a complete real race
+weekend, external beta, published CI and release acceptance are recorded in H11 of
+the manual handoff. No commit, push, issue, pull request or release was created.
+
+
+## 2026-10-09 — Minisector lap-boundary correction
+
+Updated archive evidence from issue #702 showed that `NumberOfLaps` advances before
+the segment reset frame. Monza, Baku and Bahrain measured median gaps of 3.9, 4.3 and
+4.4 seconds. The bounded store now keeps the completed strip through that interval,
+and the WebSocket emits no minisector change for a counter-only frame.
+
+The following source segment frame remains atomic: zero statuses clear the completed
+lap while a non-zero `S0g0` or `S0g1` in the same frame is retained as the first status
+of the new lap. A reduced Monza race fixture records the exact 4.177-second sequence
+and drives store, transport and contract regressions.
+
+Validation passed 52 focused Python tests, all 242 frontend unit tests, Ruff,
+`git diff --check`, four documentation structure tests, 15 documentation browser
+flows and all 1,645 integration tests in 388.44 seconds. HAdev reloaded the F1 entry
+back to `loaded`, loaded and played the 2025 Abu Dhabi Grand Prix Race in the modular
+card without browser warnings, then stopped replay and restored the 2026 selection.
+No new minisector-related log entry appeared.
+
+## 2026-10-10 — Track Map annotations, step 6 local validation
+
+The optional Track Map layers from issue #787 are locally complete for reviewed
+Singapore and Silverstone 2025 layouts. The modular user and accessibility
+guides now describe per-module selection, car-marker control, text alternatives,
+coverage and omitted marks. The separate H12 manual handoff covers physical
+devices, assistive technologies, a full weekend, external beta and published CI.
+
+Ruff passed; 77 focused and all 1,736 integration tests passed. The 248 frontend
+unit tests and 224 Chromium flows passed. Field-catalog regeneration/checking,
+46 Python and 50 Node automation checks, the production documentation build,
+four documentation structure checks, 15 documentation browser flows and
+`git diff --check` passed. Six changed card files matched byte-for-byte across
+primary HAdev source, HAdev integration and Git; the annotation catalog and
+changed integration Python files matched HAdev and Git.
+
+In real HAdev replay, Singapore 2025 Race listed 29 marks and Silverstone 2025
+Race 26. Desktop and narrow Chrome previews showed no measured visible
+annotation-label overlaps with cars or other annotation labels in the sampled
+frames. Selecting all five layers during Singapore 2026 Sprint kept its live
+map and 22 cars and showed an explicit no-verified-markings message. Replay
+seek, browser reconnect, switching back to live, temporary integration disable/
+enable and reload worked; the F1 entry returned with 66 entities and the year
+2026. Home Assistant reported no new Core log issues and Chrome no console
+warnings/errors. All editor previews were cancelled without saving.
+
+The [step 6 QA record](track-map-step6-validation-2026-10-10.md) contains the
+exact observed sample, test matrix, catalog coverage, prior performance evidence
+and remaining limits. The work remains uncommitted on `dev`; no push, issue
+comment, PR or release was made.

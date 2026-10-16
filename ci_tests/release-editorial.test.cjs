@@ -63,6 +63,66 @@ test('finds a newly created draft whose tag endpoint is not available yet', asyn
   assert.equal(release.id, 42);
 });
 
+test('identifies only a matching untagged draft as safe to repair', () => {
+  const matching = {
+    id: 42, draft: true, tag_name: 'untagged-abc123', name: 'v5.8.0-beta.6',
+    target_commitish: 'beta', assets: [{name: 'f1_sensor.zip'}]
+  };
+  assert.equal(editorial.isUntaggedRelease(matching), true);
+  assert.equal(editorial.findMismatchedDraft({
+    releases: [matching], tag: 'v5.8.0-beta.6', branch: 'beta',
+    assetNames: ['f1_sensor.zip']
+  }), matching);
+  assert.equal(editorial.findMismatchedDraft({
+    releases: [{...matching, target_commitish: 'main'}],
+    tag: 'v5.8.0-beta.6', branch: 'beta', assetNames: ['f1_sensor.zip']
+  }), undefined);
+  assert.equal(editorial.findMismatchedDraft({
+    releases: [{...matching, name: 'Other release'}],
+    tag: 'v5.8.0-beta.6', branch: 'beta', assetNames: ['f1_sensor.zip']
+  }), undefined);
+});
+
+test('repairs a matching untagged draft and verifies the corrected tag', async () => {
+  const updates = [];
+  let tagLookup = 0;
+  const github = {
+    rest: {repos: {
+      getCommit: async () => ({data: {sha: 'head-sha'}}),
+      getReleaseByTag: async () => {
+        tagLookup += 1;
+        if (tagLookup === 1) throw {status: 404};
+        return {data: {id: 42, tag_name: 'v5.8.0-beta.6', draft: true}};
+      },
+      listReleases: () => {},
+      updateRelease: async payload => {
+        updates.push(payload);
+        return {data: {id: 42, tag_name: payload.tag_name, draft: true}};
+      }
+    }},
+    paginate: async () => [{
+      id: 42, draft: true, tag_name: 'untagged-abc123', name: 'v5.8.0-beta.6',
+      target_commitish: 'beta', assets: [{name: 'f1_sensor.zip'}]
+    }]
+  };
+  const messages = [];
+  const release = await editorial.reconcileReleaseTag({
+    github,
+    context: {repo: {owner: 'Nicxe', repo: 'f1_sensor'}, sha: 'head-sha', ref: 'refs/heads/beta'},
+    core: {info: message => messages.push(message), warning: message => messages.push(message)},
+    tag: 'v5.8.0-beta.6',
+    assetNames: ['f1_sensor.zip'],
+    wait: async () => assert.fail('a repaired release should not be retried')
+  });
+  assert.equal(release.tag_name, 'v5.8.0-beta.6');
+  assert.deepEqual(updates, [{
+    owner: 'Nicxe', repo: 'f1_sensor', release_id: 42,
+    tag_name: 'v5.8.0-beta.6', name: 'v5.8.0-beta.6',
+    target_commitish: 'beta', draft: true
+  }]);
+  assert.match(messages.join('\n'), /Repairing draft release/);
+});
+
 test('adds a promotion PR editorial to an untouched draft release', async () => {
   const updates = [];
   const github = {

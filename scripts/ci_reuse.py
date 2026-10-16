@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 
 REUSABLE = {
     "lint": ["checks / lint / ruff"],
-    "backend": ["checks / backend / HA minimum", "checks / backend / HA current"],
+    "backend": ["checks / backend / HA current"],
     "frontend": ["checks / frontend / frontend"],
     "documentation": ["checks / documentation / documentation"],
     "package": ["checks / package / package"],

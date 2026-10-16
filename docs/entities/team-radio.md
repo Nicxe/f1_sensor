@@ -50,7 +50,6 @@ Each entry in `history` contains:
 | path | string | Relative path to the audio file |
 | clip_url | string | Full URL to the audio clip when available |
 
-
 ## Next steps
 
 - [Browse the entity reference](/reference/overview)

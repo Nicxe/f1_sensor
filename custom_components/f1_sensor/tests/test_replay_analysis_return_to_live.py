@@ -194,13 +194,16 @@ async def test_existing_websocket_receives_replay_control_without_timing_frames(
         controller = entry.runtime_data.replay.controller
         await registry["live_delay_controller"].async_set_delay(delay)
         frames_file = tmp_path / "control-replay.jsonl"
+        # A short future frame keeps the transport active long enough to
+        # exercise pause/resume control without imposing a wall-clock minute
+        # on every parametrized lifecycle case.
         frames_file.write_text(
-            json.dumps({"t": 60_000, "s": "Heartbeat", "p": {"Utc": "test"}}) + "\n"
+            json.dumps({"t": 1_000, "s": "Heartbeat", "p": {"Utc": "test"}}) + "\n"
         )
         controller.session_manager._loaded_index = ReplayIndex(
             session_id="B",
             total_frames=1,
-            duration_ms=60_001,
+            duration_ms=1_001,
             session_started_at_ms=0,
             frames_file=frames_file,
             index_file=tmp_path / "index.json",

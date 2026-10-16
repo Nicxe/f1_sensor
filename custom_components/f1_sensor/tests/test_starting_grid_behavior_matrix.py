@@ -266,3 +266,159 @@ async def test_starting_grid_archive_fetch_failure_is_nonfatal(
 
     monkeypatch.setattr(grid, "fetch_text", AsyncMock(return_value="data"))
     assert await coordinator._fetch_stream("/2026/test/race/", "TimingData") == "data"
+
+
+async def test_starting_grid_recovers_duplicate_positions_from_pre_start_archive(
+    hass,
+) -> None:
+    """Use archived pre-start line positions when live GridPos values collide."""
+    coordinator = _coordinator(hass)
+    path = "2026/test/race"
+    coordinator._current_session = {
+        "path": path,
+        "key": "race-key",
+        "name": "Race",
+        "type": "Race",
+    }
+    coordinator._current_status = "Started"
+    coordinator._confirmed_grid_positions[grid.CONTEXT_RACE] = {
+        "1": (1, None),
+        "2": (1, None),
+    }
+    coordinator._fetch_stream = AsyncMock(
+        side_effect=[
+            "\n".join(
+                [
+                    '00:00:00.000 {"Status":"Inactive"}',
+                    '00:01:00.000 {"Status":"Started"}',
+                ]
+            ),
+            "\n".join(
+                [
+                    '00:00:30.000 {"Lines":{"1":{"GridPos":1,"Line":5},"2":{"GridPos":1,"Line":2}}}',
+                    '00:01:00.000 {"Lines":{"1":{"GridPos":1,"Line":1}}}',
+                ]
+            ),
+        ]
+    )
+
+    await coordinator._recover_grid_from_archive(grid.CONTEXT_RACE, path, "race-key")
+
+    assert coordinator._confirmed_grid_positions[grid.CONTEXT_RACE] == {
+        "1": (1, 5),
+        "2": (1, 2),
+    }
+    assert [row["grid_position"] for row in coordinator.data["grid"]] == [2, 5]
+    assert coordinator.data["status"] == grid.STATUS_CONFIRMED
+    assert coordinator._fetch_stream.await_args_list[0].kwargs == {
+        "force_refresh": True
+    }
+
+
+async def test_starting_grid_schedules_one_live_recovery_per_session(hass) -> None:
+    """Avoid duplicate archive requests while a live session has the same path."""
+    coordinator = _coordinator(hass)
+    coordinator._current_session = {"path": "2026/test/race", "key": "race-key"}
+    coordinator._recover_grid_from_archive = AsyncMock()
+
+    coordinator._maybe_schedule_grid_recovery(grid.CONTEXT_RACE)
+    coordinator._maybe_schedule_grid_recovery(grid.CONTEXT_RACE)
+    await hass.async_block_till_done()
+
+    coordinator._recover_grid_from_archive.assert_awaited_once_with(
+        grid.CONTEXT_RACE, "2026/test/race", "race-key"
+    )
+
+
+async def test_starting_grid_cancels_recovery_tasks_when_context_changes(hass) -> None:
+    """Do not retain an archive recovery after resetting the active context."""
+    coordinator = _coordinator(hass)
+    coordinator._grid_recovery_task = asyncio.create_task(asyncio.sleep(60))
+    await coordinator.async_close()
+    assert coordinator._grid_recovery_task is None
+
+    coordinator._grid_recovery_task = asyncio.create_task(asyncio.sleep(60))
+    coordinator.reset_runtime_state()
+    assert coordinator._grid_recovery_task is None
+
+    coordinator._grid_recovery_task = asyncio.create_task(asyncio.sleep(60))
+    coordinator._clear_active_grid(
+        "session_complete",
+        next_status=grid.STATUS_COMPLETED,
+        next_context=grid.CONTEXT_NONE,
+        clear_context_data=grid.CONTEXT_RACE,
+    )
+    assert coordinator._grid_recovery_task is None
+
+    coordinator._archive_task = asyncio.create_task(asyncio.sleep(60))
+    coordinator._grid_recovery_task = asyncio.create_task(asyncio.sleep(60))
+    coordinator._reset_for_new_weekend("meeting:20", {"Name": "Race", "Type": "Race"})
+    assert coordinator._archive_task is None
+    assert coordinator._grid_recovery_task is None
+    await asyncio.sleep(0)
+
+
+def test_starting_grid_rebuilds_an_unavailable_live_grid(hass) -> None:
+    """A fresh live status rebuilds a grid once the duplicate data is resolved."""
+    coordinator = _coordinator(hass)
+    coordinator._current_status = "Started"
+    coordinator._current_session = {"name": "Race", "type": "Race"}
+    coordinator._state.update(
+        {"status": grid.STATUS_UNAVAILABLE, "grid_context": grid.CONTEXT_RACE}
+    )
+    coordinator._confirmed_grid_positions[grid.CONTEXT_RACE] = {"1": (1, 1)}
+
+    coordinator._apply_session_lifecycle()
+
+    assert coordinator.data["status"] == grid.STATUS_CONFIRMED
+    assert coordinator.data["grid_context"] == grid.CONTEXT_RACE
+
+    coordinator._current_session = {"name": "Sprint", "type": "Race"}
+    coordinator._state.update(
+        {"status": grid.STATUS_UNAVAILABLE, "grid_context": grid.CONTEXT_SPRINT}
+    )
+    coordinator._confirmed_grid_positions[grid.CONTEXT_SPRINT] = {"2": (2, 2)}
+    coordinator._apply_session_lifecycle()
+
+    assert coordinator.data["status"] == grid.STATUS_CONFIRMED
+    assert coordinator.data["grid_context"] == grid.CONTEXT_SPRINT
+
+
+def test_starting_grid_ignores_non_qualifying_or_replay_live_events(hass) -> None:
+    """Only live qualifying timing can update the provisional grid."""
+    coordinator = _coordinator(hass)
+    coordinator._reset_for_new_weekend = Mock()
+    coordinator._on_session_info(
+        {
+            "Meeting": {"Key": 20},
+            "Name": "Race",
+            "Type": "Race",
+            "Path": "2026/test/race",
+            "Status": "Inactive",
+        }
+    )
+    coordinator._reset_for_new_weekend.assert_called_once()
+
+    coordinator._current_status = None
+    coordinator._apply_session_lifecycle()
+
+    replay = _coordinator(hass, live_reason="replay")
+    replay._on_session_status({"Status": "Started"})
+    replay._on_driver_list({"1": {}})
+    replay._on_timing_data({"Lines": {}})
+
+    coordinator._current_session = {"name": "Race", "type": "Race"}
+    coordinator._current_status = "Started"
+    coordinator._on_timing_data({"Lines": {}})
+
+    coordinator._current_session = {"name": "Qualifying", "type": "Qualifying"}
+    coordinator._on_timing_app_data({"Lines": {}})
+
+    coordinator._current_session = {"name": "Qualifying", "type": "Qualifying"}
+    coordinator._current_status = "Finished"
+    coordinator._merge_timing_data = Mock(return_value=True)
+    coordinator._build_provisional_grid = Mock()
+    coordinator._on_timing_data({"Lines": {}})
+    coordinator._build_provisional_grid.assert_called_once_with(
+        grid.CONTEXT_RACE, source=grid.SOURCE_LIVE_QUALIFYING
+    )

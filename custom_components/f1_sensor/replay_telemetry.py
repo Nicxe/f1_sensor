@@ -17,6 +17,7 @@ from typing import Any
 from aiohttp import ClientSession
 from homeassistant.core import HomeAssistant
 
+from .archive import F1ArchiveClient
 from .helpers import (
     CARDATA_MAX_DECOMPRESSED_BYTES,
     CARDATA_MAX_ENTRIES,
@@ -360,9 +361,11 @@ class ReplayTelemetryService:
         hass: HomeAssistant,
         session: ClientSession,
         session_manager: Any,
+        *,
+        archive_client: F1ArchiveClient | None = None,
     ) -> None:
         self._hass = hass
-        self._session = session
+        self._session = archive_client or session
         self._session_manager = session_manager
         self._cache: OrderedDict[
             tuple[str, tuple[tuple[int, int], ...]], dict[str, Any]

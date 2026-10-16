@@ -35,6 +35,7 @@ from .analysis_websocket import (
     ANALYSIS_WS_MARKER,
     async_register_analysis_websocket,
 )
+from .archive import F1ArchiveClient
 from .auth import (
     AUTH_REPAIR_STATUSES,
     AUTH_RUNTIME_STATUS,
@@ -151,6 +152,11 @@ from .live_window import (
     LiveAvailabilityTracker,
     LiveSessionSupervisor,
 )
+from .minisector_websocket import (
+    MINISECTOR_WS_MARKER,
+    async_register_minisector_websocket,
+)
+from .minisectors import MiniSectorStateStore
 from .no_spoiler import NoSpoilerModeManager
 from .providers import ProviderRegistry
 from .race_weather import F1RaceWeatherCoordinator
@@ -182,6 +188,7 @@ from .signalr import (
 )
 from .starting_grid import StartingGridCoordinator
 from .storage import async_remove_entry_storage
+from .team_radio_media import async_register_team_radio_media_view
 from .track_map import (
     TRACK_MAP_SOURCE_LIVE,
     TRACK_MAP_SOURCE_REPLAY,
@@ -189,6 +196,7 @@ from .track_map import (
     TrackMapRuntimeData,
     TrackMapStore,
 )
+from .track_map_annotation_contract import load_annotation_catalog
 from .track_map_websocket import TRACK_MAP_WS_MARKER, async_register_track_map_websocket
 
 _LOGGER = logging.getLogger(__name__)
@@ -254,6 +262,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         LAP_POSITION_WS_MARKER,
         HISTORY_WS_MARKER,
         ANALYSIS_WS_MARKER,
+        MINISECTOR_WS_MARKER,
         TRACK_MAP_WS_MARKER,
         ENTITY_MAP_WS_MARKER,
     }
@@ -1398,6 +1407,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await manager.async_load()
         domain_root[_NO_SPOILER_MANAGER_KEY] = manager
     async_setup_f1tv_auth_http(hass)
+    async_register_team_radio_media_view(hass)
     _async_register_race_control_log_interfaces(hass)
     return True
 
@@ -2157,7 +2167,12 @@ async def _async_setup_entry(
     )
 
     if not feature_plan.live_required:
-        track_map_store = TrackMapStore(entry.entry_id)
+        track_map_store = TrackMapStore(
+            entry.entry_id,
+            annotation_records=await hass.async_add_executor_job(
+                load_annotation_catalog
+            ),
+        )
         transaction.track(track_map_store)
         dormant_live_bus = None
         dormant_live_state = None
@@ -2277,6 +2292,7 @@ async def _async_setup_entry(
             async_register_lap_position_websocket(hass)
         async_register_history_websocket(hass)
         async_register_analysis_websocket(hass)
+        async_register_minisector_websocket(hass)
         async_register_track_map_websocket(hass)
         async_register_entity_map_websocket(hass)
         no_spoiler_mgr: NoSpoilerModeManager | None = hass.data.get(DOMAIN, {}).get(
@@ -2346,7 +2362,10 @@ async def _async_setup_entry(
     live_mode_coordinator = None
     top_three_coordinator = None
     starting_grid_coordinator = None
-    track_map_store = TrackMapStore(entry.entry_id)
+    track_map_store = TrackMapStore(
+        entry.entry_id,
+        annotation_records=await hass.async_add_executor_job(load_annotation_catalog),
+    )
     transaction.track(track_map_store)
     hass.data[LATEST_TRACK_STATUS] = None
     # Create shared LiveBus (single SignalR connection). Live mode defers start to supervisor.
@@ -2355,7 +2374,18 @@ async def _async_setup_entry(
     live_timing_auth_status = evaluate_f1tv_auth_header(
         entry.data.get(CONF_LIVE_TIMING_AUTH_HEADER, "") if auth_feature_enabled else ""
     )
-    live_timing_auth_header = live_timing_auth_status.header
+    archive_auth_header = (
+        live_timing_auth_status.header
+        if live_timing_auth_status.status not in AUTH_REPAIR_STATUSES
+        else ""
+    )
+    archive_client = F1ArchiveClient(session, archive_auth_header)
+    set_archive_client = getattr(session_coordinator, "set_archive_client", None)
+    if callable(set_archive_client):
+        set_archive_client(archive_client)
+    else:
+        session_coordinator._archive_client = archive_client  # noqa: SLF001
+    live_timing_auth_header = archive_auth_header
     auth_transport_enabled = is_auth_transport_enabled()
     auth_can_be_used = (
         operation_mode == OPERATION_MODE_LIVE
@@ -2410,6 +2440,8 @@ async def _async_setup_entry(
                                 getattr(live_state, "reason", None),
                             )
 
+    archive_client.set_auth_failed_callback(_handle_live_timing_auth_failed)
+
     live_bus = LiveBus(
         hass,
         session,
@@ -2432,6 +2464,7 @@ async def _async_setup_entry(
             session_coordinator,
             live_bus,
             http_session=session,
+            archive_client=archive_client,
             fallback_source=event_tracker_source,
         )
         transaction.track(live_supervisor)
@@ -2466,6 +2499,7 @@ async def _async_setup_entry(
         hass,
         bus=live_bus,
         http_session=session,
+        archive_client=archive_client,
         availability_guard=_formation_start_stream_active,
     )
     transaction.track(formation_tracker)
@@ -2483,6 +2517,7 @@ async def _async_setup_entry(
         start_reference_controller=replay_start_reference_controller,
         formation_tracker=formation_tracker,
         on_replay_ended=live_supervisor.wake if live_supervisor else None,
+        archive_client=archive_client,
         requested_streams=(
             feature_plan.requested_streams | LAP_ANALYSIS_STREAMS | {"Position.z"}
         ),
@@ -2523,6 +2558,7 @@ async def _async_setup_entry(
         hass,
         http_session,
         getattr(replay_controller, "session_manager", None),
+        archive_client=archive_client,
     )
     transaction.track(phase4_analysis_store, replay_telemetry_service)
 
@@ -2544,6 +2580,7 @@ async def _async_setup_entry(
             session_coordinator,
             bus=live_bus,
             session=http_session,
+            archive_client=archive_client,
             user_agent=ua_string,
             cache=http_cache,
             inflight=http_inflight,
@@ -2801,6 +2838,7 @@ async def _async_setup_entry(
 
     entry_data: dict[str, Any] = {
         "http_session": http_session,
+        "archive_client": archive_client,
         "user_agent": ua_string,
         "jolpica_client": jolpica_client,
         "http_persistent_cache": persisted,
@@ -2970,6 +3008,7 @@ async def _async_setup_entry(
         async_register_lap_position_websocket(hass)
     async_register_history_websocket(hass)
     async_register_analysis_websocket(hass)
+    async_register_minisector_websocket(hass)
     async_register_track_map_websocket(hass)
     async_register_entity_map_websocket(hass)
 
@@ -5258,9 +5297,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._bus = bus
         self._unsubs: list[Callable[[], None]] = []
         self._delay_listener: Callable[[], None] | None = None
+        self._session_unsub: Callable[[], None] | None = None
+        self._session_fingerprint: str | None = None
         _init_delayed_ingest_state(self)
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
+        entry_id = config_entry.entry_id if config_entry is not None else None
+        self._minisectors = MiniSectorStateStore(entry_id=entry_id)
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self.available = True
@@ -5295,14 +5338,66 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._delay_listener()
             self._delay_listener = None
+        if self._session_unsub:
+            with suppress(Exception):
+                self._session_unsub()
+            self._session_unsub = None
         if self._live_state_unsub:
             with suppress(Exception):
                 self._live_state_unsub()
             self._live_state_unsub = None
         _close_delayed_ingest_state(self)
+        self._minisectors.close()
 
     async def _async_update_data(self):
         return self._state
+
+    def minisector_snapshot(self) -> dict[str, Any]:
+        """Return internal segment state without adding Home Assistant state data."""
+        return self._minisectors.snapshot()
+
+    @property
+    def minisector_store(self) -> MiniSectorStateStore:
+        """Expose the entry-owned store to the shared WebSocket transport."""
+        return self._minisectors
+
+    def _current_session_fingerprint(self) -> str | None:
+        fingerprint = _compute_session_fingerprint(
+            getattr(self._session_coord, "data", None)
+        )
+        if fingerprint is None:
+            return None
+        return hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
+
+    def _on_session_index_update(self) -> None:
+        fingerprint = self._current_session_fingerprint()
+        if fingerprint is None or fingerprint == self._session_fingerprint:
+            return
+        changed = self._session_fingerprint is not None
+        self._session_fingerprint = fingerprint
+        if changed:
+            _clear_delayed_ingest_state(self)
+        self._minisectors.set_session(fingerprint)
+
+    def reset_for_replay(self) -> None:
+        """Discard replay-sensitive driver and segment state before rebuilding."""
+        _clear_delayed_ingest_state(self)
+        self._minisectors.reset(
+            "replay_reset",
+            source="replay" if self._replay_mode else "live",
+        )
+        self._state = {
+            "drivers": {},
+            "leader_rn": None,
+            "lap_current": None,
+            "lap_total": None,
+            "session_status": None,
+            "track_status": None,
+            "frozen": False,
+            "tyre_statistics": {},
+            "fastest_lap": self._empty_fastest_lap(),
+        }
+        self.async_set_updated_data(self._state)
 
     def _merge_driverlist(self, payload: dict) -> bool:
         # payload: { rn: {Tla, FullName, TeamName, TeamColour, ...}, ... }
@@ -5503,6 +5598,59 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         return changed
 
+    def _merge_last_lap_status(
+        self,
+        timing: dict,
+        payload: Any,
+        lap_num: int | None,
+        lap_time: Any,
+    ) -> bool:
+        """Merge timing flags that can arrive after a completed lap value."""
+        if not isinstance(payload, dict):
+            return False
+
+        current_time = lap_time if isinstance(lap_time, str) and lap_time else None
+        if current_time is None:
+            stored_time = timing.get("last_lap")
+            current_time = (
+                stored_time if isinstance(stored_time, str) and stored_time else None
+            )
+        if current_time is None:
+            return False
+
+        previous = timing.get("last_lap_status")
+        status = (
+            dict(previous)
+            if isinstance(previous, dict)
+            else {
+                "time": None,
+                "lap": None,
+                "overall_fastest": False,
+                "personal_fastest": False,
+            }
+        )
+        is_new_lap = status.get("time") != current_time or status.get("lap") != lap_num
+        if is_new_lap:
+            status = {
+                "time": current_time,
+                "lap": lap_num,
+                "overall_fastest": False,
+                "personal_fastest": False,
+            }
+
+        for source_key, target_key in (
+            ("OverallFastest", "overall_fastest"),
+            ("PersonalFastest", "personal_fastest"),
+        ):
+            value = payload.get(source_key)
+            if isinstance(value, bool):
+                status[target_key] = value
+
+        if previous == status:
+            return False
+        timing["last_lap_status"] = status
+        return True
+
     def _merge_official_best_lap(self, timing: dict, payload: Any) -> bool:
         """Keep source corrections separate from incomplete observed lap history."""
         previous = timing.get("official_best_lap")
@@ -5548,6 +5696,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
     def _merge_timingdata(self, payload: dict) -> bool:
         # payload: {"Lines": { rn: {...timing...} } }
+        self._minisectors.merge_timing_data(payload)
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
             return False
@@ -5616,13 +5765,20 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if timing.get("interval") != ival:
                     timing["interval"] = ival
                     changed = True
-            last_lap = self._get_value(td, "LastLapTime", "Value")
-            if last_lap is not None:
+            if "LastLapTime" in td:
+                last_lap_payload = td["LastLapTime"]
+                last_lap = self._get_value(td, "LastLapTime", "Value")
                 lap_num = number_of_laps
                 if lap_num is None:
                     completed = lap_history.get("completed_laps")
                     lap_num = completed if isinstance(completed, int) else None
-                if self._ingest_completed_lap(rn, last_lap, lap_num):
+                if last_lap is not None and self._ingest_completed_lap(
+                    rn, last_lap, lap_num
+                ):
+                    changed = True
+                if self._merge_last_lap_status(
+                    timing, last_lap_payload, lap_num, last_lap
+                ):
                     changed = True
             if "BestLapTime" in td and self._merge_official_best_lap(
                 timing, td["BestLapTime"]
@@ -6076,6 +6232,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
         # Only clear on transition INTO an SC/VSC period
         if status in _SC_VSC and prev not in _SC_VSC:
+            self._minisectors.reset("track_status_disruption", new_generation=False)
             for drv_entry in self._state["drivers"].values():
                 s = drv_entry.get("sectors")
                 if isinstance(s, dict):
@@ -6083,16 +6240,23 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             self._schedule_deliver()
 
     def set_delay(self, seconds: int) -> None:
+        new_delay = max(0, int(seconds or 0))
+        if new_delay != self._delay:
+            self._minisectors.reset("live_delay_change")
         _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
-        self._replay_mode = _is_replay_delay_reason(reason)
+        replay_mode = _is_replay_delay_reason(reason)
+        if replay_mode != self._replay_mode:
+            self._minisectors.set_source("replay" if replay_mode else "live")
+        self._replay_mode = replay_mode
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         if _is_no_spoiler_live_state(reason):
             _clear_delayed_ingest_state(self)
+            self._minisectors.reset("spoiler_protected")
             return
         self.available = is_live
         self._tyre_live_started_mono = None
@@ -6102,6 +6266,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             # Clear consolidated state so a future session window does not briefly
             # show stale driver/timing information before the first live frames.
             _clear_delayed_ingest_state(self)
+            self._minisectors.reset("source_unavailable")
             with suppress(Exception):
                 self._state = {
                     "drivers": {},
@@ -6145,6 +6310,33 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         items.append((idx, stint))
         items.sort(key=lambda item: item[0])
         return items
+
+    @staticmethod
+    def _parse_tyres_not_changed(value: Any) -> bool | None:
+        """Normalize the live timing no-change marker."""
+        normalized = str(value).strip().lower()
+        if normalized in {"1", "true"}:
+            return True
+        if normalized in {"0", "false"}:
+            return False
+        return None
+
+    @staticmethod
+    def _current_valid_stint_index(tyre_history: dict) -> int | None:
+        """Return the highest received stint that represents a tyre change."""
+        stints = tyre_history.get("stints")
+        if not isinstance(stints, list):
+            return None
+        for stint_idx in range(len(stints) - 1, -1, -1):
+            stint = stints[stint_idx]
+            if not isinstance(stint, dict):
+                continue
+            if stint.get("source_seen") is False:
+                continue
+            if stint.get("tyres_not_changed") is True:
+                continue
+            return stint_idx
+        return None
 
     @staticmethod
     def _extract_compound_presence(payload: dict) -> tuple[int, list[str]]:
@@ -6241,9 +6433,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _merge_timingapp(self, payload: dict) -> bool:
         """Merge TimingAppData payloads.
 
-        TimingAppData is the sole source of live stint and tyre data.
+        TimingAppData supplies the confirmed starting grid plus live stint and
+        tyre data.
         """
-        # payload: {"Lines": { rn: {"Stints": { idx or list } } } }
+        # payload: {"Lines": { rn: {"GridPos": int, "Stints": {...} } } }
         self._log_tyre_stream_observability(payload)
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
@@ -6254,9 +6447,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         for rn, app in lines.items():
             if not isinstance(app, dict):
                 continue
+            grid_position = self._parse_stream_int(app.get("GridPos"))
+            has_grid_position = grid_position is not None and grid_position >= 0
             stints = app.get("Stints")
             stint_items = self._extract_stint_items(stints)
-            if not stint_items:
+            if not has_grid_position and not stint_items:
                 continue
 
             entry = drivers.setdefault(rn, {})
@@ -6276,7 +6471,15 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "completed_laps": 0,
                 },
             )
-            latest: dict[str, Any] | None = None
+            lap_history = entry["lap_history"]
+            if has_grid_position and (lap_history.get("completed_laps") or 0) == 0:
+                grid_position_text = str(grid_position)
+                if lap_history.get("grid_position") != grid_position_text:
+                    lap_history["grid_position"] = grid_position_text
+                    changed = True
+
+            if not stint_items:
+                continue
 
             tyres = entry["tyres"]
             tyre_history = entry["tyre_history"]
@@ -6285,30 +6488,34 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if self._update_stint_history(tyre_history, stint_idx, stint_data):
                     stints_changed = True
 
-                if (
-                    tyre_history["current_stint_index"] is None
-                    or stint_idx >= tyre_history["current_stint_index"]
-                ):
-                    if tyre_history["current_stint_index"] != stint_idx:
-                        tyre_history["current_stint_index"] = stint_idx
-                        stints_changed = True
+            current_stint_index = self._current_valid_stint_index(tyre_history)
+            if tyre_history["current_stint_index"] != current_stint_index:
+                tyre_history["current_stint_index"] = current_stint_index
+                stints_changed = True
 
-            latest = stint_items[-1][1]
-            if "Compound" in latest:
-                compound = self._normalize_compound(latest.get("Compound"))
+            current_delta = next(
+                (
+                    stint_data
+                    for stint_idx, stint_data in stint_items
+                    if stint_idx == current_stint_index
+                ),
+                None,
+            )
+            if current_delta is not None and "Compound" in current_delta:
+                compound = self._normalize_compound(current_delta.get("Compound"))
                 if tyres.get("compound") != compound:
                     tyres["compound"] = compound
                     stints_changed = True
-            if "TotalLaps" in latest:
-                stint_laps = latest.get("TotalLaps")
+            if current_delta is not None and "TotalLaps" in current_delta:
+                stint_laps = current_delta.get("TotalLaps")
                 stint_laps_val = (
                     int(stint_laps) if str(stint_laps or "").isdigit() else stint_laps
                 )
                 if tyres.get("stint_laps") != stint_laps_val:
                     tyres["stint_laps"] = stint_laps_val
                     stints_changed = True
-            if "New" in latest:
-                is_new = latest.get("New")
+            if current_delta is not None and "New" in current_delta:
+                is_new = current_delta.get("New")
                 s = str(is_new).lower()
                 if s == "true":
                     new_val: Any = True
@@ -6321,6 +6528,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     stints_changed = True
 
             # Extract the latest stint entry for lap time updates
+            latest = stint_items[-1][1]
             if isinstance(latest, dict):
                 lap_time = latest.get("LapTime")
                 if isinstance(lap_time, str) and lap_time:
@@ -6356,8 +6564,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             stints_list.append(
                 {
                     "stint_index": len(stints_list),
+                    "source_seen": False,
                     "compound": None,
                     "new": None,
+                    "tyres_not_changed": None,
                     "total_laps": 0,
                     "start_laps": None,
                     "best_lap_time": None,
@@ -6367,6 +6577,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             changed = True
 
         stint = stints_list[stint_idx]
+
+        if stint.get("source_seen") is not True:
+            stint["source_seen"] = True
+            changed = True
 
         # Only update fields that are present in the delta
         if "Compound" in stint_data:
@@ -6399,6 +6613,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 new_val = is_new
             if stint.get("new") != new_val:
                 stint["new"] = new_val
+                changed = True
+        if "TyresNotChanged" in stint_data:
+            tyres_not_changed = self._parse_tyres_not_changed(
+                stint_data.get("TyresNotChanged")
+            )
+            if (
+                tyres_not_changed is not None
+                and stint.get("tyres_not_changed") != tyres_not_changed
+            ):
+                stint["tyres_not_changed"] = tyres_not_changed
                 changed = True
         return changed
 
@@ -6633,6 +6857,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             team_color = identity.get("team_color")
 
             for stint in tyre_history.get("stints", []):
+                if stint.get("tyres_not_changed") is True:
+                    continue
                 compound = self._normalize_compound(stint.get("compound"))
                 if not compound or compound == "UNKNOWN":
                     continue
@@ -6822,8 +7048,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _merge_sessionstatus(self, payload: dict) -> None:
         previous = self._state.get("session_status")
         was_running = self._session_status_is_running(previous)
+        was_terminal = self._session_status_is_terminal(previous)
         self._state["session_status"] = payload
         is_running = self._session_status_is_running(payload)
+        if is_running and was_terminal:
+            self._minisectors.reset("session_change")
         if is_running and not was_running and not self._replay_mode:
             self._tyre_live_started_mono = time.monotonic()
             self._tyre_first_compound_logged = False
@@ -6894,6 +7123,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             self._schedule_deliver()
 
     def _on_timingdata(self, td: dict) -> None:
+        if _is_no_spoiler_blocked(self):
+            return
         if self._state.get("frozen") and not self._replay_mode:
             return
         if self._merge_timingdata(td):
@@ -7021,6 +7252,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
+        self._session_fingerprint = self._current_session_fingerprint()
+        self._minisectors.set_session(self._session_fingerprint)
+        with suppress(Exception):
+            self._session_unsub = self._session_coord.async_add_listener(
+                self._on_session_index_update
+            )
         # Subscribe to LiveBus streams
         try:
             bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")  # type: ignore[assignment]
@@ -9194,6 +9431,7 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         year: int,
         session=None,
+        archive_client: F1ArchiveClient | None = None,
         config_entry: ConfigEntry | None = None,
     ):
         super().__init__(
@@ -9204,6 +9442,7 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
             config_entry=config_entry,
         )
         self._session = session or async_get_clientsession(hass)
+        self._archive_client = archive_client
         self.year = year
         self._last_good_index: dict | None = None
         # Expose last HTTP status so the live window supervisor can distinguish
@@ -9229,6 +9468,10 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
     async def async_close(self, *_):
         return
 
+    def set_archive_client(self, archive_client: F1ArchiveClient) -> None:
+        """Use authenticated archive access for session discovery."""
+        self._archive_client = archive_client
+
     async def _async_update_data(self):
         payload = await self._fetch_index()
         if payload:
@@ -9246,12 +9489,16 @@ class LiveSessionCoordinator(DataUpdateCoordinator):
         return payload
 
     async def _fetch_index(self, *, cache_bust: bool = False):
+        if self._archive_client is not None and not self._archive_client.authenticated:
+            self.last_http_status = 401
+            return None
         url = LIVETIMING_INDEX_URL.format(year=self.year)
         if cache_bust:
             url = f"{url}?t={int(time.time())}"
         try:
             async with asyncio.timeout(10):
-                async with self._session.get(url) as response:
+                request_client = self._archive_client or self._session
+                async with request_client.get(url) as response:
                     text = await response.text()
                     self.last_http_status = response.status
                     if response.status != 200:

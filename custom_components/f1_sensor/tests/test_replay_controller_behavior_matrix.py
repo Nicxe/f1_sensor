@@ -101,6 +101,35 @@ def test_replay_controller_offsets_factory_and_status_guards(hass, tmp_path) -> 
     assert controller._replay_active is False
 
 
+def test_replay_controller_exposes_session_specific_sync_points(hass, tmp_path) -> None:
+    controller, _bus, _ended = _controller(hass)
+    index = _index(tmp_path)
+    index.duration_ms = 400_000
+    index.session_started_at_ms = 100_000
+    index.lap_start_ms = {1: 100_000, 2: 190_250, 3: 280_750}
+    index.qualifying_part_start_ms = {1: 120_000, 2: 220_000, 3: 320_000}
+    controller.session_manager._loaded_index = index
+
+    controller.session_manager._selected_session = SimpleNamespace(
+        session_type="Race", session_name="Race"
+    )
+    assert controller.get_sync_points() == [
+        {"id": "lap:1", "kind": "lap", "value": 1, "position_s": 0.0},
+        {"id": "lap:2", "kind": "lap", "value": 2, "position_s": 90.25},
+        {"id": "lap:3", "kind": "lap", "value": 3, "position_s": 180.75},
+    ]
+
+    controller.session_manager._selected_session = SimpleNamespace(
+        session_type="Qualifying", session_name="Sprint Qualifying"
+    )
+    assert controller.get_sync_points()[1] == {
+        "id": "sprint_qualifying_part:2",
+        "kind": "sprint_qualifying_part",
+        "value": 2,
+        "position_s": 120.0,
+    }
+
+
 async def test_prepare_and_load_releases_failed_lock_and_keeps_ready(hass) -> None:
     live_state = SimpleNamespace(set_state=Mock())
     controller, bus, ended = _controller(hass, live_state=live_state)

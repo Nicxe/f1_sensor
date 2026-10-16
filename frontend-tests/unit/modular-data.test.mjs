@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { normalizeConfig } from '../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/config.js';
-import { SectorStore } from '../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/semantics.js';
+import { SectorStore, timingStatus } from '../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/semantics.js';
 import { timingRows, scheduleRows, spoilerState, mergeEvents, weatherValues, filterRaceControl, sessionClock, lapChartModel, accentTeams } from '../../custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/data.js';
 const entry = { entry_id: 'fixture', entities: { driver_positions: 'sensor.positions', driver_list: 'sensor.drivers', current_tyres: 'sensor.tyres', next_race: 'sensor.weekend', weather: 'sensor.weather' }, global_entities: { no_spoiler_mode: 'switch.renamed' } };
 const state = (attributes, value = 'live') => ({ state: value, attributes, last_updated: '2026-09-13T13:30:00Z' });
@@ -64,6 +64,21 @@ test('an official deleted best does not reappear from local history; a late star
   assert.equal(row.best_lap.time, null);
   assert.equal(row.lap_delta, null);
   assert.deepEqual(row.history.map(item => item.lap), [10, 1]);
+});
+
+test('last lap uses source timing status only when it belongs to the displayed lap', () => {
+  const driver = { racing_number: '16', tla: 'LEC', completed_laps: 12, laps: { 12: '1:20.750' }, last_lap_status: { time: '1:20.750', lap: 12, personal_fastest: true, overall_fastest: false } };
+  const hass = { states: { 'sensor.positions': state({ drivers: [driver] }) } };
+  const row = () => timingRows(hass, entry, { key: 'race' }, new SectorStore(), timingModule()).rows[0].last_lap;
+  assert.equal(timingStatus(row()), 'personal');
+  assert.equal(row().previous_lap, false);
+
+  driver.last_lap_status = { ...driver.last_lap_status, overall_fastest: true };
+  assert.equal(timingStatus(row()), 'overall');
+
+  driver.last_lap_status = { ...driver.last_lap_status, lap: 11 };
+  assert.equal(timingStatus(row()), 'previous');
+  assert.equal(row().previous_lap, true);
 });
 
 test('a pinned module ignores group driver focus and entity joins never cross entries', () => {

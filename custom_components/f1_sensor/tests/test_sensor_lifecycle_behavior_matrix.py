@@ -498,6 +498,104 @@ async def test_track_limits_and_investigations_restore_payloads() -> None:
     assert investigations._session_time is not None
 
 
+async def test_investigations_reset_on_session_change_and_keep_new_items(hass) -> None:
+    hass.data.setdefault(DOMAIN, {})["entry"] = {
+        "live_state": SimpleNamespace(is_live=True, reason="live")
+    }
+    session_info = _ha_coordinator(
+        hass,
+        {
+            "Key": 11384,
+            "Type": "Qualifying",
+            "Name": "Qualifying",
+            "StartDate": "2026-10-10T21:30:00",
+        },
+    )
+    race_control = _ha_coordinator(hass)
+    race_control.data_list = [
+        {
+            "Utc": "2026-10-10T14:17:16",
+            "Category": "Other",
+            "Message": "TURN 5 INCIDENT INVOLVING CARS 27 (HUL) AND 55 (SAI) NOTED - IMPEDING (22:10:13)",
+        }
+    ]
+    hass.data[DOMAIN]["entry"]["session_info_coordinator"] = session_info
+
+    sensor = F1InvestigationsSensor(
+        race_control, "investigations_session", "entry", "F1"
+    )
+    sensor.hass = hass
+    sensor.entity_id = "sensor.investigations_session"
+    sensor.async_write_ha_state = Mock()
+    sensor._safe_write_ha_state = Mock()
+    sensor.async_get_last_state = AsyncMock(return_value=None)
+    await sensor.async_added_to_hass()
+
+    assert sensor.state == 1
+    assert sensor.extra_state_attributes["noted"][0]["drivers"] == ["HUL", "SAI"]
+
+    session_info.data = {"SessionStatus": "Ends"}
+    session_info.async_update_listeners()
+    await hass.async_block_till_done()
+
+    assert sensor.state == 1
+
+    session_info.data = {
+        "Key": 11388,
+        "Type": "Race",
+        "Name": "Race",
+        "StartDate": "2026-10-11T20:00:00",
+    }
+    session_info.async_update_listeners()
+    await hass.async_block_till_done()
+
+    assert sensor.state == 0
+    assert sensor.extra_state_attributes["noted"] == []
+    assert sensor.extra_state_attributes["session_key"] == "11388"
+
+    race_control.data_list = [
+        {
+            "Utc": "2026-10-11T11:26:00",
+            "Lap": 1,
+            "Category": "Other",
+            "Message": "INCIDENT INVOLVING CAR 18 (STR) NOTED - FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS – PRACTICE START INFRINGEMENT (19:23:23)",
+        }
+    ]
+    race_control.async_update_listeners()
+    await hass.async_block_till_done()
+
+    assert sensor.state == 1
+    assert sensor.extra_state_attributes["noted"][0]["drivers"] == ["STR"]
+
+
+async def test_investigations_do_not_restore_a_different_session() -> None:
+    sensor = F1InvestigationsSensor(
+        _coordinator(data_list=[]), "investigations_restore_session", "entry", "F1"
+    )
+    sensor._session_key = "11388"
+    sensor.async_get_last_state = AsyncMock(
+        return_value=SimpleNamespace(
+            state="1",
+            attributes={
+                "session_key": "11384",
+                "noted": [
+                    {
+                        "drivers": ["HUL", "SAI"],
+                        "location": "TURN 5",
+                        "reason": "IMPEDING",
+                    }
+                ],
+            },
+        )
+    )
+
+    await sensor._restore_from_last()
+
+    assert sensor.state == 0
+    assert sensor.extra_state_attributes["noted"] == []
+    assert sensor.extra_state_attributes["session_key"] == "11388"
+
+
 def test_driver_list_bootstraps_from_standings_registry(hass) -> None:
     hass.data.setdefault(DOMAIN, {})["entry"] = {
         "driver_coordinator": SimpleNamespace(

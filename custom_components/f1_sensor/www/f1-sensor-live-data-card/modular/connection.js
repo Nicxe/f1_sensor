@@ -134,6 +134,23 @@ export function watchAnalysis(hass, entryId, callback) {
   }, callback);
 }
 
+export function watchMinisectors(hass, { entryId, source, sessionKey }, callback) {
+  const key = `minisectors:${JSON.stringify([entryId, source, sessionKey])}`;
+  return watchShared(hass, key, async scope => {
+    if (!entryId || !['live', 'replay'].includes(source) || !sessionKey || !hass.connection.subscribeMessage) throw new Error('Minisector subscription is unavailable');
+    const { MinisectorState } = await import(`./minisector-data.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
+    if (!scope.active()) return;
+    const state = new MinisectorState(entryId, source, sessionKey);
+    const unsubscribe = await hass.connection.subscribeMessage(message => {
+      if (!scope.active()) return;
+      const outcome = state.accept(message);
+      if (outcome === 'resync') { scope.error(new Error('Minisector sequence could not be recovered')); return; }
+      scope.emit(state.value());
+    }, { type: 'f1_sensor/minisectors/subscribe', protocol_version: 1, entry_id: entryId, source, session_key: sessionKey }, { resubscribe: false });
+    scope.cleanup(unsubscribe);
+  }, callback);
+}
+
 export function watchTrackMap(hass, entryId, callback) {
   return watchShared(hass, `track-map:${entryId}`, async scope => {
     if (!entryId || !hass.connection.subscribeMessage) throw new Error('Track map subscription is unavailable');

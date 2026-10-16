@@ -406,6 +406,70 @@ def test_pit_stops_and_championship_payload_update_paths() -> None:
         prediction._handle_coordinator_update()
 
 
+def test_championship_prediction_updates_standings_with_same_leaders() -> None:
+    """Keep standings current when Singapore race leaders do not change."""
+    drivers = F1ChampionshipPredictionDriversSensor(
+        _coordinator(), "driver_prediction", "entry", "F1"
+    )
+    teams = F1ChampionshipPredictionTeamsSensor(
+        _coordinator(), "team_prediction", "entry", "F1"
+    )
+
+    for prediction in (drivers, teams):
+        prediction._handle_stream_state = Mock(return_value=True)
+        prediction._is_stream_active = Mock(return_value=True)
+        prediction._safe_write_ha_state = Mock()
+
+    drivers.coordinator.data = {
+        "predicted_driver_p1": {"tla": "ANT", "points": 325.0},
+        "drivers": {
+            "12": {"PredictedPosition": 1, "PredictedPoints": 325.0},
+            "44": {"PredictedPosition": 3, "PredictedPoints": 221.0},
+        },
+        "last_update": "00:00:03.703",
+    }
+    teams.coordinator.data = {
+        "predicted_team_p1": {"team_name": "Mercedes", "points": 561.0},
+        "teams": {
+            "Mercedes": {"PredictedPosition": 1, "PredictedPoints": 561.0},
+            "Ferrari": {"PredictedPosition": 2, "PredictedPoints": 418.0},
+        },
+        "last_update": "00:00:03.703",
+    }
+    drivers._handle_coordinator_update()
+    teams._handle_coordinator_update()
+
+    drivers.coordinator.data = {
+        "predicted_driver_p1": {"tla": "ANT", "points": 337.0},
+        "drivers": {
+            "12": {"PredictedPosition": 1, "PredictedPoints": 337.0},
+            "44": {"PredictedPosition": 3, "PredictedPoints": 236.0},
+        },
+        "last_update": "00:56:05.837",
+    }
+    teams.coordinator.data = {
+        "predicted_team_p1": {"team_name": "Mercedes", "points": 573.0},
+        "teams": {
+            "Mercedes": {"PredictedPosition": 1, "PredictedPoints": 573.0},
+            "Ferrari": {"PredictedPosition": 2, "PredictedPoints": 451.0},
+        },
+        "last_update": "00:56:05.837",
+    }
+    drivers._handle_coordinator_update()
+    teams._handle_coordinator_update()
+
+    assert drivers.native_value == "ANT"
+    assert teams.native_value == "Mercedes"
+    assert drivers.extra_state_attributes["drivers"]["12"]["PredictedPoints"] == 337.0
+    assert drivers.extra_state_attributes["drivers"]["44"]["PredictedPoints"] == 236.0
+    assert teams.extra_state_attributes["teams"]["Mercedes"]["PredictedPoints"] == 573.0
+    assert teams.extra_state_attributes["teams"]["Ferrari"]["PredictedPoints"] == 451.0
+    assert drivers.extra_state_attributes["last_update"] == "00:56:05.837"
+    assert teams.extra_state_attributes["last_update"] == "00:56:05.837"
+    assert drivers._safe_write_ha_state.call_count == 2
+    assert teams._safe_write_ha_state.call_count == 2
+
+
 def test_straight_mode_update_terminal_and_stream_paths() -> None:
     sensor = F1StraightModeSensor(
         _coordinator({"straight_mode": "normal_grip", "overtake_enabled": True}),
@@ -607,14 +671,13 @@ def test_team_radio_urls_history_and_update_guards(hass) -> None:
     assert sensor._normalize_utc(None) is None
     assert sensor._normalize_utc("bad") == "bad"
     assert sensor._build_clip_url({}, None) is None
-    assert (
-        sensor._build_clip_url(
-            {"_static_root": "https://static.test/root/"}, "/clip.mp3"
-        )
-        == "https://static.test/root/clip.mp3"
+    proxy_url = sensor._build_clip_url(
+        {"_static_root": "https://livetiming.formula1.com/static/root/"},
+        "/clip.mp3",
     )
-    assert sensor._build_clip_url({}, "clip.mp3").endswith(
-        "/2026/test/session/clip.mp3"
+    assert proxy_url.startswith("/api/f1_sensor/team-radio/entry/")
+    assert sensor._build_clip_url({}, "clip.mp3").startswith(
+        "/api/f1_sensor/team-radio/entry/"
     )
 
     payload = {
