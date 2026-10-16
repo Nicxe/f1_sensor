@@ -31,8 +31,21 @@ test('confirmed PR verification owns the work while unconfirmed registration sta
       addRaw(text){summaries.push(text);return this;},async write(){}}};
     const github={paginate:async()=>[pr],rest:{pulls:{list(){}},actions:{
       listWorkflowRunsForRepo:async()=>({data:{workflow_runs:available}})}}};
-    await route({github,core,context:{repo:{owner:'owner',repo:'repo'},ref:'refs/heads/dev',sha:'a'}});
+    await route({github,core,wait:async()=>{},context:{repo:{owner:'owner',repo:'repo'},ref:'refs/heads/dev',sha:'a'}});
     assert.equal(outputs.run_checks,available.length?'false':'true');
     assert.equal(summaries.length,available.length);
   }
+});
+
+test('a just-opened promotion PR gets a bounded registration window before push checks start', async()=>{
+  const outputs={};
+  let attempts=0;
+  const github={paginate:async()=>[pr],rest:{pulls:{list(){}},actions:{
+    listWorkflowRunsForRepo:async()=>({data:{workflow_runs:++attempts === 3 ? [run] : []}})}}};
+  const core={setOutput:(key,value)=>outputs[key]=value,warning(){},summary:{
+    addRaw(){return this;},async write(){}}};
+  let waits=0;
+  await route({github,core,wait:async()=>{waits++;},context:{repo:{owner:'owner',repo:'repo'},ref:'refs/heads/dev',sha:'a'}});
+  assert.equal(outputs.run_checks,'false');
+  assert.equal(waits,2);
 });

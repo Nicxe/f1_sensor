@@ -50,6 +50,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CI_SELECTED: ${{ steps.plan.outputs.selected }}
           CI_ALLOW_REUSE: ${{ inputs.allow_reuse }}
+          CI_DEPLOY: ${{ steps.plan.outputs.deploy }}
         run: python3 scripts/ci_reuse.py plan
   lint:
     needs: plan

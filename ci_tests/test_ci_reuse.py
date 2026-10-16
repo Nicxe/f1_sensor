@@ -7,8 +7,11 @@ from scripts.ci_reuse import (
     REUSABLE,
     eligible_run,
     evidence_checks,
+    find_evidence,
+    reuse_allowed,
     successful_checks,
     verify_evidence,
+    without_deployment_checks,
 )
 
 
@@ -26,10 +29,21 @@ class ReuseTests(unittest.TestCase):
             "updated_at": self.now.isoformat(),
         }
 
-    def test_only_recent_successful_trusted_development_pushes(self):
+    def test_only_recent_successful_exact_tree_verifications(self):
         self.assertTrue(eligible_run(self.run, self.now))
+        self.assertTrue(
+            eligible_run(
+                self.run
+                | {
+                    "event": "pull_request",
+                    "path": ".github/workflows/ci.yml",
+                    "head_branch": "feature",
+                },
+                self.now,
+            )
+        )
         for changes in [
-            {"event": "pull_request"},
+            {"event": "pull_request", "path": "other.yml"},
             {"head_branch": "feature"},
             {"conclusion": "failure"},
             {"conclusion": "cancelled"},
@@ -49,9 +63,28 @@ class ReuseTests(unittest.TestCase):
             jobs[0]["conclusion"] = result
             self.assertNotIn("backend", successful_checks(jobs))
 
-    def test_remote_validation_and_audit_are_never_reused(self):
+    def test_validation_is_reused_but_audit_is_always_fresh(self):
+        self.assertIn("validation", REUSABLE)
         self.assertNotIn("audit", REUSABLE)
-        self.assertNotIn("validation", REUSABLE)
+
+    def test_only_prs_and_promotion_pushes_can_reuse(self):
+        self.assertTrue(reuse_allowed("pull_request", "beta", True))
+        self.assertTrue(reuse_allowed("push", "beta", True))
+        self.assertTrue(reuse_allowed("push", "main", True))
+        self.assertFalse(reuse_allowed("push", "dev", True))
+        self.assertFalse(reuse_allowed("workflow_dispatch", "main", True))
+        self.assertFalse(reuse_allowed("push", "main", False))
+
+    def test_deploy_requires_a_fresh_documentation_artifact(self):
+        evidence = {"run_id": 42, "checks": ["backend", "documentation"]}
+        self.assertEqual(without_deployment_checks(evidence, False), evidence)
+        self.assertEqual(
+            without_deployment_checks(evidence, True),
+            {"run_id": 42, "checks": ["backend"]},
+        )
+        self.assertEqual(
+            without_deployment_checks({"checks": ["documentation"]}, True), {}
+        )
 
 
 class EvidenceTests(ReuseTests):
@@ -92,6 +125,32 @@ class EvidenceTests(ReuseTests):
         )
         verify_evidence(self.api, self.evidence, "tree", self.now)
 
+    def test_identical_pr_verification_is_reusable_when_no_push_run_exists(self):
+        pr_run = self.run | {
+            "event": "pull_request",
+            "path": ".github/workflows/ci.yml",
+            "head_branch": "dev",
+        }
+        outer = self
+
+        class API:
+            def get(self, path):
+                if path.startswith("actions/workflows/development.yml"):
+                    return {"workflow_runs": []}
+                if path.startswith("actions/workflows/ci.yml"):
+                    return {"workflow_runs": [pr_run]}
+                if path.startswith("git/"):
+                    return {"tree": {"sha": outer.tree}}
+                return pr_run
+
+            def jobs(self, run_id):
+                return outer.jobs
+
+        self.assertEqual(
+            find_evidence(API(), {"backend": True}, self.tree, self.now),
+            self.evidence,
+        )
+
     def test_changed_sources_workflow_or_dependencies_force_fresh_checks(self):
         self.assertEqual(
             evidence_checks(self.api, self.run, "different-tree", self.now), set()
@@ -107,7 +166,7 @@ class EvidenceTests(ReuseTests):
             verify_evidence(self.api, self.evidence, "tree", self.now)
 
     def test_unknown_or_remote_checks_cannot_be_claimed(self):
-        for check in ["audit", "validation", "unknown"]:
+        for check in ["audit", "unknown"]:
             with self.subTest(check=check), self.assertRaises(ValueError):
                 verify_evidence(
                     self.api, self.evidence | {"checks": [check]}, "tree", self.now
