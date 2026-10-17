@@ -44,7 +44,7 @@ function cancelInitialRender(card) {
 }
 
 export class F1SensorCard extends LitElement {
-  static properties = { hass: { attribute: false }, config: { attribute: false }, preview: { type: Boolean }, previewData: { attribute: false }, revision: { state: true }, frozen: { state: true }, tab: { state: true } };
+  static properties = { hass: { attribute: false }, config: { attribute: false }, layout: { attribute: false }, preview: { type: Boolean }, previewData: { attribute: false }, revision: { state: true }, frozen: { state: true }, tab: { state: true } };
   static styles = [sharedStyles, css`
     :where(ha-card) {
       --f1-card-padding:var(--_f1-card-padding,20px); --f1-minimal-padding:var(--_f1-minimal-padding,12px);
@@ -214,10 +214,17 @@ export class F1SensorCard extends LitElement {
     const rowHeight = metrics.width > 0 ? metrics.width : 56;
     const gap = Math.max(0, metrics.height);
     const minimum = Math.max(2, Math.ceil((height + gap) / (rowHeight + gap)));
-    if (height === this.measuredHeight && minimum === this.minimumGridRows) return;
+    const resized = height !== this.measuredHeight || minimum !== this.minimumGridRows;
     this.measuredHeight = height; this.minimumGridRows = minimum;
-    this.dispatchEvent(new Event('card-updated', { bubbles: true, composed: true }));
-    this.dispatchEvent(new Event('iron-resize', { bubbles: true, composed: true }));
+    // Only Sections consumes changing grid constraints. In Masonry this event
+    // rebuilds the columns, disconnecting the card and restarting discovery.
+    if (this.layout === 'grid') {
+      if (minimum !== this.notifiedGridRows) {
+        this.notifiedGridRows = minimum;
+        this.dispatchEvent(new Event('card-updated', { bubbles: true, composed: true }));
+      }
+    } else this.notifiedGridRows = undefined;
+    if (resized) this.dispatchEvent(new Event('iron-resize', { bubbles: true, composed: true }));
   }
   async scheduleUpdate() {
     // Shared HA pushes can dirty many cards in the same microtask. Give each
@@ -356,9 +363,10 @@ export class F1SensorCard extends LitElement {
       if (eventKey) this.stopEvents = watchRaceControl(this.sourceHass, eventKey, state => { this.eventState = state; this.revision++; });
     }
   }
-  updated() {
+  updated(changed) {
     this.syncUserStyles();
     this.syncCardSize();
+    if (changed.has('layout')) this.updateCardSize();
     clearTimeout(this.mapAgeTimer);
     const expiry = !this.modelPreview && !this.frozen && this.mapKey ? mapExpiry(this.mapState.data?.snapshot) : null;
     const remaining = expiry === null ? null : expiry - Date.now();
