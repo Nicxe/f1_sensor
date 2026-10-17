@@ -304,6 +304,22 @@ export class F1SensorCardEditor extends LitElement {
     const entities = Object.keys(this.hass?.states ?? {}).filter(entity => !domain || entity.startsWith(`${domain}.`)).sort();
     return html`<label><span>${title}</span><input list=${id} .value=${String(value ?? '')} @change=${event => change(event.target.value)}><datalist id=${id}>${entities.map(entity => html`<option value=${entity}></option>`)}</datalist></label>`;
   }
+  entitySelect(title, value, change, domain = '') {
+    const states = this.hass?.states ?? {};
+    const options = Object.entries(states)
+      .filter(([entity, state]) => (!domain || entity.startsWith(`${domain}.`)) && state?.state !== 'unavailable')
+      .map(([entity, state]) => {
+        const name = String(state?.attributes?.friendly_name ?? '').trim();
+        return [entity, name ? `${name} · ${entity}` : entity];
+      })
+      .sort((left, right) => left[1].localeCompare(right[1], this.language, { sensitivity: 'base' }));
+    const selected = String(value ?? '');
+    if (selected && !options.some(([entity]) => entity === selected)) {
+      const name = String(states[selected]?.attributes?.friendly_name ?? '').trim();
+      options.unshift([selected, `${name ? `${name} · ` : ''}${selected} · ${this.w('modular.saved_selection_unavailable')}`]);
+    }
+    return this.select(title, selected, [['', this.w('modular.choose')], ...options], change);
+  }
   columnWidth(span) {
     return span === 'full' ? this.w('modular.full_card_width') : span === 1 ? this.w('modular.1_column') : this.w('modular.span_columns', { span: span });
   }
@@ -401,7 +417,7 @@ export class F1SensorCardEditor extends LitElement {
         }
         if (option.type === 'enum') return this.select(title, value, option.values.map(value => [value, this.optionName(value)]), value => this.setOption(key, value));
         if (option.type === 'boolean') return this.check(title, value, value => this.setOption(key, value));
-        if (option.type === 'entity') return this.entityInput(title, value, value => this.setOption(key, value), option.domain);
+        if (option.type === 'entity') return this.entitySelect(title, value, value => this.setOption(key, value), option.domain);
         if (option.type === 'list') return html`<p>${title}</p>${option.values.map(item => this.check(this.optionName(item), value.includes(item), enabled => this.setOption(key, enabled ? [...value, item] : value.filter(key => key !== item))))}`;
         return this.input(title, value, value => this.setOption(key, value), option.type === 'integer' ? 'number' : 'text');
       })}

@@ -23,37 +23,37 @@ class F1TeamRadioView extends LitElement {
     .radio-card {
       --radio-accent:var(--f1-border,#6c7480); position:relative; overflow:hidden;
       border:1px solid var(--f1-border,#6c7480); border-top:4px solid var(--radio-accent);
-      border-radius:12px; background:linear-gradient(145deg,#151922 0%,#0d1118 100%); color:#f6f8fb;
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+      border-radius:12px; background:var(--f1-panel,rgba(127,127,127,.07)); color:var(--f1-text,var(--primary-text-color,#e9edf3));
+      box-shadow:inset 0 1px 0 var(--f1-divider,rgba(127,127,127,.25));
     }
     .radio-card::after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(110deg,transparent 55%,color-mix(in srgb,var(--radio-accent) 12%,transparent)); }
-    .radio-head { position:relative; z-index:1; display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:12px; min-height:96px; padding:15px 16px; border-bottom:1px solid rgba(255,255,255,.14); }
+    .radio-head { position:relative; z-index:1; display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:12px; min-height:96px; padding:15px 16px; border-bottom:1px solid var(--f1-divider,rgba(127,127,127,.25)); }
     .number { min-width:2ch; color:var(--radio-accent); font-family:'F1 Barlow Condensed',var(--f1-heading-font,inherit); font-size:clamp(2.8rem,11vw,4.8rem); font-weight:800; line-height:.8; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
     .identity { min-width:0; text-align:right; text-transform:uppercase; }
     .identity strong,.identity span { display:block; overflow-wrap:anywhere; }
     .identity strong { color:var(--radio-accent); font-family:'F1 Barlow Condensed',var(--f1-heading-font,inherit); font-size:clamp(1.35rem,5vw,2rem); line-height:.95; letter-spacing:.02em; }
-    .identity .radio { color:#fff; font-family:'F1 Barlow Condensed',var(--f1-heading-font,inherit); font-size:1.55rem; font-weight:800; line-height:1; }
-    .identity .team { margin-top:7px; color:#c7ced9; font-size:.75rem; font-weight:650; letter-spacing:.04em; }
+    .identity .radio { color:var(--f1-text,var(--primary-text-color,#e9edf3)); font-family:'F1 Barlow Condensed',var(--f1-heading-font,inherit); font-size:1.55rem; font-weight:800; line-height:1; }
+    .identity .team { margin-top:7px; color:var(--f1-muted,var(--secondary-text-color,#b9c1ce)); font-size:.75rem; font-weight:650; letter-spacing:.04em; }
     f1-team-logo { --f1-logo-frame:46px; --f1-logo-image:40px; }
-    .new { position:absolute; z-index:2; top:8px; left:8px; padding:3px 8px; border:1px solid currentColor; border-radius:999px; background:#fff; color:#11151c; font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; animation:radio-pulse 1.6s ease-in-out infinite; }
+    .new { position:absolute; z-index:2; top:8px; left:8px; padding:3px 8px; border:1px solid currentColor; border-radius:999px; background:var(--f1-text,var(--primary-text-color,#e9edf3)); color:var(--f1-panel,rgba(127,127,127,.07)); font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; animation:radio-pulse 1.6s ease-in-out infinite; }
     .radio-body { position:relative; z-index:1; display:grid; gap:14px; padding:16px; }
-    .meta { display:flex; align-items:center; justify-content:space-between; gap:8px 16px; flex-wrap:wrap; color:#c7ced9; font-size:.82rem; }
+    .meta { display:flex; align-items:center; justify-content:space-between; gap:8px 16px; flex-wrap:wrap; color:var(--f1-muted,var(--secondary-text-color,#b9c1ce)); font-size:.82rem; }
     .transcript { display:grid; gap:12px; }
     .turn { width:min(88%,38rem); margin:0; overflow-wrap:anywhere; line-height:1.45; }
     .turn[data-speaker=B] { justify-self:end; text-align:right; }
-    .turn[data-speaker=unknown] { width:100%; color:#d5dae2; }
+    .turn[data-speaker=unknown] { width:100%; color:var(--f1-muted,var(--secondary-text-color,#b9c1ce)); }
     .audio { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; }
     .audio[data-has-audio=false] { grid-template-columns:auto; justify-content:start; }
     .audio-actions { display:flex; align-items:center; gap:7px; }
-    .audio button { display:inline-grid; place-items:center; border-color:#e5e9ef; background:rgba(255,255,255,.08); color:#fff; font-weight:750; }
-    .audio .transcribe { min-height:36px; padding:6px 9px; border-color:rgba(255,255,255,.42); background:transparent; color:#d6dbe4; font-size:.76rem; font-weight:650; }
+    .audio button { display:inline-grid; place-items:center; border-color:var(--f1-border,#6c7480); background:var(--f1-surface,transparent); color:var(--f1-text,var(--primary-text-color,#e9edf3)); font-weight:750; }
+    .audio .transcribe { min-height:36px; padding:6px 9px; border-color:var(--f1-border,#6c7480); background:transparent; color:var(--f1-muted,var(--secondary-text-color,#b9c1ce)); font-size:.76rem; font-weight:650; }
     .audio .transcribe:disabled { opacity:.48; }
     .audio input { width:100%; min-width:0; min-height:44px; accent-color:var(--radio-accent); }
-    .audio-time { min-width:6.5em; color:#c7ced9; text-align:right; font-size:.78rem; font-variant-numeric:tabular-nums; }
+    .audio-time { min-width:6.5em; color:var(--f1-muted,var(--secondary-text-color,#b9c1ce)); text-align:right; font-size:.78rem; font-variant-numeric:tabular-nums; }
     audio { display:none; }
-    .status { color:#c7ced9; font-size:.82rem; }
-    .error { color:#ffb4ab; }
-    @keyframes radio-pulse { 50% { box-shadow:0 0 0 5px rgba(255,255,255,.12); } }
+    .status { color:var(--f1-muted,var(--secondary-text-color,#b9c1ce)); font-size:.82rem; }
+    .error { color:var(--error-color,#db4437); }
+    @keyframes radio-pulse { 50% { box-shadow:0 0 0 5px color-mix(in srgb,var(--f1-text) 14%,transparent); } }
     @media(max-width:420px) {
       .radio-head { grid-template-columns:auto minmax(0,1fr); }
       .radio-head f1-team-logo { grid-column:2; justify-self:end; }

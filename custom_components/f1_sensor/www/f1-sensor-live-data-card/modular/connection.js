@@ -272,7 +272,7 @@ export async function callEntityService(hass, command, lockKey) {
   if (active.has(target)) return false;
   active.add(target);
   try {
-    if (command.returnResponse === true) await hass.callService(command.domain, command.service, command.data, command.target, true);
+    if (command.returnResponse === true) await hass.callService(command.domain, command.service, command.data, command.target, true, true);
     else await hass.callService(command.domain, command.service, command.data);
     return true;
   }

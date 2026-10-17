@@ -1,0 +1,23 @@
+- main [ref=e2]:
+  - heading "Kollar så att du inte är en bot!" [level=1] [ref=e3]
+  - generic [ref=e4]:
+    - paragraph [ref=e6]: Laddar...
+    - group [ref=e7]
+  - generic [ref=e9]:
+    - paragraph [ref=e10]:
+      - text: Skyddat av
+      - link "Anubis" [ref=e11] [cursor=pointer]:
+        - /url: https://github.com/TecharoHQ/anubis
+      - text: Från
+      - link "Techaro" [ref=e12] [cursor=pointer]:
+        - /url: https://techaro.lol
+      - text: . Gjort med ❤️ i 🇨🇦.
+    - paragraph [ref=e13]:
+      - text: Maskotdesign av
+      - link "CELPHASE" [ref=e14] [cursor=pointer]:
+        - /url: https://bsky.app/profile/celphase.bsky.social
+      - text: .
+    - paragraph [ref=e15]:
+      - text: Den här webbsidan kör Anubis version
+      - code [ref=e16]: v1.27.0
+      - text: .

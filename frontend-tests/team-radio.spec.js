@@ -30,6 +30,54 @@ test('experimental Team Radio module presents driver, team, separated dialogue a
   expect(audit.violations).toEqual([]);
 });
 
+test('Team Radio follows the card light and dark theme surfaces', async ({ page }) => {
+  const expected = {
+    light: {
+      background: 'rgb(241, 244, 248)',
+      text: 'rgb(26, 37, 51)',
+      muted: 'rgb(83, 97, 116)',
+      divider: 'rgb(203, 209, 218)',
+    },
+    dark: {
+      background: 'rgb(27, 36, 48)',
+      text: 'rgb(241, 244, 248)',
+      muted: 'rgb(189, 198, 212)',
+      divider: 'rgb(53, 65, 80)',
+    },
+  };
+
+  for (const mode of ['light', 'dark']) {
+    await page.evaluate(mode => window.mountModular({
+      config: { appearance: { mode }, modules: [{ type: 'team_radio' }] },
+    }), mode);
+    const colors = await page.locator('f1-team-radio-view').evaluate(view => {
+      const card = view.shadowRoot.querySelector('.radio-card');
+      const header = view.shadowRoot.querySelector('.radio-head');
+      const radio = view.shadowRoot.querySelector('.identity .radio');
+      const team = view.shadowRoot.querySelector('.identity .team');
+      const meta = view.shadowRoot.querySelector('.meta');
+      return {
+        background: getComputedStyle(card).backgroundColor,
+        text: getComputedStyle(card).color,
+        radio: getComputedStyle(radio).color,
+        team: getComputedStyle(team).color,
+        meta: getComputedStyle(meta).color,
+        divider: getComputedStyle(header).borderBottomColor,
+      };
+    });
+    expect(colors).toEqual({
+      background: expected[mode].background,
+      text: expected[mode].text,
+      radio: expected[mode].text,
+      team: expected[mode].muted,
+      meta: expected[mode].muted,
+      divider: expected[mode].divider,
+    });
+    const audit = await new AxeBuilder({ page }).include('f1-sensor-card').analyze();
+    expect(audit.violations.filter(item => ['serious', 'critical'].includes(item.impact))).toEqual([]);
+  }
+});
+
 test('Team Radio runs the manual transcription action from a discreet control beside Play', async ({ page }) => {
   await page.evaluate(async () => {
     window.mountModular({ config: { modules: [{ type: 'team_radio', options: { ai_task_entity_id: 'ai_task.google_ai_task' } }] } });
@@ -67,28 +115,32 @@ test('Team Radio runs the manual transcription action from a discreet control be
     { entity_id: 'sensor.f1_demo_team_radio', ai_task_entity_id: 'ai_task.google_ai_task', force: false },
     undefined,
     true,
+    true,
   ]);
 });
 
-test('Team Radio editor saves an AI Task entity from domain-filtered choices', async ({ page }) => {
+test('Team Radio editor selects an available AI Task entity from a domain-filtered dropdown', async ({ page }) => {
   await page.evaluate(async () => {
-    window.mountModular({ editor: true, config: { modules: [{ type: 'team_radio' }] } });
+    window.mountModular({ editor: true, config: { modules: [{ type: 'team_radio', options: { ai_task_entity_id: 'ai_task.retired' } }] } });
     const editor = window.fixtureCard;
-    editor.hass.states['ai_task.google_ai_task'] = { state: 'idle', attributes: {} };
+    editor.hass.states['ai_task.google_ai_task'] = { state: 'idle', attributes: { friendly_name: 'Google AI Task' } };
+    editor.hass.states['ai_task.retired'] = { state: 'unavailable', attributes: { friendly_name: 'Retired AI Task' } };
+    editor.hass.states['ai_task.disabled'] = { state: 'unavailable', attributes: { friendly_name: 'Disabled AI Task' } };
     editor.hass.states['sensor.not_an_ai_task'] = { state: 'idle', attributes: {} };
     editor.requestUpdate();
     await editor.updateComplete;
   });
 
   await page.getByText('Module options', { exact: true }).click();
-  const input = page.getByLabel('AI Task entity for transcription');
-  await expect(input).toBeVisible();
-  expect(await input.evaluate(node => {
-    const choices = node.getRootNode().getElementById(node.getAttribute('list'));
-    return [...choices.options].map(option => option.value);
-  })).toEqual(['ai_task.google_ai_task']);
-  await input.fill('ai_task.google_ai_task');
-  await input.evaluate(node => node.dispatchEvent(new Event('change', { bubbles: true, composed: true })));
+  const select = page.getByRole('combobox', { name: 'AI Task entity for transcription', exact: true });
+  await expect(select).toBeVisible();
+  await expect(select).toHaveValue('ai_task.retired');
+  expect(await select.locator('option').evaluateAll(options => options.map(option => [option.value, option.textContent]))).toEqual([
+    ['', 'Choose…'],
+    ['ai_task.retired', 'Retired AI Task · ai_task.retired · saved selection unavailable'],
+    ['ai_task.google_ai_task', 'Google AI Task · ai_task.google_ai_task'],
+  ]);
+  await select.selectOption('ai_task.google_ai_task');
   await expect.poll(() => page.evaluate(() => window.savedConfig?.modules?.[0]?.options?.ai_task_entity_id)).toBe('ai_task.google_ai_task');
 });
 
