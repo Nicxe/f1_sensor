@@ -26,7 +26,11 @@ test('a published version is never rebuilt or replaced',async()=>{
   const calls=await runCase({tag:'v5.5.0-beta.2\n',published:true});assert.ok(!calls.some(([command])=>command==='python3'));assert.ok(!calls.some(([,args])=>args.includes('upload')));
 });
 test('an existing draft is rebuilt at its original version and verified before upload',async()=>{
-  const calls=await runCase({tag:'v5.5.0-beta.2\n'});assert.ok(calls.some(([c,a])=>c==='python3' && a.includes('scripts/verify_release.py') && a.includes('5.5.0-beta.2')));assert.ok(calls.at(-1)[1].includes('upload'));assert.ok(!calls.some(([,a])=>a.includes('create')));
+  const calls=await runCase({tag:'v5.5.0-beta.2\n'});
+  assert.ok(calls.some(([c,a])=>c==='git' && a.includes('worktree') && a.at(-1)==='v5.5.0-beta.2'));
+  assert.ok(calls.some(([c,a])=>c==='python3' && a.includes('scripts/verify_release.py') && a.includes('5.5.0-beta.2')));
+  assert.ok(calls.some(([,a])=>a.includes('upload')));
+  assert.ok(!calls.some(([,a])=>a.includes('create')));
 });
 test('publication during recovery prevents asset replacement',async()=>{
   await assert.rejects(runCase({tag:'v5.5.0-beta.2\n',changesDuringBuild:true}),/no longer a draft/);
@@ -34,4 +38,22 @@ test('publication during recovery prevents asset replacement',async()=>{
 test('release branch and multiple-tag ambiguities fail closed',async()=>{
   await assert.rejects(runCase({branch:'dev'}),/require beta or main/);
   await assert.rejects(runCase({tag:'v5.5.0-beta.1\nv5.5.0-beta.2'}),/Ambiguous/);
+});
+test('the latest unnoted beta tag without a release is recovered',()=>{
+  const mocked=mock.method(child,'execFileSync',(command,args)=>{
+    if(command==='git' && args[0]==='show-ref')throw new Error('missing note');
+    return '';
+  });
+  delete require.cache[require.resolve('../.github/scripts/run-release.cjs')];
+  try {
+    const {interruptedReleaseTag}=require('../.github/scripts/run-release.cjs');
+    assert.equal(interruptedReleaseTag({
+      branch:'beta',tags:['v6.1.0-beta.2','v6.1.0-beta.1'],
+      releases:[{tag_name:'v6.1.0-beta.1',prerelease:true}]
+    }),'v6.1.0-beta.2');
+    assert.equal(interruptedReleaseTag({
+      branch:'beta',tags:['v6.1.0-beta.2','v6.1.0-beta.1'],
+      releases:[{tag_name:'v6.1.0-beta.2',prerelease:true}]
+    }),'');
+  } finally {mocked.mock.restore();}
 });
