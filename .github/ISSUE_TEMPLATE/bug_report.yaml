@@ -40,6 +40,18 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: dashboard_card_version
+    attributes:
+      label: Dashboard Card Version
+      description: If this report concerns a dashboard card, which card are you using?
+      options:
+        - Modular F1 Sensor Live Data Card
+        - Legacy standalone F1 Sensor card (deprecated)
+        - Not sure
+    validations:
+      required: true
+
   - type: input
     id: device
     attributes:
