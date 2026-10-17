@@ -6,7 +6,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { setReleaseContributors } = require('./release-contributors.cjs');
-const {extractEditorial, replaceEditorial} = require('./release-editorial.cjs');
+const {
+  extractEditorial,
+  findRepairableDraft,
+  replaceEditorial
+} = require('./release-editorial.cjs');
 const run = (command, args, options={}) => execFileSync(command,args,{encoding:'utf8',...options});
 const releaseTagPattern = /^v\d+\.\d+\.\d+(?:-beta\.\d+)?$/;
 
@@ -84,10 +88,21 @@ function hydrateBetaReleaseNotes(branch, releases=listReleases()) {
   }
 }
 
+function recoverableRelease({branch, releases, tag}) {
+  const commitSha = run('git',['rev-list','-n','1',tag]).trim();
+  return releases.find(release => release.tag_name === tag)
+    || findRepairableDraft({releases, tag, branch, commitSha});
+}
+
 function interruptedReleaseTag({branch, releases, tags=releaseTagsMerged(branch)}) {
   const latestTag = tags[0];
-  if (!latestTag || releases.some(release => release.tag_name === latestTag)) return '';
-  if (localRefExists(noteRefForTag(latestTag))) return '';
+  if (!latestTag) return '';
+  const release = recoverableRelease({branch, releases, tag: latestTag});
+  if (release && !release.draft) return '';
+  // A draft still needs asset recovery even when semantic-release managed to
+  // publish its channel note. A note without any draft is an intentional
+  // historical boundary and must not be turned into a release retroactively.
+  if (!release && localRefExists(noteRefForTag(latestTag))) return '';
   return latestTag;
 }
 
@@ -165,6 +180,27 @@ function promotionEditorial({branch, tag}) {
   return editorial;
 }
 
+async function uploadReleaseAsset({release, filename, request=globalThis.fetch}) {
+  const template = String(release.upload_url || '');
+  if (!template.startsWith('https://uploads.github.com/')) {
+    throw new Error(`Draft release ${release.id} has no trusted asset upload URL.`);
+  }
+  const url = `${template.replace(/\{.*$/, '')}?name=${encodeURIComponent(filename)}`;
+  const response = await request(url,{
+    method:'POST',
+    headers:{
+      Accept:'application/vnd.github+json',
+      Authorization:`Bearer ${process.env.GITHUB_TOKEN}`,
+      'Content-Type':'application/octet-stream',
+      'X-GitHub-Api-Version':'2022-11-28'
+    },
+    body:fs.readFileSync(path.resolve(filename))
+  });
+  if (!response.ok) {
+    throw new Error(`Could not upload ${filename} to draft release ${release.id}: ${response.status} ${await response.text()}`);
+  }
+}
+
 async function recoverDraft({branch, tag, releases=listReleases()}) {
   run('git',['merge-base','--is-ancestor',tag,'HEAD'],{stdio:'ignore'});
   const version = tag.slice(1);
@@ -174,7 +210,7 @@ async function recoverDraft({branch, tag, releases=listReleases()}) {
   const archive = path.resolve('f1_sensor.zip');
   let worktreeAdded = false;
   try {
-    const existing = releases.find(r => r.tag_name === tag);
+    let existing = recoverableRelease({branch, releases, tag});
     if (existing && !existing.draft) {
       console.log(`${tag} is already published; leaving it untouched.`);
       return;
@@ -197,14 +233,39 @@ async function recoverDraft({branch, tag, releases=listReleases()}) {
       const {generateNotes} = await import('@semantic-release/release-notes-generator');
       const generated = await generateNotes(options, {cwd:process.cwd(), env:process.env, logger:console, options:{repositoryUrl:`https://github.com/${process.env.GITHUB_REPOSITORY}.git`}, commits, lastRelease:previous ? {gitTag:previous,version:previous.slice(1)} : {}, nextRelease:{gitTag:tag,version,channel:branch==='beta'?'beta':undefined}});
       const notes = replaceEditorial(generated,promotionEditorial({branch,tag})).notes;
-      const file = path.join(directory,'notes.md');fs.writeFileSync(file,notes);
-      const args=['release','create',tag,'--draft','--verify-tag','--target',branch,'--title',tag,'--notes-file',file];
-      if(branch==='beta')args.push('--prerelease');
-      run('gh',args,{stdio:'inherit'});
+      const payload = path.join(directory,'release.json');
+      fs.writeFileSync(payload,JSON.stringify({
+        tag_name:tag,target_commitish:branch,name:tag,body:notes,draft:true,
+        prerelease:branch==='beta'
+      }));
+      existing = JSON.parse(run('gh',[
+        'api','--method','POST',`repos/${process.env.GITHUB_REPOSITORY}/releases`,
+        '--input',payload
+      ]));
     }
-    const current = JSON.parse(run('gh',['api',`repos/${process.env.GITHUB_REPOSITORY}/releases?per_page=100`,'--paginate','--slurp'])).flat().find(r=>r.tag_name===tag);
+    if (existing.tag_name !== tag) {
+      existing = JSON.parse(run('gh',[
+        'api','--method','PATCH',
+        `repos/${process.env.GITHUB_REPOSITORY}/releases/${existing.id}`,
+        '-f',`tag_name=${tag}`,'-f',`target_commitish=${branch}`,'-f',`name=${tag}`,
+        '-F','draft=true','-F',`prerelease=${branch==='beta'}`
+      ]));
+    }
+    const current = JSON.parse(run('gh',[
+      'api',`repos/${process.env.GITHUB_REPOSITORY}/releases/${existing.id}`
+    ]));
     if (!current?.draft) throw new Error('The release is no longer a draft; refusing to replace assets.');
-    run('gh',['release','upload',tag,'f1_sensor.zip','f1_sensor.zip.sha256','f1_sensor.zip.spdx.json','--clobber'],{stdio:'inherit'});
+    if (current.tag_name !== tag) throw new Error(`Draft release ${current.id} is not associated with ${tag}.`);
+    const assets = JSON.parse(run('gh',[
+      'api',`repos/${process.env.GITHUB_REPOSITORY}/releases/${current.id}/assets`
+    ]));
+    for (const filename of ['f1_sensor.zip','f1_sensor.zip.sha256','f1_sensor.zip.spdx.json']) {
+      for (const asset of assets.filter(candidate => candidate.name === filename)) {
+        run('gh',['api','--method','DELETE',
+          `repos/${process.env.GITHUB_REPOSITORY}/releases/assets/${asset.id}`]);
+      }
+      await uploadReleaseAsset({release:current,filename});
+    }
     console.log(`Recovered draft ${tag}; publication remains manual.`);
   } finally {
     if (worktreeAdded) {
@@ -221,9 +282,11 @@ module.exports = {
   localRefExists,
   noteRefForTag,
   promotionEditorial,
+  recoverableRelease,
   recoverDraft,
   releaseTagsMerged,
   releaseTagsAtHead,
-  retryNotePush
+  retryNotePush,
+  uploadReleaseAsset
 };
 if (require.main === module) main().catch(error=>{console.error(error.message);process.exitCode=1;});
