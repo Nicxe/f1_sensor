@@ -67,6 +67,7 @@ from .helpers import (
 from .race_weather import legacy_weather_observation, weather_icon
 from .replay_entities import F1ReplayStatusSensor
 from .runtime import F1ConfigEntry, entry_value
+from .team_radio_common import team_radio_clip_id
 from .team_radio_media import team_radio_media_url
 
 
@@ -5001,22 +5002,8 @@ class F1TeamRadioSensor(
         updated = payload is not None
         if payload:
             self._apply_payload(payload, force=True)
-        elif self._is_stream_active():
-            last = await self.async_get_last_state()
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._attr_native_value = last.state
-                self._attr_extra_state_attributes = dict(
-                    getattr(last, "attributes", {}) or {}
-                )
-                hist = self._attr_extra_state_attributes.get("history")
-                if isinstance(hist, list):
-                    self._history = [
-                        dict(item)
-                        for item in hist[: self._history_limit]
-                        if isinstance(item, dict)
-                    ]
-                self._last_utc = self._attr_extra_state_attributes.get("utc")
         else:
+            # Restored URLs cannot be resolved without their coordinator captures.
             self._clear_state()
         self._handle_stream_state(updated)
         self.async_write_ha_state()
@@ -5085,6 +5072,41 @@ class F1TeamRadioSensor(
             "team_color": team_color,
         }
 
+    def _build_history(self) -> list[dict]:
+        """Expose only captures currently available to the media proxy."""
+        data = self.coordinator.data
+        if not isinstance(data, dict):
+            return []
+        candidates = [data.get("latest"), *reversed(data.get("history") or [])]
+        history: list[dict] = []
+        seen: set[str] = set()
+        for capture in candidates:
+            if not isinstance(capture, dict):
+                continue
+            clip_id = team_radio_clip_id(capture)
+            if clip_id in seen:
+                continue
+            seen.add(clip_id)
+            path = self._cleanup_string(capture.get("Path"))
+            history.append(
+                {
+                    "utc": self._normalize_utc(
+                        capture.get("Utc")
+                        or capture.get("utc")
+                        or capture.get("processedAt")
+                        or capture.get("timestamp")
+                    ),
+                    "racing_number": self._cleanup_string(capture.get("RacingNumber")),
+                    **self._identity_attributes(capture),
+                    "path": path,
+                    "clip_url": self._build_clip_url(capture, path),
+                    **self._transcription_attributes(capture),
+                }
+            )
+            if len(history) >= self._history_limit:
+                break
+        return history
+
     def _apply_payload(self, payload: dict, *, force: bool = False) -> None:
         if not isinstance(payload, dict):
             return
@@ -5100,25 +5122,22 @@ class F1TeamRadioSensor(
         clip_url = self._build_clip_url(payload, path)
         identity_attrs = self._identity_attributes(payload)
         transcription_attrs = self._transcription_attributes(payload)
-        if utc_norm and self._last_utc == utc_norm and not force:
-            identity_changed = any(
-                self._attr_extra_state_attributes.get(key) != value
-                for key, value in identity_attrs.items()
+        self._history = self._build_history()
+        if (
+            utc_norm
+            and self._last_utc == utc_norm
+            and team_radio_clip_id(payload)
+            == team_radio_clip_id(
+                self._attr_extra_state_attributes.get("raw_message", {})
             )
+            and not force
+        ):
             has_transcription = isinstance(payload.get("Transcription"), dict)
-            if not identity_changed and not has_transcription:
-                return
             attrs = dict(self._attr_extra_state_attributes)
             attrs.update(identity_attrs)
             if has_transcription:
                 attrs.update(transcription_attrs)
             attrs["raw_message"] = payload
-            for item in self._history:
-                if item.get("utc") == utc_norm and item.get("path") == path:
-                    item.update(identity_attrs)
-                    if has_transcription:
-                        item.update(transcription_attrs)
-                    break
             attrs["history"] = [dict(item) for item in self._history]
             self._attr_extra_state_attributes = attrs
             return
@@ -5139,18 +5158,6 @@ class F1TeamRadioSensor(
             "raw_message": payload,
         }
 
-        self._history.insert(
-            0,
-            {
-                "utc": utc_norm,
-                "racing_number": racing_number,
-                **identity_attrs,
-                "path": path,
-                "clip_url": clip_url,
-                **transcription_attrs,
-            },
-        )
-        self._history = self._history[: self._history_limit]
         attrs["history"] = [dict(item) for item in self._history]
 
         self._attr_native_value = utc_norm
@@ -5159,13 +5166,16 @@ class F1TeamRadioSensor(
 
     def _handle_coordinator_update(self) -> None:
         payload = self._extract_current()
+        if payload is None:
+            self._clear_state()
+            self._handle_stream_state(False)
+            self._safe_write_ha_state()
+            return
         updated = payload is not None
         if not self._handle_stream_state(updated):
             return
         if not self._is_stream_active():
             self._safe_write_ha_state()
-            return
-        if payload is None:
             return
         self._apply_payload(payload)
         self._safe_write_ha_state()

@@ -664,7 +664,7 @@ async def test_replay_capable_sensors_stay_unavailable_during_public_live(
 
 
 @pytest.mark.parametrize(
-    ("factory", "restored_state", "attributes", "stream"),
+    ("factory", "restored_state", "attributes", "stream", "expected_state"),
     [
         (
             lambda coordinator, entry_id: F1TeamRadioSensor(
@@ -673,6 +673,7 @@ async def test_replay_capable_sensors_stay_unavailable_during_public_live(
             "2026-03-08T04:00:00+00:00",
             {"history": []},
             "TeamRadio",
+            "unknown",
         ),
         (
             lambda coordinator, entry_id: F1PitStopsSensor(
@@ -681,12 +682,13 @@ async def test_replay_capable_sensors_stay_unavailable_during_public_live(
             "3",
             {"cars": {}, "last_update": "2026-03-08T04:00:00+00:00"},
             "PitStopSeries",
+            "3",
         ),
     ],
 )
 @pytest.mark.asyncio
-async def test_replay_capable_sensors_restore_during_auth_live(
-    hass, factory, restored_state, attributes, stream
+async def test_replay_capable_sensors_handle_restored_state_during_auth_live(
+    hass, factory, restored_state, attributes, stream, expected_state
 ) -> None:
     entry_id = "test_entry"
     hass.data.setdefault(DOMAIN, {})[entry_id] = {
@@ -707,7 +709,11 @@ async def test_replay_capable_sensors_restore_during_auth_live(
 
     state = await _add_entity_and_get_state(hass, "sensor", entity)
 
-    assert state.state == restored_state
+    # Radio URLs need captures in the current store; pit stop totals can restore.
+    assert state.state == expected_state
+    if stream == "TeamRadio":
+        assert not state.attributes.get("history")
+        assert not state.attributes.get("clip_url")
 
 
 @pytest.mark.parametrize(
