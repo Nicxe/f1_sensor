@@ -55,7 +55,7 @@
           "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-kort slutar fungera när webbläsaren har laddats om.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
           "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra in hela Bearer-token från F1TV Token Helper som avancerad reservväg. Lämna tomt för att bara använda publik live timing utan Replay Mode eller arkivdata",
-          "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. F1TV-åtkomst är valfri; publik live timing fortsätter fungera utan den.",
+          "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. F1TV-åtkomst är för Replay Mode, arkivdata och utökad live data; publik live timing fortsätter fungera utan den.",
           "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att dashboardkort installeras. Ladda om webbläsaren efter ändringen. Om du stänger av valet slutar äldre kort fungera om du inte migrerar dem till F1 Sensor-kortet. Vid flera F1 Sensor-installationer finns äldre kort kvar så länge någon aktiverad installation begär dem."
         }
       },
@@ -81,9 +81,9 @@
           "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-kort slutar fungera när webbläsaren har laddats om.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
           "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra bara in en ny fullständig Bearer-token som avancerad reservväg. Lämna tomt för att behålla nuvarande värde.",
-          "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. F1TV-åtkomst är valfri; publik live timing fortsätter fungera utan den.",
+          "start_f1tv_pairing": "Rekommenderat alternativ. Anslut en aktiv F1 TV-prenumeration för att få tillgång till reprisläge, arkiverat material och utökad livedata. Offentlig livetidtagning fungerar även utan prenumeration.",
           "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att dashboardkort installeras. Ladda om webbläsaren efter ändringen. Om du stänger av valet slutar äldre kort fungera om du inte migrerar dem till F1 Sensor-kortet. Vid flera F1 Sensor-installationer finns äldre kort kvar så länge någon aktiverad installation begär dem.",
-          "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med enbart publik livetiming."
+          "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med enbart publik livetiming.Replay mode och arkivdata är inte längre tillgängligt."
         }
       },
       "reauth_confirm": {
@@ -95,7 +95,7 @@
         },
         "data_description": {
           "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra bara in en ny fullständig Bearer-token som avancerad reservväg.",
-          "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med endast publik live timing.",
+          "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med endast publik live timing. Replay Mode och arkivdata kommer inte längre vara tillgängligt.",
           "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. F1TV-åtkomst är valfri; publik live timing fortsätter fungera utan den."
         }
       },
