@@ -1706,5 +1706,10 @@
   "modular.title_visibility_is_applied_to_the_card_and_its_modules_session_details_status_labels_and_controls_remain_avai": "Rubrikvisningen överförs till kortet och dess moduler. Sessionsuppgifter, statusmarkeringar och kontroller finns kvar.",
   "modular.unknown": "Okänd",
   "modular.uses_f1_sensor_modules_with_a_new_layout_and_defaults_this_is_a_starting_point_for_review_not_an_exact_copy_of": "Använder F1 Sensor-moduler med ny layout och nya standardval. Detta är ett underlag för granskning, inte en exakt kopia av alla äldre funktioner.",
-  "modular.lap_number_starts": "Varv {lap} startar"
+  "modular.lap_number_starts": "Varv {lap} startar",
+  "modular.choose_the_matching_lap_or_qualifying_part_when_it_starts_on_your_broadcast": "Välj motsvarande varv eller kvaldel när den startar i din sändning.",
+  "modular.qualifying_part_starts": "Q{part} startar",
+  "modular.replay_sync_point": "Återspelningssynkpunkt",
+  "modular.sprint_qualifying_part_starts": "SQ{part} startar",
+  "modular.sync_replay_to_point": "Synka återspelningen till punkten"
 }
