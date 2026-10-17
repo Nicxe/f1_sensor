@@ -18,7 +18,7 @@ Promotions to `beta` and `main` must use a merge commit. Squash or rebase
 merges remove the individual conventional commits that semantic-release uses
 to determine the version and generate complete release notes.
 
-The `beta` and `main` branches are managed exclusively by the maintainer. Contributor PRs must target `dev` or `content`. A routing comment explains how to change the base branch when necessary; the same PR can be kept.
+The `beta` and `main` branches are managed by the maintainer. Contributors should target `dev` or `content`; a routing comment explains how to change the base branch when necessary, and the same PR can be kept. The repository owner may target a different branch for focused maintenance work. Branch protection and release checks remain configured separately.
 
 ## Commit messages and release notes
 
