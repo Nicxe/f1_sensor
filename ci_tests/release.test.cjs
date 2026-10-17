@@ -3,13 +3,16 @@ const assert = require('node:assert/strict');
 const child = require('node:child_process');
 
 async function runCase({tag='',published=false,changesDuringBuild=false,branch='beta'}={}) {
-  const calls=[]; let queries=0;
+  const calls=[]; let releaseQueries=0;
   const old={branch:process.env.GITHUB_REF_NAME,repo:process.env.GITHUB_REPOSITORY};
   process.env.GITHUB_REF_NAME=branch;process.env.GITHUB_REPOSITORY='Nicxe/f1_sensor';
   const mocked=mock.method(child,'execFileSync',(command,args)=>{
     calls.push([command,args]);
     if(command==='git')return tag;
-    if(command==='gh' && args[0]==='api') {queries++;return JSON.stringify([[{tag_name:tag.trim(),draft:!(published || (changesDuringBuild && queries>1))}]]);}
+    if(command==='gh' && args[0]==='api') {
+      releaseQueries++;
+      return JSON.stringify([[{tag_name:tag.trim(),draft:!(published || (changesDuringBuild && releaseQueries>2))}]]);
+    }
     return '';
   });
   delete require.cache[require.resolve('../.github/scripts/run-release.cjs')];
