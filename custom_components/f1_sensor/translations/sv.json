@@ -96,12 +96,12 @@
         "data_description": {
           "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra bara in en ny fullständig Bearer-token som avancerad reservväg.",
           "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med endast publik live timing. Replay Mode och arkivdata kommer inte längre vara tillgängligt.",
-          "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. F1TV-åtkomst är valfri; publik live timing fortsätter fungera utan den."
+          "start_f1tv_pairing": "Rekommenderat. Anslut en aktiv, betald F1TV-prenumeration för reprisläge, arkivmaterial och ytterligare livedata. Publik livetiming fungerar även utan den."
         }
       },
       "f1tv_pairing": {
         "title": "Anslut F1TV-åtkomst",
-        "description": "Använd F1TV Token Helper för att skicka din token till Home Assistant. F1TV-åtkomst är valfri, och den här pairingen går ut {expires_at}."
+        "description": "Använd F1TV Token Helper för att koppla en aktiv, betald prenumeration. Publik livetiming kräver ingen autentisering, men reprisläge och arkivmaterial kräver F1TV-åtkomst. Denna ihopkoppling upphör att gälla {expires_at}."
       }
     },
     "abort": {
@@ -160,14 +160,14 @@
             "data_description": {
               "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering.",
               "live_timing_auth_header": "Klistra in ett nytt Bearer-tokenvärde från F1TV Token Helper för F1TV-åtkomst.",
-              "clear_live_timing_auth_header": "Ta bort den sparade F1TV-token och fortsätt med endast publik live timing."
+              "clear_live_timing_auth_header": "Ta bort den sparade F1TV-token och fortsätt med publik livetiming. Reprisläge och arkivmaterial kommer inte vara tillgängliga."
             },
-            "description": "Den sparade F1TV-token för {name} behöver åtgärdas. Publik live timing fortsätter fungera, men F1TV-live-data används inte förrän token har bytts ut.",
+            "description": "Den sparade F1TV-token för {name} behöver uppmärksamhet. Publik livetiming fortsätter fungera, men reprisläge, arkivmaterial och ytterligare F1TV-livedata kräver en ersättande token.",
             "title": "Uppdatera F1TV live timing-token"
           },
           "f1tv_pairing": {
             "title": "Anslut F1TV-åtkomst",
-            "description": "Använd F1TV Token Helper för att skicka din token till Home Assistant. F1TV-åtkomst är valfri, och den här pairingen går ut {expires_at}."
+            "description": "Använd F1TV Token Helper för att ansluta en aktiv betald prenumeration. Publik live timing förblir tillgänglig utan autentisering, men Replay Mode och arkivmaterial kräver F1TV-åtkomst. Denna parkoppling upphör att gälla {expires_at}."
           }
         }
       },
