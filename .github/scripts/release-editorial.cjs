@@ -59,9 +59,11 @@ async function promotionPullRequest(github, context) {
       }
     }`, {...context.repo, oid: context.sha});
   const pulls = data.repository.object?.associatedPullRequests.nodes || [];
-  return pulls.find(pr => pr.merged && isPromotion({
-    base: {ref: pr.baseRefName}, head: {ref: pr.headRefName}
-  }));
+  return pulls.find(pr => pr.merged
+    && pr.mergeCommit?.oid === context.sha
+    && isPromotion({
+      base: {ref: pr.baseRefName}, head: {ref: pr.headRefName}
+    }));
 }
 
 function isUntaggedRelease(release) {

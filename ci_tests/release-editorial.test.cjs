@@ -200,6 +200,7 @@ test('adds a promotion PR editorial to an untouched draft release', async () => 
     }},
     graphql: async () => ({repository: {object: {associatedPullRequests: {nodes: [{
       number: 851, merged: true, baseRefName: 'beta', headRefName: 'dev',
+      mergeCommit: {oid: 'merge-sha'},
       body: `${editorial.START}\nFaster session updates are the focus of this beta.\n${editorial.END}`
     }]}}}})
   };
@@ -216,4 +217,32 @@ test('adds a promotion PR editorial to an untouched draft release', async () => 
     body: 'Before\n\nFaster session updates are the focus of this beta.\n\n### Bug fixes\n'
   }]);
   assert.match(messages[0], /promotion PR #851/);
+});
+
+test('selects the promotion PR whose merge commit is the release commit', async () => {
+  const context = {repo: {owner: 'Nicxe', repo: 'f1_sensor'}, sha: 'merge-897'};
+  const github = {
+    graphql: async () => ({repository: {object: {associatedPullRequests: {nodes: [
+      {
+        number: 896,
+        body: `${editorial.START}\nWrong release text\n${editorial.END}`,
+        baseRefName: 'beta',
+        headRefName: 'dev',
+        merged: true,
+        mergeCommit: {oid: 'merge-896'}
+      },
+      {
+        number: 897,
+        body: `${editorial.START}\nCorrect release text\n${editorial.END}`,
+        baseRefName: 'beta',
+        headRefName: 'dev',
+        merged: true,
+        mergeCommit: {oid: 'merge-897'}
+      }
+    ]}}}})
+  };
+
+  const result = await editorial.promotionPullRequest(github, context);
+  assert.equal(result.number, 897);
+  assert.equal(editorial.extractEditorial(result.body), 'Correct release text');
 });
