@@ -217,6 +217,12 @@ def branch_error(event: dict, files: list[str]) -> str:
     same_repo = (
         pr["head"].get("repo", {}).get("full_name") == pr["base"]["repo"]["full_name"]
     )
+    owner = pr["base"].get("repo", {}).get("full_name", "").split("/", 1)[0]
+    author = pr.get("user", {}).get("login", "")
+    # Repository-owned PRs may target a branch that fits the maintainer's
+    # work. Branch protections and release verification remain independent.
+    if same_repo and owner and author.casefold() == owner.casefold():
+        return ""
     # Synchronization snapshots are created only in this repository by its bot.
     sync = (
         same_repo

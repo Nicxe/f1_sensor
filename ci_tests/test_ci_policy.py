@@ -34,18 +34,15 @@ def pull(base, head, fork=False):
 
 
 class PolicyTests(unittest.TestCase):
-    def test_owner_beta_hotfix_requires_commits_already_on_dev(self):
+    def test_owner_hotfix_is_routing_exempt_and_contributors_are_guided(self):
         event = pull("beta", "hotfix/issue-799-multipart-session")
         event["pull_request"]["user"]["login"] = "Nicxe"
         files = ["custom_components/f1_sensor/live_window.py"]
-        with patch("scripts.ci_policy.hotfix_matches_dev", return_value=True) as check:
+        with patch("scripts.ci_policy.hotfix_matches_dev") as check:
             self.assertEqual(branch_error(event, files), "")
-            check.assert_called_once_with(files, base_sha="a" * 40, head_sha="b" * 40)
-        with patch("scripts.ci_policy.hotfix_matches_dev", return_value=False):
-            self.assertTrue(branch_error(event, files))
+            check.assert_not_called()
         event["pull_request"]["user"]["login"] = "contributor"
         self.assertTrue(branch_error(event, files))
-        event["pull_request"]["user"]["login"] = "Nicxe"
         event["pull_request"]["head"]["repo"]["full_name"] = "fork/repo"
         self.assertTrue(branch_error(event, files))
 
@@ -131,7 +128,7 @@ class PolicyTests(unittest.TestCase):
                 [("d" * 40, "fix: Correct an unintended stable behavior")],
             )
 
-    def test_owner_maintenance_can_repair_main_without_promoting_runtime_code(self):
+    def test_owner_prs_can_target_maintenance_branches_without_routing_warnings(self):
         event = pull("main", "maintenance/dependency-ci-recovery")
         event["pull_request"]["user"]["login"] = "Nicxe"
         files = [
@@ -145,13 +142,16 @@ class PolicyTests(unittest.TestCase):
             "ci_tests/test_ci_policy.py",
         ]
         self.assertEqual(branch_error(event, files), "")
-        for changed in [
-            [],
-            files + ["custom_components/f1_sensor/sensor.py"],
-            ["docs/help.md"],
-            ["scripts/other.py"],
+        for base, head, changed in [
+            ("main", "maintenance/workflows", [".github/workflows/ci.yml"]),
+            ("dev", "feature/work", ["custom_components/f1_sensor/sensor.py"]),
+            ("content", "maintenance/docs", ["docs/help.md"]),
+            ("beta", "hotfix/urgent", ["scripts/other.py"]),
         ]:
-            self.assertTrue(branch_error(event, changed))
+            with self.subTest(base=base, head=head):
+                owner_event = pull(base, head)
+                owner_event["pull_request"]["user"]["login"] = "Nicxe"
+                self.assertEqual(branch_error(owner_event, changed), "")
         event["pull_request"]["user"]["login"] = "contributor"
         self.assertTrue(branch_error(event, files))
         event["pull_request"]["user"]["login"] = "Nicxe"
