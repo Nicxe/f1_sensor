@@ -131,7 +131,7 @@ test('legacy card reports receive migration guidance', async () => {
 
   assert.equal(comments.length, 1);
   assert.match(comments[0], /<!-- f1-deprecated-card -->/);
-  assert.match(comments[0], /migrate to the new modular F1 Sensor Live Data Card/);
+  assert.match(comments[0], /\[new modular F1 Sensor Live Data Card\]\(https:\/\/nicxe\.github\.io\/f1_sensor\/cards\/modular-migration\)/);
 });
 
 test('only older stable versions are outdated', () => {

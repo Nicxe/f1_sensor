@@ -52,7 +52,7 @@ async function updateIssue({github, context}, mode) {
         github,
         key,
         '<!-- f1-deprecated-card -->',
-        'This issue reports the deprecated standalone F1 Sensor dashboard card. Please migrate to the new modular F1 Sensor Live Data Card, which is the actively developed card. No further development or bug fixes are planned for the deprecated card.'
+        'This issue reports the deprecated standalone F1 Sensor dashboard card. Please migrate to the [new modular F1 Sensor Live Data Card](https://nicxe.github.io/f1_sensor/cards/modular-migration), which is the actively developed card. No further development or bug fixes are planned for the deprecated card.'
       );
     }
     return;
