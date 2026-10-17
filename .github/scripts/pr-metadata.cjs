@@ -5,6 +5,14 @@ const {isPromotion, extractEditorial} = require('./release-editorial.cjs');
 
 async function routing({github, context}) {
   const pr = (await github.rest.pulls.get({...context.repo, pull_number:context.payload.pull_request.number})).data;
+  const ownerPR = pr.head.repo?.full_name === pr.base.repo?.full_name
+    && pr.user.login.toLowerCase() === context.repo.owner.toLowerCase();
+  if (ownerPR) {
+    // Clear an old routing warning if an existing owner PR is now exempt.
+    await upsertComment(github, {...context.repo, issue_number:pr.number}, '<!-- f1-pr-routing -->',
+      'Branch routing guidance is optional for repository owner changes.', () => false, true);
+    return;
+  }
   // Release promotions are validated by their branches, independently of files.
   // Avoid GitHub's diff generation limit on large promotion PRs.
   const promotion = pr.head.repo?.full_name === pr.base.repo.full_name
