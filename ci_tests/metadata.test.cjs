@@ -39,6 +39,15 @@ test('fork branches named beta still undergo routing validation', async()=>{
   assert.match(data.calls.comments[0], /Code follows/);
 });
 
+test('repository owner PRs receive no branch routing warning', async()=>{
+  const data = fixture('main', 'maintenance/workflows', {files:[{filename:'.github/workflows/ci.yml'}]});
+  data.context.payload.pull_request.user.login = 'owner';
+  data.context.repo.owner = 'owner';
+  await routing(data);
+  assert.equal(data.calls.files, 0);
+  assert.deepEqual(data.calls.comments, []);
+});
+
 test('content routing still inspects files and previous names', async()=>{
   for (const file of [{filename:'code.py'}, {filename:'docs/page.md', previous_filename:'code.py'}]) {
     const data = fixture('content', 'contribution', {files:[file]});
