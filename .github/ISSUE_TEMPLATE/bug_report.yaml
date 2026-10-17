@@ -30,7 +30,7 @@ body:
     id: component
     attributes:
       label: Component
-      description: Which part of F1 Sensor is affected?
+      description: Which part of F1 Sensor is affected? The modular Live Data Card is actively developed; the standalone card is deprecated.
       options:
         - Integration
         - New modular Live Data Card
