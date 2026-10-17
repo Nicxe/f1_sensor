@@ -1,8 +1,8 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {extractField, versionState, componentLabels, releaseIssues} = require('../.github/scripts/issue-fields.cjs');
+const {extractField, versionState, componentLabels, dashboardCardVersion, releaseIssues} = require('../.github/scripts/issue-fields.cjs');
 const releaseComment = require('../.github/scripts/release-comment.cjs');
-const {upsertComment, ensureLabel, removeLabel, releasedIssues} = require('../.github/scripts/issue-automation.cjs');
+const {upsertComment, ensureLabel, removeLabel, updateIssue, releasedIssues} = require('../.github/scripts/issue-automation.cjs');
 
 test('release comments use all pages and never duplicate an earlier bot comment', async () => {
   let writes = 0;
@@ -100,6 +100,38 @@ test('issue form fields support CRLF, hashes and empty responses', () => {
   assert.equal(extractField('### Logs\n\nfoo #1', 'Logs'), 'foo #1');
   assert.equal(extractField('### Component\n\n_No response_', 'Component'), '');
   assert.deepEqual(componentLabels('### Component\n\nBoth integration and card'), ['integration', 'card']);
+  assert.equal(componentLabels('### Component\n\nNew modular Live Data Card').includes('card'), true);
+  assert.equal(componentLabels('### Component\n\nLegacy standalone F1 Sensor card (deprecated)').includes('card'), true);
+  assert.equal(dashboardCardVersion('### Component\n\nNew modular Live Data Card'), 'modular');
+  assert.equal(dashboardCardVersion('### Component\n\nLegacy standalone F1 Sensor card (deprecated)'), 'legacy');
+  assert.equal(dashboardCardVersion('### Dashboard Card Version\n\nNot sure'), 'unknown');
+});
+
+test('legacy card reports receive migration guidance', async () => {
+  const comments = [];
+  const github = {
+    paginate: async () => [],
+    rest: {issues: {
+      get: async () => ({data: {
+        body: '### Component\n\nLegacy standalone F1 Sensor card (deprecated)',
+        labels: [],
+      }}),
+      getLabel: async () => ({data: {}}),
+      addLabels: async () => {},
+      listComments() {},
+      createComment: async ({body}) => comments.push(body),
+    }},
+  };
+  const context = {
+    repo: {owner:'Nicxe', repo:'f1_sensor'},
+    payload: {issue: {number: 42}},
+  };
+
+  await updateIssue({github, context}, 'component');
+
+  assert.equal(comments.length, 1);
+  assert.match(comments[0], /<!-- f1-deprecated-card -->/);
+  assert.match(comments[0], /migrate to the new modular F1 Sensor Live Data Card/);
 });
 
 test('only older stable versions are outdated', () => {

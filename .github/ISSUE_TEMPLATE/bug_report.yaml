@@ -33,7 +33,8 @@ body:
       description: Which part of F1 Sensor is affected?
       options:
         - Integration
-        - Live data card
+        - New modular Live Data Card
+        - Legacy standalone F1 Sensor card (deprecated)
         - Blueprint
         - Both integration and card
         - Not sure

@@ -38,6 +38,13 @@ function componentLabels(body) {
   ].filter(([, enabled]) => enabled).map(([name]) => name);
 }
 
+function dashboardCardVersion(body) {
+  const value = (extractField(body, 'Dashboard Card Version') || extractField(body, 'Component')).toLowerCase();
+  if (value.includes('deprecated') || value.includes('legacy')) return 'legacy';
+  if (value.includes('modular')) return 'modular';
+  return 'unknown';
+}
+
 function releaseIssues(body, repository) {
   const result = new Set();
   // Consume the whole Markdown link so a foreign #number in its label cannot
@@ -59,4 +66,4 @@ function releaseIssues(body, repository) {
   return [...result];
 }
 
-module.exports = {extractField, parseVersion, versionState, componentLabels, releaseIssues};
+module.exports = {extractField, parseVersion, versionState, componentLabels, dashboardCardVersion, releaseIssues};
