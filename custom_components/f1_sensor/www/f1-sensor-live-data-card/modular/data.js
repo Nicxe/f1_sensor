@@ -270,13 +270,13 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
 }
 
 export const SESSION_FIELDS = [
-  ['practice_1', 'first_practice', 'FirstPractice', 'Practice 1', 'Träning 1'],
-  ['practice_2', 'second_practice', 'SecondPractice', 'Practice 2', 'Träning 2'],
-  ['practice_3', 'third_practice', 'ThirdPractice', 'Practice 3', 'Träning 3'],
-  ['sprint_qualifying', 'sprint_qualifying', 'SprintQualifying', 'Sprint qualifying', 'Sprintkval'],
-  ['sprint', 'sprint', 'Sprint', 'Sprint', 'Sprint'],
-  ['qualifying', 'qualifying', 'Qualifying', 'Qualifying', 'Kval'],
-  ['race', 'race', null, 'Race', 'Race'],
+  ['practice_1', 'first_practice', 'FirstPractice', 'Practice 1'],
+  ['practice_2', 'second_practice', 'SecondPractice', 'Practice 2'],
+  ['practice_3', 'third_practice', 'ThirdPractice', 'Practice 3'],
+  ['sprint_qualifying', 'sprint_qualifying', 'SprintQualifying', 'Sprint qualifying'],
+  ['sprint', 'sprint', 'Sprint', 'Sprint'],
+  ['qualifying', 'qualifying', 'Qualifying', 'Qualifying'],
+  ['race', 'race', null, 'Race'],
 ];
 const publishedDate = value => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -298,7 +298,7 @@ export function scheduleRows(hass, entry, module, now = Date.now()) {
   const calendar = source(hass, entry, module.options.range === 'season' ? 'current_season' : 'next_race');
   const races = module.options.range === 'season' ? array(calendar.attributes.races) : [calendar.attributes];
   const rows = [];
-  for (const race of races) for (const [id, prefix, jolpica, en, sv] of SESSION_FIELDS) {
+  for (const race of races) for (const [id, prefix, jolpica, sourceText] of SESSION_FIELDS) {
     if (!module.options.sessions.includes(id)) continue;
     const block = jolpica ? race[jolpica] : race;
     const candidate = race[`${prefix}_start_utc`] ?? race[`${prefix}_start`] ?? (block?.date && block?.time ? `${block.date}T${block.time}` : null);
@@ -306,7 +306,7 @@ export function scheduleRows(hass, entry, module, now = Date.now()) {
       && publishedDate(candidate.slice(0, 10)) && Number.isFinite(Date.parse(candidate)) ? candidate : null;
     const date = publishedDate(block?.date) ?? publishedDate(race[`${prefix}_date`]) ?? publishedDate(typeof candidate === 'string' ? candidate.slice(0, 10) : null);
     if (!start && !date) continue;
-    rows.push({ id: `${race.season ?? ''}:${race.round ?? ''}:${id}`, session: id, label: { en, sv }, meeting: race.race_name ?? race.raceName ?? null,
+    rows.push({ id: `${race.season ?? ''}:${race.round ?? ''}:${id}`, session: id, label: sourceText, meeting: race.race_name ?? race.raceName ?? null,
       start, date, timezone: race.circuit_timezone ?? null, country: race.circuit_country ?? race.Circuit?.Location?.country ?? null,
       flag: safeImageUrl(race.country_flag_url), round: race.round ?? null, circuit: race.circuit_name ?? race.Circuit?.circuitName ?? null,
       location: [race.circuit_locality ?? race.Circuit?.Location?.locality, race.circuit_country ?? race.Circuit?.Location?.country].filter(Boolean).join(', ') });

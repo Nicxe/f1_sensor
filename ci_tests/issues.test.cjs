@@ -1,6 +1,6 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {extractField, versionState, componentLabels, releaseIssues} = require('../.github/scripts/issue-fields.cjs');
+const {extractField, versionState, componentLabels, dashboardCardVersion, releaseIssues} = require('../.github/scripts/issue-fields.cjs');
 const releaseComment = require('../.github/scripts/release-comment.cjs');
 const {upsertComment, ensureLabel, removeLabel, releasedIssues} = require('../.github/scripts/issue-automation.cjs');
 
@@ -100,6 +100,9 @@ test('issue form fields support CRLF, hashes and empty responses', () => {
   assert.equal(extractField('### Logs\n\nfoo #1', 'Logs'), 'foo #1');
   assert.equal(extractField('### Component\n\n_No response_', 'Component'), '');
   assert.deepEqual(componentLabels('### Component\n\nBoth integration and card'), ['integration', 'card']);
+  assert.equal(dashboardCardVersion('### Dashboard Card Version\n\nModular F1 Sensor Live Data Card'), 'modular');
+  assert.equal(dashboardCardVersion('### Dashboard Card Version\n\nLegacy standalone F1 Sensor card (deprecated)'), 'legacy');
+  assert.equal(dashboardCardVersion('### Dashboard Card Version\n\nNot sure'), 'unknown');
 });
 
 test('only older stable versions are outdated', () => {

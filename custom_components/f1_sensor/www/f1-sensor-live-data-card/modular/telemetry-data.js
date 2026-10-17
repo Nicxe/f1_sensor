@@ -1,13 +1,13 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const { replayModel } = await import(`./data.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 export const CHANNELS = {
-  speed: { en: 'Speed', sv: 'Hastighet', unit: 'km/h', min: 0, max: 500 },
-  throttle: { en: 'Throttle', sv: 'Gas', unit: '%', min: 0, max: 100 },
-  brake: { en: 'Brake signal', sv: 'Bromssignal', unit: '', min: 0, max: 100 },
-  gear: { en: 'Gear', sv: 'Växel', unit: '', min: 0, max: 8 },
-  drs: { en: 'DRS code', sv: 'DRS-kod', unit: '', min: 0, max: 99 },
-  rpm: { en: 'Engine speed', sv: 'Motorvarvtal', unit: 'rpm', min: 0, max: 25000 },
-  delta_s: { en: 'Estimated time delta', sv: 'Uppskattat tidsdelta', unit: 's', min: -1000, max: 1000 },
+  speed: { label: 'Speed', unit: 'km/h', min: 0, max: 500 },
+  throttle: { label: 'Throttle', unit: '%', min: 0, max: 100 },
+  brake: { label: 'Brake signal', unit: '', min: 0, max: 100 },
+  gear: { label: 'Gear', unit: '', min: 0, max: 8 },
+  drs: { label: 'DRS code', unit: '', min: 0, max: 99 },
+  rpm: { label: 'Engine speed', unit: 'rpm', min: 0, max: 25000 },
+  delta_s: { label: 'Estimated time delta', unit: 's', min: -1000, max: 1000 },
 };
 const number = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const validId = id => typeof id === 'string' && /^[1-9]\d?:[1-9]\d{0,2}$/.test(id) && Number(id.split(':')[1]) <= 500;

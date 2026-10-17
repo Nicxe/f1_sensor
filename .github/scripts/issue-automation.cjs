@@ -1,5 +1,5 @@
 'use strict';
-const {extractField, versionState, componentLabels, releaseIssues} = require('./issue-fields.cjs');
+const {extractField, versionState, componentLabels, dashboardCardVersion, releaseIssues} = require('./issue-fields.cjs');
 const releaseComment = require('./release-comment.cjs');
 
 async function ensureLabel(github, repo, name, color) {
@@ -46,6 +46,14 @@ async function updateIssue({github, context}, mode) {
     // Only component labels managed by this workflow are reconciled.
     for (const name of ['integration','card','blueprint','documentation']) {
       if (labels.includes(name) && !desired.includes(name)) await removeLabel(github, key, name);
+    }
+    if (desired.includes('card') && dashboardCardVersion(issue.body) === 'legacy') {
+      await upsertComment(
+        github,
+        key,
+        '<!-- f1-deprecated-card -->',
+        'This issue reports the deprecated standalone F1 Sensor dashboard card. Please migrate to the new modular F1 Sensor Live Data Card, which is the actively developed card. No further development or bug fixes are planned for the deprecated card.'
+      );
     }
     return;
   }

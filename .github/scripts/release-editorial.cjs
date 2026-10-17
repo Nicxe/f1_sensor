@@ -155,6 +155,11 @@ async function reconcileReleaseTag({
           throw new Error(`GitHub did not persist ${tag} on release ${repairable.id}.`);
         }
         core.info(`Draft release ${repairable.id} now reports ${tag} by release ID.`);
+        // A draft release may remain unavailable through getReleaseByTag even
+        // after GitHub has persisted the repair. The tag already points at the
+        // tested commit, and the release ID has now confirmed the association;
+        // do not turn that eventual-consistency window into a failed release.
+        return byId;
       }
     }
 

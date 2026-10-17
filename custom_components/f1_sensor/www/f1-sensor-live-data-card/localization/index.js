@@ -25,18 +25,37 @@ const loadMessages = async language => {
   return response.json();
 };
 
-const [englishMessages, swedishMessages, dutchMessages, { LEGACY }] = await Promise.all([
-  loadMessages('en'),
-  loadMessages('sv'),
-  loadMessages('nl'),
-  import(`./legacy.js${cacheSuffix}`),
-]);
+const availableLocaleCodes = async () => {
+  if (injectedLocales) return Object.keys(injectedLocales);
+  if (new URL(import.meta.url).protocol === 'file:') {
+    const { readdir } = await import('node:fs/promises');
+    return (await readdir(new URL('./locales/', import.meta.url)))
+      .filter(filename => filename.endsWith('.json'))
+      .map(filename => filename.slice(0, -5));
+  }
+  const manifestUrl = new URL('./available-locales.json', import.meta.url);
+  manifestUrl.search = cacheSuffix;
+  const response = await fetch(manifestUrl);
+  if (!response.ok) throw new Error(`Could not load F1 Sensor locale manifest (${response.status})`);
+  const languages = await response.json();
+  if (!Array.isArray(languages) || languages.some(language => !/^[a-z]{2,3}$/.test(language))) {
+    throw new Error('F1 Sensor locale manifest is invalid');
+  }
+  return languages;
+};
 
-export const LOCALES = Object.freeze({
-  en: Object.freeze(englishMessages),
-  sv: Object.freeze(swedishMessages),
-  nl: Object.freeze(dutchMessages),
-});
+const [{ LEGACY }, languages] = await Promise.all([
+  import(`./legacy.js${cacheSuffix}`),
+  availableLocaleCodes(),
+]);
+const localeEntries = await Promise.all(
+  [...new Set(['en', ...languages])].sort().map(async language => [
+    language,
+    Object.freeze(await loadMessages(language)),
+  ]),
+);
+
+export const LOCALES = Object.freeze(Object.fromEntries(localeEntries));
 
 export const languageCode = language => String(language || 'en')
   .toLowerCase()
@@ -76,11 +95,10 @@ const sourceKeyMap = prefix => new Map(
     .map(([key, value]) => [value, key]),
 );
 
-const MODULAR_SOURCE_KEYS = new Map([
-  ...sourceKeyMap('legacy.modular.'),
-  ...sourceKeyMap('modular.'),
-]);
 const PLATFORM_SOURCE_KEYS = sourceKeyMap('legacy.platform.');
+const MODULAR_SOURCE_KEYS = Object.entries(LOCALES.en)
+  .filter(([key]) => key.startsWith('legacy.modular.') || key.startsWith('modular.') || key.startsWith('legacy.platform.'))
+  .reduce((keys, [key, value]) => keys.set(value, [...(keys.get(value) ?? []), key]), new Map());
 const WIND_PATTERN = /^([\d.,]+ \S+) (N|NE|E|SE|S|SW|W|NW)([↓↙←↖↑↗→↘]?)$/;
 
 const translatePattern = (language, value) => {
@@ -98,13 +116,15 @@ const translatePattern = (language, value) => {
   return value;
 };
 
-// Compatibility for catalog labels that still carry their English source text.
-// New UI messages must call translate() with a stable key instead.
-export const translateLegacy = (language, english, swedish = english) => {
+// Catalog metadata keeps only English source text. Resolve it through the
+// English Weblate catalog so every target language remains file-owned.
+export const translateSourceText = (language, english) => {
   const code = supportedLanguage(language);
   if (code === 'en') return english;
-  if (code === 'sv' && swedish !== english) return swedish;
-  const key = MODULAR_SOURCE_KEYS.get(english);
+  const candidates = MODULAR_SOURCE_KEYS.get(english) ?? [];
+  const key = candidates.find(candidate => LOCALES[code][candidate] !== undefined && LOCALES[code][candidate] !== english)
+    ?? candidates.find(candidate => LOCALES[code][candidate] !== undefined)
+    ?? candidates[0];
   if (key) return translate(code, key);
   return translatePattern(code, english);
 };
@@ -122,18 +142,18 @@ export const translateLegacyText = (language, value) => {
 export const cardStrings = language => {
   const code = supportedLanguage(language);
   return Object.fromEntries(
-    Object.entries(LOCALES[code]).filter(([key]) => (
+    Object.entries(LOCALES.en).filter(([key]) => (
       key.startsWith('card.')
       || key.startsWith('a11y.')
       || key.startsWith('track_map.')
       || key.startsWith('race_control.')
-    )),
+    )).map(([key, fallback]) => [key, LOCALES[code][key] ?? fallback]),
   );
 };
 
 export const legacyTextTranslations = language => {
   const code = supportedLanguage(language);
   return Object.fromEntries(
-    [...PLATFORM_SOURCE_KEYS].map(([source, key]) => [source, LOCALES[code][key]]),
+    [...PLATFORM_SOURCE_KEYS].map(([source, key]) => [source, LOCALES[code][key] ?? LOCALES.en[key]]),
   );
 };

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
+import json
 import logging
 from pathlib import Path
 import shutil
@@ -48,9 +49,6 @@ LIVE_DATA_CARD_ASSET_FILENAMES = (
     "platform/i18n.js",
     "localization/index.js",
     "localization/legacy.js",
-    "localization/locales/en.json",
-    "localization/locales/sv.json",
-    "localization/locales/nl.json",
     "modular/i18n.js",
     "modular/catalog.js",
     "modular/config.js",
@@ -61,12 +59,14 @@ LIVE_DATA_CARD_ASSET_FILENAMES = (
     "modular/minisector-data.js",
     "modular/season-data.js",
     "modular/session-data.js",
+    "modular/team-radio-data.js",
     "modular/analysis-data.js",
     "modular/map-data.js",
     "modular/map-view.js",
     "modular/chart.js",
     "modular/telemetry-data.js",
     "modular/telemetry-view.js",
+    "modular/team-radio-view.js",
     "modular/connection.js",
     "modular/view.js",
     "modular/card.js",
@@ -84,6 +84,8 @@ LIVE_DATA_CARD_ASSET_FILENAMES = (
     "soft_tyre.png",
     "wet_tyre.png",
 )
+LIVE_DATA_CARD_LOCALES_DIR = Path("localization/locales")
+LIVE_DATA_CARD_LOCALE_MANIFEST = Path("localization/available-locales.json")
 MANAGED_LIVE_DATA_CARD_RESOURCE_URL = "/local/f1-sensor-live-data-card/register.js"
 STALE_LIVE_DATA_CARD_RESOURCES_ISSUE_ID = "stale_live_data_card_resources"
 OLD_LIVE_DATA_CARD_RESOURCE_URL_PATHS = frozenset(
@@ -233,9 +235,27 @@ def _sync_bundled_live_data_card_assets(
     if not source_dir.is_dir():
         raise FileNotFoundError(f"Bundled card directory missing: {source_dir}")
 
+    for filename in LIVE_DATA_CARD_ASSET_FILENAMES:
+        source = source_dir / filename
+        if not source.is_file():
+            raise FileNotFoundError(f"Bundled card asset missing: {source}")
+
+    locale_files = sorted(
+        path
+        for path in (source_dir / LIVE_DATA_CARD_LOCALES_DIR).glob("*.json")
+        if path.is_file()
+    )
+    locale_codes = [path.stem for path in locale_files]
+    if "en" not in locale_codes:
+        raise FileNotFoundError("Bundled card English locale is missing")
+    asset_filenames = (
+        *LIVE_DATA_CARD_ASSET_FILENAMES,
+        *(path.relative_to(source_dir).as_posix() for path in locale_files),
+    )
+
     target_dir.mkdir(parents=True, exist_ok=True)
     copied_files = 0
-    for filename in LIVE_DATA_CARD_ASSET_FILENAMES:
+    for filename in asset_filenames:
         source = source_dir / filename
         if not source.is_file():
             raise FileNotFoundError(f"Bundled card asset missing: {source}")
@@ -245,10 +265,19 @@ def _sync_bundled_live_data_card_assets(
             shutil.copy2(source, target)
             copied_files += 1
 
+    manifest = (json.dumps(locale_codes, ensure_ascii=True) + "\n").encode()
+    manifest_target = target_dir / LIVE_DATA_CARD_LOCALE_MANIFEST
+    manifest_target.parent.mkdir(parents=True, exist_ok=True)
+    if not manifest_target.is_file() or manifest_target.read_bytes() != manifest:
+        manifest_target.write_bytes(manifest)
+        copied_files += 1
+
     digest = sha256()
-    for filename in LIVE_DATA_CARD_ASSET_FILENAMES:
+    for filename in asset_filenames:
         digest.update(filename.encode())
         digest.update((source_dir / filename).read_bytes())
+    digest.update(LIVE_DATA_CARD_LOCALE_MANIFEST.as_posix().encode())
+    digest.update(manifest)
     cache_key = digest.hexdigest()[:12]
     return LiveDataCardFrontendSync(cache_key=cache_key, copied_files=copied_files)
 

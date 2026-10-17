@@ -132,7 +132,7 @@ test('repairs a matching untagged draft and verifies the corrected tag', async (
   assert.match(messages.join('\n'), /Asserting v5\.8\.0-beta\.6 on draft release 42/);
 });
 
-test('does not trust a transient exact tag from the release list', async () => {
+test('accepts a repaired draft by release ID when the tag endpoint lags', async () => {
   let tagLookups = 0;
   const updates = [];
   const release = await editorial.reconcileReleaseTag({
@@ -162,7 +162,7 @@ test('does not trust a transient exact tag from the release list', async () => {
     wait: async () => {}
   });
   assert.equal(release.id, 42);
-  assert.equal(tagLookups, 3);
+  assert.equal(tagLookups, 1);
   assert.equal(updates.length, 1);
 });
 

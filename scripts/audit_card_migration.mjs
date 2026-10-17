@@ -65,7 +65,7 @@ const cards = [...inventory.cards, ...inventory.aliases.map(alias => {
       assert.deepEqual(restoreLegacy(config), original, `${card.type}.${key}: backup`);
       const row = rows.find(row => row.path === key);
       assert.ok(row, `${card.type}.${key}: missing report`);
-      return { value, status: row.status, target: row.target, explanation: row.message.sv };
+      return { value, status: row.status, target: row.target, explanation: row.message };
     });
     return { key, lines: [...new Set([...card.card.fields, ...card.editor.fields].filter(field => field.key === key).flatMap(field => field.lines))].sort((a, b) => a - b),
       observed: observations.some(row => row.status !== 'review') ? 'conversion_reported_for_some_probes' : 'review_for_all_probes', observations };

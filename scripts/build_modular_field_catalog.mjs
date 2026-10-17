@@ -88,7 +88,7 @@ export function renderMarkdown(catalog) {
     '',
   ];
   for (const module of catalog.modules) {
-    lines.push(`## ${module.label.en} (\`${module.id}\`)`, '', `Declared sources: ${module.sources.map(source => `\`${source}\``).join(', ')}.`, '');
+    lines.push(`## ${module.label} (\`${module.id}\`)`, '', `Declared sources: ${module.sources.map(source => `\`${source}\``).join(', ')}.`, '');
     for (const variant of module.variants) {
       if (module.variants.length > 1) lines.push(`### ${variant.id}`, '');
       lines.push('| Field | Source and path | Coverage | Identity and time | Presentation |', '| --- | --- | --- | --- | --- |');
@@ -97,7 +97,7 @@ export function renderMarkdown(catalog) {
         const coverage = `Capability: ${field.capability}; modes: ${list(field.modes)}; sessions: ${list(field.sessions)}; freshness: ${field.freshness}${field.spoiler ? '; spoiler-protected' : ''}${field.estimated ? '; estimated/derived' : ''}`;
         const identity = `Identity: ${list(field.identity)}; generation: ${field.generation}; time: ${timestampText(field.timestamps)}`;
         const presentation = `Type: ${field.type}${field.unit ? `; unit: ${field.unit}` : ''}; ${list(field.presentations)}`;
-        lines.push(`| \`${field.id}\` — ${escapeCell(field.label.en)} / ${escapeCell(field.label.sv)} | ${escapeCell(source)} | ${escapeCell(coverage)} | ${escapeCell(identity)} | ${escapeCell(presentation)} |`);
+        lines.push(`| \`${field.id}\` — ${escapeCell(field.label)} | ${escapeCell(source)} | ${escapeCell(coverage)} | ${escapeCell(identity)} | ${escapeCell(presentation)} |`);
       }
       lines.push('');
     }

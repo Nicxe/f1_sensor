@@ -9,6 +9,7 @@ async function mountSections(page, { preset = 'session', config, savedRows = 2, 
   await page.evaluate(({ preset, config, savedRows, width, rowHeight, rowGap, waiting }) => {
     const value = window.mountModular({ preset, config });
     const card = window.fixtureCard;
+    card.layout = 'grid';
     if (waiting) card.previewData = { ...card.previewData, entries: [] };
     card.setConfig({ ...value, grid_options: { columns: 12, ...(savedRows === null ? {} : { rows: savedRows }) } });
     const root = document.querySelector('#root');
