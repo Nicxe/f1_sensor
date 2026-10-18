@@ -3,27 +3,27 @@
     "trigger_type": {
       "race_week_started": "Tävlingsveckan har börjat",
       "race_week_ended": "Tävlingsveckan har avslutats",
-      "safety_car_deployed": "Safety car utsänd",
-      "safety_car_cleared": "Safety car indragen",
+      "safety_car_deployed": "Säkerhetsbilen ute",
+      "safety_car_cleared": "Säkerhetsbilen inne",
       "possible_on_track_incident_detected": "Möjlig incident på banan upptäckt",
-      "possible_on_track_incident_cleared": "Möjlig incident på banan rensad",
+      "possible_on_track_incident_cleared": "Möjlig incident på banan avslutad",
       "on_track_incident_detected": "Incident på banan upptäckt",
-      "on_track_incident_cleared": "Incident på banan rensad",
-      "formation_start_ready": "Formationsstart redo",
-      "overtake_mode_enabled": "Omkörningstillstånd aktiverat",
-      "overtake_mode_disabled": "Omkörningstillstånd inaktiverat",
-      "session_live": "Session startad live",
-      "track_status_clear": "Banstatus: Klar",
+      "on_track_incident_cleared": "Incident på banan avslutad",
+      "formation_start_ready": "Redo för formationsstart",
+      "overtake_mode_enabled": "Omkörningsläge aktiverat",
+      "overtake_mode_disabled": "Omkörningsläge inaktiverat",
+      "session_live": "Sessionen har startat",
+      "track_status_clear": "Banstatus: Fri bana",
       "track_status_yellow": "Banstatus: Gul flagg",
-      "track_status_safety_car": "Banstatus: Safety car",
-      "track_status_vsc": "Banstatus: Virtuell safety car",
+      "track_status_safety_car": "Banstatus: Säkerhetsbil",
+      "track_status_vsc": "Banstatus: Virtuell säkerhetsbil",
       "track_status_red_flag": "Banstatus: Röd flagg",
       "new_race_control_message": "Nytt Race Control-meddelande",
       "new_fia_document": "Nytt FIA-dokument publicerat",
       "investigation_changed": "Utredningsstatus ändrad",
-      "new_team_radio": "Nytt teamradio-meddelande",
-      "live_timing_online": "Live timing online",
-      "live_timing_offline": "Live timing offline",
+      "new_team_radio": "Nytt teamradiomeddelande",
+      "live_timing_online": "Livetiming är online",
+      "live_timing_offline": "Livetiming är offline",
       "favorite_driver_position_gained": "Favoritföraren avancerade en placering",
       "favorite_driver_position_lost": "Favoritföraren tappade en placering",
       "favorite_driver_entered_pits": "Favoritföraren körde in i depån",
@@ -34,116 +34,116 @@
   "config": {
     "step": {
       "user": {
-        "title": "Inställning av F1-sensor",
+        "title": "Konfiguration av F1 Sensor",
         "data": {
           "sensor_name": "Enhetsnamn",
           "enabled_sensors": "Aktiverade sensorer",
           "operation_mode": "Driftläge",
           "replay_file": "Sökväg till replay-dump",
-          "enable_race_control": "Aktivera live F1 API (Race Control/Track/Session)",
-          "install_dashboard_cards": "Installera medföljande dashboardkort",
+          "enable_race_control": "Aktivera F1:s live-API (Race Control/bana/session)",
+          "install_dashboard_cards": "Installera medföljande instrumentpanelskort",
           "race_week_start_day": "Första dagen i tävlingsveckan",
-          "live_timing_auth_header": "Manuell reservväg: F1TV-auktoriseringsvärde",
+          "live_timing_auth_header": "Manuellt alternativ: F1TV-auktoriseringsvärde",
           "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst med Token Helper",
-          "install_legacy_cards": "Installera äldre dashboardkort",
+          "install_legacy_cards": "Installera äldre instrumentpanelskort",
           "clear_live_timing_auth_header": "Rensa F1TV-auktoriseringsvärde"
         },
         "data_description": {
           "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
           "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
-          "enable_race_control": "Ansluter till Formula 1 Live Timing via SignalR för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
-          "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-kort slutar fungera när webbläsaren har laddats om.",
+          "enable_race_control": "Ansluter till Formula 1 Live Timing via SignalR för att ta emot liveuppdateringar. Om det är inaktiverat skapas inte dessa livesensorer.",
+          "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-instrumentpanelskort slutar fungera när du laddar om webbläsaren.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
-          "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra in hela Bearer-token från F1TV Token Helper som avancerad reservväg. Lämna tomt för att bara använda publik live timing utan Replay Mode eller arkivdata",
-          "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering. F1TV-åtkomst är för Replay Mode, arkivdata och utökad live data; publik live timing fortsätter fungera utan den.",
-          "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att dashboardkort installeras. Ladda om webbläsaren efter ändringen. Om du stänger av valet slutar äldre kort fungera om du inte migrerar dem till F1 Sensor-kortet. Vid flera F1 Sensor-installationer finns äldre kort kvar så länge någon aktiverad installation begär dem."
+          "live_timing_auth_header": "Manuellt alternativ om parkoppling med Token Helper inte fungerar. Klistra bara in hela Bearer-tokenen från F1TV Token Helper som en avancerad reservlösning. Lämna tomt för att använda publik livetiming utan reprisläge eller arkivmedia.",
+          "start_f1tv_pairing": "Rekommenderat alternativ. Anslut en aktiv betald F1TV-prenumeration för reprisläge, arkivmedia och ytterligare livedata. Publik livetiming fungerar även utan den.",
+          "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att instrumentpanelskorten installeras. Ladda om webbläsaren efter att du ändrat inställningen. Om du stänger av den slutar befintliga äldre kort att fungera, om du inte migrerar dem till F1 Sensor-kortet. Om det finns flera F1 Sensor-installationer förblir de äldre korten tillgängliga så länge någon aktiverad installation begär dem."
         }
       },
       "reconfigure": {
-        "title": "Konfigurera om F1-sensor",
+        "title": "Konfigurera om F1 Sensor",
         "data": {
           "sensor_name": "Enhetsnamn",
           "enabled_sensors": "Aktiverade sensorer",
           "operation_mode": "Driftläge",
           "replay_file": "Sökväg till replay-dump",
-          "enable_race_control": "Aktivera live F1 API",
-          "install_dashboard_cards": "Installera medföljande dashboardkort",
+          "enable_race_control": "Aktivera F1:s live-API",
+          "install_dashboard_cards": "Installera medföljande instrumentpanelskort",
           "race_week_start_day": "Första dagen i tävlingsveckan",
-          "live_timing_auth_header": "Manuell reservväg: F1TV-auktoriseringsvärde",
+          "live_timing_auth_header": "Manuellt alternativ: F1TV-auktoriseringsvärde",
           "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst med Token Helper",
-          "install_legacy_cards": "Installera äldre dashboardkort",
+          "install_legacy_cards": "Installera äldre instrumentpanelskort",
           "clear_live_timing_auth_header": "Rensa F1TV-auktoriseringsvärde"
         },
         "data_description": {
           "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
           "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
-          "enable_race_control": "Ansluter till Formula 1 Live Timing för att ta emot liveuppdateringar. Om avaktiverad skapas inte dessa livesensorer.",
-          "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-kort slutar fungera när webbläsaren har laddats om.",
+          "enable_race_control": "Ansluter till Formula 1 Live Timing för att ta emot liveuppdateringar. Om det är inaktiverat skapas inte dessa livesensorer.",
+          "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-instrumentpanelskort slutar fungera när du laddar om webbläsaren.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
-          "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra bara in en ny fullständig Bearer-token som avancerad reservväg. Lämna tomt för att behålla nuvarande värde.",
-          "start_f1tv_pairing": "Rekommenderat alternativ. Anslut en aktiv F1 TV-prenumeration för att få tillgång till reprisläge, arkiverat material och utökad livedata. Offentlig livetidtagning fungerar även utan prenumeration.",
-          "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att dashboardkort installeras. Ladda om webbläsaren efter ändringen. Om du stänger av valet slutar äldre kort fungera om du inte migrerar dem till F1 Sensor-kortet. Vid flera F1 Sensor-installationer finns äldre kort kvar så länge någon aktiverad installation begär dem.",
-          "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med enbart publik livetiming.Replay mode och arkivdata är inte längre tillgängligt."
+          "live_timing_auth_header": "Manuellt alternativ om parkoppling med Token Helper inte fungerar. Klistra bara in en ny fullständig Bearer-token som en avancerad reservlösning. Lämna tomt för att behålla nuvarande värde.",
+          "start_f1tv_pairing": "Rekommenderat alternativ. Anslut en aktiv betald F1TV-prenumeration för reprisläge, arkivmedia och ytterligare livedata. Publik livetiming fungerar även utan den.",
+          "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att instrumentpanelskorten installeras. Ladda om webbläsaren efter att du ändrat inställningen. Om du stänger av den slutar befintliga äldre kort att fungera, om du inte migrerar dem till F1 Sensor-kortet. Om det finns flera F1 Sensor-installationer förblir de äldre korten tillgängliga så länge någon aktiverad installation begär dem.",
+          "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med publik livetiming. Reprisläge och arkivmedia blir inte tillgängliga."
         }
       },
       "reauth_confirm": {
-        "title": "Uppdatera F1TV live timing-auktorisering",
+        "title": "Uppdatera F1TV-auktorisering för livetiming",
         "data": {
-          "live_timing_auth_header": "Manuell reservväg: F1TV-auktoriseringsvärde",
+          "live_timing_auth_header": "Manuellt alternativ: F1TV-auktoriseringsvärde",
           "clear_live_timing_auth_header": "Rensa F1TV-auktoriseringsvärde",
           "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst med Token Helper"
         },
         "data_description": {
-          "live_timing_auth_header": "Manuell reservväg om Token Helper-pairing inte fungerar. Klistra bara in en ny fullständig Bearer-token som avancerad reservväg.",
-          "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med endast publik live timing. Replay Mode och arkivdata kommer inte längre vara tillgängligt.",
-          "start_f1tv_pairing": "Rekommenderat. Anslut en aktiv, betald F1TV-prenumeration för reprisläge, arkivmaterial och ytterligare livedata. Publik livetiming fungerar även utan den."
+          "live_timing_auth_header": "Manuellt alternativ om parkoppling med Token Helper inte fungerar. Klistra bara in en ny fullständig Bearer-token som en avancerad reservlösning.",
+          "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med publik livetiming. Reprisläge och arkivmedia blir inte tillgängliga.",
+          "start_f1tv_pairing": "Rekommenderat alternativ. Anslut en aktiv betald F1TV-prenumeration för reprisläge, arkivmedia och ytterligare livedata. Publik livetiming fungerar även utan den."
         }
       },
       "f1tv_pairing": {
         "title": "Anslut F1TV-åtkomst",
-        "description": "Använd F1TV Token Helper för att koppla en aktiv, betald prenumeration. Publik livetiming kräver ingen autentisering, men reprisläge och arkivmaterial kräver F1TV-åtkomst. Denna ihopkoppling upphör att gälla {expires_at}."
+        "description": "Använd F1TV Token Helper för att ansluta en aktiv betald prenumeration. Publik livetiming fungerar utan autentisering, men reprisläge och arkivmedia kräver F1TV-åtkomst. Den här parkopplingen upphör att gälla {expires_at}."
       }
     },
     "abort": {
-      "reconfigure_successful": "F1-sensorn har konfigurerats om.",
-      "f1tv_pairing_unavailable": "F1TV-pairing är inte tillgänglig i den här versionen.",
-      "f1tv_pairing_failed": "F1TV-pairing slutfördes inte. Starta en ny pairing-session och försök igen."
+      "reconfigure_successful": "F1 Sensor har konfigurerats om.",
+      "f1tv_pairing_unavailable": "F1TV-parkoppling är inte tillgänglig i den här versionen.",
+      "f1tv_pairing_failed": "F1TV-parkopplingen slutfördes inte. Starta en ny parkopplingssession och försök igen."
     },
     "error": {
-      "replay_required": "Välj en replay-dumpfil när utvecklingsläge är aktiverat.",
+      "replay_required": "Välj en replay-dumpfil när utvecklingsläget är aktiverat.",
       "replay_missing": "Replay-dumpfilen hittades inte eller är oläsbar.",
-      "auth_header_required": "Ange det F1TV-auktoriseringsvärdet eller välj att rensa det.",
+      "auth_header_required": "Ange F1TV-auktoriseringsvärdet eller välj att rensa det.",
       "invalid_auth_header": "Ange ett giltigt Bearer-tokenvärde.",
-      "auth_token_missing_exp": "Token saknar utgångstid.",
-      "auth_token_expired": "Token har gått ut.",
-      "auth_token_expiring_soon": "Token går ut för snart. Skapa en ny token och försök igen."
+      "auth_token_missing_exp": "Tokenen saknar utgångstid.",
+      "auth_token_expired": "Tokenen har gått ut.",
+      "auth_token_expiring_soon": "Tokenen går ut för snart. Skapa en ny token och försök igen."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Konfigurera F1-sensorns funktioner",
+        "title": "Konfigurera funktioner i F1 Sensor",
         "data": {
           "enabled_sensors": "Aktiverade sensorer",
-          "enable_race_control": "Aktivera live F1 API",
-          "install_dashboard_cards": "Installera medföljande dashboardkort",
+          "enable_race_control": "Aktivera F1:s live-API",
+          "install_dashboard_cards": "Installera medföljande instrumentpanelskort",
           "race_week_start_day": "Första dagen i tävlingsveckan",
           "operation_mode": "Driftläge",
           "replay_file": "Sökväg till replay-dump",
-          "install_legacy_cards": "Installera äldre dashboardkort"
+          "install_legacy_cards": "Installera äldre instrumentpanelskort"
         },
         "data_description": {
           "enable_race_control": "Anslut endast till Formula 1 Live Timing när livefunktioner är aktiverade.",
-          "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-kort slutar fungera när webbläsaren har laddats om.",
+          "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-instrumentpanelskort slutar fungera när du laddar om webbläsaren.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
-          "operation_mode": "Välj Live eller lokalt utvecklingsläge med replay.",
+          "operation_mode": "Välj Live eller utvecklingsläge med lokal replay-dump.",
           "replay_file": "Absolut sökväg till en replay-dump som endast används i utvecklingsläge.",
-          "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att dashboardkort installeras. Ladda om webbläsaren efter ändringen. Om du stänger av valet slutar äldre kort fungera om du inte migrerar dem till F1 Sensor-kortet. Vid flera F1 Sensor-installationer finns äldre kort kvar så länge någon aktiverad installation begär dem."
+          "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att instrumentpanelskorten installeras. Ladda om webbläsaren efter att du ändrat inställningen. Om du stänger av den slutar befintliga äldre kort att fungera, om du inte migrerar dem till F1 Sensor-kortet. Om det finns flera F1 Sensor-installationer förblir de äldre korten tillgängliga så länge någon aktiverad installation begär dem."
         }
       }
     },
     "error": {
-      "replay_required": "Välj en replay-dumpfil när utvecklingsläge är aktiverat.",
+      "replay_required": "Välj en replay-dumpfil när utvecklingsläget är aktiverat.",
       "replay_missing": "Replay-dumpfilen hittades inte eller är oläsbar."
     }
   },
@@ -158,24 +158,24 @@
               "clear_live_timing_auth_header": "Rensa F1TV-auktoriseringsvärde"
             },
             "data_description": {
-              "start_f1tv_pairing": "Rekommenderad väg. Starta en kortlivad pairing-session och skicka token från webbläsartillägget utan manuell kopiering.",
+              "start_f1tv_pairing": "Rekommenderat alternativ. Starta en kortlivad parkopplingssession och skicka tokenen från webbläsartillägget utan att kopiera den manuellt.",
               "live_timing_auth_header": "Klistra in ett nytt Bearer-tokenvärde från F1TV Token Helper för F1TV-åtkomst.",
-              "clear_live_timing_auth_header": "Ta bort den sparade F1TV-token och fortsätt med publik livetiming. Reprisläge och arkivmaterial kommer inte vara tillgängliga."
+              "clear_live_timing_auth_header": "Ta bort den sparade F1TV-tokenen och fortsätt med publik livetiming. Reprisläge och arkivmedia blir inte tillgängliga."
             },
-            "description": "Den sparade F1TV-token för {name} behöver uppmärksamhet. Publik livetiming fortsätter fungera, men reprisläge, arkivmaterial och ytterligare F1TV-livedata kräver en ersättande token.",
-            "title": "Uppdatera F1TV live timing-token"
+            "description": "Den sparade F1TV-tokenen för {name} behöver åtgärdas. Publik livetiming fungerar fortfarande, men reprisläge, arkivmedia och ytterligare livedata från F1TV kräver en ny token.",
+            "title": "Uppdatera F1TV-token för livetiming"
           },
           "f1tv_pairing": {
             "title": "Anslut F1TV-åtkomst",
-            "description": "Använd F1TV Token Helper för att ansluta en aktiv betald prenumeration. Publik live timing förblir tillgänglig utan autentisering, men Replay Mode och arkivmaterial kräver F1TV-åtkomst. Denna parkoppling upphör att gälla {expires_at}."
+            "description": "Använd F1TV Token Helper för att ansluta en aktiv betald prenumeration. Publik livetiming fungerar utan autentisering, men reprisläge och arkivmedia kräver F1TV-åtkomst. Den här parkopplingen upphör att gälla {expires_at}."
           }
         }
       },
-      "title": "F1TV live timing-token behöver åtgärdas"
+      "title": "F1TV-token för livetiming behöver åtgärdas"
     },
     "stale_live_data_card_resources": {
-      "description": "Home Assistant har fortfarande inaktuella Lovelace-resurser för det äldre fristående F1-kortet ({stale_resource_count} upptäckta). De kan orsaka dubbla kort eller göra att F1-kort fortfarande visas när de medföljande dashboardkorten har stängts av. Ta bort det äldre fristående HACS-dashboardrepoet och dess inaktuella Lovelace-resurser. Starta sedan om Home Assistant eller ladda om Lovelace-resurserna och gör en fullständig omladdning av webbläsaren.",
-      "title": "Äldre fristående resurser för F1 Live Data Card upptäcktes"
+      "description": "Home Assistant har fortfarande inaktuella Lovelace-resurser för det gamla fristående F1-kortet ({stale_resource_count} upptäckta). De kan orsaka dubbla kort eller göra att F1-kort fortfarande visas efter att de medföljande instrumentpanelskorten har stängts av. Ta bort det gamla fristående HACS-repot för kortet och dess inaktuella Lovelace-resurser. Starta sedan om Home Assistant eller ladda om Lovelace-resurserna och gör en fullständig omladdning av webbläsaren.",
+      "title": "Resurser för det gamla fristående F1-livedatakortet upptäcktes"
     }
   },
   "entity": {
@@ -190,10 +190,10 @@
         "name": "Aktuell säsong"
       },
       "driver_standings": {
-        "name": "Förarställning"
+        "name": "Förarmästerskapet"
       },
       "constructor_standings": {
-        "name": "Konstruktorställning"
+        "name": "Konstruktörsmästerskapet"
       },
       "weather": {
         "name": "Väder"
@@ -214,10 +214,10 @@
         "name": "Sprintresultat"
       },
       "lap_position_progression": {
-        "name": "Varvpositionsutveckling"
+        "name": "Positionsutveckling per varv"
       },
       "race_control": {
-        "name": "Tävlingskontroll"
+        "name": "Race Control"
       },
       "top_three_p1": {
         "name": "Topp tre (P1)"
@@ -235,16 +235,16 @@
         "name": "Mästerskapsprognos (förare)"
       },
       "championship_prediction_teams": {
-        "name": "Mästerskapsprognos (lag)"
+        "name": "Mästerskapsprognos (stall)"
       },
       "fia_documents": {
         "name": "FIA-beslut"
       },
       "live_timing_mode": {
-        "name": "Live timing-läge"
+        "name": "Livetimingläge"
       },
       "f1tv_token_status": {
-        "name": "F1TV token-status",
+        "name": "F1TV-tokenstatus",
         "state": {
           "not_configured": "Inte konfigurerad",
           "valid": "Giltig",
@@ -261,13 +261,13 @@
         "name": "Förarpositioner"
       },
       "starting_grid": {
-        "name": "Startgrid"
+        "name": "Startuppställning"
       },
       "track_limits": {
-        "name": "Spårgränser"
+        "name": "Banbegränsningar"
       },
       "investigations": {
-        "name": "Utredningar & straff"
+        "name": "Utredningar och bestraffningar"
       },
       "straight_mode": {
         "name": "Raksträckeläge",
@@ -305,16 +305,16 @@
         "name": "Teamradio"
       },
       "race_lap_count": {
-        "name": "Varvsräkning"
+        "name": "Antal varv i loppet"
       },
       "driver_points_progression": {
         "name": "Förarpoängsutveckling"
       },
       "constructor_points_progression": {
-        "name": "Konstruktorpoängsutveckling"
+        "name": "Konstruktörspoängsutveckling"
       },
       "replay_status": {
-        "name": "Replay-status"
+        "name": "Reprisstatus"
       },
       "favorite_driver": {
         "name": "Favoritförare"
@@ -330,7 +330,7 @@
         "name": "Matcha livefördröjning"
       },
       "replay_load": {
-        "name": "Ladda session"
+        "name": "Ladda in session"
       },
       "replay_play": {
         "name": "Spela"
@@ -375,7 +375,7 @@
     },
     "media_player": {
       "replay_player": {
-        "name": "Replay-spelare"
+        "name": "Reprisspelare"
       }
     },
     "select": {
@@ -383,13 +383,13 @@
         "name": "Livefördröjningsreferens"
       },
       "replay_year": {
-        "name": "Replay-år"
+        "name": "Reprisår"
       },
       "replay_session": {
-        "name": "Replay-session"
+        "name": "Reprissession"
       },
       "replay_start_reference": {
-        "name": "Replay-startreferens"
+        "name": "Startreferens för repris"
       },
       "favorite_driver": {
         "name": "Favoritförare"
@@ -400,7 +400,7 @@
         "name": "Tävlingsvecka"
       },
       "live_timing_online": {
-        "name": "Live timing online"
+        "name": "Livetiming online"
       },
       "safety_car": {
         "name": "Säkerhetsbil"
@@ -415,7 +415,7 @@
         "name": "Formationsstart"
       },
       "overtake_mode": {
-        "name": "Omkörningstillstånd"
+        "name": "Omkörningsläge"
       }
     },
     "calendar": {
