@@ -14,10 +14,10 @@
       "overtake_mode_disabled": "Omkörningsläge inaktiverat",
       "session_live": "Sessionen har startat",
       "track_status_clear": "Banstatus: Fri bana",
-      "track_status_yellow": "Banstatus: Gul flagg",
+      "track_status_yellow": "Banstatus: Gul flagga",
       "track_status_safety_car": "Banstatus: Säkerhetsbil",
       "track_status_vsc": "Banstatus: Virtuell säkerhetsbil",
-      "track_status_red_flag": "Banstatus: Röd flagg",
+      "track_status_red_flag": "Banstatus: Röd flagga",
       "new_race_control_message": "Nytt Race Control-meddelande",
       "new_fia_document": "Nytt FIA-dokument publicerat",
       "investigation_changed": "Utredningsstatus ändrad",
@@ -39,17 +39,17 @@
           "sensor_name": "Enhetsnamn",
           "enabled_sensors": "Aktiverade sensorer",
           "operation_mode": "Driftläge",
-          "replay_file": "Sökväg till replay-dump",
+          "replay_file": "Sökväg till replaydumpfil",
           "enable_race_control": "Aktivera F1:s live-API (Race Control/bana/session)",
           "install_dashboard_cards": "Installera medföljande instrumentpanelskort",
           "race_week_start_day": "Första dagen i tävlingsveckan",
           "live_timing_auth_header": "Manuellt alternativ: F1TV-auktoriseringsvärde",
-          "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst med Token Helper",
+          "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst via Token Helper",
           "install_legacy_cards": "Installera äldre instrumentpanelskort",
           "clear_live_timing_auth_header": "Rensa F1TV-auktoriseringsvärde"
         },
         "data_description": {
-          "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
+          "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dumpfil lokalt.",
           "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
           "enable_race_control": "Ansluter till Formula 1 Live Timing via SignalR för att ta emot liveuppdateringar. Om det är inaktiverat skapas inte dessa livesensorer.",
           "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-instrumentpanelskort slutar fungera när du laddar om webbläsaren.",
@@ -65,18 +65,18 @@
           "sensor_name": "Enhetsnamn",
           "enabled_sensors": "Aktiverade sensorer",
           "operation_mode": "Driftläge",
-          "replay_file": "Sökväg till replay-dump",
+          "replay_file": "Sökväg till replaydumpfil",
           "enable_race_control": "Aktivera F1:s live-API",
           "install_dashboard_cards": "Installera medföljande instrumentpanelskort",
           "race_week_start_day": "Första dagen i tävlingsveckan",
           "live_timing_auth_header": "Manuellt alternativ: F1TV-auktoriseringsvärde",
-          "start_f1tv_pairing": "Rekommenderat: Anslut F1TV-åtkomst med Token Helper",
+          "start_f1tv_pairing": "Rekommenderat: Anslut F1TV via Token Helper",
           "install_legacy_cards": "Installera äldre instrumentpanelskort",
           "clear_live_timing_auth_header": "Rensa F1TV-auktoriseringsvärde"
         },
         "data_description": {
           "operation_mode": "Välj Live för att ansluta till Formula 1 SignalR, eller Utveckling för att spela upp en sparad dump lokalt.",
-          "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i utvecklingsläge.",
+          "replay_file": "Absolut sökväg till en inspelad SignalR-dumpfil. Krävs endast i Utvecklingsläge.",
           "enable_race_control": "Ansluter till Formula 1 Live Timing för att ta emot liveuppdateringar. Om det är inaktiverat skapas inte dessa livesensorer.",
           "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-instrumentpanelskort slutar fungera när du laddar om webbläsaren.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
@@ -111,9 +111,9 @@
     },
     "error": {
       "replay_required": "Välj en replay-dumpfil när utvecklingsläget är aktiverat.",
-      "replay_missing": "Replay-dumpfilen hittades inte eller är oläsbar.",
+      "replay_missing": "Replaydumpfilen hittades inte eller är oläslig.",
       "auth_header_required": "Ange F1TV-auktoriseringsvärdet eller välj att rensa det.",
-      "invalid_auth_header": "Ange ett giltigt Bearer-tokenvärde.",
+      "invalid_auth_header": "Ange ett giltigt Bearer-token.",
       "auth_token_missing_exp": "Tokenen saknar utgångstid.",
       "auth_token_expired": "Tokenen har gått ut.",
       "auth_token_expiring_soon": "Tokenen går ut för snart. Skapa en ny token och försök igen."
@@ -129,7 +129,7 @@
           "install_dashboard_cards": "Installera medföljande instrumentpanelskort",
           "race_week_start_day": "Första dagen i tävlingsveckan",
           "operation_mode": "Driftläge",
-          "replay_file": "Sökväg till replay-dump",
+          "replay_file": "Sökväg till replaydumpfil",
           "install_legacy_cards": "Installera äldre instrumentpanelskort"
         },
         "data_description": {
@@ -202,13 +202,13 @@
         "name": "Banväder"
       },
       "current_session": {
-        "name": "Aktuell session"
+        "name": "Pågående session"
       },
       "last_race_results": {
         "name": "Senaste loppets resultat"
       },
       "season_results": {
-        "name": "Säsongsresultat"
+        "name": "Säsongens resultat"
       },
       "sprint_results": {
         "name": "Sprintresultat"
@@ -249,7 +249,7 @@
           "not_configured": "Inte konfigurerad",
           "valid": "Giltig",
           "expiring_soon": "Går snart ut",
-          "expired": "Utgången",
+          "expired": "Utgått",
           "invalid": "Ogiltig",
           "rejected": "Avvisad"
         }
@@ -267,7 +267,7 @@
         "name": "Banbegränsningar"
       },
       "investigations": {
-        "name": "Utredningar och bestraffningar"
+        "name": "Utredningar och påföljder"
       },
       "straight_mode": {
         "name": "Raksträckeläge",
@@ -327,7 +327,7 @@
     },
     "button": {
       "delay_calibration_match": {
-        "name": "Matcha livefördröjning"
+        "name": "Anpassa livefördröjning"
       },
       "replay_load": {
         "name": "Ladda in session"
