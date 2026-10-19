@@ -232,7 +232,9 @@
   },
   "device_automation": {
     "trigger_type": {
-      "on_track_incident_detected": "Zwischenfall auf der Strecke erkannt"
+      "on_track_incident_detected": "Zwischenfall auf der Strecke erkannt",
+      "race_week_started": "Rennwoche gestartet",
+      "race_week_ended": "Rennwoche beendet"
     }
   }
 }
