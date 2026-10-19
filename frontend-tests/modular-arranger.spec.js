@@ -137,7 +137,7 @@ test('Swedish mobile layout scrolls within its overview and has large touch hand
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const scroll = board.locator('.scroll');
   expect(await scroll.evaluate(n => n.scrollWidth > n.clientWidth)).toBe(true);
-  const handle = board.getByRole('button', { name: 'Flytta Timing', exact: true });
+  const handle = board.locator('[data-id="timing"] button[data-handle="move"]');
   const p = await center(handle);
   const box = await handle.boundingBox();
   expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44);

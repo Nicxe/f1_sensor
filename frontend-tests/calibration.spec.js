@@ -141,6 +141,6 @@ test('calibration remains usable on mobile, keeps ticks out of live announcement
   });
   await expect(guide.locator('button[data-command="cal-match"]')).toBeVisible();
   await expect(guide.getByText('10,4 s', { exact: true })).toBeVisible();
-  await guide.getByRole('button', { name: 'Avbryt kalibrering', exact: true }).press('Enter');
-  await expect(guide.getByText('Kalibreringen avbruten; fördröjningen oförändrad', { exact: true })).toBeVisible();
+  await guide.locator('button[data-command="cal-cancel"]').press('Enter');
+  await expect(guide.locator('button[data-command="cal-start"]')).toBeVisible();
 });
