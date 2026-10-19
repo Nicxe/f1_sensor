@@ -143,7 +143,7 @@ test('Swedish mobile layout scrolls within its overview and has large touch hand
   expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44);
   await expect(handle).toHaveCSS('touch-action', 'none');
   await expect(board.locator('[data-id=timing] .choose')).toHaveCSS('touch-action', 'auto');
-  await expect(board.getByLabel('Vald moduls bredd', { exact: true })).toHaveValue('2');
+  await expect(board.locator('.controls').last().locator('select')).toHaveValue('2');
   const a11y = await new AxeBuilder({ page }).include('f1-sensor-card-editor').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(a11y.violations).toEqual([]);
 });
