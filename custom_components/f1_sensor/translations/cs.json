@@ -1,1 +1,55 @@
-{}
+{
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Začal závodní týden",
+      "race_week_ended": "Závodní týden skončil",
+      "safety_car_deployed": "Safety car na trati",
+      "safety_car_cleared": "Safety car ukončen",
+      "on_track_incident_detected": "Nehoda na trati zaznamenána",
+      "on_track_incident_cleared": "Nehoda na trati vyklizena",
+      "formation_start_ready": "Záváděcí kolo připraveno",
+      "overtake_mode_enabled": "Overtake mode povolen",
+      "overtake_mode_disabled": "Overtake mode zakázán",
+      "session_live": "Session začala",
+      "track_status_clear": "Stav tratě: Volno",
+      "track_status_yellow": "Stav tratě: Žluté vlajky",
+      "track_status_safety_car": "Stav tratě: Safety car",
+      "track_status_vsc": "Stav tratě: Virtuální safety car",
+      "track_status_red_flag": "Stav tratě: Červené vlajky",
+      "new_race_control_message": "Nová zpráva z vedení závodu",
+      "new_fia_document": "FIA zveřejnila nový dokument",
+      "investigation_changed": "Stav vyšetřovanání byl změněn",
+      "new_team_radio": "Nová týmová radiová zpráva",
+      "favorite_driver_position_gained": "Oblíbený jezdec vylepšil svojí pozici",
+      "favorite_driver_position_lost": "Oblíbený jezdec ztratil pozici",
+      "favorite_driver_entered_pits": "Oblíbený jezdec vjel do boxů",
+      "favorite_driver_exited_pits": "Oblíbený jezdec opustil boxy",
+      "favorite_driver_retired": "Oblíbený jezdec odstoupil",
+      "live_timing_online": "Live timing živě",
+      "live_timing_offline": "Live timing offine"
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nastavení F1 Sensoru",
+        "data": {
+          "sensor_name": "Název zařízení",
+          "enabled_sensors": "Povolené sensory",
+          "operation_mode": "Funkční režim",
+          "replay_file": "Cesta souboru pro přehrání",
+          "enable_race_control": "Povolit online/live F1 API (Vedení závodu/Trať/Session)",
+          "install_dashboard_cards": "Nainstalovat hromadné karty na dashboard",
+          "race_week_start_day": "První den závodního týdne",
+          "live_timing_auth_header": "Ruční záloha: F1TV autorizační hodnota",
+          "clear_live_timing_auth_header": "Smazat F1TV autorizační hodnotu",
+          "start_f1tv_pairing": "Doporučeno: Připojit F1TV přístup pomocí Token Helperu",
+          "install_legacy_cards": "Nainstalovat původní karty na dashboard"
+        },
+        "data_description": {
+          "operation_mode": "Zvolte Live k připojení Formula 1 SignalR nebo Development pro přehrávání uloženého záznamu z místního zdroje"
+        }
+      }
+    }
+  }
+}
