@@ -203,6 +203,7 @@ const sidebars = {
         "example/e-ink",
         "example/custom-card",
         "example/custom-card-by",
+        "help/translations",
         "support"
       ]
     },
