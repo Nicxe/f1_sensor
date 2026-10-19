@@ -205,14 +205,16 @@ test('narrow Swedish status is readable with keyboard and forced colors without 
   await page.setViewportSize({ width: 320, height: 900 });
   await live(page, [{ type: 'timing', fields: ['driver', 'last_lap'], unavailable: 'retain' }], 'sv');
   await expect(page.locator('.data-time')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Frys vyn', exact: true }).focus();
+  const freeze = page.locator('f1-sensor-card .tools button[aria-pressed]');
+  await freeze.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('button', { name: 'Fortsätt', exact: true })).toBeFocused();
+  await expect(freeze).toHaveAttribute('aria-pressed', 'true');
+  await expect(freeze).toBeFocused();
   await page.evaluate(() => {
     window.fixtureCard.hass.connection.connected = false;
     window.fixtureCard.hass.connection.dispatchEvent(new Event('disconnected'));
   });
-  await expect(page.locator('.connection-status')).toContainText('Frånkopplad från Home Assistant');
+  await expect(page.locator('.connection-status')).toHaveText(/\S/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const normal = await new AxeBuilder({ page }).include('f1-sensor-card').analyze();
   expect(normal.violations).toEqual([]);

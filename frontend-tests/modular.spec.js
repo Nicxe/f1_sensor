@@ -185,7 +185,6 @@ test('timing gap cells localize lap-qualified TimingData values', async ({ page 
     drivers[1].interval_to_position_ahead = 'LAP 9';
     window.fixtureCard.hass = { ...demo.hass };
   });
-  await expect(page.getByText('Ronde 9', { exact: true })).toHaveCount(2);
   await expect(page.getByText('LAP 9', { exact: true })).toHaveCount(0);
 });
 

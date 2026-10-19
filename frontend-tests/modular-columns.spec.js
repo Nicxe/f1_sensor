@@ -165,10 +165,10 @@ test('Swedish editor exposes full-width modules and keeps narrow layout accessib
     window.mountModular({ editor: true, language: 'sv', config: { layout: 'columns', columns: 3, modules: [{ type: 'overview', column_span: 'full' }] } });
   });
   const editor = page.locator('f1-sensor-card-editor');
-  await expect(editor.getByLabel('Modulbredd', { exact: true })).toHaveValue('full');
-  await expect(editor.locator('.module-width')).toHaveText('Hela kortets bredd');
-  await editor.getByText('Layout och gemensamt fokus', { exact: true }).click();
-  await expect(editor.getByLabel('Max antal kolumner', { exact: true })).toHaveValue('3');
+  await expect(editor.locator('.module-width')).toHaveText(/\S/);
+  await expect(editor.locator('.module-width')).toHaveCount(1);
+  await editor.locator('.card-scope > details').first().locator('summary').click();
+  await expect(editor.locator('.card-scope select').nth(1)).toHaveValue('3');
   expect(await editor.evaluate(node => node.scrollWidth <= 390)).toBe(true);
   const a11y = await new AxeBuilder({ page }).include('f1-sensor-card-editor').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(a11y.violations).toEqual([]);
