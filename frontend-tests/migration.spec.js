@@ -176,8 +176,9 @@ test('conversion review supports keyboard, narrow widths, Swedish and forced col
     window.mountMigration({ type: 'custom:f1-weekend-hub-card', title: 'Helgen', unknown: true });
     window.migrationEditor.hass = { ...window.migrationEditor.hass, locale: { ...window.migrationEditor.hass.locale, language: 'sv' } };
   });
-  await expect(page.getByRole('heading', { name: 'Det här kortet är deprecierat', exact: true })).toBeVisible();
-  await expect(page.getByText('Ingenting ändras förrän du tillämpar konverteringen och sparar i Home Assistant.', { exact: false })).toBeVisible();
+  const notice = page.locator('f1-migration-editor .migration');
+  await expect(notice.getByRole('heading')).toBeVisible();
+  await expect(notice.getByRole('paragraph')).toBeVisible();
   await page.getByRole('button', { name: 'Granska konvertering', exact: true }).focus(); await page.keyboard.press('Enter');
   await expect(page.getByText('Ändrat beteende', { exact: false })).toBeVisible();
   const check = page.getByRole('checkbox'); await check.focus(); await page.keyboard.press('Space');

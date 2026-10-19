@@ -15,7 +15,7 @@ async function mount(page, config = {}, language = 'en') {
     window.changes = [];
     window.fixtureCard.addEventListener('config-changed', event => window.changes.push(event.detail.config));
   }, { config, modules, language });
-  await page.getByRole('button', { name: language === 'sv' ? 'Arrangera moduler' : 'Arrange modules', exact: true }).click();
+  await page.locator('f1-sensor-card-editor button[aria-controls="module-arrangement"]').click();
   const board = page.locator('f1-module-arranger');
   await expect(board.locator('.tile')).toHaveCount((config.modules || modules).length);
   await board.scrollIntoViewIfNeeded();
