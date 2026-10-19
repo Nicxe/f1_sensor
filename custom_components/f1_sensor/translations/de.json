@@ -220,12 +220,19 @@
     "step": {
       "init": {
         "data": {
-          "install_legacy_cards": "Ältere Dashboard-Karten installieren"
+          "install_legacy_cards": "Ältere Dashboard-Karten installieren",
+          "replay_file": "Pfad zur Replay-Aufzeichnung"
         },
         "data_description": {
-          "install_legacy_cards": "Registriert auch die veralteten F1-Karten. Bei neuen Installationen deaktiviert; bestehende Installationen behalten ihre Karten. Erfordert die Installation der Dashboard-Karten. Nach Änderungen den Browser neu laden. Bei Deaktivierung funktionieren ältere Karten erst nach der Migration zur F1 Sensor-Karte wieder. Bei mehreren Installationen bleiben ältere Karten verfügbar, solange eine aktive Installation sie anfordert."
+          "install_legacy_cards": "Registriert auch die veralteten F1-Karten. Bei neuen Installationen deaktiviert; bestehende Installationen behalten ihre Karten. Erfordert die Installation der Dashboard-Karten. Nach Änderungen den Browser neu laden. Bei Deaktivierung funktionieren ältere Karten erst nach der Migration zur F1 Sensor-Karte wieder. Bei mehreren Installationen bleiben ältere Karten verfügbar, solange eine aktive Installation sie anfordert.",
+          "enable_race_control": "Stelle nur dann eine Verbindung zum Formel-1-Live-Timing her, wenn die Live-Funktionen aktiviert sind."
         }
       }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "on_track_incident_detected": "Zwischenfall auf der Strecke erkannt"
     }
   }
 }

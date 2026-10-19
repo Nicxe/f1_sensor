@@ -12,7 +12,8 @@
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
           "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
           "install_dashboard_cards": "Install bundled dashboard cards",
-          "install_legacy_cards": "Installer les anciennes cartes de tableau de bord"
+          "install_legacy_cards": "Installer les anciennes cartes de tableau de bord",
+          "enable_race_control": "Activer l’API F1 en direct (direction de course/piste/session)"
         },
         "data_description": {
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste the full Bearer token from the F1TV Token Helper only as an advanced fallback. Leave blank to use public live timing only.",
@@ -396,7 +397,8 @@
       "race_week_started": "La semaine de course a débuté",
       "race_week_ended": "La semaine de course est terminée",
       "live_timing_online": "Chronométrage en direct en ligne",
-      "live_timing_offline": "Chonométrqge en direct hors ligne"
+      "live_timing_offline": "Chonométrqge en direct hors ligne",
+      "new_race_control_message": "Nouveau message de la direction de course"
     }
   }
 }
