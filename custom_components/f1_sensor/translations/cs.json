@@ -47,7 +47,24 @@
           "install_legacy_cards": "Nainstalovat původní karty na dashboard"
         },
         "data_description": {
-          "operation_mode": "Zvolte Live k připojení Formula 1 SignalR nebo Development pro přehrávání uloženého záznamu z místního zdroje"
+          "operation_mode": "Zvolte Live k připojení Formula 1 SignalR nebo Development pro přehrávání uloženého záznamu z místního zdroje",
+          "replay_file": "Absolutní cesta k nahrávce SignalR‚ Vyžadováno pouze v Development režimu",
+          "enable_race_control": "Připojit se k Formula 1 Live Timingu přes SignalR pro příjem živých aktualizací, pokud není povoleno, nebudou tyto senzory vytvořeny.",
+          "install_dashboard_cards": "Zaregistruje hromadné F1 Sensor karty v Home Assistantu. Zakázaní omezí používání pouze na entity a automatizace. Existující F1 dashboard karty přestanou fungovat dokud nedojde k novému načtení prohlížeče.",
+          "race_week_start_day": "Výběr prvního dne závodního dne. Sobota, Neděle nebo Pondělí.",
+          "live_timing_auth_header": "Ruční záloha pro případ, kdy párování Token Helperem nefunguje. Vložte celý Bearer token z F1TV Token Helperu jen jako pokročilou zálohu. Ponechte prázdné pro použití veřejného Live Timingu bez režimu přehrávání nebo při spuštění archivního záznamu.",
+          "start_f1tv_pairing": "Doporučená cesta. Připojte aktivní placené předplatné F1TV pro použití režimu přehrávání, archivovaných záznamů a rozšířených živých dat. Veřejný Live Timing funguje i bez placeného účtu.",
+          "install_legacy_cards": "Zaregistrovat také vyřazené F1 karty. Nová instalace je vynechává; existující instalace zachovává předchozí nastavení. Vyžaduje instalaci dashboard karet . Obnovte okno svého prohlížeče po změnách nastavení. Zakázání znemožní fungování starých karet pokud je sami nepřevedete do nové F1 Sensor karty. Pokud je F1 Sensor nainstalován vícekrát, staré karty zůstanou dostupné pro libovolnou instalaci, která je používá."
+        }
+      },
+      "reconfigure": {
+        "title": "Přenastavit F1 Sensor",
+        "data": {
+          "sensor_name": "Název zařízení",
+          "enabled_sensors": "Povolené senzory",
+          "operation_mode": "Režim fungování",
+          "replay_file": "Cesta k záznamu",
+          "enable_race_control": "Povolit online F1 API"
         }
       }
     }
