@@ -3,17 +3,22 @@ const assert = require('node:assert/strict');
 const child = require('node:child_process');
 const fs = require('node:fs');
 
-async function runCase({tag='',published=false,changesDuringBuild=false,branch='beta'}={}) {
+async function runCase({tag='',published=false,changesDuringBuild=false,mismatched=false,branch='beta'}={}) {
   const calls=[]; const fetchCalls=[];
+  let currentTag=mismatched ? 'untagged-abc123' : tag.trim();
   const old={branch:process.env.GITHUB_REF_NAME,repo:process.env.GITHUB_REPOSITORY};
   process.env.GITHUB_REF_NAME=branch;process.env.GITHUB_REPOSITORY='Nicxe/f1_sensor';
   const mocked=mock.method(child,'execFileSync',(command,args)=>{
     calls.push([command,args]);
     if(command==='git')return tag;
     if(command==='gh' && args[0]==='api') {
+      if (args.includes('PATCH')) {
+        assert.equal(changesDuringBuild,false,'A manually published release must not be edited during recovery');
+        currentTag=args.find(arg=>String(arg).startsWith('tag_name=')).slice('tag_name='.length);
+      }
       if (args.some(arg=>String(arg).endsWith('/assets'))) return '[]';
       if (args.includes('--method') && args.includes('POST')) return '{}';
-      const release={id:42,tag_name:tag.trim(),name:tag.trim(),target_commitish:branch,
+      const release={id:42,tag_name:currentTag,name:tag.trim(),target_commitish:branch,
         upload_url:'https://uploads.github.com/repos/Nicxe/f1_sensor/releases/42/assets{?name,label}',
         draft:!published};
       if (changesDuringBuild && args.some(arg=>String(arg).endsWith('/releases/42'))) {
@@ -50,6 +55,15 @@ test('an existing draft is rebuilt at its original version and verified before u
 });
 test('publication during recovery prevents asset replacement',async()=>{
   await assert.rejects(runCase({tag:'v5.5.0-beta.2\n',changesDuringBuild:true}),/no longer a draft/);
+});
+test('draft recovery repairs only the tag without changing notes or publication settings',async()=>{
+  const calls=await runCase({tag:'v5.5.0-beta.2\n',mismatched:true});
+  const patches=calls.filter(([command,args])=>command==='gh' && args.includes('PATCH'));
+  assert.deepEqual(patches,[['gh',['api','--method','PATCH','repos/Nicxe/f1_sensor/releases/42','-f','tag_name=v5.5.0-beta.2']]]);
+  assert.equal(calls.fetchCalls.length,3);
+});
+test('a mismatched draft published during recovery is never made a draft again',async()=>{
+  await assert.rejects(runCase({tag:'v5.5.0-beta.2\n',mismatched:true,changesDuringBuild:true}),/no longer a draft/);
 });
 test('release branch and multiple-tag ambiguities fail closed',async()=>{
   await assert.rejects(runCase({branch:'dev'}),/require beta or main/);

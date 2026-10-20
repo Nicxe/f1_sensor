@@ -9,6 +9,7 @@ const { setReleaseContributors } = require('./release-contributors.cjs');
 const {
   extractEditorial,
   findRepairableDraft,
+  isUntaggedRelease,
   replaceEditorial
 } = require('./release-editorial.cjs');
 const run = (command, args, options={}) => execFileSync(command,args,{encoding:'utf8',...options});
@@ -243,17 +244,23 @@ async function recoverDraft({branch, tag, releases=listReleases()}) {
         '--input',payload
       ]));
     }
-    if (existing.tag_name !== tag) {
-      existing = JSON.parse(run('gh',[
-        'api','--method','PATCH',
-        `repos/${process.env.GITHUB_REPOSITORY}/releases/${existing.id}`,
-        '-f',`tag_name=${tag}`,'-f',`target_commitish=${branch}`,'-f',`name=${tag}`,
-        '-F','draft=true','-F',`prerelease=${branch==='beta'}`
-      ]));
-    }
-    const current = JSON.parse(run('gh',[
+    let current = JSON.parse(run('gh',[
       'api',`repos/${process.env.GITHUB_REPOSITORY}/releases/${existing.id}`
     ]));
+    if (!current?.draft) throw new Error('The release is no longer a draft; refusing to replace assets.');
+    if (current.tag_name !== tag) {
+      if (!isUntaggedRelease(current) || current.name !== tag) {
+        throw new Error(`Draft release ${current.id} changed during recovery.`);
+      }
+      run('gh',[
+        'api','--method','PATCH',
+        `repos/${process.env.GITHUB_REPOSITORY}/releases/${current.id}`,
+        '-f',`tag_name=${tag}`
+      ]);
+      current = JSON.parse(run('gh',[
+        'api',`repos/${process.env.GITHUB_REPOSITORY}/releases/${current.id}`
+      ]));
+    }
     if (!current?.draft) throw new Error('The release is no longer a draft; refusing to replace assets.');
     if (current.tag_name !== tag) throw new Error(`Draft release ${current.id} is not associated with ${tag}.`);
     const assets = JSON.parse(run('gh',[

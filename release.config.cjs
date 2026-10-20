@@ -25,6 +25,7 @@ const githubPlugin = config.plugins.find(
 );
 
 if (githubPlugin?.[1]) {
+  githubPlugin[1].draftRelease = true;
   githubPlugin[1].successCommentCondition = false;
   githubPlugin[1].assets = [
     { path: "f1_sensor.zip", label: "F1 Sensor" },

@@ -4,6 +4,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const config = require('../release.config.cjs');
 
+test('always creates drafts for manual publication in the GitHub web interface', () => {
+  const github = config.plugins.find(plugin => Array.isArray(plugin)
+    && plugin[0] === '@semantic-release/github');
+  assert.equal(github[1].draftRelease, true);
+});
+
 test('does not release the known internal-only fixes again', () => {
   const analyzer = config.plugins.find(plugin => Array.isArray(plugin)
     && plugin[0] === '@semantic-release/commit-analyzer');
