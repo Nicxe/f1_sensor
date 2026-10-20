@@ -25,7 +25,8 @@
           "replay_file": "Absolut sti til en optaget SignalR-dump-fil. Kun nødvendig i Development-tilstand.",
           "enable_race_control": "Forbinder til Formula 1 Live Timing via SignalR for at modtage live-opdateringer. Hvis deaktiveret, oprettes disse live-sensorer ikke.",
           "race_week_start_day": "Vælg, om løbsugen starter lørdag, søndag eller mandag."
-        }
+        },
+        "description": "F1 Sensor-kortet modtager sine data automatisk. Aktiverede sensorer styrer kun enheder, der er eksponeret i Home Assistant. Behold sensorer, der bruges af ældre kort, skabeloner eller automatiseringer. Live timing og F1TV-adgang følger deres egne indstillinger."
       },
       "reconfigure": {
         "title": "Konfigurer F1-sensor igen",
@@ -52,7 +53,8 @@
           "replay_file": "Absolut sti til en optaget SignalR-dumpfil. Kræves kun i Development-tilstand.",
           "enable_race_control": "Forbinder til Formula 1 Live Timing for at modtage live-opdateringer. Hvis deaktiveret, oprettes disse live-sensorer ikke.",
           "race_week_start_day": "Vælg, om løbsugen starter lørdag, søndag eller mandag."
-        }
+        },
+        "description": "F1 Sensor-kortet henter sine data automatisk. 'Kun aktiverede sensorer' styrer kun de enheder, som er eksponeret i Home Assistant. Behold sensorer, der bruges af ældre kort, skabeloner eller automatiseringer. Livetiming og F1TV-adgang følger deres egne indstillinger."
       },
       "reauth_confirm": {
         "title": "Update F1TV live timing authorization",
@@ -70,6 +72,13 @@
       "f1tv_pairing": {
         "title": "Connect F1TV access",
         "description": "Brug F1TV Token Helper til at tilslutte et aktivt betalt abonnement. Offentlig live-timing forbliver valgfrit autentificeret, men Replay Mode og arkivmedier kræver F1TV-adgang. Denne parring udløber {expires_at}."
+      },
+      "sensor_review": {
+        "title": "Gennemse sensorændringer",
+        "description": "Sensorer fjernet fra dit tidligere valg: {removed_sensors}. Ældre kort, skabeloner og automatiseringer, der bruger disse enheder, kan holde op med at virke. Almindelig deaktivering i Home Assistant bevarer registreringsmetadata. Fjernelse af sensorer via valget i denne integration kan slette deres poster i registeret; hvis de oprettes igen senere, kan det ændre brugerdefinerede navne og entity IDs. Dine øvrige indstillinger og gemte data bevares.",
+        "data": {
+          "confirm": "Bekræft sensorændringer"
+        }
       }
     },
     "error": {
@@ -79,7 +88,9 @@
       "invalid_auth_header": "Enter a valid Bearer token value.",
       "auth_token_missing_exp": "The token does not include an expiry time.",
       "auth_token_expired": "The token has expired.",
-      "auth_token_expiring_soon": "The token expires too soon. Generate a new token and try again."
+      "auth_token_expiring_soon": "The token expires too soon. Generate a new token and try again.",
+      "invalid_choice": "Vælg en gyldig konfiguration.",
+      "confirmation_required": "Bekræft de gennemgåede valg, før du gemmer."
     },
     "abort": {
       "f1tv_pairing_unavailable": "F1TV pairing is not available in this build.",
@@ -384,12 +395,22 @@
           "operation_mode": "Vælg Live- eller lokal replay i udviklingstilstand.",
           "replay_file": "Absolut sti til et replay-dump, der kun bruges i udviklingstilstand."
         },
-        "title": "Konfigurer F1 Sensor-funktioner"
+        "title": "Konfigurer F1 Sensor-funktioner",
+        "description": "F1 Sensor-kortet henter data automatisk. Aktiverede sensorer styrer kun de enheder, der eksponeres i Home Assistant. Behold sensorer, der bruges af ældre kort, skabeloner eller automatiseringer. Live timing og F1TV-adgang følger deres egne indstillinger."
+      },
+      "sensor_review": {
+        "title": "Gennemse sensorændringer",
+        "description": "Sensorer fjernet fra dit tidligere valg: {removed_sensors}. Ældre kort, skabeloner og automatiseringer, der bruger disse enheder, kan stoppe med at fungere. Normal deaktivering i Home Assistant bevarer registreringsmetadata. Hvis du fjerner sensorer via dette valg i integrationen, kan deres registreringsposter blive slettet; hvis de oprettes igen senere, kan brugerdefinerede navne og enheds-id'er ændre sig. Dine øvrige indstillinger og gemte data bevares.",
+        "data": {
+          "confirm": "Bekræft sensorændringer"
+        }
       }
     },
     "error": {
       "replay_required": "Vælg en replay-dump-fil, når udviklingstilstand er aktiveret.",
-      "replay_missing": "Replay-dump-fil ikke fundet eller ulæselig."
+      "replay_missing": "Replay-dump-fil ikke fundet eller ulæselig.",
+      "invalid_choice": "Vælg en gyldig konfiguration.",
+      "confirmation_required": "Bekræft de gennemgåede valg, før du gemmer."
     }
   },
   "device_automation": {
@@ -422,6 +443,30 @@
       "favorite_driver_retired": "Favoritkører udgik",
       "live_timing_online": "Live timing gik online",
       "live_timing_offline": "Live timing gik offline"
+    }
+  },
+  "exceptions": {
+    "card_data_notification_title": {
+      "message": "F1 Sensor: automatisk kortdata"
+    },
+    "card_data_notification": {
+      "message": "{name} leverer nu automatisk data til F1 Sensor-kortet. Dine eksisterende sensorer, indstillinger og automatiseringer fortsætter med at fungere. Du kan eventuelt reducere de sensorer, der eksponeres i Home Assistant under [F1 Sensor-indstillinger]({integration_url}) → Konfigurer. Behold sensorer, der bruges af ældre kort, skabeloner eller automatiseringer. Ingen konfiguration er påkrævet. Du kan afvise denne meddelelse; den vises ikke igen efter genstart eller genindlæsning."
+    }
+  },
+  "services": {
+    "clear_race_control_log": {
+      "name": "Ryd Race Control-log",
+      "description": "Ryd gemte Race Control-beskeder for én F1 Sensor-installation. Angiv enten en sensorentitet eller en konfigurationspost.",
+      "fields": {
+        "entity_id": {
+          "name": "Race Control-entitet",
+          "description": "Race Control-sensor for denne installation. Udelades ved brug af entry_id."
+        },
+        "entry_id": {
+          "name": "F1 Sensor-konfigurationspost",
+          "description": "Brug dette i stedet for entity_id, hvis der ikke er nogen eksponeret Race Control-sensor. Angiv én adresse."
+        }
+      }
     }
   }
 }
