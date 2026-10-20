@@ -9,12 +9,12 @@
         "@Nicxe"
     ],
     "config_flow": true,
+    "dependencies": [
+        "persistent_notification"
+    ],
     "documentation": "https://github.com/Nicxe/f1_sensor",
     "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/Nicxe/f1_sensor/issues",
     "requirements": [],
-    "version": "1.0.0",
-    "dependencies": [
-        "persistent_notification"
-    ]
+    "version": "1.0.0"
 }
