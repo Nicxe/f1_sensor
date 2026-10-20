@@ -1711,5 +1711,8 @@
   "modular.qualifying_part_starts": "Q{part} startar",
   "modular.replay_sync_point": "Synkpunkt för repris",
   "modular.sprint_qualifying_part_starts": "SQ{part} startar",
-  "modular.sync_replay_to_point": "Synka reprisen till punkten"
+  "modular.sync_replay_to_point": "Synka reprisen till punkten",
+  "modular.data_configuration_required": "Den anslutna F1 Sensor-backenden måste konfigureras. Öppna dess integrationsinställningar eller uppdatera backenden för att använda automatisk kortdata.",
+  "modular.open_integration_settings": "Öppna integrationsinställningar",
+  "modular.card_data_settings_help": "Kortdata hanteras automatiskt. Välj vilka moduler du vill ha här. Sensorinställningarna i integrationen styr bara vilka enheter som exponeras i Home Assistant."
 }
