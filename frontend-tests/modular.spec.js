@@ -627,14 +627,14 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     blocked: node.model.blocked,
     leakedPayload: ['rows', 'items', 'series', 'events', 'values', 'documents'].some(key => Object.hasOwn(node.model, key)),
   })))).toEqual([...sensitive, 'weather'].map(type => ({ type, blocked: 'Spoiler protection is active.', leakedPayload: false })));
-  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => call !== 'event:entity_registry_updated'))).toEqual(['ws:f1_sensor/entities']);
+  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => !['event:entity_registry_updated', 'event:f1_sensor_data_configuration'].includes(call)))).toEqual(['ws:f1_sensor/entities']);
 
   await page.evaluate(() => {
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
     card.hass = { ...card.hass, states: { ...card.hass.states, [entity]: { state: 'unavailable', attributes: {} } } };
   });
   await expect(page.getByText('Spoiler status cannot be verified. Refresh F1 Sensor before showing sensitive data.', { exact: true })).toHaveCount(sensitive.length + 1);
-  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => call !== 'event:entity_registry_updated'))).toEqual(['ws:f1_sensor/entities']);
+  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => !['event:entity_registry_updated', 'event:f1_sensor_data_configuration'].includes(call)))).toEqual(['ws:f1_sensor/entities']);
 
   await page.evaluate(() => {
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
@@ -1843,4 +1843,20 @@ test('telemetry editor saves chosen laps and channels without fetching samples',
   await form.getByRole('checkbox', { name: 'Gear', exact: true }).check();
   expect(await page.evaluate(() => window.savedConfig.modules[0].fields)).toContain('telemetry_gear');
   expect(await page.evaluate(() => window.telemetryEditorRequests.some(query => query.type.endsWith('telemetry_compare')))).toBe(false);
+});
+
+test('older backend configuration requirement hides saved data and links to settings', async ({ page }) => {
+  await page.evaluate(() => {
+    window.mountModular({ preset: 'weekend' });
+    const card = window.fixtureCard;
+    const entries = structuredClone(window.fixtureDemo.preview.entries);
+    entries[0].data_api = { configuration_required: true, enabled: [], supported: [], protocol_version: 1 };
+    card.entries = entries;
+    card.previewData = null;
+  });
+  await expect(page.getByText('The connected F1 Sensor backend requires configuration.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open integration settings' })).toHaveAttribute('href', '/config/integrations/integration/f1_sensor');
+  await expect(page.getByRole('region', { name: 'Overview', exact: true })).toHaveCount(0);
+  const results = await new AxeBuilder({ page }).include('f1-sensor-card').analyze();
+  expect(results.violations).toEqual([]);
 });

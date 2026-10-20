@@ -77,7 +77,7 @@ async def test_real_entry_delivers_checkpoint_events_without_placeholders(
     entry = MockConfigEntry(
         domain=DOMAIN,
         version=4,
-        data={"sensor_name": "F1"},
+        data={"sensor_name": "F1", "data_choice_version": 1},
         options={
             "operation_mode": "live",
             "enable_race_control": True,

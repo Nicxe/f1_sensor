@@ -1328,7 +1328,7 @@ async def test_next_race_sensor_uses_known_circuit_timezone_without_tzfpy(
         lambda: datetime(2026, 3, 10, tzinfo=UTC),
     )
     monkeypatch.setattr(
-        "custom_components.f1_sensor.sensor._timezone_from_location",
+        "custom_components.f1_sensor.data_helpers._timezone_from_location",
         lambda _lat, _lon: None,
     )
     coordinator = _build_coordinator(
@@ -1364,7 +1364,7 @@ async def test_next_race_sensor_caches_state_attributes(hass, monkeypatch) -> No
         return "Australia/Melbourne"
 
     monkeypatch.setattr(
-        "custom_components.f1_sensor.sensor._timezone_from_location",
+        "custom_components.f1_sensor.data_helpers._timezone_from_location",
         _fake_timezone,
     )
     coordinator = _build_coordinator(
@@ -1444,7 +1444,7 @@ async def test_track_time_sensor_exposes_machine_readable_datetimes(
         FixedDateTime,
     )
     monkeypatch.setattr(
-        "custom_components.f1_sensor.sensor._timezone_from_location",
+        "custom_components.f1_sensor.data_helpers._timezone_from_location",
         lambda _lat, _lon: "Australia/Melbourne",
     )
     coordinator = _build_coordinator(

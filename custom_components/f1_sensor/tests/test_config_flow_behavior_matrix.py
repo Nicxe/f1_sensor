@@ -153,6 +153,8 @@ async def test_dashboard_card_option_defaults_on_and_can_be_disabled(hass) -> No
     updated = await reconfigure.async_step_reconfigure(
         _user_input(**{CONF_INSTALL_DASHBOARD_CARDS: False})
     )
+    if updated.get("step_id") == "sensor_review":
+        updated = await reconfigure.async_step_sensor_review({"confirm": True})
     assert updated["type"] == "abort"
     assert entry.options[CONF_INSTALL_DASHBOARD_CARDS] is False
 
@@ -180,6 +182,8 @@ async def test_reconfigure_development_and_legacy_sensor_defaults(
     updated = await flow.async_step_reconfigure(
         _user_input(**{CONF_REPLAY_FILE: str(replay)})
     )
+    if updated.get("step_id") == "sensor_review":
+        updated = await flow.async_step_sensor_review({"confirm": True})
     assert updated["type"] == "abort"
     assert entry.options[CONF_REPLAY_FILE] == str(replay)
 
@@ -292,6 +296,8 @@ async def test_options_flow_replay_validation_and_save(
             CONF_REPLAY_FILE: str(replay),
         }
     )
+    if saved.get("step_id") == "sensor_review":
+        saved = await flow.async_step_sensor_review({"confirm": True})
     assert saved["type"] == "create_entry"
     assert saved["data"][CONF_REPLAY_FILE] == str(replay)
     assert saved["data"][CONF_INSTALL_DASHBOARD_CARDS] is False
@@ -331,6 +337,8 @@ async def test_legacy_card_option_defaults_and_persistence(hass):
     result = await flow.async_step_reconfigure(
         _user_input(**{CONF_INSTALL_LEGACY_CARDS: False})
     )
+    if result.get("step_id") == "sensor_review":
+        result = await flow.async_step_sensor_review({"confirm": True})
     assert result["type"] == "abort"
     assert entry.options[CONF_INSTALL_LEGACY_CARDS] is False
     options = config_flow.F1FlowHandler.async_get_options_flow(entry)
@@ -341,4 +349,6 @@ async def test_legacy_card_option_defaults_and_persistence(hass):
     saved = await options.async_step_init(
         {"enabled_sensors": ["next_race"], CONF_INSTALL_LEGACY_CARDS: True}
     )
+    if saved.get("step_id") == "sensor_review":
+        saved = await options.async_step_sensor_review({"confirm": True})
     assert saved["data"][CONF_INSTALL_LEGACY_CARDS] is True

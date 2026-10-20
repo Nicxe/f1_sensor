@@ -170,3 +170,21 @@ test('map consumers share a stream and resync merges buffered deltas without pub
   assert.equal(latest.data.sequence, 5); assert.equal(latest.data.snapshot.drivers[0].x, 5);
   stops.forEach(stop => stop()); assert.equal(h.counts.services, 0); assert.equal(connectionDiagnostics(h.connection).resources, 0);
 });
+
+test('automatic Race Control data uses its advertised entry channel without enabling public automation events', async () => {
+  const h = harness(); let latest;
+  const stop = watchRaceControl(h.hass, { entry_id: 'one', event_type: 'f1_sensor_race_control_data' }, state => { latest = state; });
+  await turn();
+  assert.equal(h.counts.requests, 1);
+  assert.equal(h.counts.subscriptions, 2);
+  const item = { utc: '2026-10-20T13:00:00Z', message: 'YELLOW FLAG', category: 'Flag' };
+  h.emit('f1_sensor_race_control_event', { entry_id: 'one', log_item: item });
+  h.emit('f1_sensor_race_control_data', { entry_id: 'other', log_item: item });
+  assert.deepEqual(latest.data, []);
+  h.emit('f1_sensor_race_control_data', { entry_id: 'one', log_item: item });
+  assert.equal(latest.data.length, 1);
+  h.emit('f1_sensor_race_control_log_reset_event', { entry_id: 'one' });
+  assert.deepEqual(latest.data, []);
+  stop();
+  assert.equal(h.active(), 0);
+});

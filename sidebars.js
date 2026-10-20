@@ -14,6 +14,7 @@ const sidebars = {
         "getting-started/add-integration",
         "getting-started/first-dashboard",
         "getting-started/release-channels",
+        "getting-started/required-data-choice",
         "features/whats-new"
       ]
     },
@@ -43,6 +44,7 @@ const sidebars = {
       },
       "items": [
         "features/overview",
+        "features/card-data-and-sensors",
         "features/live-delay",
         "features/replay-mode",
         "features/no-spoiler-mode",
@@ -79,6 +81,7 @@ const sidebars = {
       },
       "items": [
         "reference/overview",
+        "reference/card-data-api",
         {
           "type": "doc",
           "id": "entities/static-data"

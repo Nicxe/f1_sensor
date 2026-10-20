@@ -5,10 +5,18 @@ clear_race_control_log:
     entity_id:
       name: Race control entity
       description: The race control sensor to clear saved messages for.
-      required: true
+      required: false
       example: sensor.f1_race_control
       selector:
         text:
+
+    entry_id:
+      name: F1 Sensor configuration entry
+      description: Use this instead of entity_id when no Race control sensor is exposed. Supply one address.
+      required: false
+      selector:
+        config_entry:
+          integration: f1_sensor
 
 transcribe_team_radio:
   name: "Experimental: Transcribe team radio"

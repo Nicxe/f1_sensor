@@ -621,7 +621,7 @@ def test_silver_document_progression_and_status_defensive_paths(
     drivers.hass = hass
     constructors.hass = hass
     monkeypatch.setattr(
-        sensor_platform,
+        sensor_platform._static_models,
         "entry_runtime_registry",
         Mock(side_effect=RuntimeError("registry")),
     )
@@ -653,7 +653,7 @@ def test_silver_document_progression_and_status_defensive_paths(
         }
     }
     monkeypatch.setattr(
-        sensor_platform,
+        sensor_platform._static_models,
         "entry_runtime_registry",
         Mock(
             return_value={
@@ -730,15 +730,17 @@ def test_silver_stream_update_and_context_fallback_paths(hass, monkeypatch) -> N
     positions.hass = hass
     positions._session_info_coordinator = _BadDataCoordinator()
     monkeypatch.setattr(
-        sensor_platform,
+        sensor_platform._live_models,
         "entry_runtime_registry",
         Mock(side_effect=RuntimeError("registry")),
     )
     assert positions._get_session_type_and_name() == (None, None)
     assert positions._get_session_from_replay() == (None, None)
     assert positions._get_session_name_from_window() == (None, None)
-    sensor_platform.entry_runtime_registry = Mock(
-        return_value={"replay_controller": _BadStateController()}
+    monkeypatch.setattr(
+        sensor_platform._live_models,
+        "entry_runtime_registry",
+        Mock(return_value={"replay_controller": _BadStateController()}),
     )
     assert positions._is_replay_active() is False
 

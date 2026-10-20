@@ -1711,5 +1711,8 @@
   "modular.s3_minisectors": "S3 minisectors",
   "modular.s3_with_minisectors": "S3 with minisectors",
   "modular.team_radio_experimental": "Team Radio (experimental)",
-  "modular.transcript": "Transcript"
+  "modular.transcript": "Transcript",
+  "modular.data_configuration_required": "The connected F1 Sensor backend requires configuration. Open its integration settings or update the backend to use automatic card data.",
+  "modular.open_integration_settings": "Open integration settings",
+  "modular.card_data_settings_help": "Card data is automatic. Choose the modules you want here. Integration sensor settings only control entities exposed in Home Assistant."
 }

@@ -4,6 +4,11 @@ title: "Driver Standings"
 description: "Current driver championship standings \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
+:::info[Collection and sensor choices]
+Keep every entity used by templates, older cards and automations selected. Automatic card data does not recreate a removed automation entity. Existing installations keep their sensor choices and continue entity updates and F1 event delivery after upgrading. See [Automatic card data and optional sensors](/features/card-data-and-sensors).
+:::
+
+
 Current driver championship standings. Use `sensor.f1_driver_standings` in dashboards, templates, and automations.
 
 This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).

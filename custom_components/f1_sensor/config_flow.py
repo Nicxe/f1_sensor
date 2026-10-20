@@ -43,6 +43,8 @@ from .const import (
     RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
 )
+from .data_choice import CARD_DATA_NOTICE_VERSION, CONF_CARD_DATA_NOTICE_VERSION
+from .data_choice_flow import SensorSelectionFlow
 from .helpers import normalize_live_timing_auth_header
 from .runtime import OPTION_KEYS, effective_entry_settings
 
@@ -121,9 +123,9 @@ def _normalize_auth_header(value: object) -> str:
     return normalize_live_timing_auth_header(value)
 
 
-class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
+class F1FlowHandler(SensorSelectionFlow, config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 4
-    MINOR_VERSION = 2
+    MINOR_VERSION = 4
     _pending_f1tv_setup_data: dict | None = None
     _pending_f1tv_setup_options: dict | None = None
     _completed_f1tv_pairing_session_id: str | None = None
@@ -201,10 +203,13 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                 )
                 user_input["disabled_sensors"] = sorted(all_keys - checked)
+                if "exposed_sensor_keys" in current:
+                    user_input["exposed_sensor_keys"] = sorted(checked)
                 user_input[CONF_ENTITY_NAME_MODE] = ENTITY_NAME_MODE_LOCALIZED
                 user_input[CONF_ENTITY_NAME_LANGUAGE] = self._current_backend_language()
                 user_input.setdefault(CONF_INSTALL_LEGACY_CARDS, False)
                 data, options = _split_entry_payload(user_input)
+                data[CONF_CARD_DATA_NOTICE_VERSION] = CARD_DATA_NOTICE_VERSION
                 if start_pairing and is_auth_feature_enabled():
                     self._pending_f1tv_setup_data = data
                     self._pending_f1tv_setup_options = options
@@ -335,11 +340,17 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                 )
                 user_input["disabled_sensors"] = sorted(all_keys - checked)
+                if "exposed_sensor_keys" in current:
+                    user_input["exposed_sensor_keys"] = sorted(checked)
                 data_updates, option_updates = _split_entry_payload(user_input)
-                return self.async_update_reload_and_abort(
+                return await self._async_review_sensor_changes(
                     entry,
-                    data_updates=data_updates,
-                    options={**entry.options, **option_updates},
+                    checked,
+                    lambda: self.async_update_reload_and_abort(
+                        entry,
+                        data_updates=data_updates,
+                        options={**entry.options, **option_updates},
+                    ),
                 )
 
         sensor_options = _build_sensor_options()
@@ -578,7 +589,7 @@ class F1FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return F1OptionsFlow(config_entry)
 
 
-class F1OptionsFlow(config_entries.OptionsFlow):
+class F1OptionsFlow(SensorSelectionFlow, config_entries.OptionsFlow):
     """Manage optional F1 Sensor features without rewriting credentials."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry | None = None) -> None:
@@ -620,7 +631,15 @@ class F1OptionsFlow(config_entries.OptionsFlow):
                     )
                 )
                 user_input["disabled_sensors"] = sorted(all_sensor_keys - checked)
-                return self.async_create_entry(title="", data=user_input)
+                if "exposed_sensor_keys" in current:
+                    user_input["exposed_sensor_keys"] = sorted(checked)
+                return await self._async_review_sensor_changes(
+                    entry,
+                    checked,
+                    lambda: self.async_create_entry(
+                        title="", data={**entry.options, **user_input}
+                    ),
+                )
 
         raw_disabled = current.get("disabled_sensors")
         disabled = (

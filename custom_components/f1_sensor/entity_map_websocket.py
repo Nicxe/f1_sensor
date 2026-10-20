@@ -9,6 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 import voluptuous as vol
 
+from .card_data import DATA_PRODUCTS, DATA_PROTOCOL_VERSION
+from .card_data_websocket import CARD_RACE_CONTROL_EVENT
 from .const import DOMAIN
 
 ENTITY_MAP_WS_MARKER = "__entity_map_ws_registered__"
@@ -63,6 +65,14 @@ async def _ws_get_entity_map(
                 "entities": dict(sorted(entities.items())),
                 "global_entities": global_entities,
                 "disabled_entities": sorted(disabled_entities),
+                "data_api": {
+                    "protocol_version": DATA_PROTOCOL_VERSION,
+                    "supported": sorted(DATA_PRODUCTS),
+                    "enabled": sorted(DATA_PRODUCTS),
+                    "automatic": True,
+                    "race_control_event": CARD_RACE_CONTROL_EVENT,
+                    "configuration_required": False,
+                },
             }
         )
     connection.send_result(msg["id"], result)

@@ -550,11 +550,16 @@ class F1RaceWeatherCoordinator(DataUpdateCoordinator[RaceWeatherData]):
             self._handle_schedule_update
         )
 
-    async def async_close(self) -> None:
-        """Release the schedule listener on config entry unload."""
+    @callback
+    def async_stop(self) -> None:
+        """Release schedule demand while keeping this source reusable."""
         if self._race_unsub is not None:
             self._race_unsub()
             self._race_unsub = None
+
+    async def async_close(self) -> None:
+        """Release the schedule listener on config entry unload."""
+        self.async_stop()
         await super().async_shutdown()
 
     @callback

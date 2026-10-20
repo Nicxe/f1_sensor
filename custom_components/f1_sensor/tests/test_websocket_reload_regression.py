@@ -128,7 +128,7 @@ async def test_fifty_real_entry_reloads_with_surviving_websocket(
     entry = MockConfigEntry(
         domain=DOMAIN,
         version=4,
-        data={"sensor_name": "F1"},
+        data={"sensor_name": "F1", "data_choice_version": 1},
         options={
             "operation_mode": "live",
             "enable_race_control": True,
