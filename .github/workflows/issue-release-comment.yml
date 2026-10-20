@@ -13,7 +13,7 @@ on:
         required: true
         type: string
 permissions:
-  contents: read
+  contents: write
   issues: write
 concurrency:
   group: release-issues-${{ github.event.release.id || inputs.release_tag }}
@@ -45,6 +45,10 @@ jobs:
                 .filter((value) => /^\d+$/.test(value))
                 .map(Number);
               if (!issueNumbers.length) throw new Error('Provide at least one valid issue number.');
+            } else {
+              release = await require('./.github/scripts/release-publication.cjs').verifyPublishedRelease({
+                github, context, core, releaseId: release.id
+              });
             }
             await require('./.github/scripts/issue-automation.cjs').releasedIssues(
               {github, context},

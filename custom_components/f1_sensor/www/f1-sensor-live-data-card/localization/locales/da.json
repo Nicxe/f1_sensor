@@ -1711,5 +1711,8 @@
   "track_map.replay": "Genafspilning",
   "modular.circuit_map_unavailable": "Banekort ikke tilgængeligt",
   "legacy.platform.chart": "DIAGRAM",
-  "legacy.modular.sprint_b9f8663a": "sprint"
+  "legacy.modular.sprint_b9f8663a": "sprint",
+  "modular.data_configuration_required": "Den tilsluttede F1 Sensor-backend kræver konfiguration. Åbn dens integrationsindstillinger eller opdater backenden for at bruge automatisk kortdata.",
+  "modular.open_integration_settings": "Åbn integrationsindstillinger",
+  "modular.card_data_settings_help": "Kortdata er automatiske. Vælg de moduler, du vil have her. Sensorindstillinger i integrationen styrer kun de enheder, som integrationen eksponerer i Home Assistant."
 }

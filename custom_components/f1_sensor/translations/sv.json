@@ -57,7 +57,8 @@
           "live_timing_auth_header": "Manuellt alternativ om parkoppling med Token Helper inte fungerar. Klistra bara in hela Bearer-tokenen från F1TV Token Helper som en avancerad reservlösning. Lämna tomt för att använda publik livetiming utan reprisläge eller arkivmedia.",
           "start_f1tv_pairing": "Rekommenderat alternativ. Anslut en aktiv betald F1TV-prenumeration för reprisläge, arkivmedia och ytterligare livedata. Publik livetiming fungerar även utan den.",
           "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att instrumentpanelskorten installeras. Ladda om webbläsaren efter att du ändrat inställningen. Om du stänger av den slutar befintliga äldre kort att fungera, om du inte migrerar dem till F1 Sensor-kortet. Om det finns flera F1 Sensor-installationer förblir de äldre korten tillgängliga så länge någon aktiverad installation begär dem."
-        }
+        },
+        "description": "F1 Sensor-kortet hämtar sina data automatiskt. Inställningen Enabled sensors only styr endast entiteter som exponeras i Home Assistant. Behåll sensorer som används av äldre kort, mallar eller automatiseringar. Live-timing och F1TV-åtkomst följer sina egna inställningar."
       },
       "reconfigure": {
         "title": "Konfigurera om F1 Sensor",
@@ -84,7 +85,8 @@
           "start_f1tv_pairing": "Rekommenderat alternativ. Anslut en aktiv betald F1TV-prenumeration för reprisläge, arkivmedia och ytterligare livedata. Publik livetiming fungerar även utan den.",
           "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att instrumentpanelskorten installeras. Ladda om webbläsaren efter att du ändrat inställningen. Om du stänger av den slutar befintliga äldre kort att fungera, om du inte migrerar dem till F1 Sensor-kortet. Om det finns flera F1 Sensor-installationer förblir de äldre korten tillgängliga så länge någon aktiverad installation begär dem.",
           "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med publik livetiming. Reprisläge och arkivmedia blir inte tillgängliga."
-        }
+        },
+        "description": "F1 Sensor-kortet hämtar sina data automatiskt. Endast aktiverade sensorer styr vilka enheter som exponeras i Home Assistant. Behåll sensorer som används av äldre kort, mallar eller automationer. Live timing och F1TV-åtkomst har egna inställningar."
       },
       "reauth_confirm": {
         "title": "Uppdatera F1TV-auktorisering för livetiming",
@@ -102,6 +104,13 @@
       "f1tv_pairing": {
         "title": "Anslut F1TV-åtkomst",
         "description": "Använd F1TV Token Helper för att ansluta en aktiv betald prenumeration. Publik livetiming fungerar utan autentisering, men reprisläge och arkivmedia kräver F1TV-åtkomst. Den här parkopplingen upphör att gälla {expires_at}."
+      },
+      "sensor_review": {
+        "title": "Granska sensorändringar",
+        "description": "Sensorer borttagna från ditt tidigare val: {removed_sensors}. Äldre kort, mallar och automatiseringar som använder dessa entiteter kan sluta fungera. Vanlig inaktivering i Home Assistant bevarar registermetadata. Att ta bort sensorer via det här integrationsvalet kan ta bort deras registerposter; att återskapa dem senare kan ändra anpassade namn och entity IDs. Dina övriga inställningar och lagrade data bevaras.",
+        "data": {
+          "confirm": "Bekräfta sensorändringar"
+        }
       }
     },
     "abort": {
@@ -116,7 +125,9 @@
       "invalid_auth_header": "Ange ett giltigt Bearer-token.",
       "auth_token_missing_exp": "Tokenen saknar utgångstid.",
       "auth_token_expired": "Tokenen har gått ut.",
-      "auth_token_expiring_soon": "Tokenen går ut för snart. Skapa en ny token och försök igen."
+      "auth_token_expiring_soon": "Tokenen går ut för snart. Skapa en ny token och försök igen.",
+      "invalid_choice": "Välj en giltig konfiguration.",
+      "confirmation_required": "Bekräfta de granskade valen innan du sparar."
     }
   },
   "options": {
@@ -139,12 +150,22 @@
           "operation_mode": "Välj Live eller utvecklingsläge med lokal replay-dump.",
           "replay_file": "Absolut sökväg till en replay-dump som endast används i utvecklingsläge.",
           "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att instrumentpanelskorten installeras. Ladda om webbläsaren efter att du ändrat inställningen. Om du stänger av den slutar befintliga äldre kort att fungera, om du inte migrerar dem till F1 Sensor-kortet. Om det finns flera F1 Sensor-installationer förblir de äldre korten tillgängliga så länge någon aktiverad installation begär dem."
+        },
+        "description": "F1 Sensor-kortet hämtar data automatiskt. Aktiverade sensorer styr endast vilka entiteter som exponeras i Home Assistant. Behåll sensorer som används av äldre kort, mallar eller automationer. Live timing och åtkomst till F1TV följer sina egna inställningar."
+      },
+      "sensor_review": {
+        "title": "Granska sensorändringar",
+        "description": "Sensorer som togs bort från ditt tidigare urval: {removed_sensors}. Äldre kort, mallar och automationer som använder dessa enheter kan sluta fungera. Normal inaktivering i Home Assistant bevarar registermetadata. Att ta bort sensorer via detta integrationsval kan ta bort deras registerposter; att återskapa dem senare kan ändra anpassade namn och entity IDs. Dina övriga inställningar och lagrade data bevaras.",
+        "data": {
+          "confirm": "Bekräfta sensorändringar"
         }
       }
     },
     "error": {
       "replay_required": "Välj en replay-dumpfil när utvecklingsläget är aktiverat.",
-      "replay_missing": "Replay-dumpfilen hittades inte eller är oläsbar."
+      "replay_missing": "Replay-dumpfilen hittades inte eller är oläsbar.",
+      "invalid_choice": "Välj en giltig konfiguration.",
+      "confirmation_required": "Bekräfta de granskade valen innan du sparar."
     }
   },
   "issues": {
@@ -421,6 +442,30 @@
     "calendar": {
       "season_calendar": {
         "name": "Säsongskalender"
+      }
+    }
+  },
+  "exceptions": {
+    "card_data_notification_title": {
+      "message": "F1 Sensor: automatisk kortdata"
+    },
+    "card_data_notification": {
+      "message": "{name} levererar nu data automatiskt till F1 Sensor-kortet. Dina befintliga sensorer, inställningar och automatiseringar fortsätter fungera. Du kan valfritt minska antalet sensorer som exponeras i Home Assistant under [F1 Sensor-inställningar]({integration_url}) → Konfigurera. Behåll sensorer som används av äldre kort, mallar eller automatiseringar. Ingen konfiguration krävs. Du kan stänga meddelandet; det kommer inte att visas igen efter omstart eller omladdning."
+    }
+  },
+  "services": {
+    "clear_race_control_log": {
+      "name": "Rensa Race Control-logg",
+      "description": "Rensa sparade Race Control-meddelanden för en F1 Sensor-installation. Ange antingen en sensorentitet eller en konfigurationspost.",
+      "fields": {
+        "entity_id": {
+          "name": "Race Control-entitet",
+          "description": "Race Control-sensor för denna installation. Utelämna när du använder entry_id."
+        },
+        "entry_id": {
+          "name": "F1 Sensor-konfigurationspost",
+          "description": "Använd detta istället för entity_id när ingen Race control-sensor är exponerad. Ange en adress."
+        }
       }
     }
   }

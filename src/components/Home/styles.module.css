@@ -1,6 +1,12 @@
 .home { padding-top: 1.4rem; }
 .heroCopy { min-width: 0; max-width: 760px; }
 .hero { padding: 3.3rem 0 4rem; }
+.platformBrand { display: flex; align-items: center; flex-wrap: wrap; gap: 0.85rem; margin-bottom: 1.6rem; }
+.platformLogo, .platformLogoDark { display: block; width: min(220px, 65vw); height: auto; }
+.platformLogoDark { display: none; }
+.platformBrand > span { border-left: 1px solid var(--f1-border); padding-left: 0.85rem; color: var(--f1-muted); font-size: 0.72rem; }
+:global(html[data-theme='dark']) .platformLogo { display: none; }
+:global(html[data-theme='dark']) .platformLogoDark { display: block; }
 .eyebrow { display: flex; align-items: center; gap: 0.55rem; font-size: 0.67rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ifm-color-primary); margin: 0 0 0.9rem; }
 .eyebrow > span { width: 20px; height: 3px; background: currentColor; transform: skewX(-30deg); }
 .hero h1 { font-size: clamp(3.7rem, 5.7vw, 5.4rem); line-height: 0.99; letter-spacing: -0.025em; margin: 0 0 1.35rem; font-weight: 600; }

@@ -40,7 +40,13 @@ jobs:
         run: node .github/scripts/run-release.cjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - name: Verify and reconcile the release tag
+      - name: Add promotion editorial to the release draft
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const editorial = require('./.github/scripts/release-editorial.cjs');
+            await editorial.applyReleaseEditorial({github, context, core});
+      - name: Verify the completed draft for manual publication
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
@@ -50,19 +56,22 @@ jobs:
               core.info('No release tag points at this commit; no release reconciliation is needed.');
               return;
             }
-            await editorial.reconcileReleaseTag({
+            const release = await editorial.reconcileReleaseTag({
               github,
               context,
               core,
               tag,
               assetNames: ['f1_sensor.zip', 'f1_sensor.zip.sha256', 'f1_sensor.zip.spdx.json']
             });
-      - name: Add promotion editorial to the release draft
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            const editorial = require('./.github/scripts/release-editorial.cjs');
-            await editorial.applyReleaseEditorial({github, context, core});
+            if (release.draft) {
+              const editUrl = release.html_url.replace('/releases/tag/', '/releases/edit/');
+              await core.summary
+                .addHeading('Draft ready for manual publication')
+                .addRaw(`Expected tag: **${tag}**\n\n`)
+                .addLink('Edit and publish the draft in GitHub', editUrl)
+                .addRaw(`\n\nSelect the existing **${tag}** tag, edit the release notes, then click **Publish release**. Publication is always manual. An untagged-* draft URL is normal.\n`)
+                .write();
+            }
       - name: Attest release provenance
         if: hashFiles('f1_sensor.zip') != ''
         uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0

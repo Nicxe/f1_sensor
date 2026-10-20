@@ -40,7 +40,10 @@ for (const theme of ['light', 'dark']) {
       await page.evaluate(() => document.fonts.ready);
       const violations = (await new AxeBuilder({page}).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
       expect(violations.map(({id, nodes}) => ({id, elements: nodes.map(n => n.target)})), route).toEqual([]);
-      const images = page.locator('main img[src^="/f1_sensor/"]');
+      if (route === '') {
+        await expect(page.locator('main img[alt="Home Assistant"]:visible')).toHaveCount(1);
+      }
+      const images = page.locator('main img[src^="/f1_sensor/"]:visible');
       for (const img of await images.all()) {
         await img.scrollIntoViewIfNeeded();
         await expect.poll(() => img.evaluate(el => el.complete && el.naturalWidth > 0)).toBe(true);
