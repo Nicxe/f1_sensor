@@ -8,6 +8,24 @@ export const array = value => Array.isArray(value) ? value : value && typeof val
 const nonempty = value => typeof value === 'string' && value.trim() && !['unknown', 'unavailable', 'none', 'no_session'].includes(value.toLowerCase()) ? value.trim() : null;
 
 export function source(hass, entry, key) {
+  if (entry?.data_api?.configuration_required) return { status: 'unavailable', state: null, attributes: {}, reason: 'configuration_required' };
+  if (entry?.data_api?.enabled?.includes(key)) {
+    const resource = entry.card_data?.[key], direct = resource?.data;
+    const connected = resource?.status === 'ready';
+    const context = entry.card_data?.session_context?.data;
+    const samePart = direct?.context?.qualifying_part === undefined || context?.context?.qualifying_part === undefined || direct.context.qualifying_part === context.context.qualifying_part;
+    const coherent = !['live', 'replay'].includes(direct?.source) || key === 'session_context' || !context || (direct.generation === context.generation && samePart);
+    const readable = connected && coherent && ['ready', 'stale'].includes(direct?.status);
+    return {
+      key, entity_id: entry.entities?.[key] ?? null,
+      status: readable ? 'available' : direct?.status === 'disabled' ? 'disabled' : 'unavailable',
+      state: readable ? direct.payload?.state ?? null : null,
+      attributes: readable ? direct.payload?.attributes ?? {} : {},
+      updated_at: direct?.timestamps?.received_at ?? null,
+      data_status: connected ? direct?.status ?? 'loading' : resource?.status ?? 'loading',
+      reason: direct?.reason ?? null, transport: 'direct',
+    };
+  }
   const entityId = entry?.entities?.[key];
   const state = entityId ? hass?.states?.[entityId] : null;
   const status = entry?.disabled_entities?.includes(key) ? 'disabled'
@@ -20,7 +38,8 @@ export function source(hass, entry, key) {
 // Keep the timestamp kind with the value; age alone is not a freshness verdict.
 export function modelTimestamp(model, now = Date.now()) {
   const context = model.context ?? {}, selected = model.source;
-  const kind = context.updatedKind ?? (selected ? 'ha_state' : 'received');
+  const declaredKind = context.updatedKind ?? (selected ? 'ha_state' : 'received');
+  const kind = selected?.transport === 'direct' && declaredKind === 'ha_state' ? 'received' : declaredKind;
   const raw = Object.hasOwn(context, 'updated') ? context.updated : selected?.updated_at;
   if (!raw && !selected && !context.updatedKind) return null;
   const valid = typeof raw === 'string' && /T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(raw) && Number.isFinite(Date.parse(raw));
@@ -43,7 +62,12 @@ export function accentTeams(hass, entry) {
 }
 
 export function spoilerState(hass, entry, local = 'inherit') {
-  if (local === 'hide') return 'protected';
+  if (entry?.data_api?.configuration_required || local === 'hide') return 'protected';
+  const context = entry?.card_data?.session_context;
+  if (context?.status === 'ready' && context.data?.status === 'ready') {
+    const active = context.data.payload?.attributes?.no_spoiler;
+    if (typeof active === 'boolean') return active ? 'protected' : 'clear';
+  }
   // Absence of this discovery capability on an old backend is not proof that
   // spoilers are disabled. The UI must explain that discovery needs refreshing.
   if (!entry || !Object.hasOwn(entry, 'global_entities')) return 'unknown';
@@ -694,7 +718,7 @@ export class RetainedSources {
       this.protection, session.key, session.active, session.source.status,
       replayPhase, replay.attributes.selected_session, player.attributes.selected_session_id, this.epoch,
       source(hass, entry, 'live_delay_number').state,
-      this.nextEvent, this.part]);
+      this.nextEvent, this.part, [...new Set(Object.values(entry?.card_data ?? {}).map(resource => resource.data?.generation).filter(Boolean))]]);
     if (preview || !entry) { this.clear(); return; }
     if (this.token !== null && token !== this.token) {
       this.snapshots.clear();
@@ -719,8 +743,20 @@ export class RetainedSources {
     if (saved?.signature !== signature) { this.snapshots.delete(module.id); saved = null; }
     const sensitive = definition?.spoiler || ['timing', 'lap_chart', 'tyres', 'pit_stops', 'incidents'].includes(module.type) || primary === 'track_weather';
     if (preview || sensitive && this.protection !== 'clear' || !module.enabled || module.unavailable !== 'retain' || !selected
-      || ['missing', 'disabled'].includes(selected.status) || sessionBound && !this.liveContext) {
+      || ['missing', 'disabled'].includes(selected.status) || selected.data_status === 'blocked' || sessionBound && !this.liveContext) {
       this.snapshots.delete(module.id); return { hass, retained: false };
+    }
+    if (selected.transport === 'direct') {
+      if (selected.status === 'available' && hass.connection?.connected !== false) {
+        const resources = entry.card_data ?? {};
+        const references = Object.entries(resources).map(([key, resource]) => [key, resource.data]);
+        if (!saved || references.length !== saved.references.length || references.some(([key, value], i) => key !== saved.references[i]?.[0] || value !== saved.references[i]?.[1])) {
+          saved = { signature, references, entry: { ...entry, card_data: structuredClone(resources) }, states: structuredClone(Object.fromEntries(Object.values(entry.entities ?? {}).map(id => [id, hass.states?.[id]]))) };
+          this.snapshots.set(module.id, saved);
+        }
+        return { hass, entry, retained: false };
+      }
+      return saved?.entry ? { hass: { ...hass, states: { ...hass.states, ...saved.states } }, entry: saved.entry, retained: true } : { hass, entry, retained: false };
     }
     const primaryState = hass.states?.[selected.entity_id];
     if (selected.status === 'available' && hass.connection?.connected !== false) {

@@ -504,7 +504,8 @@ export class F1SensorCardEditor extends LitElement {
   }
   render() {
     if (!this.config) return html``;
-    return html`<div class="toolbar"><h2>F1 Sensor</h2><button ?disabled=${!this.history.length} @click=${this.undo}>${this.w('modular.undo')}</button></div>
+    const entry = this.config.f1_entry_id ? this.entries.find(item => item.entry_id === this.config.f1_entry_id) : this.entries.length === 1 ? this.entries[0] : null;
+    return html`${entry?.data_api?.configuration_required ? html`<div class="notice" role="status"><p>${this.w('modular.data_configuration_required')}</p><a href="/config/integrations/integration/f1_sensor">${this.w('modular.open_integration_settings')}</a></div>` : html`<p class="muted">${this.w('modular.card_data_settings_help')}</p>`}<div class="toolbar"><h2>F1 Sensor</h2><button ?disabled=${!this.history.length} @click=${this.undo}>${this.w('modular.undo')}</button></div>
       ${this.error ? html`<p class="danger" role="alert">${this.error}</p>` : ''}
       <div class="builder"><div class="form">
         <details class="starter" ?open=${!this.config.modules.length}><summary>${this.w('modular.start_from_a_template')}</summary>

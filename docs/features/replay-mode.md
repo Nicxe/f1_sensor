@@ -49,10 +49,10 @@ If you upgraded from an older release and already have different registry IDs, k
 
 ### Step 1 - Select a session
 
-1. Use `select.f1_replay_year` to choose the season
-2. Use `select.f1_replay_session` to pick a session from that year
+1. To use the preselected year, press `button.f1_replay_refresh` to load its sessions. To use a different year, choose it with `select.f1_replay_year`; this loads that year's sessions.
+2. Use `select.f1_replay_session` to pick a session from that year.
 
-The session list shows all completed sessions from the selected year, with the most recent first.
+The list is loaded on demand to avoid unnecessary archive requests. After loading, it shows completed sessions from the selected year, with the most recent first.
 :::info[Data availability]
 Archive publication is controlled by Formula 1. A completed session may not be available immediately; refresh the session list later if it is missing.
 :::

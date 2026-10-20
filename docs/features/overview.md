@@ -35,3 +35,7 @@ For published classifications without playback, use [Results Archive](/features/
 ## Find an exact field
 
 Use the [reference](/reference/overview) for entity IDs, state values, attributes and device triggers. If something is missing or waiting, start with [troubleshooting](/help/overview).
+
+## Choose card data and sensors
+
+[Automatic card data and optional sensors](/features/card-data-and-sensors) explains how card modules get data independently of sensor entities. Existing installations continue normally; read [Upgrading to automatic card data](/getting-started/required-data-choice) for the optional information notice. Client authors can use the [card data protocol](/reference/card-data-api).

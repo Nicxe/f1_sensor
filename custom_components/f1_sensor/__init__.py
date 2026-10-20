@@ -19,7 +19,10 @@ from urllib.parse import urljoin
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback as ha_callback
-from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
+from homeassistant.exceptions import (
+    ConfigEntryNotReady,
+    ServiceValidationError,
+)
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import async_get_platforms
@@ -55,6 +58,13 @@ from .auth_http import (
     async_setup_f1tv_auth_http,
 )
 from .calibration import LiveDelayCalibrationManager
+from .card_data import CardDataStore, available_card_features
+from .card_data_sources import CardDataSources
+from .card_data_websocket import (
+    CARD_DATA_WS_MARKER,
+    CARD_RACE_CONTROL_EVENT,
+    async_register_card_data_websocket,
+)
 from .const import (
     API_URL,
     CONF_LEGACY_RACE_CONTROL_EVENTS,
@@ -93,6 +103,8 @@ from .const import (
     STRAIGHT_MODE_NORMAL,
     SUPPORTED_SENSOR_KEYS,
 )
+from .data_catalog import card_feature_requirements, static_source_requirements
+from .data_choice import async_dismiss_card_data_notice, async_notify_card_data
 from .entity import (
     async_prepare_translation_names,
     register_entry_name_settings,
@@ -176,8 +188,10 @@ from .runtime import (
     ProviderRuntime,
     ReplayRuntime,
     StaticRuntime,
+    active_sensor_demand,
     effective_entry_settings,
     entry_value,
+    track_sensor_demand,
 )
 from .signalr import (
     AUTH_GATED_LIVE_STREAMS,
@@ -272,6 +286,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         MINISECTOR_WS_MARKER,
         TRACK_MAP_WS_MARKER,
         ENTITY_MAP_WS_MARKER,
+        CARD_DATA_WS_MARKER,
     }
 )
 _FINISHING_PLUS_LAPS_RE = re.compile(r"^\+\d+\s+Laps?$", re.IGNORECASE)
@@ -716,7 +731,8 @@ def _get_race_control_log_store_for_entity(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): _RC_LOG_WS_TYPE,
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Exclusive("entity_id", "address"): cv.entity_id,
+        vol.Exclusive("entry_id", "address"): str,
     }
 )
 @websocket_api.async_response
@@ -725,8 +741,27 @@ async def _ws_get_race_control_log(
     connection: Any,
     msg: dict[str, Any],
 ) -> None:
-    entity_id = msg["entity_id"]
-    store = _get_race_control_log_store_for_entity(hass, entity_id)
+    entity_id = msg.get("entity_id")
+    if entry_id := msg.get("entry_id"):
+        entry = hass.config_entries.async_get_entry(entry_id)
+        data = hass.data.get(DOMAIN, {}).get(entry_id, {})
+        store = (
+            data.get(_RC_LOG_STORE_KEY)
+            if entry is not None and entry.domain == DOMAIN
+            else None
+        )
+        manager = hass.data.get(DOMAIN, {}).get(_NO_SPOILER_MANAGER_KEY)
+        if manager is None or manager.is_active:
+            connection.send_result(
+                msg["id"], {"entry_id": entry_id, "status": "blocked", "items": []}
+            )
+            return
+    else:
+        store = (
+            _get_race_control_log_store_for_entity(hass, entity_id)
+            if entity_id
+            else None
+        )
     if store is None:
         connection.send_error(
             msg["id"],
@@ -737,7 +772,11 @@ async def _ws_get_race_control_log(
     connection.send_result(
         msg["id"],
         {
-            "entity_id": entity_id,
+            **(
+                {"entry_id": msg["entry_id"]}
+                if "entry_id" in msg
+                else {"entity_id": entity_id}
+            ),
             "session_key": store.session_key,
             "items": store.get_items(),
         },
@@ -747,8 +786,21 @@ async def _ws_get_race_control_log(
 async def _async_handle_clear_race_control_log(
     hass: HomeAssistant, call: ServiceCall
 ) -> None:
-    entity_id = call.data["entity_id"]
-    store = _get_race_control_log_store_for_entity(hass, entity_id)
+    entity_id = call.data.get("entity_id")
+    if entry_id := call.data.get("entry_id"):
+        entry = hass.config_entries.async_get_entry(entry_id)
+        data = hass.data.get(DOMAIN, {}).get(entry_id, {})
+        store = (
+            data.get(_RC_LOG_STORE_KEY)
+            if entry is not None and entry.domain == DOMAIN
+            else None
+        )
+    else:
+        store = (
+            _get_race_control_log_store_for_entity(hass, entity_id)
+            if entity_id
+            else None
+        )
     if store is None:
         raise ServiceValidationError(
             f"Race Control log is not available for {entity_id}"
@@ -763,7 +815,12 @@ def _async_register_race_control_log_interfaces(hass: HomeAssistant) -> None:
             DOMAIN,
             _RC_LOG_SERVICE,
             partial(_async_handle_clear_race_control_log, hass),
-            schema=vol.Schema({vol.Required("entity_id"): cv.entity_id}),
+            schema=vol.Schema(
+                {
+                    vol.Exclusive("entity_id", "address"): cv.entity_id,
+                    vol.Exclusive("entry_id", "address"): str,
+                }
+            ),
         )
         root[_RC_LOG_SERVICE_MARKER] = True
     if not root.get(_RC_LOG_WS_MARKER):
@@ -1414,6 +1471,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await manager.async_load()
         domain_root[_NO_SPOILER_MANAGER_KEY] = manager
     async_setup_f1tv_auth_http(hass)
+    async_register_entity_map_websocket(hass)
+    async_register_card_data_websocket(hass)
     async_register_team_radio_media_view(hass)
     _async_register_race_control_log_interfaces(hass)
     async_register_team_radio_transcription_service(hass)
@@ -1461,6 +1520,9 @@ class _SetupTransaction:
 async def _async_close_runtime_mapping(data: dict[str, Any]) -> None:
     """Close every entry-owned runtime object exactly once."""
     seen: set[int] = set()
+    if sources := data.get("card_data_sources"):
+        await sources.async_close()
+        seen.add(id(sources))
     for name, obj in reversed(list(data.items())):
         if obj is None or name == "jolpica_client":
             continue
@@ -1561,6 +1623,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
             unique_id = DOMAIN
             changed = True
 
+    if entry.version < 4 or entry.minor_version < 4:
+        changed = True
     if changed or entry.version != 4:
         hass.config_entries.async_update_entry(
             entry,
@@ -1568,7 +1632,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
             options=options,
             unique_id=unique_id,
             version=4,
-            minor_version=max(entry.minor_version, 2) if entry.version == 4 else 2,
+            minor_version=max(entry.minor_version, 4) if entry.version == 4 else 4,
         )
     return True
 
@@ -1689,6 +1753,7 @@ async def _async_refresh_static_runtime(
 
 async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
     """Set up one config entry transactionally."""
+    await async_notify_card_data(hass, entry)
     transaction = _SetupTransaction()
     existing_platforms = {
         id(platform) for platform in async_get_platforms(hass, DOMAIN)
@@ -1733,6 +1798,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
 
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload an entry after its user-editable options change."""
+    hass.bus.async_fire("f1_sensor_data_configuration", {"entry_id": entry.entry_id})
     await hass.config_entries.async_reload(entry.entry_id)
 
 
@@ -1742,6 +1808,25 @@ async def _async_setup_entry(
     transaction: _SetupTransaction,
 ) -> bool:
     """Set up integration via config flow."""
+    # Explicit exposure changes are applied only after acknowledgement. Registry
+    # disabling remains HA-owned; entries for selected disabled sensors survive.
+    selected = entry.options.get("exposed_sensor_keys")
+    if isinstance(selected, (list, tuple)):
+        registry = er.async_get(hass)
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+            prefix = f"{entry.entry_id}_"
+            if not entity.unique_id.startswith(prefix):
+                continue
+            suffix = entity.unique_id.removeprefix(prefix)
+            key = (
+                "top_three"
+                if suffix.startswith("top_three_p")
+                else "championship_prediction"
+                if suffix.startswith("championship_prediction_")
+                else suffix
+            )
+            if key in SUPPORTED_SENSOR_KEYS and key not in selected:
+                registry.async_remove(entity.entity_id)
     # Dev-only: periodically report how many Jolpica requests actually hit the network.
     _ensure_jolpica_stats_reporting(hass)
     settings = effective_entry_settings(entry)
@@ -1753,7 +1838,9 @@ async def _async_setup_entry(
     # disabled set until the user chooses them in integration options.
     raw_disabled = settings.get("disabled_sensors") or []
     disabled: set[str] = {k for k in raw_disabled if k in SUPPORTED_SENSOR_KEYS}
-    enabled = SUPPORTED_SENSOR_KEYS - disabled
+    sensor_demand = active_sensor_demand(hass, entry, SUPPORTED_SENSOR_KEYS - disabled)
+    sensor_sources = static_source_requirements(sensor_demand)
+    enabled = sensor_demand | card_feature_requirements(available_card_features(entry))
     enable_rc = bool(settings.get("enable_race_control", False))
     configured_operation_mode = settings.get(
         CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE
@@ -1968,6 +2055,7 @@ async def _async_setup_entry(
             persist_map=persisted_map,
             persist_save=persisted.schedule_save,
             config_entry=entry,
+            auto_start=False,
         )
         if race_coordinator is not None and "next_race" in enabled
         else None
@@ -2161,18 +2249,35 @@ async def _async_setup_entry(
             entry.data.get(CONF_LEGACY_RACE_CONTROL_EVENTS, False)
         ),
     )
-    await _async_refresh_static_runtime(
-        race_coordinator=race_coordinator,
-        next_race_history_coordinator=next_race_history_coordinator,
-        race_weather_coordinator=race_weather_coordinator,
-        driver_coordinator=driver_coordinator,
-        constructor_coordinator=constructor_coordinator,
-        last_race_coordinator=last_race_coordinator,
-        season_results_coordinator=season_results_coordinator,
-        sprint_results_coordinator=sprint_results_coordinator,
-        lap_position_progression_coordinator=lap_position_progression_coordinator,
-        fia_documents_coordinator=fia_documents_coordinator,
+    sensor_event_plan = build_feature_plan(
+        sensor_demand,
+        live_enabled=enable_rc,
+        development_mode=operation_mode == OPERATION_MODE_DEVELOPMENT,
+        legacy_race_control_events=bool(
+            entry.data.get(CONF_LEGACY_RACE_CONTROL_EVENTS, False)
+        ),
     )
+    static_sources = {
+        "race_coordinator": race_coordinator,
+        "next_race_history_coordinator": next_race_history_coordinator,
+        "race_weather_coordinator": race_weather_coordinator,
+        "driver_coordinator": driver_coordinator,
+        "constructor_coordinator": constructor_coordinator,
+        "last_race_coordinator": last_race_coordinator,
+        "season_results_coordinator": season_results_coordinator,
+        "sprint_results_coordinator": sprint_results_coordinator,
+        "lap_position_progression_coordinator": lap_position_progression_coordinator,
+        "fia_documents_coordinator": fia_documents_coordinator,
+    }
+    await _async_refresh_static_runtime(
+        **{
+            name: value if name in sensor_sources else None
+            for name, value in static_sources.items()
+        }
+    )
+    card_data_sources = CardDataSources(hass, static_sources, sensor_sources)
+    transaction.track(card_data_sources)
+    card_data_sources.reconcile(set())
 
     if not feature_plan.live_required:
         track_map_store = TrackMapStore(
@@ -2220,6 +2325,7 @@ async def _async_setup_entry(
             )
             transaction.track(dormant_live_bus, track_map_replay_adapter)
         static_entry_data: dict[str, Any] = {
+            "card_data_sources": card_data_sources,
             "http_session": http_session,
             "user_agent": ua_string,
             "jolpica_client": jolpica_client,
@@ -2296,6 +2402,11 @@ async def _async_setup_entry(
             ),
             legacy=static_entry_data,
         )
+        card_data_store = CardDataStore(hass, entry, static_entry_data)
+        static_entry_data["card_data_store"] = card_data_store
+        entry.runtime_data.card_data = card_data_store
+        transaction.track(card_data_store)
+        await card_data_store.async_start()
         if lap_position_progression_coordinator is not None:
             async_register_lap_position_websocket(hass)
         async_register_history_websocket(hass)
@@ -2325,6 +2436,8 @@ async def _async_setup_entry(
                 if active:
                     return
                 for coordinator in blocked_refresh:
+                    if not card_data_sources.is_needed(coordinator):
+                        continue
                     hass.async_create_task(coordinator.async_request_refresh())
 
             static_entry_data["no_spoiler_unsub"] = no_spoiler_mgr.add_listener(
@@ -2334,9 +2447,12 @@ async def _async_setup_entry(
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         if track_map_replay_adapter is not None:
             track_map_replay_adapter.start()
-        if race_weather_coordinator is not None:
-            race_weather_coordinator.async_start()
+        entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+        entry.async_on_unload(track_sensor_demand(hass, entry))
         transaction.commit()
+        hass.bus.async_fire(
+            "f1_sensor_data_configuration", {"entry_id": entry.entry_id}
+        )
         return True
 
     year = dt_util.utcnow().year
@@ -2649,6 +2765,8 @@ async def _async_setup_entry(
             delay_controller=delay_controller,
             live_state=live_state,
             log_store=race_control_log_store,
+            publish_events=sensor_event_plan.needs("race_control"),
+            publish_card_data=True,
         )
     if feature_plan.needs("weather_data"):
         weather_data_coordinator = WeatherDataCoordinator(
@@ -2862,6 +2980,7 @@ async def _async_setup_entry(
     transaction.track(track_map_replay_adapter)
 
     entry_data: dict[str, Any] = {
+        "card_data_sources": card_data_sources,
         "http_session": http_session,
         "archive_client": archive_client,
         "user_agent": ua_string,
@@ -3030,6 +3149,12 @@ async def _async_setup_entry(
         ),
     )
 
+    card_data_store = CardDataStore(hass, entry, entry_data)
+    entry_data["card_data_store"] = card_data_store
+    entry.runtime_data.card_data = card_data_store
+    transaction.track(card_data_store)
+    entry_data["replay_reset_callbacks"].insert(0, card_data_store.reset_for_replay)
+    await card_data_store.async_start()
     if lap_position_progression_coordinator is not None:
         async_register_lap_position_websocket(hass)
     async_register_history_websocket(hass)
@@ -3079,6 +3204,11 @@ async def _async_setup_entry(
                     return
                 # Deactivated: trigger catch-up for blocked spoiler-sensitive coordinators.
                 for coord in _blocked_refresh:
+                    if (
+                        coord in static_sources.values()
+                        and not card_data_sources.is_needed(coord)
+                    ):
+                        continue
                     hass.async_create_task(coord.async_request_refresh())
                 # Wake supervisor so it re-evaluates session windows.
                 _sup = hass_data.get("live_supervisor") if hass_data else None
@@ -3092,14 +3222,14 @@ async def _async_setup_entry(
     await async_reconcile_live_data_card_frontend(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     track_map_replay_adapter.start()
-    if race_weather_coordinator is not None:
-        race_weather_coordinator.async_start()
     if operation_mode == OPERATION_MODE_LIVE and live_supervisor is not None:
         await live_supervisor.async_start()
     else:
         await live_bus.start()
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    entry.async_on_unload(track_sensor_demand(hass, entry))
     transaction.commit()
+    hass.bus.async_fire("f1_sensor_data_configuration", {"entry_id": entry.entry_id})
     return True
 
 
@@ -3271,6 +3401,8 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         delay_controller: LiveDelayController | None = None,
         live_state: LiveAvailabilityTracker | None = None,
         log_store: RaceControlLogStore | None = None,
+        publish_events: bool = True,
+        publish_card_data: bool = False,
     ):
         super().__init__(
             hass,
@@ -3306,6 +3438,8 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             == OPERATION_MODE_DEVELOPMENT
         )
         self._log_store = log_store
+        self._publish_events = publish_events
+        self._publish_card_data = publish_card_data
         self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
@@ -3512,31 +3646,28 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 )
         # Publish on HA event bus with a consistent event name
         try:
-            self.hass.bus.async_fire(
-                _RC_LOG_EVENT,
-                {
-                    "entry_id": self.config_entry.entry_id
-                    if self.config_entry
-                    else None,
-                    "entity_id": (
-                        _race_control_entity_id_for_entry(
-                            self.hass,
-                            self.config_entry.entry_id,
-                        )
-                        if self.config_entry is not None
-                        else None
-                    ),
-                    "message": item,
-                    "received_at": received_at,
-                    "event_id": self._message_id(item),
-                    "log_item": log_item,
-                    "session_key": (
-                        self._log_store.session_key
-                        if self._log_store is not None
-                        else None
-                    ),
-                },
-            )
+            payload = {
+                "entry_id": self.config_entry.entry_id if self.config_entry else None,
+                "entity_id": (
+                    _race_control_entity_id_for_entry(
+                        self.hass,
+                        self.config_entry.entry_id,
+                    )
+                    if self.config_entry is not None
+                    else None
+                ),
+                "message": item,
+                "received_at": received_at,
+                "event_id": self._message_id(item),
+                "log_item": log_item,
+                "session_key": (
+                    self._log_store.session_key if self._log_store is not None else None
+                ),
+            }
+            if self._publish_events:
+                self.hass.bus.async_fire(_RC_LOG_EVENT, payload)
+            if self._publish_card_data:
+                self.hass.bus.async_fire(CARD_RACE_CONTROL_EVENT, payload)
         except Exception:
             _LOGGER.debug("RaceControl: Failed to publish event for item")
 
@@ -7517,6 +7648,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_remove_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> None:
     """Remove storage owned by a deleted config entry."""
+    async_dismiss_card_data_notice(hass, entry.entry_id)
     await async_remove_entry_storage(hass, entry.entry_id)
 
 
@@ -7783,6 +7915,10 @@ class F1DataCoordinator(DataUpdateCoordinator):
                 coord = reg.get(name)
                 if coord is None:
                     continue
+                if (
+                    sources := reg.get("card_data_sources")
+                ) is not None and not sources.is_needed(coord):
+                    continue
                 req = getattr(coord, "async_request_refresh", None)
                 if callable(req):
                     self.hass.async_create_task(req())
@@ -7863,6 +7999,7 @@ class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
         persist_map=None,
         persist_save=None,
         config_entry: ConfigEntry | None = None,
+        auto_start: bool = True,
     ) -> None:
         super().__init__(
             hass,
@@ -7881,17 +8018,28 @@ class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
         self._persist_save = persist_save
         self._target_key: tuple[str, str, str] | None = None
         self._source_unsub = None
-        if hasattr(race_coordinator, "async_add_listener"):
-            with suppress(Exception):
-                self._source_unsub = race_coordinator.async_add_listener(
-                    self._handle_race_source_update
-                )
+        if auto_start:
+            self.async_start()
+
+    @ha_callback
+    def async_start(self) -> None:
+        """Follow schedule changes only while a consumer needs circuit history."""
+        if self._source_unsub is None and hasattr(
+            self._race_coordinator, "async_add_listener"
+        ):
+            self._source_unsub = self._race_coordinator.async_add_listener(
+                self._handle_race_source_update
+            )
+
+    @ha_callback
+    def async_stop(self) -> None:
+        """Release schedule demand without shutting down the reusable source."""
+        if callable(self._source_unsub):
+            self._source_unsub()
+        self._source_unsub = None
 
     async def async_close(self, *_):
-        if callable(self._source_unsub):
-            with suppress(Exception):
-                self._source_unsub()
-        self._source_unsub = None
+        self.async_stop()
 
     @staticmethod
     def _empty_history() -> dict[str, Any]:

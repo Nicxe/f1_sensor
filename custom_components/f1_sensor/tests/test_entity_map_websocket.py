@@ -5,6 +5,7 @@ from typing import Any
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.f1_sensor.card_data import DATA_PRODUCTS
 from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor.entity_map_websocket import (
     ENTITY_MAP_WS_MARKER,
@@ -49,6 +50,14 @@ async def test_entity_map_groups_registry_entities_by_config_entry(hass) -> None
                     "entities": {"driver_list": first_driver.entity_id},
                     "global_entities": {},
                     "disabled_entities": [],
+                    "data_api": {
+                        "protocol_version": 1,
+                        "supported": sorted(DATA_PRODUCTS),
+                        "enabled": sorted(DATA_PRODUCTS),
+                        "automatic": True,
+                        "race_control_event": "f1_sensor_race_control_data",
+                        "configuration_required": False,
+                    },
                 },
                 {
                     "entry_id": "second",
@@ -56,6 +65,14 @@ async def test_entity_map_groups_registry_entities_by_config_entry(hass) -> None
                     "entities": {"driver_list": second_driver.entity_id},
                     "global_entities": {},
                     "disabled_entities": [],
+                    "data_api": {
+                        "protocol_version": 1,
+                        "supported": sorted(DATA_PRODUCTS),
+                        "enabled": sorted(DATA_PRODUCTS),
+                        "automatic": True,
+                        "race_control_event": "f1_sensor_race_control_data",
+                        "configuration_required": False,
+                    },
                 },
             ],
         )

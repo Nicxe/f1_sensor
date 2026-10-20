@@ -1,9 +1,17 @@
 {
     "domain": "f1_sensor",
     "name": "F1 Sensor",
-    "after_dependencies": ["http", "lovelace"],
-    "codeowners": ["@Nicxe"],
+    "after_dependencies": [
+        "http",
+        "lovelace"
+    ],
+    "codeowners": [
+        "@Nicxe"
+    ],
     "config_flow": true,
+    "dependencies": [
+        "persistent_notification"
+    ],
     "documentation": "https://github.com/Nicxe/f1_sensor",
     "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/Nicxe/f1_sensor/issues",

@@ -54,7 +54,7 @@ for (const [responseDelay, scene] of [[0, 'race'], [40, 'race'], [200, 'missing'
     await settleFrames(page);
     const settled = await page.evaluate(() => ({ ...window.masonryStats }));
     expect(settled.requests).toBe(1);
-    expect(settled.activeSubscriptions).toBe(1);
+    expect(settled.activeSubscriptions).toBe(2);
     await settleFrames(page);
     expect(await page.evaluate(() => window.masonryStats)).toEqual(settled);
     await expect(page.getByText('Waiting for F1 Sensor…', { exact: true })).toHaveCount(0);
@@ -76,7 +76,7 @@ test('leaving Masonry edit mode and resizing content settle, and removal release
   await settleFrames(page);
   const settled = await page.evaluate(() => ({ ...window.masonryStats }));
   expect(settled.requests).toBe(2);
-  expect(settled.activeSubscriptions).toBe(1);
+  expect(settled.activeSubscriptions).toBe(2);
   await page.evaluate(() => {
     const card = window.fixtureCard;
     card.setConfig({ ...card.config, title: 'A much longer Formula One overview title that wraps in a narrow column' });

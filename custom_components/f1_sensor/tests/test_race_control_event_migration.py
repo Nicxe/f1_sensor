@@ -30,7 +30,11 @@ def _entry(
         domain=DOMAIN,
         version=version,
         minor_version=minor_version,
-        data={"sensor_name": "F1", **(settings if version < 3 else {})},
+        data={
+            "sensor_name": "F1",
+            "data_choice_version": 1,
+            **(settings if version < 3 else {}),
+        },
         options=settings if version >= 3 else {},
     )
 
@@ -49,7 +53,7 @@ async def test_legacy_event_automation_survives_upgrade_and_reload(
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.version == 4
-    assert entry.minor_version == 2
+    assert entry.minor_version == 4
     assert entry.data["legacy_race_control_events"] is True
     events = []
     received = asyncio.Event()
@@ -96,9 +100,7 @@ async def test_legacy_event_automation_survives_upgrade_and_reload(
                 "RaceControlMessages"
                 in entry.runtime_data.capabilities.requested_streams
             )
-            assert (
-                "race_control" not in entry.runtime_data.capabilities.requested_features
-            )
+            assert "race_control" in entry.runtime_data.capabilities.requested_features
             assert (
                 er.async_get(hass).async_get_entity_id(
                     "sensor", DOMAIN, f"{entry.entry_id}_race_control"
@@ -161,13 +163,46 @@ async def test_migration_does_not_enable_unrequested_event_delivery(
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
+    events, card_events = [], []
+    stop_public = hass.bus.async_listen(
+        "f1_sensor_race_control_event", lambda event: events.append(event.data)
+    )
+    stop_card = hass.bus.async_listen(
+        "f1_sensor_race_control_data", lambda event: card_events.append(event.data)
+    )
     try:
-        assert (
-            "RaceControlMessages"
-            not in entry.runtime_data.capabilities.requested_streams
-        )
-        assert hass.data[DOMAIN][entry.entry_id].get("race_control_coordinator") is None
+        if live_enabled:
+            assert (
+                "RaceControlMessages"
+                in entry.runtime_data.capabilities.requested_streams
+            )
+            registry = hass.data[DOMAIN][entry.entry_id]
+            registry["live_state"].set_state(True, "test-feed")
+            registry["live_bus"]._dispatch(
+                "RaceControlMessages",
+                {
+                    "Utc": dt_util.utcnow().isoformat(),
+                    "Message": "Card history only",
+                    "Category": "Other",
+                },
+            )
+            await hass.async_block_till_done()
+            assert len(card_events) == 1
+            assert registry["race_control_log_store"].get_items()
+        else:
+            assert (
+                "RaceControlMessages"
+                not in entry.runtime_data.capabilities.requested_streams
+            )
+            assert (
+                hass.data[DOMAIN][entry.entry_id].get("race_control_coordinator")
+                is None
+            )
+        assert not events
+
     finally:
+        stop_public()
+        stop_card()
         if entry.state is ConfigEntryState.LOADED:
             assert await hass.config_entries.async_unload(entry.entry_id)
 
@@ -179,13 +214,17 @@ async def test_migration_preserves_existing_compatibility_metadata(hass, minor_v
         domain=DOMAIN,
         version=4,
         minor_version=minor_version,
-        data={"sensor_name": "F1", "legacy_race_control_events": True},
+        data={
+            "sensor_name": "F1",
+            "data_choice_version": 1,
+            "legacy_race_control_events": True,
+        },
         options={"enable_race_control": False},
     )
     entry.add_to_hass(hass)
 
     assert await async_migrate_entry(hass, entry)
     assert entry.version == 4
-    assert entry.minor_version == minor_version
+    assert entry.minor_version == max(minor_version, 4)
     assert entry.data["legacy_race_control_events"] is True
     assert entry.options["enable_race_control"] is False

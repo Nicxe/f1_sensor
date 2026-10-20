@@ -192,7 +192,14 @@ async def test_failed_setup_does_not_close_client_claimed_by_another_setup(
         hass.config_entries, "async_unload_platforms", AsyncMock(return_value=True)
     )
     entries = {
-        name: SimpleNamespace(entry_id=name, runtime_data=None) for name in acquired
+        name: SimpleNamespace(
+            entry_id=name,
+            runtime_data=None,
+            version=4,
+            minor_version=3,
+            data={"data_choice_version": 1},
+        )
+        for name in acquired
     }
     tasks = {
         name: asyncio.create_task(f1_sensor.async_setup_entry(hass, entry))

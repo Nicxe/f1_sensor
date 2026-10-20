@@ -320,6 +320,8 @@ async def test_reconfigure_can_start_f1tv_pairing_when_development_ui_disabled(
             CONF_START_F1TV_PAIRING: True,
         },
     )
+    if result.get("step_id") == "sensor_review":
+        result = await flow.async_step_sensor_review({"confirm": True})
 
     assert result["type"] == "external"
     assert result["step_id"] == "f1tv_pairing"
@@ -363,6 +365,8 @@ async def test_reconfigure_blank_auth_header_keeps_existing_value(
             "clear_live_timing_auth_header": False,
         },
     )
+    if result.get("step_id") == "sensor_review":
+        result = await flow.async_step_sensor_review({"confirm": True})
 
     assert result["type"] == "abort"
     assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == "Bearer existing-token"
@@ -394,6 +398,8 @@ async def test_reconfigure_updates_the_entry_from_flow_context(
             CONF_LIVE_TIMING_AUTH_HEADER: "",
         }
     )
+    if result.get("step_id") == "sensor_review":
+        result = await flow.async_step_sensor_review({"confirm": True})
 
     assert result["type"] == "abort"
     assert first.data["sensor_name"] == "First"
@@ -465,6 +471,8 @@ async def test_reconfigure_ignores_legacy_clear_auth_header(hass, monkeypatch) -
             "clear_live_timing_auth_header": True,
         },
     )
+    if result.get("step_id") == "sensor_review":
+        result = await flow.async_step_sensor_review({"confirm": True})
 
     assert result["type"] == "abort"
     assert entry.data[CONF_LIVE_TIMING_AUTH_HEADER] == "Bearer existing-token"

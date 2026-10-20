@@ -188,6 +188,8 @@ class F1ReplaySessionSelect(F1AuxEntity, SelectEntity):
                 self._placeholder_option = f"No data for {year}"
             elif status == "error":
                 self._placeholder_option = "Session list unavailable"
+            elif status is None:
+                self._placeholder_option = f"Press Refresh to load sessions for {year}"
             else:
                 self._placeholder_option = f"No sessions for {year}"
             self._options = [self._placeholder_option]

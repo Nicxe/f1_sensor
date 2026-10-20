@@ -4,6 +4,11 @@ title: Automate your race weekend
 description: Start with a ready-made F1 blueprint, choose a device trigger, or copy a focused Home Assistant automation recipe.
 ---
 
+:::info[Collection and sensor choices]
+Keep every entity used by templates, older cards and automations selected. Automatic card data does not recreate a removed automation entity. Existing installations keep their sensor choices and continue entity updates and F1 event delivery after upgrading. See [Automatic card data and optional sensors](/features/card-data-and-sensors).
+:::
+
+
 Make your lights follow track flags, receive Race Control messages, or get a reminder before a session. Start with a blueprint for a complete setup, or use a device trigger when you want to choose the actions yourself.
 
 ## Choose your starting point

@@ -149,7 +149,7 @@ async def test_existing_websocket_receives_replay_control_without_timing_frames(
     entry = MockConfigEntry(
         domain=DOMAIN,
         version=4,
-        data={"sensor_name": "F1"},
+        data={"sensor_name": "F1", "data_choice_version": 1},
         options={
             "operation_mode": "live",
             "enable_race_control": True,

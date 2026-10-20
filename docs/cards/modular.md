@@ -5,6 +5,11 @@ description: Build one Formula 1 view from presets, configurable modules and acc
 toc_max_heading_level: 2
 ---
 
+:::info[Automatic card data]
+Add the modules you want to the F1 Sensor card. Its [data is available automatically](/features/card-data-and-sensors), independently of the sensors exposed in Home Assistant. Existing installations keep their sensor choices and start normally after updating; see [Upgrading to automatic card data](/getting-started/required-data-choice).
+:::
+
+
 Build a compact weekend overview or a detailed session view with the **F1 Sensor** card. Choose your content first, then adjust its appearance in the visual editor.
 
 New cards start with the empty **Build your own** template. The template chooser is open so you can select a preset or add your first module. Existing saved cards keep their modules.

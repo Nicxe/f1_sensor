@@ -237,6 +237,7 @@ async def test_registered_driver_entity_delivers_best_at_existing_delay(
         version=4,
         data={
             "sensor_name": "F1",
+            "data_choice_version": 1,
             CONF_LIVE_TIMING_AUTH_HEADER: (
                 f"Bearer {_jwt({'exp': int((datetime.now(UTC) + timedelta(days=2)).timestamp())})}"
             ),

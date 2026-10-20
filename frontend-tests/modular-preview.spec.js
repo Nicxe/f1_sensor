@@ -35,7 +35,7 @@ test('native preview switches sources without changing HA states, config or inte
   await expect(page.getByText('DEMO · sample data')).toHaveCount(0);
   await page.getByLabel('Preview data', { exact: true }).selectOption('sample');
   await expect(page.getByText('DEMO · sample data')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.previewStops)).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.previewStops)).toBe(2);
   await page.getByLabel('Sample session', { exact: true }).selectOption('sprint_qualifying');
   await expect(page.getByRole('columnheader', { name: 'SQ1 best', exact: true })).toBeVisible();
   await page.locator('[data-f1-card-action]').click();
