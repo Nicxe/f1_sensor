@@ -71,12 +71,23 @@ async function mountSections(page, { preset = 'session', config, savedRows = 2, 
   await expect(page.locator('f1-sensor-card ha-card')).toBeVisible();
 }
 
-async function expectContained(page) {
-  await expect.poll(() => page.evaluate(() => {
-    const size = window.sizingGeometry();
-    return Math.min(size.slotHeight - size.cardHeight, size.nextClearance, size.addClearance, size.sectionClearance);
-  })).toBeGreaterThanOrEqual(-1);
-  return page.evaluate(() => window.sizingGeometry());
+async function expectContained(page, maxGap = Infinity) {
+  let size;
+  await expect.poll(async () => {
+    // getCardSize awaits Lit rendering. Measure the DOM in that same browser
+    // observation. Containment and the themed row gap must pass together;
+    // return that accepted snapshot instead of taking another measurement.
+    size = await page.evaluate(async () => ({
+      reportedSize: await window.fixtureCard.getCardSize(),
+      ...window.sizingGeometry(),
+    }));
+    const gap = size.slotHeight - size.cardHeight;
+    return {
+      contained: Math.min(gap, size.nextClearance, size.addClearance, size.sectionClearance) >= -1,
+      withinRow: gap < maxGap,
+    };
+  }).toEqual({ contained: true, withinRow: true });
+  return size;
 }
 
 async function settleFrames(page, count = 12) {
@@ -113,7 +124,7 @@ test('saved two-row sections contain every modular preset and the next editing c
     await mountSections(page, { preset });
     if (preset === 'results') await expect(page.locator('f1-series-chart svg.plot')).toBeVisible();
     await settleFrames(page, 3);
-    const size = await expectContained(page);
+    const size = await expectContained(page, 128);
     expect(size.options.rows).toBeUndefined();
     expect(size.slotHeight - size.cardHeight).toBeLessThan(128);
   }
@@ -128,7 +139,7 @@ test('opening and closing chart data moves later cards and sections with the act
   const opened = await expectContained(page);
   expect(opened.cardHeight).toBeGreaterThan(closed.cardHeight + 100);
   expect(opened.slotHeight).toBeGreaterThan(closed.slotHeight);
-  expect(await page.evaluate(() => window.fixtureCard.getCardSize())).toBe(Math.ceil(opened.cardHeight / 50));
+  expect(opened.reportedSize).toBe(Math.ceil(opened.cardHeight / 50));
   await page.getByRole('button', { name: 'Hide data table', exact: true }).click();
   await expect.poll(async () => (await page.evaluate(() => window.sizingGeometry())).slotHeight).toBeLessThan(opened.slotHeight);
   const collapsed = await expectContained(page);
@@ -154,10 +165,10 @@ test('automatic height and explicit larger rows preserve content and report the 
   const automatic = await expectContained(page);
   expect(automatic.options.rows).toBeUndefined();
   expect(automatic.slotHeight).toBeCloseTo(automatic.cardHeight, 0);
-  expect(await page.evaluate(() => window.fixtureCard.getCardSize())).toBe(Math.ceil(automatic.cardHeight / 50));
+  expect(automatic.reportedSize).toBe(Math.ceil(automatic.cardHeight / 50));
 
   await mountSections(page, { preset: 'session', savedRows: 2, rowHeight: 'calc(5rem + 16px)', rowGap: '.75rem' });
-  const themed = await expectContained(page);
+  const themed = await expectContained(page, 108);
   expect(themed.slotHeight - themed.cardHeight).toBeLessThan(108);
   await page.evaluate(() => {
     const card = window.fixtureCard;
@@ -166,7 +177,7 @@ test('automatic height and explicit larger rows preserve content and report the 
   });
   const larger = await expectContained(page);
   expect(larger.slotHeight).toBe(30 * 108 - 12);
-  expect(await page.evaluate(() => window.fixtureCard.getCardSize())).toBe(Math.ceil(larger.cardHeight / 50));
+  expect(larger.reportedSize).toBe(Math.ceil(larger.cardHeight / 50));
   await page.evaluate(() => {
     const card = window.fixtureCard;
     card.setConfig({ ...card.config, grid_options: { columns: 12, rows: 2 } });
@@ -175,7 +186,7 @@ test('automatic height and explicit larger rows preserve content and report the 
     section.style.setProperty('--row-height', 'calc(2rem + 12px)');
     section.style.setProperty('--row-gap', '.5rem');
   });
-  const smallerTheme = await expectContained(page);
+  const smallerTheme = await expectContained(page, 52);
   expect(smallerTheme.cardHeight).toBeCloseTo(themed.cardHeight, 0);
   expect(smallerTheme.slotHeight - smallerTheme.cardHeight).toBeLessThan(52);
   await page.evaluate(async () => {
@@ -186,9 +197,47 @@ test('automatic height and explicit larger rows preserve content and report the 
     window.fixtureCard.requestUpdate();
     await window.fixtureCard.updateComplete;
   });
-  const relativeTheme = await expectContained(page);
+  const relativeTheme = await expectContained(page, 44);
   expect(relativeTheme.slotHeight - relativeTheme.cardHeight).toBeLessThan(44);
   expect(relativeTheme.cardHeight).toBeCloseTo(themed.cardHeight, 0);
+});
+
+test('masonry geometry and reported size use the same render after a delayed chart resize', async ({ page }) => {
+  await page.evaluate(() => {
+    const NativeResizeObserver = window.ResizeObserver;
+    window.heldChartResizes = [];
+    window.holdChartResizes = true;
+    window.ResizeObserver = class extends NativeResizeObserver {
+      constructor(callback) {
+        super((entries, observer) => {
+          if (window.holdChartResizes && entries.some(entry => entry.target.localName === 'f1-series-chart')) {
+            window.heldChartResizes.push(() => callback(entries, observer));
+          } else callback(entries, observer);
+        });
+      }
+    };
+  });
+  await mountSections(page, { preset: 'results', savedRows: null });
+  await expect(page.locator('f1-series-chart svg.plot')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.heldChartResizes.length)).toBeGreaterThan(0);
+  const initialHeight = await page.evaluate(() => window.sizingGeometry().cardHeight);
+  await page.evaluate(() => {
+    const card = window.fixtureCard;
+    const getCardSize = card.getCardSize.bind(card);
+    // Release the real observer callbacks at the async sizing boundary. A
+    // geometry snapshot taken before that boundary is deliberately obsolete.
+    card.getCardSize = async () => {
+      if (window.holdChartResizes) {
+        window.holdChartResizes = false;
+        for (const deliver of window.heldChartResizes.splice(0)) deliver();
+        await Promise.all([...card.shadowRoot.querySelectorAll('f1-series-chart')].map(chart => chart.updateComplete));
+      }
+      return getCardSize();
+    };
+  });
+  const size = await expectContained(page);
+  expect(size.reportedSize).toBe(Math.ceil(size.cardHeight / 50));
+  expect(size.cardHeight).not.toBe(initialHeight);
 });
 
 test('size events settle, stop after disconnection, and resume when the card is reattached', async ({ page }) => {
@@ -221,17 +270,13 @@ test('size events settle, stop after disconnection, and resume when the card is 
 test('entry discovery and loss preserve accurate themed sizing when the card template changes', async ({ page }) => {
   await mountSections(page, { config: { modules: [{ type: 'progression' }] }, rowHeight: 'calc(2rem + 12px)', rowGap: '.5rem', waiting: true });
   await expect(page.getByText('Waiting for F1 Sensor…', { exact: true })).toBeVisible();
-  const waiting = await expectContained(page);
+  const waiting = await expectContained(page, 52);
   expect(waiting.slotHeight - waiting.cardHeight).toBeLessThan(52);
 
   for (let discovery = 0; discovery < 2; discovery++) {
     await page.evaluate(() => { window.fixtureCard.previewData = window.fixtureDemo.preview; });
     await expect(page.locator('f1-series-chart svg.plot')).toBeVisible();
-    await expect.poll(async () => {
-      const size = await page.evaluate(() => window.sizingGeometry());
-      return size.slotHeight - size.cardHeight;
-    }).toBeLessThan(52);
-    const populated = await expectContained(page);
+    const populated = await expectContained(page, 52);
     expect(populated.slotHeight - populated.cardHeight).toBeLessThan(52);
     expect(populated.cardHeight).toBeGreaterThan(waiting.cardHeight + 200);
 
@@ -239,11 +284,7 @@ test('entry discovery and loss preserve accurate themed sizing when the card tem
       section.style.setProperty('--row-height', 'calc(5rem + 16px)');
       section.style.setProperty('--row-gap', '.75rem');
     });
-    await expect.poll(async () => {
-      const size = await page.evaluate(() => window.sizingGeometry());
-      return size.slotHeight - size.cardHeight;
-    }).toBeLessThan(108);
-    await expectContained(page);
+    await expectContained(page, 108);
 
     await page.evaluate(() => { window.fixtureCard.previewData = { ...window.fixtureDemo.preview, entries: [] }; });
     await expect(page.getByText('Waiting for F1 Sensor…', { exact: true })).toBeVisible();
@@ -252,11 +293,7 @@ test('entry discovery and loss preserve accurate themed sizing when the card tem
       section.style.setProperty('--row-gap', '.5rem');
     });
     await expect.poll(async () => (await page.evaluate(() => window.sizingGeometry())).slotHeight).toBeLessThan(populated.slotHeight);
-    await expect.poll(async () => {
-      const size = await page.evaluate(() => window.sizingGeometry());
-      return size.slotHeight - size.cardHeight;
-    }).toBeLessThan(52);
-    const compact = await expectContained(page);
+    const compact = await expectContained(page, 52);
     expect(compact.slotHeight - compact.cardHeight).toBeLessThan(52);
   }
 });
