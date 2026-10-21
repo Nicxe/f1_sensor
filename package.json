@@ -20,6 +20,7 @@
     "setup:ci": "python3 scripts/setup_ci_environment.py",
     "verify:changed": "python3 scripts/verify_dev.py changed",
     "verify:dev": "python3 scripts/verify_dev.py full",
+    "verify:release": "python3 scripts/verify_dev.py release",
     "verify:dev:plan": "python3 scripts/verify_dev.py changed --print-plan",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
@@ -30,7 +31,8 @@
     "test:automation": "python3 -m unittest discover -s ci_tests && node --test ci_tests/*.test.cjs ci_tests/*.test.mjs",
     "test:field-catalog": "node scripts/build_modular_field_catalog.mjs",
     "build:field-catalog": "node scripts/build_modular_field_catalog.mjs --write",
-    "test:frontend:unit": "node --experimental-vm-modules --test frontend-tests/unit/*.test.mjs"
+    "test:frontend:unit": "node --experimental-vm-modules --test frontend-tests/unit/*.test.mjs",
+    "test:translations": "python3 scripts/check_localization.py && node --experimental-vm-modules --test frontend-tests/unit/localization.test.mjs && playwright test frontend-tests/translations.spec.js"
   },
   "dependencies": {
     "@docusaurus/core": "^3.10.2",

@@ -179,10 +179,10 @@ test('conversion review supports keyboard, narrow widths, Swedish and forced col
   const notice = page.locator('f1-migration-editor .migration');
   await expect(notice.getByRole('heading')).toBeVisible();
   await expect(notice.getByRole('paragraph')).toBeVisible();
-  await notice.getByRole('button').focus(); await page.keyboard.press('Enter');
+  await notice.locator('[data-action="review-conversion"]').focus(); await page.keyboard.press('Enter');
   await expect(notice.locator('details')).not.toHaveCount(0);
   const check = notice.getByRole('checkbox'); await check.focus(); await page.keyboard.press('Space');
-  await expect(notice.locator('.buttons button').nth(1)).toBeEnabled();
+  await expect(notice.locator('[data-action="apply-conversion"]')).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const violations = await new AxeBuilder({ page }).include('f1-migration-editor').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(violations.violations).toEqual([]);

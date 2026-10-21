@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Weblate-managed Home Assistant translation files."""
+"""Validate translator-owned catalogs without freezing wording or completeness."""
 
 from __future__ import annotations
 
@@ -11,6 +11,32 @@ from typing import Any
 
 PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z0-9_]+)\}")
 LANGUAGE_TAG_RE = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$")
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
+def read_catalog(path: Path, *, flat: bool = False) -> dict[str, str]:
+    """Read JSON with duplicate detection and the component's message schema."""
+    value = json.loads(
+        path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object
+    )
+    if not isinstance(value, dict):
+        raise ValueError("catalog must be an object")
+    if flat:
+        for key, message in value.items():
+            if not isinstance(message, str):
+                raise ValueError(
+                    f"{key} must contain a string, got {type(message).__name__}"
+                )
+        return value
+    return _flatten(value)
 
 
 def _flatten(value: dict[str, Any], prefix: str = "") -> dict[str, str]:
@@ -28,22 +54,33 @@ def _flatten(value: dict[str, Any], prefix: str = "") -> dict[str, str]:
     return flattened
 
 
-def validate_translations(root: Path) -> tuple[list[str], int, int, int]:
+def validate_translations(
+    root: Path, *, flat: bool = False
+) -> tuple[list[str], int, int, int]:
     """Return validation failures and source/locale/untranslated counts."""
     failures: list[str] = []
     source_path = root / "en.json"
     try:
-        english = _flatten(json.loads(source_path.read_text(encoding="utf-8")))
+        english = read_catalog(source_path, flat=flat)
     except (json.JSONDecodeError, OSError, ValueError) as err:
         return [f"en.json: {err}"], 0, 0, 0
+    if not english:
+        return ["en.json: source catalog must not be empty"], 0, 0, 0
 
     untranslated = 0
     paths = sorted(root.glob("*.json"))
-    for path in sorted(root.glob("*.json")):
+    filenames: dict[str, str] = {}
+    for path in paths:
         if not LANGUAGE_TAG_RE.fullmatch(path.stem):
             failures.append(f"{path.name}: filename must use a BCP47 language tag")
+        normalized = path.stem.lower()
+        if normalized in filenames:
+            failures.append(
+                f"{path.name}: duplicates language in {filenames[normalized]}"
+            )
+        filenames[normalized] = path.name
         try:
-            translated = _flatten(json.loads(path.read_text(encoding="utf-8")))
+            translated = read_catalog(path, flat=flat)
         except (json.JSONDecodeError, OSError, ValueError) as err:
             failures.append(f"{path.name}: {err}")
             continue
@@ -70,10 +107,13 @@ def validate_translations(root: Path) -> tuple[list[str], int, int, int]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("translations", type=Path)
+    parser.add_argument(
+        "--flat", action="store_true", help="Validate flat card messages"
+    )
     args = parser.parse_args()
 
     failures, source_keys, locale_count, untranslated = validate_translations(
-        args.translations.resolve()
+        args.translations.resolve(), flat=args.flat
     )
 
     if failures:

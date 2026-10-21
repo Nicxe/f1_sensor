@@ -20,7 +20,7 @@ jobs:
   checks:
     uses: ./.github/workflows/ci-checks.yml
     with:
-      allow_reuse: true
+      allow_reuse: false
   release:
     needs: checks
     # Optional ancestors can be skipped; the aggregate is the release gate.
@@ -36,48 +36,3 @@ jobs:
       id-token: write
       attestations: write
     uses: ./.github/workflows/release.yml
-  deploy:
-    needs: checks
-    if: >-
-      !cancelled() && needs.checks.result == 'success' &&
-      needs.checks.outputs.deploy == 'true' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta') &&
-      github.event_name != 'pull_request'
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/deploy.yml
-  context7:
-    needs: deploy
-    if: >-
-      !cancelled() && needs.deploy.result == 'success' &&
-      github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Trigger Context7 re-index
-        run: |
-          for i in 1 2 3; do
-            response=$(curl --connect-timeout 10 --max-time 30 -s -w "\n%{http_code}" -X POST https://context7.com/api/v1/refresh \
-              -H "Authorization: Bearer ${{ secrets.CONTEXT7_API_KEY }}" \
-              -H "Content-Type: application/json" \
-              -d '{"libraryName": "/websites/nicxe_github_io_f1_sensor"}')
-            http_code=$(echo "$response" | tail -1)
-            body=$(echo "$response" | sed '$d')
-            if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-              echo "Success: $body"
-              exit 0
-            fi
-            if echo "$body" | grep -q "user-has-active-task"; then
-              echo "Another indexing job is running, retrying in 30s... (attempt $i/3)"
-              sleep 30
-              continue
-            fi
-            echo "Request failed ($http_code): $body"
-            exit 1
-          done
-          echo "Context7 is already processing an indexing job; no new refresh is needed."
-          exit 0

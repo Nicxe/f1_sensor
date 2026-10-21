@@ -18,9 +18,7 @@ export const FRONTEND_TEXT_TRANSLATIONS = Object.freeze(Object.fromEntries(
     .map(language => [language, Object.freeze(legacyTextTranslations(language))]),
 ));
 
-const languageFor = hass => String(hass?.locale?.language || hass?.language || 'en')
-  .toLowerCase()
-  .split('-', 1)[0];
+const languageFor = hass => localization.languageCode(hass?.locale?.language || hass?.language || 'en');
 
 const interpolate = (template, replacements) => Object.entries(replacements).reduce(
   (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),

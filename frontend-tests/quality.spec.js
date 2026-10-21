@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
 const PERFORMANCE_BUDGETS = require('../quality/performance-budgets.json').browser;
+const {expectedMessage} = require('./localization-fixture.cjs');
 
 const openFixture = async (page) => {
   const errors = [];
@@ -159,14 +160,15 @@ test('card picker metadata follows the browser language with English fallback', 
     Object.defineProperty(navigator, 'language', { configurable: true, value: 'sv-SE' });
   });
   await openFixture(page);
-  const metadata = await page.evaluate(() => window.customCards.map(({ name, description }) => ({
+  const metadata = await page.evaluate(() => window.customCards.map(({ translationKey, name, description }) => ({
+    translationKey,
     name,
     description,
   })));
   expect(metadata).toHaveLength(24);
   for (const item of metadata) {
-    expect(item.name.trim()).not.toBe('');
-    expect(item.description.trim()).not.toBe('');
+    expect(item.name).toBe(expectedMessage('sv', `card.${item.translationKey}.name`));
+    expect(item.description).toBe(expectedMessage('sv', `card.${item.translationKey}.description`));
     expect(`${item.name} ${item.description}`).not.toMatch(/(?:card|track_map|modular)\.[a-z0-9_.]+/);
   }
 });

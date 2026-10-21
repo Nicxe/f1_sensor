@@ -3,32 +3,107 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import json
+import os
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
-ENVIRONMENT = ROOT / ".venv-ci"
+try:
+    from .ci_environment import (
+        PYTHON,
+        ROOT,
+        STAMP,
+        TOOLS,
+        dependency_fingerprints,
+        expected_versions,
+        installed_versions,
+        tool_environment,
+    )
+    from .setup_actionlint import install as install_actionlint
+    from .setup_node import install as install_node
+except ImportError:
+    from ci_environment import (
+        PYTHON,
+        ROOT,
+        STAMP,
+        TOOLS,
+        dependency_fingerprints,
+        expected_versions,
+        installed_versions,
+        tool_environment,
+    )
+    from setup_actionlint import install as install_actionlint
+    from setup_node import install as install_node
 
 
 def main() -> int:
-    if sys.version_info < (3, 14):
-        print("Python 3.14 or newer is required to match the HA current CI profile.")
+    versions = expected_versions()
+    if f"{sys.version_info.major}.{sys.version_info.minor}" != versions["python"]:
+        print(
+            f"Python {versions['python']} is required to match the HA current CI profile."
+        )
         return 1
-    subprocess.run([sys.executable, "-m", "venv", str(ENVIRONMENT)], check=True)
-    python = ENVIRONMENT / "bin" / "python"
-    subprocess.run([python, "-m", "pip", "install", "--upgrade", "pip"], check=True)
     subprocess.run(
-        [python, "-m", "pip", "install", "-r", "requirements/ha-current.txt"],
+        [
+            getattr(sys, "_base_executable", sys.executable),
+            "-m",
+            "venv",
+            "--clear",
+            str(PYTHON.parent.parent),
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [str(PYTHON), "-m", "pip", "install", "-r", "requirements/ha-current.txt"],
         cwd=ROOT,
         check=True,
     )
     subprocess.run(
-        [python, "-m", "pip", "install", "-r", "requirements-dev.txt"],
+        [str(PYTHON), "-m", "pip", "install", "-r", "requirements-dev.txt"],
         cwd=ROOT,
         check=True,
     )
-    print(f"Local CI environment is ready: {ENVIRONMENT}")
+    runtime = install_node()
+    subprocess.run(
+        [
+            str(runtime / "bin/node"),
+            str(runtime / "lib/node_modules/npm/bin/npm-cli.js"),
+            "install",
+            "--prefix",
+            str(TOOLS),
+            "--no-save",
+            "--package-lock=false",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+            f"npm@{versions['npm']}",
+        ],
+        cwd=ROOT,
+        check=True,
+        env=os.environ,
+    )
+    environment = tool_environment()
+    if installed_versions() != versions:
+        raise RuntimeError(
+            "The isolated tool versions do not match the checked-in pins"
+        )
+    subprocess.run(
+        ["npm", "ci", "--no-audit", "--no-fund"], cwd=ROOT, env=environment, check=True
+    )
+    subprocess.run(
+        ["npm", "exec", "--", "playwright", "install", "chromium"],
+        cwd=ROOT,
+        env=environment,
+        check=True,
+    )
+    install_actionlint()
+    STAMP.write_text(
+        json.dumps(
+            {"versions": versions, "dependencies": dependency_fingerprints()}, indent=2
+        )
+        + "\n"
+    )
+    print(f"Local CI environment is ready: {PYTHON.parent.parent}")
     return 0
 
 

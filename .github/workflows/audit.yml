@@ -5,6 +5,12 @@ on:
       checkout_ref:
         type: string
         default: ''
+      mode:
+        type: string
+        default: gate
+      base:
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -15,11 +21,22 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
           ref: ${{ inputs.checkout_ref || (github.event.inputs.pull_request && format('refs/pull/{0}/merge', github.event.inputs.pull_request)) || github.sha }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version-file: .python-version
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: "22"
+          node-version-file: .node-version
           cache: npm
       - name: Use the project npm version
-        run: npm install --global npm@10.9.8 --no-audit --no-fund
-      - run: npm run test:audit
+        run: node scripts/install_project_npm.cjs
+      - name: Check dependency risk with the shared local policy
+        env:
+          AUDIT_MODE: ${{ inputs.mode }}
+          AUDIT_BASE: ${{ inputs.base }}
+        run: |
+          args=(--audit-mode "$AUDIT_MODE")
+          if [ -n "$AUDIT_BASE" ]; then args+=(--audit-base "$AUDIT_BASE"); fi
+          python3 scripts/run_check.py audit "${args[@]}"

@@ -16,6 +16,7 @@ JOBS = (
     "lint",
     "backend",
     "frontend",
+    "translations",
     "documentation",
     "validation",
     "package",
@@ -23,7 +24,12 @@ JOBS = (
     "blueprints",
     "automation",
 )
-RUNTIME = {"lint", "backend", "frontend", "validation", "package"}
+RUNTIME = {"lint", "backend", "frontend", "translations", "validation", "package"}
+TARGET_TRANSLATION = re.compile(
+    r"^custom_components/f1_sensor/(?:translations/|"
+    r"www/f1-sensor-live-data-card/localization/locales/)"
+    r"(?!en\.json$)[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\.json$"
+)
 STABLE_RELEASE_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 RELEASE_TRIGGER = re.compile(r"^(?:feat|fix)(?:\([^)]+\))?!?:")
 RELEASE_POLICY_PATH = Path(__file__).parents[1] / "semantic-release-policy.json"
@@ -311,13 +317,6 @@ def select_jobs(
     files: list[str] | None, event: dict, event_name: str, branch: str
 ) -> dict[str, bool]:
     pr = event.get("pull_request", {})
-    # Registry advisories belong to maintenance, not contributor verification.
-    # Keep stable/beta release verification and maintenance behavior unchanged.
-    audit = not (
-        pr
-        or event_name == "pull_request"
-        or (event_name == "push" and branch in ("dev", "content"))
-    )
     promotion = (
         pr.get("base", {}).get("ref") in ("beta", "main")
         and pr.get("head", {}).get("ref") != "content"
@@ -328,8 +327,10 @@ def select_jobs(
         or promotion
         or (event_name == "push" and branch in ("beta", "main"))
     ):
-        return selected_checks(set(JOBS), audit=audit)
-    selected = {"automation"}
+        return selected_checks(set(JOBS))
+    if files and all(TARGET_TRANSLATION.fullmatch(path) for path in files):
+        return selected_checks({"translations"})
+    selected: set[str] = set()
     for path in files:
         if path.startswith(
             (".github/", "scripts/", "ci_tests/", "quality/", "requirements")
@@ -358,7 +359,37 @@ def select_jobs(
             selected.update(JOBS)
         elif path not in ("LICENSE", ".gitignore"):
             selected.update(JOBS)
-    return selected_checks(selected, audit=audit)
+    return selected_checks(selected)
+
+
+def audit_context(
+    event: dict, event_name: str, branch: str, files: list[str] | None = None
+) -> tuple[str, str]:
+    """Use the same security scope before promotion as after release pushes."""
+    if files is None:
+        return "gate", ""
+    if files and any(
+        path
+        in (
+            "quality/npm-audit-policy.json",
+            "quality/npm-audit-allowlist.json",
+            "scripts/check_npm_audit.py",
+            "scripts/run_npm_audit.py",
+            ".github/workflows/audit.yml",
+        )
+        for path in files
+    ):
+        return "gate", ""
+    pr = event.get("pull_request")
+    if pr:
+        if pr["base"]["ref"] in ("beta", "main"):
+            return "gate", ""
+        return "introduced", pr["base"]["sha"]
+    if event_name == "push" and branch in ("dev", "content"):
+        base = event.get("before", "")
+        if re.fullmatch(r"[0-9a-f]{40}", base) and set(base) != {"0"}:
+            return "introduced", base
+    return "gate", ""
 
 
 def gate_errors(selected: dict, results: dict, reused=()) -> list[str]:
@@ -415,6 +446,17 @@ def main() -> int:
             results,
             evidence.get("checks", []),
         )
+        summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary_path:
+            with Path(summary_path).open("a") as summary:
+                summary.write("## Verification result\n\n")
+                summary.write(
+                    "All selected checks passed.\n"
+                    if not errors
+                    else "The following checks need attention; aggregate failures are consequences of these results.\n\n"
+                    + "\n".join(f"- {error}" for error in errors)
+                    + "\n"
+                )
         print("\n".join(errors) if errors else "All applicable checks passed")
         return int(bool(errors))
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
@@ -447,8 +489,24 @@ def main() -> int:
         print(error)
         return 1
     selected = select_jobs(files, event, name, os.environ.get("GITHUB_REF_NAME", ""))
+    audit_mode, audit_base = audit_context(
+        event, name, os.environ.get("GITHUB_REF_NAME", ""), files
+    )
+    tested_sha = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], text=True
+    ).strip()
+    tested_tree = subprocess.check_output(
+        ["git", "rev-parse", "HEAD^{tree}"], text=True
+    ).strip()
     print(json.dumps({"files": files, "checks": selected}, indent=2))
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+        output.write(f"tested_sha={tested_sha}\n")
+        output.write(f"tested_tree={tested_tree}\n")
+        if event.get("pull_request"):
+            output.write(f"tested_base={event['pull_request']['base']['sha']}\n")
+            output.write(f"tested_head={event['pull_request']['head']['sha']}\n")
+        output.write(f"audit_mode={audit_mode}\n")
+        output.write(f"audit_base={audit_base}\n")
         output.write(
             f"deploy={str(should_deploy(files, name, os.environ.get('GITHUB_REF_NAME', ''))).lower()}\n"
         )

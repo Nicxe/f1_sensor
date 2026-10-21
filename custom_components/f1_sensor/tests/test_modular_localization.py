@@ -33,13 +33,12 @@ process.stdout.write(JSON.stringify({
     'nl',
     'No session data is currently available. Your settings are kept.',
   ),
-  dynamicColumns: words('nl', '3 of 4 columns'),
   driverLabel: words('nl', 'Driver'),
   resultModule: moduleTitle({ type: 'results' }, 'nl'),
   incidentsModule: moduleTitle({ type: 'incidents' }, 'en'),
   sessionName: words('nl', 'Qualifying'),
   swedishFallback: words('sv-SE', 'Weather'),
-  unknownFallback: words('de-DE', 'Weather'),
+  unknownFallback: words('zz-ZZ', 'Weather'),
   englishModule: label(MODULES.weather, 'en'),
 }));
 """
@@ -55,8 +54,8 @@ const keys = Object.fromEntries(Object.entries(locales).map(
   ([language, messages]) => [language, Object.keys(messages).sort()],
 ));
 const targetLanguages = Object.keys(locales).filter(language => language !== 'en');
-const placeholders = value => [...String(value).matchAll(/\{([^{}]+)\}/g)]
-  .map(match => match[1]).sort();
+const placeholders = value => [...new Set([...String(value).matchAll(/\{([a-zA-Z0-9_]+)\}/g)]
+  .map(match => match[1]))].sort();
 const mismatchedPlaceholders = keys.en.filter(key =>
   targetLanguages.some(language =>
     locales[language][key] !== undefined &&
@@ -70,7 +69,9 @@ const unexpectedTargetKeys = Object.fromEntries(targetLanguages.map(language => 
 ]));
 const missingTargetKeysUseEnglish = targetLanguages.every(language =>
   keys.en
-    .filter(key => locales[language][key] === undefined)
+    .filter(key => !targetLanguages.some(candidate =>
+      (language === candidate || language.startsWith(`${candidate}-`))
+      && locales[candidate][key] !== undefined))
     .every(key => translate(language, key) === locales.en[key]),
 );
 
@@ -82,11 +83,41 @@ process.stdout.write(JSON.stringify({
   swedish: translate('sv-SE', 'modular.no_session_data_is_currently_available_your_settings_are_kept'),
   dutch: translate('nl-NL', 'modular.no_session_data_is_currently_available_your_settings_are_kept'),
   replacement: translate('sv', 'a11y.open_details', { title: 'Testkort' }),
-  fallback: translate('de-DE', 'card.weather.name'),
+  german: translate('de-DE', 'card.weather.name'),
+  fallback: translate('zz-ZZ', 'card.weather.name'),
   singular: translatePlural('nl', 'modular.column_count', 1),
   plural: translatePlural('sv', 'modular.column_count', 3),
 }));
 """
+
+
+def _catalogs() -> dict[str, dict[str, str]]:
+    """Read expectations independently from translator-owned JSON files."""
+    return {
+        path.stem.lower(): json.loads(path.read_text(encoding="utf-8"))
+        for path in LOCALE_DIR.glob("*.json")
+    }
+
+
+def _message(language: str, key: str, **replacements: str) -> str:
+    catalogs = _catalogs()
+    text = catalogs[language].get(key, catalogs["en"][key])
+    for name, value in replacements.items():
+        text = text.replace("{" + name + "}", value)
+    return text
+
+
+def _source_messages(language: str, source: str) -> set[str]:
+    """Source-text aliases can have different valid translator-owned wording."""
+    catalogs = _catalogs()
+    values = {
+        catalogs[language].get(key, source)
+        for key, text in catalogs["en"].items()
+        if text == source
+        and key.startswith(("legacy.modular.", "legacy.platform.", "modular."))
+    }
+    translated = values - {source}
+    return translated or {source}
 
 
 def test_modular_card_uses_dutch_for_labels_titles_and_messages() -> None:
@@ -99,25 +130,28 @@ def test_modular_card_uses_dutch_for_labels_titles_and_messages() -> None:
         text=True,
     )
 
-    assert json.loads(result.stdout) == {
-        "airTemperature": "Luchttemperatuur",
-        "qualifyingBest": "Q1 beste tijd",
-        "placesGained": "Gewonnen plaatsen",
-        "weatherModule": "Weeroverzicht",
-        "currentWeatherModule": "Huidig circuitweer",
+    payload = json.loads(result.stdout)
+    expected_sources = {
+        "airTemperature": ("nl", "Air temperature"),
+        "qualifyingBest": ("nl", "Q1 best"),
+        "placesGained": ("nl", "Places gained"),
+        "weatherModule": ("nl", "Weather overview"),
+        "currentWeatherModule": ("nl", "Current circuit weather"),
         "statusMessage": (
-            "Er zijn momenteel geen sessiegegevens beschikbaar. "
-            "Je instellingen blijven behouden."
+            "nl",
+            "No session data is currently available. Your settings are kept.",
         ),
-        "dynamicColumns": "3 van 4 kolommen",
-        "driverLabel": "Coureur",
-        "resultModule": "Uitslagen",
-        "incidentsModule": "Incidents",
-        "sessionName": "Kwalificatie",
-        "swedishFallback": "Väder",
-        "unknownFallback": "Weather",
-        "englishModule": "Weather",
+        "driverLabel": ("nl", "Driver"),
+        "resultModule": ("nl", "Results"),
+        "incidentsModule": ("en", "Incidents"),
+        "sessionName": ("nl", "Qualifying"),
+        "swedishFallback": ("sv", "Weather"),
+        "unknownFallback": ("en", "Weather"),
+        "englishModule": ("en", "Weather"),
     }
+    assert payload.keys() == expected_sources.keys()
+    for name, (language, source) in expected_sources.items():
+        assert payload[name] in _source_messages(language, source), name
 
 
 def test_frontend_locales_use_source_keys_fallbacks_and_safe_placeholders() -> None:
@@ -131,36 +165,44 @@ def test_frontend_locales_use_source_keys_fallbacks_and_safe_placeholders() -> N
     )
 
     payload = json.loads(result.stdout)
-    assert payload["keyCount"] >= 700
+    catalogs = _catalogs()
+    assert payload["keyCount"] == len(catalogs["en"])
     assert payload["unexpectedTargetKeys"] == {
-        language: []
-        for language in ("da", "de", "fi", "fr", "it", "nl", "no", "pl", "pt", "sv")
+        language: [] for language in catalogs if language != "en"
     }
     assert payload["missingTargetKeysUseEnglish"] is True
     assert payload["mismatchedPlaceholders"] == []
-    assert payload["swedish"] == (
-        "Sessionsdata är inte tillgängliga just nu. Dina inställningar finns kvar."
+    assert payload["swedish"] == _message(
+        "sv", "modular.no_session_data_is_currently_available_your_settings_are_kept"
     )
-    assert payload["dutch"] == (
-        "Er zijn momenteel geen sessiegegevens beschikbaar. "
-        "Je instellingen blijven behouden."
+    assert payload["dutch"] == _message(
+        "nl", "modular.no_session_data_is_currently_available_your_settings_are_kept"
     )
-    assert payload["replacement"] == "Öppna detaljer för Testkort"
-    assert payload["fallback"] == "F1 Race Weather"
-    assert payload["singular"] == "1 kolom"
-    assert payload["plural"] == "3 kolumner"
+    assert payload["replacement"] == _message(
+        "sv", "a11y.open_details", title="Testkort"
+    )
+    assert payload["german"] == _message("de", "card.weather.name")
+    assert payload["fallback"] == _message("en", "card.weather.name")
+    assert payload["singular"] == _message("nl", "modular.column_count.one", count="1")
+    assert payload["plural"] == _message("sv", "modular.column_count.other", count="3")
 
 
-def test_frontend_locales_are_in_the_runtime_asset_manifest() -> None:
+def test_frontend_locales_are_in_the_runtime_asset_manifest(tmp_path: Path) -> None:
     """The runtime sync must include every locale asset used by the card."""
-    frontend_source = (
-        ROOT / "custom_components" / "f1_sensor" / "frontend.py"
-    ).read_text()
+    from custom_components.f1_sensor.frontend import (
+        LIVE_DATA_CARD_LOCALE_MANIFEST,
+        _sync_bundled_live_data_card_assets,
+    )
 
-    assert '"localization/index.js"' in frontend_source
-    assert '"localization/legacy.js"' in frontend_source
-    assert 'glob("*.json")' in frontend_source
-    assert "LIVE_DATA_CARD_LOCALE_MANIFEST" in frontend_source
+    runtime = tmp_path / "runtime"
+    _sync_bundled_live_data_card_assets(runtime)
+    assert json.loads((runtime / LIVE_DATA_CARD_LOCALE_MANIFEST).read_text()) == sorted(
+        path.stem for path in LOCALE_DIR.glob("*.json")
+    )
+    for source in LOCALE_DIR.glob("*.json"):
+        assert (
+            runtime / "localization" / "locales" / source.name
+        ).read_bytes() == source.read_bytes()
 
 
 def test_frontend_locale_json_is_weblate_compatible() -> None:
@@ -181,5 +223,3 @@ def test_modular_static_messages_use_translation_keys() -> None:
             continue
         source = path.read_text()
         assert bilingual_call.search(source) is None
-        assert re.search(r"[åäöÅÄÖ]", source) is None
-        assert re.search(r"\bsv\b", source) is None

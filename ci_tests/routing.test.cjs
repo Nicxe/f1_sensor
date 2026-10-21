@@ -1,51 +1,74 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {matchingPull, matchingRun, route} = require('../.github/scripts/ci-routing.cjs');
-const pr = {number:1,state:'open',head:{ref:'dev',sha:'a',repo:{full_name:'owner/repo'}},base:{ref:'beta'}};
-const run = {event:'pull_request',path:'.github/workflows/ci.yml',head_sha:'a',pull_requests:[{number:1}],status:'in_progress',conclusion:null};
-test('only the unchanged own promotion PR can replace a push run',()=>{
-  assert.equal(matchingPull(pr,'owner/repo','dev','a'),true);
-  assert.equal(matchingPull(pr,'owner/repo','dev','b'),false);
-  assert.equal(matchingPull(pr,'fork/repo','dev','a'),false);
-  assert.equal(matchingPull({...pr,state:'closed'},'owner/repo','dev','a'),false);
-});
-test('missing, failed, cancelled or unrelated runs never suppress push tests',()=>{
-  assert.equal(matchingRun(run,pr,'a'),true);
-  for(const changed of [{event:'push'},{head_sha:'b'},{pull_requests:[]},
-    {status:'completed',conclusion:'failure'},{status:'completed',conclusion:'cancelled'},
-    {path:'another.yml'}]) assert.equal(matchingRun({...run,...changed},pr,'a'),false);
-});
-test('GitHub outage falls back to testing the push',async()=>{
-  const outputs={};
-  await route({github:{paginate:async()=>{throw new Error('503')},rest:{pulls:{list(){}}}},
-    context:{repo:{owner:'owner',repo:'repo'},ref:'refs/heads/dev',sha:'a'},
-    core:{setOutput:(k,v)=>outputs[k]=v,warning(){}}});
-  assert.equal(outputs.run_checks,'true');
+const fs = require('node:fs');
+const path = require('node:path');
+const yaml = require('js-yaml');
+
+const workflow = name => yaml.load(fs.readFileSync(path.join(__dirname, '..', '.github/workflows', name), 'utf8'));
+
+test('metadata-only PR edits do not restart or cancel product verification', () => {
+  const events = workflow('ci.yml').on.pull_request.types;
+  assert.deepEqual(events, ['opened', 'synchronize', 'reopened', 'ready_for_review']);
+  const retarget = workflow('pr-target-check.yml').jobs.metadata.steps.find(step => step.name === 'Verify a changed target branch');
+  assert.equal(retarget.if, "github.event.action == 'edited' && github.event.changes.base");
 });
 
-test('confirmed PR verification owns the work while unconfirmed registration stays safe',async()=>{
-  for (const available of [[],[run]]) {
-    const outputs={};
-    const summaries=[];
-    const core={setOutput:(k,v)=>outputs[k]=v,warning(){},summary:{
-      addRaw(text){summaries.push(text);return this;},async write(){}}};
-    const github={paginate:async()=>[pr],rest:{pulls:{list(){}},actions:{
-      listWorkflowRunsForRepo:async()=>({data:{workflow_runs:available}})}}};
-    await route({github,core,wait:async()=>{},context:{repo:{owner:'owner',repo:'repo'},ref:'refs/heads/dev',sha:'a'}});
-    assert.equal(outputs.run_checks,available.length?'false':'true');
-    assert.equal(summaries.length,available.length);
+test('a green development run requires its own completed applicable checks', () => {
+  const jobs = workflow('development.yml').jobs;
+  assert.deepEqual(Object.keys(jobs), ['checks']);
+  assert.equal(jobs.checks.uses, './.github/workflows/ci-checks.yml');
+  assert.equal(jobs.checks.if, undefined);
+  assert.equal(jobs.checks.needs, undefined);
+});
+
+test('every selected job and the final gate use the immutable planned commit', () => {
+  const {jobs, on: {workflow_call: {outputs}}} = workflow('ci-checks.yml');
+  assert.equal(outputs.tested_sha.value, '${{ jobs.plan.outputs.tested_sha }}');
+  assert.equal(outputs.tested_tree.value, '${{ jobs.plan.outputs.tested_tree }}');
+  for (const [name, job] of Object.entries(jobs)) {
+    if (!job.uses) continue;
+    assert.equal(job.with.checkout_ref, '${{ needs.plan.outputs.tested_sha }}', name);
+    assert.ok(jobs.required.needs.includes(name), `${name} must reach the aggregate`);
   }
+  const checkout = jobs.required.steps.find(step => step.uses?.startsWith('actions/checkout@'));
+  assert.equal(checkout.with.ref, '${{ needs.plan.outputs.tested_sha }}');
+  assert.equal(jobs.audit.with.mode, '${{ needs.plan.outputs.audit_mode }}');
+  assert.equal(jobs.audit.with.base, '${{ needs.plan.outputs.audit_base }}');
 });
 
-test('a just-opened promotion PR gets a bounded registration window before push checks start', async()=>{
-  const outputs={};
-  let attempts=0;
-  const github={paginate:async()=>[pr],rest:{pulls:{list(){}},actions:{
-    listWorkflowRunsForRepo:async()=>({data:{workflow_runs:++attempts === 3 ? [run] : []}})}}};
-  const core={setOutput:(key,value)=>outputs[key]=value,warning(){},summary:{
-    addRaw(){return this;},async write(){}}};
-  let waits=0;
-  await route({github,core,wait:async()=>{waits++;},context:{repo:{owner:'owner',repo:'repo'},ref:'refs/heads/dev',sha:'a'}});
-  assert.equal(outputs.run_checks,'false');
-  assert.equal(waits,2);
+test('documentation verification is independent of multi-channel publication', () => {
+  const docs = workflow('documentation.yml');
+  assert.equal(docs.on.workflow_call.inputs.publish, undefined);
+  const checkouts = docs.jobs.documentation.steps.filter(step => step.uses?.startsWith('actions/checkout@'));
+  assert.equal(checkouts.length, 1);
+  assert.equal(checkouts[0].with.ref, '${{ inputs.checkout_ref || github.sha }}');
+  assert.ok(docs.jobs.documentation.steps.some(step => step.run === 'python3 scripts/run_check.py documentation'));
+  assert.ok(!docs.jobs.documentation.steps.some(step => step.uses?.startsWith('actions/upload-pages-artifact@')));
+  const release = workflow('release-pipeline.yml');
+  assert.equal(release.jobs.release.needs, 'checks');
+  assert.equal(release.jobs.deploy, undefined);
+  const publication = workflow('documentation-publication.yml');
+  assert.equal(publication.jobs.deploy.needs, 'source');
+  assert.deepEqual(publication.jobs.deploy.with, {
+    tested_sha: '${{ needs.source.outputs.tested_sha }}',
+    tested_tree: '${{ needs.source.outputs.tested_tree }}',
+    target_branch: '${{ needs.source.outputs.target_branch }}'
+  });
+});
+
+test('Pages builds immutable channel refs and reports actual publication', () => {
+  const {jobs, permissions, on: {workflow_call}} = workflow('deploy.yml');
+  assert.equal(workflow_call.inputs.tested_sha.required, true);
+  assert.equal(workflow_call.inputs.tested_tree.required, true);
+  assert.equal(workflow_call.inputs.target_branch.required, true);
+  const checkouts = jobs.build.steps.filter(step => step.uses?.startsWith('actions/checkout@') && step.with.path !== 'publication-tools');
+  assert.deepEqual(checkouts.map(step => step.with.ref), [
+    '${{ needs.refs.outputs.stable_sha }}', '${{ needs.refs.outputs.beta_sha }}'
+  ]);
+  assert.equal(jobs.deploy.steps.find(step => step.id === 'deployment').if, "steps.current.outputs.publish == 'true'");
+  assert.equal(workflow_call.outputs.published.value, '${{ jobs.deploy.outputs.published }}');
+  assert.deepEqual(permissions, {contents: 'read'});
+  assert.deepEqual(jobs.refs.permissions, {contents: 'read', actions: 'read'});
+  assert.deepEqual(jobs.build.permissions, {contents: 'read'});
+  assert.deepEqual(jobs.deploy.permissions, {contents: 'read', actions: 'read', pages: 'write', 'id-token': 'write'});
 });
