@@ -1,0 +1,21 @@
+name: Daily dependency security health
+on:
+  schedule:
+    - cron: '11 5 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: daily-dependency-security-health
+  cancel-in-progress: false
+jobs:
+  audit:
+    name: Full dependency health on ${{ matrix.branch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [dev, beta, main]
+    uses: ./.github/workflows/audit.yml
+    with:
+      checkout_ref: ${{ matrix.branch }}
+      mode: gate

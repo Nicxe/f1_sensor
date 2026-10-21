@@ -17,17 +17,38 @@ as `__pycache__`, `*.pyc`, and `.DS_Store`.
 
 # Local dev CI preflight
 
-Run `npm run setup:ci` once to create the isolated Python 3.14 environment used
-for local Home Assistant verification. Before considering a code change ready
-for commit, the agent must run `npm run verify:changed`; it selects the same
-applicable local checks as a push to `dev`, including the strict runtime
-coverage gate for integration changes. The agent must fix any resulting failure
-before presenting the change as ready. Before a substantial promotion, run
-`npm run verify:dev` for the complete locally reproducible suite.
+Run `npm run setup:ci` to create the isolated Python, Node, npm, browser and
+workflow-validator environment. Versions and dependency inputs are recorded;
+preflight refreshes stale setup rather than trusting an existing directory.
+Before considering a code change ready for commit, run
+`npm run verify:changed`. It uses the same check commands and selection policy
+as GitHub, including strict runtime coverage for integration changes. Fix every
+failure before reporting readiness. `--print-plan` and a no-change result are
+not successful verification.
+
+Run `npm run verify:dev` for a complete development snapshot. Before proposing
+a substantial promotion, run `npm run verify:release -- --target beta` or
+`npm run verify:release -- --target main` for its actual destination. These full
+profiles include the security gate. Evidence in `test-results/verification.json`
+is valid only for the recorded source fingerprint, tools and dependencies;
+changes during a run invalidate the result. Never describe local success as
+GitHub success, a published release, or a Home Assistant runtime activation.
+
+Weblate target-language text and the number of supported languages are not
+fixed test contracts. Test catalog structure, placeholders, delivered assets,
+locale selection and per-key fallback against independent fixtures or current
+catalogs. Target-language-only changes use the translations lane; changes to
+English sources, localization code or tooling retain broader verification.
+
+Publication changes must preserve the normal `dev → beta → main` rollout.
+Beta documentation must work on its first promotion without requiring the new
+publisher on `main`. Test that transition explicitly. Keep Pages failures out
+of product verification and never publish unverified companion-branch content.
 
 HACS and hassfest remain GitHub-only verification gates. Local verification is
 the agent's pre-commit quality gate; passing it does not replace the required
-remote checks after the user pushes with GitHub Desktop.
+remote checks after the user pushes with GitHub Desktop. A failed selected job
+cannot be excused as a skipped check or replaced by unrelated green evidence.
 
 If `/Volumes/config` is unavailable or unrelated changes prevent safe
 synchronization, report the limitation and do not call the code change

@@ -2,6 +2,8 @@ const cacheSuffix = new URL(import.meta.url).search;
 const injectedLocales = new URL(import.meta.url).protocol === 'file:'
   ? globalThis.__F1_SENSOR_LOCALES__
   : undefined;
+const LANGUAGE_TAG = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i;
+export const languageCode = language => String(language || 'en').trim().replaceAll('_', '-').toLowerCase();
 
 const localeUrl = language => {
   const url = new URL(`./locales/${language}.json`, import.meta.url);
@@ -38,7 +40,9 @@ const availableLocaleCodes = async () => {
   const response = await fetch(manifestUrl);
   if (!response.ok) throw new Error(`Could not load F1 Sensor locale manifest (${response.status})`);
   const languages = await response.json();
-  if (!Array.isArray(languages) || languages.some(language => !/^[a-z]{2,3}$/.test(language))) {
+  if (!Array.isArray(languages) || !languages.includes('en')
+    || languages.some(language => typeof language !== 'string' || !LANGUAGE_TAG.test(language))
+    || new Set(languages.map(languageCode)).size !== languages.length) {
     throw new Error('F1 Sensor locale manifest is invalid');
   }
   return languages;
@@ -50,21 +54,26 @@ const [{ LEGACY }, languages] = await Promise.all([
 ]);
 const localeEntries = await Promise.all(
   [...new Set(['en', ...languages])].sort().map(async language => [
-    language,
+    languageCode(language),
     Object.freeze(await loadMessages(language)),
   ]),
 );
 
 export const LOCALES = Object.freeze(Object.fromEntries(localeEntries));
 
-export const languageCode = language => String(language || 'en')
-  .toLowerCase()
-  .split('-', 1)[0];
-
-const supportedLanguage = language => {
-  const code = languageCode(language);
-  return Object.hasOwn(LOCALES, code) ? code : 'en';
+const languageCandidates = language => {
+  const parts = languageCode(language).split('-');
+  const candidates = [];
+  while (parts.length) {
+    const candidate = parts.join('-');
+    if (Object.hasOwn(LOCALES, candidate)) candidates.push(candidate);
+    parts.pop();
+  }
+  return [...new Set([...candidates, 'en'])];
 };
+const supportedLanguage = language => languageCandidates(language)[0];
+const messageFor = (language, key) => languageCandidates(language)
+  .map(code => LOCALES[code][key]).find(message => message !== undefined);
 
 const interpolate = (template, replacements) => Object.entries(replacements).reduce(
   (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
@@ -72,8 +81,7 @@ const interpolate = (template, replacements) => Object.entries(replacements).red
 );
 
 export const translate = (language, key, replacements = {}) => {
-  const code = supportedLanguage(language);
-  const template = LOCALES[code][key] ?? LOCALES.en[key] ?? key;
+  const template = messageFor(language, key) ?? key;
   return interpolate(template, replacements);
 };
 
@@ -82,11 +90,10 @@ export const translatePlural = (language, key, count, replacements = {}) => {
   const category = new Intl.PluralRules(code).select(Number(count));
   const categoryKey = `${key}.${category}`;
   const fallbackKey = `${key}.other`;
-  const resolvedKey = LOCALES[code][categoryKey] !== undefined
-    || LOCALES.en[categoryKey] !== undefined
+  const resolvedKey = messageFor(language, categoryKey) !== undefined
     ? categoryKey
     : fallbackKey;
-  return translate(code, resolvedKey, { count, ...replacements });
+  return translate(language, resolvedKey, { count, ...replacements });
 };
 
 const sourceKeyMap = prefix => new Map(
@@ -102,7 +109,7 @@ const MODULAR_SOURCE_KEYS = Object.entries(LOCALES.en)
 const WIND_PATTERN = /^([\d.,]+ \S+) (N|NE|E|SE|S|SW|W|NW)([↓↙←↖↑↗→↘]?)$/;
 
 const translatePattern = (language, value) => {
-  const code = supportedLanguage(language);
+  const code = languageCandidates(language).find(candidate => LEGACY[candidate]) ?? 'en';
   for (const [source, replacement] of LEGACY[code]?.patterns ?? []) {
     const pattern = new RegExp(source);
     if (pattern.test(value)) return value.replace(pattern, replacement);
@@ -122,11 +129,10 @@ export const translateSourceText = (language, english) => {
   const code = supportedLanguage(language);
   if (code === 'en') return english;
   const candidates = MODULAR_SOURCE_KEYS.get(english) ?? [];
-  const key = candidates.find(candidate => LOCALES[code][candidate] !== undefined && LOCALES[code][candidate] !== english)
-    ?? candidates.find(candidate => LOCALES[code][candidate] !== undefined)
+  const key = candidates.find(candidate => messageFor(language, candidate) !== english)
     ?? candidates[0];
-  if (key) return translate(code, key);
-  return translatePattern(code, english);
+  if (key) return translate(language, key);
+  return translatePattern(language, english);
 };
 
 // Legacy specialized cards render English text internally. Keep this bridge
@@ -135,25 +141,23 @@ export const translateLegacyText = (language, value) => {
   const code = supportedLanguage(language);
   if (code === 'en') return value;
   const key = PLATFORM_SOURCE_KEYS.get(value);
-  if (key) return translate(code, key);
-  return translatePattern(code, value);
+  if (key) return translate(language, key);
+  return translatePattern(language, value);
 };
 
 export const cardStrings = language => {
-  const code = supportedLanguage(language);
   return Object.fromEntries(
     Object.entries(LOCALES.en).filter(([key]) => (
       key.startsWith('card.')
       || key.startsWith('a11y.')
       || key.startsWith('track_map.')
       || key.startsWith('race_control.')
-    )).map(([key, fallback]) => [key, LOCALES[code][key] ?? fallback]),
+    )).map(([key]) => [key, messageFor(language, key)]),
   );
 };
 
 export const legacyTextTranslations = language => {
-  const code = supportedLanguage(language);
   return Object.fromEntries(
-    [...PLATFORM_SOURCE_KEYS].map(([source, key]) => [source, LOCALES[code][key] ?? LOCALES.en[key]]),
+    [...PLATFORM_SOURCE_KEYS].map(([source, key]) => [source, messageFor(language, key)]),
   );
 };

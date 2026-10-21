@@ -107,19 +107,21 @@ complete.
 
 Changes to English source text and translation keys follow the code path and
 target `dev`. Weblate translation pull requests also target `dev`, use `chore:`
-commit messages, and must pass the normal integration checks. Merge Weblate
+commit messages, and must pass the applicable translation checks. Merge Weblate
 commits without squashing so its repository stays synchronized with upstream.
 
 Before submitting source-string or translation changes, run:
 
 ```bash
-python3 scripts/check_translations.py custom_components/f1_sensor/translations
+python3 scripts/check_localization.py
+npm run test:translations
 ```
 
-The integration validator accepts missing target-language values, but rejects
-unknown keys, blank values, invalid nested values, and changed placeholders.
-The card localization tests apply the same source-key and fallback rules to its
-flat JSON locale files.
+The shared validator accepts missing target-language values, but rejects unknown
+keys, blank values, duplicate keys, invalid value types, and changed placeholder
+names. Both integration and card catalogs are checked. Tests verify actual
+catalog delivery, language selection, regional fallback, English fallback, and
+actions without freezing translated wording or the number of languages.
 
 ## How to submit a pull request
 
@@ -137,35 +139,38 @@ If you are unsure whether a change fits the project direction, open an issue bef
 
 `CI required` summarizes all applicable checks. Code PRs run on the proposed merge result with read-only permissions and without secrets, including PRs from forks. Metadata workflows read trusted default-branch scripts and use the GitHub API; they never install or execute contributor code. A first-time contributor may still need the maintainer to start GitHub's restricted workflow run.
 
-Standalone content runs documentation checks and, for blueprints, HA blueprint tests. Integration changes run Python, frontend, lint, HACS/hassfest and package checks. Dependency or workflow changes and code promotions run the complete set. Npm audit runs for dependency changes, releases and weekly maintenance; an unavailable registry is reported separately from a vulnerability.
+Standalone content runs documentation checks and, for blueprints, HA blueprint tests. Target-language-only changes run focused catalog, loader and browser checks. English source, localization implementation and other integration changes retain broader Python, frontend, lint, HACS/hassfest and package checks. Dependency or workflow changes and code promotions run the complete set. Missing or invalid change information selects the full checks rather than silently passing.
+
+Dependency checks on `dev` and `content` compare security findings with the exact base lockfile and block newly introduced high or critical exposure. Promotions, security-policy changes, releases and daily security health checks inspect all current high and critical findings, including development dependencies. Lower-severity findings remain visible warnings. Registry failures fail with a separate diagnostic; they are not reported as vulnerabilities. Temporary exceptions apply only to explicitly scoped build dependencies and active findings; expiry of an unused exception does not block a PR.
 
 The maintainer can push directly to `dev`. Promotions use `dev → beta → main` and merge commits. No additional reviewer is required. Release drafts are created only after checks pass on the same final commit. Publishing a draft remains a manual maintainer action. A published stable release may synchronize its exact history to `content`; beta releases are not synchronized back to `dev` automatically because beta is promoted from `dev`. Normal pushes, PR verification runs and schedules do not start branch synchronization.
 
 For a release retry, run **Actions → Release verification → Run workflow**, choose `beta` or `main`, enable the release option. CI verifies that branch head again. An existing published tag is left untouched; an interrupted draft can be recovered without changing its version. Bot-created synchronization PRs use the PR-number input to explicitly check the proposed merge when `GITHUB_TOKEN` does not trigger PR workflows.
 
-Use Python 3.14 with `requirements/ha-current.txt` for the complete HA suite, or Python 3.12 with `requirements/ha-minimum.txt` for the supported minimum. From the checkout root:
+From the checkout root, use the isolated local preflight. It installs the repository-pinned Python environment, Node, npm, Chromium and workflow validator without changing global Node or npm:
 
 ```bash
-python -m pip install -r requirements/ha-current.txt
-python scripts/run_ci_tests.py
-python scripts/test_installed_release.py
-npm ci
-npm run test:automation
-npm run test:frontend:unit
-npx playwright install chromium
-npm run test:frontend
-npm run test:docs
+npm run setup:ci
+npm run verify:changed
+npm run verify:dev
+npm run verify:release -- --target beta
 ```
 
-The Node unit suite loads complete delivered card modules and simulates the browser/Lit boundary. Playwright renders the real components in Chromium. Run both after changing dashboard behavior; passing unit tests alone does not verify layout or accessibility.
+`verify:changed` includes committed, staged, unstaged and untracked source changes relative to `origin/dev` by default; use `--base <ref>` and `--target <branch>` for another comparison. An invalid base or an empty comparison is not a passing test run. Full development and release profiles run all locally reproducible checks, including audit. Stale dependencies trigger a clean setup. A receipt binds success to source contents, tool versions and installed dependencies; changes during the run invalidate it. HACS/hassfest and GitHub's proposed merge result still require remote confirmation after pushing.
 
-Python line coverage must remain strictly above 95 percent globally and in every production module; branch coverage is informational. Tests should protect user behavior, lifecycle and external boundaries rather than specific source formatting. The weekly maintenance workflow checks latest stable HA compatibility on `dev`, WebKit smoke flows, timing budgets, npm audit and review dates. Review-date checks document overdue manual review; they do not verify a remote service's security.
+The Node unit suite loads complete delivered card modules and simulates the browser/Lit boundary. Playwright renders the real components in Chromium. Both are included when dashboard behavior changes; passing unit tests alone does not verify layout or accessibility. The current full HA profile uses Python 3.14; the supported minimum profile uses Python 3.12 with `requirements/ha-minimum.txt` in GitHub.
+
+Python line coverage must remain strictly above 95 percent globally and in every production module; branch coverage is informational. Tests should protect user behavior, lifecycle and external boundaries rather than specific source formatting. Weekly maintenance checks latest stable HA compatibility on `dev`, WebKit smoke flows, timing budgets and review dates. Daily security health checks cover `dev`, `beta` and `main`. Review-date checks document overdue manual review; they do not verify a remote service's security.
 
 ## Avoiding duplicate verification
 
-Development checks run on pushes to `dev` and `content`. When an existing PR verification run covers that exact branch head, it owns the tests; API errors or unconfirmed runs fall back to normal push checks. PR verification provides the sole required `CI required` result. Metadata-only edits do not restart code tests; changing the target branch explicitly starts fresh verification.
+Development pushes to `dev` and `content` always run their own applicable checks; a queued PR does not count as verified push evidence. PR verification provides the sole required `CI required` result. Metadata-only edits do not restart code tests; changing the target branch explicitly starts fresh verification.
 
-PRs can reuse successful checks from a development push completed within the last two hours only when the complete Git tree is identical. This includes all sources, test profiles, workflows and dependency locks. The source must be a successful push in this repository on `dev` or `content`, and all jobs in each reused profile must have succeeded. CI revalidates the source run and its attempt before passing the gate. The run summary links the evidence. Registry audits and external HACS/hassfest validation always run when applicable. Release verification never reuses results and still tests the final commit before creating a draft. GitHub may continue to display earlier push checks attached to the PR head.
+PRs can reuse successful checks from a development push completed within the last two hours only when the complete Git tree is identical. This includes all sources, test profiles, workflows and dependency locks. The source must be a successful push in this repository on `dev` or `content`, and all jobs in each reused profile must have succeeded. CI revalidates the source run and its attempt before passing the gate. The run summary links the evidence. HACS/hassfest validation can reuse this same remote evidence; local checks never replace it. Registry audits always run when applicable. Release verification on `beta` and `main` never reuses results and still tests the final commit before creating a draft. GitHub may continue to display earlier push checks attached to the PR head.
+
+Documentation publication is separate from product verification and draft creation. It uses exact successful release-verification commits for both published channels, never an unverified companion branch head. A Pages delivery failure does not turn passing product tests into a failed release-verification run. Publishing release drafts remains manual.
+
+The publication workflow starts directly on `beta` and `main` pushes and waits for successful verification of that exact commit. Beta documentation can update as soon as a change reaches `beta`, even before the new publication workflow reaches `main`. If verification is rerun after a failure or after the publisher's waiting timeout, rerun **Documentation publication** once verification passes; no additional code promotion is needed.
 
 The repository allows Actions to create synchronization PRs. This GitHub setting also technically permits review approval; these workflows never submit approval reviews, and branch rules require zero approvals. Automatic synchronization is limited to published stable releases into `content`.
 

@@ -71,17 +71,19 @@ test('publication consumers use the verified release and stop downstream work if
   }
 });
 
-test('release verification reuses matching source checks but keeps target release work', () => {
+test('release verification executes fresh checks before target release work', () => {
   const workflow = read('.github/workflows/release-pipeline.yml');
-  assert.match(workflow, /checks:\n\s+uses: \.\/\.github\/workflows\/ci-checks\.yml\n\s+with:\n\s+allow_reuse: true/);
+  assert.match(workflow, /checks:\n\s+uses: \.\/\.github\/workflows\/ci-checks\.yml\n\s+with:\n\s+allow_reuse: false/);
   assert.match(workflow, /release:\n\s+needs: checks/);
-  assert.match(workflow, /deploy:\n\s+needs: checks/);
+  assert.equal(yaml.load(workflow).jobs.deploy, undefined);
+  assert.equal(yaml.load(workflow).jobs.context7, undefined);
 });
 
 test('Context7 runs only after a successful main documentation deployment', () => {
-  const workflow = read('.github/workflows/release-pipeline.yml');
-  assert.match(workflow, /context7:\n\s+needs: deploy/);
+  const workflow = read('.github/workflows/documentation-publication.yml');
+  assert.match(workflow, /context7:\n\s+needs: \[source, deploy\]/);
   assert.match(workflow, /needs\.deploy\.result == 'success'/);
-  assert.match(workflow, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(workflow, /needs\.source\.outputs\.target_branch == 'main'/);
+  assert.match(workflow, /needs\.deploy\.outputs\.published == 'true'/);
   assert.equal(fs.existsSync(path.join(root, '.github/workflows/context7-refresh.yml')), false);
 });

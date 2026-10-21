@@ -21,11 +21,18 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version-file: .python-version
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: "22"
+          node-version-file: .node-version
           cache: npm
           registry-url: https://registry.npmjs.org
+      - name: Use the project npm version
+        run: node scripts/install_project_npm.cjs
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
       - run: npm ci --no-audit --no-fund
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}

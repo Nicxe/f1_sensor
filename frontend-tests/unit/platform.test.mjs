@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readdirSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {catalogs, expectedMessage} from '../localization-fixture.cjs';
 const root = new URL('../../custom_components/f1_sensor/www/f1-sensor-live-data-card/', import.meta.url);
 const {f1Translate, f1FormatDateTime, f1TranslateText, STRINGS, FRONTEND_TEXT_TRANSLATIONS} = await import(new URL('platform/i18n.js', root));
 const {normalizeF1Action, handleF1CardActionKeydown} = await import(new URL('platform/actions.js', root));
@@ -18,11 +19,19 @@ test('localization preserves fallback and respects HA time settings', () => {
   const hass = {locale:{language:'sv-SE'}, config:{time_zone:'Europe/Stockholm'}};
   assert.match(f1FormatDateTime(hass,new Date('2026-09-04T12:30:00Z'),{hour:'2-digit',minute:'2-digit'}), /14:30/);
 });
-test('every translation covers all English strings and frontend texts', () => {
-  const frontendKeys = Object.keys(FRONTEND_TEXT_TRANSLATIONS.sv);
+test('every projected locale exposes source keys after English fallback', () => {
+  const frontendKeys = [...new Set(Object.entries(catalogs.en)
+    .filter(([key]) => key.startsWith('legacy.platform.')).map(([, source]) => source))];
   for (const language of Object.keys(STRINGS).filter(lang => lang !== 'en')) {
     assert.deepEqual(Object.keys(STRINGS[language]).sort(), Object.keys(STRINGS.en).sort(), `STRINGS.${language}`);
     assert.deepEqual(Object.keys(FRONTEND_TEXT_TRANSLATIONS[language]).sort(), [...frontendKeys].sort(), `FRONTEND_TEXT_TRANSLATIONS.${language}`);
+  }
+});
+test('the platform uses the current selected catalog rather than silently returning English', () => {
+  for (const language of Object.keys(catalogs)) {
+    for (const key of Object.keys(catalogs.en)) {
+      assert.equal(f1Translate({locale: {language}}, key), expectedMessage(language, key), `${language}: ${key}`);
+    }
   }
 });
 test('Dutch localization provides translated strings, frontend texts and counts', () => {

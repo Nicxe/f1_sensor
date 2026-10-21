@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from unittest.mock import Mock
 
 from homeassistant.const import Platform
@@ -42,6 +44,22 @@ from custom_components.f1_sensor.helpers import format_entity_name
 from custom_components.f1_sensor.number import F1LiveDelayNumber
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _localized_delay_name() -> str:
+    """Friendly-name expectations follow the current Weblate catalogs."""
+    root = Path(entity_module.__file__).parent / "translations"
+    for language in ("sv", "en"):
+        messages = json.loads((root / f"{language}.json").read_text(encoding="utf-8"))
+        name = (
+            messages.get("entity", {})
+            .get("number", {})
+            .get("live_delay", {})
+            .get("name")
+        )
+        if name:
+            return name
+    raise AssertionError("English live delay entity name is missing")
 
 
 class _DummyDelayController:
@@ -348,7 +366,7 @@ def test_aux_entity_localized_name_uses_entry_language() -> None:
         device_name="RaceHub",
     )
 
-    assert entity.name == "Livefördröjning"
+    assert entity.name == _localized_delay_name()
     assert entity.suggested_object_id == "f1_live_delay"
 
 
@@ -405,7 +423,7 @@ async def test_localized_aux_entity_keeps_english_entity_id(hass) -> None:
     assert entity.entity_id == "number.f1_live_delay"
     state = hass.states.get(entity.entity_id)
     assert state is not None
-    assert state.attributes["friendly_name"] == "Livefördröjning"
+    assert state.attributes["friendly_name"] == _localized_delay_name()
     await component._async_reset()
 
 
@@ -423,6 +441,8 @@ async def test_localized_aux_entity_name_uses_preloaded_translations_only(
     )
     await async_prepare_translation_names(hass, entry_id)
 
+    expected_name = _localized_delay_name()
+
     def _fail_read_text(*_args, **_kwargs):
         raise AssertionError("translation files should already be cached")
 
@@ -436,7 +456,7 @@ async def test_localized_aux_entity_name_uses_preloaded_translations_only(
         device_name="RaceHub",
     )
 
-    assert entity.name == "Livefördröjning"
+    assert entity.name == expected_name
 
 
 @pytest.mark.asyncio

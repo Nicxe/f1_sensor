@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 from scripts.ci_policy import (
     JOBS,
+    audit_context,
     branch_error,
     gate_errors,
     hotfix_matches_dev,
@@ -199,9 +200,7 @@ class PolicyTests(unittest.TestCase):
         selected = select_jobs(
             ["docs/help.md"], pull("content", "fix", True), "pull_request", ""
         )
-        self.assertEqual(
-            {k for k, v in selected.items() if v}, {"automation", "documentation"}
-        )
+        self.assertEqual({k for k, v in selected.items() if v}, {"documentation"})
 
     def test_unknown_change_and_workflow_change_run_everything(self):
         for files in [
@@ -212,7 +211,7 @@ class PolicyTests(unittest.TestCase):
         ]:
             self.assertEqual(
                 select_jobs(files, {}, "push", "dev"),
-                {job: job not in ("blueprints", "audit") for job in JOBS},
+                {job: job != "blueprints" for job in JOBS},
             )
 
     def test_runtime_and_blueprints(self):
@@ -225,18 +224,18 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(selected["blueprints"])
         self.assertFalse(selected["backend"])
 
-    def test_promotions_skip_audit_but_release_commits_keep_all_checks(self):
+    def test_promotions_verify_every_release_blocker_before_merge(self):
         for base, head in [("beta", "dev"), ("main", "beta")]:
             self.assertEqual(
                 select_jobs(["docs/help.md"], pull(base, head), "pull_request", ""),
-                {job: job not in ("blueprints", "audit") for job in JOBS},
+                {job: job != "blueprints" for job in JOBS},
             )
             self.assertEqual(
                 select_jobs(["docs/help.md"], {}, "push", base),
                 {job: job != "blueprints" for job in JOBS},
             )
 
-    def test_audit_is_maintenance_only_for_prs_and_development_pushes(self):
+    def test_dependency_changes_are_audited_before_and_after_merge(self):
         for base in ("dev", "content", "beta", "main"):
             for fork in (False, True):
                 event = pull(base, "change", fork)
@@ -245,11 +244,63 @@ class PolicyTests(unittest.TestCase):
                         with self.subTest(
                             base=base, fork=fork, files=files, trigger=trigger
                         ):
-                            self.assertFalse(
+                            self.assertTrue(
                                 select_jobs(files, event, trigger, base)["audit"]
                             )
         for branch in ("dev", "content"):
-            self.assertFalse(select_jobs(None, {}, "push", branch)["audit"])
+            self.assertTrue(select_jobs(None, {}, "push", branch)["audit"])
+
+    def test_valid_target_catalog_changes_use_only_translation_contract(self):
+        files = [
+            "custom_components/f1_sensor/translations/sv.json",
+            "custom_components/f1_sensor/www/f1-sensor-live-data-card/localization/locales/pt-BR.json",
+        ]
+        for event_name in ("push", "pull_request"):
+            selected = select_jobs(files, {}, event_name, "dev")
+            self.assertEqual(
+                {k for k, enabled in selected.items() if enabled}, {"translations"}
+            )
+        for extra in (
+            "custom_components/f1_sensor/translations/en.json",
+            "custom_components/f1_sensor/auth.py",
+            "custom_components/f1_sensor/www/f1-sensor-live-data-card/localization/index.js",
+            "custom_components/f1_sensor/translations/invalid_name.json",
+        ):
+            selected = select_jobs([*files, extra], {}, "push", "dev")
+            self.assertTrue(selected["backend"])
+            self.assertTrue(selected["frontend"])
+
+    def test_security_scope_is_identical_for_preflight_and_release_targets(self):
+        self.assertEqual(
+            audit_context(
+                pull("dev", "deps"), "pull_request", "", ["package-lock.json"]
+            ),
+            ("introduced", "a" * 40),
+        )
+        self.assertEqual(
+            audit_context({"before": "c" * 40}, "push", "dev", ["package-lock.json"]),
+            ("introduced", "c" * 40),
+        )
+        for event, trigger, branch in (
+            (pull("beta", "dev"), "pull_request", ""),
+            (pull("main", "beta"), "pull_request", ""),
+            ({}, "push", "beta"),
+            ({}, "workflow_dispatch", "dev"),
+            ({"before": "0" * 40}, "push", "dev"),
+        ):
+            self.assertEqual(audit_context(event, trigger, branch), ("gate", ""))
+        self.assertEqual(
+            audit_context(pull("dev", "deps"), "pull_request", "", None), ("gate", "")
+        )
+        self.assertEqual(
+            audit_context(
+                pull("dev", "policy"),
+                "pull_request",
+                "",
+                ["quality/npm-audit-policy.json"],
+            ),
+            ("gate", ""),
+        )
 
     def test_release_and_maintenance_audit_selection_is_preserved(self):
         for trigger, branch in (
