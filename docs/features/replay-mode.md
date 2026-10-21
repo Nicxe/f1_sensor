@@ -35,7 +35,9 @@ If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoil
 
 Replay Mode downloads completed session data from Formula 1's authenticated archive and plays it back through your Home Assistant entities. By starting playback at the same moment the session begins on your TV, your dashboard and automations can follow the broadcast closely.
 
-You do not need a local replay dump or a developer build. You do need [F1TV Auth](/features/f1tv-auth) connected from an account with an active paid subscription. Replay Mode provides its own selectors, load controls, media player, pause, and seek support.
+You do not need a local replay dump, a developer build, or a paid F1 TV subscription. Connect a Formula 1 account, including a free account, through [F1TV Auth](/features/f1tv-auth) so the integration has a valid token for the timing archive. Replay Mode provides its own selectors, load controls, media player, pause, and seek support.
+
+Replay Mode follows archived timing data in Home Assistant; it does not provide video replay access. Live feed permissions are separate from archive access and depend on the account and session.
 
 :::info[Standard entity IDs]
 This page uses the standard Replay Mode entity IDs for new installations, such as `select.f1_replay_year` and `media_player.f1_replay_player`.
