@@ -157,12 +157,16 @@ F1TV Auth is optional. Public live timing continues to work without a token. Onl
 
 The local token check does not verify authenticity. Formula 1 must accept the token during a request before authenticated live data can be used. Public live timing remains available without it.
 
+Token health, account permissions, and current data delivery are separate checks. A free account can have a valid, accepted token and receive Team Radio metadata or completed-session archive data while receiving no live telemetry or car positions. Do not treat a quiet stream alone as rejected credentials. See [account access and live availability](/features/f1tv-auth).
+
+In downloaded diagnostics, requested or active live-stream lists describe subscriptions, not confirmed delivery. For streams included in the activity summary, check received frame counts and the age of the latest data; an omitted stream does not mean zero delivery. A direct dataset marked `ready` means its projection can be read, not that every backing feed is present. An initial snapshot or increasing receive counter alone does not establish fresh live content; compare meaningful changes for the current session. A stream can also be quiet because the session does not publish it.
+
 **Attributes**
 
 | Attribute | Type | Description |
 | --- | --- | --- |
 | auth_configured | boolean | True when a token is saved |
-| used_for_live_timing | boolean | True when the token is currently being used for extra live-auth features |
+| used_for_live_timing | boolean | True when the token is selected for authenticated live subscriptions; this does not confirm receipt of every requested feed |
 | expires_at | string | ISO-8601 expiry timestamp, or `null` |
 | reason | string | Redacted reason when the token is invalid, expired, or rejected |
 

@@ -10,7 +10,7 @@ Use this page when you want live Track Map, Pit Stops, Team Radio, Championship 
 ## How it works
 
 F1 Sensor works without F1TV Auth by using public live timing.
-F1TV Auth adds a short-lived live timing authorization value so extra F1TV-authenticated features can update when Formula 1 publishes the needed data.
+F1TV Auth adds a short-lived live timing authorization value. Additional features need both suitable account permissions and data published for the current session; connecting a token does not unlock every feed.
 
 The normal pairing flow uses Home Assistant and the F1TV Token Helper:
 
@@ -19,7 +19,7 @@ The normal pairing flow uses Home Assistant and the F1TV Token Helper:
 3. Start **Connect F1TV access with Token Helper** in Home Assistant.
 4. Open the pairing page from Home Assistant.
 5. Open the helper extension, sign in to Formula 1 if needed, select **Fetch**, then select **Send to Home Assistant**.
-6. Verify that public live timing still works and that F1TV live data is available after Formula 1 accepts the token.
+6. Verify public live timing, check token health, then check your chosen additional feature during a suitable live session.
 
 :::info
 This flow does not ask Home Assistant for your F1TV username or password.
@@ -28,7 +28,13 @@ The token is extracted from your own browser session by the separate helper and 
 
 ## Availability
 
-Use the [data availability matrix](/features/f1tv-auth#availability-matrix) to check whether your chosen feature needs live authentication. Public live timing works without a token; Replay Mode uses archived data separately.
+Use the [data availability matrix](/features/f1tv-auth#availability-matrix) to choose what you need:
+
+- **Without an account token:** public live timing continues to work.
+- **With a free account:** published archive resources and live radio metadata have been verified. The tested free account did not receive live car telemetry or Track Map positions.
+- **With paid access:** the tested account received live car telemetry and positions. This does not guarantee every feed or every paid plan.
+
+Replay Mode uses archived data separately. A valid token, accepted account access and a currently published feed are different checks; see the matrix for the dated live observations and their limits.
 
 ## Incident detection and F1TV Auth
 
@@ -40,10 +46,9 @@ Before you start, make sure you have:
 
 1. F1 Sensor installed in Home Assistant.
 2. Access to Home Assistant logs if you need to troubleshoot.
-3. A Formula 1 account. A free account is sufficient for Replay Mode; additional live feeds have separate access requirements. Check [current availability](/features/f1tv-auth#subscription-requirement).
+3. A Formula 1 account. A free account has accessed the tested Replay Mode resources and live radio metadata; live car telemetry and positions were received only with the tested paid account. Check [current availability](/features/f1tv-auth#subscription-requirement) before choosing a feature.
 4. Chrome or another Chromium-based browser.
 5. The [F1TV Token Helper](https://chromewebstore.google.com/detail/f1tv-token-helper-beta/bbpgdcjohdjcechlffloekhpgdbjoafh) extension installed.
-
 
 
 Enable debug logging before reporting issues.
@@ -84,7 +89,7 @@ Home Assistant should finish the pairing, save the live timing authorization val
 ## Step 3 - Understand token lifetime
 
 F1TV tokens are short-lived.
-They are usually valid for only a few days. F1 Sensor automatically tries to renew them during their final 24 hours, using the session already contained in the saved token. Home Assistant also attempts renewal if it starts with an expired token and a usable session. You can close your browser after pairing.
+They are usually valid for only a few days. F1 Sensor automatically tries to renew them during their final 24 hours, using the session already contained in the saved token. Home Assistant also attempts renewal if it starts with an expired token and a usable session. You can close your browser after pairing. Renewal is best effort; it does not guarantee permanent sign-in or uninterrupted access.
 
 The underlying Formula 1 session has an observed lifetime of about 30 days from the original sign-in. Automatic token renewal does not extend that deadline, and Formula 1 can revoke the session earlier. When the session expires or is rejected, use the Home Assistant repair or Token Helper to sign in again and reconnect. Tokens without a usable session require manual renewal.
 
@@ -97,7 +102,7 @@ sensor.f1_f1tv_token_status
 sensor.f1_f1tv_token_expires_at
 ```
 
-Use `sensor.f1_f1tv_token_status` to see whether the token is locally well-formed and unexpired, expiring soon, expired, invalid, or rejected. A locally well-formed token is not proven authentic until Formula 1 accepts it during an upstream request.
+Use `sensor.f1_f1tv_token_status` to see whether the token is locally well-formed and unexpired, expiring soon, expired, invalid, or rejected. A locally well-formed token is not proven authentic until Formula 1 accepts it during an upstream request. A valid status does not confirm every account permission or prove that a particular live feed is publishing data.
 Use `sensor.f1_f1tv_token_expires_at` to see when the current token expires.
 
 The integration also exposes two helper buttons when F1TV access is available:
@@ -113,13 +118,13 @@ Use `button.f1_clear_f1tv_access` to remove the saved token and return to public
 The saved token is part of the Home Assistant config entry and normally follows it into Home Assistant backups. Treat shared backups as credentials. If you suspect exposure, clear the saved token and revoke the Formula 1 browser session before pairing again.
 
 When the token expires or is rejected, public live timing should continue to work.
-Replay Mode, Formula 1 archive media and additional authenticated live data need a fresh token.
+Replay Mode and Formula 1 archive media need accepted account access. Additional live data also needs suitable account permissions and published updates.
 
 ## Step 4 - Verify public fallback first
 
-Before relying on auth-only behavior, confirm that public live timing still works.
+Before relying on additional account access, confirm that public live timing still works.
 
-During an active or upcoming Formula 1 session, check that public live entities continue to update, such as:
+During an active Formula 1 session, check that relevant public live entities receive current updates, such as:
 
 ```text
 sensor.f1_track_status
@@ -128,7 +133,7 @@ sensor.f1_race_control
 sensor.f1_driver_positions
 ```
 
-Then confirm that F1TV-only data becomes available after Formula 1 accepts the paired token.
+Then check the token-status sensor and your chosen additional feature. For Track Map, look for fresh car positions during track activity; an accepted token alone is not enough. Some feeds publish only when an event occurs or during a suitable session, so a quiet practice feed is not proof of an authentication problem.
 
 ## Troubleshooting
 
@@ -145,6 +150,12 @@ Make sure you started **Connect F1TV access with Token Helper** from Home Assist
 
 Start a new pairing session in Home Assistant.
 The old session may have expired, already been used, or been created before Home Assistant was restarted.
+
+### The token is valid but an extra feature has no data
+
+A valid token status checks local token health. Formula 1 must also accept the token, your account must have access to the required feed, and that feed must publish data for the session.
+
+Compare the feature with the [availability matrix](/features/f1tv-auth#availability-matrix). Live car telemetry and positions were absent with the tested free account even while public timing and live radio metadata worked. Detailed pit stops and championship prediction were quiet with both tested accounts during practice, so their absence alone does not identify an account restriction. An archive request failing also does not establish whether a live feed is available.
 
 ### Public live timing stops working
 
