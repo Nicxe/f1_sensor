@@ -33,6 +33,7 @@ function releaseContent(release) {
 async function verifyPublishedRelease({
   github, context, core, releaseId,
   assetNames = RELEASE_ASSETS,
+  allowTagRepair = true,
   wait = delay => new Promise(resolve => setTimeout(resolve, delay))
 }) {
   const id = Number(releaseId);
@@ -59,6 +60,9 @@ async function verifyPublishedRelease({
   }
 
   if (original.tag_name !== tag) {
+    if (!allowTagRepair) {
+      throw new Error('Publication replay cannot repair release metadata; leaving the release unchanged.');
+    }
     const expectedCommit = (await github.rest.repos.getCommit({...context.repo, ref: tag})).data.sha;
     const publishedCommit = (await github.rest.repos.getCommit({
       ...context.repo, ref: original.tag_name
@@ -105,4 +109,24 @@ async function verifyPublishedRelease({
   throw new Error(`Published release ${id} could not be verified at ${tag}.`);
 }
 
-module.exports = {RELEASE_ASSETS, expectedReleaseTag, verifyPublishedRelease};
+async function resolvePublishedRelease({github, context, core, releaseTag = '', wait}) {
+  const tag = String(releaseTag).trim();
+  let release = context.payload?.release;
+  if (tag) {
+    if (release) throw new Error('Choose either a release event or a publication replay tag, not both.');
+    if (!RELEASE_TAG_PATTERN.test(tag)) throw new Error('Publication replay requires a supported version tag.');
+    release = (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
+    if (release.tag_name !== tag || release.draft !== false) {
+      throw new Error('Publication replay requires the exact already published release tag.');
+    }
+  }
+  if (!release) return undefined;
+  const verified = await verifyPublishedRelease({
+    github, context, core, releaseId: release.id, allowTagRepair: !tag, wait,
+  });
+  if (tag && verified.tag_name !== tag) throw new Error('The requested publication changed during replay verification.');
+  if (tag) core.info(`Replaying verified publication ${verified.id} at ${tag}; release metadata and assets are unchanged.`);
+  return verified;
+}
+
+module.exports = {RELEASE_ASSETS, expectedReleaseTag, verifyPublishedRelease, resolvePublishedRelease};

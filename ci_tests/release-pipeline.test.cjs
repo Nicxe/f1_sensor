@@ -46,8 +46,8 @@ test('publication consumers use the verified release and stop downstream work if
       const canonical = {id: 42, draft: false, tag_name: 'v6.1.0-beta.3'};
       const context = {payload: {release: {id: 42, tag_name: 'untagged-abc123'}}};
       const modules = {
-        './.github/scripts/release-publication.cjs': {verifyPublishedRelease: async ({releaseId}) => {
-          assert.equal(releaseId, 42);
+        './.github/scripts/release-publication.cjs': {resolvePublishedRelease: async ({context}) => {
+          assert.equal(context.payload.release.id, 42);
           events.push('verify');
           if (fail) throw new Error('verification failed');
           return canonical;
@@ -62,7 +62,7 @@ test('publication consumers use the verified release and stop downstream work if
         }}
       };
       const run = () => new AsyncFunction('github', 'context', 'core', 'require', script)(
-        {}, context, {}, name => modules[name]
+        {}, context, {info() {}}, name => modules[name]
       );
       if (fail) await assert.rejects(run(), /verification failed/);
       else await run();
