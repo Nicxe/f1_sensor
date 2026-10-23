@@ -26,6 +26,7 @@ def _dependency(
 
 
 _DRIVER_STREAMS = (
+    "SessionInfo",
     "DriverList",
     "TimingData",
     "TimingAppData",
@@ -124,9 +125,11 @@ FEATURE_DEPENDENCIES: dict[str, FeatureDependency] = {
     "team_radio": _dependency(
         "TeamRadio",
         "DriverList",
-        coordinators=("team_radio",),
+        "SessionInfo",
+        coordinators=("team_radio", "session_info"),
     ),
     "pitstops": _dependency(
+        "SessionInfo",
         "PitStopSeries",
         "DriverList",
         coordinators=("pitstops",),

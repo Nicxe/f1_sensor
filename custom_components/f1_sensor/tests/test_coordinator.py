@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -92,6 +93,93 @@ def test_scheduled_laps_match_round_and_session_type() -> None:
     assert enriched_race["Sprint"]["scheduled_laps"] == 19
     assert "scheduled_laps" not in race
     assert "scheduled_laps" not in race["Sprint"]
+
+
+@pytest.mark.parametrize(
+    ("page", "message"),
+    [
+        (None, "Invalid session response"),
+        ({"metadata": None, "data": []}, "Invalid session response"),
+        (
+            {"metadata": {"total_pages": 1}, "data": None},
+            "Invalid session response",
+        ),
+        (
+            {"metadata": {"total_pages": 2}, "data": []},
+            "Incomplete session response",
+        ),
+        ({"metadata": {}, "data": []}, "Incomplete session response"),
+    ],
+)
+def test_scheduled_laps_reject_invalid_or_incomplete_pages(page, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        validate_session_page(page)
+
+
+@pytest.mark.parametrize("schedule", [{}, {"MRData": {"RaceTable": {"Races": {}}}}])
+def test_scheduled_laps_preserve_schedule_without_race_list(schedule) -> None:
+    original = deepcopy(schedule)
+
+    assert add_scheduled_laps(schedule, []) is schedule
+    assert schedule == original
+
+
+@pytest.mark.parametrize(
+    "invalid_session",
+    [
+        None,
+        {
+            "round": {"number": 1},
+            "type": "R",
+            "scheduled_laps": 99,
+            "is_cancelled": True,
+        },
+        {"round": None, "type": "R", "scheduled_laps": 99},
+        {"round": {}, "type": "R", "scheduled_laps": 99},
+        {"round": {"number": "unknown"}, "type": "R", "scheduled_laps": 99},
+        {"round": {"number": 1}, "type": "R", "scheduled_laps": None},
+        {"round": {"number": 1}, "type": "R", "scheduled_laps": "unknown"},
+        {"round": {"number": 1}, "type": "R", "scheduled_laps": 0},
+        {"round": {"number": 1}, "type": "Q", "scheduled_laps": 99},
+    ],
+)
+def test_scheduled_laps_ignore_unusable_sessions(invalid_session) -> None:
+    schedule = _future_race_payload()
+    page = {
+        "metadata": {"total_pages": 1},
+        "data": [
+            {"round": {"number": 1}, "type": "R", "scheduled_laps": 58},
+            invalid_session,
+        ],
+    }
+    original_schedule = deepcopy(schedule)
+    original_page = deepcopy(page)
+
+    enriched = add_scheduled_laps(schedule, [page])
+
+    assert enriched["MRData"]["RaceTable"]["Races"][0]["scheduled_laps"] == 58
+    assert schedule == original_schedule
+    assert page == original_page
+
+
+@pytest.mark.parametrize(
+    "invalid_race", [None, {}, {"round": None}, {"round": "unknown"}]
+)
+def test_scheduled_laps_preserve_unmatched_race_records(invalid_race) -> None:
+    schedule = _future_race_payload()
+    schedule["MRData"]["RaceTable"]["Races"].insert(0, invalid_race)
+    original_schedule = deepcopy(schedule)
+    page = {
+        "metadata": {"total_pages": 1},
+        "data": [{"round": {"number": 1}, "type": "R", "scheduled_laps": 58}],
+    }
+
+    enriched = add_scheduled_laps(schedule, [page])
+
+    races = enriched["MRData"]["RaceTable"]["Races"]
+    assert races[0] == invalid_race
+    assert races[1]["scheduled_laps"] == 58
+    assert schedule == original_schedule
 
 
 @pytest.mark.asyncio

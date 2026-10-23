@@ -67,6 +67,16 @@ def test_feature_plan_static_only_has_zero_live_demand() -> None:
     assert plan.stream_reasons == {}
 
 
+@pytest.mark.parametrize("feature", ["driver_positions", "pitstops"])
+def test_session_scoped_features_request_identity_without_session_sensor(
+    feature,
+) -> None:
+    plan = build_feature_plan({feature}, live_enabled=True)
+
+    assert "SessionInfo" in plan.public_streams
+    assert plan.stream_reasons["SessionInfo"] == (feature,)
+
+
 def test_feature_plan_declares_exact_streams_and_reasons() -> None:
     plan = build_feature_plan(
         {"track_status", "formation_start"},
@@ -93,8 +103,10 @@ def test_feature_plan_declares_exact_streams_and_reasons() -> None:
 def test_team_radio_feature_plan_includes_driver_identity_stream() -> None:
     plan = build_feature_plan({"team_radio"}, live_enabled=True)
 
-    assert plan.coordinators == frozenset({"team_radio"})
-    assert plan.requested_streams == frozenset({"DriverList", "Heartbeat", "TeamRadio"})
+    assert plan.coordinators == frozenset({"team_radio", "session_info"})
+    assert plan.requested_streams == frozenset(
+        {"DriverList", "Heartbeat", "TeamRadio", "SessionInfo"}
+    )
     assert plan.stream_reasons["DriverList"] == ("team_radio",)
     assert plan.stream_reasons["TeamRadio"] == ("team_radio",)
 
@@ -305,3 +317,18 @@ def test_frontend_cache_key_reaches_nested_modules_and_local_assets(
         "wet_tyre.png",
     ):
         assert f"cacheBustedAssetUrl('./{filename}')" in main_source
+
+
+@pytest.mark.parametrize("live_enabled", [True, False])
+def test_team_radio_only_plan_supplies_session_path_resource_when_live_enabled(
+    live_enabled,
+) -> None:
+    plan = build_feature_plan({"team_radio"}, live_enabled=live_enabled)
+    if not live_enabled:
+        assert plan.requested_streams == frozenset()
+        assert plan.coordinators == frozenset()
+        return
+    assert "SessionInfo" in plan.public_streams
+    assert plan.stream_reasons["SessionInfo"] == ("team_radio",)
+    assert plan.needs("session_info")
+    assert plan.needs("team_radio")

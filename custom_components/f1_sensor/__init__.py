@@ -4,6 +4,7 @@ import asyncio
 from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import suppress
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from functools import partial
 import hashlib
@@ -840,6 +841,13 @@ def _compute_session_fingerprint(index_payload: Any) -> str | None:
         return json.dumps(minimal, sort_keys=True, default=str)[:20000]
     except Exception:
         return None
+
+
+def _stream_session_key(payload: Any) -> str | None:
+    """Read confirmed session identity without treating metadata deltas as new sessions."""
+    if not isinstance(payload, dict) or payload.get("Key") is None:
+        return None
+    return str(payload["Key"]).strip() or None
 
 
 def _refresh_session_fingerprint(
@@ -4582,6 +4590,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
 
         self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
+        self._live_session_key: str | None = None
 
         self._history_limit = min(
             PITSTOP_MAX_HISTORY_PER_CAR,
@@ -4636,6 +4645,15 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
 
     def set_delay(self, seconds: int) -> None:
         _apply_delay_with_queue(self, seconds)
+
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            self._reset_store()
 
     def _reset_store(self) -> None:
         self._by_car = {}
@@ -4923,6 +4941,12 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             self._session_unsub = None
         # Subscribe to shared live bus streams
         bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        with suppress(Exception):
+            self._unsubs.append(
+                bus.subscribe(
+                    "SessionInfo", _wrap_delayed_handler(self, self._on_sessioninfo)
+                )
+            )
         with suppress(Exception):
             self._unsubs.append(
                 bus.subscribe(
@@ -5584,6 +5608,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._delay_listener: Callable[[], None] | None = None
         self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
+        self._live_session_key: str | None = None
         _init_delayed_ingest_state(self)
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
@@ -5667,8 +5692,22 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def reset_for_replay(self) -> None:
         """Discard replay-sensitive driver and segment state before rebuilding."""
         _clear_delayed_ingest_state(self)
+        self._live_session_key = None
+        self._reset_session_state("replay_reset")
+
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            self._reset_session_state("session_change")
+
+    def _reset_session_state(self, reason: str) -> None:
+        """Clear previous-session timing without dropping queued current-session frames."""
         self._minisectors.reset(
-            "replay_reset",
+            reason,
             source="replay" if self._replay_mode else "live",
         )
         self._state = {
@@ -7552,6 +7591,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._unsubs.append(
                     bus.subscribe(
+                        "SessionInfo", _wrap_delayed_handler(self, self._on_sessioninfo)
+                    )
+                )
+            with suppress(Exception):
+                self._unsubs.append(
+                    bus.subscribe(
                         "DriverList", _wrap_delayed_handler(self, self._on_driverlist)
                     )
                 )
@@ -7712,6 +7757,7 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
 
     if isinstance(coordinator, PitStopCoordinator):
         _clear_delayed_ingest_state(coordinator)
+        coordinator._live_session_key = None
         coordinator._reset_store()
         return
 
@@ -10621,13 +10667,27 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
             return result.get("SessionInfo")
         return None
 
+    @staticmethod
+    def _merge_message(previous: dict, delta: dict) -> dict:
+        merged = deepcopy(previous)
+        for key, value in delta.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = SessionInfoCoordinator._merge_message(merged[key], value)
+            else:
+                merged[key] = deepcopy(value)
+        return merged
+
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
+        previous = self._last_message if isinstance(self._last_message, dict) else {}
+        if "Key" in msg and str(msg["Key"]) != str(previous.get("Key")):
+            previous = {}
+        merged = self._merge_message(previous, msg)
         self.available = True
-        self._last_message = msg
-        self.data_list = [msg]
-        self.async_set_updated_data(msg)
+        self._last_message = merged
+        self.data_list = [merged]
+        self.async_set_updated_data(merged)
         if _LOGGER.isEnabledFor(logging.DEBUG):
             with suppress(Exception):
                 name = (msg or {}).get("Name")
