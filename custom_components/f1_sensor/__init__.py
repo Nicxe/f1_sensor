@@ -193,6 +193,7 @@ from .runtime import (
     entry_value,
     track_sensor_demand,
 )
+from .schedule_laps import add_scheduled_laps, validate_session_page
 from .signalr import (
     AUTH_GATED_LIVE_STREAMS,
     PUBLIC_LIVE_STREAMS,
@@ -1956,6 +1957,8 @@ async def _async_setup_entry(
             while ensuring the newest season results page refreshes within hours.
             """
             kk = str(k)
+            if "/f1/alpha/core/sessions/?year=" in kk:
+                return TTL_CURRENT
             if "/ergast/f1/current.json" in kk:
                 return TTL_CURRENT
             if (
@@ -7970,17 +7973,57 @@ class F1DataCoordinator(DataUpdateCoordinator):
             # No-spoiler: keep the cache warm but don't deliver new data to entities.
             if _is_no_spoiler_jolpica_blocked(self):
                 return self.data
-            if self._provider_registry is None:
-                return data
-            return self._provider_registry.normalize(
-                "jolpica",
-                self._url,
-                data,
-            ).payload
+            if self._provider_registry is not None:
+                data = self._provider_registry.normalize(
+                    "jolpica",
+                    self._url,
+                    data,
+                ).payload
+            if self._url == API_URL:
+                data = await self._async_add_scheduled_laps(data)
+            return data
         except Exception as err:
             raise UpdateFailed(
                 f"Error fetching data: {_format_update_error(err)}"
             ) from err
+
+    async def _async_add_scheduled_laps(self, data: dict) -> dict:
+        """Best-effort enrichment of the season schedule from alpha sessions."""
+        races = data.get("MRData", {}).get("RaceTable", {}).get("Races")
+        if not isinstance(races, list) or not races:
+            return data
+        season = self._extract_season(data)
+        if not season or not season.isdecimal() or len(season) != 4:
+            return data
+
+        pages = []
+        session_types = ["R"]
+        if any(isinstance(race, dict) and race.get("Sprint") for race in races):
+            session_types.append("SR")
+        for kind in session_types:
+            url = (
+                "https://api.jolpi.ca/f1/alpha/core/sessions/"
+                f"?year={season}&session_type={kind}"
+            )
+            try:
+                page = await fetch_json(
+                    self.hass,
+                    self._session,
+                    url,
+                    headers=self._headers,
+                    ttl_seconds=24 * 3600,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                    persist_map=self._persist,
+                    persist_save=self._persist_save,
+                    validator=validate_session_page,
+                )
+                validate_session_page(page)
+            except Exception as err:
+                _LOGGER.debug("Could not load scheduled %s laps: %s", kind, err)
+                continue
+            pages.append(page)
+        return add_scheduled_laps(data, pages)
 
 
 class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):

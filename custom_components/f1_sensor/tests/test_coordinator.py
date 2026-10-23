@@ -23,6 +23,10 @@ from custom_components.f1_sensor.const import (
 )
 from custom_components.f1_sensor.jolpica import JolpicaRouteNotFoundError
 from custom_components.f1_sensor.jolpica_pagination import JolpicaPaginationError
+from custom_components.f1_sensor.schedule_laps import (
+    add_scheduled_laps,
+    validate_session_page,
+)
 
 
 class _TimeoutSession:
@@ -67,6 +71,100 @@ def _future_race_payload() -> dict:
             }
         }
     }
+
+
+def test_scheduled_laps_match_round_and_session_type() -> None:
+    schedule = _future_race_payload()
+    race = schedule["MRData"]["RaceTable"]["Races"][0]
+    race["Sprint"] = {"date": race["date"], "time": "03:00:00Z"}
+    page = {
+        "metadata": {"total_pages": 1},
+        "data": [
+            {"round": {"number": 1}, "type": "R", "scheduled_laps": 58},
+            {"round": {"number": 1}, "type": "SR", "scheduled_laps": 19},
+            {"round": {"number": 2}, "type": "R", "scheduled_laps": 70},
+        ],
+    }
+    validate_session_page(page)
+    enriched = add_scheduled_laps(schedule, [page])
+    enriched_race = enriched["MRData"]["RaceTable"]["Races"][0]
+    assert enriched_race["scheduled_laps"] == 58
+    assert enriched_race["Sprint"]["scheduled_laps"] == 19
+    assert "scheduled_laps" not in race
+    assert "scheduled_laps" not in race["Sprint"]
+
+
+@pytest.mark.asyncio
+async def test_race_schedule_keeps_base_data_when_alpha_is_unavailable(hass) -> None:
+    with patch.object(DataUpdateCoordinator, "__init__", _fake_init):
+        coordinator = F1DataCoordinator(
+            hass,
+            API_URL,
+            "Test Coordinator",
+            session=MagicMock(),
+            user_agent="ua",
+            cache={},
+            inflight={},
+            persist_map={},
+        )
+
+    schedule = _future_race_payload()
+
+    async def fetch(_hass, _session, url, **_kwargs):
+        if "alpha" in url:
+            raise TimeoutError
+        return schedule
+
+    with patch("custom_components.f1_sensor.__init__.fetch_json", side_effect=fetch):
+        result = await coordinator._async_update_data()
+
+    assert result == schedule
+
+
+@pytest.mark.asyncio
+async def test_race_schedule_adds_alpha_laps_for_race_and_sprint(hass) -> None:
+    with patch.object(DataUpdateCoordinator, "__init__", _fake_init):
+        coordinator = F1DataCoordinator(
+            hass,
+            API_URL,
+            "Test Coordinator",
+            session=MagicMock(),
+            user_agent="ua",
+            cache={},
+            inflight={},
+            persist_map={},
+        )
+
+    schedule = _future_race_payload()
+    schedule["MRData"]["RaceTable"]["Races"][0]["Sprint"] = {
+        "date": "2026-03-14",
+        "time": "03:00:00Z",
+    }
+
+    async def fetch(_hass, _session, url, **_kwargs):
+        if "session_type=R" in url:
+            kind, count = "R", 58
+        elif "session_type=SR" in url:
+            kind, count = "SR", 19
+        else:
+            return schedule
+        return {
+            "metadata": {"total_pages": 1},
+            "data": [
+                {
+                    "round": {"number": 1},
+                    "type": kind,
+                    "scheduled_laps": count,
+                }
+            ],
+        }
+
+    with patch("custom_components.f1_sensor.__init__.fetch_json", side_effect=fetch):
+        result = await coordinator._async_update_data()
+
+    race = result["MRData"]["RaceTable"]["Races"][0]
+    assert race["scheduled_laps"] == 58
+    assert race["Sprint"]["scheduled_laps"] == 19
 
 
 def _lap_position_result(driver_id: str, code: str, position: int, grid: int) -> dict:

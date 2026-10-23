@@ -162,6 +162,8 @@ class NextRaceModel(NextRaceProjection, ProjectionModel):
             "season": race.get("season"),
             "round": race.get("round"),
             "race_name": race.get("raceName"),
+            "scheduled_laps": race.get("scheduled_laps"),
+            "sprint_scheduled_laps": sprint.get("scheduled_laps"),
             "race_url": race.get("url"),
             "circuit_id": circuit.get("circuitId"),
             "circuit_name": circuit.get("circuitName"),
