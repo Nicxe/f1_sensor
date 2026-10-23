@@ -60,7 +60,7 @@ class _Session:
 async def test_archive_client_requires_auth_and_never_sends_it_to_other_hosts() -> None:
     unauthenticated = F1ArchiveClient(_Session(), "")
 
-    with pytest.raises(F1ArchiveAuthenticationRequired, match="paid F1TV"):
+    with pytest.raises(F1ArchiveAuthenticationRequired, match="Formula 1 account"):
         unauthenticated.get("https://livetiming.formula1.com/static/2026/Index.json")
 
     authenticated = F1ArchiveClient(_Session(), "Bearer secret")

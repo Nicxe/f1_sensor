@@ -40,7 +40,7 @@ Before you start, make sure you have:
 
 1. F1 Sensor installed in Home Assistant.
 2. Access to Home Assistant logs if you need to troubleshoot.
-3. A Formula 1 account with the required live timing access; check [current availability](/features/f1tv-auth#subscription-requirement).
+3. A Formula 1 account. A free account is sufficient for Replay Mode; additional live feeds have separate access requirements. Check [current availability](/features/f1tv-auth#subscription-requirement).
 4. Chrome or another Chromium-based browser.
 5. The [F1TV Token Helper](https://chromewebstore.google.com/detail/f1tv-token-helper-beta/bbpgdcjohdjcechlffloekhpgdbjoafh) extension installed.
 

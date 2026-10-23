@@ -1,0 +1,177 @@
+blueprint:
+  name: F1 Sensor - Automatic Team Radio Transcription
+  description: 'Automatically transcribe each new F1 Sensor team radio clip with a
+    selected Home Assistant AI Task entity. Optionally limit transcription to selected
+    teams and/or drivers. Leave either filter empty to include everyone for that filter.
+    This is an experimental feature; audio is sent to the selected AI Task provider
+    and may incur charges.
+
+    '
+  domain: automation
+  author: Nicxe
+  source_url: https://github.com/Nicxe/f1_sensor/blob/main/blueprints/automation/homeassistant/f1_team_radio_transcription.yaml
+  homeassistant:
+    min_version: 2024.10.0
+  input:
+    radio:
+      name: Team radio
+      icon: mdi:headset
+      input:
+        team_radio_sensor:
+          name: F1 Sensor team radio sensor
+          description: Select the team radio sensor that receives new clips.
+          selector:
+            entity:
+              filter:
+              - integration: f1_sensor
+                domain:
+                - sensor
+              multiple: false
+              reorder: false
+        ai_task_entity:
+          name: AI Task entity
+          description: Choose the AI Task provider to transcribe the audio.
+          selector:
+            entity:
+              filter:
+              - domain:
+                - ai_task
+              multiple: false
+              reorder: false
+    filters:
+      name: Filters
+      icon: mdi:filter-variant
+      collapsed: true
+      description: Leave a filter empty to include all teams or drivers.
+      input:
+        teams:
+          name: Teams
+          description: Select one or more teams, or leave empty for all teams.
+          default: []
+          selector:
+            select:
+              multiple: true
+              mode: dropdown
+              options:
+              - label: Alpine
+                value: alpine
+              - label: Aston Martin
+                value: aston martin
+              - label: Audi
+                value: audi
+              - label: Cadillac
+                value: cadillac
+              - label: Ferrari
+                value: ferrari
+              - label: Haas
+                value: haas
+              - label: McLaren
+                value: mclaren
+              - label: Mercedes
+                value: mercedes
+              - label: Racing Bulls
+                value: racing bulls
+              - label: Red Bull
+                value: red bull
+              - label: Williams
+                value: williams
+              custom_value: false
+              sort: false
+        drivers:
+          name: Drivers
+          description: Select one or more 2026 driver car numbers, or leave empty
+            for all drivers.
+          default: []
+          selector:
+            select:
+              multiple: true
+              mode: dropdown
+              options:
+              - label: Lando Norris (#1)
+                value: '1'
+              - label: Max Verstappen (#3)
+                value: '3'
+              - label: Gabriel Bortoleto (#5)
+                value: '5'
+              - label: Isack Hadjar (#6)
+                value: '6'
+              - label: Pierre Gasly (#10)
+                value: '10'
+              - label: Sergio Perez (#11)
+                value: '11'
+              - label: Kimi Antonelli (#12)
+                value: '12'
+              - label: Fernando Alonso (#14)
+                value: '14'
+              - label: Charles Leclerc (#16)
+                value: '16'
+              - label: Lance Stroll (#18)
+                value: '18'
+              - label: Alexander Albon (#23)
+                value: '23'
+              - label: Nico Hulkenberg (#27)
+                value: '27'
+              - label: Liam Lawson (#30)
+                value: '30'
+              - label: Esteban Ocon (#31)
+                value: '31'
+              - label: Arvid Lindblad (#41)
+                value: '41'
+              - label: Franco Colapinto (#43)
+                value: '43'
+              - label: Lewis Hamilton (#44)
+                value: '44'
+              - label: Carlos Sainz (#55)
+                value: '55'
+              - label: George Russell (#63)
+                value: '63'
+              - label: Valtteri Bottas (#77)
+                value: '77'
+              - label: Oscar Piastri (#81)
+                value: '81'
+              - label: Oliver Bearman (#87)
+                value: '87'
+              custom_value: false
+              sort: false
+    settings:
+      name: Transcription
+      icon: mdi:microphone-message
+      collapsed: true
+      input:
+        force:
+          name: Force new transcription
+          description: Run a new AI request even when this clip already has a cached
+            result. This can incur provider charges.
+          default: false
+          selector:
+            boolean: {}
+variables:
+  selected_teams: !input teams
+  selected_drivers: !input drivers
+  team_radio_sensor: !input team_radio_sensor
+  current_team: '{{ (state_attr(team_radio_sensor, ''team_name'') or '''') | lower
+    }}'
+  current_driver: '{{ state_attr(team_radio_sensor, ''racing_number'') | string }}'
+  transcription_status: '{{ state_attr(team_radio_sensor, ''transcription_status'')
+    or '''' }}'
+  force_transcription: !input force
+triggers:
+- trigger: state
+  entity_id: !input team_radio_sensor
+conditions:
+- condition: template
+  value_template: '{{ trigger.from_state is not none and trigger.to_state is not none
+    and trigger.from_state.state != trigger.to_state.state }}'
+- condition: template
+  value_template: "{{ (selected_teams | count == 0 or\n    (selected_teams | select('in',
+    current_team) | list | count > 0))\n   and (selected_drivers | count == 0 or current_driver
+    in selected_drivers)\n   and (force_transcription or transcription_status != 'completed')
+    }}\n"
+actions:
+- action: f1_sensor.transcribe_team_radio
+  data:
+    entity_id: !input team_radio_sensor
+    ai_task_entity_id: !input ai_task_entity
+    force: !input force
+mode: queued
+max: 20

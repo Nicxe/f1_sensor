@@ -14,7 +14,7 @@ from .helpers import normalize_live_timing_auth_header
 ARCHIVE_HOST = "livetiming.formula1.com"
 ARCHIVE_PATH_PREFIX = "/static/"
 ARCHIVE_AUTH_REQUIRED_MESSAGE = (
-    "An active paid F1TV subscription is required for replay and archive data"
+    "A Formula 1 account with a valid token is required for replay and archive data"
 )
 ARCHIVE_AUTH_FAILURE_STATUSES = frozenset({401})
 

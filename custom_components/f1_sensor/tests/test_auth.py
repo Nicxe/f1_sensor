@@ -59,6 +59,33 @@ def test_evaluate_f1tv_auth_header_accepts_authorization_prefix() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("subscription_status", "product", "entitlements"),
+    [
+        ("inactive", "", ["REG"]),
+        ("active", "F1 TV Access Monthly", ["REG", "ACCESS"]),
+    ],
+)
+def test_account_token_pairing_does_not_require_a_paid_subscription(
+    subscription_status: str, product: str, entitlements: list[str]
+) -> None:
+    now = datetime(2026, 10, 21, tzinfo=UTC)
+    token = _jwt(
+        {
+            "exp": int((now + timedelta(days=4)).timestamp()),
+            "SubscriptionStatus": subscription_status,
+            "SubscribedProduct": product,
+            "ents": [{"ent": entitlement} for entitlement in entitlements],
+        }
+    )
+
+    header, error, status = validate_replacement_auth_header(f"Bearer {token}", now=now)
+
+    assert error is None
+    assert header == f"Bearer {token}"
+    assert status.status == "valid"
+
+
 def test_evaluate_f1tv_auth_header_marks_expiring_soon() -> None:
     now = datetime(2026, 5, 1, tzinfo=UTC)
     token = _jwt({"exp": int((now + timedelta(hours=23)).timestamp())})

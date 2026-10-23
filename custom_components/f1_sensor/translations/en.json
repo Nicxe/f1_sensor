@@ -55,7 +55,7 @@
           "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
           "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste the full Bearer token from the F1TV Token Helper only as an advanced fallback. Leave blank to use public live timing without Replay Mode or archive media.",
-          "start_f1tv_pairing": "Recommended path. Connect an active paid F1TV subscription for Replay Mode, archive media, and additional live data. Public live timing continues without it.",
+          "start_f1tv_pairing": "Recommended path. Connect your Formula 1 account for Replay Mode and archive data. A free account is sufficient for replay; additional live data depends on account permissions and session availability. Public live timing continues without it.",
           "install_legacy_cards": "Also register the deprecated F1 cards. New installations leave this off; existing installations keep their previous cards. Requires dashboard card installation. Reload the browser after changing this option. Disabling it stops existing legacy cards from working unless you migrate them to the F1 Sensor card. If several F1 Sensor installations exist, legacy cards stay available while any enabled installation requests them."
         },
         "description": "The F1 Sensor card gets its data automatically. Enabled sensors only controls entities exposed in Home Assistant. Keep sensors used by older cards, templates or automations. Live timing and F1TV access follow their own settings."
@@ -83,7 +83,7 @@
           "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
           "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing. Replay Mode and archive media will be unavailable.",
-          "start_f1tv_pairing": "Recommended path. Connect an active paid F1TV subscription for Replay Mode, archive media, and additional live data. Public live timing continues without it.",
+          "start_f1tv_pairing": "Recommended path. Connect your Formula 1 account for Replay Mode and archive data. A free account is sufficient for replay; additional live data depends on account permissions and session availability. Public live timing continues without it.",
           "install_legacy_cards": "Also register the deprecated F1 cards. New installations leave this off; existing installations keep their previous cards. Requires dashboard card installation. Reload the browser after changing this option. Disabling it stops existing legacy cards from working unless you migrate them to the F1 Sensor card. If several F1 Sensor installations exist, legacy cards stay available while any enabled installation requests them."
         },
         "description": "The F1 Sensor card gets its data automatically. Enabled sensors only controls entities exposed in Home Assistant. Keep sensors used by older cards, templates or automations. Live timing and F1TV access follow their own settings."
@@ -98,12 +98,12 @@
         "data_description": {
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback.",
           "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing. Replay Mode and archive media will be unavailable.",
-          "start_f1tv_pairing": "Recommended path. Connect an active paid F1TV subscription for Replay Mode, archive media, and additional live data. Public live timing continues without it."
+          "start_f1tv_pairing": "Recommended path. Connect your Formula 1 account for Replay Mode and archive data. A free account is sufficient for replay; additional live data depends on account permissions and session availability. Public live timing continues without it."
         }
       },
       "f1tv_pairing": {
         "title": "Connect F1TV access",
-        "description": "Use the F1TV Token Helper to connect an active paid subscription. Public live timing remains optional-auth, but Replay Mode and archive media require F1TV access. This pairing expires at {expires_at}."
+        "description": "Use the F1TV Token Helper to connect your Formula 1 account. A free account is sufficient for Replay Mode; additional live data depends on account permissions and session availability. Public live timing continues without a token. This pairing expires at {expires_at}."
       },
       "sensor_review": {
         "title": "Review sensor changes",
@@ -192,7 +192,7 @@
           },
           "f1tv_pairing": {
             "title": "Connect F1TV access",
-            "description": "Use the F1TV Token Helper to connect an active paid subscription. Public live timing remains optional-auth, but Replay Mode and archive media require F1TV access. This pairing expires at {expires_at}."
+            "description": "Use the F1TV Token Helper to connect your Formula 1 account. A free account is sufficient for Replay Mode; additional live data depends on account permissions and session availability. Public live timing continues without a token. This pairing expires at {expires_at}."
           }
         }
       },

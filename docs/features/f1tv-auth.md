@@ -4,7 +4,7 @@ title: Data availability and F1TV access
 description: Compare public live timing with authenticated live, archive media and Replay Mode before connecting F1TV access.
 ---
 
-F1 Sensor's public live timing continues to work without F1TV Auth. An active paid F1TV subscription is required for Replay Mode, Formula 1 archive media and additional authenticated live timing features.
+F1 Sensor's public live timing continues to work without F1TV Auth. Replay Mode requires a Formula 1 account with a valid token; a paid subscription is not required. Additional authenticated live features depend on your account permissions and the data Formula 1 publishes for each session.
 
 ## Availability matrix
 
@@ -30,7 +30,7 @@ F1 Sensor uses three separate timing modes:
 | --- | --- | --- |
 | Public live timing | Standard live mode without a token | Core live entities, dashboards, and conservative incident alerts continue to work |
 | F1TV Auth live timing | Optional live mode with a paired F1TV token | Extra live features can become available when Formula 1 provides the data |
-| Replay Mode | Authenticated historical playback from Formula 1's session archive | Completed sessions can be downloaded and replayed when the paid F1TV token is accepted |
+| Replay Mode | Authenticated historical playback from Formula 1's session archive | Completed sessions can be downloaded and replayed with an accepted Formula 1 account token, including a free account |
 
 F1TV Auth is not required for the integration's schedules, standings, race control or public SignalR live timing. If a token is missing, expired, invalid or rejected, F1 Sensor falls back to public live timing. Replay discovery, replay downloads, archive telemetry and archive team radio media remain unavailable until F1TV access is restored.
 
@@ -50,9 +50,11 @@ Public live timing covers the normal live features most dashboards and automatio
 
 F1TV Auth can support live features such as Track Map, Pit Stops, Team Radio, Championship Prediction, formation start refinement, and earlier incident candidate signals. These features still depend on what Formula 1 publishes for each session, so an accepted token does not guarantee that every extra feature is available every time.
 
-## Subscription requirement
+## Account and access requirements {/* #subscription-requirement */}
 
-Use a Formula 1 account with an active paid F1TV subscription. Subscription names, entitlements and availability differ by country and can change. Check [Formula 1’s current F1 TV plans](https://f1tv.formula1.com/) for your region before subscribing; accepting a token does not guarantee that every data feed is published.
+Connect your Formula 1 account through the [F1TV Token Helper](/help/f1tv-token-helper). A free account with a valid token can access the timing archive used by Replay Mode, including archived telemetry and team radio when those resources are published. An account without an active subscription was verified against the same replay resources as a paid account on 21 October 2026.
+
+This is access to archived timing data, not a subscription to F1 TV video replays. Extra live feeds may have different account or subscription requirements, and an accepted archive token does not prove live access. Formula 1 can change access or publication on its unofficial timing API; do not assume every live feed works with a free account.
 
 :::info
 F1TV tokens are short-lived, and Formula 1 can vary which extra live data is published from session to session.
@@ -81,7 +83,7 @@ Downloaded diagnostics can include redacted token health and live timing activit
 
 ## Limitations
 
-- F1TV Auth is optional for public live timing but required for Replay Mode and Formula 1 archive media.
+- A Formula 1 account token is required for Replay Mode and the integration's archive access. A paid subscription is not required for the verified replay resources.
 - Automatic renewal requires a usable session in the saved token. You still need Token Helper when that session expires or is revoked.
 - Extra live features are available only during suitable live sessions when Formula 1 publishes the needed data.
 - Live Track Map cannot be fully verified without an active session and a working token.
