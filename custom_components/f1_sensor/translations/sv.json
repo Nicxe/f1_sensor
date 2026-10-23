@@ -55,7 +55,7 @@
           "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-instrumentpanelskort slutar fungera när du laddar om webbläsaren.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
           "live_timing_auth_header": "Manuellt alternativ om parkoppling med Token Helper inte fungerar. Klistra bara in hela Bearer-tokenen från F1TV Token Helper som en avancerad reservlösning. Lämna tomt för att använda publik livetiming utan reprisläge eller arkivmedia.",
-          "start_f1tv_pairing": "Rekommenderat alternativ. Anslut en aktiv betald F1TV-prenumeration för reprisläge, arkivmedia och ytterligare livedata. Publik livetiming fungerar även utan den.",
+          "start_f1tv_pairing": "Rekommenderat alternativ. Koppla ditt Formula 1-konto för återspelning och arkivdata. Ett gratiskonto räcker för återspelning; ytterligare live-data beror på kontots behörigheter och sessionstillgänglighet. Publik live-timing fungerar utan det.",
           "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att instrumentpanelskorten installeras. Ladda om webbläsaren efter att du ändrat inställningen. Om du stänger av den slutar befintliga äldre kort att fungera, om du inte migrerar dem till F1 Sensor-kortet. Om det finns flera F1 Sensor-installationer förblir de äldre korten tillgängliga så länge någon aktiverad installation begär dem."
         },
         "description": "F1 Sensor-kortet hämtar sina data automatiskt. Inställningen Enabled sensors only styr endast entiteter som exponeras i Home Assistant. Behåll sensorer som används av äldre kort, mallar eller automatiseringar. Live-timing och F1TV-åtkomst följer sina egna inställningar."
@@ -82,7 +82,7 @@
           "install_dashboard_cards": "Registrerar de medföljande F1 Sensor-korten i Home Assistant. Stäng av detta om du bara använder entiteter och automationer. Befintliga F1-instrumentpanelskort slutar fungera när du laddar om webbläsaren.",
           "race_week_start_day": "Välj om tävlingsveckan börjar på lördag, söndag eller måndag.",
           "live_timing_auth_header": "Manuellt alternativ om parkoppling med Token Helper inte fungerar. Klistra bara in en ny fullständig Bearer-token som en avancerad reservlösning. Lämna tomt för att behålla nuvarande värde.",
-          "start_f1tv_pairing": "Rekommenderat alternativ. Anslut en aktiv betald F1TV-prenumeration för reprisläge, arkivmedia och ytterligare livedata. Publik livetiming fungerar även utan den.",
+          "start_f1tv_pairing": "Rekommenderad väg. Koppla ditt Formula 1-konto för uppspelningsläge och arkiverad data. Ett gratiskonto räcker för uppspelning; ytterligare live-data beror på kontobehörigheter och sessionstillgänglighet. Offentlig live-timing fungerar utan det.",
           "install_legacy_cards": "Registrera även de utfasade F1-korten. Avstängt för nya installationer; befintliga installationer behåller sina tidigare kort. Kräver att instrumentpanelskorten installeras. Ladda om webbläsaren efter att du ändrat inställningen. Om du stänger av den slutar befintliga äldre kort att fungera, om du inte migrerar dem till F1 Sensor-kortet. Om det finns flera F1 Sensor-installationer förblir de äldre korten tillgängliga så länge någon aktiverad installation begär dem.",
           "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med publik livetiming. Reprisläge och arkivmedia blir inte tillgängliga."
         },
@@ -98,12 +98,12 @@
         "data_description": {
           "live_timing_auth_header": "Manuellt alternativ om parkoppling med Token Helper inte fungerar. Klistra bara in en ny fullständig Bearer-token som en avancerad reservlösning.",
           "clear_live_timing_auth_header": "Ta bort det sparade F1TV-auktoriseringsvärdet och fortsätt med publik livetiming. Reprisläge och arkivmedia blir inte tillgängliga.",
-          "start_f1tv_pairing": "Rekommenderat alternativ. Anslut en aktiv betald F1TV-prenumeration för reprisläge, arkivmedia och ytterligare livedata. Publik livetiming fungerar även utan den."
+          "start_f1tv_pairing": "Rekommenderad väg. Anslut ditt Formula 1-konto för Replay-läget och arkivdata. Ett gratiskonto räcker för Replay-läget; ytterligare live-data beror på kontots behörigheter och om sessionen är tillgänglig. Publik live-timing fungerar utan konto."
         }
       },
       "f1tv_pairing": {
         "title": "Anslut F1TV-åtkomst",
-        "description": "Använd F1TV Token Helper för att ansluta en aktiv betald prenumeration. Publik livetiming fungerar utan autentisering, men reprisläge och arkivmedia kräver F1TV-åtkomst. Den här parkopplingen upphör att gälla {expires_at}."
+        "description": "Använd F1TV Token Helper för att koppla ditt Formula 1-konto. Ett gratiskonto räcker för Replay-läget; ytterligare live-data beror på kontots behörigheter och om sessionen är tillgänglig. Publik live-timing fungerar utan token. Denna parning upphör {expires_at}."
       },
       "sensor_review": {
         "title": "Granska sensorändringar",
@@ -188,7 +188,7 @@
           },
           "f1tv_pairing": {
             "title": "Anslut F1TV-åtkomst",
-            "description": "Använd F1TV Token Helper för att ansluta en aktiv betald prenumeration. Publik livetiming fungerar utan autentisering, men reprisläge och arkivmedia kräver F1TV-åtkomst. Den här parkopplingen upphör att gälla {expires_at}."
+            "description": "Använd F1TV Token Helper för att koppla ditt Formula 1-konto. Ett gratiskonto räcker för återspelning; ytterligare live-data beror på kontots behörigheter och sessionstillgänglighet. Publik live-timing fungerar utan en token. Denna koppling upphör {expires_at}."
           }
         }
       },
