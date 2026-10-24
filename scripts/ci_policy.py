@@ -49,6 +49,7 @@ AUDIT_POLICY = {
     "scripts/npm_audit_semver.cjs",
     ".github/workflows/audit.yml",
     ".github/workflows/security-health.yml",
+    ".github/workflows/security-snapshot.yml",
 }
 DOCUMENTATION_WORKFLOWS = {
     ".github/workflows/documentation.yml",
@@ -472,17 +473,28 @@ def audit_context(
 
 
 def release_product_checks(
-    selected: dict[str, bool], *, separate_delivery: bool, event_name: str, branch: str
+    selected: dict[str, bool],
+    *,
+    separate_delivery: bool,
+    event_name: str,
+    branch: str,
+    verification_only: bool = False,
 ) -> dict[str, bool]:
-    """Only trusted release executions may delegate docs and full security."""
+    """Delegate delivery for release branches or an explicit dev-only dry run."""
     selected = dict(selected)
     if separate_delivery:
-        if event_name not in ("push", "workflow_dispatch") or branch not in (
+        release_target = event_name in ("push", "workflow_dispatch") and branch in (
             "beta",
             "main",
-        ):
+        )
+        dev_dry_run = (
+            event_name == "workflow_dispatch"
+            and branch == "dev"
+            and verification_only is True
+        )
+        if not (release_target or dev_dry_run):
             raise ValueError(
-                "Separate delivery is restricted to trusted beta/main release executions"
+                "Separate delivery requires a trusted beta/main execution or an explicit dev verification-only dispatch"
             )
         selected["documentation"] = False
         selected["audit"] = False
@@ -597,6 +609,14 @@ def main() -> int:
         separate_delivery=os.environ.get("CI_SEPARATE_DELIVERY") == "true",
         event_name=name,
         branch=os.environ.get("GITHUB_REF_NAME", ""),
+        verification_only=(
+            name == "workflow_dispatch"
+            and isinstance(event.get("inputs"), dict)
+            and (
+                event["inputs"].get("release") is False
+                or event["inputs"].get("release") == "false"
+            )
+        ),
     )
     audit_mode, audit_base = audit_context(
         event, name, os.environ.get("GITHUB_REF_NAME", ""), files

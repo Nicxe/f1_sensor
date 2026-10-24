@@ -1,5 +1,10 @@
 """Acceptance cases for required checks and branch routing."""
 
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
@@ -9,6 +14,7 @@ from scripts.ci_policy import (
     branch_error,
     gate_errors,
     hotfix_matches_dev,
+    main,
     main_promotion_release_error,
     release_product_checks,
     release_triggering_commits,
@@ -273,14 +279,20 @@ class PolicyTests(unittest.TestCase):
                     )
 
     def test_audit_evaluator_changes_keep_full_security_enforcement(self):
-        files = ["scripts/npm_audit_semver.cjs"]
-        selected = select_jobs(files, pull("beta", "dev"), "pull_request", "")
-        self.assertTrue(selected["audit"])
-        self.assertTrue(selected["automation"])
-        self.assertEqual(
-            audit_context(pull("beta", "dev"), "pull_request", "", files),
-            ("gate", ""),
-        )
+        for path in (
+            "scripts/npm_audit_semver.cjs",
+            ".github/workflows/security-health.yml",
+            ".github/workflows/security-snapshot.yml",
+        ):
+            with self.subTest(path=path):
+                files = [path]
+                selected = select_jobs(files, pull("beta", "dev"), "pull_request", "")
+                self.assertTrue(selected["audit"])
+                self.assertTrue(selected["automation"])
+                self.assertEqual(
+                    audit_context(pull("beta", "dev"), "pull_request", "", files),
+                    ("gate", ""),
+                )
 
     def test_only_release_executions_may_delegate_docs_and_full_security(self):
         selected = select_jobs(None, {}, "workflow_dispatch", "beta")
@@ -301,6 +313,110 @@ class PolicyTests(unittest.TestCase):
                 release_product_checks(
                     selected, separate_delivery=True, event_name=event, branch=branch
                 )
+
+    def test_dev_verification_only_is_limited_to_an_explicit_manual_dry_run(self):
+        selected = select_jobs(None, {}, "workflow_dispatch", "dev")
+        product = release_product_checks(
+            selected,
+            separate_delivery=True,
+            event_name="workflow_dispatch",
+            branch="dev",
+            verification_only=True,
+        )
+        self.assertFalse(product["documentation"])
+        self.assertFalse(product["audit"])
+        for job in ("backend", "frontend", "validation", "package"):
+            self.assertTrue(product[job])
+        self.assertTrue(selected["documentation"])
+        self.assertTrue(selected["audit"])
+        for event, branch, verification_only in (
+            ("push", "dev", True),
+            ("pull_request", "dev", True),
+            ("workflow_dispatch", "content", True),
+            ("workflow_dispatch", "dev", False),
+            ("workflow_dispatch", "dev", "false"),
+        ):
+            with (
+                self.subTest(event=event, branch=branch, flag=verification_only),
+                self.assertRaises(ValueError),
+            ):
+                release_product_checks(
+                    selected,
+                    separate_delivery=True,
+                    event_name=event,
+                    branch=branch,
+                    verification_only=verification_only,
+                )
+
+    def test_plan_accepts_explicit_false_and_keeps_immutable_delivery_inputs(self):
+        for release in (False, "false"):
+            with (
+                self.subTest(release=release),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                event = Path(directory) / "event.json"
+                output = Path(directory) / "output.txt"
+                event.write_text(json.dumps({"inputs": {"release": release}}))
+                with (
+                    patch.dict(
+                        os.environ,
+                        {
+                            "GITHUB_EVENT_PATH": str(event),
+                            "GITHUB_OUTPUT": str(output),
+                            "GITHUB_EVENT_NAME": "workflow_dispatch",
+                            "GITHUB_REF_NAME": "dev",
+                            "CI_SEPARATE_DELIVERY": "true",
+                        },
+                    ),
+                    patch.object(sys, "argv", ["ci_policy.py", "plan"]),
+                    patch("scripts.ci_policy.changed_files", return_value=None),
+                    patch(
+                        "scripts.ci_policy.subprocess.check_output",
+                        side_effect=["a" * 40, "b" * 40],
+                    ),
+                ):
+                    self.assertEqual(main(), 0)
+                values = dict(
+                    line.split("=", 1) for line in output.read_text().splitlines()
+                )
+                self.assertEqual(values["tested_sha"], "a" * 40)
+                self.assertEqual(values["tested_tree"], "b" * 40)
+                self.assertEqual(values["audit_mode"], "gate")
+                self.assertEqual(values["deploy"], "false")
+                selected = json.loads(values["selected"])
+                self.assertFalse(selected["documentation"])
+                self.assertFalse(selected["audit"])
+
+    def test_dev_plan_rejects_missing_default_true_and_other_release_input_values(self):
+        for inputs in (
+            {},
+            {"release": True},
+            {"release": "true"},
+            {"release": 0},
+            {"release": None},
+            {"release": "False"},
+        ):
+            with (
+                self.subTest(inputs=inputs),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                event = Path(directory) / "event.json"
+                event.write_text(json.dumps({"inputs": inputs}))
+                with (
+                    patch.dict(
+                        os.environ,
+                        {
+                            "GITHUB_EVENT_PATH": str(event),
+                            "GITHUB_EVENT_NAME": "workflow_dispatch",
+                            "GITHUB_REF_NAME": "dev",
+                            "CI_SEPARATE_DELIVERY": "true",
+                        },
+                    ),
+                    patch.object(sys, "argv", ["ci_policy.py", "plan"]),
+                    patch("scripts.ci_policy.changed_files", return_value=None),
+                    self.assertRaises(ValueError),
+                ):
+                    main()
 
     def test_dependency_changes_are_audited_before_and_after_merge(self):
         for base in ("dev", "content", "beta", "main"):
