@@ -8,8 +8,15 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from homeassistant.components.http import KEY_HASS
-from homeassistant.core import State
+from homeassistant.components.recorder.db_schema import (
+    MAX_STATE_ATTRS_BYTES,
+    StateAttributes,
+)
+from homeassistant.const import EVENT_STATE_CHANGED
+from homeassistant.core import Event, State
 from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.json import json_bytes
+from homeassistant.util.json import json_loads
 import pytest
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
@@ -199,3 +206,67 @@ async def test_radio_history_keeps_twenty_newest_playable_captures(
     radio.coordinator._on_bus_message({"Captures": batch})
     await radio.component.async_add_entities([radio.sensor])
     await _assert_history(hass, radio, list(reversed(batch[-20:])))
+
+
+@pytest.mark.parametrize(
+    ("clip_count", "text_repeats"),
+    [(20, 12), (1, 500)],
+    ids=["transcribed-history", "long-latest-transcription"],
+)
+async def test_radio_large_attributes_remain_live_without_overloading_recorder(
+    hass, radio, captures, caplog, clip_count, text_repeats
+):
+    """Keep playable radio data while Recorder stores only compact metadata."""
+    batch = [
+        {
+            **captures[0],
+            "Path": f"TeamRadio/LEC_16_{index}.mp3",
+            "driver_tla": "LEC",
+            "driver_name": "Charles Leclerc",
+            "team_name": "Ferrari",
+        }
+        for index in range(clip_count)
+    ]
+    radio.coordinator._on_bus_message({"Captures": batch})
+    text = "Stay out, we are checking the gap to the car behind. " * text_repeats
+    transcription = {
+        "status": "completed",
+        "text": text,
+        "segments": [{"speaker": "A", "text": text}],
+        "ai_task_entity_id": "ai_task.team_radio",
+        "generated_at": "2026-10-04T08:00:00+00:00",
+    }
+    for capture in batch:
+        assert radio.coordinator.set_transcription(
+            team_radio_clip_id(capture), transcription
+        )
+
+    await radio.component.async_add_entities([radio.sensor])
+    state = await _assert_history(hass, radio, list(reversed(batch)))
+    assert len(json_bytes(dict(state.attributes))) > MAX_STATE_ATTRS_BYTES
+    assert state.attributes["transcription_text"] == text
+    assert state.attributes["transcription_segments"] == transcription["segments"]
+    assert state.attributes["raw_message"]["Transcription"] == transcription
+    for clip in state.attributes["history"]:
+        assert clip["transcription_text"] == text
+        assert clip["transcription_segments"] == transcription["segments"]
+
+    event = Event(
+        EVENT_STATE_CHANGED,
+        {"entity_id": state.entity_id, "old_state": None, "new_state": state},
+    )
+    recorded_bytes = StateAttributes.shared_attrs_bytes_from_event(event, None)
+    recorded = json_loads(recorded_bytes)
+    assert recorded, "Recorder must not discard all attributes at its size limit"
+    assert len(recorded_bytes) < MAX_STATE_ATTRS_BYTES
+    assert not {
+        "history",
+        "raw_message",
+        "transcription_text",
+        "transcription_segments",
+    }.intersection(recorded)
+    assert recorded["racing_number"] == "16"
+    assert recorded["path"] == batch[-1]["Path"]
+    assert recorded["transcription_status"] == "completed"
+    assert recorded["transcription_generated_at"] == transcription["generated_at"]
+    assert "exceed maximum size" not in caplog.text
