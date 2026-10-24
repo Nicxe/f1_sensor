@@ -757,6 +757,7 @@ export class F1ModuleView extends LitElement {
   cell(row, id) {
     if (id === 'driver') return this.driverCell(row);
     if (id === 'gap' || id === 'interval') return formatTimingGap(row[id], this.w('modular.lap'));
+    if (this.field(id)?.type === 'seconds_delta') return row[id] == null ? '—' : html`<span class="time">${formatDelta(row[id])}</span>`;
     if (this.field(id)?.type === 'qualifying_duration') return html`<span class="time">${formatTime(row[id]?.time)}</span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${row[id]?.sprint ? 'SQ' : 'Q'}${row[id]?.part}${row[id]?.eliminated ? this.w('modular.eliminated') : ''}</span>`;
     if (id === 'theoretical_lap') return html`<span class="time">${formatTime(row[id])}</span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${this.w('modular.sum_of_personal_best_sectors_may_span_laps')}</span>`;
     if (/^minisector_[123]$/.test(id)) return this.minisectorStrip(row[id], Number(id.at(-1)));

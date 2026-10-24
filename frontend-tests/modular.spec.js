@@ -7,6 +7,21 @@ test.beforeEach(async ({ page }) => {
   await page.waitForFunction(() => window.modularReady);
 });
 
+test('qualifying timing table shows a rounded gap instead of a raw float', async ({ page }) => {
+  await page.evaluate(() => {
+    window.mountModular({ scene: 'qualifying', config: { modules: [{ type: 'timing', fields: ['driver', 'qualifying_gap'], options: { profile: 'custom' } }] } });
+    const card = window.fixtureCard, demo = window.fixtureDemo;
+    const drivers = demo.hass.states[demo.preview.entries[0].entities.driver_positions].attributes.drivers;
+    drivers[0].q2_time = 82.631;
+    drivers[1].q2_time = 82.847;
+    for (const driver of drivers.slice(2)) driver.q2_time = null;
+    card.hass = { ...demo.hass };
+  });
+  const rows = page.locator('f1-module-view table tbody tr');
+  await expect(rows.nth(0).locator('td').nth(1)).toHaveText('0.000');
+  await expect(rows.nth(1).locator('td').nth(1)).toHaveText('+0.216');
+});
+
 test('first three presets render useful demonstration data with no page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 900 });
   for (const preset of ['weekend', 'session', 'driver']) {
