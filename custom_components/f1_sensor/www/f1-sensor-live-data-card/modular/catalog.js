@@ -67,6 +67,9 @@ export const TIMING_FIELDS = [
   timing('interval', 'Ahead', 'gap', 'interval_to_position_ahead', { mobile: 1 }),
   timing('last_lap', 'Last lap', 'duration', 'laps', { mobile: 1 }),
   timing('best_lap', 'Best lap', 'duration', 'best_lap_time'),
+  timing('best_lap_gap', 'Gap to fastest lap', 'seconds_delta', 'best_lap_gap (TimingData.TimeDiffToFastest); fallback official best_lap_time - fastest official session best_lap_time', {
+    sessions: ['practice'], unit: 's', comparison: 'fastest_official_session_best',
+  }),
   timing('lap_delta', 'Lap change', 'delta', 'laps', { comparison: 'previous_completed_lap' }),
   ...[1, 2, 3].map(n => timing(`sector_${n}`, `S${n}`, 'sector', `sectors.current.sector_${n}`, {
     unit: 's', identity: ['entry', 'session', 'driver', 'lap', 'sector'], mobile: 1,

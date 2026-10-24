@@ -160,7 +160,7 @@ test('Qualifying conversion transfers current-part gaps into the live preview', 
   await page.getByRole('button', { name: 'Review conversion', exact: true }).click();
   const preview = page.locator('f1-sensor-card');
   await expect(preview.getByRole('columnheader', { name: 'Current part gap', exact: true })).toBeVisible();
-  await expect(preview.getByRole('row', { name: /NOR · Lando Norris/ }).getByRole('cell').nth(5)).toHaveText('0.25');
+  await expect(preview.getByRole('row', { name: /NOR · Lando Norris/ }).getByRole('cell').nth(5)).toHaveText('+0.250');
   await page.locator('summary').filter({ hasText: 'Transferred settings' }).click();
   await expect(page.getByText('show_delta', { exact: true })).toBeVisible();
   await page.getByRole('checkbox', { name: 'I have reviewed the differences and settings that need to be chosen again.' }).check();

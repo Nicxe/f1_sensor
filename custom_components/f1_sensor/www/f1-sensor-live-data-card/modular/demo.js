@@ -29,6 +29,7 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
     current_position: index + 1, completed_laps: 12, status: index === 3 ? 'in_pit' : 'on_track', in_pit: index === 3,
     gap_to_leader: index ? `+${(index * 1.245).toFixed(3)}` : 'LEADER', interval_to_position_ahead: index ? '+1.245' : null,
     laps: { 10: 81.543 + index * .2, 11: 81.1 + index * .18, 12: 80.873 + index * .23 }, best_lap_time: 80.873 + index * .23, best_lap_lap: 12, fastest_lap: index === 0,
+    best_lap_time_source: 'official', best_lap_gap: scene === 'practice' ? Number((index * .23).toFixed(3)) : null,
     sector_current_lap: 13, sectors: { current: {
       sector_1: { time: 24.321 + index * .121, lap: 13, overall_fastest: index === 0, personal_fastest: index < 3 },
       sector_2: { time: 30.543 + index * .14, lap: 13, personal_fastest: index === 1 },

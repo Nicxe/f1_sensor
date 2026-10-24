@@ -6028,6 +6028,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         if not isinstance(lines, dict):
             return False
         drivers = self._state["drivers"]
+        has_best_lap_update = any(
+            isinstance(line, dict) and "BestLapTime" in line for line in lines.values()
+        )
+        previous_best_reference = (
+            self._official_best_lap_reference() if has_best_lap_update else None
+        )
         changed = False
         position_changed = False
         # 1) Apply incremental updates to stored driver timing
@@ -6107,10 +6113,23 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     timing, last_lap_payload, lap_num, last_lap
                 ):
                     changed = True
-            if "BestLapTime" in td and self._merge_official_best_lap(
-                timing, td["BestLapTime"]
-            ):
-                changed = True
+            if "BestLapTime" in td:
+                previous_best = timing.get("official_best_lap", {}).get("time_secs")
+                if self._merge_official_best_lap(timing, td["BestLapTime"]):
+                    changed = True
+                if (
+                    previous_best
+                    != timing.get("official_best_lap", {}).get("time_secs")
+                    and "TimeDiffToFastest" not in td
+                    and timing.get("practice_gap_to_fastest") is not None
+                ):
+                    timing["practice_gap_to_fastest"] = None
+                    changed = True
+            if "TimeDiffToFastest" in td:
+                practice_gap = td["TimeDiffToFastest"]
+                if timing.get("practice_gap_to_fastest") != practice_gap:
+                    timing["practice_gap_to_fastest"] = practice_gap
+                    changed = True
             best_lap = self._get_value(td, "BestLapTime", "Value")
             best_lap_num_raw = self._get_value(td, "BestLapTime", "Lap")
             best_lap_num: int | None = None
@@ -6192,6 +6211,20 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if value and seg.get("best_time") != value:
                     seg["best_time"] = value
                     changed = True
+        if (
+            has_best_lap_update
+            and previous_best_reference != self._official_best_lap_reference()
+        ):
+            # Source gaps can precede their new leader time in another delta.
+            # Once the reference changes, keep only gaps supplied in this frame.
+            for rn, entry in drivers.items():
+                line = lines.get(rn)
+                if isinstance(line, dict) and "TimeDiffToFastest" in line:
+                    continue
+                timing = entry.get("timing", {})
+                if timing.get("practice_gap_to_fastest") is not None:
+                    timing["practice_gap_to_fastest"] = None
+                    changed = True
         # SessionPart (for Q1/Q2/Q3 detection)
         with suppress(Exception):
             part = payload.get("SessionPart")
@@ -6210,6 +6243,20 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         if position_changed:
             self._recompute_leader_from_state()
         return changed
+
+    def _official_best_lap_reference(self) -> float | None:
+        """Return the current corrected best, without using observed lap history."""
+        return min(
+            (
+                best["time_secs"]
+                for entry in self._state["drivers"].values()
+                if isinstance(
+                    best := entry.get("timing", {}).get("official_best_lap"), dict
+                )
+                and best.get("time_secs") is not None
+            ),
+            default=None,
+        )
 
     @staticmethod
     def _empty_current_sector() -> dict[str, Any]:

@@ -22,6 +22,43 @@ test('qualifying timing table shows a rounded gap instead of a raw float', async
   await expect(rows.nth(1).locator('td').nth(1)).toHaveText('+0.216');
 });
 
+test('practice best lap gap keeps its session reference under focus and clears deleted bests', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ scene: 'practice', config: { modules: [{
+    type: 'timing', fields: ['driver', 'best_lap', 'best_lap_gap'], options: { profile: 'custom' },
+  }] } }));
+  await expect(page.getByRole('columnheader', { name: 'Gap to fastest lap', exact: true })).toBeVisible();
+  const gap = page.locator('f1-module-view tr[data-driver="4"]').getByRole('cell').nth(2);
+  await expect(gap).toHaveText('+0.230');
+  await page.getByRole('combobox', { name: 'Driver focus', exact: true }).selectOption('4');
+  await expect(page.locator('f1-module-view table tbody tr')).toHaveCount(1);
+  await expect(gap).toHaveText('+0.230');
+
+  await page.evaluate(() => {
+    const demo = window.fixtureDemo, entry = demo.preview.entries[0];
+    for (const driver of demo.hass.states[entry.entities.driver_positions].attributes.drivers) driver.best_lap_gap = null;
+    window.fixtureCard.hass = { ...demo.hass };
+  });
+  await expect(gap).toHaveText('+0.230');
+
+  await page.evaluate(() => {
+    const demo = window.fixtureDemo, entry = demo.preview.entries[0];
+    const leader = demo.hass.states[entry.entities.driver_positions].attributes.drivers[0];
+    leader.best_lap_time = null;
+    leader.best_lap_time_source = null;
+    window.fixtureCard.hass = { ...demo.hass };
+  });
+  await expect(gap).toHaveText('0.000');
+
+  await page.evaluate(() => {
+    const demo = window.fixtureDemo, entry = demo.preview.entries[0];
+    const norris = demo.hass.states[entry.entities.driver_positions].attributes.drivers[1];
+    norris.best_lap_time = null;
+    norris.best_lap_time_source = null;
+    window.fixtureCard.hass = { ...demo.hass };
+  });
+  await expect(gap).toHaveText('—');
+});
+
 test('first three presets render useful demonstration data with no page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 900 });
   for (const preset of ['weekend', 'session', 'driver']) {

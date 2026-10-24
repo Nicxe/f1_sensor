@@ -2,7 +2,7 @@
   "format_version": 1,
   "configuration_version": 3,
   "generated_from": "modular/catalog.js",
-  "field_count": 153,
+  "field_count": 154,
   "module_count": 22,
   "sources": [
     "analysis",
@@ -9605,6 +9605,44 @@
                 "displayed": "snapshot"
               },
               "type": "duration",
+              "unit": "s"
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "fastest_official_session_best",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "best_lap_gap",
+              "identity": [
+                "entry",
+                "session",
+                "driver"
+              ],
+              "label": "Gap to fastest lap",
+              "mobile": 2,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "best_lap_gap (TimingData.TimeDiffToFastest); fallback official best_lap_time - fastest official session best_lap_time",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice"
+              ],
+              "sortable": true,
+              "source": "driver_positions",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "seconds_delta",
               "unit": "s"
             },
             {
