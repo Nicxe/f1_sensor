@@ -1,6 +1,8 @@
 """An unavailable registry must never be interpreted as an audit result."""
 
 from datetime import date
+import json
+from pathlib import Path
 import unittest
 
 from scripts.check_npm_audit import AuditUnavailable, evaluate_audit
@@ -87,6 +89,38 @@ class AuditTests(unittest.TestCase):
                     self.assertEqual(failures, [])
                 else:
                     self.assertIn("outside allowed nodes", failures[0])
+
+    def test_approved_undici_exception_is_scoped_and_expires(self):
+        allow = json.loads(
+            (
+                Path(__file__).resolve().parents[1] / "quality/npm-audit-allowlist.json"
+            ).read_text(encoding="utf-8")
+        )
+        exception = next(
+            item for item in allow["entries"] if item["package"] == "undici"
+        )
+        bundled = "node_modules/npm/node_modules/undici"
+        self.assertEqual(exception["advisory_ids"], [1243114])
+        self.assertEqual(exception["allowed_nodes"], [bundled])
+        self.assertEqual(exception["expires"], "2026-10-31")
+
+        payload = report({"undici": {"via": [{"source": 1243114}], "nodes": [bundled]}})
+        self.assertEqual(evaluate_audit(payload, allow, date(2026, 10, 31)), [])
+        self.assertIn(
+            "expired exception", evaluate_audit(payload, allow, date(2026, 11, 1))[0]
+        )
+
+        payload["vulnerabilities"]["undici"]["nodes"].append("node_modules/undici")
+        self.assertIn(
+            "outside allowed nodes",
+            evaluate_audit(payload, allow, date(2026, 10, 24))[0],
+        )
+        payload["vulnerabilities"]["undici"]["nodes"] = [bundled]
+        payload["vulnerabilities"]["undici"]["via"] = [{"source": 1243115}]
+        self.assertIn(
+            "1243115 is not allowed",
+            evaluate_audit(payload, allow, date(2026, 10, 24))[0],
+        )
 
     def test_invalid_node_scope_fails_closed(self):
         for nodes in ([], "node_modules/example", [None]):
