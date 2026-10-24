@@ -1,97 +1,16 @@
 {
-  "reviewed_on": "2026-10-06",
+  "reviewed_on": "2026-10-24",
   "entries": [
-    {
-      "package": "brace-expansion",
-      "advisory_ids": [
-        1240103,
-        1240107,
-        1240111
-      ],
-      "allowed_nodes": [
-        "node_modules/npm/node_modules/brace-expansion"
-      ],
-      "scope": "Bundled inside npm 12.2.0, used only by release tooling",
-      "reason": "The latest npm release still bundles the affected version; npm bundled dependencies cannot be replaced with project overrides",
-      "expires": "2026-10-31"
-    },
-    {
-      "package": "ip-address",
-      "advisory_ids": [
-        1239948,
-        1239949,
-        1240097,
-        1240098
-      ],
-      "allowed_nodes": [
-        "node_modules/npm/node_modules/ip-address"
-      ],
-      "scope": "Bundled inside npm 12.2.0, used only by release tooling",
-      "reason": "The latest npm release still bundles the affected version; npm bundled dependencies cannot be replaced with project overrides",
-      "expires": "2026-10-31"
-    },
     {
       "package": "undici",
       "advisory_ids": [
-        1239934,
-        1240039,
-        1240042
+        1243114
       ],
       "allowed_nodes": [
         "node_modules/npm/node_modules/undici"
       ],
-      "scope": "Bundled inside npm 12.2.0, used only by release tooling",
-      "reason": "The latest npm release still bundles the affected version; npm bundled dependencies cannot be replaced with project overrides",
-      "expires": "2026-10-31"
-    },
-    {
-      "package": "braces",
-      "advisory_ids": [
-        1240992
-      ],
-      "allowed_nodes": [
-        "node_modules/braces"
-      ],
-      "scope": "Used only by documentation and release build tooling",
-      "reason": "The latest published braces release remains affected and no corrected version is available; this exception is limited to the resolved development-tool dependency",
-      "expires": "2026-10-31"
-    },
-    {
-      "package": "http-cache-semantics",
-      "advisory_ids": [
-        1240991
-      ],
-      "allowed_nodes": [
-        "node_modules/npm/node_modules/http-cache-semantics"
-      ],
-      "scope": "Bundled inside npm 12.2.0, used only by release tooling",
-      "reason": "The latest npm release still bundles the affected version; npm bundled dependencies cannot be replaced with project overrides",
-      "expires": "2026-10-31"
-    },
-    {
-      "package": "postcss-selector-parser",
-      "advisory_ids": [
-        1241232
-      ],
-      "allowed_nodes": [
-        "node_modules/npm/node_modules/postcss-selector-parser",
-        "node_modules/postcss-selector-parser"
-      ],
-      "scope": "Used only by documentation CSS processing and bundled npm release tooling",
-      "reason": "Compatible dependency updates remove every fixable instance; Docusaurus still requires the affected major version and npm bundles another affected copy",
-      "expires": "2026-10-31"
-    },
-    {
-      "package": "tinypool",
-      "advisory_ids": [
-        1241260,
-        1241261
-      ],
-      "allowed_nodes": [
-        "node_modules/tinypool"
-      ],
-      "scope": "Used only by the Docusaurus documentation build with repository-controlled inputs",
-      "reason": "The latest Docusaurus release still requires tinypool 1.x while the corrected release is 2.x; forcing the incompatible major version would bypass upstream compatibility constraints",
+      "scope": "Undici 6.29.0 bundled inside npm 12.2.1, used only by release tooling and never shipped with the Home Assistant integration",
+      "reason": "Owner-approved temporary acceptance of GHSA-xjj6-f33q-929c on 2026-10-24: the latest npm release still bundles undici 6.29.0, which project overrides cannot replace. Ordinary undici dependencies are upgraded to patched versions; other advisories and paths remain blocking",
       "expires": "2026-10-31"
     }
   ]

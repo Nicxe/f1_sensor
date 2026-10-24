@@ -80,25 +80,26 @@
     "serialize-javascript": ">=7.0.5",
     "picomatch": ">=4.0.4",
     "ip-address": "^10.7.1",
-    "qs": "^6.15.2",
+    "body-parser": "^1.20.9",
+    "qs": "^6.16.1",
     "uuid": "^11.1.1",
     "@babel/core": "7.29.6",
     "joi": "^17.13.6",
     "js-yaml": "^4.3.2",
     "@semantic-release/github": {
-      "undici": "^7.29.0"
+      "undici": "^7.30.1"
     },
-    "npm": "12.2.0",
+    "npm": "12.2.1",
     "websocket-driver": "^0.7.5",
     "cheerio": {
-      "undici": "^7.29.0"
+      "undici": "^7.30.1"
     },
     "webpack-dev-server": {
       "http-proxy-middleware": "3.0.7",
       "ws": "^8.20.1"
     },
     "@actions/http-client": {
-      "undici": "^6.28.1"
+      "undici": "^6.29.1"
     },
     "colord": "^2.10.0",
     "svgo": "^3.3.5",
