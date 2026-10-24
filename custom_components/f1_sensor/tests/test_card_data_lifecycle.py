@@ -1,14 +1,20 @@
 """Recorded session data, protected reconnects and runtime-owned history."""
 
 from copy import deepcopy
+from datetime import timedelta
 import json
 from pathlib import Path
+from threading import get_ident
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 from custom_components.f1_sensor import RaceControlCoordinator
 from custom_components.f1_sensor.card_data import CardDataStore
@@ -158,6 +164,67 @@ async def test_timing_publications_are_coalesced_but_context_is_immediate(hass):
         assert messages[-1]["context"]["session_id"] == "new-session"
     stop()
     await owner.async_close()
+
+
+async def test_delayed_publication_runs_on_ha_loop_and_persists_latest_update(hass):
+    """The real HA timer must not send async storage work to an executor."""
+    entry, data, owner = setup(hass)
+    loop_thread = get_ident()
+    received = []
+
+    def receive(message):
+        received.append((get_ident(), message))
+
+    await owner.async_start()
+    stop = owner.subscribe(["race_lap_count"], receive)
+    try:
+        with patch("custom_components.f1_sensor.card_data.monotonic", return_value=10):
+            for lap in (6, 7, 8):
+                data["lap_count_coordinator"].data = {
+                    "CurrentLap": lap,
+                    "TotalLaps": 58,
+                }
+                data["lap_count_coordinator"].update()
+            assert [message["payload"]["state"] for _, message in received] == [5, 6]
+            assert "race_lap_count" in owner._delayed
+
+            async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=2))
+            await hass.async_block_till_done()
+
+        assert [message["payload"]["state"] for _, message in received] == [5, 6, 8]
+        assert all(thread == loop_thread for thread, _ in received)
+        assert "race_lap_count" not in owner._delayed
+        assert owner._persisted["race_lap_count"]["payload"]["state"] == 8
+    finally:
+        stop()
+        await owner.async_close()
+
+
+@pytest.mark.parametrize("retirement", ["reset", "close"])
+async def test_retirement_cancels_pending_card_publications(hass, retirement):
+    """Real timers cannot publish after their session or entry is retired."""
+    entry, data, owner = setup(hass)
+    source = data["drivers_coordinator"] = Source(hass, {"drivers": {}})
+    stop = owner.subscribe(["driver_list"], lambda _message: None)
+    try:
+        with patch("custom_components.f1_sensor.card_data.monotonic", return_value=10):
+            for number in ("1", "4"):
+                source.data["drivers"][number] = {"identity": {"racing_number": number}}
+                source.update()
+            assert "driver_list" in owner._delayed
+            if retirement == "reset":
+                owner.reset_for_replay()
+            else:
+                await owner.async_close()
+
+            assert not owner._delayed
+            with patch.object(owner, "_publish", wraps=owner._publish) as publish:
+                async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=2))
+                await hass.async_block_till_done()
+                publish.assert_not_called()
+    finally:
+        stop()
+        await owner.async_close()
 
 
 async def test_delayed_session_identity_keeps_only_matching_saved_history(hass):
