@@ -2,6 +2,7 @@ const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
 const PERFORMANCE_BUDGETS = require('../quality/performance-budgets.json').browser;
 const {expectedMessage} = require('./localization-fixture.cjs');
+const { SUPPORTED_CARD_TYPES } = require('./supported-cards.cjs');
 
 const openFixture = async (page) => {
   const errors = [];
@@ -17,7 +18,8 @@ const openFixture = async (page) => {
 test('mounts and unmounts all cards and editors without browser errors', async ({ page }) => {
   const errors = await openFixture(page);
   const types = await page.evaluate(() => window.f1CardTypes());
-  expect(types).toHaveLength(24);
+  expect(types).toEqual(expect.arrayContaining(SUPPORTED_CARD_TYPES));
+  expect(new Set(types).size).toBe(types.length);
   for (const type of types) {
     const card = await page.evaluate((current) => window.mountF1Element({ type: current }), type);
     expect(card.tag).toBe(type);
@@ -160,12 +162,13 @@ test('card picker metadata follows the browser language with English fallback', 
     Object.defineProperty(navigator, 'language', { configurable: true, value: 'sv-SE' });
   });
   await openFixture(page);
-  const metadata = await page.evaluate(() => window.customCards.map(({ translationKey, name, description }) => ({
+  const metadata = await page.evaluate(() => window.customCards.map(({ type, translationKey, name, description }) => ({
+    type,
     translationKey,
     name,
     description,
   })));
-  expect(metadata).toHaveLength(24);
+  expect(metadata.map(item => item.type)).toEqual(expect.arrayContaining(SUPPORTED_CARD_TYPES));
   for (const item of metadata) {
     expect(item.name).toBe(expectedMessage('sv', `card.${item.translationKey}.name`));
     expect(item.description).toBe(expectedMessage('sv', `card.${item.translationKey}.description`));
@@ -227,22 +230,25 @@ for (const matrix of [
   { name: 'tablet-light-en', width: 700, theme: 'light', language: 'en-GB' },
   { name: 'wide-dark-en', width: 1050, theme: 'dark', language: 'en-GB' },
 ]) {
-  test(`visual matrix ${matrix.name}`, async ({ page }) => {
+  test(`responsive gallery remains usable ${matrix.name}`, async ({ page }) => {
     // Keep the fixture race in the future regardless of the day CI runs.
     // Fixed Date values preserve real timers and rendering callbacks.
     await page.clock.setFixedTime(new Date('2026-09-05T12:00:00Z'));
     await page.setViewportSize({ width: matrix.width, height: 900 });
     await openFixture(page);
-    // Keep the existing 23-card visual baseline comparable. The new renderer
-    // has its populated style/theme matrix in modular.spec.js.
     await page.evaluate((options) => window.mountF1Gallery({ ...options, legacyOnly: true }), matrix);
-    if (matrix.language === 'sv-SE') {
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    } else {
-      await expect(page).toHaveScreenshot(`${matrix.name}-${process.platform}.png`, {
-        fullPage: true,
-      });
-    }
+    const gallery = page.locator('#mount');
+    await expect(gallery).toBeVisible();
+    for (const card of await gallery.locator(':scope > *').all()) await expect(card).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+
+  if (matrix.language !== 'sv-SE') test(`visual matrix ${matrix.name} @visual`, async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-09-05T12:00:00Z'));
+    await page.setViewportSize({ width: matrix.width, height: 900 });
+    await openFixture(page);
+    await page.evaluate((options) => window.mountF1Gallery({ ...options, legacyOnly: true }), matrix);
+    await expect(page).toHaveScreenshot(`${matrix.name}-${process.platform}.png`, { fullPage: true });
   });
 }
 
@@ -256,6 +262,21 @@ test('200 percent zoom, reduced motion, forced colors and coarse pointer remain 
   });
   const card = page.locator('f1-weekend-hub-card');
   await expect(card).toBeVisible();
+  await expect(card.locator('ha-card')).toBeVisible();
+  const violations = (await new AxeBuilder({ page }).include('f1-weekend-hub-card').analyze()).violations;
+  expect(violations.filter(({ impact }) => ['serious', 'critical'].includes(impact))).toEqual([]);
+  await card.locator('[data-f1-card-action], ha-card[role="button"]').first().focus();
+  await expect(card.locator('[data-f1-card-action], ha-card[role="button"]').first()).toBeFocused();
+});
+
+test('zoom and forced-colors pixel review @visual', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'reduce', forcedColors: 'active' });
+  await openFixture(page);
+  await page.evaluate(async () => {
+    document.body.style.zoom = '2';
+    await window.mountF1Element({ type: 'f1-weekend-hub-card' });
+  });
   await expect(page).toHaveScreenshot('zoom-forced-colors.png', { fullPage: true });
 });
 

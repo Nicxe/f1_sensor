@@ -2,10 +2,19 @@
 
 from datetime import date
 import json
+import os
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 
-from scripts.check_npm_audit import AuditUnavailable, evaluate_audit
+from scripts.check_npm_audit import (
+    AuditUnavailable,
+    audit_findings,
+    evaluate_audit as evaluate_with_versions,
+    match_advisory_versions,
+    project_npm_cli,
+)
 
 
 def report(vulnerabilities=None):
@@ -13,11 +22,49 @@ def report(vulnerabilities=None):
         name: {"severity": "high", "nodes": [f"node_modules/{name}"], **details}
         for name, details in (vulnerabilities or {}).items()
     }
+    for details in vulnerabilities.values():
+        if isinstance(details.get("via"), list):
+            details["via"] = [
+                {"range": "*", **item} if isinstance(item, dict) else item
+                for item in details["via"]
+            ]
     return {
         "auditReportVersion": 2,
         "vulnerabilities": vulnerabilities or {},
         "metadata": {"vulnerabilities": {"total": len(vulnerabilities or {})}},
     }
+
+
+def locked(payload, versions=None):
+    """Explicit package-lock fixture; policy tests use a uniform safe version."""
+    versions = {} if versions is None else versions
+    return {
+        "lockfileVersion": 3,
+        "packages": {
+            "": {},
+            **{
+                node: {"version": versions.get(node, "1.0.0")}
+                for entry in payload.get("vulnerabilities", {}).values()
+                for node in (entry.get("nodes") or [])
+            },
+        },
+    }
+
+
+def evaluate_audit(payload, allowlist, today, **kwargs):
+    """Isolate policy behavior from semver, which is exercised separately below."""
+    kwargs.setdefault("lock", locked(payload) if isinstance(payload, dict) else None)
+    if isinstance(kwargs.get("baseline"), dict):
+        kwargs.setdefault("baseline_lock", locked(kwargs["baseline"]))
+
+    def match_all_versions(records):
+        if any(record["range"] != "*" for record in records):
+            raise AssertionError("policy fixture must use an explicit match-all range")
+        return [True] * len(records)
+
+    return evaluate_with_versions(
+        payload, allowlist, today, match_versions=match_all_versions, **kwargs
+    )
 
 
 class AuditTests(unittest.TestCase):
@@ -91,18 +138,19 @@ class AuditTests(unittest.TestCase):
                     self.assertIn("outside allowed nodes", failures[0])
 
     def test_approved_undici_exception_is_scoped_and_expires(self):
-        allow = json.loads(
-            (
-                Path(__file__).resolve().parents[1] / "quality/npm-audit-allowlist.json"
-            ).read_text(encoding="utf-8")
-        )
-        exception = next(
-            item for item in allow["entries"] if item["package"] == "undici"
-        )
         bundled = "node_modules/npm/node_modules/undici"
-        self.assertEqual(exception["advisory_ids"], [1243114])
-        self.assertEqual(exception["allowed_nodes"], [bundled])
-        self.assertEqual(exception["expires"], "2026-10-31")
+        # Historical approval is fixed fixture data, not a requirement for this
+        # exception to remain in the live list after npm repairs its bundle.
+        allow = {
+            "entries": [
+                {
+                    "package": "undici",
+                    "advisory_ids": [1243114],
+                    "allowed_nodes": [bundled],
+                    "expires": "2026-10-31",
+                }
+            ]
+        }
 
         payload = report({"undici": {"via": [{"source": 1243114}], "nodes": [bundled]}})
         self.assertEqual(evaluate_audit(payload, allow, date(2026, 10, 31)), [])
@@ -116,10 +164,33 @@ class AuditTests(unittest.TestCase):
             evaluate_audit(payload, allow, date(2026, 10, 24))[0],
         )
         payload["vulnerabilities"]["undici"]["nodes"] = [bundled]
-        payload["vulnerabilities"]["undici"]["via"] = [{"source": 1243115}]
+        payload["vulnerabilities"]["undici"]["via"] = [
+            {"source": 1243115, "range": "*"}
+        ]
         self.assertIn(
             "1243115 is not allowed",
             evaluate_audit(payload, allow, date(2026, 10, 24))[0],
+        )
+
+    def test_live_exceptions_remain_explained_narrow_and_removable(self):
+        allow = json.loads(
+            (
+                Path(__file__).resolve().parents[1] / "quality/npm-audit-allowlist.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertIsInstance(allow.get("entries"), list)
+        for entry in allow["entries"]:
+            with self.subTest(package=entry.get("package")):
+                self.assertTrue(entry.get("reason", "").strip())
+                self.assertTrue(entry.get("scope", "").strip())
+                self.assertIsInstance(date.fromisoformat(entry["expires"]), date)
+                self.assertTrue(entry.get("allowed_nodes"))
+                self.assertTrue(all("*" not in node for node in entry["allowed_nodes"]))
+        # Expired unused approvals and removing all repaired approvals must not
+        # prevent a clean dependency graph from passing.
+        self.assertEqual(evaluate_audit(report(), allow, date(2100, 1, 1)), [])
+        self.assertEqual(
+            evaluate_audit(report(), {"entries": []}, date(2100, 1, 1)), []
         )
 
     def test_invalid_node_scope_fails_closed(self):
@@ -295,6 +366,234 @@ class AuditTests(unittest.TestCase):
         del payload["vulnerabilities"]["example"]["severity"]
         with self.assertRaises(AuditUnavailable):
             evaluate_audit(payload, {"entries": []}, date.today())
+
+
+class NpmCliResolutionTests(unittest.TestCase):
+    @staticmethod
+    def cli(directory, version):
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "package.json").write_text(
+            json.dumps({"name": "npm", "version": version})
+        )
+        binary = directory / "bin/npm-cli.js"
+        binary.parent.mkdir()
+        binary.write_text("// Resolver fixture; never executed.\n")
+        (binary.parent / "npm").symlink_to(binary)
+        return binary.resolve()
+
+    def test_inherited_wrong_global_and_shadowed_release_npm_use_private_pin(self):
+        with tempfile.TemporaryDirectory(prefix="f1-npm-resolve-") as directory:
+            root = Path(directory)
+            (root / "package.json").write_text('{"packageManager":"npm@10.9.8"}')
+            private = self.cli(root / ".tools-ci/node_modules/npm", "10.9.8")
+            global_cli = self.cli(root / "global/npm", "11.0.0")
+            release_cli = self.cli(root / "node_modules/npm", "12.2.1")
+            environment = {
+                "npm_execpath": str(global_cli),
+                "PATH": str(release_cli.parent),
+            }
+            self.assertEqual(
+                project_npm_cli(root=root, environment=environment), private
+            )
+
+    def test_valid_inherited_pin_takes_precedence_over_private_fallback(self):
+        with tempfile.TemporaryDirectory(prefix="f1-npm-resolve-") as directory:
+            root = Path(directory)
+            (root / "package.json").write_text('{"packageManager":"npm@10.9.8"}')
+            self.cli(root / ".tools-ci/node_modules/npm", "10.9.8")
+            inherited = self.cli(root / "inherited/npm", "10.9.8")
+            self.assertEqual(
+                project_npm_cli(
+                    root=root, environment={"npm_execpath": str(inherited), "PATH": ""}
+                ),
+                inherited,
+            )
+
+    def test_standalone_audit_finds_exact_pin_on_path_without_project_install(self):
+        with tempfile.TemporaryDirectory(prefix="f1-npm-resolve-") as directory:
+            root = Path(directory)
+            (root / "package.json").write_text('{"packageManager":"npm@10.9.8"}')
+            wrong = self.cli(root / "global/npm", "11.0.0")
+            pinned = self.cli(root / "pinned/npm", "10.9.8")
+            environment = {
+                "npm_execpath": str(wrong),
+                "PATH": os.pathsep.join((str(wrong.parent), str(pinned.parent))),
+            }
+            self.assertEqual(
+                project_npm_cli(root=root, environment=environment), pinned
+            )
+            self.assertFalse((root / "node_modules").exists())
+
+    def test_no_matching_pin_is_unavailable_not_an_unpinned_fallback(self):
+        with tempfile.TemporaryDirectory(prefix="f1-npm-resolve-") as directory:
+            root = Path(directory)
+            (root / "package.json").write_text('{"packageManager":"npm@10.9.8"}')
+            wrong = self.cli(root / "global/npm", "12.2.1")
+            with self.assertRaises(AuditUnavailable):
+                project_npm_cli(
+                    root=root,
+                    environment={"npm_execpath": str(wrong), "PATH": str(wrong.parent)},
+                )
+
+
+class AdvisoryVersionTests(unittest.TestCase):
+    def test_bridge_uses_pinned_npms_semver_without_a_project_install(self):
+        root = Path(__file__).resolve().parents[1]
+        version = json.loads((root / "package.json").read_text())["packageManager"][4:]
+        with tempfile.TemporaryDirectory(prefix="f1-semver-test-") as directory:
+            for requested, status in ((version, 0), ("0.0.0", 2)):
+                result = subprocess.run(
+                    [
+                        "node",
+                        str(root / "scripts/npm_audit_semver.cjs"),
+                        str(project_npm_cli()),
+                        requested,
+                    ],
+                    input='[{"version":"6.29.0","range":"<6.29.1"}]',
+                    text=True,
+                    capture_output=True,
+                    cwd=directory,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, status, result.stderr)
+                if status == 0:
+                    self.assertEqual(json.loads(result.stdout), [True])
+
+    def test_official_semver_handles_npm_ranges_and_prereleases(self):
+        self.assertEqual(
+            match_advisory_versions(
+                [
+                    {"version": "1.2.4", "range": "1.2.3 - 2.0.0"},
+                    {"version": "1.2.4", "range": "^1.2.3 || ~3.4"},
+                    {"version": "3.4.9", "range": "^1.2.3 || ~3.4"},
+                    {"version": "2.0.0", "range": ">=1 <2"},
+                    {"version": "1.3.0-beta.1", "range": "^1.2.0"},
+                    {"version": "1.3.0-beta.1", "range": ">=1.3.0-beta.0 <1.3.0"},
+                    {"version": "1.9.1", "range": "1.x"},
+                ]
+            ),
+            [True, True, True, False, True, True, True],
+        )
+
+    def test_advisories_only_receive_their_own_vulnerable_versions_and_paths(self):
+        bundled = "node_modules/npm/node_modules/undici"
+        ordinary = "node_modules/undici"
+        payload = report(
+            {
+                "undici": {
+                    "nodes": [bundled, ordinary],
+                    "via": [
+                        {"source": 123, "range": ">=6.23.0 <6.29.1"},
+                        {"source": 456, "range": ">=7.18.0 <7.30.1"},
+                    ],
+                }
+            }
+        )
+        findings = audit_findings(
+            payload, locked(payload, {bundled: "6.29.0", ordinary: "7.30.1"})
+        )
+        self.assertEqual(set(findings), {("undici", 123)})
+        self.assertEqual(findings[("undici", 123)]["nodes"], {bundled})
+        findings = audit_findings(
+            payload, locked(payload, {bundled: "6.29.0", ordinary: "7.30.0"})
+        )
+        self.assertEqual(findings[("undici", 456)]["nodes"], {ordinary})
+        allow = {
+            "entries": [
+                {
+                    "package": "undici",
+                    "advisory_ids": [123],
+                    "allowed_nodes": [bundled],
+                    "expires": "2026-10-31",
+                }
+            ]
+        }
+        self.assertEqual(
+            evaluate_with_versions(
+                payload,
+                allow,
+                date(2026, 10, 24),
+                lock=locked(payload, {bundled: "6.29.0", ordinary: "7.30.1"}),
+            ),
+            [],
+        )
+
+    def test_introduced_mode_uses_each_commits_locked_version(self):
+        payload = report({"undici": {"via": [{"source": 123, "range": "<6.29.1"}]}})
+        vulnerable = locked(payload, {"node_modules/undici": "6.29.0"})
+        fixed = locked(payload, {"node_modules/undici": "6.29.1"})
+        self.assertTrue(
+            evaluate_with_versions(
+                payload,
+                {"entries": []},
+                date.today(),
+                lock=vulnerable,
+                baseline=payload,
+                baseline_lock=fixed,
+            )
+        )
+        self.assertEqual(
+            evaluate_with_versions(
+                payload,
+                {"entries": []},
+                date.today(),
+                lock=fixed,
+                baseline=payload,
+                baseline_lock=vulnerable,
+            ),
+            [],
+        )
+
+    def test_missing_malformed_or_mismatched_version_evidence_fails_closed(self):
+        payload = report({"example": {"via": [{"source": 123}]}})
+        for lock in (
+            None,
+            {},
+            {"lockfileVersion": 3, "packages": {}},
+            {"lockfileVersion": 3, "packages": {"": {}}},
+            locked(payload, {"node_modules/example": "not-semver"}),
+        ):
+            with self.subTest(lock=lock), self.assertRaises(AuditUnavailable):
+                audit_findings(payload, lock)
+        for advisory_range in (None, "", "not a range"):
+            current = report(
+                {"example": {"via": [{"source": 123, "range": advisory_range}]}}
+            )
+            with (
+                self.subTest(range=advisory_range),
+                self.assertRaises(AuditUnavailable),
+            ):
+                audit_findings(current, locked(current))
+
+    def test_absent_lock_evidence_is_not_clean_even_with_empty_registry_report(self):
+        with self.assertRaises(AuditUnavailable):
+            audit_findings(report(), None)
+
+    def test_nodes_cannot_borrow_another_package_version_or_escape_lock_scope(self):
+        for node in (
+            "node_modules/different",
+            "../node_modules/example",
+            "not_node_modules/example",
+            "node_modules/example/../example",
+        ):
+            payload = report({"example": {"nodes": [node], "via": [{"source": 123}]}})
+            with self.subTest(node=node), self.assertRaises(AuditUnavailable):
+                audit_findings(payload, locked(payload))
+
+    def test_scoped_and_nested_packages_keep_their_exact_path(self):
+        node = "node_modules/@scope/parent/node_modules/@scope/example"
+        payload = report(
+            {"@scope/example": {"nodes": [node], "via": [{"source": 123}]}}
+        )
+        findings = audit_findings(payload, locked(payload))
+        self.assertEqual(findings[("@scope/example", 123)]["nodes"], {node})
+
+    def test_invalid_metavulnerability_lock_version_is_not_ignored(self):
+        payload = report(
+            {"parent": {"via": ["example"]}, "example": {"via": [{"source": 123}]}}
+        )
+        with self.assertRaises(AuditUnavailable):
+            audit_findings(payload, locked(payload, {"node_modules/parent": "broken"}))
 
 
 if __name__ == "__main__":

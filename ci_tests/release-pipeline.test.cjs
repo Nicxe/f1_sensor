@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const yaml = require('js-yaml');
+const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -74,9 +75,33 @@ test('publication consumers use the verified release and stop downstream work if
 test('release verification executes fresh checks before target release work', () => {
   const workflow = read('.github/workflows/release-pipeline.yml');
   assert.match(workflow, /checks:\n\s+uses: \.\/\.github\/workflows\/ci-checks\.yml\n\s+with:\n\s+allow_reuse: false/);
-  assert.match(workflow, /release:\n\s+needs: checks/);
+  assert.match(workflow, /release:\n\s+needs: \[checks, security\]/);
   assert.equal(yaml.load(workflow).jobs.deploy, undefined);
   assert.equal(yaml.load(workflow).jobs.context7, undefined);
+});
+
+test('release safety blocks a draft while unrelated documentation failure does not', () => {
+  const workflow = yaml.load(read('.github/workflows/release-pipeline.yml'));
+  const expression = workflow.jobs.release.if.trim();
+  const environment = () => ({
+    cancelled: () => false,
+    needs: {checks: {result: 'success', outputs: {product_result: 'success'}},
+      security: {result: 'success'}, documentation: {result: 'failure'}},
+    vars: {}, inputs: {release: true},
+    github: {event_name: 'push', ref: 'refs/heads/beta'}
+  });
+  assert.equal(vm.runInNewContext(expression, environment()), true);
+  for (const failed of ['failure', 'cancelled', 'skipped', undefined]) {
+    const env = environment();
+    env.needs.security.result = failed;
+    assert.equal(vm.runInNewContext(expression, env), false);
+  }
+  const productFailure = environment();
+  productFailure.needs.checks.outputs.product_result = 'failure';
+  assert.equal(vm.runInNewContext(expression, productFailure), false);
+  assert.equal(workflow.jobs.security.with.mode, 'gate');
+  assert.equal(workflow.jobs.security.with.checkout_ref, '${{ needs.checks.outputs.tested_sha }}');
+  assert.equal(workflow.jobs.documentation.with.checkout_ref, '${{ needs.checks.outputs.tested_sha }}');
 });
 
 test('Context7 runs only after a successful main documentation deployment', () => {

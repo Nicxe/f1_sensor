@@ -3,10 +3,20 @@ on:
   schedule:
     - cron: '11 5 * * *'
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      tools_ref:
+        description: Immutable reviewed evaluator commit for a default-branch launcher
+        type: string
+        default: ''
+      target_ref:
+        description: Optional immutable dependency snapshot instead of the daily branch matrix
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
-  group: daily-dependency-security-health
+  group: dependency-security-health-${{ inputs.target_ref || 'daily' }}
   cancel-in-progress: false
 jobs:
   audit:
@@ -14,8 +24,32 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        branch: [dev, beta, main]
-    uses: ./.github/workflows/audit.yml
-    with:
-      checkout_ref: ${{ matrix.branch }}
-      mode: gate
+        branch: ${{ fromJSON(inputs.target_ref != '' && '["snapshot"]' || '["dev","beta","main"]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out the reviewed evaluator, not the branch being scanned
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.tools_ref || github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version-file: .python-version
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+      - name: Use the project npm version
+        run: node scripts/install_project_npm.cjs
+      - name: Assess the branch dependency snapshot without installing or running it
+        env:
+          AUDIT_REF: ${{ inputs.target_ref || format('refs/heads/{0}', matrix.branch) }}
+        run: |
+          if [[ ! "$AUDIT_REF" =~ ^([0-9a-f]{40}|refs/heads/(dev|beta|main)|refs/pull/[0-9]+/merge)$ ]]; then
+            echo 'Dependency snapshot must be an immutable commit or an approved branch/PR ref.' >&2
+            exit 1
+          fi
+          git fetch --no-tags -- origin "$AUDIT_REF"
+          snapshot=$(git rev-parse --verify 'FETCH_HEAD^{commit}')
+          python3 scripts/run_npm_audit.py --mode gate --target-ref "$snapshot"

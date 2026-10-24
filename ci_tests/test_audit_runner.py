@@ -3,13 +3,25 @@
 from contextlib import redirect_stdout
 from io import StringIO
 import json
+import os
 from pathlib import Path
 import subprocess
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from scripts.run_npm_audit import read_baseline, run_audit
+from scripts.check_npm_audit import match_advisory_versions, project_npm_cli
+from scripts.run_npm_audit import read_baseline, run_audit as run_with_lock
+
+LOCK = {
+    "lockfileVersion": 3,
+    "packages": {"": {}, "node_modules/pkg": {"version": "1.0.0"}},
+}
+
+
+def run_audit(*args, **kwargs):
+    kwargs.setdefault("read_lock", lambda: LOCK)
+    return run_with_lock(*args, **kwargs)
 
 
 def result(vulnerabilities=None):
@@ -17,6 +29,8 @@ def result(vulnerabilities=None):
         name: {"severity": "high", "nodes": [f"node_modules/{name}"], **details}
         for name, details in (vulnerabilities or {}).items()
     }
+    for details in vulnerabilities.values():
+        details["via"] = [{"range": "*", **item} for item in details["via"]]
     return SimpleNamespace(
         returncode=1 if vulnerabilities else 0,
         stdout=json.dumps(
@@ -30,6 +44,40 @@ def result(vulnerabilities=None):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_nested_npm_run_uses_same_pinned_cli_for_registry_and_semver(self):
+        root = Path(__file__).resolve().parents[1]
+        private = project_npm_cli()
+        selected = []
+
+        def execute(command, **kwargs):
+            self.assertEqual(command[:3], ["node", str(private), "audit"])
+            selected.append(Path(command[1]))
+            return result({"pkg": {"via": [{"source": 42, "range": "<1.1.0"}]}})
+
+        def match_versions(records, *, npm_cli):
+            self.assertEqual(npm_cli, private)
+            selected.append(npm_cli)
+            return match_advisory_versions(records, npm_cli=npm_cli)
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "npm_execpath": str(root / "node_modules/npm/bin/npm-cli.js"),
+                    "PATH": str(root / "node_modules/.bin")
+                    + os.pathsep
+                    + os.environ["PATH"],
+                },
+            ),
+            patch(
+                "scripts.run_npm_audit.match_advisory_versions",
+                side_effect=match_versions,
+            ),
+            redirect_stdout(StringIO()),
+        ):
+            self.assertEqual(run_audit({"entries": []}, execute, Mock()), 1)
+        self.assertEqual(selected, [private, private])
+
     def test_timeout_empty_json_and_registry_errors_fail_after_bounded_retries(self):
         for result in [
             subprocess.TimeoutExpired("npm", 45),
@@ -67,7 +115,8 @@ class RunnerTests(unittest.TestCase):
         finding = {"pkg": {"via": [{"source": 42}]}}
 
         def execute(command, **kwargs):
-            self.assertEqual(command[:2], ["npm", "audit"])
+            self.assertEqual(command[0], "node")
+            self.assertEqual(command[2], "audit")
             self.assertIn("--package-lock-only", command)
             self.assertIn("--ignore-scripts", command)
             if "--prefix" in command:
@@ -79,7 +128,9 @@ class RunnerTests(unittest.TestCase):
                 directories.append(directory)
             return result(finding)
 
-        base = Mock(return_value={"package.json": "{}", "package-lock.json": "{}"})
+        base = Mock(
+            return_value={"package.json": "{}", "package-lock.json": json.dumps(LOCK)}
+        )
         output = StringIO()
         with redirect_stdout(output):
             self.assertEqual(
@@ -101,7 +152,9 @@ class RunnerTests(unittest.TestCase):
         execute = Mock(
             side_effect=[result(), result({"pkg": {"via": [{"source": 42}]}})]
         )
-        base = Mock(return_value={"package.json": "{}", "package-lock.json": "{}"})
+        base = Mock(
+            return_value={"package.json": "{}", "package-lock.json": json.dumps(LOCK)}
+        )
         sleep = Mock()
         with redirect_stdout(StringIO()):
             self.assertEqual(
@@ -127,7 +180,10 @@ class RunnerTests(unittest.TestCase):
             with self.subTest(count=count):
                 execute = Mock(side_effect=reports)
                 base = Mock(
-                    return_value={"package.json": "{}", "package-lock.json": "{}"}
+                    return_value={
+                        "package.json": "{}",
+                        "package-lock.json": json.dumps(LOCK),
+                    }
                 )
                 with redirect_stdout(StringIO()):
                     self.assertEqual(
@@ -163,6 +219,72 @@ class RunnerTests(unittest.TestCase):
                         2,
                     )
                 execute.assert_not_called()
+
+    def test_missing_current_lock_is_unavailable_not_a_security_pass(self):
+        execute = Mock(return_value=result())
+        with redirect_stdout(StringIO()):
+            self.assertEqual(
+                run_audit({"entries": []}, execute, Mock(), read_lock=lambda: None), 2
+            )
+        self.assertEqual(execute.call_count, 1)
+
+    def test_malformed_baseline_lock_cannot_be_treated_as_no_previous_findings(self):
+        execute = Mock(return_value=result())
+        base = Mock(return_value={"package.json": "{}", "package-lock.json": "{}"})
+        with redirect_stdout(StringIO()):
+            self.assertEqual(
+                run_audit(
+                    {"entries": []},
+                    execute,
+                    Mock(),
+                    mode="introduced",
+                    base="base-sha",
+                    read_base=base,
+                ),
+                2,
+            )
+
+    def test_trusted_runner_audits_target_lock_without_executing_target_code(self):
+        target_lock = {
+            "lockfileVersion": 3,
+            "packages": {"": {}, "node_modules/pkg": {"version": "1.1.0"}},
+        }
+        target = Mock(
+            return_value={
+                "package.json": '{"scripts":{"postinstall":"must-not-run"}}',
+                "package-lock.json": json.dumps(target_lock),
+            }
+        )
+        visited = []
+
+        def execute(command, **kwargs):
+            self.assertEqual(command[0], "node")
+            self.assertEqual(command[2], "audit")
+            self.assertIn("--package-lock-only", command)
+            self.assertIn("--ignore-scripts", command)
+            directory = Path(command[command.index("--prefix") + 1])
+            visited.append(directory)
+            self.assertEqual(
+                {entry.name for entry in directory.iterdir()},
+                {"package.json", "package-lock.json"},
+            )
+            return result({"pkg": {"via": [{"source": 42, "range": "<1.1.0"}]}})
+
+        with redirect_stdout(StringIO()):
+            self.assertEqual(
+                run_audit(
+                    {"entries": []},
+                    execute,
+                    Mock(),
+                    target_ref="origin/main",
+                    read_base=target,
+                    read_lock=Mock(side_effect=AssertionError("wrong lock")),
+                ),
+                0,
+            )
+        target.assert_called_once_with("origin/main")
+        self.assertTrue(visited)
+        self.assertTrue(all(not directory.exists() for directory in visited))
 
     def test_baseline_resolves_one_immutable_commit_before_reading_inputs(self):
         sha = "a" * 40

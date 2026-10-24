@@ -6,7 +6,12 @@ from __future__ import annotations
 import argparse
 from datetime import date
 import json
+import os
 from pathlib import Path
+import re
+import subprocess
+
+ROOT = Path(__file__).resolve().parents[1]
 
 SEVERITIES = {"info": 0, "low": 1, "moderate": 2, "high": 3, "critical": 4}
 DEFAULT_POLICY = {
@@ -20,11 +25,12 @@ class AuditUnavailable(ValueError):
     """The registry did not return a complete npm audit report."""
 
 
-def audit_findings(audit: object) -> dict[tuple[str, int], dict]:
-    """Validate a registry report and retain advisory and dependency-path identity."""
+def validate_report(audit: object) -> None:
+    """Require a complete registry report, independently of dependency evidence."""
     if (
         not isinstance(audit, dict)
         or "error" in audit
+        or type(audit.get("auditReportVersion")) is not int
         or audit.get("auditReportVersion") != 2
         or not isinstance(audit.get("vulnerabilities"), dict)
         or not isinstance(audit.get("metadata"), dict)
@@ -41,7 +47,9 @@ def audit_findings(audit: object) -> dict[tuple[str, int], dict]:
         )
     for package, vulnerability in vulnerabilities.items():
         if (
-            not isinstance(vulnerability, dict)
+            not isinstance(package, str)
+            or not package
+            or not isinstance(vulnerability, dict)
             or not isinstance(vulnerability.get("severity"), str)
             or vulnerability["severity"] not in SEVERITIES
             or not isinstance(vulnerability.get("via"), list)
@@ -62,6 +70,8 @@ def audit_findings(audit: object) -> dict[tuple[str, int], dict]:
                 and item["source"] > 0
                 and isinstance(item.get("severity", vulnerability["severity"]), str)
                 and item.get("severity", vulnerability["severity"]) in SEVERITIES
+                and isinstance(item.get("range"), str)
+                and item["range"].strip()
             ):
                 continue
             raise AuditUnavailable(f"unresolved advisory data for {package}")
@@ -77,20 +87,140 @@ def audit_findings(audit: object) -> dict[tuple[str, int], dict]:
     if any(not resolves(package, set()) for package in vulnerabilities):
         raise AuditUnavailable("npm audit returned an unresolved advisory cycle")
 
-    findings: dict[tuple[str, int], dict] = {}
-    for package, vulnerability in vulnerabilities.items():
-        for advisory in vulnerability["via"]:
-            if not isinstance(advisory, dict):
+
+def project_npm_cli(*, root: Path = ROOT, environment=None) -> Path:
+    """Resolve the pinned CLI, not npm-run's shadowing release-tool dependency."""
+    environment = os.environ if environment is None else environment
+    try:
+        expected = json.loads((root / "package.json").read_text())["packageManager"]
+        if not isinstance(expected, str) or not re.fullmatch(
+            r"npm@\d+\.\d+\.\d+", expected
+        ):
+            raise ValueError("packageManager must pin npm")
+    except (OSError, ValueError, KeyError, TypeError) as err:
+        raise AuditUnavailable(f"the project npm pin is unavailable: {err}") from err
+    candidates = [
+        environment.get("npm_execpath", ""),
+        root / ".tools-ci/node_modules/npm/bin/npm-cli.js",
+        *(
+            Path(directory) / "npm"
+            for directory in environment.get("PATH", "").split(os.pathsep)
+        ),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            cli = Path(candidate).resolve(strict=True)
+            if (
+                cli.name != "npm-cli.js"
+                or cli.parent.name != "bin"
+                or not cli.is_file()
+            ):
                 continue
-            identity = (package, advisory["source"])
-            severity = advisory.get("severity", vulnerability["severity"])
-            previous_severity = findings.get(identity, {}).get("severity", "info")
-            findings[identity] = {
-                "severity": max((severity, previous_severity), key=SEVERITIES.get),
-                "nodes": set(vulnerability["nodes"]),
-            }
-    if vulnerabilities and not findings:
-        raise AuditUnavailable("npm audit returned no resolvable advisories")
+            manifest = json.loads((cli.parent.parent / "package.json").read_text())
+            if (
+                isinstance(manifest, dict)
+                and manifest.get("name") == "npm"
+                and manifest.get("version") == expected[4:]
+            ):
+                return cli
+        except (OSError, ValueError, TypeError):
+            continue
+    raise AuditUnavailable(f"the pinned {expected} CLI is unavailable; run setup:ci")
+
+
+def match_advisory_versions(
+    records: list[dict[str, str]], *, npm_cli: Path | None = None
+) -> list[bool]:
+    """Use pinned npm's official semver offline, without project node_modules."""
+    npm = project_npm_cli() if npm_cli is None else npm_cli
+    try:
+        expected = json.loads((ROOT / "package.json").read_text())["packageManager"]
+        if not re.fullmatch(r"npm@\d+\.\d+\.\d+", expected):
+            raise ValueError("packageManager must pin npm")
+        result = subprocess.run(
+            ["node", str(ROOT / "scripts/npm_audit_semver.cjs"), npm, expected[4:]],
+            input=json.dumps(records),
+            text=True,
+            capture_output=True,
+            timeout=15,
+            check=True,
+        )
+        matches = json.loads(result.stdout)
+        if (
+            not isinstance(matches, list)
+            or len(matches) != len(records)
+            or not all(type(item) is bool for item in matches)
+        ):
+            raise ValueError("invalid semver matcher response")
+        return matches
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as err:
+        message = getattr(err, "stderr", None) or str(err)
+        raise AuditUnavailable(
+            f"npm advisory version evidence unavailable: {message}"
+        ) from err
+
+
+def audit_findings(
+    audit: object, lock: object, *, match_versions=match_advisory_versions
+) -> dict[tuple[str, int], dict]:
+    """Attribute each advisory only to lockfile versions within its own range."""
+    validate_report(audit)
+    if (
+        not isinstance(lock, dict)
+        or type(lock.get("lockfileVersion")) is not int
+        or lock.get("lockfileVersion") not in (2, 3)
+        or not isinstance(lock.get("packages"), dict)
+        or not isinstance(lock["packages"].get(""), dict)
+    ):
+        raise AuditUnavailable(
+            "npm audit requires complete package-lock version evidence"
+        )
+    evidence = []
+    identities = []
+    vulnerabilities = audit["vulnerabilities"]
+    for package, vulnerability in vulnerabilities.items():
+        for node in vulnerability["nodes"]:
+            if any(
+                part in ("", ".", "..") for part in node.split("/")
+            ) or not re.fullmatch(
+                r"(?:node_modules/(?:@[^/]+/)?[^/]+/)*node_modules/"
+                + re.escape(package),
+                node,
+            ):
+                raise AuditUnavailable(f"invalid dependency path for {package}: {node}")
+            entry = lock["packages"].get(node)
+            if not isinstance(entry, dict) or not isinstance(entry.get("version"), str):
+                raise AuditUnavailable(
+                    f"missing locked version for {package} at {node}"
+                )
+            for advisory in vulnerability["via"]:
+                if isinstance(advisory, dict):
+                    evidence.append(
+                        {"version": entry["version"], "range": advisory["range"]}
+                    )
+                    identities.append((package, advisory, node))
+            if not any(isinstance(item, dict) for item in vulnerability["via"]):
+                # Parent metavulnerabilities resolve through direct advisories,
+                # but their lock evidence must still be a valid npm version.
+                evidence.append({"version": entry["version"], "range": "*"})
+                identities.append(None)
+    matches = match_versions(evidence) if evidence else []
+    if len(matches) != len(identities) or not all(
+        type(item) is bool for item in matches
+    ):
+        raise AuditUnavailable("incomplete advisory version evidence")
+    findings: dict[tuple[str, int], dict] = {}
+    for identity_detail, affected in zip(identities, matches, strict=True):
+        if not affected or identity_detail is None:
+            continue
+        package, advisory, node = identity_detail
+        identity = (package, advisory["source"])
+        severity = advisory.get("severity", vulnerabilities[package]["severity"])
+        finding = findings.setdefault(identity, {"severity": severity, "nodes": set()})
+        finding["severity"] = max((severity, finding["severity"]), key=SEVERITIES.get)
+        finding["nodes"].add(node)
     return findings
 
 
@@ -119,6 +249,9 @@ def evaluate_audit(
     *,
     policy: dict | None = None,
     baseline: object | None = None,
+    lock: object | None = None,
+    baseline_lock: object | None = None,
+    match_versions=match_advisory_versions,
     warnings: list[str] | None = None,
 ) -> list[str]:
     """Block applicable severe findings; a baseline limits gating to introduced paths.
@@ -129,8 +262,12 @@ def evaluate_audit(
     policy = DEFAULT_POLICY if policy is None else policy
     validate_policy(policy)
     warnings = [] if warnings is None else warnings
-    findings = audit_findings(audit)
-    previous = {} if baseline is None else audit_findings(baseline)
+    findings = audit_findings(audit, lock, match_versions=match_versions)
+    previous = (
+        {}
+        if baseline is None
+        else audit_findings(baseline, baseline_lock, match_versions=match_versions)
+    )
     allowed: dict[tuple[str, int], date] = {}
     allowed_nodes: dict[tuple[str, int], set[str]] = {}
     failures: list[str] = []
@@ -216,6 +353,7 @@ def evaluate_audit(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("audit", type=Path)
+    parser.add_argument("--lock", type=Path, default=Path("package-lock.json"))
     parser.add_argument(
         "--allowlist", type=Path, default=Path("quality/npm-audit-allowlist.json")
     )
@@ -228,9 +366,10 @@ def main() -> int:
         audit = json.loads(args.audit.read_text(encoding="utf-8"))
         allowlist = json.loads(args.allowlist.read_text(encoding="utf-8"))
         policy = json.loads(args.policy.read_text(encoding="utf-8"))
+        lock = json.loads(args.lock.read_text(encoding="utf-8"))
         warnings: list[str] = []
         failures = evaluate_audit(
-            audit, allowlist, args.today, policy=policy, warnings=warnings
+            audit, allowlist, args.today, policy=policy, lock=lock, warnings=warnings
         )
     except (ValueError, OSError) as err:
         print(f"npm audit unavailable: {err}")

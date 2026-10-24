@@ -105,6 +105,7 @@ class EvidenceTests(ReuseTests):
             "attempt": 1,
             "head_sha": "a" * 40,
             "tree_sha": self.tree,
+            "selected_at": self.now.isoformat(),
             "checks": ["backend"],
         }
 
@@ -160,6 +161,27 @@ class EvidenceTests(ReuseTests):
                     self.now,
                 )
 
+    def test_selected_fresh_evidence_does_not_expire_while_other_jobs_run(self):
+        verify_evidence(
+            self.api, self.evidence, self.tree, self.now + timedelta(hours=3)
+        )
+
+    def test_expired_or_unbound_selection_is_not_accepted(self):
+        for selected_at in (None, "bad", (self.now + timedelta(hours=1)).isoformat()):
+            with self.subTest(selected_at=selected_at), self.assertRaises(ValueError):
+                verify_evidence(
+                    self.api,
+                    self.evidence | {"selected_at": selected_at},
+                    self.tree,
+                    self.now,
+                )
+        self.assertEqual(
+            evidence_checks(
+                self.api, self.run, self.tree, self.now + timedelta(hours=3)
+            ),
+            set(),
+        )
+
     def test_changed_sources_workflow_or_dependencies_force_fresh_checks(self):
         self.assertEqual(
             evidence_checks(self.api, self.run, "different-tree", self.now), set()
@@ -180,3 +202,20 @@ class EvidenceTests(ReuseTests):
                 verify_evidence(
                     self.api, self.evidence | {"checks": [check]}, "tree", self.now
                 )
+
+    def test_source_restart_during_final_job_verification_is_rejected(self):
+        original_get = self.api.get
+        fetches = 0
+
+        def get(path):
+            nonlocal fetches
+            result = original_get(path)
+            if path.startswith("actions/runs/"):
+                fetches += 1
+                if fetches == 2:
+                    return result | {"run_attempt": 2, "status": "queued"}
+            return result
+
+        self.api.get = get
+        with self.assertRaisesRegex(ValueError, "source changed"):
+            verify_evidence(self.api, self.evidence, self.tree, self.now)

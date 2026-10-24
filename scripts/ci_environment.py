@@ -52,6 +52,7 @@ def tool_environment() -> dict[str, str]:
         "CI": "true",
         "F1_BROWSER": "chromium",
         "F1_MAINTENANCE": "",
+        "F1_VISUAL_REVIEW": "",
         "PYTEST_ADDOPTS": "",
         "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "",
     }

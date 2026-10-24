@@ -21,11 +21,27 @@ jobs:
     uses: ./.github/workflows/ci-checks.yml
     with:
       allow_reuse: false
-  release:
+      separate_delivery: true
+  documentation:
     needs: checks
-    # Optional ancestors can be skipped; the aggregate is the release gate.
+    if: ${{ !cancelled() && needs.checks.outputs.tested_sha }}
+    uses: ./.github/workflows/documentation.yml
+    with:
+      checkout_ref: ${{ needs.checks.outputs.tested_sha }}
+  security:
+    name: Release security readiness
+    needs: checks
+    if: ${{ !cancelled() && needs.checks.outputs.tested_sha }}
+    uses: ./.github/workflows/audit.yml
+    with:
+      checkout_ref: ${{ needs.checks.outputs.tested_sha }}
+      mode: gate
+  release:
+    needs: [checks, security]
+    # Documentation delivery is independent; serious dependency risk is not.
     if: >-
-      !cancelled() && needs.checks.result == 'success' && vars.CI_ROLLOUT != 'true' &&
+      !cancelled() && needs.checks.result == 'success' && needs.checks.outputs.product_result == 'success' &&
+      needs.security.result == 'success' && vars.CI_ROLLOUT != 'true' &&
       (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release)) &&
       (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main')
     permissions:

@@ -5,6 +5,10 @@ on:
       allow_reuse:
         type: boolean
         default: false
+      separate_delivery:
+        description: Release pipeline owns documentation delivery and full security readiness
+        type: boolean
+        default: false
     outputs:
       deploy:
         value: ${{ jobs.plan.outputs.deploy }}
@@ -16,6 +20,8 @@ on:
         value: ${{ jobs.plan.outputs.tested_sha }}
       tested_tree:
         value: ${{ jobs.plan.outputs.tested_tree }}
+      product_result:
+        value: ${{ jobs.required.outputs.result }}
 permissions:
   contents: read
   pull-requests: read
@@ -56,6 +62,7 @@ jobs:
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
+          CI_SEPARATE_DELIVERY: ${{ inputs.separate_delivery }}
         run: python3 scripts/ci_policy.py plan
       - id: reuse
         env:
@@ -132,6 +139,8 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      result: ${{ steps.verdict.outputs.result }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -141,6 +150,7 @@ jobs:
         with:
           python-version-file: .python-version
       - name: Verify every applicable result
+        id: verdict
         env:
           GH_TOKEN: ${{ github.token }}
           CI_NEEDS: ${{ toJSON(needs) }}

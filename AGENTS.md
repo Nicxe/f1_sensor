@@ -26,7 +26,7 @@ workflow-validator environment. Versions and dependency inputs are recorded;
 preflight refreshes stale setup rather than trusting an existing directory.
 Before considering a code change ready for commit, run
 `npm run verify:changed`. It uses the same check commands and selection policy
-as GitHub, including strict runtime coverage for integration changes. Fix every
+as GitHub, including the global runtime coverage gate for integration changes. Fix every
 failure before reporting readiness. `--print-plan` and a no-change result are
 not successful verification.
 
@@ -43,6 +43,22 @@ fixed test contracts. Test catalog structure, placeholders, delivered assets,
 locale selection and per-key fallback against independent fixtures or current
 catalogs. Target-language-only changes use the translations lane; changes to
 English sources, localization code or tooling retain broader verification.
+Obsolete target keys that Weblate has not removed yet are cleanup warnings;
+invalid catalogs and placeholder errors for active keys remain blocking.
+
+CI separates product verification, documentation delivery and release security
+readiness. Route checks by actual impact, including promotions; a metadata-only
+workflow edit does not justify every product test. Keep behavioral regressions,
+HACS/hassfest and package integrity blocking when applicable. Per-file coverage
+percentages, broad pixel diffs and timing benchmarks are review evidence, not
+universal merge requirements. Do not replace product behavior with source-code
+spelling assertions or require a repaired dependency/retired exception to remain.
+
+Run blocking browser tests without assertion retries. Rendering auto-wait is
+expected; a workflow's first attempt is not proof of a test's first-attempt pass.
+Report all selected local failures in one verification attempt. Missing trusted
+remote evidence is not a successful check, and a failed dependency-health or
+publication job must not be described as a product regression.
 
 Publication changes must preserve the normal `dev → beta → main` rollout.
 Beta documentation must work on its first promotion without requiring the new
