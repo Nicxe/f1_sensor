@@ -112,3 +112,23 @@ test('Context7 runs only after a successful main documentation deployment', () =
   assert.match(workflow, /needs\.deploy\.outputs\.published == 'true'/);
   assert.equal(fs.existsSync(path.join(root, '.github/workflows/context7-refresh.yml')), false);
 });
+
+test('dev verification-only dispatch keeps full immutable checks without release authority', () => {
+  const workflow = yaml.load(read('.github/workflows/release-pipeline.yml'));
+  const expression = workflow.jobs.release.if.trim();
+  for (const ref of ['refs/heads/dev', 'refs/heads/content', 'refs/heads/beta', 'refs/heads/main']) {
+    const environment = {
+      cancelled: () => false,
+      needs: {checks: {result: 'success', outputs: {product_result: 'success'}}, security: {result: 'success'}},
+      vars: {}, inputs: {release: false}, github: {event_name: 'workflow_dispatch', ref}
+    };
+    assert.equal(vm.runInNewContext(expression, environment), false);
+    environment.inputs.release = true;
+    assert.equal(vm.runInNewContext(expression, environment), ['refs/heads/beta', 'refs/heads/main'].includes(ref));
+  }
+  for (const job of ['documentation', 'security']) {
+    assert.equal(workflow.jobs[job].with.checkout_ref, '${{ needs.checks.outputs.tested_sha }}');
+    assert.match(workflow.jobs[job].if, /needs\.checks\.outputs\.tested_sha/);
+  }
+  assert.equal(workflow.jobs.security.with.mode, 'gate');
+});
