@@ -45,3 +45,7 @@ export function card(type, config={}) {
   const result=new Class();result.config=config;result.hass={states:{},locale:{language:'en-GB',time_format:'24',time_zone:'UTC'},config:{time_zone:'UTC'}};
   return result;
 }
+export async function moduleView() {
+  await load(new URL('modular/view.js', root));
+  return card('f1-module-view');
+}

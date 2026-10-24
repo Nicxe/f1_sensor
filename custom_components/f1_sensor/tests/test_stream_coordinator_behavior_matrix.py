@@ -847,3 +847,50 @@ async def test_small_stream_first_refresh_subscriptions_and_close_matrix(
         coordinator.set_delay(1)
         coordinator.set_delay(0)
         await coordinator.async_close()
+
+
+async def test_session_info_partial_metadata_preserves_context_then_new_key_clears_path(
+    hass,
+) -> None:
+    coordinator = SessionInfoCoordinator(hass, _session_coord())
+    first = {
+        "Key": 11389,
+        "Path": "2026/2026-10-25_United_States_Grand_Prix/2026-10-23_Practice_1/",
+        "Meeting": {"Key": 1297, "Name": "United States Grand Prix"},
+        "ArchiveStatus": {"Status": "Generating"},
+    }
+    coordinator._deliver(first)
+    first_snapshot = coordinator.data
+    coordinator._deliver(
+        {"ArchiveStatus": {"Status": "Complete"}, "Meeting": {"Location": "Austin"}}
+    )
+    current = coordinator.data
+    assert current["Key"] == 11389
+    assert current["Path"] == first["Path"]
+    assert current["Meeting"] == {
+        "Key": 1297,
+        "Name": "United States Grand Prix",
+        "Location": "Austin",
+    }
+    assert current["ArchiveStatus"] == {"Status": "Complete"}
+    assert first_snapshot["ArchiveStatus"] == {"Status": "Generating"}
+    assert "Location" not in first_snapshot["Meeting"]
+    assert first["ArchiveStatus"] == {"Status": "Generating"}
+    coordinator._deliver({"Key": 11390, "Name": "Practice 2"})
+    assert coordinator.data == {"Key": 11390, "Name": "Practice 2"}
+    assert coordinator.data_list == [coordinator.data]
+    assert current["Key"] == 11389
+    assert current["Path"] == first["Path"]
+    await coordinator.async_close()
+
+
+async def test_session_info_partial_merge_preserves_real_no_spoiler_guard(hass) -> None:
+    coordinator = SessionInfoCoordinator(hass, _session_coord())
+    coordinator._deliver({"Key": 11389, "Path": "current/session/"})
+    before = coordinator.data
+    manager_key = coordinator._deliver.__globals__["_NO_SPOILER_MANAGER_KEY"]
+    hass.data.setdefault("f1_sensor", {})[manager_key] = SimpleNamespace(is_active=True)
+    coordinator._deliver({"Key": 11390, "ArchiveStatus": {"Status": "Complete"}})
+    assert coordinator.data is before
+    assert coordinator.data == {"Key": 11389, "Path": "current/session/"}
+    await coordinator.async_close()

@@ -13,10 +13,10 @@ Most live entities need an active session and **Enable live F1 API** in [Configu
 | Data mode | What to expect |
 | --- | --- |
 | Public live timing | Session status, track status, Safety Car, Race Control, weather, driver timing, tyres, top three, and confirmed incident detection |
-| Optional F1TV Auth | Extra live data can become available when Formula 1 accepts your token and publishes the required streams |
+| Optional F1TV Auth | Extra live data depends on token acceptance, your account’s permissions, and the streams published for the session |
 | Replay Mode | Completed session data plays through the same entities when the archive contains it |
 
-[F1TV availability](/features/f1tv-auth) explains which features need extra live data. [Track Map](/features/track-map) is a dashboard feature, not a normal Home Assistant entity. The unofficial live timing API can change without notice.
+[F1TV availability](/features/f1tv-auth) compares anonymous access, a free account, and a paid account. A valid token does not guarantee every extra live feed. [Track Map](/features/track-map) is a dashboard feature, not a normal Home Assistant entity. The unofficial live timing API can change without notice.
 
 ## Reference: Enum Values
 

@@ -1320,6 +1320,32 @@ async def test_next_race_sensor_uses_2026_detailed_circuit_map(
 
 
 @pytest.mark.asyncio
+async def test_next_race_sensor_exposes_planned_race_and_sprint_laps(
+    hass, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.f1_sensor.helpers.dt_util.utcnow",
+        lambda: datetime(2026, 3, 10, tzinfo=UTC),
+    )
+    race = _build_race(date="2026-03-15")
+    race["scheduled_laps"] = 58
+    race["Sprint"] = {
+        "date": "2026-03-14",
+        "time": "03:00:00Z",
+        "scheduled_laps": 19,
+    }
+    coordinator = _build_coordinator(hass, {"MRData": {"RaceTable": {"Races": [race]}}})
+    entry_id = "test_entry_scheduled_laps"
+    _set_entry_context(hass, entry_id)
+
+    sensor = F1NextRaceSensor(coordinator, f"{entry_id}_next_race", entry_id, "F1")
+    state = await _add_sensor_and_get_state(hass, sensor)
+
+    assert state.attributes["scheduled_laps"] == 58
+    assert state.attributes["sprint_scheduled_laps"] == 19
+
+
+@pytest.mark.asyncio
 async def test_next_race_sensor_uses_known_circuit_timezone_without_tzfpy(
     hass, monkeypatch
 ) -> None:

@@ -817,14 +817,32 @@ async def test_cached_replay_index_is_reused_without_downloading(
                 "formation_initial_state": {},
                 "seek_index": [{"t": 0, "offset": 0}],
                 "seek_checkpoints": [],
+                # JSON keys are strings, and legacy/corrupt cache entries must
+                # not remove the usable replay sync points next to them.
+                "lap_start_ms": {
+                    "3": "18",
+                    "1": 1,
+                    "2": 10,
+                    "0": 0,
+                    "bad": 7,
+                    "4": -1,
+                    "5": True,
+                    "6": None,
+                },
+                "qualifying_part_start_ms": {"3": 16, "1": 2, "2": "9"},
             }
         ),
         encoding="utf-8",
     )
     monkeypatch.setattr(manager, "_prune_cache", AsyncMock(return_value=0))
+    download = AsyncMock(side_effect=AssertionError("Cached replay must not download"))
+    monkeypatch.setattr(manager, "_download_stream_to_file", download)
     loaded = await manager._download_and_index_session(session)
     assert loaded.total_frames == 3
     assert loaded.formation_start_utc == datetime(2026, 9, 1, tzinfo=UTC)
+    assert list(loaded.lap_start_ms.items()) == [(1, 1), (2, 10), (3, 18)]
+    assert list(loaded.qualifying_part_start_ms.items()) == [(1, 2), (2, 9), (3, 16)]
+    download.assert_not_awaited()
     manager._prune_cache.assert_awaited_once_with(session.unique_id)
 
 

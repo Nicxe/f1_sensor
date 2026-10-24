@@ -16,6 +16,8 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 
 :::info[Replay Mode or F1TV Auth live timing]
 This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live pit stop data is available.
+
+Counts and detailed stops are separate. Public timing can contain per-driver pit counts while the detailed stop feed remains absent. The current Pit Stops entity and card dataset still use the Replay Mode or authenticated-live availability rules; public source counts alone do not enable them without connected access. A count does not confirm a stop’s duration, lap or pit-lane time. See the [account availability comparison](/features/f1tv-auth#availability-matrix).
 :::
 
 `sensor.f1_pitstops` - Pit stop information from the F1 Live Timing feed, aggregated per car.

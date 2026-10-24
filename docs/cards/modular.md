@@ -69,6 +69,23 @@ Data availability depends on the source and session. Adding a module does not cr
 
 Timing can follow a session profile or use your selected columns. Choosing your own timing columns keeps them as a custom selection. A module pinned to a driver keeps that driver when you change the card's general focus.
 
+### Compare practice lap times
+
+In a **Timing** module, add **Gap to fastest lap** (`best_lap_gap`) to your
+selected columns. During practice it shows each driver's best lap relative to
+the fastest valid best lap of the session, for example `+0.412`. The fastest
+time shows `0.000`; drivers without a valid best time show `—`.
+
+The card prefers the gap supplied by live timing. When it is unavailable, it
+calculates the difference from the timing source's current valid best times.
+Selecting one driver or team still compares against the whole session. Deleted
+or corrected best times update the comparison; old observed laps are not used
+to restore a removed time.
+
+This optional column is available for practice in live timing and replay. It
+does not replace race gaps or the current-part qualifying gap. Existing timing
+profiles and saved columns stay unchanged.
+
 ### Show Team Radio (experimental)
 
 :::warning Experimental feature

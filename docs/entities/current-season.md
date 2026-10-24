@@ -40,6 +40,9 @@ Each entry in `races` contains the standard Ergast race data plus:
 | country_flag_url | string | URL to country flag image |
 | circuit_map_url | string | URL to official circuit map image |
 | circuit_outline_url | string | URL to circuit outline image when available |
+| scheduled_laps | number | Planned race laps, when available from Jolpica's alpha session data |
+
+On sprint weekends, the nested `Sprint` object also includes `scheduled_laps` when Jolpica provides it. These planned counts can differ from the laps actually completed.
 
 
 ## Next steps

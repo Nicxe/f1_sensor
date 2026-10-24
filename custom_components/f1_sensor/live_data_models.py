@@ -2857,6 +2857,8 @@ class DriverPositionsModel(LiveProjectionModel):
                 drv.setdefault("best_lap_time", None)
                 drv.setdefault("best_lap_time_secs", None)
                 drv.setdefault("best_lap_lap", None)
+                drv.setdefault("best_lap_time_source", None)
+                drv.setdefault("best_lap_gap", None)
                 drv.setdefault(
                     "last_lap_status",
                     {
@@ -2897,6 +2899,9 @@ class DriverPositionsModel(LiveProjectionModel):
         session_type, session_name = self._get_session_type_and_name()
         allow_fastest = self._is_race_or_sprint(session_type, session_name)
         is_qualifying = self._is_qualifying_like()
+        is_practice = str(session_type or "").strip().lower() == "practice" or (
+            not session_type and "practice" in str(session_name or "").lower()
+        )
         fastest = data.get("fastest_lap") if allow_fastest else None
         fastest_rn = None
         if isinstance(fastest, dict):
@@ -2918,10 +2923,13 @@ class DriverPositionsModel(LiveProjectionModel):
                 "personal_fastest": last_lap_status.get("personal_fastest") is True,
             }
             official_best = timing.get("official_best_lap")
+            best_lap_source = None
             if isinstance(official_best, dict):
                 best_lap_time = official_best.get("time")
                 best_lap_seconds = official_best.get("time_secs")
                 best_lap_number = official_best.get("lap")
+                if best_lap_seconds is not None:
+                    best_lap_source = "official"
             else:
                 best_lap_time = timing.get("best_lap")
                 best_lap_seconds = None
@@ -2935,6 +2943,20 @@ class DriverPositionsModel(LiveProjectionModel):
                     or best_lap_seconds <= 0
                 ):
                     best_lap_time = best_lap_seconds = None
+                else:
+                    best_lap_source = "observed"
+            best_lap_gap = None
+            if is_practice and best_lap_source == "official":
+                raw_gap = timing.get("practice_gap_to_fastest")
+                if raw_gap == "" and str(timing.get("position")) == "1":
+                    best_lap_gap = 0.0
+                elif isinstance(raw_gap, (str, int, float)) and not isinstance(
+                    raw_gap, bool
+                ):
+                    with suppress(ValueError, TypeError):
+                        parsed_gap = float(raw_gap)
+                        if math.isfinite(parsed_gap) and parsed_gap >= 0:
+                            best_lap_gap = parsed_gap
             _sectors = info.get("sectors", {})
             _cur = _sectors.get("current", {})
             _bst = _sectors.get("best", {})
@@ -3039,6 +3061,8 @@ class DriverPositionsModel(LiveProjectionModel):
                 "best_lap_time": best_lap_time,
                 "best_lap_time_secs": best_lap_seconds,
                 "best_lap_lap": best_lap_number,
+                "best_lap_time_source": best_lap_source,
+                "best_lap_gap": best_lap_gap,
                 "last_lap_status": last_lap_status,
                 "fastest_lap": is_fastest,
                 "fastest_lap_time": fastest.get("time") if is_fastest else None,

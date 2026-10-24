@@ -1,3 +1,7 @@
+# Home Assistant environment boundary
+
+F1 Sensor development and testing use HAdev at `hadev.local` (`/Volumes/config`), through the `mcp__homeassistant` toolset. The separate `mcp__homeassistant_native` toolset reaches Niklas's live production Home Assistant and is reserved for work in `/Volumes/config-1`. Never use the live server to develop, test, or debug this integration. Verify the target instance if a tool's identity is uncertain.
+
 # F1 Sensor source parity
 
 A completed F1 Sensor code change must exist in both the local Git checkout and

@@ -222,6 +222,12 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
   const timingSource = positions.status === 'unknown' && rawDrivers.length
     ? { ...positions, status: 'available' }
     : positions;
+  // The reference is the whole session, even when a module shows one driver or
+  // team. Observed lap history cannot replace an official corrected best.
+  const practiceTimes = kind === 'practice' ? rawDrivers
+    .filter(driver => driver && typeof driver === 'object' && driver.best_lap_time_source === 'official')
+    .map(driver => seconds(driver.best_lap_time)).filter(time => time !== null) : [];
+  const fastestPracticeTime = practiceTimes.length ? Math.min(...practiceTimes) : null;
   const rows = rawDrivers.filter(driver => driver && typeof driver === 'object').map(driver => {
     const id = String(driver.racing_number ?? driver.tla ?? '');
     const person = identity.get(id) ?? {};
@@ -237,6 +243,8 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
     const official = Object.hasOwn(driver, 'best_lap_time');
     const best = official ? { time: seconds(driver.best_lap_time), lap: positiveInteger(driver.best_lap_lap) }
       : laps.reduce((result, item) => !result || item.time < result.time ? item : result, null);
+    const officialBest = official && driver.best_lap_time_source === 'official' ? best.time : null;
+    const nativeBestLapGap = typeof driver.best_lap_gap === 'number' && Number.isFinite(driver.best_lap_gap) && driver.best_lap_gap >= 0 ? driver.best_lap_gap : null;
     const selectedSectors = sectors.select(context.key, driver, module.options.sectors);
     const minisectorDriver = minisectors?.status === 'ready' ? minisectors.drivers?.[id] : null;
     const strips = [0, 1, 2].map(sector => segmentStrip(minisectorDriver, sector));
@@ -260,6 +268,8 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
       last_lap: last ? { ...last, source: 'completed_lap', previous_lap: !lastLapOverall && !lastLapPersonal,
         overall_fastest: lastLapOverall, personal_fastest: lastLapPersonal } : { time: null },
       best_lap: { time: best?.time ?? null, lap: best?.lap ?? null, personal_fastest: best?.time !== null && best?.time !== undefined, overall_fastest: driver.fastest_lap === true },
+      best_lap_gap: kind === 'practice' && officialBest !== null
+        ? nativeBestLapGap ?? (fastestPracticeTime !== null ? officialBest - fastestPracticeTime : null) : null,
       lap_delta: last && previous && last.lap === previous.lap + 1 ? lapChange(last.time, previous.time, last.lap, previous.lap) : null,
       sector_1: selectedSectors[0], sector_2: selectedSectors[1], sector_3: selectedSectors[2],
       minisector_1: strips[0], minisector_2: strips[1], minisector_3: strips[2],

@@ -10,7 +10,8 @@ permissions:
 jobs:
   translations:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # Keep slow runner package mirrors from consuming the verification budget.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -27,6 +28,9 @@ jobs:
         run: node scripts/install_project_npm.cjs
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
-      - run: npx playwright install --with-deps chromium
+      - name: Install Chromium and system dependencies
+        timeout-minutes: 15
+        run: npx playwright install --with-deps chromium
       - name: Verify translation structure, placeholders and fallbacks
+        timeout-minutes: 8
         run: python3 scripts/run_check.py translations

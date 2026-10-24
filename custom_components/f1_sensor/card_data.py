@@ -266,9 +266,13 @@ class CardDataStore:
         ):
             self._publish(key)
         elif key not in self._delayed:
-            self._delayed[key] = async_call_later(
-                self.hass, 1 - elapsed, lambda _: self._publish(key)
-            )
+
+            @callback
+            def publish_later(_now):
+                """Keep snapshots, storage and subscribers on the HA event loop."""
+                self._publish(key)
+
+            self._delayed[key] = async_call_later(self.hass, 1 - elapsed, publish_later)
 
     def snapshot(self, key: str) -> dict[str, Any]:
         """Read a protected projection without acquiring any background demand."""
