@@ -5706,6 +5706,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
     def _reset_session_state(self, reason: str) -> None:
         """Clear previous-session timing without dropping queued current-session frames."""
+        if self._deliver_handle is not None:
+            self._deliver_handle.cancel()
+            self._deliver_handle = None
         self._minisectors.reset(
             reason,
             source="replay" if self._replay_mode else "live",
@@ -7484,12 +7487,27 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         return None
 
     def _deliver(self) -> None:
+        if self._deliver_handle is not None:
+            self._deliver_handle.cancel()
+            self._deliver_handle = None
         if _is_no_spoiler_blocked(self):
             return
         # Push deep-copied shallow dict to avoid accidental external mutation
         self.async_set_updated_data(self._state)
 
     def _schedule_deliver(self) -> None:
+        if self._replay_mode and self.config_entry is not None:
+            controller = (
+                self.hass.data.get(DOMAIN, {})
+                .get(self.config_entry.entry_id, {})
+                .get("replay_controller")
+            )
+            if controller is not None and controller.state == ReplayState.SEEKING:
+                # Keep every merge and lap in order, but publish once per
+                # catch-up batch instead of copying growing histories per frame.
+                if self._deliver_handle is None:
+                    self._deliver_handle = self.hass.loop.call_soon(self._deliver)
+                return
         self._deliver()
 
     def _on_driverlist(self, dl: dict) -> None:
