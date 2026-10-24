@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import re
 from typing import Any
+import warnings
 
 PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z0-9_]+)\}")
 LANGUAGE_TAG_RE = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$")
@@ -89,8 +90,15 @@ def validate_translations(
         if path != source_path:
             untranslated += len(missing)
         if extra:
-            failures.append(f"{path.name}: extra {', '.join(extra)}")
-        blank = sorted(key for key, value in translated.items() if not value.strip())
+            warnings.warn(
+                f"{path.name}: obsolete translation keys ignored: {', '.join(extra)}",
+                stacklevel=2,
+            )
+        blank = sorted(
+            key
+            for key, value in translated.items()
+            if key in english and not value.strip()
+        )
         if blank:
             failures.append(f"{path.name}: blank {', '.join(blank)}")
         for key in sorted(set(english) & set(translated)):

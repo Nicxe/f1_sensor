@@ -10,6 +10,7 @@ from scripts.ci_policy import (
     gate_errors,
     hotfix_matches_dev,
     main_promotion_release_error,
+    release_product_checks,
     release_triggering_commits,
     select_jobs,
     should_deploy,
@@ -207,6 +208,8 @@ class PolicyTests(unittest.TestCase):
             None,
             ["unknown.config"],
             [".github/workflows/ci.yml"],
+            [".github/workflows/unknown.yml"],
+            [".github/actions/unknown/action.yml"],
             ["package-lock.json"],
         ]:
             self.assertEqual(
@@ -224,16 +227,80 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(selected["blueprints"])
         self.assertFalse(selected["backend"])
 
-    def test_promotions_verify_every_release_blocker_before_merge(self):
+    def test_promotions_use_the_same_impact_contract_as_development(self):
         for base, head in [("beta", "dev"), ("main", "beta")]:
             self.assertEqual(
                 select_jobs(["docs/help.md"], pull(base, head), "pull_request", ""),
-                {job: job != "blueprints" for job in JOBS},
+                {job: job == "documentation" for job in JOBS},
             )
             self.assertEqual(
                 select_jobs(["docs/help.md"], {}, "push", base),
-                {job: job != "blueprints" for job in JOBS},
+                {job: job == "documentation" for job in JOBS},
             )
+            runtime = select_jobs(
+                ["custom_components/f1_sensor/coordinator.py"],
+                pull(base, head),
+                "pull_request",
+                "",
+            )
+            self.assertEqual(
+                {job for job, enabled in runtime.items() if enabled},
+                {
+                    "lint",
+                    "backend",
+                    "frontend",
+                    "translations",
+                    "validation",
+                    "package",
+                },
+            )
+            self.assertFalse(runtime["documentation"])
+            self.assertFalse(runtime["audit"])
+
+    def test_issue_metadata_changes_do_not_run_product_browsers_or_security(self):
+        for path in (
+            ".github/scripts/issue-automation.cjs",
+            ".github/workflows/issue-version-check.yml",
+            ".github/ISSUE_TEMPLATE/bug_report.yml",
+            "ci_tests/issues.test.cjs",
+        ):
+            for branch in ("dev", "beta", "main"):
+                with self.subTest(path=path, branch=branch):
+                    selected = select_jobs([path], {}, "push", branch)
+                    self.assertEqual(
+                        {job for job, enabled in selected.items() if enabled},
+                        {"automation"},
+                    )
+
+    def test_audit_evaluator_changes_keep_full_security_enforcement(self):
+        files = ["scripts/npm_audit_semver.cjs"]
+        selected = select_jobs(files, pull("beta", "dev"), "pull_request", "")
+        self.assertTrue(selected["audit"])
+        self.assertTrue(selected["automation"])
+        self.assertEqual(
+            audit_context(pull("beta", "dev"), "pull_request", "", files),
+            ("gate", ""),
+        )
+
+    def test_only_release_executions_may_delegate_docs_and_full_security(self):
+        selected = select_jobs(None, {}, "workflow_dispatch", "beta")
+        product = release_product_checks(
+            selected, separate_delivery=True, event_name="push", branch="beta"
+        )
+        self.assertFalse(product["documentation"])
+        self.assertFalse(product["audit"])
+        for job in ("backend", "frontend", "validation", "package"):
+            self.assertTrue(product[job])
+        self.assertTrue(selected["documentation"])
+        self.assertTrue(selected["audit"])
+        for event, branch in (("pull_request", "beta"), ("push", "dev")):
+            with (
+                self.subTest(event=event, branch=branch),
+                self.assertRaises(ValueError),
+            ):
+                release_product_checks(
+                    selected, separate_delivery=True, event_name=event, branch=branch
+                )
 
     def test_dependency_changes_are_audited_before_and_after_merge(self):
         for base in ("dev", "content", "beta", "main"):
@@ -281,6 +348,19 @@ class PolicyTests(unittest.TestCase):
             audit_context({"before": "c" * 40}, "push", "dev", ["package-lock.json"]),
             ("introduced", "c" * 40),
         )
+        for base, head in [("beta", "dev"), ("main", "beta")]:
+            self.assertEqual(
+                audit_context(
+                    pull(base, head), "pull_request", "", ["package-lock.json"]
+                ),
+                ("introduced", "a" * 40),
+            )
+            self.assertEqual(
+                audit_context(
+                    {"before": "c" * 40}, "push", base, ["package-lock.json"]
+                ),
+                ("introduced", "c" * 40),
+            )
         for event, trigger, branch in (
             (pull("beta", "dev"), "pull_request", ""),
             (pull("main", "beta"), "pull_request", ""),

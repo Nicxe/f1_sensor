@@ -39,7 +39,8 @@ jobs:
         run: echo 'Use Release verification to create or recover a release draft.'; exit 1
       - env:
           RESULT: ${{ needs.checks.result }}
-        run: test "$RESULT" = success
+          PRODUCT_RESULT: ${{ needs.checks.outputs.product_result }}
+        run: test "$RESULT" = success && test "$PRODUCT_RESULT" = success
   report-pr:
     name: Report explicitly verified PR
     needs: [checks, required]

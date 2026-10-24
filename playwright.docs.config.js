@@ -7,7 +7,7 @@ module.exports = defineConfig({
   fullyParallel: false,
   workers: 2,
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
+  retries: 0,
   reporter: [['line'], ['html', {outputFolder: 'playwright-report/docs', open: 'never'}]],
   use: {
     baseURL: 'http://127.0.0.1:4174/f1_sensor/',

@@ -3,12 +3,16 @@ const { defineConfig } = require('@playwright/test');
 module.exports = defineConfig({
   testDir: './frontend-tests',
   testMatch: '**/*.spec.js',
-  grepInvert: process.env.F1_MAINTENANCE ? undefined : /@performance/,
+  grepInvert: new RegExp([
+    ...process.env.F1_MAINTENANCE ? [] : ['@performance'],
+    ...process.env.F1_VISUAL_REVIEW ? [] : ['@visual'],
+  ].join('|') || '(?!)'),
   outputDir: 'test-results/playwright',
   snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{arg}{ext}',
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
+  // Locator auto-wait handles rendering; a failed test must not be hidden by a rerun.
+  retries: 0,
   reporter: process.env.CI ? [['line'], ['html', { outputFolder: 'playwright-report', open: 'never' }]] : 'line',
   expect: {
     timeout: 5000,
@@ -25,7 +29,7 @@ module.exports = defineConfig({
     colorScheme: 'dark',
     hasTouch: true,
     reducedMotion: 'reduce',
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   webServer: {

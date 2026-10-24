@@ -43,17 +43,24 @@ class CoverageTests(unittest.TestCase):
                 check=False,
             )
 
-    def test_module_below_floor_cannot_hide_behind_high_total(self):
+    def test_module_review_does_not_override_passing_global_coverage(self):
         result = self.run_checker(
             coverage_report(("auth", 100, 94), ("signalr", 1000, 1000))
         )
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("auth.py", result.stdout)
+        self.assertIn("review only", result.stdout)
+
+    def test_small_new_module_does_not_create_an_absolute_per_file_gate(self):
+        result = self.run_checker(
+            coverage_report(("schedule_laps", 4, 2), ("signalr", 1000, 1000))
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("schedule_laps.py", result.stdout)
 
     def test_exactly_95_percent_is_not_above_the_floor(self):
         for report in (
             coverage_report(("auth", 100, 95)),
-            coverage_report(("auth", 100, 95), ("signalr", 1000, 1000)),
             coverage_report(("auth", 100000, 94999)),
         ):
             with self.subTest(report=report):

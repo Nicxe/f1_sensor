@@ -25,6 +25,47 @@ JOBS = (
     "automation",
 )
 RUNTIME = {"lint", "backend", "frontend", "translations", "validation", "package"}
+SHARED_POLICY = {
+    "scripts/ci_policy.py",
+    "scripts/ci_reuse.py",
+    "scripts/verification.py",
+    "scripts/verify_dev.py",
+    "scripts/run_check.py",
+    "scripts/ci_environment.py",
+    "scripts/setup_ci_environment.py",
+    "ci_tests/test_ci_policy.py",
+    "ci_tests/test_ci_reuse.py",
+    "ci_tests/test_verify_dev.py",
+    ".github/workflows/ci-checks.yml",
+    ".github/workflows/ci.yml",
+    ".github/workflows/development.yml",
+    ".github/workflows/release-pipeline.yml",
+}
+AUDIT_POLICY = {
+    "quality/npm-audit-policy.json",
+    "quality/npm-audit-allowlist.json",
+    "scripts/check_npm_audit.py",
+    "scripts/run_npm_audit.py",
+    "scripts/npm_audit_semver.cjs",
+    ".github/workflows/audit.yml",
+    ".github/workflows/security-health.yml",
+}
+DOCUMENTATION_WORKFLOWS = {
+    ".github/workflows/documentation.yml",
+    ".github/workflows/documentation-publication.yml",
+    ".github/workflows/deploy.yml",
+}
+AUTOMATION_WORKFLOWS = {
+    ".github/workflows/automation-tests.yml",
+    ".github/workflows/cleanup-merged-branches.yml",
+    ".github/workflows/issue-component-labeler.yml",
+    ".github/workflows/issue-release-comment.yml",
+    ".github/workflows/issue-version-check.yml",
+    ".github/workflows/maintenance.yml",
+    ".github/workflows/pr-target-check.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/sync-after-release.yml",
+}
 TARGET_TRANSLATION = re.compile(
     r"^custom_components/f1_sensor/(?:translations/|"
     r"www/f1-sensor-live-data-card/localization/locales/)"
@@ -316,33 +357,83 @@ def branch_error(event: dict, files: list[str]) -> str:
 def select_jobs(
     files: list[str] | None, event: dict, event_name: str, branch: str
 ) -> dict[str, bool]:
-    pr = event.get("pull_request", {})
-    promotion = (
-        pr.get("base", {}).get("ref") in ("beta", "main")
-        and pr.get("head", {}).get("ref") != "content"
-    )
-    if (
-        files is None
-        or event_name in ("workflow_dispatch", "schedule")
-        or promotion
-        or (event_name == "push" and branch in ("beta", "main"))
-    ):
+    if files is None or event_name in ("workflow_dispatch", "schedule"):
         return selected_checks(set(JOBS))
     if files and all(TARGET_TRANSLATION.fullmatch(path) for path in files):
         return selected_checks({"translations"})
     selected: set[str] = set()
     for path in files:
-        if path.startswith(
-            (".github/", "scripts/", "ci_tests/", "quality/", "requirements")
-        ) or path in (
-            "package.json",
-            "package-lock.json",
-            "pyproject.toml",
-            "conftest.py",
-            "release.config.js",
-            "release.config.cjs",
+        if (
+            path in SHARED_POLICY
+            or path.startswith("requirements/")
+            or path
+            in (
+                "package.json",
+                "package-lock.json",
+                "pyproject.toml",
+                "conftest.py",
+                ".node-version",
+                ".python-version",
+                ".npmrc",
+            )
         ):
             selected.update(JOBS)
+        elif path in AUDIT_POLICY:
+            selected.update(("lint", "automation", "audit"))
+        elif (
+            path in DOCUMENTATION_WORKFLOWS
+            or path == "ci_tests/documentation_channels.test.mjs"
+            or path.startswith(
+                (".github/scripts/documentation-", "ci_tests/documentation-")
+            )
+        ):
+            selected.update(("automation", "documentation"))
+        elif path in ("scripts/check_coverage.py", "quality/coverage-ratchet.json"):
+            selected.update(("lint", "backend", "automation"))
+        elif path in (
+            "scripts/run_ci_tests.py",
+            "scripts/run_tests.sh",
+            "scripts/test_installed_release.py",
+            ".github/workflows/tests.yml",
+        ) or path.startswith(("tests/", "ci_smoke/")):
+            selected.update(("lint", "backend", "validation", "package"))
+        elif path in (
+            "scripts/check_translations.py",
+            ".github/workflows/translations.yml",
+        ):
+            selected.update(("lint", "translations", "automation"))
+        elif path in (
+            "scripts/check_manifest.py",
+            "scripts/check_localization.py",
+            "scripts/check_release_build.py",
+            "scripts/build_release.py",
+            ".github/workflows/package.yml",
+        ):
+            selected.update(("lint", "package", "automation"))
+        elif path == ".github/workflows/ruff.yml":
+            selected.update(("lint", "automation"))
+        elif path == ".github/workflows/validate.yml":
+            selected.update(("validation", "automation"))
+        elif path == ".github/workflows/frontend.yml":
+            selected.update(("frontend", "automation"))
+        elif path in (
+            "release.config.js",
+            "release.config.cjs",
+            "semantic-release-policy.json",
+        ):
+            selected.update(("automation", "package", "audit"))
+        elif (
+            path in AUTOMATION_WORKFLOWS
+            or path == ".github/PULL_REQUEST_TEMPLATE.md"
+            or path.startswith(
+                (".github/scripts/", ".github/ISSUE_TEMPLATE/", "ci_tests/")
+            )
+        ):
+            # Issue/PR metadata, branch synchronization and release automation
+            # have executable contract tests, but do not change HA or browsers.
+            selected.add("automation")
+            if path.endswith(".py"):
+                selected.add("lint")
         elif path.startswith("blueprints/"):
             selected.update(("blueprints", "documentation"))
         elif (
@@ -365,31 +456,37 @@ def select_jobs(
 def audit_context(
     event: dict, event_name: str, branch: str, files: list[str] | None = None
 ) -> tuple[str, str]:
-    """Use the same security scope before promotion as after release pushes."""
+    """Ordinary changes block new risks; complete release readiness is separate."""
     if files is None:
         return "gate", ""
-    if files and any(
-        path
-        in (
-            "quality/npm-audit-policy.json",
-            "quality/npm-audit-allowlist.json",
-            "scripts/check_npm_audit.py",
-            "scripts/run_npm_audit.py",
-            ".github/workflows/audit.yml",
-        )
-        for path in files
-    ):
+    if files and any(path in AUDIT_POLICY for path in files):
         return "gate", ""
     pr = event.get("pull_request")
     if pr:
-        if pr["base"]["ref"] in ("beta", "main"):
-            return "gate", ""
         return "introduced", pr["base"]["sha"]
-    if event_name == "push" and branch in ("dev", "content"):
+    if event_name == "push" and branch in ("dev", "content", "beta", "main"):
         base = event.get("before", "")
         if re.fullmatch(r"[0-9a-f]{40}", base) and set(base) != {"0"}:
             return "introduced", base
     return "gate", ""
+
+
+def release_product_checks(
+    selected: dict[str, bool], *, separate_delivery: bool, event_name: str, branch: str
+) -> dict[str, bool]:
+    """Only trusted release executions may delegate docs and full security."""
+    selected = dict(selected)
+    if separate_delivery:
+        if event_name not in ("push", "workflow_dispatch") or branch not in (
+            "beta",
+            "main",
+        ):
+            raise ValueError(
+                "Separate delivery is restricted to trusted beta/main release executions"
+            )
+        selected["documentation"] = False
+        selected["audit"] = False
+    return selected
 
 
 def gate_errors(selected: dict, results: dict, reused=()) -> list[str]:
@@ -428,6 +525,9 @@ def main() -> int:
     if args.mode == "gate":
         results = json.loads(os.environ["CI_NEEDS"])
         if results.get("plan", {}).get("result") != "success":
+            if os.environ.get("GITHUB_OUTPUT"):
+                with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+                    output.write("result=failure\n")
             print("CI selection/branch policy failed")
             return 1
         evidence = json.loads(results["plan"]["outputs"].get("reused", "{}"))
@@ -458,6 +558,9 @@ def main() -> int:
                     + "\n"
                 )
         print("\n".join(errors) if errors else "All applicable checks passed")
+        if os.environ.get("GITHUB_OUTPUT"):
+            with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+                output.write(f"result={'failure' if errors else 'success'}\n")
         return int(bool(errors))
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
     name = os.environ["GITHUB_EVENT_NAME"]
@@ -489,6 +592,12 @@ def main() -> int:
         print(error)
         return 1
     selected = select_jobs(files, event, name, os.environ.get("GITHUB_REF_NAME", ""))
+    selected = release_product_checks(
+        selected,
+        separate_delivery=os.environ.get("CI_SEPARATE_DELIVERY") == "true",
+        event_name=name,
+        branch=os.environ.get("GITHUB_REF_NAME", ""),
+    )
     audit_mode, audit_base = audit_context(
         event, name, os.environ.get("GITHUB_REF_NAME", ""), files
     )

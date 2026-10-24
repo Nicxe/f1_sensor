@@ -100,9 +100,12 @@ class VerifyDevTests(unittest.TestCase):
             self.assertEqual(json.loads(receipt.read_text())["status"], "failed")
 
     def test_local_commands_use_ci_mode_and_isolated_tools(self) -> None:
-        with patch(
-            "verify_dev.subprocess.run", return_value=Mock(returncode=0)
-        ) as execute:
+        with (
+            patch.dict("os.environ", {"F1_VISUAL_REVIEW": "1", "F1_MAINTENANCE": "1"}),
+            patch(
+                "verify_dev.subprocess.run", return_value=Mock(returncode=0)
+            ) as execute,
+        ):
             self.assertEqual(
                 verify_dev.run(
                     [("example", [["node", "example.js"]], {})], print_only=False
@@ -117,6 +120,64 @@ class VerifyDevTests(unittest.TestCase):
             self.assertEqual(environment["F1_BROWSER"], "chromium")
             self.assertEqual(environment["PYTEST_ADDOPTS"], "")
             self.assertEqual(environment["F1_MAINTENANCE"], "")
+            self.assertEqual(environment["F1_VISUAL_REVIEW"], "")
+
+    def test_selected_failures_are_all_reported_without_omitting_later_checks(
+        self,
+    ) -> None:
+        results = []
+        with patch(
+            "verify_dev.subprocess.run",
+            side_effect=[Mock(returncode=1), Mock(returncode=2), Mock(returncode=0)],
+        ) as execute:
+            self.assertEqual(
+                verify_dev.run(
+                    [
+                        ("lint", [["lint"], ["format"]], {}),
+                        ("backend", [["test"]], {}),
+                    ],
+                    print_only=False,
+                    results=results,
+                ),
+                1,
+            )
+        self.assertEqual(execute.call_count, 3)
+        self.assertEqual(
+            [(item["name"], item["status"]) for item in results],
+            [("lint", "failed"), ("backend", "passed")],
+        )
+
+    def test_failed_attempt_receipt_keeps_each_selected_result_and_source(self) -> None:
+        def execute(plan, *, print_only, results):
+            self.assertFalse(print_only)
+            results.extend(
+                {"name": name, "status": "failed" if name == "lint" else "passed"}
+                for name, _, _ in plan
+            )
+            return 1
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("verify_dev.ROOT", Path(directory)),
+            patch.object(sys, "argv", ["verify_dev.py", "full"]),
+            patch("verify_dev.resolve_base", return_value="a" * 40),
+            patch("verify_dev.environment_errors", return_value=[]),
+            patch("verify_dev.source_fingerprint", return_value="snapshot"),
+            patch("verify_dev.run", side_effect=execute),
+            patch("verify_dev.installed_versions", return_value={"node": "pinned"}),
+            patch(
+                "verify_dev.dependency_fingerprints", return_value={"lock": "installed"}
+            ),
+        ):
+            self.assertEqual(verify_dev.main(), 1)
+            receipt = json.loads(
+                (Path(directory) / "test-results/verification.json").read_text()
+            )
+            self.assertEqual(receipt["status"], "failed")
+            self.assertEqual(receipt["source"], "snapshot")
+            self.assertEqual(len(receipt["results"]), len(receipt["checks"]))
+            self.assertIn({"name": "lint", "status": "failed"}, receipt["results"])
+            self.assertIn({"name": "audit", "status": "passed"}, receipt["results"])
 
     def test_source_change_invalidates_earlier_success(self) -> None:
         with (
@@ -162,6 +223,25 @@ class VerifyDevTests(unittest.TestCase):
                 (Path(directory) / "test-results/verification.json").read_text()
             )
             self.assertEqual(receipt["status"], "failed")
+
+    def test_setup_failure_cannot_leave_a_running_or_success_receipt(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("verify_dev.ROOT", Path(directory)),
+            patch.object(sys, "argv", ["verify_dev.py", "full"]),
+            patch("verify_dev.resolve_base", return_value="a" * 40),
+            patch("verify_dev.environment_errors", return_value=["setup missing"]),
+            patch("verify_dev.source_fingerprint", return_value="snapshot"),
+            patch("verify_dev.subprocess.run", return_value=Mock(returncode=1)),
+            patch("verify_dev.run") as execute,
+        ):
+            self.assertEqual(verify_dev.main(), 2)
+            execute.assert_not_called()
+            receipt = json.loads(
+                (Path(directory) / "test-results/verification.json").read_text()
+            )
+            self.assertEqual(receipt["status"], "failed")
+            self.assertIn("setup failed", receipt["error"])
 
     def test_success_binds_receipt_to_source_profile_and_installed_dependencies(
         self,

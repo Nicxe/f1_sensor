@@ -10,7 +10,7 @@ const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
 const head = 'a'.repeat(40);
 const tree = 'b'.repeat(40);
 
-function environment({branch = 'beta', conclusion = 'success', eventName = 'push', pending = false, superseded = false} = {}) {
+function environment({branch = 'beta', conclusion = 'success', eventName = 'push', pending = false, superseded = false, verifiedJobs = conclusion === 'success'} = {}) {
   const calls = [];
   const outputs = {};
   const summary = [];
@@ -20,6 +20,7 @@ function environment({branch = 'beta', conclusion = 'success', eventName = 'push
   const run = {
     id: 42,
     run_number: 17,
+    run_attempt: 1,
     status: 'completed',
     conclusion,
     event: eventName,
@@ -58,6 +59,12 @@ function environment({branch = 'beta', conclusion = 'success', eventName = 'push
         calls.push(['run', parameters]);
         assert.equal(parameters.run_id, 42);
         return {data: source};
+      },
+      async listJobsForWorkflowRun(parameters) {
+        assert.equal(parameters.run_id, 42);
+        const jobs = verifiedJobs ? ['checks / Verify selected checks', 'documentation / documentation'].map(name =>
+          ({name, head_sha: head, status: 'completed', conclusion: 'success'})) : [];
+        return {data: {total_count: jobs.length, jobs}};
       }
     },
     git: {
@@ -147,6 +154,13 @@ test('failed release verification produces an explicit non-publication result', 
   assert.equal(publication.jobs.deploy.if, "needs.source.outputs.publish == 'true'");
   assert.equal(loadWorkflow('release-pipeline.yml').jobs.deploy, undefined);
   assert.equal(loadWorkflow('release-pipeline.yml').jobs['documentation-publication'], undefined);
+});
+
+test('a failed release safety job does not block the actual publisher after product and docs pass', async () => {
+  const env = environment({conclusion: 'failure', verifiedJobs: true});
+  await executeSource(env);
+  assert.equal(env.outputs.publish, 'true');
+  assert.equal(env.outputs.tested_sha, head);
 });
 
 test('an obsolete beta push cannot publish or delay the latest queued publisher', async () => {

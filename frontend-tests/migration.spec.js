@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
+const { LEGACY_CARD_TYPES, COMPATIBILITY_CARD_TYPES } = require('./supported-cards.cjs');
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/frontend-tests/modular.html');
@@ -23,7 +24,8 @@ test('all legacy factories including archive alias expose conversion without pub
     const { LEGACY_MIGRATIONS } = await import('/custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/migration.js');
     return Object.keys(LEGACY_MIGRATIONS).map(type => ({ type, tag: customElements.get(type).getConfigElement().localName }));
   });
-  expect(counts).toHaveLength(24); expect(counts.every(c => c.tag === 'f1-migration-editor')).toBe(true);
+  expect(counts.map(card => card.type)).toEqual(expect.arrayContaining([...LEGACY_CARD_TYPES, ...COMPATIBILITY_CARD_TYPES]));
+  for (const card of counts) expect(card.tag, card.type).toBe('f1-migration-editor');
   await page.evaluate(() => window.mountMigration({ type: 'custom:f1-practice-timing-card', title: 'Original', color_overall_fastest: '#123456', show_sectors: true }));
   await expect(page.getByRole('heading', { name: 'This card is deprecated', exact: true })).toBeVisible();
   await expect(page.getByText('Nothing changes until you apply the conversion and save in Home Assistant.', { exact: false })).toBeVisible();
@@ -59,7 +61,7 @@ test('every actual legacy stub configuration converts and restores exactly', asy
       };
     }));
   });
-  expect(results).toHaveLength(24);
+  expect(results.map(card => card.type)).toEqual(expect.arrayContaining([...LEGACY_CARD_TYPES, ...COMPATIBILITY_CARD_TYPES]));
   for (const result of results) {
     expect(result.warnings, result.type).toEqual([]);
     expect(result.missing, result.type).toEqual([]);

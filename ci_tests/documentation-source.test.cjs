@@ -8,18 +8,23 @@ const {eligibleReleaseRun, resolvePublicationSource, waitForPublicationSource} =
 const head = 'a'.repeat(40);
 const tree = 'b'.repeat(40);
 const run = {
-  id: 42, run_number: 1, status: 'completed', conclusion: 'success', event: 'push',
+  id: 42, run_number: 1, run_attempt: 1, status: 'completed', conclusion: 'success', event: 'push',
   path: '.github/workflows/release-pipeline.yml', head_sha: head, head_branch: 'beta',
   repository: {full_name: 'owner/repo'}, head_repository: {full_name: 'owner/repo'}
 };
 
-function environment(source = run) {
+function environment(source = run, verifiedJobs = source.conclusion === 'success') {
   const commits = [];
   return {
     runId: '42', context: {repo: {owner: 'owner', repo: 'repo'}, ref: 'refs/heads/main'}, core: {info() {}},
     commits,
     github: {rest: {
-      actions: {async getWorkflowRun({run_id}) {assert.equal(run_id, 42); return {data: source};}},
+      actions: {
+        async getWorkflowRun({run_id}) {assert.equal(run_id, 42); return {data: source};},
+        async listJobsForWorkflowRun() {return {data: {total_count: verifiedJobs ? 2 : 0, jobs: verifiedJobs ?
+          ['checks / Verify selected checks', 'documentation / documentation'].map(name =>
+            ({name, head_sha: source.head_sha, status: 'completed', conclusion: 'success'})) : []}};}
+      },
       git: {async getCommit({commit_sha}) {commits.push(commit_sha); return {data: {tree: {sha: tree}}};}}
     }}
   };
@@ -40,7 +45,7 @@ test('fork, PR, unrelated workflow, wrong branch and unsuccessful runs never aut
     {repository: {full_name: 'fork/repo'}}, {head_repository: {full_name: 'fork/repo'}},
     {head_repository: null}, {event: 'pull_request'}, {event: 'workflow_run'},
     {path: '.github/workflows/ci.yml'}, {head_branch: 'dev'}, {head_branch: 'content'},
-    {status: 'in_progress'}, {conclusion: 'failure'}, {conclusion: 'cancelled'}, {head_sha: 'bad'}
+    {status: 'in_progress'}, {conclusion: 'cancelled'}, {head_sha: 'bad'}
   ]) {
     const source = {...run, ...changed};
     assert.equal(eligibleReleaseRun(source, 'owner/repo'), false);
@@ -62,6 +67,31 @@ test('re-fetched API state is authoritative and malformed source identity fails 
   await assert.rejects(resolvePublicationSource(wrongIdentity), /Invalid source.*identity/);
   assert.equal(await resolvePublicationSource({...environment(), expectedSha: 'c'.repeat(40)}), null);
   assert.equal(await resolvePublicationSource({...environment(), targetBranch: 'main'}), null);
+});
+
+test('release-tool security failures cannot suppress independently verified documentation', async () => {
+  const env = environment({...run, conclusion: 'failure'}, true);
+  assert.equal((await resolvePublicationSource(env)).tested_sha, head);
+  for (const failed of ['checks / Verify selected checks', 'documentation / documentation']) {
+    const rejected = environment({...run, conclusion: 'failure'}, true);
+    rejected.github.rest.actions.listJobsForWorkflowRun = async () => ({data: {total_count: 2,
+      jobs: ['checks / Verify selected checks', 'documentation / documentation'].map(name =>
+        ({name, head_sha: head, status: 'completed', conclusion: name === failed ? 'failure' : 'success'}))}});
+    assert.equal(await resolvePublicationSource(rejected), null);
+    assert.deepEqual(rejected.commits, []);
+  }
+});
+
+test('a green whole workflow without exact successful product and docs jobs is not evidence', async () => {
+  for (const change of [{head_sha: 'c'.repeat(40)}, {status: 'queued'}, {conclusion: 'skipped'}]) {
+    const env = environment();
+    env.github.rest.actions.listJobsForWorkflowRun = async () => ({data: {total_count: 2,
+      jobs: ['checks / Verify selected checks', 'documentation / documentation'].map(name =>
+        ({name, head_sha: head, status: 'completed', conclusion: 'success', ...change}))}});
+    assert.equal(await resolvePublicationSource(env), null);
+  }
+  const missing = environment(run, false);
+  assert.equal(await resolvePublicationSource(missing), null);
 });
 
 test('delivery can only follow completed release verification and passes explicit immutable source inputs', () => {
@@ -97,6 +127,13 @@ function waitingEnvironment(snapshots = [[run]]) {
     return {data: {workflow_runs: current}};
   };
   env.github.rest.actions.getWorkflowRun = async ({run_id}) => ({data: current.find(item => item.id === run_id)});
+  env.github.rest.actions.listJobsForWorkflowRun = async ({run_id}) => {
+    const source = current.find(item => item.id === run_id);
+    const jobs = source.conclusion === 'success' ?
+      ['checks / Verify selected checks', 'documentation / documentation'].map(name =>
+        ({name, head_sha: source.head_sha, status: 'completed', conclusion: 'success'})) : [];
+    return {data: {total_count: jobs.length, jobs}};
+  };
   return {...env, waits, requested};
 }
 

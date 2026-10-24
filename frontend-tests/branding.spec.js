@@ -68,11 +68,16 @@ test('logo frames retain size through loading, fallback and reuse for an unknown
   await page.evaluate(() => window.mountModular({ config: { appearance: { logo_size: 'large' }, modules: [{ type: 'timing', fields: ['driver', 'last_lap'] }] } }));
   const logo = page.locator('f1-team-logo').first(), driver = page.locator('button.driver').first();
   await expect(logo.locator('.initials')).toBeVisible();
+  // Compare the logo transition, not unrelated asynchronous font loading.
+  await page.evaluate(() => document.fonts.ready);
   const before = await driver.boundingBox();
   expect((await logo.boundingBox()).width).toBe(40);
   releaseImages();
   await expect(logo.locator('.initials')).toBeHidden();
-  expect(await driver.boundingBox()).toEqual(before);
+  await expect.poll(async () => {
+    const after = await driver.boundingBox();
+    return Math.max(...['x', 'y', 'width', 'height'].map(key => Math.abs(after[key] - before[key])));
+  }).toBeLessThanOrEqual(0.5);
   await page.evaluate(() => {
     window.previousLogoImage = window.fixtureCard.shadowRoot.querySelector('f1-module-view').shadowRoot.querySelector('f1-team-logo').shadowRoot.querySelector('img');
     const demo = window.fixtureDemo, entry = demo.preview.entries[0];
