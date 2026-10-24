@@ -8,10 +8,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from homeassistant.components.http import KEY_HASS
-from homeassistant.components.recorder.db_schema import (
-    MAX_STATE_ATTRS_BYTES,
-    StateAttributes,
-)
 from homeassistant.const import EVENT_STATE_CHANGED
 from homeassistant.core import Event, State
 from homeassistant.helpers.entity_component import EntityComponent
@@ -214,9 +210,16 @@ async def test_radio_history_keeps_twenty_newest_playable_captures(
     ids=["transcribed-history", "long-latest-transcription"],
 )
 async def test_radio_large_attributes_remain_live_without_overloading_recorder(
-    hass, radio, captures, caplog, clip_count, text_repeats
+    hass,
+    radio,
+    captures,
+    caplog,
+    clip_count,
+    text_repeats,
+    f1_recorder_attribute_schema,
 ):
     """Keep playable radio data while Recorder stores only compact metadata."""
+    max_state_attrs_bytes, state_attributes = f1_recorder_attribute_schema
     batch = [
         {
             **captures[0],
@@ -243,7 +246,7 @@ async def test_radio_large_attributes_remain_live_without_overloading_recorder(
 
     await radio.component.async_add_entities([radio.sensor])
     state = await _assert_history(hass, radio, list(reversed(batch)))
-    assert len(json_bytes(dict(state.attributes))) > MAX_STATE_ATTRS_BYTES
+    assert len(json_bytes(dict(state.attributes))) > max_state_attrs_bytes
     assert state.attributes["transcription_text"] == text
     assert state.attributes["transcription_segments"] == transcription["segments"]
     assert state.attributes["raw_message"]["Transcription"] == transcription
@@ -255,10 +258,10 @@ async def test_radio_large_attributes_remain_live_without_overloading_recorder(
         EVENT_STATE_CHANGED,
         {"entity_id": state.entity_id, "old_state": None, "new_state": state},
     )
-    recorded_bytes = StateAttributes.shared_attrs_bytes_from_event(event, None)
+    recorded_bytes = state_attributes.shared_attrs_bytes_from_event(event, None)
     recorded = json_loads(recorded_bytes)
     assert recorded, "Recorder must not discard all attributes at its size limit"
-    assert len(recorded_bytes) < MAX_STATE_ATTRS_BYTES
+    assert len(recorded_bytes) < max_state_attrs_bytes
     assert not {
         "history",
         "raw_message",

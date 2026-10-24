@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-RUFF_PATHS = ("custom_components", "scripts", "ci_tests", "ci_smoke")
+RUFF_PATHS = ("conftest.py", "custom_components", "scripts", "ci_tests", "ci_smoke")
 
 
 def group_commands(

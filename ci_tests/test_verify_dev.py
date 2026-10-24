@@ -14,6 +14,15 @@ import verify_dev  # noqa: E402
 
 
 class VerifyDevTests(unittest.TestCase):
+    def test_shared_lint_checks_root_test_fixtures(self) -> None:
+        selected = verify_dev.select_jobs(["conftest.py"], {}, "push", "dev")
+        lint_commands = {
+            name: commands for name, commands, _ in verify_dev.command_plan(selected)
+        }["lint"]
+        for command in lint_commands:
+            with self.subTest(command=command):
+                self.assertIn("conftest.py", command)
+
     def test_integration_change_matches_runtime_ci_checks(self) -> None:
         selected = verify_dev.select_jobs(
             ["custom_components/f1_sensor/coordinator.py"], {}, "push", "dev"

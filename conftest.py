@@ -13,3 +13,14 @@ def initialize_dns_cleanup_worker() -> None:
     # so any additional threads, tasks and timers still fail verification.
     if hasattr(pycares.Channel, "close"):
         pycares.Channel().close()
+
+
+@pytest.fixture
+def f1_recorder_attribute_schema():
+    """Expose real Recorder serialization without a runtime integration dependency."""
+    from homeassistant.components.recorder.db_schema import (
+        MAX_STATE_ATTRS_BYTES,
+        StateAttributes,
+    )
+
+    return MAX_STATE_ATTRS_BYTES, StateAttributes
