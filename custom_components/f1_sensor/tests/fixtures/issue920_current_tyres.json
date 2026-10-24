@@ -1,0 +1,75 @@
+{
+  "austin_leclerc": {
+    "source": "2026-10-23_United_States_Grand_Prix/2026-10-23_Practice_2/TimingAppData.jsonStream",
+    "frames": [
+      {"time": "00:36:24.549","line": 273,"payload": {"Lines": {"16": {"Stints": {"1": {"LapFlags": 0,"Compound": "SOFT","New": "true","TyresNotChanged": "0","TotalLaps": 0,"StartLaps": 0}}}}}},
+      {"time": "00:41:59.607","line": 338,"payload": {"Lines": {"16": {"Stints": {"1": {"TotalLaps": 3}}}}}},
+      {"time": "00:47:34.672","line": 405,"payload": {"Lines": {"16": {"Stints": {"2": {"LapFlags": 0,"Compound": "UNKNOWN","New": "false","TyresNotChanged": "1","TotalLaps": 0,"StartLaps": 0}}}}}},
+      {"time": "00:47:39.660","line": 406,"payload": {"Lines": {"16": {"Stints": {"2": {"Compound": "SOFT","TotalLaps": 3,"StartLaps": 3}}}}}},
+      {"time": "00:49:24.672","line": 429,"payload": {"Lines": {"16": {"Stints": {"2": {"TotalLaps": 4}}}}}},
+      {"time": "01:23:09.926","line": 746,"payload": {"Lines": {"16": {"Stints": {"2": {"TotalLaps": 22}}}}}}
+    ]
+  },
+  "austin_hamilton": {
+    "source": "2026-10-23_United_States_Grand_Prix/2026-10-23_Practice_2/TimingAppData.jsonStream",
+    "frames": [
+      {"time": "00:36:49.545","line": 277,"payload": {"Lines": {"44": {"Stints": {"1": {"LapFlags": 0,"Compound": "UNKNOWN","New": "false","TyresNotChanged": "1","TotalLaps": 0,"StartLaps": 0}}}}}},
+      {"time": "00:36:54.560","line": 278,"payload": {"Lines": {"44": {"Stints": {"1": {"Compound": "SOFT","New": "true","TyresNotChanged": "0"}}}}}},
+      {"time": "00:43:24.625","line": 351,"payload": {"Lines": {"44": {"Stints": {"1": {"TotalLaps": 3}}}}}},
+      {"time": "00:44:14.641","line": 366,"payload": {"Lines": {"44": {"Stints": {"2": {"LapFlags": 0,"Compound": "SOFT","New": "false","TyresNotChanged": "1","TotalLaps": 3,"StartLaps": 3}}}}}},
+      {"time": "00:46:09.657","line": 389,"payload": {"Lines": {"44": {"Stints": {"2": {"TotalLaps": 4}}}}}},
+      {"time": "00:49:34.684","line": 431,"payload": {"Lines": {"44": {"Stints": {"2": {"TotalLaps": 6}}}}}},
+      {"time": "00:56:44.741","line": 484,"payload": {"Lines": {"44": {"Stints": {"3": {"LapFlags": 0,"Compound": "SOFT","New": "false","TyresNotChanged": "1","TotalLaps": 6,"StartLaps": 6}}}}}},
+      {"time": "00:58:39.770","line": 504,"payload": {"Lines": {"44": {"Stints": {"3": {"TotalLaps": 7}}}}}},
+      {"time": "01:10:39.856","line": 653,"payload": {"Lines": {"44": {"Stints": {"3": {"TotalLaps": 14}}}}}}
+    ]
+  },
+  "austin_hamilton_hard": {
+    "source": "2026-10-23_United_States_Grand_Prix/2026-10-23_Practice_2/TimingAppData.jsonStream",
+    "frames": [
+      {"time": "01:10:59.867","line": 657,"payload": {"Lines": {"44": {"Stints": {"4": {"LapFlags": 0,"Compound": "UNKNOWN","New": "false","TyresNotChanged": "1","TotalLaps": 0,"StartLaps": 0}}}}}},
+      {"time": "01:11:04.867","line": 658,"payload": {"Lines": {"44": {"Stints": {"4": {"Compound": "HARD","TyresNotChanged": "0","TotalLaps": 7,"StartLaps": 7}}}}}},
+      {"time": "01:12:44.934","line": 674,"payload": {"Lines": {"44": {"Stints": {"4": {"TotalLaps": 8}}}}}}
+    ]
+  },
+  "singapore_alonso": {
+    "source": "2026-10-09_Singapore_Grand_Prix/2026-10-11_Race/TimingAppData.jsonStream",
+    "frames": [
+      {"time": "00:47:41.736","line": 4,"payload": {"Lines": {"14": {"Stints": [{"LapFlags": 0,"Compound": "SOFT","New": "true","TyresNotChanged": "0","TotalLaps": 0,"StartLaps": 0}]}}}},
+      {"time": "00:56:26.790","line": 5,"payload": {"Lines": {"14": {"Stints": {"1": {"LapFlags": 0,"Compound": "SOFT","New": "true","TyresNotChanged": "1","TotalLaps": 0,"StartLaps": 0}}}}}},
+      {"time": "01:01:21.818","line": 50,"payload": {"Lines": {"14": {"Stints": {"0": {"TotalLaps": 3},"1": {"TotalLaps": 3}}}}}},
+      {"time": "01:03:06.825","line": 77,"payload": {"Lines": {"14": {"Stints": {"0": {"TotalLaps": 4},"1": {"TotalLaps": 4}}}}}},
+      {"time": "01:06:26.833","line": 121,"payload": {"Lines": {"14": {"Stints": {"0": {"TotalLaps": 6},"1": {"TotalLaps": 6}}}}}},
+      {"time": "01:08:06.849","line": 142,"payload": {"Lines": {"14": {"Stints": {"0": {"TotalLaps": 7}}}}}},
+      {"time": "01:33:38.496","line": 367,"payload": {"Lines": {"14": {"Stints": {"1": {"LapTime": "1:39.859","LapNumber": 22}}}}}},
+      {"time": "01:33:41.997","line": 368,"payload": {"Lines": {"14": {"Stints": {"0": {"TotalLaps": 22}}}}}},
+      {"time": "01:35:18.209","line": 385,"payload": {"Lines": {"14": {"Stints": {"1": {"LapTime": "1:39.688","LapNumber": 23}}}}}},
+      {"time": "01:55:27.159","line": 635,"payload": {"Lines": {"14": {"Stints": {"0": {"TotalLaps": 35}}}}}}
+    ]
+  },
+  "singapore_stroll": {
+    "source": "2026-10-09_Singapore_Grand_Prix/2026-10-11_Race/TimingAppData.jsonStream",
+    "frames": [
+      {"time": "00:47:41.736","line": 4,"payload": {"Lines": {"18": {"Stints": [{"LapFlags": 0,"Compound": "SOFT","New": "true","TyresNotChanged": "0","TotalLaps": 0,"StartLaps": 0}]}}}},
+      {"time": "00:56:26.790","line": 5,"payload": {"Lines": {"18": {"Stints": {"1": {"LapFlags": 0,"Compound": "SOFT","New": "true","TyresNotChanged": "1","TotalLaps": 0,"StartLaps": 0}}}}}},
+      {"time": "01:01:26.822","line": 53,"payload": {"Lines": {"18": {"Stints": {"0": {"TotalLaps": 3},"1": {"TotalLaps": 3}}}}}},
+      {"time": "01:03:06.825","line": 77,"payload": {"Lines": {"18": {"Stints": {"0": {"TotalLaps": 4},"1": {"TotalLaps": 4}}}}}},
+      {"time": "01:06:31.849","line": 122,"payload": {"Lines": {"18": {"Stints": {"0": {"TotalLaps": 6},"1": {"TotalLaps": 6}}}}}},
+      {"time": "01:08:11.849","line": 144,"payload": {"Lines": {"18": {"Stints": {"0": {"TotalLaps": 7}}}}}},
+      {"time": "01:33:43.459","line": 369,"payload": {"Lines": {"18": {"Stints": {"1": {"LapTime": "1:40.597","LapNumber": 22}}}}}},
+      {"time": "01:33:46.993","line": 370,"payload": {"Lines": {"18": {"Stints": {"0": {"TotalLaps": 22}}}}}}
+    ]
+  },
+  "singapore_alonso_change": {
+    "source": "2026-10-09_Singapore_Grand_Prix/2026-10-11_Race/TimingAppData.jsonStream",
+    "frames": [
+      {"time": "01:55:47.153","line": 639,"payload": {"Lines": {"14": {"Stints": {"1": {"Compound": "MEDIUM","TyresNotChanged": "0","TotalLaps": 0}}}}}}
+    ]
+  },
+  "singapore_stroll_change": {
+    "source": "2026-10-09_Singapore_Grand_Prix/2026-10-11_Race/TimingAppData.jsonStream",
+    "frames": [
+      {"time": "01:40:52.046","line": 441,"payload": {"Lines": {"18": {"Stints": {"1": {"Compound": "MEDIUM","TyresNotChanged": "0","TotalLaps": 0}}}}}}
+    ]
+  }
+}

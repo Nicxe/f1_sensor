@@ -6662,6 +6662,67 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             return stint_idx
         return None
 
+    @classmethod
+    def _current_tyre_stint_index(
+        cls, tyre_history: dict, progressing_stints: set[int]
+    ) -> int | None:
+        """Follow the counting stint without treating mirrored rows as new sets."""
+        confirmed_index = cls._current_valid_stint_index(tyre_history)
+        if confirmed_index is None:
+            return None
+        stints = tyre_history["stints"]
+        current_index = tyre_history.get("current_tyres_stint_index")
+        initializing = (
+            not isinstance(current_index, int)
+            or current_index < confirmed_index
+            or current_index >= len(stints)
+        )
+        if initializing:
+            current_index = confirmed_index
+
+        compound = cls._normalize_compound(stints[confirmed_index].get("compound"))
+        for stint_index in range(confirmed_index, len(stints)):
+            if stint_index == current_index:
+                continue
+            stint = stints[stint_index]
+            if stint.get("source_seen") is False:
+                continue
+            if not initializing and stint_index not in progressing_stints:
+                continue
+            candidate_compound = cls._normalize_compound(stint.get("compound"))
+            if compound not in (None, "UNKNOWN") and candidate_compound not in (
+                None,
+                "UNKNOWN",
+                compound,
+            ):
+                continue
+            # Same-set rows use cumulative tyre age. Equal counters can be a
+            # mirrored phantom; only independent progress establishes a switch.
+            # Keep an established row through its own downward corrections.
+            total_laps = stint.get("total_laps") or 0
+            if total_laps > (stints[current_index].get("total_laps") or 0):
+                current_index = stint_index
+        return current_index
+
+    @classmethod
+    def _current_tyre_values(cls, tyre_history: dict, stint_index: int) -> dict:
+        """Project the merged stint, retaining compound during same-set gaps."""
+        stints = tyre_history["stints"]
+        stint = stints[stint_index]
+        compound = cls._normalize_compound(stint.get("compound"))
+        if compound in (None, "UNKNOWN") and stint.get("tyres_not_changed") is True:
+            confirmed_index = tyre_history["current_stint_index"]
+            for previous in reversed(stints[confirmed_index:stint_index]):
+                previous_compound = cls._normalize_compound(previous.get("compound"))
+                if previous_compound not in (None, "UNKNOWN"):
+                    compound = previous_compound
+                    break
+        return {
+            "compound": compound,
+            "stint_laps": stint.get("total_laps"),
+            "new": stint.get("new"),
+        }
+
     @staticmethod
     def _extract_compound_presence(payload: dict) -> tuple[int, list[str]]:
         """Return count and sample of drivers with a meaningful tyre compound."""
@@ -6808,47 +6869,40 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             tyres = entry["tyres"]
             tyre_history = entry["tyre_history"]
 
+            progressing_stints: set[int] = set()
             for stint_idx, stint_data in stint_items:
+                stored_stints = tyre_history["stints"]
+                previous_laps = (
+                    stored_stints[stint_idx].get("total_laps", 0)
+                    if stint_idx < len(stored_stints)
+                    else 0
+                )
                 if self._update_stint_history(tyre_history, stint_idx, stint_data):
                     stints_changed = True
+                if "TotalLaps" in stint_data and (
+                    stored_stints[stint_idx].get("total_laps", 0) > previous_laps
+                ):
+                    progressing_stints.add(stint_idx)
 
+            # Statistics and lap-time ownership remain attached to the physical
+            # tyre set, while current tyres can follow a later same-set stint.
             current_stint_index = self._current_valid_stint_index(tyre_history)
             if tyre_history["current_stint_index"] != current_stint_index:
                 tyre_history["current_stint_index"] = current_stint_index
                 stints_changed = True
 
-            current_delta = next(
-                (
-                    stint_data
-                    for stint_idx, stint_data in stint_items
-                    if stint_idx == current_stint_index
-                ),
-                None,
+            tyre_stint_index = self._current_tyre_stint_index(
+                tyre_history, progressing_stints
             )
-            if current_delta is not None and "Compound" in current_delta:
-                compound = self._normalize_compound(current_delta.get("Compound"))
-                if tyres.get("compound") != compound:
-                    tyres["compound"] = compound
-                    stints_changed = True
-            if current_delta is not None and "TotalLaps" in current_delta:
-                stint_laps = current_delta.get("TotalLaps")
-                stint_laps_val = (
-                    int(stint_laps) if str(stint_laps or "").isdigit() else stint_laps
+            if tyre_history.get("current_tyres_stint_index") != tyre_stint_index:
+                tyre_history["current_tyres_stint_index"] = tyre_stint_index
+                stints_changed = True
+            if tyre_stint_index is not None:
+                current_tyres = self._current_tyre_values(
+                    tyre_history, tyre_stint_index
                 )
-                if tyres.get("stint_laps") != stint_laps_val:
-                    tyres["stint_laps"] = stint_laps_val
-                    stints_changed = True
-            if current_delta is not None and "New" in current_delta:
-                is_new = current_delta.get("New")
-                s = str(is_new).lower()
-                if s == "true":
-                    new_val: Any = True
-                elif s == "false":
-                    new_val = False
-                else:
-                    new_val = is_new
-                if tyres.get("new") != new_val:
-                    tyres["new"] = new_val
+                if tyres != current_tyres:
+                    tyres.update(current_tyres)
                     stints_changed = True
 
             # Extract the latest stint entry for lap time updates
