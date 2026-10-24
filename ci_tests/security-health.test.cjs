@@ -7,7 +7,7 @@ const yaml = require('js-yaml');
 const workflow = name => yaml.load(fs.readFileSync(path.join(__dirname, '../.github/workflows', name), 'utf8'));
 
 function trustedEvaluator(job) {
-  const pin = /^Nicxe\/f1_sensor\/\.github\/workflows\/security-health\.yml@([a-f0-9]{40})$/.exec(job.uses || '');
+  const pin = /^Nicxe\/f1_sensor\/\.github\/workflows\/security-snapshot\.yml@([a-f0-9]{40})$/.exec(job.uses || '');
   assert.ok(pin, 'Use the reviewed evaluator workflow at an immutable commit.');
   assert.notEqual(pin[1], '0'.repeat(40), 'Replace the preparation placeholder before delivery.');
   assert.equal(job.with.tools_ref, pin[1], 'Execute only evaluator tools from that same reviewed commit.');
